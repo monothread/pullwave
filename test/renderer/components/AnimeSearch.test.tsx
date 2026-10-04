@@ -382,6 +382,91 @@ describe('AnimeDetail', () => {
         expect(useAnimeStore.getState()).toMatchObject({ view: 'library', selection: null, libraryFocus: 4 });
     });
 
+    describe('episodes that the source has and the library does not', () => {
+        const IN_LIBRARY = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null })], {
+            id: 4,
+            title: 'Cyberpunk: Edgerunners',
+            audio: 'sub'
+        });
+
+        it('offers one button that adds the new episodes, with how many they are, beside the one that views the anime in the library', () => {
+            open(['1', '2', '3', '4']);
+            useAnimeStore.setState({ library: [IN_LIBRARY] });
+            render(<AnimeSearch />);
+
+            expect(screen.getByRole('button', { name: 'ADD NEW EPISODES (2)' })).toBeEnabled();
+            expect(screen.getByRole('button', { name: 'VIEW IN LIBRARY' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
+            expect(screen.getAllByRole('button').map((button) => {
+                return button.textContent;
+            })).toEqual(['BACK', 'ADD NEW EPISODES (2)', 'VIEW IN LIBRARY', 'EP 1', 'EP 2', 'EP 3', 'EP 4']);
+        });
+
+        it('adds the episodes of the opened anime without asking for a series, as the library has it already', async () => {
+            const user = userEvent.setup();
+            const addToLibrary = vi.fn().mockResolvedValue(true);
+            open(['1', '2', '3']);
+            useAnimeStore.setState({ library: [IN_LIBRARY], addToLibrary });
+            render(<AnimeSearch />);
+
+            await user.click(screen.getByRole('button', { name: 'ADD NEW EPISODES (1)' }));
+
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(addToLibrary).toHaveBeenCalledTimes(1);
+            expect(addToLibrary).toHaveBeenCalledWith(null);
+        });
+
+        it('sends the request of the anime that is in the library, with no series, once the button is used', async () => {
+            const user = userEvent.setup();
+            mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: IN_LIBRARY });
+            open(['1', '2', '3']);
+            useAnimeStore.setState({ library: [IN_LIBRARY] });
+            render(<AnimeSearch />);
+
+            await user.click(screen.getByRole('button', { name: 'ADD NEW EPISODES (1)' }));
+
+            expect(mock.api.addAnimeToLibrary).toHaveBeenCalledTimes(1);
+            expect(mock.api.addAnimeToLibrary).toHaveBeenCalledWith({
+                title: 'Cyberpunk: Edgerunners',
+                query: 'cyberpunk',
+                index: RESULTS[0]?.index,
+                audio: 'sub',
+                episodes: ['1', '2', '3'],
+                series: null,
+                season: null,
+                seasonName: null
+            });
+        });
+
+        it('does not offer it when the library has every episode of the source, downloaded or not', () => {
+            open(['1', '2']);
+            useAnimeStore.setState({ library: [IN_LIBRARY] });
+            render(<AnimeSearch />);
+            expect(screen.queryByRole('button', { name: /^ADD NEW EPISODES/ })).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'VIEW IN LIBRARY' })).toBeInTheDocument();
+        });
+
+        it('does not offer it when the anime is not in the library, or when only the other audio of it is', () => {
+            open(['1', '2', '3']);
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 2, number: '1' })], { id: 5, title: 'Cyberpunk: Edgerunners', audio: 'dub' })] });
+            render(<AnimeSearch />);
+            expect(screen.queryByRole('button', { name: /^ADD NEW EPISODES/ })).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeEnabled();
+        });
+
+        it('does not offer it while the episodes are loading or when they failed', () => {
+            open([], { status: 'loading' });
+            useAnimeStore.setState({ library: [IN_LIBRARY] });
+            const { unmount } = render(<AnimeSearch />);
+            expect(screen.queryByRole('button', { name: /^ADD NEW EPISODES/ })).not.toBeInTheDocument();
+            unmount();
+
+            open([], { status: 'error', error: { code: 'NETWORK', raw: 'curl exit 6' } });
+            render(<AnimeSearch />);
+            expect(screen.queryByRole('button', { name: /^ADD NEW EPISODES/ })).not.toBeInTheDocument();
+        });
+    });
+
     describe('series and season', () => {
         async function openDialog(user: ReturnType<typeof userEvent.setup>): Promise<ReturnType<typeof within>> {
             await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));

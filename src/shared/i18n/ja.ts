@@ -428,6 +428,7 @@ export const ja: Messages = {
     'anime.library.hide': 'エピソードを隠す',
     'anime.library.source': 'ソースへ移動',
     'anime.library.add': 'ライブラリに追加',
+    'anime.library.addNew': '新しいエピソードを追加 ({count})',
     'anime.add.title': 'ライブラリに追加',
     'anime.add.intro': 'アニメと全エピソードをライブラリに追加します。ダウンロードはされません。',
     'anime.add.series': 'シリーズ：アニメが属するグループです（同じ作品の全シーズンなど）。',

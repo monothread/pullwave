@@ -426,6 +426,7 @@ export const zh: Messages = {
     'anime.library.hide': '隐藏剧集',
     'anime.library.source': '前往来源',
     'anime.library.add': '添加到资料库',
+    'anime.library.addNew': '添加新剧集 ({count})',
     'anime.add.title': '添加到媒体库',
     'anime.add.intro': '将动画及其全部剧集添加到媒体库，不会下载任何内容。',
     'anime.add.series': '系列：动画所属的分组，例如同一部作品的所有季。',

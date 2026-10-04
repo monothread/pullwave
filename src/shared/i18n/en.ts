@@ -451,6 +451,7 @@ export const en = {
     'anime.library.hide': 'HIDE EPISODES',
     'anime.library.source': 'GO TO SOURCE',
     'anime.library.add': 'ADD TO LIBRARY',
+    'anime.library.addNew': 'ADD NEW EPISODES ({count})',
     'anime.add.title': 'Add to the library',
     'anime.add.intro': 'Adds the anime and all its episodes to the library. Nothing is downloaded.',
     'anime.add.series': 'Series: the group the anime belongs to, such as all the seasons of the same show.',

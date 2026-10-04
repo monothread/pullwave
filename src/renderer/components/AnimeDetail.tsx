@@ -35,6 +35,19 @@ export function AnimeDetail() {
     const suggested = suggestSeries(selection?.result.title ?? '');
     const [adding, setAdding] = useState(false);
 
+    // The episodes the source has that the library does not know yet (an anime that is still airing gets new ones after it was added).
+    const inLibrary = new Set(
+        (entry?.episodes ?? []).map((episode) => {
+            return episode.number;
+        })
+    );
+    const missingCount =
+        entry && selection?.status === 'ready'
+            ? selection.episodes.filter((number) => {
+                  return !inLibrary.has(number);
+              }).length
+            : 0;
+
     const downloaded = new Set(
         (entry?.episodes ?? [])
             .filter((episode) => {
@@ -57,15 +70,28 @@ export function AnimeDetail() {
                 </button>
                 <span className="section-label">{selection.result.title}</span>
                 {entry ? (
-                    <button
-                        type="button"
-                        className="btn btn--small btn--primary"
-                        onClick={() => {
-                            showInLibrary(entry.id);
-                        }}
-                    >
-                        {t('anime.library.view')}
-                    </button>
+                    <>
+                        {missingCount > 0 && (
+                            <button
+                                type="button"
+                                className="btn btn--small btn--primary"
+                                onClick={() => {
+                                    void addToLibrary(null);
+                                }}
+                            >
+                                {t('anime.library.addNew', { count: missingCount })}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            className="btn btn--small btn--primary"
+                            onClick={() => {
+                                showInLibrary(entry.id);
+                            }}
+                        >
+                            {t('anime.library.view')}
+                        </button>
+                    </>
                 ) : (
                     <button
                         type="button"

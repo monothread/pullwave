@@ -2367,6 +2367,36 @@ test.describe('library of the search', () => {
         await expect(page.getByText('// NO DOWNLOADS YET.')).toBeVisible();
     });
 
+    test('adds the episodes that came out after the anime was added with one button, which is gone once the library has them all', async () => {
+        const { page, userData } = session;
+        await addToLibrary(page);
+        // Nothing is missing yet: the button to view is the only one.
+        await expect(page.getByRole('button', { name: /^ADD NEW EPISODES/ })).toHaveCount(0);
+
+        // The source got a fourth episode: the anime is opened again from the results.
+        const history = join(userData, 'anime', 'history');
+        writeFileSync(join(history, 'more-episodes'), '');
+        await page.getByRole('button', { name: 'BACK' }).click();
+        await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'EP 4', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'ADD TO LIBRARY', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+
+        await page.getByRole('button', { name: 'ADD NEW EPISODES (1)', exact: true }).click();
+        await expect(page.locator('.toast__message')).toHaveText('Added to the library: Fake Anime (4 episodes).');
+        await expect(page.getByRole('button', { name: /^ADD NEW EPISODES/ })).toHaveCount(0);
+        expect(
+            calls().filter((line) => {
+                return line.includes('-d ');
+            })
+        ).toEqual([]);
+
+        await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await expect(page.getByText('0/4 DOWNLOADED')).toBeVisible();
+        await expect(page.getByTestId('anime-episode').locator('.history__meta')).toHaveText(['NOT DOWNLOADED', 'NOT DOWNLOADED', 'NOT DOWNLOADED', 'NOT DOWNLOADED']);
+    });
+
     test('shows the episodes that were added as not downloaded, each with its own button to download it', async () => {
         const { page } = session;
         await addToLibrary(page);

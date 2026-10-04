@@ -3,7 +3,7 @@ version_number="0.0.0-fake"
 # Stands in for ani-cli in the end-to-end tests. It is run by the busybox that ships with the app, with the same PATH,
 # menu program and environment ani-cli would get.
 #   search:    <words>                       lists "1 Fake Anime" and "2 Fake Anime 2" (words with "zzz": nothing found)
-#   episodes:  -S <n> <words>                lists episodes 1 to 3 (words with "single": the one episode is picked silently)
+#   episodes:  -S <n> <words>                lists episodes 1 to 3, or 1 to 4 once a test wrote more-episodes in the history folder (words with "single": the one episode is picked silently)
 #   stream:    -S <n> -e <ep> -q <q> ...     (with the debug player) prints the address of the episode, the subtitle and the list of subtitles
 #   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists)
 # Every call is appended to $ANI_CLI_HIST_DIR/calls.log as "<mode> | <arguments>", and the subtitle languages it was
@@ -79,6 +79,10 @@ if [ -n "$index" ]; then
     case "$query" in
         *single*) exit 0 ;;
     esac
+    if [ -f "$ANI_CLI_HIST_DIR/more-episodes" ]; then
+        printf '1\n2\n3\n4\n' | "$ANI_CLI_MENU" 'Select episode: '
+        exit 1
+    fi
     printf '1\n2\n3\n' | "$ANI_CLI_MENU" 'Select episode: '
     exit 1
 fi

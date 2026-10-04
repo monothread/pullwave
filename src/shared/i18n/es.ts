@@ -435,6 +435,7 @@ export const es: Messages = {
     'anime.library.hide': 'OCULTAR EPISODIOS',
     'anime.library.source': 'IR A LA FUENTE',
     'anime.library.add': 'AÑADIR A LA BIBLIOTECA',
+    'anime.library.addNew': 'AÑADIR EPISODIOS NUEVOS ({count})',
     'anime.add.title': 'Añadir a la biblioteca',
     'anime.add.intro': 'Añade el anime y todos sus episodios a la biblioteca. No se descarga nada.',
     'anime.add.series': 'Serie: el grupo al que pertenece el anime, como todas las temporadas de un mismo título.',
