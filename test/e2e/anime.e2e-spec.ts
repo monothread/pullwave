@@ -794,13 +794,19 @@ test('downloads an episode with the quality of the settings and shows it in the 
 });
 
 test('downloads a whole season, one episode at a time', async () => {
+    test.slow();
     const { page, animeDir } = session;
     await openAnimeTab(page);
     await openFirstResult(page);
     await downloadFromLibrary(page, [1, 2, 3]);
 
-    await expect(page.locator('.toast').filter({ hasText: 'Download complete: Fake Anime · EP ' })).toHaveCount(3, { timeout: 20000 });
+    // Each one is told when it finishes; how many are on the screen at once depends on how fast the machine is.
     await waitForDownloaded(page);
+    await expect.poll(() => {
+        return ['1', '2', '3'].every((number) => {
+            return existsSync(join(animeDir, 'Fake Anime', 'Season 1', `Episode ${number}`, `Fake Anime Episode ${number}.mp4`));
+        });
+    }, { timeout: 90000 }).toBe(true);
     ['1', '2', '3'].forEach((number) => {
         expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', `Episode ${number}`, `Fake Anime Episode ${number}.mp4`))).toBe(true);
     });
@@ -1881,9 +1887,11 @@ test.describe('covers', () => {
     test('shows the covers in the library and in the history too, without asking for them again', async () => {
         const { page } = session;
         await downloadFirstEpisode(page);
+        // The results of the search that was made to open the anime ask for their covers too, one a second.
         await expect.poll(() => {
-            return searched.includes('Fake Anime');
+            return searched.includes('Fake Anime') && searched.includes('Fake Anime 2');
         }).toBe(true);
+        await page.waitForTimeout(2500);
         const asks = searched.length;
 
         await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
@@ -2379,7 +2387,8 @@ test.describe('library of the search', () => {
         await expect(page.getByRole('button', { name: 'DOWNLOAD: Fake Anime EP 2', exact: true })).toHaveCount(0);
     });
 
-    test('downloads everything that is missing from the screen of the series, stacking the toasts of what finishes', async () => {
+    test('downloads everything that is missing from the screen of the series, telling each one that finishes', async () => {
+        test.slow();
         const { page, animeDir } = session;
         await addToLibrary(page);
         await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
@@ -2389,10 +2398,10 @@ test.describe('library of the search', () => {
 
         await page.getByRole('button', { name: 'DOWNLOAD ALL: Fake Anime' }).click();
         const toasts = page.locator('.toast').filter({ hasText: 'Download complete: ' });
-        await expect(toasts).toHaveCount(3, { timeout: 20000 });
-        await expect(page.getByText('3/3 DOWNLOADED')).toBeVisible();
+        await expect(toasts.first()).toBeVisible({ timeout: 60000 });
+        await expect(page.getByText('3/3 DOWNLOADED')).toBeVisible({ timeout: 90000 });
         // Every one goes away five seconds after it showed up.
-        await expect(toasts).toHaveCount(0, { timeout: 10000 });
+        await expect(toasts).toHaveCount(0, { timeout: 15000 });
         ['1', '2', '3'].forEach((number) => {
             expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', `Episode ${number}`, `Fake Anime Episode ${number}.mp4`))).toBe(true);
         });
@@ -2404,6 +2413,7 @@ test.describe('library of the search', () => {
     });
 
     test('downloads only the episodes of one season, from the button of its row, leaving the other seasons of the series alone', async () => {
+        test.slow();
         const { page, animeDir } = session;
         await openAnimeTab(page);
         await openFirstResult(page);
@@ -2424,7 +2434,8 @@ test.describe('library of the search', () => {
         await page.getByRole('button', { name: 'DOWNLOAD SEASON: Fake Anime 2', exact: true }).click();
 
         const toasts = page.locator('.toast').filter({ hasText: 'Download complete: Fake Anime 2 · EP ' });
-        await expect(toasts).toHaveCount(3, { timeout: 20000 });
+        await expect(toasts.first()).toBeVisible({ timeout: 60000 });
+        await expect(page.getByText('3/3 DOWNLOADED')).toBeVisible({ timeout: 90000 });
         await expect(page.getByTestId('anime-episode')).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'DOWNLOAD SEASON: Fake Anime 2', exact: true })).toHaveCount(0);
         // The other season is as it was: nothing downloaded, and its button is still there.
