@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
-import type { AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress } from '@shared/anime';
+import type { AnimeAvailability, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress } from '@shared/anime';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -61,6 +61,9 @@ const api: CyberApi = {
     },
     updateYtdlp: () => {
         return ipcRenderer.invoke(IPC.ytdlpUpdate);
+    },
+    resetYtdlp: () => {
+        return ipcRenderer.invoke(IPC.ytdlpReset);
     },
     getAppUpdateState: () => {
         return ipcRenderer.invoke(IPC.appUpdateGet);
@@ -149,6 +152,18 @@ const api: CyberApi = {
     openAnimeFolder: (animeId) => {
         return ipcRenderer.invoke(IPC.animeOpenFolder, animeId);
     },
+    openAnimeSeriesFolder: (animeId) => {
+        return ipcRenderer.invoke(IPC.animeOpenSeriesFolder, animeId);
+    },
+    addAnimeToLibrary: (request) => {
+        return ipcRenderer.invoke(IPC.animeAddToLibrary, request);
+    },
+    downloadMissingAnime: (animeIds) => {
+        return ipcRenderer.invoke(IPC.animeDownloadMissing, animeIds);
+    },
+    renameAnimeSeries: (animeIds, name) => {
+        return ipcRenderer.invoke(IPC.animeRenameSeries, animeIds, name);
+    },
     setAnimeSeries: (animeId, series, season, seasonName) => {
         return ipcRenderer.invoke(IPC.animeSetSeries, animeId, series, season, seasonName);
     },
@@ -173,6 +188,9 @@ const api: CyberApi = {
     updateAniCli: () => {
         return ipcRenderer.invoke(IPC.animeUpdateCli);
     },
+    resetAniCli: () => {
+        return ipcRenderer.invoke(IPC.animeResetCli);
+    },
     openAnimeStream: (request) => {
         return ipcRenderer.invoke(IPC.animeStreamOpen, request);
     },
@@ -184,6 +202,9 @@ const api: CyberApi = {
     },
     findAnimeCover: (title) => {
         return ipcRenderer.invoke(IPC.animeCover, title);
+    },
+    checkAnimeAvailability: (targets) => {
+        return ipcRenderer.invoke(IPC.animeAvailability, targets);
     },
     onAnimeJobUpdate: (listener) => {
         return subscribe<AnimeJob>(IPC.eventAnimeJob, listener);
@@ -198,6 +219,9 @@ const api: CyberApi = {
     },
     onAnimeCoverUpdate: (listener) => {
         return subscribe<AnimeCoverUpdate>(IPC.eventAnimeCover, listener);
+    },
+    onAnimeAvailability: (listener) => {
+        return subscribe<AnimeAvailability>(IPC.eventAnimeAvailability, listener);
     },
     onJobUpdate: (listener) => {
         return subscribe<DownloadJob>(IPC.eventJobUpdate, listener);

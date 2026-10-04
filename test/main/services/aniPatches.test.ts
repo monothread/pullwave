@@ -1,4 +1,4 @@
-import { patchAniCli } from '@main/services/aniPatches';
+import { patchAniCli, patchReport, REQUIRED_PATCHES } from '@main/services/aniPatches';
 
 const SUBTITLES = [
     '# header',
@@ -45,5 +45,44 @@ describe('patchAniCli', () => {
     it('gives null when nothing fits', () => {
         expect(patchAniCli('a different script')).toBeNull();
         expect(patchAniCli('')).toBeNull();
+    });
+});
+
+describe('patchReport', () => {
+    it('says which of the changes fit a script', () => {
+        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: true });
+    });
+
+    it('says the choice of the subtitle language does not fit when that line changed, and the others still do', () => {
+        const changed = SUBTITLES.replace('s|}\\].*||', 's|\\].*||');
+        expect(changed).not.toBe(SUBTITLES);
+        expect(patchReport(`${changed}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: true, debugReferer: true });
+    });
+
+    it('says the saving of every subtitle does not fit without its two lines or without the function it hooks into', () => {
+        expect(patchReport(`${SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: false, debugReferer: true });
+        expect(patchReport(`${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: true });
+    });
+
+    it('says the address of the stream does not fit when its line changed', () => {
+        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG.replace('Subtitles:', 'Subs:')}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: false });
+    });
+
+    it('says none of them fit a script it knows nothing about, even an empty one', () => {
+        expect(patchReport('a different script')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false });
+        expect(patchReport('')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false });
+    });
+
+    it('agrees with what patchAniCli does: it gives null exactly when none fit', () => {
+        ['', SUBTITLES, ALL_SUBTITLES, DEBUG, `${SUBTITLES}\n${DEBUG}`].forEach((script) => {
+            const report = patchReport(script);
+            expect(patchAniCli(script) === null).toBe(!report.subtitleSelection && !report.allSubtitles && !report.debugReferer);
+        });
+    });
+});
+
+describe('REQUIRED_PATCHES', () => {
+    it('is only the address of the stream: without it the app cannot play or download an episode', () => {
+        expect(REQUIRED_PATCHES).toEqual(['debugReferer']);
     });
 });

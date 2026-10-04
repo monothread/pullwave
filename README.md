@@ -65,8 +65,8 @@ The back and forward buttons of the mouse take you through the screens you have 
 
 ### Queue
 - Paste a link, or several: **+ ADD LINK** gives you one field per link. **FOLDER** sends that download to another folder, and **OPTIONS** changes the quality, the format and the live-stream behavior for that download only.
-- Every download shows its progress, speed and time left, and can be paused, resumed, cancelled or retried. Downloads run one at a time. When one finishes you get a notice, and it moves to the history.
-- **PAUSE** stops a download and keeps what was already downloaded; **RESUME** goes on from there, and a paused download leaves its place in the queue to the next one. A live recording cannot be paused (STOP & SAVE ends it). A paused download is not kept when the app is closed, although its partial files stay in the folder.
+- Every download shows its progress, speed and time left, and can be paused, resumed, cancelled or retried. Up to two downloads run at the same time, the others wait their turn. When one finishes you get a notice, and it moves to the history.
+- **PAUSE** stops a download and keeps what was already downloaded; **RESUME** goes on from there, and a paused download leaves its place in the queue to the next one. A live recording cannot be paused (STOP & SAVE ends it). A paused download is still there, paused, when you open the app again, and RESUME goes on from its partial files (a download that needed the cookie of a page may have to be found again with FIND STREAM). Closing the app while downloads are running cancels them and deletes their unfinished files (paused downloads are kept, with theirs); the app asks before it does.
 - If something goes wrong, a clear message explains what happened, with the details one click away.
 
   ![An error explained in the queue](docs/screenshots/cyberpunk-error.png)
@@ -102,27 +102,27 @@ When a link does not work because the page is not supported (for example "Unsupp
 ### Settings of the video downloader (⚙)
 ![Settings of the video downloader](docs/screenshots/cyberpunk-settings.png)
 
-Where downloads are saved and how files are named, quality and format, playlists and subtitles, live streams, browser cookies, and advanced options such as a speed limit or using your own yt-dlp and ffmpeg. **UPDATE YT-DLP** brings the download tool up to date without waiting for a new version of the app.
+Where downloads are saved and how files are named, quality and format, playlists and subtitles, live streams, browser cookies, and advanced options such as a speed limit or using your own yt-dlp and ffmpeg. **UPDATE YT-DLP** brings the download tool up to date without waiting for a new version of the app: it only installs a release whose list of checksums is signed by the yt-dlp project (the signature is checked with the key of the project that comes with the app), and it runs the new one before it replaces the old one. If the updated one turns out worse, **USE THE ONE THAT SHIPS WITH THE APP** deletes it; the app also drops an updated one by itself when it is older than the one that comes with a newer version of the app, or when it no longer runs.
 
 ## Anime
 Pullwave includes [ani-cli](https://github.com/pystardust/ani-cli) and everything it needs, so the anime section works as soon as the app is installed.
 
 ### Schedule
-The first tab of ANIME shows the episodes that air, as [AniList](https://anilist.co) schedules them, as cards with the cover of each anime, in the order they air, at the time of the time zone you pick (the one of your computer to begin with).
+The first tab of ANIME shows the episodes that air, as [AniList](https://anilist.co) schedules them, as cards with the cover of each anime, in the order they air, at the time of the time zone you pick (the one of your computer to begin with). The schedule always opens on the DAY view; the time zone you pick is remembered. The search field above the cards narrows what is listed to the anime whose name (or another name AniList knows it by) has what you typed, and each card then shows the date and the time its episode airs; it looks only at the day or the week that is listed.
 
 - **VIEW** switches between **DAY** (today) and **WEEK** (the seven days that start with today, one section for each day).
 - **TIME ZONE** decides where each day starts and the time shown on the cards.
 - Click a card to go to the **SEARCH** tab, which looks the anime up by its name (and by its other names, if the first finds nothing); from there you choose the anime and download its episodes as usual.
 
-What AniList says is kept for a day, so showing the same day again (or a day of a week you already looked at) does not ask it again, and it is still there when you open the app again; **REFRESH** asks again. The schedule is only AniList's: it does not say whether the source already has the episode. The names AniList and the source use may differ, in which case the search finds nothing and you can type the name yourself.
+What AniList says is kept for a day, so showing the same day again (or a day of a week you already looked at) does not ask it again, and it is still there when you open the app again; **REFRESH** asks again. The anime of the day are also looked up in the source, in the background (and when the app starts), by their english name and then by their romaji one: a card whose title is found there says **AVAILABLE**, and clicking it opens the search by the name that found it (the english one when both did); one the source does not have is faded, says **NOT AVAILABLE** and cannot be clicked; while it is being checked a card says CHECKING…, and one that could not be checked (no network, for instance) is shown as before. What is found is kept for an hour. Only the day that is shown is checked (the week is checked when you pick it).
 
 ### Search and download
 ![Search](docs/screenshots/anime-search.png)
 
 - **Search** an anime, subtitled or dubbed, and click a result to see its episodes.
-- **Download** the episodes you pick, or a whole season. The DOWNLOADS button at the top shows how many are running or waiting and opens the list, where each download can be **paused** and resumed.
+- **ADD TO LIBRARY** opens a window that explains the **series** (the group the anime belongs to, such as all the seasons of the same show) and the **order** (the place of the season in the series; an order the series already uses is not allowed, and the window says which one is next) and asks you to confirm. It then puts the anime in the library with all its episodes, without downloading anything (once added, the search only says the series). It is then replaced by VIEW IN LIBRARY. Downloads are asked for in the library. The DOWNLOADS button at the top shows how many are running or waiting and opens the list, where each download can be **paused** and resumed. A finished download leaves the list and is announced by a toast; toasts stack, newest on top, and each goes away after 5 seconds.
 - **Covers:** every anime in the search, the library, the history and the schedule has its cover, found at AniList by the title (a block that says COVER NOT FOUND shows when there is none). Covers are kept on your computer and checked again the first time each day.
-- **Watch without downloading:** pick an episode and press WATCH.
+- **Watch without downloading:** click an episode and the player opens.
 
 ### Library
 ![Library](docs/screenshots/anime-library.png)
@@ -130,22 +130,24 @@ What AniList says is kept for a day, so showing the same day again (or a day of 
 Everything you downloaded, with sizes, where you stopped watching and what failed. Each episode is kept with its subtitles.
 
 - The library shows one card per series. Click it to open the series.
+- An episode that is not downloaded shows as NOT DOWNLOADED, with a DOWNLOAD button; on the screen of a series, DOWNLOAD ALL downloads what is missing in every season (and tries again what failed), and each season has its own DOWNLOAD SEASON on its row for the episodes of that season only. OPEN FOLDER is there too.
+- The ⚙ at the end of the row of a series has RENAME SERIES (every anime of the series follows, and a season whose order clashes is refused with the next free one) and REMOVE SERIES.
 - A paused episode shows as PAUSED, with a RESUME button, and stays paused when the app is closed.
 - Search the library by title, open the folder of an anime, and mark episodes as watched (an episode is also marked once you have watched most of it).
-- Go from the search to the library, and back, for the same anime (VIEW IN LIBRARY / GET MORE EPISODES).
-- Removing an episode or an anime also deletes its files.
+- Go from the search to the library, and back, for the same anime (VIEW IN LIBRARY / GO TO SOURCE). The series always opens with every season closed (the one you came for in view when you came from a redirect).
+- Removing an anime or a series also deletes its files; an episode cannot be removed alone, and the anime that gives its name to the series is only removed with the whole series.
 
 ### Series and seasons
 ![A series with its episodes](docs/screenshots/anime-series.png)
 
-The source lists every season as a separate anime. Give them the same **series** name and an **order**, and they become one series with its seasons in order. The app suggests the names from the title, and you can change them before downloading or later with EDIT SERIES. You can also give a season a name of its own instead of "SEASON N".
+The source lists every season as a separate anime. Give them the same **series** name and an **order**, and they become one series with its seasons in order. The app suggests the names from the title, and you can change them before adding the anime to the library. After that the series cannot change (rename it from its screen); EDIT SEASON changes the order and the name of a season. A season can have a name of its own instead of "SEASON N".
 
-Click a season to show or hide its episodes, and click a downloaded episode to play it. Changing a series does not move files you already have.
+Click a season to show or hide its episodes, and click a downloaded episode to play it. Changing a season does not move files you already have.
 
 ### Player
 ![The player in fullscreen, cyberpunk theme](docs/screenshots/anime-player.png)
 
-Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show, size, color and background). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In the cyberpunk theme they float over the video with a neon progress bar. Escape closes the player.
+Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show, size, color and background). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In the neon themes (Cyberpunk, Synthwave, Terminal) they float over the video with a glowing progress bar. Escape closes the player.
 
 ### Subtitles
 - Subtitles in the language of the app, or the one you choose in the ⚙ of the ANIME tab, when the source has it. Every language the source offers is saved with the episode and can be picked in the player.
@@ -160,14 +162,15 @@ Lists the anime you opened or watched, the most recent first, with the last epis
 ### Keeping your library
 - **IMPORT LIBRARY** rebuilds the library from a folder, for a new computer, a reinstall, or after you renamed or moved folders. Episodes downloaded by the app come back exactly as they were, with where you stopped watching. An episode whose file is gone is marked.
 - **MIGRATE FOLDER** (in the anime settings) moves the whole library to another folder safely, and points the app to it.
-- **UPDATE ANI-CLI** (in the ⚙ of the ANIME tab) gets the newest ani-cli when the source changes and something stops working. It downloads the latest version from the ani-cli project, so use it only if you trust that project; the version that comes with the app keeps working without it.
+- **UPDATE ANI-CLI** (in the ⚙ of the ANIME tab) gets the newest ani-cli when the source changes and something stops working. It downloads the latest version from the ani-cli project, so use it only if you trust that project (it publishes no signature, so what is checked is that the file looks like ani-cli, that the shell accepts it, and that the changes Pullwave makes to it still fit: if the one that finds the stream no longer fits, it is not installed, and if only a subtitle feature does not fit, it is installed and you are told). **USE THE ONE THAT SHIPS WITH THE APP** deletes the updated one; the version that comes with the app keeps working without it.
 
 ### Good to know
 The episodes come from an external source that can change or block requests at any time; updating ani-cli often fixes that. Some antivirus programs distrust the small tools ani-cli uses on Windows; they are the official builds (see [`resources/THIRD_PARTY_NOTICES.md`](resources/THIRD_PARTY_NOTICES.md)). Some video formats may not play inside the app. The same disclaimer applies: see [DISCLAIMER.md](DISCLAIMER.md).
 
 ## Settings, themes and languages
 Settings are saved as you change them. The ⚙ of the top bar has the ones of the whole app:
-- **Theme:** Device (follows your system, the default), Cyberpunk, Dark or Light.
+- **Theme:** Device (follows your system, the default) or one of twelve: the neon ones (Cyberpunk, Synthwave, Terminal in phosphor green) and the flat ones, dark (Dark, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED in pure black, High contrast) or light (Light, Sakura). In the neon themes the controls float over the video in fullscreen with a progress bar that glows in the colors of the theme.
+- **Open on:** the tab the app shows when it starts, VIDEO DOWNLOADER (the default) or ANIME (which opens on its schedule).
 - **Language:** Device (follows your system, the default), English, Português, Español, 中文 or 日本語. The whole app changes right away.
 - **System tray:** keep the app running in the tray when you close the window.
 - **App updates:** check for new versions on startup, or now.

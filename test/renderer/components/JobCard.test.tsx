@@ -95,6 +95,25 @@ describe('JobCard', () => {
         expect(handlers.onRemove).toHaveBeenCalledWith('job-1');
     });
 
+    describe('a paused download whose unfinished files are gone', () => {
+        const NOTICE = 'The unfinished files were not found: RESUME starts this download over.';
+
+        it('says that RESUME starts it over when no unfinished file was found', () => {
+            renderCard(makeJob({ status: 'paused', hasPartial: false }));
+            expect(screen.getByText(NOTICE)).toHaveClass('field__hint');
+            expect(screen.getByRole('button', { name: 'RESUME' })).toBeInTheDocument();
+        });
+
+        it.each([
+            ['a paused download with its unfinished files', { status: 'paused' as const, hasPartial: true }],
+            ['a running download without files yet', { status: 'running' as const, hasPartial: false }],
+            ['a cancelled download without files', { status: 'cancelled' as const, hasPartial: false }]
+        ])('says nothing for %s', (_case, overrides) => {
+            renderCard(makeJob(overrides));
+            expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+        });
+    });
+
     describe('partial files', () => {
         afterEach(() => {
             vi.restoreAllMocks();

@@ -444,6 +444,12 @@ body::after {
 .season__panel { display: flex; flex-direction: column; gap: 10px; padding-left: 12px; border-left: 2px solid var(--line); }
 
 .series-editor { display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
+/* The gear at the end of the row of a series, and what it opens under it. */
+.series-menu { position: relative; display: inline-flex; }
+/* The gear is as big as the one of the tabs: at the size of the other buttons it is hard to see. */
+.series-menu__button { padding: 2px 10px; font-size: 24px; line-height: 1; letter-spacing: 0; }
+.series-menu__panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 190px; padding: 10px; background: var(--panel-2); border: 1px solid var(--cyan); box-shadow: var(--glow); }
+.series-menu__panel .anime-remove { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .series-picker { display: flex; flex-direction: column; gap: 8px; }
 .series-search { position: relative; }
 .series-search__list { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px 0; list-style: none; max-height: 200px; overflow-y: auto; background: var(--panel, var(--bg)); border: 1px solid var(--cyan); box-shadow: var(--glow); }
@@ -492,10 +498,20 @@ body::after {
 .history__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history__meta { color: var(--muted); font-size: 12px; }
 
-.toast {
+/* The notices are one over the other in the corner: the first at the bottom, each new one on top of those. */
+.toasts {
     position: fixed;
     right: 20px;
     bottom: 20px;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: flex-end;
+    gap: 8px;
+    z-index: 250;
+}
+
+.toast {
     max-width: 480px;
     display: flex;
     align-items: flex-start;
@@ -504,7 +520,6 @@ body::after {
     background: var(--panel-2);
     border: 1px solid var(--cyan);
     box-shadow: var(--glow);
-    z-index: 200;
 }
 
 .toast--error { border-color: var(--red); box-shadow: var(--glow-red); color: var(--toast-error-text); }
@@ -710,6 +725,8 @@ body::after {
 
 .modal__title { margin: 0; font-size: 15px; letter-spacing: 1px; color: var(--cyan); text-shadow: var(--text-glow); }
 .modal__hint { margin: 0; color: var(--muted); font-size: 12px; }
+.cover-card--unavailable { opacity: 0.45; cursor: default; }
+.modal__list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--text); font-size: 12px; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
 /* Anime section */
@@ -970,18 +987,18 @@ body::after {
 
 .player__seek { flex: 1; min-width: 80px; }
 
-/* Cyberpunk only: while the video plays, the part already watched flows like a neon wave. */
+/* Neon themes only (cyberpunk, synthwave, terminal): while the video plays, the part already watched flows like a neon wave. */
 @keyframes player-wave {
     from { background-position: 0 0, 0 0; }
     to { background-position: 0 0, 160px 0; }
 }
 
 @keyframes player-wave-glow {
-    0%, 100% { box-shadow: 0 0 6px rgba(0, 240, 255, 0.45); }
-    50% { box-shadow: 0 0 14px rgba(255, 43, 214, 0.65); }
+    0%, 100% { box-shadow: 0 0 6px color-mix(in srgb, var(--cyan) 45%, transparent); }
+    50% { box-shadow: 0 0 14px color-mix(in srgb, var(--magenta) 65%, transparent); }
 }
 
-html[data-theme='cyberpunk'] .player__controls[data-playing='true'] .player__seek {
+html[data-theme-style='neon'] .player__controls[data-playing='true'] .player__seek {
     background:
         linear-gradient(
             to right,
@@ -995,13 +1012,13 @@ html[data-theme='cyberpunk'] .player__controls[data-playing='true'] .player__see
 }
 
 @media (prefers-reduced-motion: reduce) {
-    html[data-theme='cyberpunk'] .player__controls[data-playing='true'] .player__seek { animation: none; }
+    html[data-theme-style='neon'] .player__controls[data-playing='true'] .player__seek { animation: none; }
 }
 
-/* Cyberpunk in fullscreen: the bar floats over the video with no background, only the buttons and the timeline glow. */
-html[data-theme='cyberpunk'] .player__stage:fullscreen { position: relative; }
+/* Neon themes in fullscreen: the bar floats over the video with no background, only the buttons and the timeline glow. */
+html[data-theme-style='neon'] .player__stage:fullscreen { position: relative; }
 
-html[data-theme='cyberpunk'] .player__stage:fullscreen .player__controls {
+html[data-theme-style='neon'] .player__stage:fullscreen .player__controls {
     position: absolute;
     left: 0;
     right: 0;
@@ -1011,14 +1028,14 @@ html[data-theme='cyberpunk'] .player__stage:fullscreen .player__controls {
     text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
 }
 
-html[data-theme='cyberpunk'] .player__stage:fullscreen .player__button {
+html[data-theme-style='neon'] .player__stage:fullscreen .player__button {
     border-color: var(--cyan);
     color: var(--cyan);
-    box-shadow: 0 0 6px rgba(0, 240, 255, 0.45);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--cyan) 45%, transparent);
     text-shadow: 0 0 6px var(--cyan);
 }
 
-html[data-theme='cyberpunk'] .player__stage:fullscreen .player__select { background: transparent; border-color: var(--cyan); }
+html[data-theme-style='neon'] .player__stage:fullscreen .player__select { background: transparent; border-color: var(--cyan); }
 
 /* The wave and the glow are only on the part of the timeline already watched. The wave is a layer as wide as the progress (its flow is
    the phase of the gradient, a registered property that can be animated), the rest is a plain faint track, and the glow is a
@@ -1036,11 +1053,11 @@ html[data-theme='cyberpunk'] .player__stage:fullscreen .player__select { backgro
 }
 
 @keyframes player-wave-glow-filter {
-    0%, 100% { filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.75)); }
-    50% { filter: drop-shadow(0 0 8px rgba(255, 43, 214, 0.85)); }
+    0%, 100% { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--cyan) 75%, transparent)); }
+    50% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--magenta) 85%, transparent)); }
 }
 
-html[data-theme='cyberpunk'] .player__stage:fullscreen .player__controls .player__seek {
+html[data-theme-style='neon'] .player__stage:fullscreen .player__controls .player__seek {
     background:
         repeating-linear-gradient(
             90deg,
@@ -1060,10 +1077,10 @@ html[data-theme='cyberpunk'] .player__stage:fullscreen .player__controls .player
     animation-play-state: paused;
 }
 
-html[data-theme='cyberpunk'] .player__stage:fullscreen .player__controls[data-playing='true'] .player__seek { animation-play-state: running; }
+html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-playing='true'] .player__seek { animation-play-state: running; }
 
 @media (prefers-reduced-motion: reduce) {
-    html[data-theme='cyberpunk'] .player__stage:fullscreen .player__controls .player__seek { animation: none; }
+    html[data-theme-style='neon'] .player__stage:fullscreen .player__controls .player__seek { animation: none; }
 }
 .player__volume { width: 80px; }
 

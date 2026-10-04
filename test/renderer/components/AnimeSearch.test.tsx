@@ -120,7 +120,7 @@ describe('AnimeSearch results', () => {
         expect(screen.getAllByRole('button', { name: /^OPEN: / })).toHaveLength(RESULTS.length);
     });
 
-    it('has a button to the library on the results that are already downloaded, and only on them', async () => {
+    it('has a button to the library on the results that are in the library for this audio, and only on them', async () => {
         const user = userEvent.setup();
         const showInLibrary = vi.fn();
         useAnimeStore.setState({
@@ -199,19 +199,21 @@ describe('AnimeDetail', () => {
         });
     }
 
-    it('says it is loading', () => {
+    it('says it is loading, and cannot add the anime until its episodes are known', () => {
         open([], { status: 'loading' });
         render(<AnimeSearch />);
         expect(screen.getByText('LOADING EPISODES…')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /DOWNLOAD/ })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeDisabled();
     });
 
-    it('explains why the episodes could not be loaded', () => {
+    it('explains why the episodes could not be loaded, and cannot add the anime', () => {
         open([], { status: 'error', error: { code: 'NETWORK', raw: 'curl exit 6' } });
         render(<AnimeSearch />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('Network failure. Check your connection and try again.');
         expect(alert).toHaveAttribute('title', 'curl exit 6');
+        expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeDisabled();
     });
 
     it('goes back to the results', async () => {
@@ -222,7 +224,7 @@ describe('AnimeDetail', () => {
         expect(useAnimeStore.getState().selection).toBeNull();
     });
 
-    it('shows one button per episode and the title', () => {
+    it('shows one button per episode and the title, with a hint that a click watches it', () => {
         open(['1', '2', '3']);
         render(<AnimeSearch />);
         expect(screen.getByRole('region', { name: 'Cyberpunk: Edgerunners' })).toBeInTheDocument();
@@ -231,59 +233,24 @@ describe('AnimeDetail', () => {
                 return button.textContent;
             })
         ).toEqual(['EP 1', 'EP 2', 'EP 3']);
-        expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (0)' })).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'CLEAR SELECTION' })).toBeDisabled();
+        expect(screen.getByText('3 EPISODES')).toBeInTheDocument();
+        expect(screen.getByText('Click an episode to watch it. Nothing is downloaded: for that, add the anime to the library.')).toHaveClass('field__hint');
+        expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeEnabled();
     });
 
-    it('downloads the episodes that were picked, in order, and clears the selection', async () => {
-        const user = userEvent.setup();
-        mock.api.downloadAnime.mockResolvedValue({ ok: true, anime: makeAnime([]) });
-        open(['1', '2', '3', '4']);
-        render(<AnimeSearch />);
-
-        await user.click(screen.getByRole('button', { name: 'EP 3' }));
-        await user.click(screen.getByRole('button', { name: 'EP 1' }));
-        await user.click(screen.getByRole('button', { name: 'EP 4' }));
-        await user.click(screen.getByRole('button', { name: 'EP 4' }));
-        expect(screen.getByRole('button', { name: 'EP 3' })).toHaveAttribute('aria-pressed', 'true');
-        expect(screen.getByRole('button', { name: 'EP 4' })).toHaveAttribute('aria-pressed', 'false');
-        await user.click(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (2)' }));
-
-        expect(mock.api.downloadAnime).toHaveBeenCalledWith({
-            title: 'Cyberpunk: Edgerunners',
-            query: 'cyberpunk',
-            index: 1,
-            audio: 'sub',
-            episodes: ['1', '3'],
-            series: 'Cyberpunk: Edgerunners',
-            season: 1,
-            seasonName: null
-        });
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (0)' })).toBeDisabled();
-        });
-        expect(screen.getByRole('button', { name: 'EP 3' })).toHaveAttribute('aria-pressed', 'false');
-    });
-
-    it('downloads the whole season by selecting all and downloading the selection', async () => {
-        const user = userEvent.setup();
-        mock.api.downloadAnime.mockResolvedValue({ ok: true, anime: makeAnime([]) });
+    it('has no buttons to pick episodes, to watch the pick or to download it: an episode is watched by clicking on it', () => {
         open(['1', '2', '3']);
         render(<AnimeSearch />);
-
-        await user.click(screen.getByRole('button', { name: 'SELECT ALL' }));
-        await user.click(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (3)' }));
-        expect(mock.api.downloadAnime).toHaveBeenCalledTimes(1);
-        expect(mock.api.downloadAnime).toHaveBeenCalledWith({
-            title: 'Cyberpunk: Edgerunners',
-            query: 'cyberpunk',
-            index: 1,
-            audio: 'sub',
-            episodes: ['1', '2', '3'],
-            series: 'Cyberpunk: Edgerunners',
-            season: 1,
-            seasonName: null
+        ['SELECT ALL', 'CLEAR SELECTION', 'WATCH'].forEach((name) => {
+            expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
         });
+        expect(screen.queryByRole('button', { name: /^DOWNLOAD SELECTED/ })).not.toBeInTheDocument();
+        screen.getAllByRole('button', { name: /^EP \d+$/ }).forEach((chip) => {
+            expect(chip).not.toHaveAttribute('aria-pressed');
+        });
+        expect(screen.getAllByRole('button').map((button) => {
+            return button.textContent;
+        })).toEqual(['BACK', 'ADD TO LIBRARY', 'EP 1', 'EP 2', 'EP 3']);
     });
 
     it('has no separate button for the whole season', () => {
@@ -292,24 +259,8 @@ describe('AnimeDetail', () => {
         expect(screen.queryByRole('button', { name: /WHOLE SEASON/ })).not.toBeInTheDocument();
     });
 
-    describe('watching without downloading', () => {
-        it('needs exactly one episode picked', async () => {
-            const user = userEvent.setup();
-            open(['1', '2', '3']);
-            render(<AnimeSearch />);
-
-            const watch = screen.getByRole('button', { name: 'WATCH' });
-            expect(watch).toBeDisabled();
-            expect(watch).toHaveAttribute('title', 'Pick one episode to watch it without downloading it.');
-            await user.click(screen.getByRole('button', { name: 'EP 2' }));
-            expect(watch).toBeEnabled();
-            await user.click(screen.getByRole('button', { name: 'EP 3' }));
-            expect(watch).toBeDisabled();
-            await user.click(screen.getByRole('button', { name: 'EP 3' }));
-            expect(watch).toBeEnabled();
-        });
-
-        it('opens the episode that was picked, without downloading it', async () => {
+    describe('watching an episode by clicking on it', () => {
+        it('opens the player with the episode that was clicked, without downloading it or adding it to the library', async () => {
             const user = userEvent.setup();
             mock.api.openAnimeStream.mockReturnValue(
                 new Promise(() => {
@@ -320,41 +271,62 @@ describe('AnimeDetail', () => {
             render(<AnimeSearch />);
 
             await user.click(screen.getByRole('button', { name: 'EP 2' }));
-            await user.click(screen.getByRole('button', { name: 'WATCH' }));
 
+            expect(mock.api.openAnimeStream).toHaveBeenCalledTimes(1);
             expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'cyberpunk', index: 1, audio: 'sub', episode: '2' });
             expect(useAnimeStore.getState().streaming).toMatchObject({ episode: '2', status: 'loading' });
             expect(mock.api.downloadAnime).not.toHaveBeenCalled();
+            expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
+            expect(mock.api.downloadMissingAnime).not.toHaveBeenCalled();
         });
 
-        it('keeps the picked episode so it can also be downloaded afterwards', async () => {
+        it('opens the one that was clicked, whichever it is, and does not keep a selection', async () => {
             const user = userEvent.setup();
+            mock.api.openAnimeStream.mockReturnValue(
+                new Promise(() => {
+                    return undefined;
+                })
+            );
             open(['1', '2']);
             render(<AnimeSearch />);
+
             await user.click(screen.getByRole('button', { name: 'EP 1' }));
-            await user.click(screen.getByRole('button', { name: 'WATCH' }));
-            expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' })).toBeEnabled();
+            await user.click(screen.getByRole('button', { name: 'EP 2' }));
+
+            expect(mock.api.openAnimeStream.mock.calls.map(([request]) => {
+                return request.episode;
+            })).toEqual(['1', '2']);
+            expect(screen.getByRole('button', { name: 'EP 1' })).not.toHaveAttribute('aria-pressed');
+        });
+
+        it('also opens an episode that is in the library, whether it is downloaded or not', async () => {
+            const user = userEvent.setup();
+            mock.api.openAnimeStream.mockReturnValue(
+                new Promise(() => {
+                    return undefined;
+                })
+            );
+            open(['1', '2']);
+            useAnimeStore.setState({
+                library: [makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })]
+            });
+            render(<AnimeSearch />);
+
+            await user.click(screen.getByRole('button', { name: 'EP 1' }));
+            await user.click(screen.getByRole('button', { name: 'EP 2' }));
+
+            expect(mock.api.openAnimeStream).toHaveBeenCalledTimes(2);
         });
     });
 
-    it('selects all and clears the selection', async () => {
-        const user = userEvent.setup();
-        open(['1', '2', '3']);
-        render(<AnimeSearch />);
-
-        await user.click(screen.getByRole('button', { name: 'SELECT ALL' }));
-        expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (3)' })).toBeEnabled();
-        expect(screen.getByRole('button', { name: 'EP 2' })).toHaveAttribute('aria-pressed', 'true');
-
-        await user.click(screen.getByRole('button', { name: 'CLEAR SELECTION' }));
-        expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (0)' })).toBeDisabled();
-    });
-
-    it('marks the episodes that are already in the library for this audio', () => {
-        open(['1', '2', '3']);
+    it('marks the episodes that are downloaded for this audio, and no other', () => {
+        open(['1', '2', '3', '4']);
         useAnimeStore.setState({
             library: [
-                makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'error' })], { title: 'Cyberpunk: Edgerunners', audio: 'sub' }),
+                makeAnime(
+                    [makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'error' }), makeEpisode({ id: 4, number: '4', status: 'idle', filePath: null, sizeBytes: null })],
+                    { title: 'Cyberpunk: Edgerunners', audio: 'sub' }
+                ),
                 makeAnime([makeEpisode({ id: 3, number: '3' })], { id: 2, title: 'Cyberpunk: Edgerunners', audio: 'dub' })
             ]
         });
@@ -365,30 +337,40 @@ describe('AnimeDetail', () => {
         expect(screen.getByRole('button', { name: 'EP 2' })).not.toHaveClass('episode-chip--done');
         expect(screen.getByRole('button', { name: 'EP 2' })).not.toHaveAttribute('title');
         expect(screen.getByRole('button', { name: 'EP 3' })).not.toHaveClass('episode-chip--done');
+        expect(screen.getByRole('button', { name: 'EP 4' })).not.toHaveClass('episode-chip--done');
     });
 
-    it('has a button to the library when the anime has an episode downloaded', async () => {
+    it('has a button to the library, instead of the one that adds, when the anime is in the library', async () => {
         const user = userEvent.setup();
         const showInLibrary = vi.fn();
         open(['1', '2']);
         useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })], showInLibrary });
         render(<AnimeSearch />);
 
+        expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'VIEW IN LIBRARY' }));
         expect(showInLibrary).toHaveBeenCalledTimes(1);
         expect(showInLibrary).toHaveBeenCalledWith(4);
     });
 
-    it('has no button to the library when nothing of the anime is downloaded for this audio', () => {
+    it('has the button to the library even when no episode of the anime was downloaded, because it is in the library from the moment it is added', () => {
+        open(['1', '2']);
+        useAnimeStore.setState({
+            library: [makeAnime([makeEpisode({ id: 1, number: '1', status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })]
+        });
+        render(<AnimeSearch />);
+        expect(screen.getByRole('button', { name: 'VIEW IN LIBRARY' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
+    });
+
+    it('offers to add the anime when only the other audio of it is in the library', () => {
         open(['1']);
         useAnimeStore.setState({
-            library: [
-                makeAnime([makeEpisode({ id: 1, status: 'error' })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' }),
-                makeAnime([makeEpisode({ id: 2 })], { id: 5, title: 'Cyberpunk: Edgerunners', audio: 'dub' })
-            ]
+            library: [makeAnime([makeEpisode({ id: 2 })], { id: 5, title: 'Cyberpunk: Edgerunners', audio: 'dub' })]
         });
         render(<AnimeSearch />);
         expect(screen.queryByRole('button', { name: 'VIEW IN LIBRARY' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeEnabled();
     });
 
     it('goes to the library with that anime open when the button is used', async () => {
@@ -401,31 +383,89 @@ describe('AnimeDetail', () => {
     });
 
     describe('series and season', () => {
-        it('suggests the series and the season from the title', () => {
+        async function openDialog(user: ReturnType<typeof userEvent.setup>): Promise<ReturnType<typeof within>> {
+            await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
+            return within(screen.getByRole('dialog', { name: 'Add to the library' }));
+        }
+
+        it('does not show the fields of the series on the page of an anime that is not in the library yet: they are asked when it is added', () => {
+            open(['1']);
+            render(<AnimeSearch />);
+            expect(screen.queryByRole('textbox', { name: 'Series' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('spinbutton', { name: 'Order' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+
+        it('opens a window that explains the series and the order, and that the series cannot change afterwards', async () => {
+            const user = userEvent.setup();
+            open(['1']);
+            render(<AnimeSearch />);
+            const dialog = await openDialog(user);
+
+            expect(dialog.getByRole('heading', { name: 'Add to the library' })).toBeInTheDocument();
+            expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
+            expect(dialog.getByText('Adds the anime and all its episodes to the library. Nothing is downloaded.')).toBeInTheDocument();
+            expect(dialog.getByText('Series: the group the anime belongs to, such as all the seasons of the same show.')).toBeInTheDocument();
+            expect(dialog.getByText('Order: the place of this season in the series (1, 2, 3…). Each order is used once per series.')).toBeInTheDocument();
+            expect(dialog.getByText('The series cannot be changed after adding.')).toBeInTheDocument();
+            expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
+            expect(dialog.getByRole('button', { name: 'CANCEL' })).toBeEnabled();
+            expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
+        });
+
+        it('suggests the series and the season from the title', async () => {
+            const user = userEvent.setup();
             useAnimeStore.setState({
                 search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
                 selection: { result: { index: 3, title: 'Frieren: Beyond Journey\'s End Season 2' }, query: 'frieren', audio: 'sub', status: 'ready', episodes: ['1'], error: null }
             });
             render(<AnimeSearch />);
-            expect(screen.getByRole('textbox', { name: 'Series' })).toHaveValue('Frieren: Beyond Journey\'s End');
-            expect(screen.getByRole('spinbutton', { name: 'Order' })).toHaveValue(2);
+            const dialog = await openDialog(user);
+            expect(dialog.getByRole('textbox', { name: 'Series' })).toHaveValue('Frieren: Beyond Journey\'s End');
+            expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(2);
         });
 
-        it('uses the series, the order and the name the anime already has in the library', () => {
+        it.each([
+            ['CANCEL', async (user: ReturnType<typeof userEvent.setup>) => { await user.click(screen.getByRole('button', { name: 'CANCEL' })); }],
+            ['Escape', async (user: ReturnType<typeof userEvent.setup>) => { await user.keyboard('{Escape}'); }]
+        ] as const)('closes the window without adding anything with %s', async (_label, close) => {
+            const user = userEvent.setup();
+            open(['1']);
+            render(<AnimeSearch />);
+            await openDialog(user);
+            await close(user);
+
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
+            expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeInTheDocument();
+        });
+
+        it('does not offer to change the series of an anime that is in the library: it shows the one it has, as text', () => {
             open(['1']);
             useAnimeStore.setState({
                 library: [makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 5, seasonName: 'The Fifth' })]
             });
             render(<AnimeSearch />);
-            expect(screen.getByRole('textbox', { name: 'Series' })).toHaveValue('Cyberpunk');
-            expect(screen.getByRole('spinbutton', { name: 'Order' })).toHaveValue(5);
-            expect(screen.getByRole('textbox', { name: 'Name shown' })).toHaveValue('The Fifth');
+            expect(screen.queryByRole('textbox', { name: 'Series' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('spinbutton', { name: 'Order' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('textbox', { name: 'Name shown' })).not.toBeInTheDocument();
+            expect(screen.getByTestId('anime-series-info')).toHaveTextContent('In the series "Cyberpunk", order 5.');
         });
 
-        it('starts with no name, and says in its hint what is shown instead', () => {
+        it('shows nothing about a series for an anime in the library that is on its own', () => {
+            open(['1']);
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })] });
+            render(<AnimeSearch />);
+            expect(screen.queryByRole('textbox', { name: 'Series' })).not.toBeInTheDocument();
+            expect(screen.queryByTestId('anime-series-info')).not.toBeInTheDocument();
+        });
+
+        it('starts with no name, and says in its hint what is shown instead', async () => {
+            const user = userEvent.setup();
             open(['1']);
             render(<AnimeSearch />);
-            const name = screen.getByRole('textbox', { name: 'Name shown' });
+            const dialog = await openDialog(user);
+            const name = dialog.getByRole('textbox', { name: 'Name shown' });
             expect(name).toHaveValue('');
             expect(name).toHaveAttribute('placeholder', 'Shown instead of "SEASON 1" (optional)');
         });
@@ -434,8 +474,9 @@ describe('AnimeDetail', () => {
             const user = userEvent.setup();
             open(['1']);
             render(<AnimeSearch />);
-            await user.type(screen.getByRole('textbox', { name: 'Name shown' }), 'a'.repeat(70));
-            expect(screen.getByRole('textbox', { name: 'Name shown' })).toHaveValue('a'.repeat(60));
+            const dialog = await openDialog(user);
+            await user.type(dialog.getByRole('textbox', { name: 'Name shown' }), 'a'.repeat(70));
+            expect(dialog.getByRole('textbox', { name: 'Name shown' })).toHaveValue('a'.repeat(60));
         });
 
         it('offers the series of the library, once each, matching what is typed', async () => {
@@ -449,7 +490,8 @@ describe('AnimeDetail', () => {
                 ]
             });
             render(<AnimeSearch />);
-            const field = screen.getByRole('textbox', { name: 'Series' });
+            const dialog = await openDialog(user);
+            const field = dialog.getByRole('textbox', { name: 'Series' });
             expect(field).toHaveValue('Cyberpunk: Edgerunners');
             expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
 
@@ -470,7 +512,8 @@ describe('AnimeDetail', () => {
             open(['1']);
             useAnimeStore.setState({ library: [makeAnime([], { id: 2, title: 'Frieren', series: 'Frieren', season: 1 })] });
             render(<AnimeSearch />);
-            const field = screen.getByRole('textbox', { name: 'Series' });
+            const dialog = await openDialog(user);
+            const field = dialog.getByRole('textbox', { name: 'Series' });
 
             await user.clear(field);
             await user.click(screen.getByRole('option', { name: 'Frieren' }));
@@ -487,57 +530,189 @@ describe('AnimeDetail', () => {
             const user = userEvent.setup();
             open(['1']);
             render(<AnimeSearch />);
-            await user.click(screen.getByRole('textbox', { name: 'Series' }));
+            const dialog = await openDialog(user);
+            await user.click(dialog.getByRole('textbox', { name: 'Series' }));
             expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
         });
 
-        it('downloads under the series and the season that were typed', async () => {
+        it('adds the anime to the library with all its episodes, under the series and the season that were typed, once it is confirmed', async () => {
             const user = userEvent.setup();
-            mock.api.downloadAnime.mockResolvedValue({ ok: true, anime: makeAnime([]) });
+            const added = makeAnime(
+                [makeEpisode({ id: 1, number: '1', status: 'idle', filePath: null, sizeBytes: null }), makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null })],
+                { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 3, seasonName: 'The Third' }
+            );
+            mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: added });
+            mock.api.listAnimeLibrary.mockResolvedValue([added]);
             open(['1', '2']);
             render(<AnimeSearch />);
+            const dialog = await openDialog(user);
 
-            await user.clear(screen.getByRole('textbox', { name: 'Series' }));
-            await user.type(screen.getByRole('textbox', { name: 'Series' }), 'Cyberpunk');
-            await user.clear(screen.getByRole('spinbutton', { name: 'Order' }));
-            await user.type(screen.getByRole('spinbutton', { name: 'Order' }), '3');
-            await user.type(screen.getByRole('textbox', { name: 'Name shown' }), 'The Third');
-            await user.click(screen.getByRole('button', { name: 'EP 2' }));
-            await user.click(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }));
+            await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+            await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Cyberpunk');
+            await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+            await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '3');
+            await user.type(dialog.getByRole('textbox', { name: 'Name shown' }), 'The Third');
+            // Nothing is added until the window is confirmed.
+            expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
+            await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
 
-            expect(mock.api.downloadAnime).toHaveBeenCalledWith({
+            expect(mock.api.addAnimeToLibrary).toHaveBeenCalledTimes(1);
+            expect(mock.api.addAnimeToLibrary).toHaveBeenCalledWith({
                 title: 'Cyberpunk: Edgerunners',
                 query: 'cyberpunk',
                 index: 1,
                 audio: 'sub',
-                episodes: ['2'],
+                episodes: ['1', '2'],
                 series: 'Cyberpunk',
                 season: 3,
                 seasonName: 'The Third'
             });
-        });
-
-        it('downloads on its own when the series is left empty', async () => {
-            const user = userEvent.setup();
-            mock.api.downloadAnime.mockResolvedValue({ ok: true, anime: makeAnime([]) });
-            open(['1']);
-            render(<AnimeSearch />);
-            await user.clear(screen.getByRole('textbox', { name: 'Series' }));
-            await user.click(screen.getByRole('button', { name: 'EP 1' }));
-            await user.click(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }));
-            expect(mock.api.downloadAnime).toHaveBeenCalledWith({ title: 'Cyberpunk: Edgerunners', query: 'cyberpunk', index: 1, audio: 'sub', episodes: ['1'] });
-        });
-
-        it('says so when the season typed is not valid, and downloads nothing', async () => {
-            const user = userEvent.setup();
-            open(['1']);
-            render(<AnimeSearch />);
-            await user.clear(screen.getByRole('spinbutton', { name: 'Order' }));
-            await user.type(screen.getByRole('spinbutton', { name: 'Order' }), '0');
-            await user.click(screen.getByRole('button', { name: 'EP 1' }));
-            await user.click(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }));
             expect(mock.api.downloadAnime).not.toHaveBeenCalled();
+            expect(await screen.findByRole('button', { name: 'VIEW IN LIBRARY' })).toBeInTheDocument();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Added to the library: Cyberpunk: Edgerunners (2 episodes).' });
+            // Once it is in the library its series cannot be changed from here: the page shows what it has.
+            expect(screen.queryByRole('textbox', { name: 'Series' })).not.toBeInTheDocument();
+            expect(screen.getByTestId('anime-series-info')).toHaveTextContent('In the series "Cyberpunk", order 3.');
+            expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
+        });
+
+        it('adds the anime on its own when the series is left empty', async () => {
+            const user = userEvent.setup();
+            mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: makeAnime([makeEpisode({ id: 1, status: 'idle' })], { title: 'Cyberpunk: Edgerunners' }) });
+            open(['1']);
+            render(<AnimeSearch />);
+            const dialog = await openDialog(user);
+            await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+            await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+            expect(mock.api.addAnimeToLibrary).toHaveBeenCalledWith({
+                title: 'Cyberpunk: Edgerunners',
+                query: 'cyberpunk',
+                index: 1,
+                audio: 'sub',
+                episodes: ['1'],
+                series: null,
+                season: null,
+                seasonName: null
+            });
+        });
+
+        describe('an order that the series already uses', () => {
+            const IN_SERIES = [
+                makeAnime([], { id: 1, title: 'Frieren', series: 'Frieren', season: 1 }),
+                makeAnime([], { id: 2, title: 'Frieren 2', series: 'frieren', season: 3 }),
+                makeAnime([], { id: 3, title: 'Frieren (dub)', series: 'Frieren', season: 7, audio: 'dub' })
+            ];
+
+            it('is not allowed: the window says so, with the next order, and the anime cannot be confirmed', async () => {
+                const user = userEvent.setup();
+                open(['1']);
+                useAnimeStore.setState({ library: IN_SERIES });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'FRIEREN');
+                await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+                await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '3');
+
+                expect(dialog.getByRole('alert')).toHaveTextContent('Order 3 is already used by another anime of the series. Use 4, the next one.');
+                expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeDisabled();
+                await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+                expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
+            });
+
+            it('is allowed again once another order is chosen', async () => {
+                const user = userEvent.setup();
+                mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: makeAnime([makeEpisode({ id: 1, status: 'idle' })], { title: 'Cyberpunk: Edgerunners', series: 'Frieren', season: 4 }) });
+                open(['1']);
+                useAnimeStore.setState({ library: IN_SERIES });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Frieren');
+                await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+                await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '1');
+                expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeDisabled();
+
+                await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+                await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '4');
+
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+                expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
+                await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+                expect(mock.api.addAnimeToLibrary).toHaveBeenCalledWith(expect.objectContaining({ series: 'Frieren', season: 4 }));
+            });
+
+            it('only counts the orders of the same audio and of the same series', async () => {
+                const user = userEvent.setup();
+                open(['1']);
+                useAnimeStore.setState({ library: IN_SERIES });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Frieren');
+                await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+                await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '7');
+                // 7 is used by the dubbed one only, and this anime is subtitled.
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Bleach');
+                await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+                await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '1');
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+                expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
+            });
+
+            it('is not checked when the anime stays on its own', async () => {
+                const user = userEvent.setup();
+                open(['1']);
+                useAnimeStore.setState({ library: IN_SERIES });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+                expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
+            });
+        });
+
+        it('says so when the season typed is not valid, adds nothing and keeps the window open', async () => {
+            const user = userEvent.setup();
+            open(['1']);
+            render(<AnimeSearch />);
+            const dialog = await openDialog(user);
+            await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+            await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '0');
+            await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+            expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
             expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Give a series name (up to 100 characters), an order from 1 to 99 and a name of up to 60 characters.' });
+            expect(screen.getByRole('dialog')).toBeInTheDocument();
+        });
+
+        it('says which order the series could take when the one that was typed is already used, adds nothing and keeps the window open to change it', async () => {
+            const user = userEvent.setup();
+            mock.api.addAnimeToLibrary.mockResolvedValue({ ok: false, reason: 'season-taken', suggested: 4 });
+            open(['1']);
+            render(<AnimeSearch />);
+            const dialog = await openDialog(user);
+            await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+            expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Order 1 is already used by another anime of the series. Use 4, the next one.' });
+            expect(screen.getByRole('dialog')).toBeInTheDocument();
+            expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
+            expect(useAnimeStore.getState().library).toEqual([]);
+        });
+
+        it.each([
+            ['busy', 'The anime folder is being migrated. Try again when it is done.'],
+            ['invalid', 'The anime could not be added to the library.']
+        ] as const)('says why the anime could not be added when the app answers %s', async (reason, message) => {
+            const user = userEvent.setup();
+            mock.api.addAnimeToLibrary.mockResolvedValue({ ok: false, reason });
+            open(['1']);
+            render(<AnimeSearch />);
+            const dialog = await openDialog(user);
+            await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+            expect(useAppStore.getState().notice).toEqual({ kind: 'error', message });
         });
     });
 
@@ -613,15 +788,15 @@ describe('AnimeSearch cards with a cover', () => {
         expect(footer.firstElementChild).toBe(within(footer).getByRole('button', { name: 'VIEW IN LIBRARY: Cyberpunk: Edgerunners' }));
     });
 
-    it('keeps the series, without a button, when the anime is in a series but nothing of it was downloaded', () => {
-        showResults([makeAnime([], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 1 })]);
+    it('keeps the series and the button when the anime is in a series, whether or not an episode of it was downloaded', () => {
+        showResults([makeAnime([makeEpisode({ id: 1, status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 1 })]);
         render(<AnimeSearch />);
 
         const [card] = screen.getAllByRole('listitem');
         const footer = (card as HTMLElement).querySelector('.cover-card__footer') as HTMLElement;
-        expect(footer.children).toHaveLength(1);
+        expect(footer.children).toHaveLength(2);
         expect(footer.firstElementChild).toHaveTextContent('Cyberpunk · SEASON 1');
-        expect(within(card as HTMLElement).queryByRole('button', { name: /^VIEW IN LIBRARY/ })).not.toBeInTheDocument();
+        expect(within(card as HTMLElement).getByRole('button', { name: 'VIEW IN LIBRARY: Cyberpunk: Edgerunners' })).toBeInTheDocument();
     });
 
     it('has no footer on a result that is not in the library, so its card is the same size as the others', () => {

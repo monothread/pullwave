@@ -1,4 +1,6 @@
 import type {
+    AnimeAvailability,
+    AnimeAvailabilityTarget,
     AnimeCoverUpdate,
     AnimeDownloadRequest,
     AnimeDownloadResponse,
@@ -13,6 +15,9 @@ import type {
     AnimeScheduleRequest,
     AnimeScheduleResponse,
     AnimeSeriesResponse,
+    AnimeAddRequest,
+    AnimeAddResponse,
+    AnimeRenameSeriesResponse,
     AnimeSearchResponse,
     AnimeStatus,
     AnimeSubtitleCheckResponse,
@@ -47,7 +52,22 @@ export interface LinkRequest {
     options: DownloadOptions;
 }
 
-export type ThemeName = 'device' | 'cyberpunk' | 'dark' | 'light';
+export type ThemeName =
+    | 'device'
+    | 'cyberpunk'
+    | 'synthwave'
+    | 'terminal'
+    | 'dark'
+    | 'tokyo-night'
+    | 'nord'
+    | 'dracula'
+    | 'gruvbox'
+    | 'amoled'
+    | 'high-contrast'
+    | 'light'
+    | 'sakura';
+// How a theme looks: 'neon' keeps the glow, the scanlines and the cut corners of the default theme; 'flat' has none of them.
+export type ThemeStyle = 'neon' | 'flat';
 export type LanguageCode = 'en' | 'pt' | 'es' | 'zh' | 'ja';
 export type LanguageSetting = 'device' | LanguageCode;
 export type BrowserName = 'chrome' | 'firefox' | 'brave' | 'chromium' | 'edge' | 'opera' | 'vivaldi';
@@ -65,6 +85,9 @@ export interface DetectedBrowser {
     profiles: BrowserProfile[];
 }
 export type MaxResolution = 'best' | '2160' | '1440' | '1080' | '720' | '480';
+
+// The tab the app opens on when it starts.
+export type StartTab = 'downloads' | 'anime';
 
 export interface Settings {
     downloadDir: string;
@@ -85,7 +108,7 @@ export interface Settings {
     autoSubtitles: boolean;
     embedSubtitles: boolean;
     rateLimit: string;
-    // Always 1 (downloads run one at a time); it is not shown in the settings.
+    // Always CONCURRENT_DOWNLOADS (2 downloads run at a time); it is not shown in the settings.
     maxConcurrent: number;
     ytdlpPath: string;
     ffmpegPath: string;
@@ -98,6 +121,7 @@ export interface Settings {
     verifyLiveEndSeconds: number;
     theme: ThemeName;
     language: LanguageSetting;
+    startTab: StartTab;
     extraArgs: string;
     // Anime section (Linux and Windows).
     animeDownloadDir: string;
@@ -286,6 +310,8 @@ export interface CyberApi {
     clearHistory: () => Promise<void>;
     checkBinaries: () => Promise<BinariesStatus>;
     updateYtdlp: () => Promise<UpdateResult>;
+    // Goes back to the yt-dlp that ships with the app, removing the one an update saved.
+    resetYtdlp: () => Promise<UpdateResult>;
     getAppUpdateState: () => Promise<AppUpdateState>;
     checkAppUpdate: () => Promise<void>;
     downloadAppUpdate: () => Promise<void>;
@@ -316,6 +342,14 @@ export interface CyberApi {
     removeAnime: (animeId: number) => Promise<void>;
     // Opens the folder the videos of an anime of the library are in.
     openAnimeFolder: (animeId: number) => Promise<void>;
+    // Opens the folder of the series an anime of the library is in (the folder of the anime itself when it has none of its own).
+    openAnimeSeriesFolder: (animeId: number) => Promise<void>;
+    // Puts an anime in the library with all its episodes, none of them downloaded.
+    addAnimeToLibrary: (request: AnimeAddRequest) => Promise<AnimeAddResponse>;
+    // Queues every episode of these anime of the library that is not downloaded yet.
+    downloadMissingAnime: (animeIds: number[]) => Promise<void>;
+    // Gives all these anime (the ones of a series) another series name.
+    renameAnimeSeries: (animeIds: number[], name: string) => Promise<AnimeRenameSeriesResponse>;
     // Joins an anime to a series with a season number, or takes it out of one (null, null).
     setAnimeSeries: (animeId: number, series: string | null, season: number | null, seasonName: string | null) => Promise<AnimeSeriesResponse>;
     // Asks for a folder of anime and puts what is in it into the library.
@@ -328,16 +362,22 @@ export interface CyberApi {
     importAnimeSubtitle: (episodeId: number) => Promise<AnimeSubtitleImportResponse>;
     checkAnimeSubtitles: (episodeId: number) => Promise<AnimeSubtitleCheckResponse>;
     updateAniCli: () => Promise<UpdateResult>;
+    // Goes back to the ani-cli that ships with the app, removing the one an update saved.
+    resetAniCli: () => Promise<UpdateResult>;
     openAnimeStream: (request: AnimeStreamRequest) => Promise<AnimeStreamResponse>;
     closeAnimeStream: (sessionId: string) => Promise<void>;
     listAnimeSchedule: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse>;
     // The address of the cover of an anime, found by its title; null when there is none.
     findAnimeCover: (title: string) => Promise<string | null>;
+    // Asks for the availability in the source of the anime of the schedule: what was checked less than an hour ago is answered at once, the rest
+    // is checked in the background and told one by one (`onAnimeAvailability`).
+    checkAnimeAvailability: (targets: AnimeAvailabilityTarget[]) => Promise<AnimeAvailability[]>;
     onAnimeJobUpdate: (listener: (job: AnimeJob) => void) => () => void;
     onAnimeLibraryChanged: (listener: () => void) => () => void;
     onAnimeMigrationProgress: (listener: (progress: AnimeMigrationProgress) => void) => () => void;
     // A cover that was checked again and changed.
     onAnimeCoverUpdate: (listener: (update: AnimeCoverUpdate) => void) => () => void;
+    onAnimeAvailability: (listener: (availability: AnimeAvailability) => void) => () => void;
     onJobUpdate: (listener: (job: DownloadJob) => void) => () => void;
     onJobRemoved: (listener: (id: string) => void) => () => void;
     onHistoryChanged: (listener: () => void) => () => void;

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { AnimeHistoryRequest, AnimeScheduleEntry } from '@shared/anime';
+import type { AnimeAvailability, AnimeHistoryRequest, AnimeScheduleEntry } from '@shared/anime';
 import { AnimeDb, INTERRUPTED_MESSAGE, MAX_HISTORY_ENTRIES, type NewAnime } from '@main/services/animeDb';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe('AnimeDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(makeDb().schemaVersion).toBe(5);
+        expect(makeDb().schemaVersion).toBe(6);
     });
 
     it('keeps the data and does not migrate again when the file is opened twice', () => {
@@ -32,7 +32,7 @@ describe('AnimeDb schema', () => {
         first.close();
 
         const second = new AnimeDb(path);
-        expect(second.schemaVersion).toBe(5);
+        expect(second.schemaVersion).toBe(6);
         expect(second.list()).toEqual([
             {
                 id: anime.id,
@@ -429,7 +429,7 @@ describe('AnimeDb series and seasons', () => {
         const db = new AnimeDb(path, () => {
             return NOW;
         });
-        expect(db.schemaVersion).toBe(5);
+        expect(db.schemaVersion).toBe(6);
         expect(db.list()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub', createdAt: 5, series: null, season: null, seasonName: null, episodes: [] }]);
         db.close();
     });
@@ -565,11 +565,11 @@ describe('AnimeDb series and seasons', () => {
         first.setSeries(anime.id, 'Series', 2);
         first.close();
         const raw = new DatabaseSync(path);
-        raw.exec('ALTER TABLE anime DROP COLUMN season_name; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 2;');
+        raw.exec('ALTER TABLE anime DROP COLUMN season_name; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; DROP TABLE anime_availability; PRAGMA user_version = 2;');
         raw.close();
 
         const db = new AnimeDb(path);
-        expect(db.schemaVersion).toBe(5);
+        expect(db.schemaVersion).toBe(6);
         expect(db.getAnime(anime.id)).toMatchObject({ series: 'Series', season: 2, seasonName: null });
         db.close();
     });
@@ -700,13 +700,13 @@ describe('AnimeDb history', () => {
         old.ensureEpisode(anime.id, '1');
         old.close();
         const raw = new DatabaseSync(path);
-        raw.exec('DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 3;');
+        raw.exec('DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; DROP TABLE anime_availability; PRAGMA user_version = 3;');
         raw.close();
 
         const db = new AnimeDb(path, () => {
             return NOW;
         });
-        expect(db.schemaVersion).toBe(5);
+        expect(db.schemaVersion).toBe(6);
         expect(db.listHistory()).toEqual([]);
         expect(db.list()).toHaveLength(1);
         expect(db.list()[0]?.episodes).toHaveLength(1);
@@ -714,7 +714,7 @@ describe('AnimeDb history', () => {
     });
 });
 
-// The schema of the last release (0.17.0), as it was published. It must never change: the databases of the people who use that
+// The schema of the last release (0.18.0), as it was published. It must never change: the databases of the people who use that
 // release are in this state, and the tests below open them with the current code.
 const RELEASED_MIGRATIONS: readonly string[] = [
     `CREATE TABLE anime (
@@ -756,6 +756,19 @@ const RELEASED_MIGRATIONS: readonly string[] = [
         episode TEXT,
         opened_at INTEGER NOT NULL,
         UNIQUE (title, audio)
+    );`,
+    // What is kept so the network is asked for less: the covers and the schedule of a stretch of time.
+    `CREATE TABLE anime_cover (
+        key TEXT PRIMARY KEY,
+        url TEXT,
+        checked_at INTEGER NOT NULL
+    );
+    CREATE TABLE anime_schedule_cache (
+        from_at INTEGER NOT NULL,
+        to_at INTEGER NOT NULL,
+        fetched_at INTEGER NOT NULL,
+        entries TEXT NOT NULL,
+        PRIMARY KEY (from_at, to_at)
     );`
 ];
 
@@ -836,17 +849,17 @@ describe('AnimeDb upgrade of the last release', () => {
         raw.close();
     }
 
-    it('is at version 4 as published, and the current code goes to version 5 with the two tables it adds', () => {
-        expect(RELEASED_MIGRATIONS).toHaveLength(4);
+    it('is at version 5 as published, and the current code goes to version 6 with the table it adds', () => {
+        expect(RELEASED_MIGRATIONS).toHaveLength(5);
         const path = join(makeTempDir(), 'anime.db');
         makeReleasedDatabase(path);
-        expect(versionOf(path)).toBe(4);
-        expect(tablesOf(path)).toEqual(['anime', 'anime_history', 'episode']);
+        expect(versionOf(path)).toBe(5);
+        expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode']);
 
         new AnimeDb(path).close();
 
-        expect(versionOf(path)).toBe(5);
-        expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode']);
+        expect(versionOf(path)).toBe(6);
+        expect(tablesOf(path)).toEqual(['anime', 'anime_availability', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode']);
     });
 
     it('keeps every row of the last release exactly as it was', () => {
@@ -920,8 +933,10 @@ describe('AnimeDb upgrade of the last release', () => {
 
         db.saveCover('naruto', 'https://s4.anilist.co/naruto.jpg');
         db.saveScheduleCache(1_700_000_000, 1_700_086_400, [], NOW - 1);
+        db.saveAvailability({ anilistId: 7, state: 'unavailable' }, 'sub');
         db.markPaused(2);
 
+        expect(db.findAvailability(7, 'sub', NOW)).toEqual({ anilistId: 7, state: 'unavailable' });
         expect(db.getCover('naruto')).toEqual({ url: 'https://s4.anilist.co/naruto.jpg', checkedAt: NOW });
         expect(db.findScheduleCache(1_700_000_000, 1_700_086_400, NOW - 1)).toEqual([]);
         expect(db.getEpisode(2)?.status).toBe('paused');
@@ -944,13 +959,13 @@ describe('AnimeDb upgrade of the last release', () => {
             return NOW;
         });
 
-        expect(second.schemaVersion).toBe(5);
+        expect(second.schemaVersion).toBe(6);
         expect(second.getCover('naruto')).toEqual({ url: null, checkedAt: NOW });
         second.close();
         expect(schemaOf(path)).toEqual(schema);
     });
 
-    it.each([1, 2, 3, 4])('upgrades a database of version %i to the same schema a new database has', (version) => {
+    it.each([1, 2, 3, 4, 5])('upgrades a database of version %i to the same schema a new database has', (version) => {
         const directory = makeTempDir();
         const upgraded = join(directory, 'upgraded.db');
         const fresh = join(directory, 'fresh.db');
@@ -959,25 +974,25 @@ describe('AnimeDb upgrade of the last release', () => {
 
         new AnimeDb(upgraded).close();
 
-        expect(versionOf(upgraded)).toBe(5);
+        expect(versionOf(upgraded)).toBe(6);
         expect(schemaOf(upgraded)).toEqual(schemaOf(fresh));
     });
 
-    it('creates both tables or neither: a migration that fails is undone, and the database stays at the version of the release', () => {
+    it('a migration that fails is undone, and the database stays at the version of the release', () => {
         const path = join(makeTempDir(), 'anime.db');
         makeReleasedDatabase(path);
         fillReleasedDatabase(path);
         const raw = new DatabaseSync(path);
-        // Something in the way of the second table of the migration: it fails after the first one was created.
-        raw.exec('CREATE TABLE anime_schedule_cache (in_the_way INTEGER)');
+        // Something in the way of the table of the migration.
+        raw.exec('CREATE TABLE anime_availability (in_the_way INTEGER)');
         raw.close();
 
         expect(() => {
             return new AnimeDb(path);
-        }).toThrow(/anime_schedule_cache/);
+        }).toThrow(/anime_availability/);
 
-        expect(versionOf(path)).toBe(4);
-        expect(tablesOf(path)).toEqual(['anime', 'anime_history', 'anime_schedule_cache', 'episode']);
+        expect(versionOf(path)).toBe(5);
+        expect(tablesOf(path)).toEqual(['anime', 'anime_availability', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode']);
         expect(releasedRowsOf(path).episode).toHaveLength(6);
     });
 
@@ -1045,13 +1060,103 @@ describe('AnimeDb covers', () => {
     });
 });
 
+describe('AnimeDb availability', () => {
+    const HOUR = 60 * 60 * 1000;
+    const FOUND: AnimeAvailability = { anilistId: 7, state: 'available', query: 'Dandadan', index: 3, title: 'Dandadan (28 episodes)' };
+
+    function makeClockedDb(clock: { now: number }): AnimeDb {
+        return new AnimeDb(':memory:', () => {
+            return clock.now;
+        });
+    }
+
+    it('has nothing for an anime that was never checked', () => {
+        expect(makeDb().findAvailability(7, 'sub', 0)).toBeNull();
+    });
+
+    it('gives back an anime that was found with the name that found it, the number of the result and its title', () => {
+        const db = makeDb();
+        db.saveAvailability(FOUND, 'sub');
+        expect(db.findAvailability(7, 'sub', 0)).toEqual(FOUND);
+    });
+
+    it('gives back an anime that was not found as unavailable, with nothing else', () => {
+        const db = makeDb();
+        db.saveAvailability({ anilistId: 7, state: 'unavailable' }, 'sub');
+        expect(db.findAvailability(7, 'sub', 0)).toEqual({ anilistId: 7, state: 'unavailable' });
+    });
+
+    it('keeps what is known for each audio apart', () => {
+        const db = makeDb();
+        db.saveAvailability(FOUND, 'sub');
+        db.saveAvailability({ anilistId: 7, state: 'unavailable' }, 'dub');
+        expect(db.findAvailability(7, 'sub', 0)).toEqual(FOUND);
+        expect(db.findAvailability(7, 'dub', 0)).toEqual({ anilistId: 7, state: 'unavailable' });
+    });
+
+    it('keeps what is known for each anime apart', () => {
+        const db = makeDb();
+        db.saveAvailability(FOUND, 'sub');
+        expect(db.findAvailability(8, 'sub', 0)).toBeNull();
+    });
+
+    it('replaces what was kept when an anime is checked again', () => {
+        const db = makeDb();
+        db.saveAvailability({ anilistId: 7, state: 'unavailable' }, 'sub');
+        db.saveAvailability(FOUND, 'sub');
+        expect(db.findAvailability(7, 'sub', 0)).toEqual(FOUND);
+        db.saveAvailability({ anilistId: 7, state: 'unavailable' }, 'sub');
+        expect(db.findAvailability(7, 'sub', 0)).toEqual({ anilistId: 7, state: 'unavailable' });
+    });
+
+    it('does not answer from a check made before the moment given, and does from one made exactly at it', () => {
+        const clock = { now: NOW - HOUR };
+        const db = makeClockedDb(clock);
+        db.saveAvailability(FOUND, 'sub');
+        expect(db.findAvailability(7, 'sub', NOW - HOUR + 1)).toBeNull();
+        expect(db.findAvailability(7, 'sub', NOW - HOUR)).toEqual(FOUND);
+    });
+
+    it('forgets the checks made before the moment given and keeps the others', () => {
+        const clock = { now: NOW - 2 * HOUR };
+        const db = makeClockedDb(clock);
+        db.saveAvailability(FOUND, 'sub');
+        clock.now = NOW;
+        db.saveAvailability({ anilistId: 8, state: 'unavailable' }, 'sub');
+
+        db.forgetAvailabilityBefore(NOW - HOUR);
+
+        expect(db.findAvailability(7, 'sub', 0)).toBeNull();
+        expect(db.findAvailability(8, 'sub', 0)).toEqual({ anilistId: 8, state: 'unavailable' });
+    });
+
+    it('treats a row that says available but lacks what found it as unavailable', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        new AnimeDb(path).close();
+        const raw = new DatabaseSync(path);
+        raw.prepare('INSERT INTO anime_availability (anilist_id, audio, available, query, result_index, result_title, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(7, 'sub', 1, null, null, null, NOW);
+        raw.close();
+        const db = new AnimeDb(path);
+
+        expect(db.findAvailability(7, 'sub', 0)).toEqual({ anilistId: 7, state: 'unavailable' });
+        db.close();
+    });
+
+    it('stays when the anime of the library are removed: it is about the schedule, not the library', () => {
+        const db = makeDb();
+        db.saveAvailability(FOUND, 'sub');
+        db.removeAnime(db.upsertAnime(NARUTO).id);
+        expect(db.findAvailability(7, 'sub', 0)).toEqual(FOUND);
+    });
+});
+
 describe('AnimeDb schedule cache', () => {
     const FROM = 1_700_000_000;
     const TO = FROM + 86_400;
     const SINCE = NOW - 24 * 60 * 60 * 1000;
 
     function entry(anilistId: number, airingAt: number, overrides: Partial<AnimeScheduleEntry> = {}): AnimeScheduleEntry {
-        return { anilistId, title: `Anime ${anilistId}`, names: [`Anime ${anilistId}`, `Other ${anilistId}`], episode: 3, airingAt, coverUrl: `https://s4.anilist.co/${anilistId}.jpg`, ...overrides };
+        return { anilistId, title: `Anime ${anilistId}`, english: `Anime ${anilistId}`, romaji: `Other ${anilistId}`, names: [`Anime ${anilistId}`, `Other ${anilistId}`], episode: 3, airingAt, coverUrl: `https://s4.anilist.co/${anilistId}.jpg`, ...overrides };
     }
 
     function makeClockedDb(clock: { now: number }): AnimeDb {
@@ -1162,6 +1267,27 @@ describe('AnimeDb schedule cache', () => {
         expect(db.findScheduleCache(FROM + 86_400, TO + 86_400, SINCE)).toHaveLength(1);
     });
 
+    it('treats a listing kept by an older version, whose anime lack the two names, as missing', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        new AnimeDb(path).close();
+        const raw = new DatabaseSync(path);
+        const { english, romaji, ...old } = entry(1, FROM + 1);
+        void english;
+        void romaji;
+        raw.prepare('INSERT INTO anime_schedule_cache (from_at, to_at, fetched_at, entries) VALUES (?, ?, ?, ?)').run(FROM, TO, NOW, JSON.stringify([old]));
+        raw.close();
+        const db = new AnimeDb(path);
+
+        expect(db.findScheduleCache(FROM, TO, 0)).toBeNull();
+        db.close();
+    });
+
+    it('keeps the two names of each anime as they were saved', () => {
+        const db = makeDb();
+        db.saveScheduleCache(FROM, TO, [entry(1, FROM + 1, { english: null, romaji: 'Romaji only' })], SINCE);
+        expect(db.findScheduleCache(FROM, TO, SINCE)).toEqual([entry(1, FROM + 1, { english: null, romaji: 'Romaji only' })]);
+    });
+
     it('treats what it cannot read as missing: a row that is not JSON, and one that is not a list', () => {
         const path = join(makeTempDir(), 'anime.db');
         new AnimeDb(path).close();
@@ -1180,7 +1306,7 @@ describe('AnimeDb schedule cache', () => {
         const path = join(makeTempDir(), 'anime.db');
         new AnimeDb(path).close();
         const raw = new DatabaseSync(path);
-        raw.prepare('INSERT INTO anime_schedule_cache (from_at, to_at, fetched_at, entries) VALUES (?, ?, ?, ?)').run(FROM, TO, NOW, JSON.stringify([{ anilistId: 1 }, entry(2, FROM + 5)]));
+        raw.prepare('INSERT INTO anime_schedule_cache (from_at, to_at, fetched_at, entries) VALUES (?, ?, ?, ?)').run(FROM, TO, NOW, JSON.stringify([{ anilistId: 1, english: null, romaji: null }, entry(2, FROM + 5)]));
         raw.close();
         const db = new AnimeDb(path);
 
@@ -1231,5 +1357,269 @@ describe('AnimeDb paused episodes', () => {
         expect(db.getEpisode(episode.id)?.status).toBe('downloading');
         db.markDone(episode.id, '/lib/Naruto/Naruto Episode 1.mp4', 10);
         expect(db.getEpisode(episode.id)).toMatchObject({ status: 'done', sizeBytes: 10 });
+    });
+});
+
+describe('AnimeDb episodes that are in the library but not downloaded', () => {
+    it('reads the idle status', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        db.registerEpisodes(anime.id, ['1']);
+        expect(db.getLibraryAnime(anime.id)?.episodes).toEqual([
+            {
+                id: 1,
+                animeId: anime.id,
+                number: '1',
+                status: 'idle',
+                filePath: null,
+                sizeBytes: null,
+                error: null,
+                positionSeconds: 0,
+                durationSeconds: 0,
+                watched: false,
+                downloadedAt: null,
+                fileMissing: false
+            }
+        ]);
+    });
+
+    it('registers every episode as idle, in order, whatever the order they came in', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        db.registerEpisodes(anime.id, ['10', '2', '1', '11.5']);
+        expect(
+            db.getLibraryAnime(anime.id)?.episodes.map((episode) => {
+                return [episode.number, episode.status];
+            })
+        ).toEqual([
+            ['1', 'idle'],
+            ['2', 'idle'],
+            ['10', 'idle'],
+            ['11.5', 'idle']
+        ]);
+    });
+
+    it('leaves the episodes it already has as they are, whatever their status, and adds only the new ones', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        const done = db.ensureEpisode(anime.id, '1');
+        db.markDone(done.id, '/a/1.mp4', 100);
+        const failed = db.ensureEpisode(anime.id, '2');
+        db.markFailed(failed.id, 'error', { code: 'NETWORK', raw: 'boom' });
+        db.ensureEpisode(anime.id, '3');
+
+        db.registerEpisodes(anime.id, ['1', '2', '3', '4']);
+
+        expect(
+            db.getLibraryAnime(anime.id)?.episodes.map((episode) => {
+                return [episode.number, episode.status];
+            })
+        ).toEqual([
+            ['1', 'done'],
+            ['2', 'error'],
+            ['3', 'queued'],
+            ['4', 'idle']
+        ]);
+        expect(db.getEpisodeByNumber(anime.id, '1')).toMatchObject({ id: done.id, filePath: '/a/1.mp4', sizeBytes: 100 });
+        expect(db.getEpisodeByNumber(anime.id, '2')).toMatchObject({ id: failed.id, error: { code: 'NETWORK', raw: 'boom' } });
+    });
+
+    it('can register the same episodes again without repeating them', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        db.registerEpisodes(anime.id, ['1', '2']);
+        db.registerEpisodes(anime.id, ['1', '2']);
+        expect(db.getLibraryAnime(anime.id)?.episodes).toHaveLength(2);
+    });
+
+    it('registers nothing for an empty list, and keeps the episodes of the other anime apart', () => {
+        const db = makeDb();
+        const first = db.upsertAnime(NARUTO);
+        const second = db.upsertAnime({ ...NARUTO, title: 'Bleach', searchIndex: 2 });
+        db.registerEpisodes(first.id, []);
+        db.registerEpisodes(first.id, ['1']);
+        db.registerEpisodes(second.id, ['1', '2']);
+        expect(db.getLibraryAnime(first.id)?.episodes).toHaveLength(1);
+        expect(db.getLibraryAnime(second.id)?.episodes).toHaveLength(2);
+    });
+
+    it('registers all the episodes or none: a failure leaves nothing behind', () => {
+        const db = makeDb();
+        expect(() => {
+            db.registerEpisodes(999, ['1', '2']);
+        }).toThrow();
+        expect(db.list()).toEqual([]);
+        const anime = db.upsertAnime(NARUTO);
+        expect(db.getLibraryAnime(anime.id)?.episodes).toEqual([]);
+    });
+
+    it('queues an idle episode when it is asked to be downloaded, and the idle ones are not failed by an interruption', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        db.registerEpisodes(anime.id, ['1', '2']);
+        expect(db.ensureEpisode(anime.id, '1')).toMatchObject({ number: '1', status: 'queued' });
+        db.failInterrupted();
+        expect(
+            db.getLibraryAnime(anime.id)?.episodes.map((episode) => {
+                return [episode.number, episode.status];
+            })
+        ).toEqual([
+            ['1', 'error'],
+            ['2', 'idle']
+        ]);
+    });
+
+    it('removes an idle episode, which has no file to give back', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        db.registerEpisodes(anime.id, ['1']);
+        const episode = db.getEpisodeByNumber(anime.id, '1');
+        expect(db.removeEpisode(episode?.id ?? 0)).toBeNull();
+        expect(db.getLibraryAnime(anime.id)?.episodes).toEqual([]);
+    });
+
+    it('removes an anime that has only idle episodes, giving back no files', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        db.registerEpisodes(anime.id, ['1', '2']);
+        expect(db.removeAnime(anime.id)).toEqual([]);
+        expect(db.list()).toEqual([]);
+    });
+});
+
+describe('AnimeDb seasons of a series', () => {
+    function withSeasons() {
+        const db = makeDb();
+        const first = db.upsertAnime({ ...NARUTO, title: 'Frieren', searchIndex: 1 });
+        const second = db.upsertAnime({ ...NARUTO, title: 'Frieren 2', searchIndex: 2 });
+        const dub = db.upsertAnime({ ...NARUTO, title: 'Frieren', audio: 'dub', searchIndex: 1 });
+        const other = db.upsertAnime({ ...NARUTO, title: 'Other', searchIndex: 3 });
+        db.setSeries(first.id, 'Frieren', 1);
+        db.setSeries(second.id, 'Frieren', 3);
+        db.setSeries(dub.id, 'Frieren', 7);
+        db.setSeries(other.id, 'Another series', 9);
+        return { db, first, second, dub, other };
+    }
+
+    it('lists the seasons a series has for an audio, whatever the case or the accents of its name', () => {
+        const { db } = withSeasons();
+        expect(db.seasonsOfSeries('FRIEREN', 'sub').sort()).toEqual([1, 3]);
+        expect(db.seasonsOfSeries('frieren', 'dub')).toEqual([7]);
+        expect(db.seasonsOfSeries('Another series', 'sub')).toEqual([9]);
+        expect(db.seasonsOfSeries('Unknown', 'sub')).toEqual([]);
+    });
+
+    it('leaves out the anime that are asked to be left out', () => {
+        const { db, first, second } = withSeasons();
+        expect(db.seasonsOfSeries('Frieren', 'sub', [first.id])).toEqual([3]);
+        expect(db.seasonsOfSeries('Frieren', 'sub', [first.id, second.id])).toEqual([]);
+    });
+
+    it('does not count an anime that has no series or no season', () => {
+        const db = makeDb();
+        db.upsertAnime(NARUTO);
+        expect(db.seasonsOfSeries('Naruto', 'sub')).toEqual([]);
+    });
+
+    it('gives the last season plus one as the first free one, and 1 for a series with none', () => {
+        const { db, first, second } = withSeasons();
+        expect(db.firstFreeSeason('Frieren', 'sub')).toBe(4);
+        expect(db.firstFreeSeason('Frieren', 'dub')).toBe(8);
+        expect(db.firstFreeSeason('Frieren', 'sub', [second.id])).toBe(2);
+        expect(db.firstFreeSeason('Frieren', 'sub', [first.id, second.id])).toBe(1);
+        expect(db.firstFreeSeason('New series', 'sub')).toBe(1);
+    });
+});
+
+describe('AnimeDb.renameSeries', () => {
+    function twoSeries() {
+        const db = makeDb();
+        const one = db.upsertAnime({ ...NARUTO, title: 'Frieren', searchIndex: 1 });
+        const two = db.upsertAnime({ ...NARUTO, title: 'Frieren 2', searchIndex: 2 });
+        const alone = db.upsertAnime({ ...NARUTO, title: 'Bleach', searchIndex: 3 });
+        const target = db.upsertAnime({ ...NARUTO, title: 'Pokemon', searchIndex: 4 });
+        db.setSeries(one.id, 'Frieren', 1, 'The beginning');
+        db.setSeries(two.id, 'Frieren', 2);
+        db.setSeries(target.id, 'Journeys', 1);
+        return { db, one, two, alone, target };
+    }
+
+    function seriesOf(db: AnimeDb): Array<[string, string | null, number | null, string | null]> {
+        return db.list().map((anime) => {
+            return [anime.title, anime.series, anime.season, anime.seasonName];
+        });
+    }
+
+    it('gives all the anime of the list the new name, keeping each season and the name shown', () => {
+        const { db, one, two } = twoSeries();
+        expect(db.renameSeries([one.id, two.id], 'Sousou no Frieren')).toEqual({ ok: true });
+        expect(seriesOf(db)).toEqual([
+            ['Bleach', null, null, null],
+            ['Frieren', 'Sousou no Frieren', 1, 'The beginning'],
+            ['Frieren 2', 'Sousou no Frieren', 2, null],
+            ['Pokemon', 'Journeys', 1, null]
+        ]);
+    });
+
+    it('makes an anime that was on its own the first season of the series, with the name given', () => {
+        const { db, alone } = twoSeries();
+        expect(db.renameSeries([alone.id], 'Bleach: Thousand-Year Blood War')).toEqual({ ok: true });
+        expect(db.getAnime(alone.id)).toMatchObject({ series: 'Bleach: Thousand-Year Blood War', season: 1, seasonName: null });
+    });
+
+    it('joins another series when the name is one it has, keeping the seasons that do not clash and the spelling the other one has', () => {
+        const { db, one, two } = twoSeries();
+        db.setSeries(one.id, 'Frieren', 5);
+        db.setSeries(two.id, 'Frieren', 6);
+        expect(db.renameSeries([one.id, two.id], 'JOURNEYS')).toEqual({ ok: true });
+        expect(db.seasonsOfSeries('Journeys', 'sub').sort()).toEqual([1, 5, 6]);
+        expect(db.getAnime(one.id)?.series).toBe('Journeys');
+        expect(db.getAnime(two.id)?.series).toBe('Journeys');
+    });
+
+    it('refuses a name another series has when a season clashes, saying which anime, which season and the next free one, and changes nothing', () => {
+        const { db, one, two } = twoSeries();
+        const before = seriesOf(db);
+        expect(db.renameSeries([one.id, two.id], 'journeys')).toEqual({ ok: false, anime: 'Frieren', season: 1, suggested: 2 });
+        expect(seriesOf(db)).toEqual(before);
+    });
+
+    it('suggests the last season of the other series plus one', () => {
+        const { db, one, two } = twoSeries();
+        const third = db.upsertAnime({ ...NARUTO, title: 'Pokemon 3', searchIndex: 5 });
+        db.setSeries(third.id, 'Journeys', 4);
+        expect(db.renameSeries([one.id, two.id], 'Journeys')).toEqual({ ok: false, anime: 'Frieren', season: 1, suggested: 5 });
+    });
+
+    it('does not count the audio of the other: the same season in another audio does not clash', () => {
+        const { db, one, two } = twoSeries();
+        const dub = db.upsertAnime({ ...NARUTO, title: 'Pokemon', audio: 'dub', searchIndex: 4 });
+        db.setSeries(dub.id, 'Dubbed', 1);
+        expect(db.renameSeries([one.id, two.id], 'Dubbed')).toEqual({ ok: true });
+    });
+
+    it('does not clash with itself: the name written in another case or with other accents is a rename', () => {
+        const { db, one, two } = twoSeries();
+        expect(db.renameSeries([one.id, two.id], 'FRIEREN')).toEqual({ ok: true });
+        expect(db.getAnime(one.id)?.series).toBe('FRIEREN');
+        expect(db.getAnime(two.id)?.series).toBe('FRIEREN');
+        expect(db.seasonsOfSeries('frieren', 'sub').sort()).toEqual([1, 2]);
+    });
+
+    it('renames the series of an anime that is not in the list only when it is the one of the others', () => {
+        const { db, one, two } = twoSeries();
+        db.renameSeries([one.id], 'Frieren part one');
+        expect(db.getAnime(one.id)?.series).toBe('Frieren part one');
+        expect(db.getAnime(two.id)?.series).toBe('Frieren');
+    });
+
+    it('ignores the ids that are not anime, and does nothing for a list with none', () => {
+        const { db, one } = twoSeries();
+        expect(db.renameSeries([999, one.id], 'Renamed')).toEqual({ ok: true });
+        expect(db.getAnime(one.id)?.series).toBe('Renamed');
+        const before = seriesOf(db);
+        expect(db.renameSeries([], 'Nothing')).toEqual({ ok: true });
+        expect(db.renameSeries([777], 'Nothing')).toEqual({ ok: true });
+        expect(seriesOf(db)).toEqual(before);
     });
 });

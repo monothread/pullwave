@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { DEFAULT_SETTINGS } from '@shared/constants';
+import { DEFAULT_SETTINGS, THEME_STYLES } from '@shared/constants';
 import { App } from '@renderer/App';
 import { SETTINGS_ICON } from '@renderer/components/TabButton';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
@@ -159,14 +159,16 @@ describe('App theme', () => {
 
     afterEach(() => {
         delete document.documentElement.dataset.theme;
+        delete document.documentElement.dataset.themeStyle;
         Reflect.deleteProperty(window, 'matchMedia');
     });
 
-    it.each(['cyberpunk', 'dark', 'light'] as const)('applies the %s theme from the stored settings', async (theme) => {
+    it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'] as const)('applies the %s theme, with its style, from the stored settings', async (theme) => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
         render(<App />);
         await screen.findByLabelText('Link 1');
         expect(document.documentElement.dataset.theme).toBe(theme);
+        expect(document.documentElement.dataset.themeStyle).toBe(THEME_STYLES[theme]);
     });
 
     it('uses device by default and follows a dark system', async () => {
@@ -197,7 +199,7 @@ describe('App theme', () => {
         expect(document.documentElement.dataset.theme).toBe('dark');
     });
 
-    it.each(['cyberpunk', 'dark', 'light'] as const)('does not follow the system with the %s theme', async (theme) => {
+    it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'] as const)('does not follow the system with the %s theme', async (theme) => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
         render(<App />);
         await screen.findByLabelText('Link 1');
@@ -310,6 +312,23 @@ describe('App anime section', () => {
         expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
     });
 
+    it('opens on the anime section when the settings say so', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
+        mock.api.getAnimeStatus.mockResolvedValue(supported);
+        render(<App />);
+        expect(await screen.findByRole('region', { name: 'Anime' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'ANIME' })).toHaveAttribute('aria-current', 'page');
+        expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
+    });
+
+    it('opens on the video downloader when the settings say anime but the section does not exist', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
+        render(<App />);
+        expect(await screen.findByLabelText('Link 1')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
+        expect(useAppStore.getState().tab).toBe('downloads');
+    });
+
     it('loads the library and the jobs of the section', async () => {
         mock.api.getAnimeStatus.mockResolvedValue(supported);
         render(<App />);
@@ -323,7 +342,7 @@ describe('App anime section', () => {
         const { unmount } = render(<App />);
         await screen.findByRole('button', { name: 'ANIME' });
         unmount();
-        expect(mock.unsubscribers).toHaveLength(9);
+        expect(mock.unsubscribers).toHaveLength(10);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

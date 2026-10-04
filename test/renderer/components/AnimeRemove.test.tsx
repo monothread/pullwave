@@ -50,4 +50,42 @@ describe('AnimeRemove', () => {
         expect(screen.getByRole('button', { name: 'Remove: Naruto EP 1' })).toBeInTheDocument();
         expect(screen.queryByText('The files are deleted from the disk too.')).not.toBeInTheDocument();
     });
+
+    describe('when it cannot be removed', () => {
+        const REASON = 'This anime gives its name to the series. To remove it, remove the whole series.';
+
+        function setupBlocked() {
+            const onRemove = vi.fn();
+            render(<AnimeRemove label="REMOVE ANIME" ariaLabel="Remove anime: Frieren" onRemove={onRemove} blocked={REASON} />);
+            return { onRemove, user: userEvent.setup() };
+        }
+
+        it('shows the button off, with the reason as its title', () => {
+            setupBlocked();
+            const button = screen.getByRole('button', { name: 'Remove anime: Frieren' });
+            expect(button).toBeDisabled();
+            expect(button).toHaveAttribute('title', REASON);
+            expect(button).toHaveTextContent('REMOVE ANIME');
+            expect(button).toHaveClass('btn', 'btn--small', 'btn--ghost');
+        });
+
+        it('does not ask anything and does not remove when it is clicked', async () => {
+            const { onRemove, user } = setupBlocked();
+            await user.click(screen.getByRole('button', { name: 'Remove anime: Frieren' }));
+            expect(screen.queryByRole('group')).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'CONFIRM' })).not.toBeInTheDocument();
+            expect(screen.queryByText('The files are deleted from the disk too.')).not.toBeInTheDocument();
+            expect(onRemove).not.toHaveBeenCalled();
+        });
+
+        it('has no title and works as usual without a reason', async () => {
+            const { onRemove, user } = setup();
+            const button = screen.getByRole('button', { name: 'Remove: Naruto EP 1' });
+            expect(button).toBeEnabled();
+            expect(button).not.toHaveAttribute('title');
+            await user.click(button);
+            await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+            expect(onRemove).toHaveBeenCalledTimes(1);
+        });
+    });
 });

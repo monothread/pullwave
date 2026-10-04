@@ -1,4 +1,4 @@
-import type { AudioFormat, BrowserName, LanguageCode, LanguageSetting, MaxResolution, Settings, ThemeName, VideoContainer } from './types';
+import type { AudioFormat, BrowserName, LanguageCode, LanguageSetting, MaxResolution, Settings, StartTab, ThemeName, ThemeStyle, VideoContainer } from './types';
 
 export const IPC = {
     settingsGet: 'settings:get',
@@ -17,6 +17,7 @@ export const IPC = {
     historyClear: 'history:clear',
     binariesCheck: 'binaries:check',
     ytdlpUpdate: 'ytdlp:update',
+    ytdlpReset: 'ytdlp:reset',
     appUpdateGet: 'app-update:get',
     appUpdateCheck: 'app-update:check',
     appUpdateDownload: 'app-update:download',
@@ -32,6 +33,8 @@ export const IPC = {
     animeSearch: 'anime:search',
     animeEpisodes: 'anime:episodes',
     animeDownload: 'anime:download',
+    animeAddToLibrary: 'anime:add-to-library',
+    animeDownloadMissing: 'anime:download-missing',
     animeLibrary: 'anime:library',
     animeJobs: 'anime:jobs',
     animeCancel: 'anime:cancel',
@@ -42,6 +45,8 @@ export const IPC = {
     animeRemoveEpisode: 'anime:remove-episode',
     animeRemoveAnime: 'anime:remove-anime',
     animeOpenFolder: 'anime:open-folder',
+    animeOpenSeriesFolder: 'anime:open-series-folder',
+    animeRenameSeries: 'anime:rename-series',
     animeSetSeries: 'anime:set-series',
     animeImportLibrary: 'anime:import-library',
     animeMigrateFolder: 'anime:migrate-folder',
@@ -54,14 +59,17 @@ export const IPC = {
     animeHistoryRemove: 'anime:history-remove',
     animeHistoryClear: 'anime:history-clear',
     animeUpdateCli: 'anime:update-cli',
+    animeResetCli: 'anime:reset-cli',
     animeStreamOpen: 'anime:stream-open',
     animeStreamClose: 'anime:stream-close',
     animeSchedule: 'anime:schedule',
     animeCover: 'anime:cover',
+    animeAvailability: 'anime:availability',
     eventAnimeJob: 'event:anime-job',
     eventAnimeLibrary: 'event:anime-library',
     eventAnimeMigration: 'event:anime-migration',
     eventAnimeCover: 'event:anime-cover',
+    eventAnimeAvailability: 'event:anime-availability',
     eventJobUpdate: 'event:job-update',
     eventJobRemoved: 'event:job-removed',
     eventHistoryChanged: 'event:history-changed',
@@ -73,8 +81,39 @@ export const BROWSERS: readonly BrowserName[] = ['chrome', 'firefox', 'brave', '
 export const RESOLUTIONS: readonly MaxResolution[] = ['best', '2160', '1440', '1080', '720', '480'];
 export const VIDEO_CONTAINERS: readonly VideoContainer[] = ['mp4', 'mkv', 'webm'];
 export const AUDIO_FORMATS: readonly AudioFormat[] = ['mp3', 'm4a', 'opus'];
-export const THEMES: readonly ThemeName[] = ['device', 'cyberpunk', 'dark', 'light'];
+export const THEMES: readonly ThemeName[] = [
+    'device',
+    'cyberpunk',
+    'synthwave',
+    'terminal',
+    'dark',
+    'tokyo-night',
+    'nord',
+    'dracula',
+    'gruvbox',
+    'amoled',
+    'high-contrast',
+    'light',
+    'sakura'
+];
+
+// The style of every theme that can be applied ('device' is one of the two it follows).
+export const THEME_STYLES: Readonly<Record<Exclude<ThemeName, 'device'>, ThemeStyle>> = {
+    cyberpunk: 'neon',
+    synthwave: 'neon',
+    terminal: 'neon',
+    dark: 'flat',
+    'tokyo-night': 'flat',
+    nord: 'flat',
+    dracula: 'flat',
+    gruvbox: 'flat',
+    amoled: 'flat',
+    'high-contrast': 'flat',
+    light: 'flat',
+    sakura: 'flat'
+};
 export const LANGUAGE_CODES: readonly LanguageCode[] = ['en', 'pt', 'es', 'zh', 'ja'];
+export const START_TABS: readonly StartTab[] = ['downloads', 'anime'];
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['device', ...LANGUAGE_CODES];
 export const FALLBACK_LANGUAGE: LanguageCode = 'en';
 
@@ -82,8 +121,8 @@ export const MIN_TITLE_LENGTH = 20;
 export const MAX_TITLE_LENGTH = 200;
 export const MIN_LIVE_END_CHECK_SECONDS = 1;
 export const MAX_LIVE_END_CHECK_SECONDS = 120;
-// Downloads run one at a time: this is not a setting.
-export const CONCURRENT_DOWNLOADS = 1;
+// Downloads run two at a time: this is not a setting.
+export const CONCURRENT_DOWNLOADS = 2;
 
 export const DEFAULT_SETTINGS: Settings = {
     downloadDir: '',
@@ -116,6 +155,7 @@ export const DEFAULT_SETTINGS: Settings = {
     verifyLiveEndSeconds: 10,
     theme: 'device',
     language: 'device',
+    startTab: 'downloads',
     extraArgs: '',
     animeDownloadDir: '',
     animeQuality: 'best',

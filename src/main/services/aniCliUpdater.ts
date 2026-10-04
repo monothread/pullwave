@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import type { UpdateResult } from '@shared/types';
 import type { AniCliLocator } from './aniCliLocator';
+import { patchReport, REQUIRED_PATCHES, type PatchName } from './aniPatches';
 import { compareVersions, parseAniCliVersion } from './aniVersion';
 import { translateMain } from './language';
 
@@ -11,6 +12,15 @@ export const RAW_SCRIPT_URL = 'https://raw.githubusercontent.com/pystardust/ani-
 export const MAX_SCRIPT_BYTES = 500_000;
 const USER_AGENT = 'pullwave';
 const SYNTAX_CHECK_TIMEOUT_MS = 15000;
+// How long a request may take: a stalled connection does not hold the update forever.
+export const FETCH_TIMEOUT_MS = 30000;
+
+// What the app calls each change it makes to ani-cli, in the words of the messages.
+const PATCH_MESSAGE_KEYS = {
+    subtitleSelection: 'anicli.patchSubtitleSelection',
+    allSubtitles: 'anicli.patchAllSubtitles',
+    debugReferer: 'anicli.patchDebugReferer'
+} as const;
 
 export interface AniCliUpdaterDependencies {
     fetchText: (url: string) => Promise<string>;
@@ -24,7 +34,7 @@ export interface AniCliUpdaterDependencies {
 }
 
 export const defaultFetchText = async (url: string): Promise<string> => {
-    const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, redirect: 'follow' });
+    const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, redirect: 'follow', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!response.ok) {
         throw new Error(`Request failed (${response.status}) for ${url}`);
     }
@@ -63,6 +73,32 @@ function looksLikeAniCli(script: string): boolean {
     return script.startsWith('#!/bin/sh') && script.length <= MAX_SCRIPT_BYTES && parseAniCliVersion(script) !== null;
 }
 
+// The changes of Pullwave that do not fit the script.
+function unfitPatches(script: string): PatchName[] {
+    const report = patchReport(script);
+    return (Object.keys(report) as PatchName[]).filter((name) => {
+        return !report[name];
+    });
+}
+
+function patchNames(names: readonly PatchName[]): string {
+    return names
+        .map((name) => {
+            return translateMain(PATCH_MESSAGE_KEYS[name]);
+        })
+        .join(', ');
+}
+
+// Goes back to the ani-cli that ships with the app: the one an update saved is deleted (the patched copy is made again from whichever
+// script is used next).
+export function resetAniCli(locator: AniCliLocator, deps: AniCliUpdaterDependencies): UpdateResult {
+    if (deps.readText(locator.userAniCliPath) === null) {
+        return { ok: false, output: translateMain('anicli.noUpdatedCopy') };
+    }
+    deps.removeFile(locator.userAniCliPath);
+    return { ok: true, output: translateMain('anicli.resetDone') };
+}
+
 // Replaces the ani-cli the app runs with the latest one from its repository, kept in the user data folder (the one that ships
 // with the app is left alone, and is used again if it is newer after an update of the app). The commit is asked for first so
 // the script comes from a fixed address, and it is only installed if it looks like ani-cli and the shell accepts it.
@@ -88,6 +124,15 @@ export async function updateAniCli(locator: AniCliLocator, customPath: string, d
         if (isSame || isOlder) {
             return { ok: true, output: translateMain('anicli.upToDate', { version: currentVersion ?? latestVersion }) };
         }
+        // The changes Pullwave makes to the script have to still fit it: without the one that finds the stream the app could not play or
+        // download, so that script is not installed; without the others it only loses subtitles, so it is installed and the user is told.
+        const unfit = unfitPatches(latest);
+        const required = unfit.filter((name) => {
+            return REQUIRED_PATCHES.includes(name);
+        });
+        if (required.length > 0) {
+            return { ok: false, output: translateMain('anicli.patchesFailed', { missing: patchNames(required) }) };
+        }
         deps.makeDirectory(locator.userBinDirectory);
         const temporaryPath = `${locator.userAniCliPath}.tmp`;
         deps.writeFile(temporaryPath, latest);
@@ -96,7 +141,11 @@ export async function updateAniCli(locator: AniCliLocator, customPath: string, d
             return { ok: false, output: translateMain('anicli.invalid') };
         }
         deps.replaceFile(temporaryPath, locator.userAniCliPath);
-        return { ok: true, output: translateMain('anicli.updated', { from: currentVersion ?? translateMain('ytdlp.versionUnknown'), to: latestVersion }) };
+        const from = currentVersion ?? translateMain('ytdlp.versionUnknown');
+        if (unfit.length > 0) {
+            return { ok: true, output: translateMain('anicli.patchesPartial', { from, to: latestVersion, missing: patchNames(unfit) }) };
+        }
+        return { ok: true, output: translateMain('anicli.updated', { from, to: latestVersion }) };
     } catch (error) {
         return { ok: false, output: error instanceof Error ? error.message : translateMain('update.failed') };
     }

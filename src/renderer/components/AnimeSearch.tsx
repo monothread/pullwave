@@ -3,7 +3,7 @@ import type { Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { effectiveAudio, useAnimeStore } from '../store/animeStore';
-import { animeErrorKey, downloadedAnime, libraryEntry, seasonLabel } from './animeText';
+import { animeErrorKey, libraryEntry, seasonLabel } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { AnimeDetail } from './AnimeDetail';
 import { SelectField, TextField } from './fields';
@@ -82,8 +82,9 @@ export function AnimeSearch() {
                     <span className="section-label">{t('anime.results.label', { count: search.results.length })}</span>
                     <ul className="cover-grid">
                         {search.results.map((result) => {
-                            const saved = downloadedAnime(library, result.title, search.searchedAudio);
-                            const joined = libraryEntry(library, result.title, search.searchedAudio);
+                            // An anime is in the library from the moment it is added, whether or not an episode of it was downloaded.
+                            const saved = libraryEntry(library, result.title, search.searchedAudio);
+                            const joined = saved;
                             const inSeries = joined?.series != null && joined.season !== null;
                             return (
                                 <li key={result.index} className="history__item cover-card row--link">

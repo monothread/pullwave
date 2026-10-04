@@ -46,6 +46,7 @@ describe('animeErrorKey', () => {
 
 describe('animeStatusKey', () => {
     it.each([
+        ['idle', 'anime.status.idle'],
         ['queued', 'anime.status.queued'],
         ['downloading', 'anime.status.downloading'],
         ['running', 'anime.status.downloading'],
@@ -138,7 +139,7 @@ describe('previousDownloadedEpisode', () => {
 
 describe('downloadedCount', () => {
     it('counts only the downloaded episodes', () => {
-        const anime = makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, status: 'error' }), makeEpisode({ id: 3 }), makeEpisode({ id: 4, status: 'queued' })]);
+        const anime = makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, status: 'error' }), makeEpisode({ id: 3 }), makeEpisode({ id: 4, status: 'queued' }), makeEpisode({ id: 5, status: 'idle' })]);
         expect(downloadedCount(anime)).toBe(2);
         expect(downloadedCount(makeAnime([]))).toBe(0);
     });

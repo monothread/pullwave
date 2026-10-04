@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import './display';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -55,10 +56,13 @@ test('finds the anime and its episodes in the real source', async () => {
 });
 
 test('downloads an episode at the lowest quality, with its subtitles, and plays it', async () => {
-    await page.getByRole('button', { name: 'EP 1', exact: true }).click();
-    await page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
-    await page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
-    await expect(page.locator('.job .badge--done')).toHaveText('DOWNLOADED', { timeout: 240000 });
+    await page.getByRole('button', { name: 'ADD TO LIBRARY', exact: true }).click();
+    await page.getByRole('button', { name: 'CONFIRM' }).click();
+    await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
+    await page.getByRole('button', { name: 'SHOW EPISODES: Cyberpunk: Edgerunners', exact: true }).click();
+    await page.getByRole('button', { name: 'DOWNLOAD: Cyberpunk: Edgerunners EP 1', exact: true }).click();
+    // A finished download leaves the downloads screen and is told by a toast.
+    await expect(page.locator('.toast').filter({ hasText: 'Download complete: Cyberpunk: Edgerunners · EP 1' })).toBeVisible({ timeout: 240000 });
 
     const folder = join(workDir, 'anime', 'Cyberpunk_ Edgerunners', 'Season 1', 'Episode 1');
     const files = readdirSync(folder).sort();
@@ -73,10 +77,6 @@ test('downloads an episode at the lowest quality, with its subtitles, and plays 
     ).toEqual([]);
     expect(statSync(join(folder, 'Cyberpunk_ Edgerunners Episode 1.mp4')).size).toBeGreaterThan(10_000_000);
 
-    await page.getByRole('button', { name: 'BACK' }).click();
-    await page.getByRole('button', { name: 'BACK' }).click();
-    await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
-    await page.getByRole('button', { name: 'OPEN SERIES: Cyberpunk: Edgerunners' }).click();
     await page.getByRole('button', { name: /^PLAY: / }).click();
     const video = page.getByRole('dialog').locator('video');
     await expect.poll(async () => {
@@ -99,7 +99,6 @@ test('watches an episode without downloading it', async () => {
     await page.getByRole('button', { name: 'SEARCH', exact: true }).first().click();
     await page.getByRole('button', { name: 'OPEN: Cyberpunk: Edgerunners', exact: true }).click();
     await page.getByRole('button', { name: 'EP 2', exact: true }).click();
-    await page.getByRole('button', { name: 'WATCH', exact: true }).click();
     const video = page.getByRole('dialog').locator('video');
     await expect.poll(async () => {
         return video.evaluate((element: HTMLVideoElement) => {

@@ -5,6 +5,7 @@ import type {
     AniError,
     AniErrorCode,
     AnimeAudio,
+    AnimeAvailability,
     AnimeEpisodeRecord,
     AnimeEpisodeStatus,
     AnimeHistoryEntry,
@@ -73,13 +74,25 @@ const MIGRATIONS: readonly string[] = [
         fetched_at INTEGER NOT NULL,
         entries TEXT NOT NULL,
         PRIMARY KEY (from_at, to_at)
+    );`,
+    // Whether the source has an anime of the schedule, by audio, with the name that found it and the result (all empty where none did) and when
+    // it was checked.
+    `CREATE TABLE anime_availability (
+        anilist_id INTEGER NOT NULL,
+        audio TEXT NOT NULL,
+        available INTEGER NOT NULL,
+        query TEXT,
+        result_index INTEGER,
+        result_title TEXT,
+        checked_at INTEGER NOT NULL,
+        PRIMARY KEY (anilist_id, audio)
     );`
 ];
 
 // The history keeps the most recent anime only.
 export const MAX_HISTORY_ENTRIES = 50;
 
-const EPISODE_STATUSES: readonly AnimeEpisodeStatus[] = ['queued', 'downloading', 'paused', 'done', 'error', 'cancelled'];
+const EPISODE_STATUSES: readonly AnimeEpisodeStatus[] = ['idle', 'queued', 'downloading', 'paused', 'done', 'error', 'cancelled'];
 const ERROR_CODES: readonly AniErrorCode[] = [
     'NO_RESULTS',
     'BLOCKED',
@@ -339,6 +352,71 @@ export class AnimeDb {
         }
     }
 
+    // The episodes an anime has, none of them downloaded: the ones the library does not know are added as `idle`, the others (whatever
+    // their status) are left as they are. All of them or none.
+    registerEpisodes(animeId: number, numbers: readonly string[]): void {
+        this.db.exec('BEGIN');
+        try {
+            numbers.forEach((number) => {
+                this.run(`INSERT INTO episode (anime_id, number, status) VALUES (?, ?, 'idle') ON CONFLICT (anime_id, number) DO NOTHING`, animeId, number);
+            });
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+    }
+
+    // The seasons a series has for an audio, without counting the anime in `exceptAnimeIds`.
+    seasonsOfSeries(series: string, audio: AnimeAudio, exceptAnimeIds: readonly number[] = []): number[] {
+        return this.all('SELECT * FROM anime WHERE series IS NOT NULL AND season IS NOT NULL AND audio = ?', audio)
+            .filter((row) => {
+                return !exceptAnimeIds.includes(numeric(row, 'id')) && sameSeries(text(row, 'series'), series);
+            })
+            .map((row) => {
+                return numeric(row, 'season');
+            });
+    }
+
+    // The first season number a series does not have: the last one plus one (1 for a series that has none).
+    firstFreeSeason(series: string, audio: AnimeAudio, exceptAnimeIds: readonly number[] = []): number {
+        return Math.max(0, ...this.seasonsOfSeries(series, audio, exceptAnimeIds)) + 1;
+    }
+
+    // Gives every anime of the list the name of a series, keeping the season each one has (an anime that was on its own is the first season).
+    // The spelling is the one another anime of the library already has for that series, if any. When that series has a season one of them
+    // has too, nothing changes and the one that clashes is told, with the season number it could take.
+    renameSeries(animeIds: readonly number[], series: string): { ok: true } | { ok: false; anime: string; season: number; suggested: number } {
+        const animes = animeIds.flatMap((id) => {
+            const anime = this.getAnime(id);
+            return anime === null ? [] : [anime];
+        });
+        const known = this.all('SELECT id, series FROM anime WHERE series IS NOT NULL ORDER BY id').find((row) => {
+            return !animeIds.includes(numeric(row, 'id')) && sameSeries(text(row, 'series'), series);
+        });
+        const name = known ? text(known, 'series') : series;
+        const moves = animes.map((anime) => {
+            return { anime, season: anime.season ?? 1 };
+        });
+        const clash = moves.find(({ anime, season }) => {
+            return this.seasonsOfSeries(name, anime.audio, animeIds).includes(season);
+        });
+        if (clash) {
+            return { ok: false, anime: clash.anime.title, season: clash.season, suggested: this.firstFreeSeason(name, clash.anime.audio, animeIds) };
+        }
+        this.db.exec('BEGIN');
+        try {
+            moves.forEach(({ anime, season }) => {
+                this.run('UPDATE anime SET series = ?, season = ?, season_name = ? WHERE id = ?', name, season, anime.seasonName, anime.id);
+            });
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+        return { ok: true };
+    }
+
     // A new episode is queued. One that is already downloaded stays as it is; any other one is queued again.
     ensureEpisode(animeId: number, number: string): AnimeEpisodeRecord {
         const row = this.one(
@@ -478,7 +556,16 @@ export class AnimeDb {
             if (!Array.isArray(entries)) {
                 return null;
             }
-            return (entries as AnimeScheduleEntry[]).filter((entry) => {
+            const listed = entries as AnimeScheduleEntry[];
+            // A listing kept by an older version lacks the two names of each anime: it is as if it were not there, and it is asked for again.
+            if (
+                listed.some((entry) => {
+                    return !('english' in entry) || !('romaji' in entry);
+                })
+            ) {
+                return null;
+            }
+            return listed.filter((entry) => {
                 return typeof entry.airingAt === 'number' && entry.airingAt >= from && entry.airingAt < to;
             });
         } catch {
@@ -497,6 +584,42 @@ export class AnimeDb {
             JSON.stringify(entries)
         );
         this.run('DELETE FROM anime_schedule_cache WHERE fetched_at < ?', since);
+    }
+
+    // What was found out about an anime of the schedule for an audio, if it was checked at `since` or later (in milliseconds).
+    findAvailability(anilistId: number, audio: AnimeAudio, since: number): AnimeAvailability | null {
+        const row = this.one('SELECT * FROM anime_availability WHERE anilist_id = ? AND audio = ? AND checked_at >= ?', anilistId, audio, since);
+        if (!row) {
+            return null;
+        }
+        const query = nullableText(row, 'query');
+        const title = nullableText(row, 'result_title');
+        const index = row.result_index;
+        if (numeric(row, 'available') === 1 && query !== null && title !== null && typeof index === 'number') {
+            return { anilistId, state: 'available', query, index, title };
+        }
+        return { anilistId, state: 'unavailable' };
+    }
+
+    saveAvailability(availability: AnimeAvailability, audio: AnimeAudio): void {
+        const found = availability.state === 'available' ? availability : null;
+        this.run(
+            `INSERT INTO anime_availability (anilist_id, audio, available, query, result_index, result_title, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (anilist_id, audio) DO UPDATE SET available = excluded.available, query = excluded.query, result_index = excluded.result_index,
+             result_title = excluded.result_title, checked_at = excluded.checked_at`,
+            availability.anilistId,
+            audio,
+            found === null ? 0 : 1,
+            found?.query ?? null,
+            found?.index ?? null,
+            found?.title ?? null,
+            this.now()
+        );
+    }
+
+    // Forgets what was checked before `since` (in milliseconds).
+    forgetAvailabilityBefore(since: number): void {
+        this.run('DELETE FROM anime_availability WHERE checked_at < ?', since);
     }
 
     getCover(key: string): StoredCover | null {

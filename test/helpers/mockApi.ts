@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime } from '@shared/anime';
+import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime } from '@shared/anime';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
 export interface MockApiHandle {
@@ -13,6 +13,7 @@ export interface MockApiHandle {
     emitAnimeLibraryChanged: () => void;
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
     emitAnimeCover: (update: AnimeCoverUpdate) => void;
+    emitAnimeAvailability: (availability: AnimeAvailability) => void;
     unsubscribers: Array<ReturnType<typeof vi.fn>>;
 }
 
@@ -28,6 +29,7 @@ export function createMockApi(): MockApiHandle {
     const animeLibraryListeners: Array<() => void> = [];
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
     const animeCoverListeners: Array<(update: AnimeCoverUpdate) => void> = [];
+    const animeAvailabilityListeners: Array<(availability: AnimeAvailability) => void> = [];
     const unsubscribers: Array<ReturnType<typeof vi.fn>> = [];
 
     function subscribe<T>(listeners: T[], listener: T): () => void {
@@ -88,6 +90,9 @@ export function createMockApi(): MockApiHandle {
         }),
         updateYtdlp: vi.fn(async () => {
             return { ok: true, output: 'Updated' };
+        }),
+        resetYtdlp: vi.fn(async () => {
+            return { ok: true, output: 'Using the bundled yt-dlp' };
         }),
         getAppUpdateState: vi.fn(async () => {
             return APP_UPDATE_IDLE;
@@ -176,6 +181,18 @@ export function createMockApi(): MockApiHandle {
         openAnimeFolder: vi.fn(async () => {
             return undefined;
         }),
+        openAnimeSeriesFolder: vi.fn(async () => {
+            return undefined;
+        }),
+        addAnimeToLibrary: vi.fn(async (): Promise<AnimeAddResponse> => {
+            return { ok: false, reason: 'invalid' };
+        }),
+        downloadMissingAnime: vi.fn(async () => {
+            return undefined;
+        }),
+        renameAnimeSeries: vi.fn(async (): Promise<AnimeRenameSeriesResponse> => {
+            return { ok: true };
+        }),
         setAnimeSeries: vi.fn(async (): Promise<AnimeSeriesResponse> => {
             return { ok: true };
         }),
@@ -200,6 +217,9 @@ export function createMockApi(): MockApiHandle {
         updateAniCli: vi.fn(async () => {
             return { ok: true, output: 'Updated ani-cli' };
         }),
+        resetAniCli: vi.fn(async () => {
+            return { ok: true, output: 'Using the bundled ani-cli' };
+        }),
         openAnimeStream: vi.fn(async (): Promise<{ ok: true; stream: { sessionId: string; url: string; subtitleUrl: string | null } }> => {
             return { ok: true, stream: { sessionId: 's1', url: 'pullwave-stream://p/s1/abc', subtitleUrl: null } };
         }),
@@ -211,6 +231,12 @@ export function createMockApi(): MockApiHandle {
         }),
         listAnimeSchedule: vi.fn(async (): Promise<AnimeScheduleResponse> => {
             return { ok: true, entries: [] };
+        }),
+        checkAnimeAvailability: vi.fn(async (): Promise<AnimeAvailability[]> => {
+            return [];
+        }),
+        onAnimeAvailability: vi.fn((listener: (availability: AnimeAvailability) => void) => {
+            return subscribe(animeAvailabilityListeners, listener);
         }),
         onAnimeJobUpdate: vi.fn((listener: (job: AnimeJob) => void) => {
             return subscribe(animeJobListeners, listener);
@@ -267,6 +293,11 @@ export function createMockApi(): MockApiHandle {
         emitAnimeMigrationProgress: (progress) => {
             animeMigrationListeners.forEach((listener) => {
                 listener(progress);
+            });
+        },
+        emitAnimeAvailability: (availability) => {
+            animeAvailabilityListeners.forEach((listener) => {
+                listener(availability);
             });
         },
         emitAnimeCover: (update) => {

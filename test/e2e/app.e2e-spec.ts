@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import './display';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -31,10 +32,12 @@ interface LaunchOptions {
     useFakeYtdlp?: boolean;
     settings?: Record<string, unknown>;
     env?: Record<string, string>;
+    // Runs before the app starts, with the folder of its data (to leave files there, as an earlier run would have).
+    prepare?: (userData: string) => void;
 }
 
 async function launch(options: LaunchOptions = {}): Promise<Session> {
-    const { useFakeYtdlp = true, settings = {}, env = {} } = options;
+    const { useFakeYtdlp = true, settings = {}, env = {}, prepare } = options;
     const workDir = mkdtempSync(join(tmpdir(), 'pullwave-e2e-'));
     const userData = join(workDir, 'user-data');
     const downloadDir = join(workDir, 'downloads');
@@ -42,6 +45,7 @@ async function launch(options: LaunchOptions = {}): Promise<Session> {
     writeFileSync(logPath, '');
     mkdirSync(userData, { recursive: true });
     writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', verifyLiveEnd: false, ...(useFakeYtdlp ? { ytdlpPath: FAKE_YTDLP } : {}), downloadDir, ...settings }));
+    prepare?.(userData);
     const app = await electron.launch({
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
         env: { ...process.env, FAKE_YTDLP_LOG: logPath, ...env }
@@ -130,6 +134,98 @@ test('shows the detected yt-dlp version and marks the custom path as its source'
     await expect(page.locator('.chip', { hasText: 'ffmpeg' })).toBeVisible();
 });
 
+// A yt-dlp an update would have saved in the data folder, here a script that only says its version (or fails).
+function saveUpdatedYtdlp(userData: string, body: string): string {
+    const path = join(userData, 'bin', 'yt-dlp');
+    mkdirSync(join(userData, 'bin'), { recursive: true });
+    writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    return path;
+}
+
+test.describe('the yt-dlp an update saved', () => {
+    test.skip(!HAS_BUNDLED_BINARIES || process.platform === 'win32', 'needs `npm run fetch-binaries` and a system where a script can stand for yt-dlp');
+    const bundledVersion = (): string => {
+        return execFileSync(join(BUNDLED_DIR, 'yt-dlp'), ['--version'], { encoding: 'utf-8' }).trim();
+    };
+
+    async function launchWith(body: string): Promise<{ run: Session; saved: string }> {
+        let saved = '';
+        const run = await launch({
+            useFakeYtdlp: false,
+            prepare: (userData) => {
+                saved = saveUpdatedYtdlp(userData, body);
+            }
+        });
+        return { run, saved };
+    }
+
+    test('is the one in use, and a button goes back to the one that ships with the app', async () => {
+        const { run, saved } = await launchWith('echo 2999.12.31');
+        try {
+            const chip = run.page.locator('.chip--ok', { hasText: 'yt-dlp 2999.12.31' });
+            await expect(chip).toHaveAttribute('title', `${saved} (updated)`);
+            await openDownloadsSettings(run.page);
+            await expect(run.page.getByText('Installed version: 2999.12.31')).toBeVisible();
+
+            await run.page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' }).click();
+
+            await expect(run.page.locator('.toast--info .toast__message')).toHaveText('Using the yt-dlp that ships with the app again.');
+            await expect(run.page.getByText(`Installed version: ${bundledVersion()}`)).toBeVisible();
+            await expect(run.page.locator('.chip--ok', { hasText: `yt-dlp ${bundledVersion()}` })).toHaveAttribute('title', `${join(BUNDLED_DIR, 'yt-dlp')} (bundled)`);
+            await expect(run.page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toHaveCount(0);
+            expect(existsSync(saved)).toBe(false);
+            expect(existsSync(join(BUNDLED_DIR, 'yt-dlp'))).toBe(true);
+        } finally {
+            await run.app.close();
+            rmSync(resolve(run.userData, '..'), { recursive: true, force: true });
+        }
+    });
+
+    test('is dropped when it is older than the one that ships with the app, which is then used', async () => {
+        const { run, saved } = await launchWith('echo 2020.01.01');
+        try {
+            await expect(run.page.locator('.chip--ok', { hasText: `yt-dlp ${bundledVersion()}` })).toHaveAttribute('title', `${join(BUNDLED_DIR, 'yt-dlp')} (bundled)`);
+            await openDownloadsSettings(run.page);
+            await expect(run.page.getByText(`Installed version: ${bundledVersion()}`)).toBeVisible();
+            await expect(run.page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toHaveCount(0);
+            expect(existsSync(saved)).toBe(false);
+        } finally {
+            await run.app.close();
+            rmSync(resolve(run.userData, '..'), { recursive: true, force: true });
+        }
+    });
+
+    test('is dropped when it no longer runs', async () => {
+        const { run, saved } = await launchWith('exit 1');
+        try {
+            await expect(run.page.locator('.chip--ok', { hasText: `yt-dlp ${bundledVersion()}` })).toBeVisible();
+            expect(existsSync(saved)).toBe(false);
+        } finally {
+            await run.app.close();
+            rmSync(resolve(run.userData, '..'), { recursive: true, force: true });
+        }
+    });
+
+    test('is left alone when it is newer, and when a yt-dlp was chosen in the settings', async () => {
+        const kept = await launchWith('echo 2999.12.31');
+        try {
+            await expect(kept.run.page.locator('.chip--ok', { hasText: 'yt-dlp 2999.12.31' })).toBeVisible();
+            expect(existsSync(kept.saved)).toBe(true);
+        } finally {
+            await kept.run.app.close();
+            rmSync(resolve(kept.run.userData, '..'), { recursive: true, force: true });
+        }
+        const own = await launch({ settings: { ytdlpPath: FAKE_YTDLP }, prepare: (userData) => { saveUpdatedYtdlp(userData, 'echo 2020.01.01'); } });
+        try {
+            await expect(own.page.locator('.chip--ok', { hasText: 'yt-dlp fake-1.0' })).toBeVisible();
+            expect(existsSync(join(own.userData, 'bin', 'yt-dlp'))).toBe(true);
+        } finally {
+            await own.app.close();
+            rmSync(resolve(own.userData, '..'), { recursive: true, force: true });
+        }
+    });
+});
+
 test.describe('bundled binaries', () => {
     test.skip(!HAS_BUNDLED_BINARIES, 'run `npm run fetch-binaries` to enable these tests');
 
@@ -189,27 +285,28 @@ test('downloads a video, says it is complete for five seconds, removes its card 
     await expect(item).toContainText('COMPLETE');
 });
 
-test('says each completion in turn, five seconds each, when downloads finish together', async () => {
+test('stacks the completions, newest on top, each one going away five seconds after it showed up', async () => {
     const { page } = session;
     await page.getByLabel('Link 1', { exact: true }).fill('https://example.com/ok1');
     await page.getByRole('button', { name: '+ ADD LINK' }).click();
     await page.getByLabel('Link 2', { exact: true }).fill('https://example.com/ok2');
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
 
-    const notice = page.locator('.toast--info .toast__message');
-    await expect(notice).toHaveText('Download complete: Fake Video');
+    const notices = page.locator('.toast--info .toast__message', { hasText: 'Download complete: Fake Video' });
+    await expect(notices.first()).toBeVisible();
     const shownAt = Date.now();
     await expectDownloadsComplete(page, 2);
     await expect(page.getByTestId('job-card')).toHaveCount(0);
-    // One notice at a time: the second one waits for the first, so the two take about ten seconds.
-    await expect(notice).toBeHidden({ timeout: 15000 });
-    expect(Date.now() - shownAt).toBeGreaterThan(8500);
+    // Both are on the screen together, one over the other, and each one goes away five seconds after it showed up.
+    await expect(notices).toHaveCount(2);
+    await expect(notices).toHaveCount(0, { timeout: 10000 });
+    expect(Date.now() - shownAt).toBeGreaterThan(4000);
     await page.getByRole('button', { name: 'HISTORY' }).click();
     await expect(page.locator('.history__item--done')).toHaveCount(2);
 });
 
-test('does not offer simultaneous downloads in the settings and always runs one at a time', async () => {
-    const stale = await launch({ settings: { maxConcurrent: 4 } });
+test('does not offer simultaneous downloads in the settings and always runs two at a time', async () => {
+    const stale = await launch({ settings: { maxConcurrent: 5 } });
     try {
         const { page, userData } = stale;
         await openDownloadsSettings(page);
@@ -222,7 +319,7 @@ test('does not offer simultaneous downloads in the settings and always runs one 
         await expect.poll(() => {
             return readSettings(userData).rateLimit;
         }).toBe('2M');
-        expect(readSettings(userData).maxConcurrent).toBe(1);
+        expect(readSettings(userData).maxConcurrent).toBe(2);
     } finally {
         await stale.app.close();
         rmSync(resolve(stale.userData, '..'), { recursive: true, force: true });
@@ -328,14 +425,134 @@ test('a paused download frees its place in the queue for the next one', async ()
     await submitUrl(page, 'https://example.com/slow-first');
     await expect(page.getByTestId('job-card').locator('.badge')).toHaveText('DOWNLOADING');
     await submitUrl(page, 'https://example.com/slow-second');
+    await submitUrl(page, 'https://example.com/slow-third');
     const badges = page.getByTestId('job-card').locator('.badge');
-    // The queue runs one download at a time: the second waits.
-    await expect(badges).toHaveText(['DOWNLOADING', 'QUEUED']);
+    // The queue runs two downloads at a time: the third waits.
+    await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'QUEUED']);
 
     await page.getByTestId('job-card').first().getByRole('button', { name: 'PAUSE' }).click();
 
-    // The paused one is shown after the one that runs now, and before what waits (nothing here).
-    await expect(badges).toHaveText(['DOWNLOADING', 'PAUSED']);
+    // The paused one gives its place to the third, and is shown after the two that run now.
+    await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'PAUSED']);
+});
+
+test('a paused download is still there when the app is opened again, and goes on from it when it is resumed', async () => {
+    const { page, userData, logPath, downloadDir } = session;
+    await submitUrl(page, 'https://example.com/slow-restart');
+    const card = page.getByTestId('job-card');
+    await expect(card.getByText('50.0%')).toBeVisible();
+    await card.getByRole('button', { name: 'PAUSE' }).click();
+    await expect(card.locator('.badge')).toHaveText('PAUSED');
+    await expect.poll(() => {
+        return existsSync(join(userData, 'paused.json'));
+    }).toBe(true);
+    const kept = JSON.parse(readFileSync(join(userData, 'paused.json'), 'utf-8')) as Array<{ job: { url: string; status: string; percent: number }; extras: Record<string, unknown> }>;
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.job).toMatchObject({ url: 'https://example.com/slow-restart', status: 'paused', percent: 50 });
+    const downloadsOf = (): string[][] => {
+        return readCalls(logPath).filter((call) => {
+            return call.includes('https://example.com/slow-restart');
+        });
+    };
+    expect(downloadsOf()).toHaveLength(1);
+
+    await session.app.close();
+    const reopened = await electron.launch({ args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, FAKE_YTDLP_LOG: logPath } });
+    try {
+        const again = await reopened.firstWindow();
+        await again.waitForSelector('.logo');
+        const reopenedCard = again.getByTestId('job-card');
+        await expect(reopenedCard).toHaveCount(1);
+        await expect(reopenedCard.locator('.badge')).toHaveText('PAUSED');
+        await expect(reopenedCard.getByText('50.0%')).toBeVisible();
+        await expect(reopenedCard.getByRole('heading')).toBeVisible();
+        await expect(reopenedCard.getByRole('button', { name: 'RESUME' })).toBeVisible();
+        // Nothing was started by opening the app: the download waits for the user.
+        expect(downloadsOf()).toHaveLength(1);
+
+        await reopenedCard.getByRole('button', { name: 'RESUME' }).click();
+
+        await expect(reopenedCard.locator('.badge')).toHaveText('DOWNLOADING');
+        await expect.poll(() => {
+            return downloadsOf().length;
+        }).toBe(2);
+        // The same address and the same folder: yt-dlp finds the partial file and goes on from it.
+        const [first, second] = downloadsOf();
+        expect(second).toEqual(first);
+        expect(second).toContain('https://example.com/slow-restart');
+        expect(second?.join(' ')).toContain(downloadDir);
+        await expect.poll(() => {
+            return (JSON.parse(readFileSync(join(userData, 'paused.json'), 'utf-8')) as unknown[]).length;
+        }).toBe(0);
+    } finally {
+        await reopened.close();
+    }
+    // The first session is closed already: the afterEach closes it again without failing.
+    session = { ...session, app: { close: async () => {return undefined} } as unknown as ElectronApplication };
+});
+
+test('a paused download that was cancelled is not there when the app is opened again', async () => {
+    const { page, userData } = session;
+    await submitUrl(page, 'https://example.com/slow-cancelled');
+    const card = page.getByTestId('job-card');
+    await expect(card.getByText('50.0%')).toBeVisible();
+    await card.getByRole('button', { name: 'PAUSE' }).click();
+    await expect(card.locator('.badge')).toHaveText('PAUSED');
+    await card.getByRole('button', { name: 'CANCEL' }).click();
+    await expect(card.locator('.badge')).toHaveText('CANCELLED');
+    await expect.poll(() => {
+        return (JSON.parse(readFileSync(join(userData, 'paused.json'), 'utf-8')) as unknown[]).length;
+    }).toBe(0);
+});
+
+test.describe('closing the app with downloads going on', () => {
+    const PARTIAL_NAMES = ['Slow Partial [abc].mp4.part', 'Slow Partial [abc].mp4.ytdl'];
+
+    function present(downloadDir: string, names: string[]): string[] {
+        return names.filter((name) => {
+            return existsSync(join(downloadDir, name));
+        });
+    }
+
+    test('cancels a download that is running and deletes its unfinished files, and only its own', async () => {
+        const own = await launch({ settings: { deletePartialsOnFailure: false } });
+        try {
+            await submitUrl(own.page, 'https://example.com/slowpartial');
+            await expect(own.page.getByTestId('job-card').getByText('50.0%')).toBeVisible();
+            expect(present(own.downloadDir, PARTIAL_NAMES)).toEqual(PARTIAL_NAMES);
+
+            await own.app.close();
+
+            expect(present(own.downloadDir, PARTIAL_NAMES)).toEqual([]);
+            expect(readFileSync(join(own.downloadDir, 'Other Video [xyz].mp4.part'), 'utf-8')).toBe('belongs to another download');
+            // A download that was cut short by closing the app is not kept for the next run.
+            expect(existsSync(join(own.userData, 'paused.json'))).toBe(false);
+        } finally {
+            rmSync(resolve(own.userData, '..'), { recursive: true, force: true });
+        }
+    });
+
+    test('keeps a download that was paused, with its files, and still deletes the ones of the download that runs', async () => {
+        const own = await launch({ settings: { deletePartialsOnFailure: false } });
+        try {
+            await submitUrl(own.page, 'https://example.com/slow-paused');
+            const paused = own.page.getByTestId('job-card').first();
+            await expect(paused.getByText('50.0%')).toBeVisible();
+            await paused.getByRole('button', { name: 'PAUSE' }).click();
+            await expect(paused.locator('.badge')).toHaveText('PAUSED');
+            await submitUrl(own.page, 'https://example.com/slowpartial');
+            await expect(own.page.getByTestId('job-card').nth(1).getByText('50.0%')).toBeVisible();
+
+            await own.app.close();
+
+            expect(present(own.downloadDir, PARTIAL_NAMES)).toEqual([]);
+            const kept = JSON.parse(readFileSync(join(own.userData, 'paused.json'), 'utf-8')) as Array<{ job: { url: string; status: string } }>;
+            expect(kept).toHaveLength(1);
+            expect(kept[0]?.job).toMatchObject({ url: 'https://example.com/slow-paused', status: 'paused' });
+        } finally {
+            rmSync(resolve(own.userData, '..'), { recursive: true, force: true });
+        }
+    });
 });
 
 test('shows the error on the link row for an invalid URL, keeps it for editing and does not create a job', async () => {
@@ -974,11 +1191,25 @@ test.describe('themes', () => {
         await expect(page.getByLabel('Theme')).toHaveValue('device');
     });
 
-    test('offers device, cyberpunk, dark and light', async () => {
+    test('offers every theme', async () => {
         const { page } = session;
         await openGlobalSettings(page);
         const options = await page.getByLabel('Theme').locator('option').allTextContents();
-        expect(options).toEqual(['Device (follows the system)', 'Cyberpunk (neon)', 'Dark', 'Light']);
+        expect(options).toEqual([
+            'Device (follows the system)',
+            'Cyberpunk (neon)',
+            'Synthwave (neon)',
+            'Terminal (green)',
+            'Dark',
+            'Tokyo Night',
+            'Nord',
+            'Dracula',
+            'Gruvbox',
+            'AMOLED (pure black)',
+            'High contrast',
+            'Light',
+            'Sakura (pink, light)'
+        ]);
     });
 
     test('choosing a theme changes the look right away and saves it', async () => {
@@ -1016,7 +1247,7 @@ test.describe('themes', () => {
     test('no theme has a neon glow that follows the mouse, the cyberpunk one included', async () => {
         const { page } = session;
         await openGlobalSettings(page);
-        for (const theme of ['cyberpunk', 'dark', 'light']) {
+        for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura']) {
             await page.getByLabel('Theme').selectOption(theme);
             await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
             await page.mouse.move(300, 200);
@@ -1025,6 +1256,49 @@ test.describe('themes', () => {
             expect(await glowOf(page)).toEqual({ attribute: null, x: '', y: '', layer: 'none', image: 'none' });
         }
     });
+
+    // The background each theme paints (the --bg of its block in themes.css, or of the :root of cyberpunk.css), as the browser writes it.
+    const THEME_BACKGROUNDS: Array<[string, string, 'neon' | 'flat']> = [
+        ['cyberpunk', 'rgb(7, 6, 15)', 'neon'],
+        ['synthwave', 'rgb(18, 12, 42)', 'neon'],
+        ['terminal', 'rgb(2, 10, 4)', 'neon'],
+        ['dark', 'rgb(22, 24, 29)', 'flat'],
+        ['tokyo-night', 'rgb(26, 27, 38)', 'flat'],
+        ['nord', 'rgb(46, 52, 64)', 'flat'],
+        ['dracula', 'rgb(40, 42, 54)', 'flat'],
+        ['gruvbox', 'rgb(40, 40, 40)', 'flat'],
+        ['amoled', 'rgb(0, 0, 0)', 'flat'],
+        ['high-contrast', 'rgb(0, 0, 0)', 'flat'],
+        ['light', 'rgb(243, 244, 247)', 'flat'],
+        ['sakura', 'rgb(253, 246, 248)', 'flat']
+    ];
+
+    for (const [theme, background, style] of THEME_BACKGROUNDS) {
+        test(`the ${theme} theme can be chosen: it paints its background, takes the ${style} style and is saved`, async () => {
+            const { page, userData } = session;
+            await openGlobalSettings(page);
+
+            await page.getByLabel('Theme').selectOption(theme);
+
+            await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+            await expect(page.locator('html')).toHaveAttribute('data-theme-style', style);
+            expect(await backgroundOf(page)).toBe(background);
+            const look = await page.evaluate(() => {
+                return {
+                    scanlines: getComputedStyle(document.body, '::after').backgroundImage,
+                    logoGlow: getComputedStyle(document.querySelector('.logo') as Element).textShadow
+                };
+            });
+            if (style === 'flat') {
+                expect(look).toEqual({ scanlines: 'none', logoGlow: 'none' });
+            } else {
+                expect(look.scanlines).toContain('repeating-linear-gradient');
+                expect(look.logoGlow).not.toBe('none');
+            }
+            await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 6000 });
+            expect(readSettings(userData).theme).toBe(theme);
+        });
+    }
 
     test('a fixed theme ignores the system mode', async () => {
         const { page } = session;
@@ -1069,6 +1343,50 @@ test.describe('themes', () => {
             expect(readSettings(userData)).toMatchObject({ theme: 'cyberpunk', downloadDir });
         } finally {
             await reopened.close();
+        }
+    });
+});
+
+test.describe('the tab the app opens on', () => {
+    test('is the video downloader by default, and the setting offers the two tabs', async () => {
+        const { page } = session;
+        await expect(page.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
+        await openGlobalSettings(page);
+        await expect(page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
+        expect(await page.getByLabel('Open on', { exact: true }).locator('option').allTextContents()).toEqual(['VIDEO DOWNLOADER', 'ANIME']);
+        await expect(page.getByText('The tab the app shows when it starts. If the anime section is not available, the video downloader opens.')).toBeVisible();
+    });
+
+    test('choosing the anime saves it right away, without changing the tab that is open', async () => {
+        const { page, userData } = session;
+        await openGlobalSettings(page);
+        await page.getByLabel('Open on', { exact: true }).selectOption('anime');
+
+        await expect.poll(() => {
+            return readSettings(userData).startTab;
+        }).toBe('anime');
+        await expect(page.getByRole('button', { name: 'SETTINGS (GLOBAL)' })).toHaveAttribute('aria-current', 'page');
+    });
+
+    test('opens on the anime when the settings say so', async () => {
+        const own = await launch({ settings: { startTab: 'anime' } });
+        try {
+            await expect(own.page.getByRole('button', { name: 'ANIME', exact: true })).toHaveAttribute('aria-current', 'page');
+            await expect(own.page.getByRole('button', { name: 'VIDEO DOWNLOADER' })).not.toHaveAttribute('aria-current');
+            await expect(own.page.getByLabel('Link 1')).toHaveCount(0);
+        } finally {
+            await own.app.close();
+        }
+    });
+
+    test('opens on the video downloader when the settings hold something that is not a tab', async () => {
+        const own = await launch({ settings: { startTab: 'history' } });
+        try {
+            await expect(own.page.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
+            await openGlobalSettings(own.page);
+            await expect(own.page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
+        } finally {
+            await own.app.close();
         }
     });
 });
@@ -1196,7 +1514,7 @@ test.describe('languages', () => {
     });
 });
 
-test.describe('settings layout', () => {
+test.describe('settings layout @resize', () => {
     interface PanelBox {
         legend: string;
         left: number;

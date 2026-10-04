@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS } from '@shared/constants';
+import { DEFAULT_SETTINGS, THEMES } from '@shared/constants';
 import { sanitizeDownloadOptions, sanitizeSettings } from '@main/services/settingsSanitizer';
 
 describe('sanitizeSettings', () => {
@@ -32,7 +32,7 @@ describe('sanitizeSettings', () => {
             autoSubtitles: true,
             embedSubtitles: true,
             rateLimit: '2M',
-            maxConcurrent: 1,
+            maxConcurrent: 2,
             ytdlpPath: '/opt/yt-dlp',
             ffmpegPath: '/opt/ffmpeg',
             jsRuntime: 'node:/usr/bin/node',
@@ -42,6 +42,7 @@ describe('sanitizeSettings', () => {
             waitForLive: true,
             theme: 'light',
             language: 'ja',
+            startTab: 'anime',
             verifyLiveEnd: false,
             verifyLiveEndSeconds: 45,
             extraArgs: '--no-mtime',
@@ -51,6 +52,17 @@ describe('sanitizeSettings', () => {
             animeSubtitles: 'Portuguese'
         };
         expect(sanitizeSettings(valid)).toEqual(valid);
+    });
+
+    it('opens on the video downloader by default, and keeps the anime tab when it is the one saved', () => {
+        expect(DEFAULT_SETTINGS.startTab).toBe('downloads');
+        expect(sanitizeSettings({})).toMatchObject({ startTab: 'downloads' });
+        expect(sanitizeSettings({ startTab: 'anime' })).toMatchObject({ startTab: 'anime' });
+        expect(sanitizeSettings({ startTab: 'downloads' })).toMatchObject({ startTab: 'downloads' });
+    });
+
+    it.each(['settings', 'ANIME', 7, null, true])('falls back to the video downloader when the start tab is %s', (startTab) => {
+        expect(sanitizeSettings({ startTab })).toMatchObject({ startTab: 'downloads' });
     });
 
     it('has the anime settings default to the best quality, subtitled, in the default folder', () => {
@@ -137,7 +149,7 @@ describe('sanitizeSettings', () => {
         expect(result.cookiesBrowserDir).toBe('');
         expect(result.downloadDir).toBe('');
         expect(result.maxTitleLength).toBe(80);
-        expect(result.maxConcurrent).toBe(1);
+        expect(result.maxConcurrent).toBe(2);
     });
 
     it('checks the end of live streams for 10 seconds by default', () => {
@@ -176,13 +188,13 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ maxTitleLength: 80.6 }).maxTitleLength).toBe(81);
     });
 
-    it('always runs one download at a time, whatever the saved value is', () => {
-        expect(DEFAULT_SETTINGS.maxConcurrent).toBe(1);
+    it('always runs two downloads at a time, whatever the saved value is', () => {
+        expect(DEFAULT_SETTINGS.maxConcurrent).toBe(2);
         [0, 1, 2, 3, 5, 50, -4, 2.5, NaN, '3', null, undefined].forEach((value) => {
-            expect(sanitizeSettings({ maxConcurrent: value }).maxConcurrent).toBe(1);
+            expect(sanitizeSettings({ maxConcurrent: value }).maxConcurrent).toBe(2);
         });
-        expect(sanitizeSettings({}).maxConcurrent).toBe(1);
-        expect(sanitizeSettings(null).maxConcurrent).toBe(1);
+        expect(sanitizeSettings({}).maxConcurrent).toBe(2);
+        expect(sanitizeSettings(null).maxConcurrent).toBe(2);
     });
 
     it('trims string values', () => {
@@ -200,7 +212,7 @@ describe('sanitizeSettings', () => {
 });
 
 describe('sanitizeSettings theme', () => {
-    it.each(['device', 'cyberpunk', 'dark', 'light'])('keeps the %s theme', (theme) => {
+    it.each(['device', 'cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'])('keeps the %s theme', (theme) => {
         expect(sanitizeSettings({ theme }).theme).toBe(theme);
     });
 
@@ -209,6 +221,12 @@ describe('sanitizeSettings theme', () => {
         expect(sanitizeSettings({}).theme).toBe('device');
         expect(sanitizeSettings({ theme: 'solarized' }).theme).toBe('device');
         expect(sanitizeSettings({ theme: 3 }).theme).toBe('device');
+        expect(sanitizeSettings({ theme: 'Tokyo Night' }).theme).toBe('device');
+        expect(sanitizeSettings({ theme: 'tokyo_night' }).theme).toBe('device');
+    });
+
+    it('offers the thirteen themes, in the order of the list', () => {
+        expect(THEMES).toEqual(['device', 'cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura']);
     });
 });
 

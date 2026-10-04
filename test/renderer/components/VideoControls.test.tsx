@@ -165,6 +165,206 @@ describe('VideoControls', () => {
         expect(video.currentTime).toBe(10);
     });
 
+    describe('keyboard shortcuts', () => {
+        function pressOn(target: Element, init: KeyboardEventInit): boolean {
+            return fireEvent.keyDown(target, init);
+        }
+
+        function setVideoState(video: HTMLVideoElement, values: { currentTime?: number; volume?: number; muted?: boolean }): void {
+            Object.assign(video, values);
+        }
+
+        it('plays and pauses with the space bar from anywhere on the page', () => {
+            const { video, play, pause } = setup();
+
+            const firstPress = pressOn(document.body, { key: ' ' });
+            expect(firstPress).toBe(false);
+            expect(play).toHaveBeenCalledTimes(1);
+            expect(pause).not.toHaveBeenCalled();
+
+            pressOn(document.body, { key: ' ' });
+            expect(pause).toHaveBeenCalledTimes(1);
+            expect(play).toHaveBeenCalledTimes(1);
+            expect(video.paused).toBe(true);
+        });
+
+        it('plays with the space bar when the focus is on the video stage', () => {
+            const { video, play } = setup();
+            pressOn(video.parentElement as HTMLElement, { key: ' ' });
+            expect(play).toHaveBeenCalledTimes(1);
+        });
+
+        it('plays with the space bar when the focus is on the seek slider', () => {
+            const { play } = setup();
+            pressOn(screen.getByRole('slider', { name: 'Seek' }), { key: ' ' });
+            expect(play).toHaveBeenCalledTimes(1);
+        });
+
+        it('plays with the space bar even when a button of the bar has the focus, without pressing it', () => {
+            const { video, play } = setup();
+            const mute = screen.getByRole('button', { name: 'Mute' });
+            mute.focus();
+            expect(pressOn(mute, { key: ' ' })).toBe(false);
+            expect(fireEvent.keyUp(mute, { key: ' ' })).toBe(false);
+            expect(play).toHaveBeenCalledTimes(1);
+            expect(video.muted).toBe(false);
+        });
+
+        it('plays with the space bar when a button outside the bar has the focus, like the close button of the player', () => {
+            const { play } = setup();
+            const close = document.createElement('button');
+            document.body.appendChild(close);
+            close.focus();
+            expect(pressOn(close, { key: ' ' })).toBe(false);
+            expect(fireEvent.keyUp(close, { key: ' ' })).toBe(false);
+            expect(play).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves the space bar to a focused button of the settings, which is pressed by it', async () => {
+            const { play, pause } = setup();
+            openedPlayerSettings();
+            const larger = screen.getByRole('button', { name: 'Larger subtitles' });
+            expect(pressOn(larger, { key: ' ' })).toBe(true);
+            expect(fireEvent.keyUp(larger, { key: ' ' })).toBe(true);
+            expect(play).not.toHaveBeenCalled();
+            expect(pause).not.toHaveBeenCalled();
+        });
+
+        it('does not hold back the release of other keys', () => {
+            setup();
+            expect(fireEvent.keyUp(document.body, { key: 'a' })).toBe(true);
+            expect(fireEvent.keyUp(document.body, { key: ' ', ctrlKey: true })).toBe(true);
+        });
+
+        it.each([
+            ['ArrowRight', 50, 55],
+            ['ArrowLeft', 50, 45],
+            ['ArrowLeft', 2, 0],
+            ['ArrowRight', 118, 120]
+        ])('moves 5 seconds with %s from %s to %s from anywhere on the page', (key, from, to) => {
+            const { video } = setup();
+            setVideoState(video, { currentTime: from });
+            const notPrevented = pressOn(document.body, { key });
+            expect(notPrevented).toBe(false);
+            expect(video.currentTime).toBe(to);
+        });
+
+        it.each([
+            ['ArrowUp', 0.5, 0.55],
+            ['ArrowDown', 0.5, 0.45],
+            ['ArrowUp', 0.98, 1],
+            ['ArrowDown', 0.03, 0],
+            ['ArrowUp', 1, 1],
+            ['ArrowDown', 0, 0]
+        ])('changes the volume with %s from %s to %s', (key, from, to) => {
+            const { video } = setup();
+            setVideoState(video, { volume: from });
+            const notPrevented = pressOn(document.body, { key });
+            expect(notPrevented).toBe(false);
+            expect(video.volume).toBe(to);
+            expect(video.muted).toBe(to === 0);
+        });
+
+        it('does not drift from zero after many steps down', () => {
+            const { video } = setup();
+            setVideoState(video, { volume: 0.15 });
+            pressOn(document.body, { key: 'ArrowDown' });
+            pressOn(document.body, { key: 'ArrowDown' });
+            pressOn(document.body, { key: 'ArrowDown' });
+            expect(video.volume).toBe(0);
+            expect(video.muted).toBe(true);
+        });
+
+        it('raises the volume from silence and unmutes when the video was muted', () => {
+            const { video } = setup();
+            setVideoState(video, { volume: 0.8, muted: true });
+            pressOn(document.body, { key: 'ArrowUp' });
+            expect(video.volume).toBe(0.05);
+            expect(video.muted).toBe(false);
+        });
+
+        it('moves 5 seconds with the arrows on the seek slider', () => {
+            const { video } = setup();
+            setVideoState(video, { currentTime: 30 });
+            const notPrevented = pressOn(screen.getByRole('slider', { name: 'Seek' }), { key: 'ArrowRight' });
+            expect(notPrevented).toBe(false);
+            expect(video.currentTime).toBe(35);
+        });
+
+        it('leaves the arrows to the volume slider, which moves by them', () => {
+            const { video } = setup();
+            setVideoState(video, { currentTime: 30, volume: 0.5 });
+            const notPrevented = pressOn(screen.getByRole('slider', { name: 'Volume' }), { key: 'ArrowUp' });
+            expect(notPrevented).toBe(true);
+            expect(video.currentTime).toBe(30);
+            expect(video.volume).toBe(0.5);
+        });
+
+        it.each([' ', 'ArrowRight', 'ArrowUp'])('leaves %s to a text field', (key) => {
+            const { video, play } = setup();
+            setVideoState(video, { currentTime: 30, volume: 0.5 });
+            const field = document.createElement('input');
+            field.type = 'text';
+            document.body.appendChild(field);
+            const notPrevented = pressOn(field, { key });
+            expect(notPrevented).toBe(true);
+            expect(play).not.toHaveBeenCalled();
+            expect(video.currentTime).toBe(30);
+            expect(video.volume).toBe(0.5);
+        });
+
+        it('leaves the keys to a select and to a text area', () => {
+            const { video, play } = setup();
+            setVideoState(video, { currentTime: 30 });
+            const select = document.createElement('select');
+            const area = document.createElement('textarea');
+            document.body.append(select, area);
+            expect(pressOn(select, { key: 'ArrowRight' })).toBe(true);
+            expect(pressOn(area, { key: ' ' })).toBe(true);
+            expect(play).not.toHaveBeenCalled();
+            expect(video.currentTime).toBe(30);
+        });
+
+        it('leaves the keys to an editable element', () => {
+            const { play } = setup();
+            const editable = document.createElement('div');
+            Object.defineProperty(editable, 'isContentEditable', { value: true });
+            document.body.appendChild(editable);
+            expect(pressOn(editable, { key: ' ' })).toBe(true);
+            expect(play).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['ctrlKey', 'ArrowRight'],
+            ['altKey', 'ArrowLeft'],
+            ['metaKey', ' '],
+            ['shiftKey', 'ArrowUp']
+        ])('ignores %s combined with %s', (modifier, key) => {
+            const { video, play } = setup();
+            setVideoState(video, { currentTime: 30, volume: 0.5 });
+            const notPrevented = pressOn(document.body, { key, [modifier]: true });
+            expect(notPrevented).toBe(true);
+            expect(play).not.toHaveBeenCalled();
+            expect(video.currentTime).toBe(30);
+            expect(video.volume).toBe(0.5);
+        });
+
+        it('does nothing for a duration that is not known yet when seeking', () => {
+            const { video } = setup(OPTIONS, Number.NaN);
+            setVideoState(video, { currentTime: 0 });
+            pressOn(document.body, { key: 'ArrowRight' });
+            expect(video.currentTime).toBe(0);
+        });
+
+        it('stops listening when the controls are removed', () => {
+            const { play, unmount } = setup();
+            unmount();
+            const notPrevented = pressOn(document.body, { key: ' ' });
+            expect(notPrevented).toBe(true);
+            expect(play).not.toHaveBeenCalled();
+        });
+    });
+
     it('mutes and unmutes the video', async () => {
         const { video } = setup();
         const user = userEvent.setup();

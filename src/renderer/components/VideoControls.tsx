@@ -1,10 +1,11 @@
-import { useEffect, useState, type CSSProperties, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useState, type CSSProperties, type RefObject } from 'react';
 import { useFullscreenIdle } from '../hooks/useFullscreenIdle';
 import { useSubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useVideoBuffer } from '../hooks/useVideoBuffer';
 import { useTranslator } from '../i18n/useTranslator';
 import { seekHover, type SeekHover } from './seekHover';
 import { hasPlayerSettings, PlayerSettings, type SubtitleOption } from './PlayerSettings';
+import { clamp, SEEK_STEP_SECONDS, shortcutOf, VOLUME_STEP, type PlayerShortcut } from './playerShortcuts';
 
 // Kept here, where the player's other files already import it from.
 export type { SubtitleOption } from './PlayerSettings';
@@ -26,7 +27,6 @@ interface PlaybackState {
 }
 
 const INITIAL_STATE: PlaybackState = { paused: true, currentTime: 0, duration: 0, volume: 1, muted: false };
-const SEEK_STEP_SECONDS = 5;
 // A single click waits this long for a second one, so a double click does not also pause the video.
 const DOUBLE_CLICK_WAIT_MS = 250;
 const SYNC_EVENTS = ['play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'seeked', 'ended'];
@@ -75,6 +75,33 @@ function togglePlayback(element: HTMLVideoElement): void {
         });
     } else {
         element.pause();
+    }
+}
+
+// Rounded to the hundredth, so repeated steps do not drift away from the slider's marks (or from zero, which is what mutes).
+function steppedVolume(value: number): number {
+    return Math.round(clamp(value, 0, 1) * 100) / 100;
+}
+
+function runShortcut(element: HTMLVideoElement, shortcut: PlayerShortcut): void {
+    const duration = Number.isFinite(element.duration) ? element.duration : 0;
+    const volume = element.muted ? 0 : element.volume;
+    switch (shortcut) {
+        case 'toggle-play':
+            togglePlayback(element);
+            return;
+        case 'seek-forward':
+            setCurrentTime(element, clamp(element.currentTime + SEEK_STEP_SECONDS, 0, duration));
+            return;
+        case 'seek-backward':
+            setCurrentTime(element, clamp(element.currentTime - SEEK_STEP_SECONDS, 0, duration));
+            return;
+        case 'volume-up':
+            setVolume(element, steppedVolume(volume + VOLUME_STEP));
+            return;
+        case 'volume-down':
+            setVolume(element, steppedVolume(volume - VOLUME_STEP));
+            return;
     }
 }
 
@@ -164,6 +191,34 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         };
     }, [video]);
 
+    // The keys work wherever the focus is on the page (the video is not a field, so a click on it leaves it nowhere in the bar).
+    useEffect(() => {
+        const element = video.current;
+        if (!element) {
+            return undefined;
+        }
+        const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+            const shortcut = shortcutOf(event);
+            if (shortcut === null) {
+                return;
+            }
+            event.preventDefault();
+            runShortcut(element, shortcut);
+        };
+        // A button is pressed when the space is released, so that is held back too, or it would press the focused button after the pause.
+        const onKeyUp = (event: globalThis.KeyboardEvent): void => {
+            if (event.key === ' ' && shortcutOf(event) !== null) {
+                event.preventDefault();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+        };
+    }, [video]);
+
     // Shows the chosen subtitle and hides the others. Run again when the list changes: the tracks are added with it. The browser picks
     // subtitles by itself too (by language, once the video's data is there), possibly after the choice was applied and not only the
     // one that was chosen, so whenever the tracks change the choice is put back.
@@ -228,15 +283,6 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         setHover(found === null ? null : { time: found.time, offset: input.offsetLeft + found.offset });
     }
 
-    function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') {
-            return;
-        }
-        const direction = event.key === 'ArrowRight' ? 1 : -1;
-        seekTo(Math.min(Math.max(state.currentTime + direction * SEEK_STEP_SECONDS, 0), state.duration));
-        event.preventDefault();
-    }
-
     const silent = state.muted || state.volume === 0;
     const seekPercent = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
     const volumePercent = silent ? 0 : state.volume * 100;
@@ -248,7 +294,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     <span className="player__spinner" aria-hidden="true" />
                 </div>
             )}
-            <div className="player__controls" data-playing={!state.paused} data-hidden={hidden} onKeyDown={onKeyDown}>
+            <div className="player__controls" data-playing={!state.paused} data-hidden={hidden}>
                 <button
                     type="button"
                     className="player__button"

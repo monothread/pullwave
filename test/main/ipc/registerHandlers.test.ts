@@ -5,7 +5,7 @@ import { registerHandlers, type IpcMainLike } from '@main/ipc/registerHandlers';
 import { applyLanguage } from '@main/services/language';
 import { checkBinaries } from '@main/services/binaryLocator';
 import { BinaryResolver } from '@main/services/binaryResolver';
-import { updateYtdlp } from '@main/services/updater';
+import { discardOutdatedUpdate, resetYtdlp, updateYtdlp } from '@main/services/updater';
 import { HistoryStore } from '@main/services/historyStore';
 import type { AppUpdateService } from '@main/services/appUpdateService';
 import type { QueueManager } from '@main/services/queueManager';
@@ -28,6 +28,12 @@ vi.mock('@main/services/updater', () => {
     return {
         updateYtdlp: vi.fn(async () => {
             return { ok: true, output: 'updated' };
+        }),
+        resetYtdlp: vi.fn(() => {
+            return { ok: true, output: 'reset' };
+        }),
+        discardOutdatedUpdate: vi.fn(async () => {
+            return false;
         })
     };
 });
@@ -118,7 +124,7 @@ describe('registerHandlers', () => {
         expect([...handlers.keys()].sort()).toEqual(
             [
                 IPC.settingsGet, IPC.settingsSave, IPC.queueAdd, IPC.queueList, IPC.queueCancel, IPC.queuePause, IPC.queueResume, IPC.queueStop, IPC.queueRetry, IPC.queueClearPartials, IPC.queueRemove,
-                IPC.queueClearFinished, IPC.historyList, IPC.historyClear, IPC.binariesCheck, IPC.ytdlpUpdate, IPC.appUpdateGet, IPC.appUpdateCheck, IPC.appUpdateDownload, IPC.appUpdateInstall, IPC.traySupport, IPC.browsersList, IPC.streamFind, IPC.streamCancel, IPC.streamDownload, IPC.dialogChooseDir,
+                IPC.queueClearFinished, IPC.historyList, IPC.historyClear, IPC.binariesCheck, IPC.ytdlpUpdate, IPC.ytdlpReset, IPC.appUpdateGet, IPC.appUpdateCheck, IPC.appUpdateDownload, IPC.appUpdateInstall, IPC.traySupport, IPC.browsersList, IPC.streamFind, IPC.streamCancel, IPC.streamDownload, IPC.dialogChooseDir,
                 IPC.shellShowItem
             ].sort()
         );
@@ -425,6 +431,44 @@ describe('registerHandlers', () => {
         const { call, resolver } = setup();
         await expect(call(IPC.ytdlpUpdate)).resolves.toEqual({ ok: true, output: 'updated' });
         expect(updateYtdlp).toHaveBeenCalledWith(DEFAULT_SETTINGS, resolver);
+    });
+
+    it('goes back to the yt-dlp that ships with the app with the resolver', () => {
+        vi.mocked(resetYtdlp).mockClear();
+        const { call, resolver } = setup();
+        expect(call(IPC.ytdlpReset)).toEqual({ ok: true, output: 'reset' });
+        expect(resetYtdlp).toHaveBeenCalledTimes(1);
+        expect(resetYtdlp).toHaveBeenCalledWith(resolver);
+    });
+
+    it('drops an outdated updated yt-dlp once, before the binaries are looked at for the first time', async () => {
+        vi.mocked(discardOutdatedUpdate).mockClear();
+        const order: string[] = [];
+        vi.mocked(discardOutdatedUpdate).mockImplementationOnce(async () => {
+            order.push('discard');
+            return true;
+        });
+        const check = async (): Promise<Awaited<ReturnType<typeof checkBinaries>>> => {
+            order.push('check');
+            return { ytdlp: { found: true, path: 'yt-dlp', version: '1', source: 'bundled' }, ffmpeg: { found: false, path: 'ffmpeg', version: null, source: 'system' } };
+        };
+        vi.mocked(checkBinaries).mockImplementationOnce(check).mockImplementationOnce(check);
+        const { call, resolver } = setup();
+
+        await call(IPC.binariesCheck);
+        await call(IPC.binariesCheck);
+
+        expect(order).toEqual(['discard', 'check', 'check']);
+        expect(discardOutdatedUpdate).toHaveBeenCalledTimes(1);
+        expect(discardOutdatedUpdate).toHaveBeenCalledWith(DEFAULT_SETTINGS, resolver);
+    });
+
+    it('looks at the binaries even when dropping the outdated one fails', async () => {
+        vi.mocked(discardOutdatedUpdate).mockRejectedValueOnce(new Error('cannot run'));
+        vi.mocked(checkBinaries).mockClear();
+        const { call } = setup();
+        await expect(call(IPC.binariesCheck)).resolves.toMatchObject({ ytdlp: { found: true } });
+        expect(checkBinaries).toHaveBeenCalledTimes(1);
     });
 
     it('exposes the app update state and actions', async () => {

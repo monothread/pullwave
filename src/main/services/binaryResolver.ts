@@ -30,6 +30,21 @@ export class BinaryResolver {
         return join(this.locations.userBinDir, executableName(YTDLP_COMMAND, this.platform));
     }
 
+    // The yt-dlp that ships with the app, whether it is there or not.
+    get bundledYtdlpPath(): string {
+        return join(this.locations.bundledDir, executableName(YTDLP_COMMAND, this.platform));
+    }
+
+    // Whether the yt-dlp that ships with the app is there.
+    hasBundledYtdlp(): boolean {
+        return this.exists(this.bundledYtdlpPath);
+    }
+
+    // Whether an update saved its own yt-dlp (the one the app then prefers to the bundled one).
+    hasUpdatedYtdlp(): boolean {
+        return this.exists(this.userYtdlpPath);
+    }
+
     get userBinDir(): string {
         return this.locations.userBinDir;
     }

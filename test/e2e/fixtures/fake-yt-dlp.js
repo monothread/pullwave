@@ -153,6 +153,17 @@ if (url.includes('partialfail') || url.includes('livefail')) {
             process.exit(0);
         });
     }
+} else if (url.includes('slowpartial')) {
+    // A download that is still going on: its unfinished files are in the folder, as yt-dlp keeps them while it downloads.
+    const finalPath = `${downloadDir}/Slow Partial [abc].mp4`;
+    fs.mkdirSync(downloadDir, { recursive: true });
+    process.stdout.write(`CYBERINFO|False|${finalPath}\n`);
+    fs.writeFileSync(`${finalPath}.part`, 'unfinished');
+    fs.writeFileSync(`${finalPath}.ytdl`, '{}');
+    fs.writeFileSync(`${downloadDir}/Other Video [xyz].mp4.part`, 'belongs to another download');
+    setInterval(() => {
+        progress(50);
+    }, 200);
 } else if (url.includes('livestream')) {
     // Like a real live recording: announces it is live, grows a .part file and, on SIGINT, finishes and keeps the file.
     const finalPath = `${downloadDir}/Live Show [abc].mp4`;

@@ -46,7 +46,8 @@ export type AnimeSubtitleSetting = (typeof ANIME_SUBTITLE_SETTINGS)[number];
 
 // An episode in the library. `queued` and `downloading` only live while the app is open: after a restart what was
 // unfinished is marked `error`.
-export type AnimeEpisodeStatus = 'queued' | 'downloading' | 'paused' | 'done' | 'error' | 'cancelled';
+// `idle` is an episode the anime has in the library that was not downloaded (yet).
+export type AnimeEpisodeStatus = 'idle' | 'queued' | 'downloading' | 'paused' | 'done' | 'error' | 'cancelled';
 
 export interface AnimeRecord {
     id: number;
@@ -158,6 +159,9 @@ export interface AnimeDownloadRequest {
 export interface AnimeScheduleEntry {
     anilistId: number;
     title: string;
+    // The two names AniList gives the anime (either can be missing): the availability in the source is checked by both, the english first.
+    english: string | null;
+    romaji: string | null;
     // Every name the anime is known by, without repeating any (the title first): they are what the anime is looked up by in the search.
     names: string[];
     episode: number;
@@ -165,6 +169,15 @@ export interface AnimeScheduleEntry {
     airingAt: number;
     coverUrl: string | null;
 }
+
+// What the availability of an anime of the schedule is checked by: its id and its two names.
+export type AnimeAvailabilityTarget = Pick<AnimeScheduleEntry, 'anilistId' | 'english' | 'romaji'>;
+
+// Whether the source has the anime of the schedule: `available` with the name that found it (the english one when both do), the number of
+// the result and its title; `unavailable` when no name found it; `unknown` when it could not be checked (nothing was kept of it).
+export type AnimeAvailability =
+    | { anilistId: number; state: 'available'; query: string; index: number; title: string }
+    | { anilistId: number; state: 'unavailable' | 'unknown' };
 
 // The stretch of time to list, in seconds since the epoch: from its first moment up to (not including) the end. What was listed in the
 // last day is answered from what is kept, unless `refresh` asks AniList again.
@@ -182,7 +195,33 @@ export interface AnimeCoverUpdate {
     url: string;
 }
 
-export type AnimeSeriesResponse ={ ok: true } | { ok: false; reason: 'invalid' | 'season-taken' };
+// `suggested` is the first season number the series does not have (the last one plus one), to give the one that was taken.
+export type AnimeSeriesResponse = { ok: true } | { ok: false; reason: 'invalid' } | { ok: false; reason: 'season-taken'; suggested: number };
+
+// What it takes to put an anime in the library with all its episodes, none of them downloaded.
+export interface AnimeAddRequest {
+    title: string;
+    query: string;
+    index: number;
+    audio: AnimeAudio;
+    // Every episode the source lists for it.
+    episodes: string[];
+    // The series and season it goes under; the name it is shown with in the series (null: none).
+    series: string | null;
+    season: number | null;
+    seasonName: string | null;
+}
+
+// `busy` is the time the anime folder is being migrated.
+export type AnimeAddResponse = { ok: true; anime: LibraryAnime } | { ok: false; reason: 'invalid' | 'busy' } | { ok: false; reason: 'season-taken'; suggested: number };
+
+// Renaming a series changes it for all the anime that are in it. When the name is one that another series has already, the seasons of
+// both are one series from then on, so a season number that both have is refused: `anime` is the one that clashes, with the season that
+// is taken, and `suggested` is the first season number the other series does not have.
+export type AnimeRenameSeriesResponse =
+    | { ok: true }
+    | { ok: false; reason: 'invalid' }
+    | { ok: false; reason: 'season-taken'; anime: string; season: number; suggested: number };
 
 export type AnimeDownloadResponse = { ok: true; anime: LibraryAnime } | { ok: false; message: string };
 

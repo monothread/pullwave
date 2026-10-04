@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { AniError, AnimeAudio, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, LibraryAnime } from '@shared/anime';
+import type { AniError, AnimeAudio, AnimeAvailability, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, LibraryAnime } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
+import { readScheduleChoice, saveScheduleTimeZone, type AnimeScheduleView } from './scheduleChoice';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
 import { resolveAppLanguage } from '../i18n/language';
 import { useAppStore } from './appStore';
@@ -26,8 +27,8 @@ export interface AnimeSearchState {
 // time the card is shown).
 export type AnimeCoverState = { status: 'found'; url: string } | { status: 'none' } | { status: 'failed' };
 
-// How much of the schedule is shown: the day of today, or the week that starts with it.
-export type AnimeScheduleView = 'day' | 'week';
+// Kept with the choice of the user, which is what it is read and saved as.
+export type { AnimeScheduleView } from './scheduleChoice';
 
 // The episodes that air today or this week, by the days of a time zone.
 export interface AnimeScheduleState {
@@ -81,6 +82,8 @@ export interface AnimeState {
     schedule: AnimeScheduleState;
     // What is known so far about the cover of each anime, by its title (see `coverKey`).
     covers: Record<string, AnimeCoverState>;
+    // Whether the source has each anime of the schedule, by its id: what is not here yet is still being checked.
+    availability: Record<number, AnimeAvailability>;
     selection: AnimeSelection | null;
     playing: PlayingEpisode | null;
     streaming: StreamingEpisode | null;
@@ -88,6 +91,8 @@ export interface AnimeState {
     libraryFocus: number | null;
     init: () => Promise<() => void>;
     updateCli: () => Promise<void>;
+    // Goes back to the ani-cli that ships with the app.
+    resetCli: () => Promise<void>;
     setView: (view: AnimeBrowseView) => void;
     openDownloads: () => void;
     closeDownloads: () => void;
@@ -99,6 +104,8 @@ export interface AnimeState {
     // Lists the episodes of the day (or of the week) in the time zone that is set.
     // `refresh` asks AniList again instead of using what was listed in the last day.
     loadSchedule: (refresh?: boolean) => Promise<void>;
+    // Asks which of the anime of the schedule the source has: what is known is kept at once, the rest as it is checked (an event).
+    checkAvailability: (entries: readonly AnimeScheduleEntry[]) => Promise<void>;
     setScheduleView: (view: AnimeScheduleView) => void;
     setScheduleTimeZone: (timeZone: string) => void;
     // Goes to the search and looks the anime of an episode of the schedule up by its names.
@@ -115,7 +122,14 @@ export interface AnimeState {
     closeResult: () => void;
     // Downloads episodes of the opened anime; `joined` is the series and season it is saved under (none leaves it as it is).
     downloadEpisodes: (episodes: string[], joined?: SeriesChoice | null) => Promise<void>;
-    // Joins an anime of the library to a series with a season number, or takes it out of one (null, null), then reads the library.
+    // Puts the opened anime in the library with all its episodes, none of them downloaded; `joined` is the series and season it goes
+    // under (none leaves it on its own). Says how it went, and returns whether it was added.
+    addToLibrary: (joined: SeriesChoice | null) => Promise<boolean>;
+    // Queues every episode of these anime of the library that is not downloaded yet.
+    downloadMissing: (animeIds: number[]) => Promise<void>;
+    // Gives all these anime (the ones of a series) another series name, then reads the library.
+    renameSeries: (animeIds: number[], name: string) => Promise<AnimeRenameSeriesResponse>;
+    // Changes the season (and the name shown) of an anime inside the series it is in, then reads the library. Its series cannot change.
     setSeries: (animeId: number, series: string | null, season: number | null, seasonName: string | null) => Promise<AnimeSeriesResponse>;
     cancelJob: (episodeId: number) => Promise<void>;
     retryJob: (episodeId: number) => Promise<void>;
@@ -216,6 +230,12 @@ function upsertAnimeJob(jobs: AnimeJob[], job: AnimeJob): AnimeJob[] {
     });
 }
 
+// The schedule as it starts: always on the day, in the time zone the user chose the last time when there is a choice.
+function initialSchedule(): AnimeScheduleState {
+    const { timeZone } = readScheduleChoice();
+    return { ...INITIAL_SCHEDULE, timeZone: timeZone ?? INITIAL_SCHEDULE.timeZone };
+}
+
 export const useAnimeStore = create<AnimeState>((set, get) => {
     return {
         status: UNSUPPORTED_STATUS,
@@ -227,8 +247,9 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         library: [],
         history: [],
         search: INITIAL_SEARCH,
-        schedule: INITIAL_SCHEDULE,
+        schedule: initialSchedule(),
         covers: {},
+        availability: {},
         selection: null,
         playing: null,
         streaming: null,
@@ -247,6 +268,18 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             set({ library, jobs, history });
             const unsubscribers = [
                 api.onAnimeJobUpdate((job) => {
+                    if (job.status === 'done') {
+                        // A download that is complete says so for a few seconds and leaves the screen of the downloads: it is in the library.
+                        set((state) => {
+                            return {
+                                jobs: state.jobs.filter((candidate) => {
+                                    return candidate.episodeId !== job.episodeId;
+                                })
+                            };
+                        });
+                        useAppStore.getState().pushToast(translateNow('notice.downloadDone', { title: translateNow('anime.job.title', { title: job.animeTitle, episode: job.episode }) }));
+                        return;
+                    }
                     set((state) => {
                         return { jobs: upsertAnimeJob(state.jobs, job) };
                     });
@@ -261,6 +294,11 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     set((state) => {
                         return { covers: { ...state.covers, [coverKey(update.title)]: { status: 'found', url: update.url } } };
                     });
+                }),
+                api.onAnimeAvailability((availability) => {
+                    set((state) => {
+                        return { availability: { ...state.availability, [availability.anilistId]: availability } };
+                    });
                 })
             ];
             return (): void => {
@@ -273,6 +311,13 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         updateCli: async () => {
             set({ updatingCli: true });
             const result = await window.api.updateAniCli();
+            set({ updatingCli: false, status: await window.api.getAnimeStatus() });
+            notify(result.ok ? 'info' : 'error', result.output || translateNow(result.ok ? 'notice.ytdlpUpToDate' : 'notice.updateFailed'));
+        },
+
+        resetCli: async () => {
+            set({ updatingCli: true });
+            const result = await window.api.resetAniCli();
             set({ updatingCli: false, status: await window.api.getAnimeStatus() });
             notify(result.ok ? 'info' : 'error', result.output || translateNow(result.ok ? 'notice.ytdlpUpToDate' : 'notice.updateFailed'));
         },
@@ -356,6 +401,38 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 }
                 return { schedule: { ...state.schedule, status: 'error', entries: [], error: response.error } };
             });
+            if (response.ok) {
+                await get().checkAvailability(response.entries);
+            }
+        },
+
+        checkAvailability: async (entries) => {
+            const targets = entries.map(({ anilistId, english, romaji }) => {
+                return { anilistId, english, romaji };
+            });
+            // What could not be checked the last time is checked again: it goes back to being waited for.
+            set((state) => {
+                const kept = { ...state.availability };
+                targets.forEach((target) => {
+                    if (kept[target.anilistId]?.state === 'unknown') {
+                        delete kept[target.anilistId];
+                    }
+                });
+                return { availability: kept };
+            });
+            try {
+                const known = await window.api.checkAnimeAvailability(targets);
+                set((state) => {
+                    const merged = { ...state.availability };
+                    known.forEach((availability) => {
+                        merged[availability.anilistId] = availability;
+                    });
+                    return { availability: merged };
+                });
+            } catch {
+                // Without an answer the cards stay as they are, and can still be clicked.
+                return;
+            }
         },
 
         loadCover: async (title) => {
@@ -386,13 +463,16 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         setScheduleTimeZone: (timeZone) => {
+            saveScheduleTimeZone(timeZone);
             set((state) => {
                 return { schedule: { ...state.schedule, timeZone, entries: [] } };
             });
         },
 
         openScheduleEntry: async (entry) => {
-            const names = (entry.names.length > 0 ? entry.names : [entry.title]).slice(0, MAX_SCHEDULE_SEARCH_NAMES);
+            // When the source is known to have the anime, it is looked up by the name that found it (the english one when both did).
+            const found = get().availability[entry.anilistId];
+            const names = found?.state === 'available' ? [found.query] : (entry.names.length > 0 ? entry.names : [entry.title]).slice(0, MAX_SCHEDULE_SEARCH_NAMES);
             set((state) => {
                 return { view: 'search', returnView: 'search', selection: null, search: { ...state.search, query: names[0] as string, status: 'idle', error: null, results: [] } };
             });
@@ -525,6 +605,52 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return;
             }
             notify('error', translateNow('anime.notice.queueFailed', { reason: response.message }));
+        },
+
+        addToLibrary: async (joined) => {
+            const { selection } = get();
+            if (!selection || selection.status !== 'ready' || selection.episodes.length === 0) {
+                return false;
+            }
+            const name = cleanSeasonName(joined?.seasonName ?? '');
+            if (joined && (cleanSeriesName(joined.series) === null || !isValidSeason(joined.season) || name === undefined)) {
+                notify('error', translateNow('anime.series.error.invalid'));
+                return false;
+            }
+            const response = await window.api.addAnimeToLibrary({
+                title: selection.result.title,
+                query: selection.query,
+                index: selection.result.index,
+                audio: selection.audio,
+                episodes: selection.episodes,
+                series: joined ? (cleanSeriesName(joined.series) as string) : null,
+                season: joined ? joined.season : null,
+                seasonName: joined ? (name as string | null) : null
+            });
+            if (response.ok) {
+                set({ library: await window.api.listAnimeLibrary() });
+                notify('info', translateNow('anime.notice.added', { title: response.anime.title, count: response.anime.episodes.length }));
+                return true;
+            }
+            if (response.reason === 'season-taken') {
+                notify('error', translateNow('anime.series.error.taken', { order: joined?.season ?? 1, suggested: response.suggested }));
+            } else {
+                notify('error', translateNow(response.reason === 'busy' ? 'anime.add.error.busy' : 'anime.add.error.invalid'));
+            }
+            return false;
+        },
+
+        downloadMissing: async (animeIds) => {
+            await window.api.downloadMissingAnime(animeIds);
+            await get().refreshLibrary();
+        },
+
+        renameSeries: async (animeIds, name) => {
+            const response = await window.api.renameAnimeSeries(animeIds, name);
+            if (response.ok) {
+                set({ library: await window.api.listAnimeLibrary() });
+            }
+            return response;
         },
 
         setSeries: async (animeId, series, season, seasonName) => {

@@ -49,6 +49,7 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
             </header>
             <JobProgress job={job} phase={phase} t={t} />
             <JobMeta job={job} phase={phase} t={t} />
+            {job.status === 'paused' && !job.hasPartial && <p className="field__hint">{t('job.pausedNoPartial')}</p>}
             {job.error && (
                 <ErrorBanner
                     error={job.error}

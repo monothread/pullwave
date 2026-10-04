@@ -1,15 +1,17 @@
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAnimeSupported } from '@shared/anime';
+import { isAnimeSupported, type AnimeScheduleRequest } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { resolveLanguage } from '@shared/i18n';
+import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import type { Settings } from '@shared/types';
 import type { AnimeHandlerDependencies } from './ipc/registerAnimeHandlers';
 import { AniCliLocator, readTextFile } from './services/aniCliLocator';
-import { createDefaultUpdaterDependencies, updateAniCli, type AniCliUpdaterDependencies } from './services/aniCliUpdater';
+import { createDefaultUpdaterDependencies, resetAniCli, updateAniCli, type AniCliUpdaterDependencies } from './services/aniCliUpdater';
 import { AniCliService } from './services/aniCliService';
 import { subtitleLabels } from './services/aniSubtitles';
 import { AnimeDb } from './services/animeDb';
+import { AnimeAvailabilityService } from './services/animeAvailability';
 import { AnimeCoverService } from './services/animeCovers';
 import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
@@ -82,6 +84,8 @@ export interface AnimeRuntime {
     media: MediaSource;
     // Answers the requests of the player for a stream that is being watched without downloading it.
     streamHandler: (request: Request) => Promise<Response>;
+    // Starts, in the background, to check which anime of today's schedule the source has (it is not started by creating the runtime).
+    startBackgroundChecks: () => void;
 }
 
 function fileSize(path: string): number | null {
@@ -170,6 +174,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         directoryExists: (path) => {
             return existsSync(path);
         },
+        removeDirectory: (path) => {
+            rmSync(path, { recursive: true, force: true });
+        },
         onEpisodeDownloaded: (episodeId) => {
             refreshEpisodeMetadata(db, episodeId, options.subtitleFiles ?? defaultSubtitleFileSystem, options.platform);
         },
@@ -209,31 +216,72 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             options.send(IPC.eventAnimeCover, { title, url });
         }
     });
+    const listSchedule = (request: AnimeScheduleRequest): ReturnType<typeof loadSchedule> => {
+        return loadSchedule(request, {
+            url: options.scheduleUrl,
+            cache: {
+                find: (from, to) => {
+                    return db.findScheduleCache(from, to, Date.now() - SCHEDULE_CACHE_MS);
+                },
+                save: (from, to, entries) => {
+                    db.saveScheduleCache(from, to, entries, Date.now() - SCHEDULE_CACHE_MS);
+                }
+            }
+        });
+    };
+    const availability = new AnimeAvailabilityService({
+        search: (query, audio) => {
+            return service.search(query, audio);
+        },
+        store: {
+            find: (anilistId, audio, since) => {
+                return db.findAvailability(anilistId, audio, since);
+            },
+            save: (result, audio) => {
+                db.saveAvailability(result, audio);
+            },
+            forgetBefore: (since) => {
+                db.forgetAvailabilityBefore(since);
+            }
+        },
+        audio: () => {
+            return options.getSettings().animeAudio;
+        },
+        onResult: (result) => {
+            options.send(IPC.eventAnimeAvailability, result);
+        }
+    });
     return {
         db,
         queue,
         media,
         streamHandler: createStreamHandler(streams),
+        startBackgroundChecks: () => {
+            // Today's schedule, in the time zone of the machine, is the one the screen opens on: its anime are checked before it is shown.
+            const limits = zonedDayLimits(Date.now(), machineTimeZone(), 1);
+            void listSchedule({ from: limits[0] as number, to: limits[1] as number, refresh: false })
+                .then((response) => {
+                    if (response.ok) {
+                        availability.request(response.entries);
+                    }
+                    return undefined;
+                })
+                .catch(() => {
+                    return undefined;
+                });
+        },
         handlers: {
             service,
             covers,
+            availability,
             schedule: {
-                list: (request) => {
-                    return loadSchedule(request, {
-                        url: options.scheduleUrl,
-                        cache: {
-                            find: (from, to) => {
-                                return db.findScheduleCache(from, to, Date.now() - SCHEDULE_CACHE_MS);
-                            },
-                            save: (from, to, entries) => {
-                                db.saveScheduleCache(from, to, entries, Date.now() - SCHEDULE_CACHE_MS);
-                            }
-                        }
-                    });
-                }
+                list: listSchedule
             },
             updateAniCli: () => {
                 return updateAniCli(locator, customScriptPath(), options.updaterDependencies ?? createDefaultUpdaterDependencies(locator.busyboxPath, readTextFile));
+            },
+            resetAniCli: () => {
+                return resetAniCli(locator, options.updaterDependencies ?? createDefaultUpdaterDependencies(locator.busyboxPath, readTextFile));
             },
             streams,
             streamQuality: () => {

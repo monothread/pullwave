@@ -26,6 +26,12 @@ export interface Notice {
     message: string;
 }
 
+// A short notice that is stacked with the others and goes away by itself (see Toast): a download that is complete.
+export interface ToastItem {
+    id: number;
+    message: string;
+}
+
 export interface StreamSearchState {
     status: 'searching' | 'done';
     stage: StreamFindStage;
@@ -44,8 +50,8 @@ export interface AppState {
     settings: Settings;
     binaries: BinariesStatus | null;
     notice: Notice | null;
-    // Notices that wait for the one on the screen to go away (one is shown at a time).
-    noticeQueue: Notice[];
+    // The notices that are on the screen together, the newest on top of the others; each one goes away by itself.
+    toasts: ToastItem[];
     updating: boolean;
     appUpdate: AppUpdateState;
     traySupport: TraySupport | null;
@@ -53,10 +59,11 @@ export interface AppState {
     streamSearches: Record<string, StreamSearchState>;
     setTab: (tab: Tab) => void;
     setDownloadsView: (view: DownloadsView) => void;
-    // Shows a notice, or puts it in the queue when another one is on the screen. Passing null takes the one on the screen away and
-    // shows the next one in the queue.
+    // Shows a notice (it takes the place of the one on the screen); null takes it away.
     setNotice: (notice: Notice | null) => void;
-    queueNotice: (notice: Notice) => void;
+    // Adds a notice to the stack of the ones that go away by themselves, and says which one it is.
+    pushToast: (message: string) => number;
+    dismissToast: (id: number) => void;
     init: () => Promise<() => void>;
     addUrls: (links: LinkRequest[]) => Promise<AddJobResult[]>;
     cancelJob: (id: string) => Promise<void>;
@@ -72,6 +79,8 @@ export interface AppState {
     saveSettings: (settings: Settings) => Promise<Settings>;
     refreshBinaries: () => Promise<void>;
     updateYtdlp: () => Promise<void>;
+    // Goes back to the yt-dlp that ships with the app.
+    resetYtdlp: () => Promise<void>;
     chooseDirectory: () => Promise<string | null>;
     checkAppUpdate: () => Promise<void>;
     downloadAppUpdate: () => Promise<void>;
@@ -117,6 +126,9 @@ export function upsertJob(jobs: DownloadJob[], job: DownloadJob): DownloadJob[] 
     });
 }
 
+// What the next notice of the stack is called.
+let toastCounter = 0;
+
 export const useAppStore = create<AppState>((set, get) => {
     return {
         tab: 'downloads',
@@ -126,7 +138,7 @@ export const useAppStore = create<AppState>((set, get) => {
         settings: DEFAULT_SETTINGS,
         binaries: null,
         notice: null,
-        noticeQueue: [],
+        toasts: [],
         updating: false,
         appUpdate: INITIAL_APP_UPDATE,
         traySupport: null,
@@ -142,22 +154,25 @@ export const useAppStore = create<AppState>((set, get) => {
         },
 
         setNotice: (notice) => {
-            if (notice !== null) {
-                set({ notice });
-                return;
-            }
-            set((state) => {
-                const [next = null, ...rest] = state.noticeQueue;
-                return { notice: next, noticeQueue: rest };
-            });
+            set({ notice });
         },
 
-        queueNotice: (notice) => {
+        pushToast: (message) => {
+            toastCounter += 1;
+            const id = toastCounter;
             set((state) => {
-                if (state.notice === null) {
-                    return { notice };
-                }
-                return { noticeQueue: [...state.noticeQueue, notice] };
+                return { toasts: [...state.toasts, { id, message }] };
+            });
+            return id;
+        },
+
+        dismissToast: (id) => {
+            set((state) => {
+                return {
+                    toasts: state.toasts.filter((toast) => {
+                        return toast.id !== id;
+                    })
+                };
             });
         },
 
@@ -170,7 +185,8 @@ export const useAppStore = create<AppState>((set, get) => {
                 api.checkBinaries(),
                 api.getAppUpdateState()
             ]);
-            set({ settings, jobs, history, binaries, appUpdate });
+            // The app opens on the tab the settings say (the anime one is left for the downloads when the section does not exist).
+            set({ settings, jobs, history, binaries, appUpdate, tab: settings.startTab });
             const unsubscribers = [
                 api.onJobUpdate((job) => {
                     const finishedNow = job.status === 'done' && get().jobs.find((candidate) => {
@@ -181,7 +197,7 @@ export const useAppStore = create<AppState>((set, get) => {
                     });
                     if (finishedNow) {
                         // A download that is complete says so for a few seconds and leaves the queue (it stays in the history).
-                        get().queueNotice({ kind: 'info', message: translateNow(get().settings, 'notice.downloadDone', { title: job.title ?? job.url }) });
+                        get().pushToast(translateNow(get().settings, 'notice.downloadDone', { title: job.title ?? job.url }));
                         void get().removeJob(job.id);
                     }
                 }),
@@ -287,6 +303,16 @@ export const useAppStore = create<AppState>((set, get) => {
             set({
                 updating: false,
                 notice: { kind: result.ok ? 'info' : 'error', message: result.output || translateNow(get().settings, result.ok ? 'notice.ytdlpUpToDate' : 'notice.updateFailed') }
+            });
+            await get().refreshBinaries();
+        },
+
+        resetYtdlp: async () => {
+            set({ updating: true });
+            const result = await window.api.resetYtdlp();
+            set({
+                updating: false,
+                notice: { kind: result.ok ? 'info' : 'error', message: result.output || translateNow(get().settings, 'notice.updateFailed') }
             });
             await get().refreshBinaries();
         },

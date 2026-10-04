@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
-import type { MessageKey, Translator } from '@shared/i18n';
+import type { Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
-import { animeErrorKey, animeStatusKey, downloadedCount, groupLibrary, matchesSearch, resumePosition, seasonLabel, seriesNames, type LibraryGroup } from './animeText';
+import { animeErrorKey, animeStatusKey, downloadedCount, groupLibrary, matchesSearch, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { AnimeRemove } from './AnimeRemove';
-import { cleanSeasonName, cleanSeriesName, isValidSeason, suggestSeries } from '@shared/series';
-import { TextField } from './fields';
-import { SeriesFields } from './SeriesFields';
+import { cleanSeasonName, cleanSeriesName, foldSeries, isValidSeason, MAX_SEASON, MAX_SEASON_NAME_LENGTH, sameSeries } from '@shared/series';
+import { NumberField, TextField } from './fields';
 import { formatBytes, formatDuration } from './jobStatus';
 import { RowLink } from './RowLink';
+import { SeriesMenu } from './SeriesMenu';
 
 interface EpisodeRowProps {
     anime: LibraryAnime;
@@ -39,9 +39,6 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
     });
     const resumeJob = useAnimeStore((state) => {
         return state.resumeJob;
-    });
-    const removeEpisode = useAnimeStore((state) => {
-        return state.removeEpisode;
     });
     const setWatched = useAnimeStore((state) => {
         return state.setWatched;
@@ -115,6 +112,18 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                         {t('anime.job.resume')}
                     </button>
                 )}
+                {episode.status === 'idle' && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        aria-label={`${t('anime.episode.download')}: ${anime.title} ${label}`}
+                        onClick={() => {
+                            void retryJob(episode.id);
+                        }}
+                    >
+                        {t('anime.episode.download')}
+                    </button>
+                )}
                 {(episode.status === 'error' || episode.status === 'cancelled') && (
                     <button
                         type="button"
@@ -127,69 +136,53 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                         {t('anime.job.retry')}
                     </button>
                 )}
-                <AnimeRemove
-                    label={t('anime.remove')}
-                    ariaLabel={`${t('anime.remove')}: ${anime.title} ${label}`}
-                    onRemove={() => {
-                        void removeEpisode(episode.id);
-                    }}
-                />
             </span>
         </li>
     );
 }
 
-function SeriesEditor({ anime, t, onClose }: { anime: LibraryAnime; t: Translator; onClose: () => void }) {
-    const library = useAnimeStore((state) => {
-        return state.library;
-    });
+// What can be changed in an anime that is in a series: its place in it (the order) and the name it is shown with. The series itself
+// cannot change (it is renamed with the whole series, and leaving it is removing the anime).
+function SeasonEditor({ anime, series, t, onClose }: { anime: LibraryAnime; series: string; t: Translator; onClose: () => void }) {
     const setSeries = useAnimeStore((state) => {
         return state.setSeries;
     });
-    const suggested = suggestSeries(anime.title);
-    const [series, setSeriesName] = useState(anime.series ?? suggested.series);
-    const [season, setSeason] = useState(anime.season ?? suggested.season);
+    const [season, setSeason] = useState(anime.season ?? 1);
     const [seasonName, setSeasonName] = useState(anime.seasonName ?? '');
-    const [problem, setProblem] = useState<MessageKey | null>(null);
+    const [problem, setProblem] = useState<string | null>(null);
 
     async function save(): Promise<void> {
-        const cleaned = cleanSeriesName(series);
-        if (cleaned === null || !isValidSeason(season)) {
-            setProblem('anime.series.error.invalid');
-            return;
-        }
         const name = cleanSeasonName(seasonName);
-        if (name === undefined) {
-            setProblem('anime.series.error.invalid');
+        if (!isValidSeason(season) || name === undefined) {
+            setProblem(t('anime.season.error.invalid'));
             return;
         }
-        const response = await setSeries(anime.id, cleaned, season, name);
+        const response = await setSeries(anime.id, series, season, name);
         if (response.ok) {
             onClose();
             return;
         }
-        setProblem(response.reason === 'season-taken' ? 'anime.series.error.taken' : 'anime.series.error.invalid');
-    }
-
-    async function clear(): Promise<void> {
-        await setSeries(anime.id, null, null, null);
-        onClose();
+        setProblem(response.reason === 'season-taken' ? t('anime.series.error.taken', { order: season, suggested: response.suggested }) : t('anime.season.error.invalid'));
     }
 
     return (
-        <div className="series-editor" role="group" aria-label={`${t('anime.series.edit')}: ${anime.title}`}>
-            <SeriesFields
-                series={series}
-                season={season}
-                seasonName={seasonName}
-                suggestions={seriesNames(library)}
-                onSeriesChange={setSeriesName}
-                onSeasonChange={setSeason}
-                onSeasonNameChange={setSeasonName}
-            />
+        <div className="series-editor" role="group" aria-label={`${t('anime.season.edit')}: ${anime.title}`}>
+            <div className="field-row series-name" title={t('anime.series.nameHint')}>
+                <TextField
+                    label={t('anime.season.name')}
+                    value={seasonName}
+                    placeholder={t('anime.season.namePlaceholder', { number: season })}
+                    onChange={(value) => {
+                        setSeasonName(value.slice(0, MAX_SEASON_NAME_LENGTH));
+                    }}
+                />
+            </div>
+            <div className="field-row series-fields">
+                <NumberField label={t('anime.season.label')} value={season} min={1} max={MAX_SEASON} onChange={setSeason} />
+            </div>
             {problem !== null && (
                 <p className="field__warning" role="alert">
-                    {t(problem)}
+                    {problem}
                 </p>
             )}
             <div className="job__actions">
@@ -202,17 +195,6 @@ function SeriesEditor({ anime, t, onClose }: { anime: LibraryAnime; t: Translato
                 >
                     {t('anime.series.save')}
                 </button>
-                {anime.series !== null && (
-                    <button
-                        type="button"
-                        className="btn btn--small"
-                        onClick={() => {
-                            void clear();
-                        }}
-                    >
-                        {t('anime.series.clear')}
-                    </button>
-                )}
                 <button type="button" className="btn btn--small btn--ghost" onClick={onClose}>
                     {t('anime.series.cancel')}
                 </button>
@@ -222,18 +204,21 @@ function SeriesEditor({ anime, t, onClose }: { anime: LibraryAnime; t: Translato
 }
 
 // An anime of the library, as a season of its series: a row that opens to show what can be done with it.
-function AnimeEntry({ anime, t, startExpanded = false }: { anime: LibraryAnime; t: Translator; startExpanded?: boolean }) {
+function AnimeEntry({ anime, seriesName, t }: { anime: LibraryAnime; seriesName: string; t: Translator }) {
     const removeAnime = useAnimeStore((state) => {
         return state.removeAnime;
     });
     const openLibraryAnime = useAnimeStore((state) => {
         return state.openLibraryAnime;
     });
-    // Coming from the search, the anime is shown open and in view.
+    const downloadMissing = useAnimeStore((state) => {
+        return state.downloadMissing;
+    });
+    // Coming from a redirect (the search, the schedule) the season is brought into view. Every season starts closed, always.
     const focused = useAnimeStore((state) => {
         return state.libraryFocus === anime.id;
     });
-    const [expanded, setExpanded] = useState(focused || startExpanded);
+    const [expanded, setExpanded] = useState(false);
     const [editing, setEditing] = useState(false);
     const card = useRef<HTMLElement | null>(null);
 
@@ -245,55 +230,60 @@ function AnimeEntry({ anime, t, startExpanded = false }: { anime: LibraryAnime; 
 
     const audio = <span className="badge">{anime.audio === 'dub' ? t('anime.audio.dub') : t('anime.audio.sub')}</span>;
     const progress = t('anime.library.progress', { done: downloadedCount(anime), total: anime.episodes.length });
-    const more = (
+    const source = (
         <button
             type="button"
             className="btn btn--small btn--primary"
-            aria-label={`${t('anime.library.more')}: ${anime.title}`}
+            aria-label={`${t('anime.library.source')}: ${anime.title}`}
             onClick={() => {
                 void openLibraryAnime(anime);
             }}
         >
-            {t('anime.library.more')}
+            {t('anime.library.source')}
         </button>
     );
-    const folder = downloadedCount(anime) > 0 && (
+    // Only what is missing in this season: the other seasons of the series are left alone.
+    const downloadSeason = hasMissingInAnime(anime) && (
         <button
             type="button"
             className="btn btn--small"
-            aria-label={`${t('anime.openFolder')}: ${anime.title}`}
+            aria-label={`${t('anime.season.downloadAll')}: ${anime.title}`}
             onClick={() => {
-                void window.api.openAnimeFolder(anime.id);
+                void downloadMissing([anime.id]);
             }}
         >
-            {t('anime.openFolder')}
+            {t('anime.season.downloadAll')}
         </button>
     );
-    const edit = (
+    // An anime on its own has nothing to order; one in a series has its season to edit (the series itself cannot change).
+    const edit = anime.series !== null && (
         <button
             type="button"
             className="btn btn--small"
             aria-expanded={editing}
-            aria-label={`${t('anime.series.edit')}: ${anime.title}`}
+            aria-label={`${t('anime.season.edit')}: ${anime.title}`}
             onClick={() => {
                 setEditing(!editing);
             }}
         >
-            {t('anime.series.edit')}
+            {t('anime.season.edit')}
         </button>
     );
+    // The anime that gives its name to the series is not removed alone: to remove it, the whole series goes.
     const remove = (
         <AnimeRemove
             label={t('anime.remove.anime')}
             ariaLabel={`${t('anime.remove.anime')}: ${anime.title}`}
+            blocked={sameSeries(anime.title, seriesName) ? t('anime.remove.blocked') : undefined}
             onRemove={() => {
                 void removeAnime(anime.id);
             }}
         />
     );
-    const editor = editing && (
-        <SeriesEditor
+    const editor = editing && anime.series !== null && (
+        <SeasonEditor
             anime={anime}
+            series={anime.series}
             t={t}
             onClose={() => {
                 setEditing(false);
@@ -328,12 +318,14 @@ function AnimeEntry({ anime, t, startExpanded = false }: { anime: LibraryAnime; 
                 </h4>
                 <span className="season__meta">{progress}</span>
                 {audio}
-                <span className="season__actions">{more}</span>
+                <span className="season__actions">
+                    {downloadSeason}
+                    {source}
+                </span>
             </div>
             {expanded && (
                 <div className="season__panel">
                     <div className="job__actions">
-                        {folder}
                         {edit}
                         {remove}
                     </div>
@@ -348,6 +340,18 @@ function AnimeEntry({ anime, t, startExpanded = false }: { anime: LibraryAnime; 
 // How many seasons a series has, in words.
 function seasonsText(group: LibraryGroup, t: Translator): string {
     return group.entries.length === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: group.entries.length });
+}
+
+// Whether the anime has an episode that is not downloaded and is not being downloaded (or waiting to be) either.
+function hasMissingInAnime(anime: LibraryAnime): boolean {
+    return anime.episodes.some((episode) => {
+        return episode.status !== 'done' && episode.status !== 'queued' && episode.status !== 'downloading';
+    });
+}
+
+// The same for a series: any of its seasons.
+function hasMissingEpisodes(group: LibraryGroup): boolean {
+    return group.entries.some(hasMissingInAnime);
 }
 
 // The card of a series: its name, how many seasons it has and the way into its own screen.
@@ -393,17 +397,83 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
 // What is open on the screen of the library besides the cards: one series (by the key of its card).
 type LibraryView = { key: string };
 
+// The name of the series, changed for all the anime in it: when the name is one another series has, the seasons of both join, and a season
+// they both have is refused with the one the other series could give.
+function SeriesRename({ group, t, onClose, onRenamed }: { group: LibraryGroup; t: Translator; onClose: () => void; onRenamed: (name: string) => void }) {
+    const renameSeries = useAnimeStore((state) => {
+        return state.renameSeries;
+    });
+    const [name, setName] = useState(group.series);
+    const [problem, setProblem] = useState<string | null>(null);
+
+    async function save(): Promise<void> {
+        const cleaned = cleanSeriesName(name);
+        if (cleaned === null) {
+            setProblem(t('anime.series.error.name'));
+            return;
+        }
+        const response = await renameSeries(
+            group.entries.map((anime) => {
+                return anime.id;
+            }),
+            cleaned
+        );
+        if (response.ok) {
+            onRenamed(cleaned);
+            return;
+        }
+        setProblem(
+            response.reason === 'season-taken'
+                ? t('anime.series.error.renameTaken', { order: response.season, anime: response.anime, series: cleaned, suggested: response.suggested })
+                : t('anime.series.error.name')
+        );
+    }
+
+    return (
+        <div className="series-editor" role="group" aria-label={`${t('anime.series.rename')}: ${group.series}`}>
+            <TextField label={t('anime.series.rename.label')} value={name} onChange={setName} />
+            {problem !== null && (
+                <p className="field__warning" role="alert">
+                    {problem}
+                </p>
+            )}
+            <div className="job__actions">
+                <button
+                    type="button"
+                    className="btn btn--small btn--primary"
+                    onClick={() => {
+                        void save();
+                    }}
+                >
+                    {t('anime.series.save')}
+                </button>
+                <button type="button" className="btn btn--small btn--ghost" onClick={onClose}>
+                    {t('anime.series.cancel')}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // The screen of one series: its seasons, each with its buttons and episodes, and the way back.
-function SeriesView({ group, t, onBack }: { group: LibraryGroup; t: Translator; onBack: () => void }) {
+function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: Translator; onBack: () => void; onRenamed: (name: string) => void }) {
     const removeAnime = useAnimeStore((state) => {
         return state.removeAnime;
     });
+    const downloadMissing = useAnimeStore((state) => {
+        return state.downloadMissing;
+    });
+    const [renaming, setRenaming] = useState(false);
     const name = group.series;
+    // The folder of the series is opened through an anime of it that has something downloaded.
+    const downloaded = group.entries.find((anime) => {
+        return downloadedCount(anime) > 0;
+    });
     return (
         <section className="library__view" aria-label={name}>
             <div className="queue__toolbar">
                 <button type="button" className="btn btn--small btn--ghost" onClick={onBack}>
-                    {t('anime.back')}
+                    {t('anime.library.back')}
                 </button>
                 <span className="section-label">{name}</span>
             </div>
@@ -413,10 +483,40 @@ function SeriesView({ group, t, onBack }: { group: LibraryGroup; t: Translator; 
                         {name}
                     </h3>
                     <span className="job__badges">
+                        {hasMissingEpisodes(group) && (
+                            <button
+                                type="button"
+                                className="btn btn--small btn--primary"
+                                aria-label={`${t('anime.series.downloadAll')}: ${name}`}
+                                onClick={() => {
+                                    void downloadMissing(
+                                        group.entries.map((anime) => {
+                                            return anime.id;
+                                        })
+                                    );
+                                }}
+                            >
+                                {t('anime.series.downloadAll')}
+                            </button>
+                        )}
                         <span className="badge">{seasonsText(group, t)}</span>
-                        <AnimeRemove
-                            label={t('anime.series.remove')}
-                            ariaLabel={`${t('anime.series.remove')}: ${name}`}
+                        {downloaded && (
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                aria-label={`${t('anime.openFolder')}: ${name}`}
+                                onClick={() => {
+                                    void window.api.openAnimeSeriesFolder(downloaded.id);
+                                }}
+                            >
+                                {t('anime.openFolder')}
+                            </button>
+                        )}
+                        <SeriesMenu
+                            name={name}
+                            onRename={() => {
+                                setRenaming(true);
+                            }}
                             onRemove={() => {
                                 void group.entries.reduce(async (previous, anime) => {
                                     await previous;
@@ -426,8 +526,21 @@ function SeriesView({ group, t, onBack }: { group: LibraryGroup; t: Translator; 
                         />
                     </span>
                 </header>
+                {renaming && (
+                    <SeriesRename
+                        group={group}
+                        t={t}
+                        onClose={() => {
+                            setRenaming(false);
+                        }}
+                        onRenamed={(renamed) => {
+                            setRenaming(false);
+                            onRenamed(renamed);
+                        }}
+                    />
+                )}
                 {group.entries.map((anime) => {
-                    return <AnimeEntry key={anime.id} anime={anime} t={t} startExpanded={group.entries.length === 1} />;
+                    return <AnimeEntry key={anime.id} anime={anime} seriesName={name} t={t} />;
                 })}
             </article>
         </section>
@@ -477,7 +590,19 @@ export function AnimeLibrary() {
     }
     const openGroup = view ? groupLibrary(library).find((group) => { return group.key === view.key; }) : undefined;
     if (openGroup) {
-        return <SeriesView group={openGroup} t={t} onBack={() => { setView(null); }} />;
+        return (
+            <SeriesView
+                group={openGroup}
+                t={t}
+                onBack={() => {
+                    setView(null);
+                }}
+                onRenamed={(renamed) => {
+                    // The key of a series is made of its name, so the screen goes on with the series under its new one.
+                    setView({ key: `series-${foldSeries(renamed)}` });
+                }}
+            />
+        );
     }
     const shown = library.filter((anime) => {
         return matchesSearch(anime.title, search) || (anime.series !== null && matchesSearch(anime.series, search));

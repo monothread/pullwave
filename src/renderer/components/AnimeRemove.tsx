@@ -6,13 +6,22 @@ interface AnimeRemoveProps {
     // What the button says to the screen readers: it also names what is removed.
     ariaLabel: string;
     onRemove: () => void;
+    // Why it cannot be removed, when it cannot: the button is then off and says it.
+    blocked?: string;
 }
 
 // Removing takes two steps, and the second one warns that the files on the disk go too.
-export function AnimeRemove({ label, ariaLabel, onRemove }: AnimeRemoveProps) {
+export function AnimeRemove({ label, ariaLabel, onRemove, blocked }: AnimeRemoveProps) {
     const t = useTranslator();
     const [asking, setAsking] = useState(false);
 
+    if (blocked !== undefined) {
+        return (
+            <button type="button" className="btn btn--small btn--ghost" aria-label={ariaLabel} title={blocked} disabled>
+                {label}
+            </button>
+        );
+    }
     if (!asking) {
         return (
             <button

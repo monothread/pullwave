@@ -45,7 +45,7 @@ describe('SettingsPanel layout', () => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
         ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED', 'ANIME'].forEach((legend) => {
-            expect(screen.queryByText(legend)).not.toBeInTheDocument();
+            expect(screen.queryByText(legend, { selector: 'legend' })).not.toBeInTheDocument();
         });
         expect(screen.getByLabelText('Theme')).toHaveValue('device');
         expect(screen.getByLabelText('Language')).toHaveValue('device');
@@ -106,6 +106,42 @@ describe('SettingsPanel layout', () => {
             return option.textContent;
         });
         expect(options).toEqual(['Best available', 'Up to 2160p', 'Up to 1440p', 'Up to 1080p', 'Up to 720p', 'Up to 480p']);
+    });
+});
+
+describe('SettingsPanel start tab', () => {
+    it('lists the video downloader and the anime, opening on the video downloader by default, with its hint', () => {
+        render(<SettingsPanel scope="global" />);
+        const select = screen.getByLabelText('Open on');
+        expect(select).toHaveValue('downloads');
+        const options = Array.from(select.querySelectorAll('option')).map((option) => {
+            return [option.getAttribute('value'), option.textContent];
+        });
+        expect(options).toEqual([
+            ['downloads', 'VIDEO DOWNLOADER'],
+            ['anime', 'ANIME']
+        ]);
+        expect(screen.getByText('The tab the app shows when it starts. If the anime section is not available, the video downloader opens.')).toBeInTheDocument();
+    });
+
+    it('shows the one that is saved', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: 'anime' } });
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText('Open on')).toHaveValue('anime');
+    });
+
+    it.each(['downloads', 'anime'] as const)('saves right away when the start tab changes to "%s"', async (startTab) => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: startTab === 'anime' ? 'downloads' : 'anime' } });
+        render(<SettingsPanel scope="global" />);
+        fireEvent.change(screen.getByLabelText('Open on'), { target: { value: startTab } });
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, startTab });
+    });
+
+    it('is only in the global settings', () => {
+        render(<SettingsPanel scope="anime" />);
+        expect(screen.queryByLabelText('Open on')).not.toBeInTheDocument();
     });
 });
 
@@ -767,7 +803,7 @@ describe('SettingsPanel live streams', () => {
 });
 
 describe('SettingsPanel theme', () => {
-    it('offers device, cyberpunk, dark and light, device being the default', () => {
+    it('offers every theme, device being the default', () => {
         render(<SettingsPanel scope="global" />);
         const select = screen.getByLabelText('Theme') as HTMLSelectElement;
         expect(select).toHaveValue('device');
@@ -778,13 +814,22 @@ describe('SettingsPanel theme', () => {
         ).toEqual([
             ['device', 'Device (follows the system)'],
             ['cyberpunk', 'Cyberpunk (neon)'],
+            ['synthwave', 'Synthwave (neon)'],
+            ['terminal', 'Terminal (green)'],
             ['dark', 'Dark'],
-            ['light', 'Light']
+            ['tokyo-night', 'Tokyo Night'],
+            ['nord', 'Nord'],
+            ['dracula', 'Dracula'],
+            ['gruvbox', 'Gruvbox'],
+            ['amoled', 'AMOLED (pure black)'],
+            ['high-contrast', 'High contrast'],
+            ['light', 'Light'],
+            ['sakura', 'Sakura (pink, light)']
         ]);
         expect(screen.getByText('Device follows the light or dark mode of your system. Saved and restored the next time the app opens.')).toBeInTheDocument();
     });
 
-    it.each(['cyberpunk', 'dark', 'light'] as const)('saves right away when %s is chosen', async (theme) => {
+    it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'] as const)('saves right away when %s is chosen', async (theme) => {
         render(<SettingsPanel scope="global" />);
         fireEvent.change(screen.getByLabelText('Theme'), { target: { value: theme } });
         await flushPromises();
@@ -830,6 +875,41 @@ describe('SettingsPanel yt-dlp update', () => {
         expect(mock.api.updateYtdlp).toHaveBeenCalledTimes(1);
     });
 
+    it('offers to go back to the yt-dlp that ships with the app only when an updated one is the one in use', () => {
+        useAppStore.setState({ binaries: BINARIES, updating: false });
+        const { unmount } = render(<SettingsPanel scope="downloads" />);
+        expect(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toBeEnabled();
+        unmount();
+        for (const source of ['bundled', 'system', 'custom'] as const) {
+            useAppStore.setState({ binaries: { ...BINARIES, ytdlp: { ...BINARIES.ytdlp, source } } });
+            const { unmount: next } = render(<SettingsPanel scope="downloads" />);
+            expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
+            next();
+        }
+    });
+
+    it('does not offer it while the binaries have not been read', () => {
+        useAppStore.setState({ binaries: null, updating: false });
+        render(<SettingsPanel scope="downloads" />);
+        expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
+    });
+
+    it('goes back to the yt-dlp that ships with the app when its button is clicked, and reads the binaries again', async () => {
+        useAppStore.setState({ binaries: BINARIES, updating: false });
+        render(<SettingsPanel scope="downloads" />);
+        fireEvent.click(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' }));
+        await flushPromises();
+        expect(mock.api.resetYtdlp).toHaveBeenCalledTimes(1);
+        expect(mock.api.updateYtdlp).not.toHaveBeenCalled();
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Using the bundled yt-dlp' });
+    });
+
+    it('disables the button to go back while it is updating', () => {
+        useAppStore.setState({ binaries: BINARIES, updating: true });
+        render(<SettingsPanel scope="downloads" />);
+        expect(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toBeDisabled();
+    });
+
     it('disables the button and says it is updating', () => {
         useAppStore.setState({ binaries: BINARIES, updating: true });
         render(<SettingsPanel scope="downloads" />);
@@ -848,7 +928,7 @@ describe('SettingsPanel anime section', () => {
     it.each(['global', 'downloads'] as const)('is not in the %s settings, even where it exists', (scope) => {
         useAnimeStore.setState({ status: makeStatus() });
         render(<SettingsPanel scope={scope} />);
-        expect(screen.queryByText('ANIME')).not.toBeInTheDocument();
+        expect(screen.queryByText('ANIME', { selector: 'legend' })).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'UPDATE ANI-CLI' })).not.toBeInTheDocument();
     });
@@ -929,6 +1009,35 @@ describe('SettingsPanel anime section', () => {
             expect(screen.getByRole('button', { name: 'UPDATE ANI-CLI' })).toBeEnabled();
             expect(screen.getByText('ani-cli version: 5.2.0')).toBeInTheDocument();
             expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Updated ani-cli 5.1.4 → 5.2.0.' });
+        });
+
+        it('offers to go back to the ani-cli that ships with the app only when an updated one is the one in use', () => {
+            useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, source: 'updated' } }) });
+            const { unmount } = render(<SettingsPanel scope="anime" />);
+            expect(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toBeEnabled();
+            unmount();
+            for (const source of ['bundled', 'custom'] as const) {
+                useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, source } }) });
+                const { unmount: next } = render(<SettingsPanel scope="anime" />);
+                expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
+                next();
+            }
+        });
+
+        it('goes back to the ani-cli that ships with the app when its button is clicked, and shows the version in use', async () => {
+            useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, version: '5.2.0', source: 'updated' } }) });
+            mock.api.getAnimeStatus.mockResolvedValue(makeStatus({ aniCli: { ...ANI_CLI_INFO, version: '5.1.4', source: 'bundled' } }));
+            render(<SettingsPanel scope="anime" />);
+            expect(screen.getByText('ani-cli version: 5.2.0')).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' }));
+            await flushPromises();
+
+            expect(mock.api.resetAniCli).toHaveBeenCalledTimes(1);
+            expect(mock.api.updateAniCli).not.toHaveBeenCalled();
+            expect(screen.getByText('ani-cli version: 5.1.4')).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
+            expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Using the bundled ani-cli' });
         });
 
         it('saves the language of the subtitles at once', async () => {

@@ -7,8 +7,10 @@ import {
     COMMIT_API_URL,
     createDefaultUpdaterDependencies,
     defaultFetchText,
+    FETCH_TIMEOUT_MS,
     MAX_SCRIPT_BYTES,
     RAW_SCRIPT_URL,
+    resetAniCli,
     updateAniCli,
     type AniCliUpdaterDependencies
 } from '@main/services/aniCliUpdater';
@@ -18,8 +20,21 @@ const BUSYBOX = join(__dirname, '../../../resources/bin/ani', executableName('bu
 const SHA = 'a'.repeat(40);
 const LOCATIONS: AniLocations = { bundledDir: '/app/resources/bin', scriptsDir: '/app/scripts', userBinDir: '/data/bin', dataDir: '/data/anime' };
 const BUNDLED = '/app/resources/bin/ani/ani-cli';
+// The parts of ani-cli that the changes of Pullwave look for (see aniPatches.ts), one for each change.
+const SELECTION_LINE = `    sub_link="$(printf "%s" "$_json" | sed 's|.*"subtitles":\\[||; s|}\\].*||; s|},{|}\\n{|g' | grep -m 1 '"default":true' | sed -nE 's|.*"src":"([^"]*)".*|\\1|p')"`;
+const SELECTION_PART = ['hianime_m3u8() {', SELECTION_LINE, '}'].join('\n');
+const LIST_LINE = '    # quality variants are relative to the master playlist';
+const ALL_SUBTITLES_PART = [LIST_LINE, '    command -v "yt-dlp" >/dev/null && yt-dlp --referer "$refr" "$1" -o x'].join('\n');
+const DEBUG_PART = '        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;';
+// A script every change of Pullwave fits, with the version it says; `extra` tells two scripts of the same version apart.
 const script = (version: string, extra = ''): string => {
-    return `#!/bin/sh\nversion_number="${version}"\n${extra}`;
+    return `#!/bin/sh\nversion_number="${version}"\n${SELECTION_PART}\n${ALL_SUBTITLES_PART}\n${DEBUG_PART}\n${extra}`;
+};
+// The same without the parts the changes look for, as a script that ani-cli changed under them would be.
+const scriptWithout = (version: string, ...parts: string[]): string => {
+    return parts.reduce((text, part) => {
+        return text.replace(part, '# changed upstream');
+    }, script(version));
 };
 
 beforeEach(() => {
@@ -31,10 +46,13 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-function setup(options: { installed?: string | null; latest?: string; commit?: string; syntaxOk?: boolean; fetchFails?: boolean } = {}) {
+function setup(options: { installed?: string | null; updated?: string; latest?: string; commit?: string; syntaxOk?: boolean; fetchFails?: boolean } = {}) {
     const texts = new Map<string, string>();
     if (options.installed !== null) {
         texts.set(BUNDLED, options.installed ?? script('5.1.4'));
+    }
+    if (options.updated !== undefined) {
+        texts.set('/data/bin/ani-cli', options.updated);
     }
     const fs: AniToolsFs = {
         exists: (path) => {
@@ -199,6 +217,145 @@ describe('updateAniCli', () => {
     });
 });
 
+describe('updateAniCli checking that the changes of Pullwave still fit the new script', () => {
+    it('installs a script every change fits, and says nothing about them', async () => {
+        const { locator, deps, calls } = setup({ latest: script('5.2.0') });
+        expect(await updateAniCli(locator, '', deps)).toEqual({ ok: true, output: 'Updated ani-cli 5.1.4 → 5.2.0.' });
+        expect(calls.replaced).toHaveLength(1);
+    });
+
+    it('does not install a script that changed the part that gives the address of the stream, and says what it needs', async () => {
+        const { locator, deps, calls } = setup({ latest: scriptWithout('5.2.0', DEBUG_PART) });
+        expect(await updateAniCli(locator, '', deps)).toEqual({
+            ok: false,
+            output: 'The downloaded ani-cli changed the part Pullwave needs to find the stream (the address of the stream), so it was not installed. The one in use was kept.'
+        });
+        expect(calls.directories).toEqual([]);
+        expect(calls.written).toEqual([]);
+        expect(calls.checked).toEqual([]);
+        expect(calls.replaced).toEqual([]);
+    });
+
+    it('does not install a script none of the changes fit, and names only the one it cannot do without', async () => {
+        const { locator, deps, calls } = setup({ latest: '#!/bin/sh\nversion_number="5.2.0"\necho a different ani-cli\n' });
+        expect(await updateAniCli(locator, '', deps)).toEqual({
+            ok: false,
+            output: 'The downloaded ani-cli changed the part Pullwave needs to find the stream (the address of the stream), so it was not installed. The one in use was kept.'
+        });
+        expect(calls.written).toEqual([]);
+        expect(calls.replaced).toEqual([]);
+    });
+
+    it('installs a script that only lost the choice of the subtitle language, and warns about it', async () => {
+        const { locator, deps, calls } = setup({ latest: scriptWithout('5.2.0', SELECTION_LINE) });
+        expect(await updateAniCli(locator, '', deps)).toEqual({
+            ok: true,
+            output: 'Updated ani-cli 5.1.4 → 5.2.0, but a change of Pullwave no longer fits it: subtitle language choice. That feature will not work until Pullwave is updated.'
+        });
+        expect(calls.replaced).toEqual([['/data/bin/ani-cli.tmp', '/data/bin/ani-cli']]);
+    });
+
+    it('installs a script that only lost the saving of every subtitle, and warns about it', async () => {
+        const { locator, deps, calls } = setup({ latest: scriptWithout('5.2.0', LIST_LINE) });
+        expect(await updateAniCli(locator, '', deps)).toEqual({
+            ok: true,
+            output: 'Updated ani-cli 5.1.4 → 5.2.0, but a change of Pullwave no longer fits it: saving every subtitle. That feature will not work until Pullwave is updated.'
+        });
+        expect(calls.replaced).toHaveLength(1);
+    });
+
+    it('names every change that no longer fits, in one message', async () => {
+        const { locator, deps } = setup({ latest: scriptWithout('5.2.0', SELECTION_PART) });
+        // Without the function the others hook into, the choice of the language and the saving of every subtitle both fail.
+        expect(await updateAniCli(locator, '', deps)).toEqual({
+            ok: true,
+            output: 'Updated ani-cli 5.1.4 → 5.2.0, but a change of Pullwave no longer fits it: subtitle language choice, saving every subtitle. That feature will not work until Pullwave is updated.'
+        });
+    });
+
+    it('still checks the shell accepts the script before it installs one that lost an optional change', async () => {
+        const { locator, deps, calls } = setup({ latest: scriptWithout('5.2.0', SELECTION_LINE), syntaxOk: false });
+        expect(await updateAniCli(locator, '', deps)).toEqual({ ok: false, output: 'The downloaded ani-cli did not pass the checks. The download was discarded.' });
+        expect(calls.removed).toEqual(['/data/bin/ani-cli.tmp']);
+        expect(calls.replaced).toEqual([]);
+    });
+
+    it('does not look at the changes of a script that is not newer, so it just says it is up to date', async () => {
+        const { locator, deps } = setup({ latest: scriptWithout('5.0.9', DEBUG_PART) });
+        expect(await updateAniCli(locator, '', deps)).toEqual({ ok: true, output: 'ani-cli is already up to date (5.1.4).' });
+    });
+
+    it('answers in the language of the app', async () => {
+        applyLanguage('pt', 'pt-BR');
+        const refused = setup({ latest: scriptWithout('5.2.0', DEBUG_PART) });
+        expect(await updateAniCli(refused.locator, '', refused.deps)).toEqual({
+            ok: false,
+            output: 'O ani-cli baixado mudou a parte que o Pullwave precisa para achar o stream (o endereço do stream), então não foi instalado. O que estava em uso foi mantido.'
+        });
+        const warned = setup({ latest: scriptWithout('5.2.0', SELECTION_LINE) });
+        expect(await updateAniCli(warned.locator, '', warned.deps)).toEqual({
+            ok: true,
+            output: 'ani-cli atualizado 5.1.4 → 5.2.0, mas uma modificação do Pullwave não encaixa mais: escolha do idioma da legenda. Esse recurso não funcionará até o Pullwave ser atualizado.'
+        });
+    });
+});
+
+describe('resetAniCli', () => {
+    it('deletes the script an update saved, so the one that ships with the app is used again', () => {
+        const { locator, deps, calls } = setup({ updated: script('5.2.0') });
+        expect(resetAniCli(locator, deps)).toEqual({ ok: true, output: 'Using the ani-cli that ships with the app again.' });
+        expect(calls.removed).toEqual(['/data/bin/ani-cli']);
+    });
+
+    it('says so when there is no saved script, and deletes nothing', () => {
+        const { locator, deps, calls } = setup();
+        expect(resetAniCli(locator, deps)).toEqual({ ok: false, output: 'There is no updated ani-cli to remove: the one that ships with the app is already in use.' });
+        expect(calls.removed).toEqual([]);
+    });
+
+    it('answers in the language of the app', () => {
+        applyLanguage('es', 'es-ES');
+        const saved = setup({ updated: script('5.2.0') });
+        expect(resetAniCli(saved.locator, saved.deps).output).toBe('Se vuelve a usar el ani-cli que viene con la app.');
+        const none = setup();
+        expect(resetAniCli(none.locator, none.deps).output).toBe('No hay un ani-cli actualizado que quitar: ya se usa el que viene con la app.');
+    });
+
+    it('removes a real file, and the copy that ships with the app is not touched', () => {
+        const dir = makeTempDir();
+        const saved = join(dir, 'ani-cli');
+        writeFileSync(saved, script('5.2.0'));
+        const deps = createDefaultUpdaterDependencies(BUSYBOX, (path) => {
+            return existsSync(path) ? readFileSync(path, 'utf-8') : null;
+        });
+        const fs: AniToolsFs = {
+            exists: existsSync,
+            mkdir: () => {
+                return undefined;
+            },
+            symlink: () => {
+                return undefined;
+            },
+            readlink: () => {
+                return null;
+            },
+            remove: () => {
+                return undefined;
+            },
+            readText: () => {
+                return null;
+            },
+            writeText: () => {
+                return undefined;
+            }
+        };
+        const locator = new AniCliLocator({ ...LOCATIONS, userBinDir: dir }, fs, 'linux');
+        expect(resetAniCli(locator, deps).ok).toBe(true);
+        expect(existsSync(saved)).toBe(false);
+        expect(resetAniCli(locator, deps).ok).toBe(false);
+    });
+});
+
 describe('createDefaultUpdaterDependencies', () => {
     it('reads, writes and replaces real files, writing the script so it can run', () => {
         const root = makeTempDir();
@@ -244,7 +401,24 @@ describe('defaultFetchText', () => {
     it('reads the text of an answer and tells who is asking', async () => {
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('hello'));
         expect(await defaultFetchText('https://example.com/x')).toBe('hello');
-        expect(fetchMock).toHaveBeenCalledWith('https://example.com/x', { headers: { 'User-Agent': 'pullwave' }, redirect: 'follow' });
+        expect(fetchMock).toHaveBeenCalledWith('https://example.com/x', { headers: { 'User-Agent': 'pullwave' }, redirect: 'follow', signal: expect.any(AbortSignal) });
+    });
+
+    it('gives up on a request that does not answer in 30 seconds', async () => {
+        expect(FETCH_TIMEOUT_MS).toBe(30000);
+        const controller = new AbortController();
+        const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+            return new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () => {
+                    reject(new Error('aborted'));
+                });
+            });
+        });
+        const pending = expect(defaultFetchText('https://example.com/slow')).rejects.toThrow('aborted');
+        expect(timeout).toHaveBeenCalledWith(FETCH_TIMEOUT_MS);
+        controller.abort();
+        await pending;
     });
 
     it('fails with the status of a refused request', async () => {

@@ -1,4 +1,5 @@
-/* Simple themes. The default (cyberpunk) lives in :root of cyberpunk.css. */
+/* The themes other than the default (cyberpunk, in :root of cyberpunk.css). The themes with data-theme-style='flat' (set by applyTheme, see
+   THEME_STYLES) have no glow, no scanlines and no cut corners; the ones with 'neon' keep what cyberpunk.css gives the default. */
 
 :root[data-theme='dark'] {
     --bg: #16181d;
@@ -72,29 +73,355 @@
     color-scheme: light;
 }
 
-:root[data-theme='dark'] .logo,
-:root[data-theme='light'] .logo {
+/* Tokyo Night: a dark blue-grey, easy on the eyes for long sessions. */
+:root[data-theme='tokyo-night'] {
+    --bg: #1a1b26;
+    --panel: #1f2335;
+    --panel-2: #292e42;
+    --line: #3b4261;
+    --text: #c0caf5;
+    --muted: #8c96c4;
+    --cyan: #7dcfff;
+    --magenta: #bb9af7;
+    --yellow: #e0af68;
+    --red: #f7768e;
+    --green: #9ece6a;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #16161e;
+    --code-bg: #13141c;
+    --on-accent: #15161e;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(125, 207, 255, 0.08);
+    --tint-red: rgba(247, 118, 142, 0.1);
+    --tint-yellow: rgba(224, 175, 104, 0.1);
+    --tint-green: rgba(158, 206, 106, 0.08);
+    --toast-error-text: #ffd9e0;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: dark;
+}
+
+/* Nord: a calm, cold blue-grey. */
+:root[data-theme='nord'] {
+    --bg: #2e3440;
+    --panel: #353b49;
+    --panel-2: #3b4252;
+    --line: #4c566a;
+    --text: #eceff4;
+    --muted: #aab3c7;
+    --cyan: #88c0d0;
+    --magenta: #c9a8c3;
+    --yellow: #ebcb8b;
+    --red: #ec97a0;
+    --green: #a3be8c;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #2a2f3a;
+    --code-bg: #272c36;
+    --on-accent: #2e3440;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(136, 192, 208, 0.1);
+    --tint-red: rgba(236, 151, 160, 0.12000000000000001);
+    --tint-yellow: rgba(235, 203, 139, 0.12000000000000001);
+    --tint-green: rgba(163, 190, 140, 0.1);
+    --toast-error-text: #ffe0e3;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: dark;
+}
+
+/* Dracula: a dark purple with vivid accents. */
+:root[data-theme='dracula'] {
+    --bg: #282a36;
+    --panel: #2f3142;
+    --panel-2: #383a4e;
+    --line: #44475a;
+    --text: #f8f8f2;
+    --muted: #a3abd0;
+    --cyan: #8be9fd;
+    --magenta: #ff85cb;
+    --yellow: #f1fa8c;
+    --red: #ff8a8a;
+    --green: #50fa7b;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #21222c;
+    --code-bg: #1d1e27;
+    --on-accent: #1d1e27;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(139, 233, 253, 0.08);
+    --tint-red: rgba(255, 138, 138, 0.1);
+    --tint-yellow: rgba(241, 250, 140, 0.1);
+    --tint-green: rgba(80, 250, 123, 0.08);
+    --toast-error-text: #ffdede;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: dark;
+}
+
+/* Gruvbox: warm and retro, in earthy tones. */
+:root[data-theme='gruvbox'] {
+    --bg: #282828;
+    --panel: #32302f;
+    --panel-2: #3c3836;
+    --line: #504945;
+    --text: #ebdbb2;
+    --muted: #bba98f;
+    --cyan: #92b6a8;
+    --magenta: #e09aac;
+    --yellow: #fabd2f;
+    --red: #ff7b69;
+    --green: #b8bb26;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #1d2021;
+    --code-bg: #1d2021;
+    --on-accent: #1d2021;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(146, 182, 168, 0.09);
+    --tint-red: rgba(255, 123, 105, 0.11);
+    --tint-yellow: rgba(250, 189, 47, 0.11);
+    --tint-green: rgba(184, 187, 38, 0.09);
+    --toast-error-text: #ffe1da;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: dark;
+}
+
+/* AMOLED: pure black, which saves power on OLED screens. */
+:root[data-theme='amoled'] {
+    --bg: #000000;
+    --panel: #0a0a0a;
+    --panel-2: #141414;
+    --line: #2a2a2a;
+    --text: #e6e8ec;
+    --muted: #8f95a3;
+    --cyan: #6ea8fe;
+    --magenta: #b39bf5;
+    --yellow: #f4c152;
+    --red: #f57c7c;
+    --green: #5fd38d;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #000000;
+    --code-bg: #000000;
+    --on-accent: #000000;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(110, 168, 254, 0.1);
+    --tint-red: rgba(245, 124, 124, 0.12000000000000001);
+    --tint-yellow: rgba(244, 193, 82, 0.12000000000000001);
+    --tint-green: rgba(95, 211, 141, 0.1);
+    --toast-error-text: #ffd9d9;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: dark;
+}
+
+/* High contrast: white on black with thick edges, for anyone who needs the difference to be clear. */
+:root[data-theme='high-contrast'] {
+    --bg: #000000;
+    --panel: #000000;
+    --panel-2: #121212;
+    --line: #ffffff;
+    --text: #ffffff;
+    --muted: #d6d6d6;
+    --cyan: #4df0ff;
+    --magenta: #ff8cf5;
+    --yellow: #ffee33;
+    --red: #ff7070;
+    --green: #4dff88;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #000000;
+    --code-bg: #000000;
+    --on-accent: #000000;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(77, 240, 255, 0.14);
+    --tint-red: rgba(255, 112, 112, 0.16);
+    --tint-yellow: rgba(255, 238, 51, 0.16);
+    --tint-green: rgba(77, 255, 136, 0.14);
+    --toast-error-text: #ffffff;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: dark;
+}
+
+/* Sakura: light, soft and pink. */
+:root[data-theme='sakura'] {
+    --bg: #fdf6f8;
+    --panel: #ffffff;
+    --panel-2: #fbeaf0;
+    --line: #ecc9d6;
+    --text: #3a2a33;
+    --muted: #7a5f6d;
+    --cyan: #b3124f;
+    --magenta: #7b3fb0;
+    --yellow: #a8480f;
+    --red: #c62b2b;
+    --green: #1a7440;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #ffffff;
+    --code-bg: #fbeaf0;
+    --on-accent: #ffffff;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(179, 18, 79, 0.08);
+    --tint-red: rgba(198, 43, 43, 0.1);
+    --tint-yellow: rgba(168, 72, 15, 0.1);
+    --tint-green: rgba(26, 116, 64, 0.08);
+    --toast-error-text: #7a1616;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: light;
+}
+
+/* Synthwave: neon pink and orange on a purple sunset, with the glow and the scanlines of the cyberpunk theme. */
+:root[data-theme='synthwave'] {
+    --bg: #120c2a;
+    --panel: #1b1340;
+    --panel-2: #251a55;
+    --line: #4a2f8f;
+    --text: #f6e9ff;
+    --muted: #b79ee0;
+    --cyan: #ff5ec4;
+    --magenta: #ffb347;
+    --yellow: #ffe45e;
+    --red: #ff6b81;
+    --green: #5dffb1;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #0f0a24;
+    --code-bg: #0b0719;
+    --on-accent: #1a0b3d;
+    --glow: 0 0 14px rgba(255, 94, 196, 0.35);
+    --glow-strong: 0 0 16px rgba(255, 94, 196, 0.6);
+    --glow-hot: 0 0 18px rgba(255, 179, 71, 0.7);
+    --glow-red: 0 0 14px rgba(255, 107, 129, 0.25);
+    --glow-yellow: 0 0 14px rgba(255, 228, 94, 0.25);
+    --glow-green: 0 0 14px rgba(93, 255, 177, 0.25);
+    --glow-inset: inset 0 0 30px rgba(255, 94, 196, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(255, 94, 196, 0.5);
+    --tint-cyan: rgba(255, 94, 196, 0.06);
+    --tint-red: rgba(255, 107, 129, 0.08);
+    --tint-yellow: rgba(255, 228, 94, 0.07);
+    --tint-green: rgba(93, 255, 177, 0.06);
+    --toast-error-text: #ffdbe1;
+    --body-bg: radial-gradient(1100px 520px at 50% 118%, rgba(255, 94, 196, 0.28) 0%, transparent 62%), radial-gradient(900px 480px at 85% -12%, rgba(255, 179, 71, 0.16) 0%, transparent 60%), linear-gradient(180deg, #120c2a 0%, #1d0f45 60%, #2a1155 100%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
+/* Terminal: phosphor green on black, square corners and a strong glow, like an old monitor. */
+:root[data-theme='terminal'] {
+    --bg: #020a04;
+    --panel: #04120a;
+    --panel-2: #071d10;
+    --line: #14532d;
+    --text: #b6ffc8;
+    --muted: #52c47a;
+    --cyan: #39ff88;
+    --magenta: #b8ff3c;
+    --yellow: #e0ff5a;
+    --red: #ff6b5f;
+    --green: #39ff88;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #020a04;
+    --code-bg: #010603;
+    --on-accent: #02150a;
+    --glow: 0 0 12px rgba(57, 255, 136, 0.35);
+    --glow-strong: 0 0 16px rgba(57, 255, 136, 0.6);
+    --glow-hot: 0 0 18px rgba(184, 255, 60, 0.7);
+    --glow-red: 0 0 12px rgba(255, 107, 95, 0.25);
+    --glow-yellow: 0 0 12px rgba(224, 255, 90, 0.25);
+    --glow-green: 0 0 12px rgba(57, 255, 136, 0.3);
+    --glow-inset: inset 0 0 30px rgba(57, 255, 136, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(57, 255, 136, 0.5);
+    --tint-cyan: rgba(57, 255, 136, 0.06);
+    --tint-red: rgba(255, 107, 95, 0.08);
+    --tint-yellow: rgba(224, 255, 90, 0.07);
+    --tint-green: rgba(57, 255, 136, 0.06);
+    --toast-error-text: #ffd9d5;
+    --body-bg: radial-gradient(1000px 520px at 50% 0%, rgba(57, 255, 136, 0.07) 0%, transparent 65%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(57, 255, 136, 0.05) 0, rgba(57, 255, 136, 0.05) 1px, transparent 1px, transparent 3px);
+    --cut: 0px;
+    color-scheme: dark;
+}
+
+:root[data-theme-style='flat'] .logo {
     letter-spacing: 2px;
 }
 
-:root[data-theme='dark'] .logo::before,
-:root[data-theme='dark'] .logo::after,
-:root[data-theme='light'] .logo::before,
-:root[data-theme='light'] .logo::after {
+:root[data-theme-style='flat'] .logo::before,
+:root[data-theme-style='flat'] .logo::after {
     display: none;
 }
 
-:root[data-theme='dark'] .btn,
-:root[data-theme='light'] .btn {
+:root[data-theme-style='flat'] .btn {
     border-radius: 6px;
     letter-spacing: 1px;
 }
 
-:root[data-theme='dark'] .input,
-:root[data-theme='light'] .input,
-:root[data-theme='dark'] .panel,
-:root[data-theme='light'] .panel,
-:root[data-theme='dark'] .url-input,
-:root[data-theme='light'] .url-input {
+:root[data-theme-style='flat'] .input,
+:root[data-theme-style='flat'] .panel,
+:root[data-theme-style='flat'] .url-input {
     border-radius: 6px;
 }

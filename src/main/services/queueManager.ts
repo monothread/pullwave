@@ -6,6 +6,7 @@ import type { AddJobResult, DownloadJob, DownloadError, DownloadInfo, HistoryEnt
 import type { RunHandle, RunResult } from './ytdlpRunner';
 import { buildYtdlpArgs, type RequestExtras } from './ytdlpArgsBuilder';
 import { translateMain } from './language';
+import { keepInside, type PausedDownload, type PausedStorage } from './pausedStore';
 
 export interface QueueDependencies {
     getSettings: () => Settings;
@@ -29,6 +30,8 @@ export interface QueueDependencies {
     // The unfinished files (.part...) that belong to the download of a final file, and a way to delete files.
     findPartialFiles?: (finalPath: string) => string[];
     deleteFiles?: (paths: string[]) => void;
+    // Where the paused downloads are kept between runs of the app (see pausedStore.ts); without it a pause only lasts while the app is open.
+    pausedStorage?: PausedStorage;
     addHistory: (entry: HistoryEntry) => void;
     onJobUpdate: (job: DownloadJob) => void;
     onJobRemoved: (id: string) => void;
@@ -94,6 +97,39 @@ export class QueueManager {
     constructor(private readonly deps: QueueDependencies) {
         this.generateId = deps.generateId ?? randomUUID;
         this.now = deps.now ?? Date.now;
+        this.restorePaused();
+    }
+
+    // The downloads that were paused when the app was closed are back, paused, with what is needed to go on from their partial files.
+    private restorePaused(): void {
+        (this.deps.pausedStorage?.load() ?? []).forEach((paused) => {
+            if (this.find(paused.job.id) !== undefined) {
+                return;
+            }
+            const job = { ...paused.job };
+            const settings = this.deps.getSettings();
+            const directory = paused.extras.downloadDir ?? (settings.downloadDir.length > 0 ? settings.downloadDir : this.deps.defaultDownloadDir);
+            this.jobs.push(job);
+            this.extras.set(job.id, { ...paused.extras, ...(job.pageUrl !== null ? { pageUrl: job.pageUrl } : {}) });
+            this.outputPaths.set(job.id, new Set(keepInside(paused.outputPaths, directory)));
+            job.hasPartial = this.leftoversOf(job).length > 0;
+        });
+    }
+
+    // Keeps the paused downloads in the file: it holds exactly the ones that are paused now, so one that was resumed, cancelled or removed
+    // is not back the next time. The cookie of a page never goes to the disk.
+    private savePaused(): void {
+        const kept: PausedDownload[] = this.jobs
+            .filter((job) => {
+                return job.status === 'paused';
+            })
+            .map((job) => {
+                const extras = { ...this.extras.get(job.id) };
+                delete extras.cookie;
+                delete extras.resumedPart;
+                return { job: { ...job }, extras, outputPaths: [...(this.outputPaths.get(job.id) ?? [])] };
+            });
+        this.deps.pausedStorage?.save(kept);
     }
 
     list(): DownloadJob[] {
@@ -153,11 +189,19 @@ export class QueueManager {
             return;
         }
         Object.assign(job, { status: 'queued', speed: '', eta: '' });
+        this.savePaused();
         this.emit(job);
         this.pump();
     }
 
-    // Live recordings are asked to finish (and given a moment to save their file); everything else is cancelled.
+    // Whether closing the app has something to wait for: a recording to save, or a download to end and clean up after.
+    hasRunsToEnd(): boolean {
+        return this.handles.size > 0;
+    }
+
+    // Live recordings are asked to finish (and given a moment to save their file). A download that was being paused is kept as paused, at
+    // once, so closing the app right after pausing does not lose it. Every other download is cancelled and the unfinished files it left
+    // behind are deleted (the setting that keeps them after a failure does not apply: nothing is there to resume once the app is closed).
     async shutdown(timeoutMs: number = LIVE_STOP_TIMEOUT_MS): Promise<void> {
         this.closed = true;
         this.jobs.forEach((job) => {
@@ -167,14 +211,24 @@ export class QueueManager {
         });
         const waiting: Array<Promise<unknown>> = [];
         const stopped: RunHandle[] = [];
+        const discarded: Array<{ job: DownloadJob; paths: string[] }> = [];
         this.handles.forEach((handle, id) => {
-            if (this.find(id)?.live) {
+            const job = this.find(id);
+            if (job?.live) {
                 handle.stop();
                 stopped.push(handle);
                 waiting.push(handle.result);
-            } else {
-                handle.cancel();
+                return;
             }
+            if (job !== undefined && this.pauseRequested.has(id)) {
+                // The run ends on its own; finishPaused will find the card already paused and write the same thing again.
+                Object.assign(job, { status: 'paused', speed: '', eta: '' });
+                this.savePaused();
+            } else if (job !== undefined) {
+                discarded.push({ job, paths: [...(this.outputPaths.get(id) ?? [])] });
+                waiting.push(handle.result);
+            }
+            handle.cancel();
         });
         if (waiting.length > 0 || this.salvaging.size > 0) {
             await Promise.race([
@@ -190,6 +244,25 @@ export class QueueManager {
         this.handles.forEach((handle) => {
             if (stopped.includes(handle)) {
                 handle.cancel();
+            }
+        });
+        this.deleteDiscarded(discarded);
+    }
+
+    // The unfinished files of the downloads that were cancelled because the app is closing, found once their processes have ended.
+    private deleteDiscarded(discarded: ReadonlyArray<{ job: DownloadJob; paths: readonly string[] }>): void {
+        const find = this.deps.findPartialFiles;
+        if (find === undefined) {
+            return;
+        }
+        discarded.forEach(({ job, paths }) => {
+            const files = [...new Set(paths.flatMap(find))];
+            if (files.length > 0) {
+                this.deps.deleteFiles?.(files);
+            }
+            if (job.hasPartial) {
+                job.hasPartial = false;
+                this.emit(job);
             }
         });
     }
@@ -258,6 +331,7 @@ export class QueueManager {
         if (job.status === 'paused') {
             Object.assign(job, { status: 'cancelled', speed: '', eta: '' });
             this.settleLeftovers(job);
+            this.savePaused();
             this.emit(job);
         }
     }
@@ -289,6 +363,9 @@ export class QueueManager {
         }
         this.jobs.splice(this.jobs.indexOf(job), 1);
         this.extras.delete(id);
+        if (job.status === 'paused') {
+            this.savePaused();
+        }
         if (job.status !== 'running') {
             this.outputPaths.delete(id);
         }
@@ -714,6 +791,7 @@ export class QueueManager {
             return;
         }
         Object.assign(job, { status: 'paused', speed: '', eta: '', hasPartial: this.leftoversOf(job).length > 0 });
+        this.savePaused();
         this.emit(job);
         this.pump();
     }

@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import './display';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -52,7 +53,7 @@ test.afterEach(async () => {
     rmSync(workDir, { recursive: true, force: true });
 });
 
-for (const theme of ['cyberpunk', 'light']) {
+for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura']) {
     test.describe(`button sizes (${theme} theme)`, () => {
         test.beforeEach(async () => {
             await launch(theme);

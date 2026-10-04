@@ -8,7 +8,7 @@ import { useAppStore } from '@renderer/store/appStore';
 const initial = useAppStore.getState();
 
 beforeEach(() => {
-    useAppStore.setState({ ...initial, notice: null, noticeQueue: [] });
+    useAppStore.setState({ ...initial, notice: null, toasts: [] });
 });
 
 describe('Toast', () => {
@@ -86,32 +86,6 @@ describe('Toast', () => {
             expect(screen.queryByText('Second')).not.toBeInTheDocument();
         });
 
-        it('shows the queued notices one after the other, five seconds each', () => {
-            render(<Toast />);
-            act(() => {
-                useAppStore.getState().queueNotice({ kind: 'info', message: 'One' });
-                useAppStore.getState().queueNotice({ kind: 'info', message: 'Two' });
-            });
-            expect(screen.getByText('One')).toBeInTheDocument();
-            expect(screen.queryByText('Two')).not.toBeInTheDocument();
-
-            act(() => {
-                vi.advanceTimersByTime(INFO_NOTICE_MS);
-            });
-            expect(screen.queryByText('One')).not.toBeInTheDocument();
-            expect(screen.getByText('Two')).toBeInTheDocument();
-
-            act(() => {
-                vi.advanceTimersByTime(INFO_NOTICE_MS - 1);
-            });
-            expect(screen.getByText('Two')).toBeInTheDocument();
-            act(() => {
-                vi.advanceTimersByTime(1);
-            });
-            expect(screen.queryByText('Two')).not.toBeInTheDocument();
-            expect(useAppStore.getState().notice).toBeNull();
-        });
-
         it('does not clear a newer error when the timer of an older info notice fires', () => {
             useAppStore.setState({ notice: { kind: 'info', message: 'Info' } });
             render(<Toast />);
@@ -135,6 +109,132 @@ describe('Toast', () => {
                 vi.advanceTimersByTime(INFO_NOTICE_MS * 2);
             });
             expect(screen.getByText('Later error')).toBeInTheDocument();
+        });
+    });
+
+    describe('the stack of notices that say something finished', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        function messages(): string[] {
+            return screen.getAllByRole('status').map((toast) => {
+                return toast.querySelector('.toast__message')?.textContent ?? '';
+            });
+        }
+
+        it('shows a toast as an information notice, in the stack', () => {
+            render(<Toast />);
+            act(() => {
+                useAppStore.getState().pushToast('Download complete: One');
+            });
+            expect(screen.getByRole('status')).toHaveTextContent('Download complete: One');
+            expect(screen.getByRole('status')).toHaveClass('toast', 'toast--info');
+            expect(screen.getByRole('status').parentElement).toHaveClass('toasts');
+        });
+
+        it('shows all the toasts together, in the order they came, and not one after the other', () => {
+            render(<Toast />);
+            act(() => {
+                useAppStore.getState().pushToast('One');
+                useAppStore.getState().pushToast('Two');
+                useAppStore.getState().pushToast('Three');
+            });
+            expect(messages()).toEqual(['One', 'Two', 'Three']);
+        });
+
+        it('takes each toast away five seconds after it showed up, whatever the others do', () => {
+            render(<Toast />);
+            act(() => {
+                useAppStore.getState().pushToast('One');
+            });
+            act(() => {
+                vi.advanceTimersByTime(2000);
+            });
+            act(() => {
+                useAppStore.getState().pushToast('Two');
+            });
+            expect(messages()).toEqual(['One', 'Two']);
+
+            act(() => {
+                vi.advanceTimersByTime(INFO_NOTICE_MS - 2000 - 1);
+            });
+            expect(messages()).toEqual(['One', 'Two']);
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(messages()).toEqual(['Two']);
+
+            act(() => {
+                vi.advanceTimersByTime(1999);
+            });
+            expect(messages()).toEqual(['Two']);
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(screen.queryByRole('status')).not.toBeInTheDocument();
+            expect(useAppStore.getState().toasts).toEqual([]);
+        });
+
+        it('takes away only the toast that is dismissed by hand', async () => {
+            vi.useRealTimers();
+            render(<Toast />);
+            act(() => {
+                useAppStore.getState().pushToast('One');
+                useAppStore.getState().pushToast('Two');
+            });
+            const dismiss = screen.getAllByRole('button', { name: 'Dismiss notification' });
+            expect(dismiss).toHaveLength(2);
+
+            await userEvent.setup().click(dismiss[0] as HTMLElement);
+
+            expect(messages()).toEqual(['Two']);
+            expect(useAppStore.getState().toasts).toEqual([{ id: expect.any(Number), message: 'Two' }]);
+        });
+
+        it('shows the notice of an action together with the toasts, which it does not replace', () => {
+            useAppStore.setState({ notice: { kind: 'error', message: 'Boom' } });
+            render(<Toast />);
+            act(() => {
+                useAppStore.getState().pushToast('Done');
+            });
+            expect(screen.getByRole('alert')).toHaveTextContent('Boom');
+            expect(screen.getByRole('status')).toHaveTextContent('Done');
+            expect(screen.getByRole('alert').parentElement).toBe(screen.getByRole('status').parentElement);
+        });
+
+        it('keeps the toasts when the notice of an action goes away, and the notice when a toast does', () => {
+            useAppStore.setState({ notice: { kind: 'error', message: 'Boom' } });
+            render(<Toast />);
+            act(() => {
+                useAppStore.getState().pushToast('Done');
+            });
+            act(() => {
+                useAppStore.getState().setNotice(null);
+            });
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            expect(screen.getByText('Done')).toBeInTheDocument();
+
+            act(() => {
+                useAppStore.getState().setNotice({ kind: 'error', message: 'Again' });
+                vi.advanceTimersByTime(INFO_NOTICE_MS);
+            });
+            expect(screen.queryByText('Done')).not.toBeInTheDocument();
+            expect(screen.getByText('Again')).toBeInTheDocument();
+        });
+
+        it('renders nothing when there is neither a notice nor a toast, and shows the toasts without a notice', () => {
+            const { container } = render(<Toast />);
+            expect(container).toBeEmptyDOMElement();
+            act(() => {
+                useAppStore.getState().pushToast('Only a toast');
+            });
+            expect(container).not.toBeEmptyDOMElement();
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
         });
     });
 

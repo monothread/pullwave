@@ -580,7 +580,7 @@ describe('AnimePlayer', () => {
             await vi.waitFor(() => {
                 expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'NO NEW SUBTITLES: THE SOURCE OFFERS NO OTHERS.' });
             });
-            expect(useAppStore.getState().noticeQueue).toEqual([]);
+            expect(useAppStore.getState().toasts).toEqual([]);
         });
 
         describe('in another language', () => {

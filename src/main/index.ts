@@ -1,5 +1,5 @@
 import { delimiter, join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, protocol, screen, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, screen, session, shell, type Display } from 'electron';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { createAnimeRuntime } from './animeRuntime';
@@ -19,6 +19,7 @@ import { getElectronUpdater } from './services/electronUpdater';
 import { findPartialFiles, removeFiles } from './services/partialFiles';
 import { applyLanguage, translateMain } from './services/language';
 import { HistoryStore } from './services/historyStore';
+import { PausedStore } from './services/pausedStore';
 import { migrateLegacyUserData } from './services/legacyDataMigration';
 import { restartApplication } from './services/relaunch';
 import { mergeParts } from './services/partsMerger';
@@ -114,13 +115,32 @@ function handleWindowClose(event: Electron.Event): void {
     void requestQuit?.();
 }
 
-// PULLWAVE_E2E_PRIMARY_DISPLAY=1 opens the window on the primary monitor (the end-to-end tests set it, so they run where the
-// person running them is looking and not on whichever monitor the system picks).
-function primaryDisplayPosition(width: number, height: number): { x: number; y: number } | Record<string, never> {
-    if (process.env.PULLWAVE_E2E_PRIMARY_DISPLAY !== '1') {
+// PULLWAVE_E2E_DISPLAY opens the window, centred, on the primary monitor ('primary') or on the first one that is not the primary
+// ('secondary'; the primary again when there is only one). The end-to-end tests set it, so the ones that resize the window run where
+// they have room and the others where they do not get in the way of the person using the computer, and not on whichever monitor the
+// system picks. Without it the system decides.
+function e2eDisplay(): Display | null {
+    const wanted = process.env.PULLWAVE_E2E_DISPLAY;
+    const primary = screen.getPrimaryDisplay();
+    if (wanted === 'primary') {
+        return primary;
+    }
+    if (wanted === 'secondary') {
+        return (
+            screen.getAllDisplays().find((display) => {
+                return display.id !== primary.id;
+            }) ?? primary
+        );
+    }
+    return null;
+}
+
+function e2eWindowPosition(width: number, height: number): { x: number; y: number } | Record<string, never> {
+    const display = e2eDisplay();
+    if (display === null) {
         return {};
     }
-    const area = screen.getPrimaryDisplay().workArea;
+    const area = display.workArea;
     return { x: area.x + Math.max(0, Math.round((area.width - width) / 2)), y: area.y + Math.max(0, Math.round((area.height - height) / 2)) };
 }
 
@@ -128,7 +148,7 @@ function createWindow(): BrowserWindow {
     const window = new BrowserWindow({
         width: 1100,
         height: 780,
-        ...primaryDisplayPosition(1100, 780),
+        ...e2eWindowPosition(1100, 780),
         minWidth: 480,
         minHeight: 520,
         backgroundColor: '#07060f',
@@ -192,6 +212,7 @@ function bootstrap(): void {
     const dataDir = app.getPath('userData');
     const settingsStore = new SettingsStore(join(dataDir, 'settings.json'));
     const historyStore = new HistoryStore(join(dataDir, 'history.json'));
+    const pausedStore = new PausedStore(join(dataDir, 'paused.json'));
     applyLanguage(settingsStore.get().language, app.getLocale());
     const resolver = new BinaryResolver({
         bundledDir: app.isPackaged ? join(process.resourcesPath, 'bin') : join(app.getAppPath(), 'resources', 'bin'),
@@ -223,6 +244,7 @@ function bootstrap(): void {
         startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess) => {
             return runYtdlp({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, env: resolver.spawnEnv() });
         },
+        pausedStorage: pausedStore,
         addHistory: (entry) => {
             historyStore.add(entry);
         },
@@ -381,25 +403,36 @@ function bootstrap(): void {
 
     // Quitting asks live recordings to finish and gives them a moment to save their file before the app really exits.
     let shutdownDone = false;
+    let shuttingDown = false;
     app.on('before-quit', (event) => {
         quitting = true;
-        anime?.queue.shutdown();
         if (shutdownDone) {
             return;
         }
-        if (queue.hasLiveJobs()) {
+        if (shuttingDown) {
             event.preventDefault();
-            void queue.shutdown().then(() => {
+            return;
+        }
+        const endAll = (): Promise<unknown> => {
+            return Promise.all([queue.shutdown(), anime?.queue.shutdown()]);
+        };
+        if (queue.hasRunsToEnd() || anime?.queue.hasRunsToEnd()) {
+            // Downloads that are running are cancelled and what they left behind is deleted before the app exits.
+            event.preventDefault();
+            shuttingDown = true;
+            void endAll().finally(() => {
                 shutdownDone = true;
                 app.quit();
             });
             return;
         }
         shutdownDone = true;
-        void queue.shutdown();
+        void endAll();
     });
 
     registerAnimeHandlers(ipcMain, anime ? anime.handlers : null);
+    // Which anime of today's schedule the source has is looked up in the background, so it is known by the time the screen is opened.
+    anime?.startBackgroundChecks();
     registerHandlers({
         ipcMain,
         settingsStore,

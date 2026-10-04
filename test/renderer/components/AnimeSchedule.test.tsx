@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeScheduleEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -19,8 +19,8 @@ const NOW = new Date('2026-10-03T15:30:00Z');
 const DAY_START = 1_790_985_600;
 
 const MORNING = makeScheduleEntry({ anilistId: 1, title: 'Sousou no Frieren', episode: 12, airingAt: DAY_START + 9 * 3600 });
-const NIGHT = makeScheduleEntry({ anilistId: 2, title: 'Dandadan', names: ['Dandadan', 'Dan Da Dan'], episode: 3, airingAt: DAY_START + 22 * 3600 + 30 * 60, coverUrl: null });
-const TOMORROW = makeScheduleEntry({ anilistId: 3, title: 'Blue Lock', names: ['Blue Lock'], episode: 5, airingAt: DAY_START + 86_400 + 10 * 3600 });
+const NIGHT = makeScheduleEntry({ anilistId: 2, title: 'Dandadan', english: 'Dandadan', romaji: 'Dan Da Dan', names: ['Dandadan', 'Dan Da Dan'], episode: 3, airingAt: DAY_START + 22 * 3600 + 30 * 60, coverUrl: null });
+const TOMORROW = makeScheduleEntry({ anilistId: 3, title: 'Blue Lock', english: 'Blue Lock', romaji: null, names: ['Blue Lock'], episode: 5, airingAt: DAY_START + 86_400 + 10 * 3600 });
 
 function timeOf(entry: AnimeScheduleEntry, timeZone = 'UTC'): string {
     return new Date(entry.airingAt * 1000).toLocaleTimeString('en', { timeZone, hour: '2-digit', minute: '2-digit' });
@@ -267,5 +267,240 @@ describe('AnimeSchedule', () => {
         expect(mock.api.listAnimeSchedule).toHaveBeenCalledTimes(2);
         expect(mock.api.listAnimeSchedule).toHaveBeenLastCalledWith({ from: DAY_START, to: DAY_START + 86_400, refresh: true });
         expect(screen.getByText('AIRING [1]')).toBeInTheDocument();
+    });
+
+    describe('availability in the source', () => {
+        it('asks which of the anime of the day the source has, by their ids and their two names', async () => {
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            await vi.waitFor(() => {
+                expect(mock.api.checkAnimeAvailability).toHaveBeenCalledTimes(1);
+            });
+            expect(mock.api.checkAnimeAvailability).toHaveBeenCalledWith([
+                { anilistId: 1, english: 'Frieren: Beyond Journey\'s End', romaji: 'Sousou no Frieren' },
+                { anilistId: 2, english: 'Dandadan', romaji: 'Dan Da Dan' }
+            ]);
+        });
+
+        it('says CHECKING… on each card while the source is being asked, and the cards can be clicked meanwhile', async () => {
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            const items = screen.getAllByRole('listitem');
+            items.forEach((item) => {
+                expect(within(item).getByText('CHECKING…')).toBeInTheDocument();
+                expect(within(item).getAllByRole('button')).toHaveLength(1);
+                expect(item).not.toHaveAttribute('aria-disabled');
+            });
+        });
+
+        it('marks the anime the source has as AVAILABLE, keeping the card a button', async () => {
+            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 1, state: 'available', query: 'Frieren: Beyond Journey\'s End', index: 1, title: 'Frieren: Beyond Journey\'s End' }]);
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+            expect(await within(first).findByText('AVAILABLE')).toHaveClass('badge', 'badge--done');
+            expect(within(first).getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' })).toBeEnabled();
+            expect(first).toHaveClass('row--link');
+            expect(first).not.toHaveClass('cover-card--unavailable');
+        });
+
+        it('shows the anime the source does not have faded, as NOT AVAILABLE, without a button and with the reason on hover', async () => {
+            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 2, state: 'unavailable' }]);
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            const second = screen.getAllByRole('listitem')[1] as HTMLElement;
+            expect(await within(second).findByText('NOT AVAILABLE')).toHaveClass('badge');
+            expect(second).toHaveClass('cover-card--unavailable');
+            expect(second).not.toHaveClass('row--link');
+            expect(second).toHaveAttribute('aria-disabled', 'true');
+            expect(second).toHaveAttribute('title', 'The source does not have this anime.');
+            expect(within(second).queryByRole('button')).not.toBeInTheDocument();
+            expect(within(second).getByText('Dandadan')).toBeInTheDocument();
+            // The other card keeps being a button.
+            expect(within(screen.getAllByRole('listitem')[0] as HTMLElement).getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' })).toBeInTheDocument();
+        });
+
+        it('does nothing when a card that is not available is clicked', async () => {
+            const user = userEvent.setup();
+            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 2, state: 'unavailable' }]);
+            render(<AnimeSchedule />);
+            await screen.findByText('Dandadan');
+            await screen.findByText('NOT AVAILABLE');
+
+            await user.click(screen.getByText('Dandadan'));
+
+            expect(mock.api.searchAnime).not.toHaveBeenCalled();
+            expect(useAnimeStore.getState().view).toBe('schedule');
+        });
+
+        it('shows no badge, and a card that can be clicked, when it could not be checked', async () => {
+            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 1, state: 'unknown' }]);
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+            await vi.waitFor(() => {
+                expect(within(first).queryByText('CHECKING…')).not.toBeInTheDocument();
+            });
+            expect(within(first).queryByText('AVAILABLE')).not.toBeInTheDocument();
+            expect(within(first).queryByText('NOT AVAILABLE')).not.toBeInTheDocument();
+            expect(within(first).getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' })).toBeEnabled();
+        });
+
+        it('updates a card when the answer comes later', async () => {
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+            const second = screen.getAllByRole('listitem')[1] as HTMLElement;
+            expect(within(second).getByText('CHECKING…')).toBeInTheDocument();
+
+            act(() => {
+                // What the store does with the event of the main process.
+                useAnimeStore.setState({ availability: { 2: { anilistId: 2, state: 'unavailable' } } });
+            });
+
+            expect(within(second).getByText('NOT AVAILABLE')).toBeInTheDocument();
+            expect(second).toHaveClass('cover-card--unavailable');
+        });
+
+        it('opens the search by the name that found the anime when an available card is clicked', async () => {
+            const user = userEvent.setup();
+            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 1, state: 'available', query: 'Frieren: Beyond Journey\'s End', index: 1, title: 'Frieren: Beyond Journey\'s End' }]);
+            mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Frieren: Beyond Journey\'s End' }] });
+            render(<AnimeSchedule />);
+            await screen.findByText('AVAILABLE');
+
+            await user.click(screen.getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' }));
+
+            expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
+            expect(mock.api.searchAnime).toHaveBeenCalledWith('Frieren: Beyond Journey\'s End', 'sub');
+        });
+
+        it('also marks the cards of the search when the schedule is narrowed', async () => {
+            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 2, state: 'unavailable' }]);
+            const user = userEvent.setup();
+            render(<AnimeSchedule />);
+            await screen.findByText('NOT AVAILABLE');
+
+            await user.type(screen.getByRole('textbox', { name: 'Search the schedule' }), 'dandadan');
+
+            const items = screen.getAllByRole('listitem');
+            expect(items).toHaveLength(1);
+            expect(within(items[0] as HTMLElement).getByText('NOT AVAILABLE')).toBeInTheDocument();
+        });
+    });
+
+    describe('searching', () => {
+        function dateOf(entry: AnimeScheduleEntry): string {
+            return new Intl.DateTimeFormat('en', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(entry.airingAt * 1000));
+        }
+
+        async function showWeek(): Promise<ReturnType<typeof userEvent.setup>> {
+            const user = userEvent.setup();
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+            mock.api.listAnimeSchedule.mockResolvedValue({ ok: true, entries: [MORNING, NIGHT, TOMORROW] });
+            await user.selectOptions(screen.getByLabelText('View'), 'week');
+            await screen.findByText('Blue Lock');
+            return user;
+        }
+
+        it('has a field to search, empty at first, and shows every episode with only its time', async () => {
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            const field = screen.getByRole('textbox', { name: 'Search the schedule' });
+            expect(field).toHaveValue('');
+            expect(field).toHaveAttribute('placeholder', 'Anime name…');
+            expect(screen.getByText('AIRING [2]')).toBeInTheDocument();
+            expect(screen.getByText(`EP 12 · ${timeOf(MORNING)}`)).toBeInTheDocument();
+        });
+
+        it('narrows the list to the anime that match, with the date and the time of each episode', async () => {
+            const user = userEvent.setup();
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            await user.type(screen.getByRole('textbox', { name: 'Search the schedule' }), 'frieren');
+
+            expect(screen.getByText('AIRING [1]')).toBeInTheDocument();
+            expect(screen.getByText('Sousou no Frieren')).toBeInTheDocument();
+            expect(screen.queryByText('Dandadan')).not.toBeInTheDocument();
+            expect(screen.getByText(`EP 12 · ${dateOf(MORNING)} · ${timeOf(MORNING)}`)).toBeInTheDocument();
+            expect(mock.api.listAnimeSchedule).toHaveBeenCalledTimes(1);
+        });
+
+        it('finds an anime by another name it is known by, whatever the case', async () => {
+            const user = userEvent.setup();
+            render(<AnimeSchedule />);
+            await screen.findByText('Dandadan');
+
+            await user.type(screen.getByRole('textbox', { name: 'Search the schedule' }), 'DAN DA DAN');
+
+            expect(screen.getByText(`EP 3 · ${dateOf(NIGHT)} · ${timeOf(NIGHT)}`)).toBeInTheDocument();
+            expect(screen.queryByText('Sousou no Frieren')).not.toBeInTheDocument();
+        });
+
+        it('finds the day of the episode in the week, leaving out the days where nothing matches', async () => {
+            const user = await showWeek();
+
+            await user.type(screen.getByRole('textbox', { name: 'Search the schedule' }), 'blue');
+
+            expect(screen.getByText('AIRING [1]')).toBeInTheDocument();
+            expect(within(dayOf('Sunday, Oct 4')).getByText(`EP 5 · ${dateOf(TOMORROW)} · ${timeOf(TOMORROW)}`)).toBeInTheDocument();
+            expect(screen.queryByRole('region', { name: 'Saturday, Oct 3' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('region', { name: 'Monday, Oct 5' })).not.toBeInTheDocument();
+            expect(screen.queryByText('// NOTHING AIRS.')).not.toBeInTheDocument();
+        });
+
+        it('says that nothing matches, with what was typed, and the full list comes back when it is cleared', async () => {
+            const user = userEvent.setup();
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+            const field = screen.getByRole('textbox', { name: 'Search the schedule' });
+
+            await user.type(field, '  naruto ');
+
+            expect(screen.getByText('// NO ANIME MATCHES "naruto".')).toBeInTheDocument();
+            expect(screen.getByText('AIRING [0]')).toBeInTheDocument();
+            expect(screen.queryByText('Sousou no Frieren')).not.toBeInTheDocument();
+            expect(screen.queryByText('// NOTHING AIRS IN THIS PERIOD.')).not.toBeInTheDocument();
+
+            await user.clear(field);
+
+            expect(screen.queryByText(/NO ANIME MATCHES/)).not.toBeInTheDocument();
+            expect(screen.getByText('AIRING [2]')).toBeInTheDocument();
+            expect(screen.getByText(`EP 12 · ${timeOf(MORNING)}`)).toBeInTheDocument();
+        });
+
+        it('shows the message of an empty period, not of a search, when nothing airs', async () => {
+            mock.api.listAnimeSchedule.mockResolvedValue({ ok: true, entries: [] });
+            const user = userEvent.setup();
+            render(<AnimeSchedule />);
+            await screen.findByText('// NOTHING AIRS IN THIS PERIOD.');
+
+            await user.type(screen.getByRole('textbox', { name: 'Search the schedule' }), 'frieren');
+
+            expect(screen.getByText('// NOTHING AIRS IN THIS PERIOD.')).toBeInTheDocument();
+            expect(screen.queryByText(/NO ANIME MATCHES/)).not.toBeInTheDocument();
+        });
+
+        it('keeps the search when the view changes, and opens the card that was found', async () => {
+            const user = userEvent.setup();
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+            const field = screen.getByRole('textbox', { name: 'Search the schedule' });
+            await user.type(field, 'dandadan');
+            mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Dandadan' }] });
+
+            await user.click(screen.getByRole('button', { name: 'OPEN: Dandadan, EP 3' }));
+
+            expect(useAnimeStore.getState().view).toBe('search');
+            expect(useAnimeStore.getState().search.query).toBe('Dandadan');
+            expect(field).toHaveValue('dandadan');
+        });
     });
 });

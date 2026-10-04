@@ -55,8 +55,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const FRIEREN: AnimeScheduleEntry = {
     anilistId: 154587,
-    title: 'Sousou no Frieren',
-    names: ['Sousou no Frieren', 'Frieren: Beyond Journey\'s End'],
+    title: 'Frieren: Beyond Journey\'s End',
+    english: 'Frieren: Beyond Journey\'s End',
+    romaji: 'Sousou no Frieren',
+    names: ['Frieren: Beyond Journey\'s End', 'Sousou no Frieren'],
     episode: 12,
     airingAt: 1_700_040_000,
     coverUrl: 'https://img.example/frieren.jpg'
@@ -67,10 +69,17 @@ describe('parseScheduleEntry', () => {
         expect(parseScheduleEntry(rawEpisode())).toEqual(FRIEREN);
     });
 
-    it('shows the romaji title first and keeps the english one as another name', () => {
+    it('keeps the english and the romaji names apart, each one missing when the anime has none', () => {
+        expect(parseScheduleEntry(rawEpisode({ romaji: 'Kimetsu no Yaiba', english: 'Demon Slayer' }))).toMatchObject({ english: 'Demon Slayer', romaji: 'Kimetsu no Yaiba' });
+        expect(parseScheduleEntry(rawEpisode({ romaji: null, english: 'Demon Slayer' }))).toMatchObject({ english: 'Demon Slayer', romaji: null });
+        expect(parseScheduleEntry(rawEpisode({ romaji: 'Kimetsu no Yaiba', english: null }))).toMatchObject({ english: null, romaji: 'Kimetsu no Yaiba' });
+        expect(parseScheduleEntry(rawEpisode({ romaji: '  Bleach  ', english: '  ' }))).toMatchObject({ english: null, romaji: 'Bleach' });
+    });
+
+    it('shows the english title and puts it first among the names, before the romaji one', () => {
         const parsed = parseScheduleEntry(rawEpisode({ romaji: 'Kimetsu no Yaiba', english: 'Demon Slayer' }));
-        expect(parsed?.title).toBe('Kimetsu no Yaiba');
-        expect(parsed?.names).toEqual(['Kimetsu no Yaiba', 'Demon Slayer']);
+        expect(parsed?.title).toBe('Demon Slayer');
+        expect(parsed?.names).toEqual(['Demon Slayer', 'Kimetsu no Yaiba']);
     });
 
     it('shows the english title when there is no romaji one', () => {
@@ -79,19 +88,25 @@ describe('parseScheduleEntry', () => {
         expect(parsed?.names).toEqual(['Demon Slayer']);
     });
 
+    it('shows the romaji title when there is no english one', () => {
+        const parsed = parseScheduleEntry(rawEpisode({ romaji: 'Kimetsu no Yaiba', english: null }));
+        expect(parsed?.title).toBe('Kimetsu no Yaiba');
+        expect(parsed?.names).toEqual(['Kimetsu no Yaiba']);
+    });
+
     it('gives none when the anime has no title at all', () => {
         expect(parseScheduleEntry(rawEpisode({ romaji: null, english: null }))).toBeNull();
     });
 
     it('trims the names and does not repeat one that only differs in case', () => {
         const parsed = parseScheduleEntry(rawEpisode({ romaji: '  Bleach  ', english: 'BLEACH', synonyms: ['bleach', 'Burīchi'] }));
-        expect(parsed?.names).toEqual(['Bleach', 'Burīchi']);
+        expect(parsed?.names).toEqual(['BLEACH', 'Burīchi']);
     });
 
     it('keeps the synonyms that are text, up to the limit', () => {
         const synonyms = ['One', 2, '', '   ', 'Two', 'Three', 'Four', 'Five', 'Six'];
         const parsed = parseScheduleEntry(rawEpisode({ synonyms }));
-        expect(parsed?.names).toEqual(['Sousou no Frieren', 'Frieren: Beyond Journey\'s End', 'One', 'Two', 'Three', 'Four']);
+        expect(parsed?.names).toEqual(['Frieren: Beyond Journey\'s End', 'Sousou no Frieren', 'One', 'Two', 'Three', 'Four']);
         expect(MAX_SYNONYMS).toBe(4);
     });
 
@@ -178,9 +193,9 @@ describe('fetchAiringSchedule', () => {
 
     it('asks for the next page while there is one and joins them in order', async () => {
         const answers = [
-            jsonResponse(pageBody([rawEpisode({ id: 1, episode: 1, romaji: 'First' })], true)),
-            jsonResponse(pageBody([rawEpisode({ id: 2, episode: 2, romaji: 'Second' })], true)),
-            jsonResponse(pageBody([rawEpisode({ id: 3, episode: 3, romaji: 'Third' })], false))
+            jsonResponse(pageBody([rawEpisode({ id: 1, episode: 1, romaji: 'First', english: 'First' })], true)),
+            jsonResponse(pageBody([rawEpisode({ id: 2, episode: 2, romaji: 'Second', english: 'Second' })], true)),
+            jsonResponse(pageBody([rawEpisode({ id: 3, episode: 3, romaji: 'Third', english: 'Third' })], false))
         ];
         const pagesAsked: number[] = [];
         const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -368,7 +383,7 @@ describe('loadSchedule', () => {
 
 describe('loadSchedule cache', () => {
     const REQUEST = { from: 1_700_000_000, to: 1_700_086_400 };
-    const CACHED: AnimeScheduleEntry = { anilistId: 1, title: 'Cached', names: ['Cached'], episode: 4, airingAt: 1_700_000_100, coverUrl: null };
+    const CACHED: AnimeScheduleEntry = { anilistId: 1, title: 'Cached', english: 'Cached', romaji: null, names: ['Cached'], episode: 4, airingAt: 1_700_000_100, coverUrl: null };
 
     function makeCache(found: AnimeScheduleEntry[] | null = null) {
         const find = vi.fn<ScheduleCache['find']>(() => {

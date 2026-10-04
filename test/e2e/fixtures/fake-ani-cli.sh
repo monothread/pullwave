@@ -49,10 +49,11 @@ if [ "$download" = 1 ]; then
     printf '[download]  25.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 1/4)\n'
     # A "slow" download takes long enough to be cancelled; its file only exists if nobody ended it.
     case "$query" in
-        *slow*) sleep 5 ;;
+        *slow*) printf 'unfinished' > "$file.part"; sleep 5 ;;
     esac
     printf '[download] 100%% of   19.00B in 00:00:01 at 1.00MiB/s\n'
     printf 'FAKEVIDEO0123456789' > "$file"
+    rm -f "$file.part"
     printf 'WEBVTT\n' > "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.vtt"
     exit 0
 fi

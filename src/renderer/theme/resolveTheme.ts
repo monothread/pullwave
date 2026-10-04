@@ -1,4 +1,4 @@
-import { THEMES } from '@shared/constants';
+import { THEME_STYLES, THEMES } from '@shared/constants';
 import type { ThemeName } from '@shared/types';
 
 export type AppliedTheme = Exclude<ThemeName, 'device'>;
@@ -18,8 +18,11 @@ export function systemPrefersDark(): boolean {
     return typeof window.matchMedia === 'function' && window.matchMedia(DARK_SCHEME_QUERY).matches;
 }
 
+// The theme goes in data-theme and its style (neon or flat) in data-theme-style, which is what the shared rules of the CSS look at.
 export function applyTheme(theme: ThemeName): void {
-    document.documentElement.dataset.theme = resolveTheme(theme, systemPrefersDark());
+    const applied = resolveTheme(theme, systemPrefersDark());
+    document.documentElement.dataset.theme = applied;
+    document.documentElement.dataset.themeStyle = THEME_STYLES[applied];
 }
 
 // The last theme is kept outside the settings file so the first paint already uses it, instead of flashing the

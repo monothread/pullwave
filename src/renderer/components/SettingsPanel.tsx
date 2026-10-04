@@ -6,6 +6,7 @@ import {
     MIN_LIVE_END_CHECK_SECONDS,
     MIN_TITLE_LENGTH,
     RESOLUTIONS,
+    START_TABS,
     THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
@@ -120,6 +121,9 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const updateYtdlp = useAppStore((state) => {
         return state.updateYtdlp;
     });
+    const resetYtdlp = useAppStore((state) => {
+        return state.resetYtdlp;
+    });
     const traySupport = useAppStore((state) => {
         return state.traySupport;
     });
@@ -143,6 +147,9 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     });
     const updateAniCli = useAnimeStore((state) => {
         return state.updateCli;
+    });
+    const resetAniCli = useAnimeStore((state) => {
+        return state.resetCli;
     });
     const library = useAnimeStore((state) => {
         return state.library;
@@ -235,6 +242,18 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             hint={t('settings.language.hint')}
                             onChange={(value) => {
                                 change('language', value);
+                            }}
+                        />
+                        <SelectField
+                            label={t('settings.startTab')}
+                            value={draft.startTab}
+                            options={START_TABS}
+                            formatOption={(startTab) => {
+                                return t(startTab === 'anime' ? 'tab.anime' : 'tab.downloads');
+                            }}
+                            hint={t('settings.startTab.hint')}
+                            onChange={(value) => {
+                                change('startTab', value);
                             }}
                         />
                         <ToggleField
@@ -537,6 +556,18 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             >
                                 {updatingYtdlp ? t('settings.ytdlp.updating') : t('settings.ytdlp.update')}
                             </button>
+                            {binaries?.ytdlp.source === 'updated' && (
+                                <button
+                                    type="button"
+                                    className="btn btn--small"
+                                    disabled={updatingYtdlp}
+                                    onClick={() => {
+                                        void resetYtdlp();
+                                    }}
+                                >
+                                    {t('settings.ytdlp.reset')}
+                                </button>
+                            )}
                         </div>
                         <span className="field__hint">{t('settings.ytdlp.hint')}</span>
                     </fieldset>
@@ -680,6 +711,18 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             >
                                 {updatingAniCli ? t('settings.anicli.updating') : t('settings.anicli.update')}
                             </button>
+                            {aniCli?.source === 'updated' && (
+                                <button
+                                    type="button"
+                                    className="btn btn--small"
+                                    disabled={updatingAniCli}
+                                    onClick={() => {
+                                        void resetAniCli();
+                                    }}
+                                >
+                                    {t('settings.anicli.reset')}
+                                </button>
+                            )}
                         </div>
                         <span className="field__hint">{t('settings.anicli.hint')}</span>
                     </div>

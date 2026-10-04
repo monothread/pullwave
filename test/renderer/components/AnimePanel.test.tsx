@@ -89,7 +89,7 @@ describe('AnimePanel', () => {
         render(<AnimePanel />);
 
         await user.click(screen.getByRole('button', { name: 'LIBRARY' }));
-        expect(screen.getByText('// THE LIBRARY IS EMPTY. SEARCH AN ANIME AND DOWNLOAD AN EPISODE.')).toBeInTheDocument();
+        expect(screen.getByText('// THE LIBRARY IS EMPTY. SEARCH AN ANIME AND ADD IT TO THE LIBRARY.')).toBeInTheDocument();
         expect(within(subNav()).getByRole('button', { name: 'LIBRARY' })).toHaveAttribute('aria-current', 'page');
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
 

@@ -41,6 +41,8 @@ export function makeScheduleEntry(overrides: Partial<AnimeScheduleEntry> = {}): 
     return {
         anilistId: 154587,
         title: 'Sousou no Frieren',
+        english: 'Frieren: Beyond Journey\'s End',
+        romaji: 'Sousou no Frieren',
         names: ['Sousou no Frieren', 'Frieren: Beyond Journey\'s End'],
         episode: 12,
         airingAt: 1_700_040_000,

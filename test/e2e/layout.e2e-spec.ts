@@ -1,4 +1,5 @@
 import { expect, test, _electron as electron, type Page } from '@playwright/test';
+import './display';
 import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -11,8 +12,8 @@ const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
 // The sizes of the windows on screens of 1366x768 up to 1920x1080 (the taskbar takes some of the height), and
 // narrow ones.
 const SIZES: Array<[number, number]> = [[480, 800], [600, 800], [768, 1000], [1024, 768], [1366, 768], [1920, 1050]];
-// The three themes: the font of one is wider than the others and its boxes are cut differently.
-const THEMES = ['cyberpunk', 'dark', 'light'];
+// Every theme: the font of the neon ones is wider than the others and their boxes are cut differently.
+const THEMES = ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'];
 test.setTimeout(600000);
 
 // Everything that looks wrong from the geometry alone: the page scrolling sideways, boxes that go past the window or past the box
@@ -160,7 +161,7 @@ test('nothing is cut, misaligned or out of its box on any screen, at any size fr
         await page.getByLabel(`Link ${index + 1}`, { exact: true }).fill(url);
     }
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
-    await expect(page.locator('.toast--info')).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('.toast--info').first()).toBeVisible({ timeout: 20000 });
     await sweep('downloads');
     await page.getByRole('button', { name: 'HISTORY', exact: true }).click();
     await sweep('history');
@@ -182,21 +183,34 @@ test('nothing is cut, misaligned or out of its box on any screen, at any size fr
     await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
     await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
     await sweep('anime-detail');
-    await page.getByRole('button', { name: 'SELECT ALL' }).click();
-    await page.getByRole('button', { name: 'DOWNLOAD SELECTED (3)' }).click();
+    // The anime goes to the library from here, and is downloaded from there.
+    await page.getByRole('button', { name: 'ADD TO LIBRARY', exact: true }).click();
+    await sweep('anime-add-dialog');
+    await page.getByRole('button', { name: 'CONFIRM' }).click();
+    await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+    await sweep('anime-detail-added');
+    await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'DOWNLOAD ALL: Fake Anime' })).toBeVisible();
+    await sweep('library-series-not-downloaded');
+    await page.getByRole('button', { name: 'DOWNLOAD ALL: Fake Anime' }).click();
+    // A finished download leaves the downloads screen and is told by a toast, one over the other when more finish together.
+    await expect(page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 60000 });
+    await sweep('toasts-stacked');
+    await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 60000 });
     await page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
-    await expect(page.locator('.job .badge--done')).toHaveCount(3);
     await sweep('anime-downloads');
     await page.getByRole('button', { name: 'BACK' }).click();
-    await page.getByRole('button', { name: 'BACK' }).click();
+    await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SEARCH', exact: true }).click();
     await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
+    await page.getByRole('button', { name: 'ADD TO LIBRARY', exact: true }).click();
     await page.getByRole('textbox', { name: 'Series' }).fill('Fake Anime');
     await page.getByRole('spinbutton', { name: 'Order' }).fill('2');
     await page.getByRole('textbox', { name: 'Name shown' }).fill('A name that is rather long for the chip of a season');
-    await page.getByRole('button', { name: 'EP 1', exact: true }).click();
-    await page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
-    await page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
-    await expect(page.locator('.job .badge--done')).toHaveCount(4);
+    await page.getByRole('button', { name: 'CONFIRM' }).click();
+    await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
+    await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime 2', exact: true }).click();
+    await page.getByRole('button', { name: 'DOWNLOAD: Fake Anime 2 EP 1', exact: true }).click();
+    await expect(page.locator('.toast').filter({ hasText: 'Download complete: Fake Anime 2 · EP 1' })).toBeVisible({ timeout: 60000 });
     // More anime for the library: two on their own and a series with many seasons (its list scrolls).
     await page.evaluate(async () => {
         const api = (window as unknown as { api: { downloadAnime: (request: unknown) => Promise<unknown> } }).api;
@@ -207,8 +221,7 @@ test('nothing is cut, misaligned or out of its box on any screen, at any size fr
             await api.downloadAnime({ title: `Long Series ${order}`, query: 'fake', index: 1, audio: 'sub', episodes: ['1'], series: 'Long Series', season: order });
         }
     });
-    await expect(page.locator('.job .badge--done')).toHaveCount(13, { timeout: 60000 });
-    await page.getByRole('button', { name: 'BACK' }).click();
+    await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 60000 });
     await page.getByRole('button', { name: 'HISTORY', exact: true }).click();
     await sweep('anime-history');
     await page.getByRole('button', { name: 'SETTINGS', exact: true }).click();
@@ -218,11 +231,12 @@ test('nothing is cut, misaligned or out of its box on any screen, at any size fr
     await page.getByRole('button', { name: 'OPEN SERIES: Long Series' }).click();
     await sweep('library-series-screen');
     await page.getByTestId('anime-season').first().getByRole('button', { name: 'SHOW EPISODES' }).click();
-    await page.getByRole('button', { name: /^EDIT SERIES/ }).first().click();
+    await page.getByRole('button', { name: /^EDIT SEASON/ }).first().click();
     await sweep('library-series-screen-open');
     await page.getByRole('button', { name: 'BACK' }).click();
     await page.getByRole('button', { name: 'OPEN SERIES: Zeta On Its Own' }).click();
     await sweep('library-anime-screen');
+    await page.getByRole('button', { name: 'SHOW EPISODES: Zeta On Its Own', exact: true }).click();
     await page.getByRole('button', { name: /^PLAY/ }).first().click();
     await sweep('player');
     await app.close();

@@ -9,7 +9,7 @@ const initial = useAppStore.getState();
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, noticeQueue: [], updating: false, appUpdate: INITIAL_APP_UPDATE, traySupport: null, streamSearches: {}, tab: 'downloads', downloadsView: 'queue' });
+    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, toasts: [], updating: false, appUpdate: INITIAL_APP_UPDATE, traySupport: null, streamSearches: {}, tab: 'downloads', downloadsView: 'queue' });
 });
 
 const HISTORY_ENTRY: HistoryEntry = { id: 'h1', url: 'https://x.com', title: 'T', filePath: '/d/T.mp4', status: 'done', errorTitle: null, finishedAt: 5 };
@@ -52,49 +52,87 @@ describe('useAppStore basics', () => {
     });
 });
 
-describe('notice queue', () => {
-    const FIRST = { kind: 'info' as const, message: 'first' };
-    const SECOND = { kind: 'info' as const, message: 'second' };
-    const THIRD = { kind: 'info' as const, message: 'third' };
+function toastMessages(): string[] {
+    return useAppStore.getState().toasts.map((toast) => {
+        return toast.message;
+    });
+}
 
-    it('shows a queued notice right away when none is on the screen', () => {
-        useAppStore.getState().queueNotice(FIRST);
-        expect(useAppStore.getState().notice).toEqual(FIRST);
-        expect(useAppStore.getState().noticeQueue).toEqual([]);
+describe('the toasts', () => {
+    it('starts with none', () => {
+        expect(useAppStore.getState().toasts).toEqual([]);
     });
 
-    it('keeps the others waiting, in order, while one is on the screen', () => {
-        useAppStore.getState().queueNotice(FIRST);
-        useAppStore.getState().queueNotice(SECOND);
-        useAppStore.getState().queueNotice(THIRD);
-        expect(useAppStore.getState().notice).toEqual(FIRST);
-        expect(useAppStore.getState().noticeQueue).toEqual([SECOND, THIRD]);
+    it('adds a toast with its message, and says which one it is', () => {
+        const id = useAppStore.getState().pushToast('first');
+        expect(useAppStore.getState().toasts).toEqual([{ id, message: 'first' }]);
     });
 
-    it('shows the next one when the one on the screen goes away, until none is left', () => {
-        useAppStore.getState().queueNotice(FIRST);
-        useAppStore.getState().queueNotice(SECOND);
-        useAppStore.getState().queueNotice(THIRD);
-
-        useAppStore.getState().setNotice(null);
-        expect(useAppStore.getState().notice).toEqual(SECOND);
-        expect(useAppStore.getState().noticeQueue).toEqual([THIRD]);
-
-        useAppStore.getState().setNotice(null);
-        expect(useAppStore.getState().notice).toEqual(THIRD);
-        expect(useAppStore.getState().noticeQueue).toEqual([]);
-
-        useAppStore.getState().setNotice(null);
-        expect(useAppStore.getState().notice).toBeNull();
-        expect(useAppStore.getState().noticeQueue).toEqual([]);
+    it('stacks the toasts in the order they come, each one with an id of its own', () => {
+        const first = useAppStore.getState().pushToast('first');
+        const second = useAppStore.getState().pushToast('second');
+        const third = useAppStore.getState().pushToast('third');
+        expect(new Set([first, second, third]).size).toBe(3);
+        expect(useAppStore.getState().toasts).toEqual([
+            { id: first, message: 'first' },
+            { id: second, message: 'second' },
+            { id: third, message: 'third' }
+        ]);
     });
 
-    it('replaces the notice on the screen when one is set directly, keeping the queue', () => {
-        useAppStore.getState().queueNotice(FIRST);
-        useAppStore.getState().queueNotice(SECOND);
+    it('keeps two toasts with the same message apart', () => {
+        const first = useAppStore.getState().pushToast('same');
+        const second = useAppStore.getState().pushToast('same');
+        expect(first).not.toBe(second);
+        useAppStore.getState().dismissToast(first);
+        expect(useAppStore.getState().toasts).toEqual([{ id: second, message: 'same' }]);
+    });
+
+    it('takes away only the toast that was dismissed', () => {
+        const first = useAppStore.getState().pushToast('first');
+        const second = useAppStore.getState().pushToast('second');
+        const third = useAppStore.getState().pushToast('third');
+        useAppStore.getState().dismissToast(second);
+        expect(useAppStore.getState().toasts).toEqual([
+            { id: first, message: 'first' },
+            { id: third, message: 'third' }
+        ]);
+        useAppStore.getState().dismissToast(first);
+        useAppStore.getState().dismissToast(third);
+        expect(useAppStore.getState().toasts).toEqual([]);
+    });
+
+    it('does nothing when the toast is not there any more', () => {
+        const id = useAppStore.getState().pushToast('first');
+        useAppStore.getState().dismissToast(id);
+        useAppStore.getState().dismissToast(id);
+        useAppStore.getState().dismissToast(-1);
+        expect(useAppStore.getState().toasts).toEqual([]);
+    });
+
+    it('does not touch the notice of an action, and the notice does not touch the toasts', () => {
+        const id = useAppStore.getState().pushToast('done');
         useAppStore.getState().setNotice({ kind: 'error', message: 'boom' });
         expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'boom' });
-        expect(useAppStore.getState().noticeQueue).toEqual([SECOND]);
+        expect(useAppStore.getState().toasts).toEqual([{ id, message: 'done' }]);
+        useAppStore.getState().setNotice({ kind: 'info', message: 'saved' });
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'saved' });
+        useAppStore.getState().setNotice(null);
+        expect(useAppStore.getState().notice).toBeNull();
+        expect(useAppStore.getState().toasts).toEqual([{ id, message: 'done' }]);
+    });
+});
+
+describe('the tab the app opens on', () => {
+    it('is the video downloader when the settings do not say another', async () => {
+        await useAppStore.getState().init();
+        expect(useAppStore.getState().tab).toBe('downloads');
+    });
+
+    it('is the one of the settings once they are loaded', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
+        await useAppStore.getState().init();
+        expect(useAppStore.getState().tab).toBe('anime');
     });
 });
 
@@ -102,12 +140,13 @@ describe('a download that is complete', () => {
     it('says so, with its title, and leaves the queue', async () => {
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', title: 'My video', status: 'running', percent: 50 }));
-        expect(useAppStore.getState().notice).toBeNull();
+        expect(toastMessages()).toEqual([]);
         expect(mock.api.removeJob).not.toHaveBeenCalled();
 
         mock.emitJobUpdate(makeJob({ id: 'a', title: 'My video', status: 'done', percent: 100 }));
 
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Download complete: My video' });
+        expect(toastMessages()).toEqual(['Download complete: My video']);
+        expect(useAppStore.getState().notice).toBeNull();
         expect(mock.api.removeJob).toHaveBeenCalledTimes(1);
         expect(mock.api.removeJob).toHaveBeenCalledWith('a');
     });
@@ -115,23 +154,23 @@ describe('a download that is complete', () => {
     it('uses the link when the download has no title', async () => {
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', title: null, url: 'https://x.com/v', status: 'done' }));
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Download complete: https://x.com/v' });
+        expect(toastMessages()).toEqual(['Download complete: https://x.com/v']);
     });
 
     it('says it in the language of the settings', async () => {
         mock.api.getSettings.mockResolvedValueOnce({ ...DEFAULT_SETTINGS, language: 'pt' });
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', title: 'Meu vídeo', status: 'done' }));
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Download concluído: Meu vídeo' });
+        expect(toastMessages()).toEqual(['Download concluído: Meu vídeo']);
     });
 
-    it('shows one notice at a time when several finish together, each with its own card removed', async () => {
+    it('stacks the notices when several finish together, each with its own card removed', async () => {
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', title: 'One', status: 'done' }));
         mock.emitJobUpdate(makeJob({ id: 'b', title: 'Two', status: 'done' }));
 
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Download complete: One' });
-        expect(useAppStore.getState().noticeQueue).toEqual([{ kind: 'info', message: 'Download complete: Two' }]);
+        expect(toastMessages()).toEqual(['Download complete: One', 'Download complete: Two']);
+        expect(useAppStore.getState().notice).toBeNull();
         expect(mock.api.removeJob).toHaveBeenCalledTimes(2);
         expect(mock.api.removeJob).toHaveBeenNthCalledWith(1, 'a');
         expect(mock.api.removeJob).toHaveBeenNthCalledWith(2, 'b');
@@ -142,6 +181,7 @@ describe('a download that is complete', () => {
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', status: 'done', filePath: '/d/a.mp4' }));
         expect(useAppStore.getState().notice).toBeNull();
+        expect(toastMessages()).toEqual([]);
         expect(mock.api.removeJob).not.toHaveBeenCalled();
     });
 
@@ -149,6 +189,7 @@ describe('a download that is complete', () => {
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', status }));
         expect(useAppStore.getState().notice).toBeNull();
+        expect(toastMessages()).toEqual([]);
         expect(mock.api.removeJob).not.toHaveBeenCalled();
         expect(useAppStore.getState().jobs).toEqual([makeJob({ id: 'a', status })]);
     });
@@ -375,6 +416,48 @@ describe('useAppStore.updateYtdlp', () => {
             })
         );
         const pending = useAppStore.getState().updateYtdlp();
+        expect(useAppStore.getState().updating).toBe(true);
+        release();
+        await pending;
+        expect(useAppStore.getState().updating).toBe(false);
+    });
+});
+
+describe('useAppStore.resetYtdlp', () => {
+    it('goes back to the yt-dlp that ships with the app, tells the user and reads the binaries again', async () => {
+        mock.api.resetYtdlp.mockResolvedValueOnce({ ok: true, output: 'Using the yt-dlp that ships with the app again.' });
+        await useAppStore.getState().resetYtdlp();
+        expect(mock.api.resetYtdlp).toHaveBeenCalledTimes(1);
+        expect(mock.api.updateYtdlp).not.toHaveBeenCalled();
+        expect(useAppStore.getState().updating).toBe(false);
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Using the yt-dlp that ships with the app again.' });
+        expect(mock.api.checkBinaries).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows an error notice when there was nothing to remove', async () => {
+        mock.api.resetYtdlp.mockResolvedValueOnce({ ok: false, output: 'There is no updated yt-dlp to remove: the one that ships with the app is already in use.' });
+        await useAppStore.getState().resetYtdlp();
+        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'There is no updated yt-dlp to remove: the one that ships with the app is already in use.' });
+    });
+
+    it('says something even when the result has no text', async () => {
+        mock.api.resetYtdlp.mockResolvedValueOnce({ ok: false, output: '' });
+        await useAppStore.getState().resetYtdlp();
+        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Update failed.' });
+    });
+
+    it('marks the store as updating while the request is pending, so the buttons wait', async () => {
+        let release: () => void = () => {
+            return undefined;
+        };
+        mock.api.resetYtdlp.mockReturnValueOnce(
+            new Promise((resolve) => {
+                release = () => {
+                    resolve({ ok: true, output: 'done' });
+                };
+            })
+        );
+        const pending = useAppStore.getState().resetYtdlp();
         expect(useAppStore.getState().updating).toBe(true);
         release();
         await pending;

@@ -83,12 +83,15 @@ export function App() {
                 return;
             }
             dispose = unsubscribe;
+            if (!useAnimeStore.getState().status.supported && useAppStore.getState().tab === 'anime') {
+                setTab('downloads');
+            }
         });
         return () => {
             cancelled = true;
             dispose?.();
         };
-    }, [init, initAnime]);
+    }, [init, initAnime, setTab]);
 
     return (
         <div className="app">

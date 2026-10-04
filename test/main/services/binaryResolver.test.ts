@@ -36,6 +36,22 @@ describe('BinaryResolver.ytdlp', () => {
         expect(resolver.userYtdlpPath).toBe('/data/bin/yt-dlp');
         expect(resolver.userBinDir).toBe('/data/bin');
     });
+
+    it('exposes the path of the yt-dlp that ships with the app, whether it is there or not', () => {
+        expect(makeResolver([]).bundledYtdlpPath).toBe('/app/resources/bin/yt-dlp');
+        expect(makeResolver([join(BUNDLED, 'yt-dlp')]).bundledYtdlpPath).toBe('/app/resources/bin/yt-dlp');
+    });
+
+    it('knows if the yt-dlp that ships with the app is there, and if an update saved its own', () => {
+        const bundledOnly = makeResolver([join(BUNDLED, 'yt-dlp')]);
+        expect([bundledOnly.hasBundledYtdlp(), bundledOnly.hasUpdatedYtdlp()]).toEqual([true, false]);
+        const updatedOnly = makeResolver([join(USER_BIN, 'yt-dlp')]);
+        expect([updatedOnly.hasBundledYtdlp(), updatedOnly.hasUpdatedYtdlp()]).toEqual([false, true]);
+        const both = makeResolver([join(USER_BIN, 'yt-dlp'), join(BUNDLED, 'yt-dlp')]);
+        expect([both.hasBundledYtdlp(), both.hasUpdatedYtdlp()]).toEqual([true, true]);
+        const neither = makeResolver([]);
+        expect([neither.hasBundledYtdlp(), neither.hasUpdatedYtdlp()]).toEqual([false, false]);
+    });
 });
 
 describe('BinaryResolver.ffmpeg / ffmpegLocation', () => {
@@ -109,6 +125,13 @@ describe('BinaryResolver on Windows', () => {
         expect(makeWindowsResolver([userExe, bundledExe]).ytdlp(DEFAULT_SETTINGS)).toEqual({ path: userExe, source: 'updated' });
         expect(makeWindowsResolver([bundledExe]).ytdlp(DEFAULT_SETTINGS)).toEqual({ path: bundledExe, source: 'bundled' });
         expect(makeWindowsResolver([]).userYtdlpPath).toBe(join(USER_BIN, 'yt-dlp.exe'));
+    });
+
+    it('looks for the yt-dlp.exe of each folder to know which ones are there', () => {
+        const both = makeWindowsResolver([join(USER_BIN, 'yt-dlp.exe'), join(BUNDLED, 'yt-dlp.exe')]);
+        expect([both.hasBundledYtdlp(), both.hasUpdatedYtdlp(), both.bundledYtdlpPath]).toEqual([true, true, join(BUNDLED, 'yt-dlp.exe')]);
+        const linuxFilesOnly = makeWindowsResolver([join(USER_BIN, 'yt-dlp'), join(BUNDLED, 'yt-dlp')]);
+        expect([linuxFilesOnly.hasBundledYtdlp(), linuxFilesOnly.hasUpdatedYtdlp()]).toEqual([false, false]);
     });
 
     it('ignores extension-less files that would only exist on Linux', () => {

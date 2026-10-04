@@ -1,9 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AniRunResult, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime } from '@shared/anime';
+import type { AniRunResult, AnimeAvailability, AnimeAvailabilityTarget, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
-import { MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
+import { MAX_AVAILABILITY_TARGETS, MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseAvailabilityTargets, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
 import type { IpcMainLike } from '@main/ipc/registerHandlers';
 import { AnimeDb } from '@main/services/animeDb';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
@@ -36,12 +36,15 @@ function makeIpc(): { ipcMain: IpcMainLike; call: (channel: string, ...args: unk
 }
 
 const ANIME_CHANNELS = [
+    IPC.animeAddToLibrary,
+    IPC.animeAvailability,
     IPC.animeCancel,
     IPC.animeClearFinished,
     IPC.animeCover,
     IPC.animePause,
     IPC.animeResume,
     IPC.animeDownload,
+    IPC.animeDownloadMissing,
     IPC.animeEpisodes,
     IPC.animeHistoryClear,
     IPC.animeHistoryList,
@@ -52,9 +55,11 @@ const ANIME_CHANNELS = [
     IPC.animeLibrary,
     IPC.animeMigrateFolder,
     IPC.animeOpenFolder,
+    IPC.animeOpenSeriesFolder,
     IPC.animeProgress,
     IPC.animeRemoveAnime,
     IPC.animeRemoveEpisode,
+    IPC.animeRenameSeries,
     IPC.animeRetry,
     IPC.animeSchedule,
     IPC.animeSearch,
@@ -65,6 +70,7 @@ const ANIME_CHANNELS = [
     IPC.animeSubtitleImport,
     IPC.animeSubtitles,
     IPC.animeSubtitlesCheck,
+    IPC.animeResetCli,
     IPC.animeUpdateCli
 ].sort();
 
@@ -84,6 +90,11 @@ function setup(available = true) {
             return { ok: true, entries: [] };
         })
     };
+    const availability = {
+        request: vi.fn((): AnimeAvailability[] => {
+            return [];
+        })
+    };
     const covers = {
         find: vi.fn(async (): Promise<string | null> => {
             return 'https://s4.anilist.co/cover.jpg';
@@ -91,6 +102,9 @@ function setup(available = true) {
     };
     const updateAniCli = vi.fn(async () => {
         return { ok: true, output: 'Updated ani-cli 5.1.4 → 5.2.0.' };
+    });
+    const resetAniCli = vi.fn(() => {
+        return { ok: true, output: 'Using the ani-cli that ships with the app again.' };
     });
     const aniCliInfo = { found: true, path: '/app/resources/bin/ani/ani-cli', version: '5.1.4', source: 'bundled' as const };
     const resolveStream = vi.fn(async (): Promise<AniRunResult<ResolvedStream>> => {
@@ -107,6 +121,12 @@ function setup(available = true) {
             const anime = db.upsertAnime({ title: request.title, query: 'naruto', searchIndex: 1, audio: 'sub' });
             return db.getLibraryAnime(anime.id);
         }),
+        addToLibrary: vi.fn((request: { title: string; query: string; index: number; audio: 'sub' | 'dub'; episodes: string[]; series: string | null; season: number | null; seasonName: string | null }) => {
+            const anime = db.upsertAnime({ title: request.title, query: request.query, searchIndex: request.index, audio: request.audio });
+            db.registerEpisodes(anime.id, request.episodes);
+            return { ok: true as const, anime: db.getLibraryAnime(anime.id) as LibraryAnime };
+        }),
+        downloadMissing: vi.fn(),
         list: vi.fn(() => {
             return [];
         }),
@@ -148,7 +168,9 @@ function setup(available = true) {
         service: { isAvailable: vi.fn(() => { return available; }), info: vi.fn(() => { return aniCliInfo; }), search, episodes, resolveStream },
         schedule,
         covers,
+        availability,
         updateAniCli,
+        resetAniCli,
         streams,
         streamQuality: () => {
             return '720p';
@@ -173,7 +195,7 @@ function setup(available = true) {
         subtitles
     } as unknown as AnimeHandlerDependencies;
     registerAnimeHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, updateAniCli, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, migrateFolder, missing, onLibraryChanged, subtitles, deps };
+    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, availability, updateAniCli, resetAniCli, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, migrateFolder, missing, onLibraryChanged, subtitles, deps };
 }
 
 describe('registerAnimeHandlers', () => {
@@ -192,6 +214,14 @@ describe('registerAnimeHandlers', () => {
         expect(await call(IPC.animeUpdateCli)).toEqual({ ok: true, output: 'Updated ani-cli 5.1.4 → 5.2.0.' });
         expect(updateAniCli).toHaveBeenCalledTimes(1);
         expect(updateAniCli).toHaveBeenCalledWith();
+    });
+
+    it('goes back to the ani-cli that ships with the app and gives the result as it is', () => {
+        const { call, resetAniCli, updateAniCli } = setup();
+        expect(call(IPC.animeResetCli)).toEqual({ ok: true, output: 'Using the ani-cli that ships with the app again.' });
+        expect(resetAniCli).toHaveBeenCalledTimes(1);
+        expect(resetAniCli).toHaveBeenCalledWith();
+        expect(updateAniCli).not.toHaveBeenCalled();
     });
 
     describe('search', () => {
@@ -462,29 +492,32 @@ describe('registerAnimeHandlers', () => {
     });
 
     describe('setSeries', () => {
-        function withTwo() {
+        // Two seasons of one series and a third one on its own: the series of an anime is fixed once it is in the library.
+        function withSeries() {
             const context = setup();
             const first = context.db.upsertAnime({ title: 'Frieren', query: 'frieren', searchIndex: 1, audio: 'sub' });
             const second = context.db.upsertAnime({ title: 'Frieren 2', query: 'frieren', searchIndex: 2, audio: 'sub' });
-            return { ...context, first, second };
+            const alone = context.db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 3, audio: 'sub' });
+            context.db.setSeries(first.id, 'Frieren', 1);
+            context.db.setSeries(second.id, 'Frieren', 2);
+            return { ...context, first, second, alone };
         }
 
-        it('joins an anime to a series with a season and tells the screen', () => {
-            const { call, db, first, onLibraryChanged } = withTwo();
-            expect(call(IPC.animeSetSeries, first.id, '  Frieren  ', 1)).toEqual({ ok: true });
-            expect(db.getAnime(first.id)).toMatchObject({ series: 'Frieren', season: 1 });
+        it('changes the season of an anime inside its series and tells the screen', () => {
+            const { call, db, second, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeSetSeries, second.id, 'Frieren', 3)).toEqual({ ok: true });
+            expect(db.getAnime(second.id)).toMatchObject({ series: 'Frieren', season: 3 });
             expect(onLibraryChanged).toHaveBeenCalledTimes(1);
         });
 
-        it('keeps one spelling for a series, so there is never a second one that only differs in case or accents', () => {
-            const { call, db, first, second } = withTwo();
-            call(IPC.animeSetSeries, first.id, 'Frieren', 1);
-            call(IPC.animeSetSeries, second.id, '  FRIEREN ', 2);
-            expect(db.getAnime(second.id)).toMatchObject({ series: 'Frieren', season: 2 });
+        it('keeps the spelling the series has, whatever the case, the accents or the spaces the screen sends', () => {
+            const { call, db, second } = withSeries();
+            expect(call(IPC.animeSetSeries, second.id, '  FRIEREN ', 4)).toEqual({ ok: true });
+            expect(db.getAnime(second.id)).toMatchObject({ series: 'Frieren', season: 4 });
         });
 
         it('saves the name the anime is shown with, cleaned, and none when it is empty or null', () => {
-            const { call, db, first } = withTwo();
+            const { call, db, first } = withSeries();
             call(IPC.animeSetSeries, first.id, 'Frieren', 1, '  Beyond   the End ');
             expect(db.getAnime(first.id)).toMatchObject({ series: 'Frieren', season: 1, seasonName: 'Beyond the End' });
             call(IPC.animeSetSeries, first.id, 'Frieren', 1, '   ');
@@ -498,32 +531,51 @@ describe('registerAnimeHandlers', () => {
         });
 
         it.each([['a name that is too long', 'a'.repeat(61)], ['a name that is not text', 5]])('refuses %s', (_name, seasonName) => {
-            const { call, db, first, onLibraryChanged } = withTwo();
+            const { call, db, first, onLibraryChanged } = withSeries();
             expect(call(IPC.animeSetSeries, first.id, 'Frieren', 1, seasonName)).toEqual({ ok: false, reason: 'invalid' });
-            expect(db.getAnime(first.id)).toMatchObject({ series: null, season: null, seasonName: null });
+            expect(db.getAnime(first.id)).toMatchObject({ series: 'Frieren', season: 1, seasonName: null });
             expect(onLibraryChanged).not.toHaveBeenCalled();
         });
 
-        it('takes an anime out of its series', () => {
-            const { call, db, first, onLibraryChanged } = withTwo();
-            db.setSeries(first.id, 'Frieren', 1);
-            expect(call(IPC.animeSetSeries, first.id, null, null)).toEqual({ ok: true });
-            expect(db.getAnime(first.id)).toMatchObject({ series: null, season: null });
-            expect(onLibraryChanged).toHaveBeenCalledTimes(1);
+        it('refuses to take an anime out of its series: leaving it is removing the anime', () => {
+            const { call, db, first, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeSetSeries, first.id, null, null)).toEqual({ ok: false, reason: 'invalid' });
+            expect(db.getAnime(first.id)).toMatchObject({ series: 'Frieren', season: 1 });
+            expect(onLibraryChanged).not.toHaveBeenCalled();
         });
 
-        it('refuses a season that is already taken in the series', () => {
-            const { call, db, first, second, onLibraryChanged } = withTwo();
-            db.setSeries(first.id, 'Frieren', 1);
-            expect(call(IPC.animeSetSeries, second.id, 'frieren', 1)).toEqual({ ok: false, reason: 'season-taken' });
-            expect(db.getAnime(second.id)).toMatchObject({ series: null, season: null });
+        it.each([['another series', 'Sousou no Frieren'], ['a series that only looks like it', 'Frieren 2']])('refuses to change the series to %s', (_name, series) => {
+            const { call, db, first, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeSetSeries, first.id, series, 1)).toEqual({ ok: false, reason: 'invalid' });
+            expect(db.getAnime(first.id)).toMatchObject({ series: 'Frieren', season: 1 });
             expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+
+        it('refuses to give a series to an anime that has none', () => {
+            const { call, db, alone, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeSetSeries, alone.id, 'Frieren', 3)).toEqual({ ok: false, reason: 'invalid' });
+            expect(call(IPC.animeSetSeries, alone.id, 'Bleach', 1)).toEqual({ ok: false, reason: 'invalid' });
+            expect(db.getAnime(alone.id)).toMatchObject({ series: null, season: null });
+            expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+
+        it('refuses a season that is already taken in the series, and says the next one that is free', () => {
+            const { call, db, first, second, onLibraryChanged } = withSeries();
+            const third = db.upsertAnime({ title: 'Frieren 3', query: 'frieren', searchIndex: 4, audio: 'sub' });
+            db.setSeries(third.id, 'Frieren', 5);
+            expect(call(IPC.animeSetSeries, second.id, 'frieren', 1)).toEqual({ ok: false, reason: 'season-taken', suggested: 6 });
+            expect(db.getAnime(second.id)).toMatchObject({ series: 'Frieren', season: 2 });
+            expect(db.getAnime(first.id)).toMatchObject({ season: 1 });
+            expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+
+        it('does not refuse the season the anime itself has', () => {
+            const { call, first } = withSeries();
+            expect(call(IPC.animeSetSeries, first.id, 'Frieren', 1, 'The Start')).toEqual({ ok: true });
         });
 
         it.each([
-            ['no series', [null, 2]],
             ['an empty series', ['   ', 2]],
-            ['a series that is too long', ['a'.repeat(101), 2]],
             ['a series that is not text', [5, 2]],
             ['no season', ['Frieren', null]],
             ['a season of zero', ['Frieren', 0]],
@@ -531,25 +583,280 @@ describe('registerAnimeHandlers', () => {
             ['a season that is not a whole number', ['Frieren', 1.5]],
             ['a season that is text', ['Frieren', '2']]
         ])('refuses %s', (_name, [series, season]) => {
-            const { call, db, first, onLibraryChanged } = withTwo();
-            expect(call(IPC.animeSetSeries, first.id, series, season)).toEqual({ ok: false, reason: 'invalid' });
-            expect(db.getAnime(first.id)).toMatchObject({ series: null, season: null });
+            const { call, db, second, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeSetSeries, second.id, series, season)).toEqual({ ok: false, reason: 'invalid' });
+            expect(db.getAnime(second.id)).toMatchObject({ series: 'Frieren', season: 2 });
             expect(onLibraryChanged).not.toHaveBeenCalled();
         });
 
         it.each([['1'], [0], [-1], [1.5], [null], [undefined], [999]])('refuses the anime %s', (animeId) => {
-            const { call } = withTwo();
+            const { call } = withSeries();
             expect(call(IPC.animeSetSeries, animeId, 'Frieren', 1)).toEqual({ ok: false, reason: 'invalid' });
         });
 
         it('writes again what is kept beside the downloaded episodes, and only theirs', () => {
-            const { call, db, first, refreshMetadata } = withTwo();
+            const { call, db, first, refreshMetadata } = withSeries();
             const done = db.ensureEpisode(first.id, '1');
             db.markDone(done.id, '/lib/Frieren/Episode 1/a.mp4', 1);
             db.ensureEpisode(first.id, '2');
-            call(IPC.animeSetSeries, first.id, 'Frieren', 1);
-            call(IPC.animeSetSeries, first.id, null, null);
-            expect(refreshMetadata.mock.calls).toEqual([[done.id], [done.id]]);
+            call(IPC.animeSetSeries, first.id, 'Frieren', 1, 'Named');
+            expect(refreshMetadata.mock.calls).toEqual([[done.id]]);
+        });
+    });
+
+    describe('addToLibrary', () => {
+        const REQUEST = { title: ' Naruto ', query: '-U naruto', index: 2, audio: 'dub', episodes: ['1', '2', '2', '3'] };
+
+        it('puts the anime in the library with every episode, and gives it back', () => {
+            const { call, queue } = setup();
+            const response = call(IPC.animeAddToLibrary, REQUEST);
+
+            expect(queue.addToLibrary).toHaveBeenCalledTimes(1);
+            expect(queue.addToLibrary).toHaveBeenCalledWith({ title: 'Naruto', query: 'U naruto', index: 2, audio: 'dub', episodes: ['1', '2', '3'], series: null, season: null, seasonName: null });
+            expect(response).toMatchObject({ ok: true, anime: { title: 'Naruto', audio: 'dub', episodes: [{ number: '1', status: 'idle' }, { number: '2', status: 'idle' }, { number: '3', status: 'idle' }] } });
+            expect(queue.enqueue).not.toHaveBeenCalled();
+        });
+
+        it('sends the series, the season and the name shown, cleaned, and null for what was not given', () => {
+            const { call, queue } = setup();
+            call(IPC.animeAddToLibrary, { ...REQUEST, series: '  Naruto   Series ', season: 2, seasonName: '  The   Second ' });
+            call(IPC.animeAddToLibrary, { ...REQUEST, series: 'Naruto Series', season: 3 });
+            call(IPC.animeAddToLibrary, { ...REQUEST, series: 'Naruto Series', season: 4, seasonName: '   ' });
+            expect(queue.addToLibrary.mock.calls.map(([request]) => {
+                return [request.series, request.season, request.seasonName];
+            })).toEqual([
+                ['Naruto Series', 2, 'The Second'],
+                ['Naruto Series', 3, null],
+                ['Naruto Series', 4, null]
+            ]);
+        });
+
+        it('gives back what the queue answers when the season is taken, without changing it', () => {
+            const { call, queue } = setup();
+            queue.addToLibrary.mockReturnValueOnce({ ok: false, reason: 'season-taken', suggested: 4 } as never);
+            expect(call(IPC.animeAddToLibrary, { ...REQUEST, series: 'Naruto', season: 1 })).toEqual({ ok: false, reason: 'season-taken', suggested: 4 });
+        });
+
+        it.each([
+            ['no name', { ...REQUEST, title: '   ' }],
+            ['a search that is not valid', { ...REQUEST, query: '' }],
+            ['an audio that is not sub or dub', { ...REQUEST, audio: 'raw' }],
+            ['a position that is not valid', { ...REQUEST, index: 0 }],
+            ['a position that is text', { ...REQUEST, index: '2' }],
+            ['no episodes', { ...REQUEST, episodes: [] }],
+            ['episodes that are not valid', { ...REQUEST, episodes: ['1', '../2'] }],
+            ['too many episodes', { ...REQUEST, episodes: Array.from({ length: 2001 }, (_unused, index) => { return String(index + 1); }) }],
+            ['a series without a season', { ...REQUEST, series: 'Naruto' }],
+            ['a season without a series', { ...REQUEST, season: 2 }],
+            ['a season that is not valid', { ...REQUEST, series: 'Naruto', season: 100 }],
+            ['a name that is too long', { ...REQUEST, series: 'Naruto', season: 1, seasonName: 'a'.repeat(61) }],
+            ['something that is not an object', 'Naruto'],
+            ['nothing', undefined]
+        ])('refuses %s, and adds nothing', (_name, input) => {
+            const { call, queue, onLibraryChanged } = setup();
+            expect(call(IPC.animeAddToLibrary, input)).toEqual({ ok: false, reason: 'invalid' });
+            expect(queue.addToLibrary).not.toHaveBeenCalled();
+            expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+
+        it('accepts every episode of a long anime in one request', () => {
+            const { call, queue } = setup();
+            const episodes = Array.from({ length: 2000 }, (_unused, index) => {
+                return String(index + 1);
+            });
+            expect(call(IPC.animeAddToLibrary, { ...REQUEST, episodes })).toMatchObject({ ok: true });
+            expect(queue.addToLibrary.mock.calls[0]?.[0].episodes).toHaveLength(2000);
+        });
+
+        it('does not add anything while the folder is being migrated, and adds again after', async () => {
+            const { call, migrateFolder, queue } = setup();
+            let finish: (response: AnimeMigrationResponse) => void = () => {
+                return;
+            };
+            migrateFolder.mockReturnValueOnce(
+                new Promise((resolve) => {
+                    finish = resolve;
+                })
+            );
+            const running = call(IPC.animeMigrateFolder);
+            expect(call(IPC.animeAddToLibrary, REQUEST)).toEqual({ ok: false, reason: 'busy' });
+            expect(queue.addToLibrary).not.toHaveBeenCalled();
+
+            finish({ ok: false, reason: 'cancelled' });
+            await running;
+            expect(call(IPC.animeAddToLibrary, REQUEST)).toMatchObject({ ok: true });
+            expect(queue.addToLibrary).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('downloadMissing', () => {
+        it('asks the queue for what is missing of the anime, once each', () => {
+            const { call, queue } = setup();
+            call(IPC.animeDownloadMissing, [3, 4, 4, 5]);
+            expect(queue.downloadMissing).toHaveBeenCalledTimes(1);
+            expect(queue.downloadMissing).toHaveBeenCalledWith([3, 4, 5]);
+        });
+
+        it('leaves out what is not an id of an anime', () => {
+            const { call, queue } = setup();
+            call(IPC.animeDownloadMissing, [1, '2', 0, -1, 1.5, null, undefined, {}, 6]);
+            expect(queue.downloadMissing).toHaveBeenCalledWith([1, 6]);
+        });
+
+        it.each([[undefined], [null], ['1,2'], [7], [{}]])('asks for nothing when it is given %s', (ids) => {
+            const { call, queue } = setup();
+            call(IPC.animeDownloadMissing, ids);
+            expect(queue.downloadMissing).toHaveBeenCalledWith([]);
+        });
+
+        it('does not queue anything while the folder is being migrated, and queues again after', async () => {
+            const { call, migrateFolder, queue } = setup();
+            let finish: (response: AnimeMigrationResponse) => void = () => {
+                return;
+            };
+            migrateFolder.mockReturnValueOnce(
+                new Promise((resolve) => {
+                    finish = resolve;
+                })
+            );
+            const running = call(IPC.animeMigrateFolder);
+            call(IPC.animeDownloadMissing, [1]);
+            expect(queue.downloadMissing).not.toHaveBeenCalled();
+
+            finish({ ok: false, reason: 'cancelled' });
+            await running;
+            call(IPC.animeDownloadMissing, [1]);
+            expect(queue.downloadMissing).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('renameSeries', () => {
+        function withSeries() {
+            const context = setup();
+            const one = context.db.upsertAnime({ title: 'Frieren', query: 'frieren', searchIndex: 1, audio: 'sub' });
+            const two = context.db.upsertAnime({ title: 'Frieren 2', query: 'frieren', searchIndex: 2, audio: 'sub' });
+            const other = context.db.upsertAnime({ title: 'Pokemon', query: 'pokemon', searchIndex: 3, audio: 'sub' });
+            context.db.setSeries(one.id, 'Frieren', 1);
+            context.db.setSeries(two.id, 'Frieren', 2);
+            context.db.setSeries(other.id, 'Journeys', 1);
+            return { ...context, one, two, other };
+        }
+
+        it('renames the series of all the anime of the list, keeps their seasons and tells the screen once', () => {
+            const { call, db, one, two, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeRenameSeries, [one.id, two.id], '  Sousou   no Frieren ')).toEqual({ ok: true });
+            expect(db.getAnime(one.id)).toMatchObject({ series: 'Sousou no Frieren', season: 1 });
+            expect(db.getAnime(two.id)).toMatchObject({ series: 'Sousou no Frieren', season: 2 });
+            expect(onLibraryChanged).toHaveBeenCalledTimes(1);
+        });
+
+        it('refuses a season the other series has, saying which anime, which season and the next free one, and changes nothing', () => {
+            const { call, db, one, two, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeRenameSeries, [one.id, two.id], 'journeys')).toEqual({ ok: false, reason: 'season-taken', anime: 'Frieren', season: 1, suggested: 2 });
+            expect(db.getAnime(one.id)).toMatchObject({ series: 'Frieren', season: 1 });
+            expect(db.getAnime(two.id)).toMatchObject({ series: 'Frieren', season: 2 });
+            expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+
+        it('joins the other series when no season clashes, with the spelling it has', () => {
+            const { call, db, one, two } = withSeries();
+            db.setSeries(one.id, 'Frieren', 8);
+            db.setSeries(two.id, 'Frieren', 9);
+            expect(call(IPC.animeRenameSeries, [one.id, two.id], 'JOURNEYS')).toEqual({ ok: true });
+            expect(db.getAnime(one.id)?.series).toBe('Journeys');
+            expect(db.getAnime(two.id)?.series).toBe('Journeys');
+        });
+
+        it('gives the name to an anime that was on its own, as its first season', () => {
+            const { call, db } = withSeries();
+            const alone = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub' });
+            expect(call(IPC.animeRenameSeries, [alone.id], 'Bleach Classic')).toEqual({ ok: true });
+            expect(db.getAnime(alone.id)).toMatchObject({ series: 'Bleach Classic', season: 1 });
+        });
+
+        it('writes again what is kept beside the downloaded episodes of every anime renamed, and only theirs', () => {
+            const { call, db, one, two, refreshMetadata } = withSeries();
+            const done = db.ensureEpisode(one.id, '1');
+            db.markDone(done.id, '/lib/Frieren/Season 1/Episode 1/a.mp4', 1);
+            const second = db.ensureEpisode(two.id, '1');
+            db.markDone(second.id, '/lib/Frieren/Season 2/Episode 1/a.mp4', 1);
+            db.ensureEpisode(two.id, '2');
+            call(IPC.animeRenameSeries, [one.id, two.id], 'Renamed');
+            expect(refreshMetadata.mock.calls).toEqual([[done.id], [second.id]]);
+        });
+
+        it.each([
+            ['an empty name', '   '],
+            ['a name that is too long', 'a'.repeat(101)],
+            ['a name that is not text', 5],
+            ['no name', undefined]
+        ])('refuses %s, and changes nothing', (_name, name) => {
+            const { call, db, one, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeRenameSeries, [one.id], name)).toEqual({ ok: false, reason: 'invalid' });
+            expect(db.getAnime(one.id)).toMatchObject({ series: 'Frieren', season: 1 });
+            expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+
+        it.each([[[]], [[999]], [['1']], [[0, -1, 1.5]], [null], [undefined], ['1,2']])('refuses the list %j, because it has no anime of the library', (ids) => {
+            const { call, onLibraryChanged } = withSeries();
+            expect(call(IPC.animeRenameSeries, ids, 'Renamed')).toEqual({ ok: false, reason: 'invalid' });
+            expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+
+        it('ignores the ids that are not anime of the library and renames the others', () => {
+            const { call, db, one } = withSeries();
+            expect(call(IPC.animeRenameSeries, [999, '5', one.id, one.id], 'Renamed')).toEqual({ ok: true });
+            expect(db.getAnime(one.id)?.series).toBe('Renamed');
+        });
+    });
+
+    describe('openSeriesFolder', () => {
+        function withSeasons(files: Array<[string, string]>) {
+            const context = setup();
+            const anime = context.db.upsertAnime({ title: 'Frieren', query: 'frieren', searchIndex: 1, audio: 'sub' });
+            files.forEach(([number, path]) => {
+                context.db.markDone(context.db.ensureEpisode(anime.id, number).id, path, 10);
+            });
+            return { ...context, anime };
+        }
+
+        it('opens the folder that holds the folders of the seasons of the series', () => {
+            const { call, anime, openFolder } = withSeasons([['1', '/lib/Frieren/Season 1/Episode 1/Frieren Episode 1.mp4']]);
+            call(IPC.animeOpenSeriesFolder, anime.id);
+            expect(openFolder).toHaveBeenCalledTimes(1);
+            expect(openFolder).toHaveBeenCalledWith('/lib/Frieren');
+        });
+
+        it('opens the folder of the anime itself when it is not in a folder of a season', () => {
+            const { call, anime, openFolder } = withSeasons([['1', '/lib/Naruto/Episode 1/Naruto Episode 1.mp4']]);
+            call(IPC.animeOpenSeriesFolder, anime.id);
+            expect(openFolder).toHaveBeenCalledTimes(1);
+            expect(openFolder).toHaveBeenCalledWith('/lib/Naruto');
+        });
+
+        it('does not open the folder of a season, which is what the folder of the anime is', () => {
+            const { call, anime, openFolder } = withSeasons([['1', '/lib/Frieren/Season 2/Episode 1/Frieren Episode 1.mp4']]);
+            call(IPC.animeOpenSeriesFolder, anime.id);
+            expect(openFolder).not.toHaveBeenCalledWith('/lib/Frieren/Season 2');
+            expect(openFolder).toHaveBeenCalledWith('/lib/Frieren');
+        });
+
+        it('skips an episode that is not downloaded to find a video', () => {
+            const { call, db, anime, openFolder } = withSeasons([['2', '/lib/Frieren/Season 1/Episode 2/Frieren Episode 2.mp4']]);
+            db.registerEpisodes(anime.id, ['1', '3']);
+            call(IPC.animeOpenSeriesFolder, anime.id);
+            expect(openFolder).toHaveBeenCalledWith('/lib/Frieren');
+        });
+
+        it('opens nothing for an anime with nothing downloaded, one that is not in the library or an invalid id', () => {
+            const { call, db, anime, openFolder } = withSeasons([]);
+            db.registerEpisodes(anime.id, ['1']);
+            call(IPC.animeOpenSeriesFolder, anime.id);
+            call(IPC.animeOpenSeriesFolder, 999);
+            ['1', 0, -1, 1.5, null, undefined].forEach((id) => {
+                call(IPC.animeOpenSeriesFolder, id);
+            });
+            expect(openFolder).not.toHaveBeenCalled();
         });
     });
 
@@ -957,6 +1264,87 @@ describe('registerAnimeHandlers', () => {
     });
 });
 
+describe('parseAvailabilityTargets', () => {
+    it('keeps the id and the two names of each anime', () => {
+        expect(parseAvailabilityTargets([{ anilistId: 7, english: 'Dandadan', romaji: 'Dan Da Dan' }])).toEqual([{ anilistId: 7, english: 'Dandadan', romaji: 'Dan Da Dan' }]);
+    });
+
+    it('trims the names and turns an empty or missing one into null', () => {
+        expect(
+            parseAvailabilityTargets([
+                { anilistId: 1, english: '  Bleach ', romaji: '   ' },
+                { anilistId: 2, english: 'Naruto' },
+                { anilistId: 3, english: 5, romaji: 'Kimetsu no Yaiba' }
+            ])
+        ).toEqual([
+            { anilistId: 1, english: 'Bleach', romaji: null },
+            { anilistId: 2, english: 'Naruto', romaji: null },
+            { anilistId: 3, english: null, romaji: 'Kimetsu no Yaiba' }
+        ]);
+    });
+
+    it('cuts a name that is too long', () => {
+        expect(parseAvailabilityTargets([{ anilistId: 1, english: 'x'.repeat(MAX_TEXT_LENGTH + 50), romaji: null }])[0]?.english).toHaveLength(MAX_TEXT_LENGTH);
+    });
+
+    it.each([
+        ['an id that is not a number', { anilistId: '7', english: 'A', romaji: 'B' }],
+        ['an id that is not an integer', { anilistId: 7.5, english: 'A', romaji: 'B' }],
+        ['an id below 1', { anilistId: 0, english: 'A', romaji: 'B' }],
+        ['an anime with no name', { anilistId: 7, english: null, romaji: '' }],
+        ['something that is not an object', 'Dandadan'],
+        ['null', null]
+    ])('leaves out %s', (_label, item) => {
+        expect(parseAvailabilityTargets([item, { anilistId: 1, english: 'Kept', romaji: null }])).toEqual([{ anilistId: 1, english: 'Kept', romaji: null }]);
+    });
+
+    it('gives none when what came is not a list', () => {
+        expect(parseAvailabilityTargets(undefined)).toEqual([]);
+        expect(parseAvailabilityTargets({ anilistId: 1, english: 'A' })).toEqual([]);
+        expect(parseAvailabilityTargets('x')).toEqual([]);
+    });
+
+    it('takes no more anime than the limit', () => {
+        const many = Array.from({ length: MAX_AVAILABILITY_TARGETS + 20 }, (_value, position) => {
+            return { anilistId: position + 1, english: `Anime ${position + 1}`, romaji: null };
+        });
+        expect(parseAvailabilityTargets(many)).toHaveLength(MAX_AVAILABILITY_TARGETS);
+    });
+});
+
+describe('registerAnimeHandlers availability', () => {
+    const targets: AnimeAvailabilityTarget[] = [
+        { anilistId: 7, english: 'Dandadan', romaji: 'Dan Da Dan' },
+        { anilistId: 8, english: null, romaji: 'Blue Lock' }
+    ];
+
+    it('asks the service about the anime that came and gives back what it already knows', () => {
+        const { call, availability } = setup();
+        const known: AnimeAvailability[] = [{ anilistId: 7, state: 'available', query: 'Dandadan', index: 1, title: 'Dandadan' }];
+        availability.request.mockReturnValueOnce(known);
+
+        expect(call(IPC.animeAvailability, targets)).toEqual(known);
+        expect(availability.request).toHaveBeenCalledTimes(1);
+        expect(availability.request).toHaveBeenCalledWith(targets);
+    });
+
+    it('only passes on what is shaped as an anime of the schedule', () => {
+        const { call, availability } = setup();
+
+        call(IPC.animeAvailability, [{ anilistId: 'x', english: 'Bad' }, ...targets]);
+
+        expect(availability.request).toHaveBeenCalledWith(targets);
+    });
+
+    it('asks for nothing when the request is not a list', () => {
+        const { call, availability } = setup();
+
+        expect(call(IPC.animeAvailability, 'nope')).toEqual([]);
+
+        expect(availability.request).toHaveBeenCalledWith([]);
+    });
+});
+
 describe('registerAnimeHandlers schedule', () => {
     const request = { from: 1_700_000_000, to: 1_700_086_400, refresh: false };
 
@@ -966,6 +1354,8 @@ describe('registerAnimeHandlers schedule', () => {
             {
                 anilistId: 154587,
                 title: 'Sousou no Frieren',
+                english: 'Frieren: Beyond Journey\'s End',
+                romaji: 'Sousou no Frieren',
                 names: ['Sousou no Frieren', 'Frieren: Beyond Journey\'s End'],
                 episode: 12,
                 airingAt: 1_700_040_000,
@@ -1096,11 +1486,13 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.channels()).toEqual(ANIME_CHANNELS);
         expect(ipc.call(IPC.animeStatus)).toEqual({ supported: false, available: false, aniCli: null });
         expect(ipc.call(IPC.animeUpdateCli)).toEqual({ ok: false, output: unsupported.raw });
+        expect(ipc.call(IPC.animeResetCli)).toEqual({ ok: false, output: unsupported.raw });
         expect(ipc.call(IPC.animeSearch, 'naruto', 'sub')).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeEpisodes, 'naruto', 1, 'sub')).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeDownload, {})).toEqual({ ok: false, message: unsupported.raw });
         expect(ipc.call(IPC.animeSchedule, { from: 1, to: 2, refresh: false })).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeCover, 'Naruto')).toBeNull();
+        expect(ipc.call(IPC.animeAvailability, [{ anilistId: 1, english: 'Naruto', romaji: null }])).toEqual([]);
         expect(ipc.call(IPC.animeLibrary)).toEqual([]);
         expect(ipc.call(IPC.animeJobs)).toEqual([]);
         expect(ipc.call(IPC.animeHistoryList)).toEqual([]);
@@ -1108,10 +1500,12 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeImportLibrary)).toEqual({ ok: false, reason: 'cancelled' });
         expect(ipc.call(IPC.animeMigrateFolder)).toEqual({ ok: false, reason: 'failed' });
         expect(ipc.call(IPC.animeSetSeries, 1, 'Frieren', 1)).toEqual({ ok: false, reason: 'invalid' });
+        expect(ipc.call(IPC.animeAddToLibrary, {})).toEqual({ ok: false, reason: 'invalid' });
+        expect(ipc.call(IPC.animeRenameSeries, [1], 'Frieren')).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.animeSubtitles, 1)).toEqual([]);
         expect(ipc.call(IPC.animeSubtitleImport, 1)).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitlesCheck, 1)).toEqual({ ok: false, reason: 'missing' });
-        [IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
+        [IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
             expect(ipc.call(channel, 1)).toBeUndefined();
         });
     });

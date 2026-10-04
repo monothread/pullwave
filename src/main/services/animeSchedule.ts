@@ -99,12 +99,13 @@ export function parseScheduleEntry(raw: unknown): AnimeScheduleEntry | null {
             return synonym !== null;
         })
         .slice(0, MAX_SYNONYMS);
-    const names = uniqueNames([romaji, english, ...synonyms]);
-    const title = romaji ?? english;
+    // The title shown is the english one when there is one, and it is the first name the search tries.
+    const title = english ?? romaji;
+    const names = uniqueNames([title, romaji, english, ...synonyms]);
     if (title === null) {
         return null;
     }
-    return { anilistId, title, names, episode, airingAt, coverUrl: asText(asRecord(media.coverImage)?.large) };
+    return { anilistId, title, english, romaji, names, episode, airingAt, coverUrl: asText(asRecord(media.coverImage)?.large) };
 }
 
 interface SchedulePage {

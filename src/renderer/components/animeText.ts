@@ -20,6 +20,7 @@ const ERROR_KEYS: Record<AniErrorCode, MessageKey> = {
 };
 
 const STATUS_KEYS: Record<AnimeEpisodeStatus | AnimeJob['status'], MessageKey> = {
+    idle: 'anime.status.idle',
     queued: 'anime.status.queued',
     downloading: 'anime.status.downloading',
     running: 'anime.status.downloading',

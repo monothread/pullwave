@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
-import { suggestSeries } from '@shared/series';
-import { animeErrorKey, downloadedAnime, seriesNames } from './animeText';
-import { SeriesFields } from './SeriesFields';
+import { sameSeries, suggestSeries } from '@shared/series';
+import { animeErrorKey, seriesNames } from './animeText';
+import { AddToLibraryDialog } from './AddToLibraryDialog';
 
-// The episodes of the anime that was opened: pick some, or take the whole season.
+// The anime that was opened: its episodes (a click on one opens the player, without downloading it), and the way to put it in the library with
+// all of them.
 export function AnimeDetail() {
     const t = useTranslator();
     const selection = useAnimeStore((state) => {
@@ -17,8 +18,8 @@ export function AnimeDetail() {
     const closeResult = useAnimeStore((state) => {
         return state.closeResult;
     });
-    const downloadEpisodes = useAnimeStore((state) => {
-        return state.downloadEpisodes;
+    const addToLibrary = useAnimeStore((state) => {
+        return state.addToLibrary;
     });
     const watchEpisode = useAnimeStore((state) => {
         return state.watchEpisode;
@@ -26,21 +27,16 @@ export function AnimeDetail() {
     const showInLibrary = useAnimeStore((state) => {
         return state.showInLibrary;
     });
-    const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
-    // What the anime is joined to already, or what its title suggests: it is saved with the first download.
+    // The anime in the library, when it is there already. Its series cannot change from here: what it suggests (its title) is only for the
+    // one that is not in the library yet, and is saved with it.
     const entry = library.find((candidate) => {
         return candidate.title === selection?.result.title && candidate.audio === selection.audio;
     });
     const suggested = suggestSeries(selection?.result.title ?? '');
-    const [series, setSeries] = useState(entry?.series ?? suggested.series);
-    const [season, setSeason] = useState(entry?.season ?? suggested.season);
-    const [seasonName, setSeasonName] = useState(entry?.seasonName ?? '');
+    const [adding, setAdding] = useState(false);
 
-    const anime = library.find((candidate) => {
-        return candidate.title === selection?.result.title && candidate.audio === selection.audio;
-    });
     const downloaded = new Set(
-        (anime?.episodes ?? [])
+        (entry?.episodes ?? [])
             .filter((episode) => {
                 return episode.status === 'done';
             })
@@ -52,24 +48,6 @@ export function AnimeDetail() {
     if (!selection) {
         return null;
     }
-    const saved = downloadedAnime(library, selection.result.title, selection.audio);
-
-    function toggle(number: string): void {
-        setPicked((current) => {
-            const next = new Set(current);
-            if (next.has(number)) {
-                next.delete(number);
-            } else {
-                next.add(number);
-            }
-            return next;
-        });
-    }
-
-    function download(numbers: string[]): void {
-        void downloadEpisodes(numbers, series.trim().length > 0 ? { series, season, seasonName } : null);
-        setPicked(new Set());
-    }
 
     return (
         <section className="anime__detail" aria-label={selection.result.title}>
@@ -78,27 +56,53 @@ export function AnimeDetail() {
                     {t('anime.back')}
                 </button>
                 <span className="section-label">{selection.result.title}</span>
-                {saved && (
+                {entry ? (
                     <button
                         type="button"
                         className="btn btn--small btn--primary"
                         onClick={() => {
-                            showInLibrary(saved.id);
+                            showInLibrary(entry.id);
                         }}
                     >
                         {t('anime.library.view')}
                     </button>
+                ) : (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        disabled={selection.status !== 'ready'}
+                        onClick={() => {
+                            setAdding(true);
+                        }}
+                    >
+                        {t('anime.library.add')}
+                    </button>
                 )}
             </div>
-            <SeriesFields
-                series={series}
-                season={season}
-                seasonName={seasonName}
-                suggestions={seriesNames(library)}
-                onSeriesChange={setSeries}
-                onSeasonChange={setSeason}
-                onSeasonNameChange={setSeasonName}
-            />
+            {entry !== undefined && entry.series !== null && entry.season !== null && (
+                <p className="field__hint" data-testid="anime-series-info">
+                    {t('anime.series.in', { series: entry.series, order: entry.season })}
+                </p>
+            )}
+            {adding && !entry && (
+                <AddToLibraryDialog
+                    initial={{ series: suggested.series, season: suggested.season, seasonName: '' }}
+                    suggestions={seriesNames(library)}
+                    usedOrders={(name) => {
+                        return library
+                            .filter((candidate) => {
+                                return candidate.audio === selection.audio && candidate.series !== null && sameSeries(candidate.series, name);
+                            })
+                            .flatMap((candidate) => {
+                                return candidate.season === null ? [] : [candidate.season];
+                            });
+                    }}
+                    onConfirm={addToLibrary}
+                    onClose={() => {
+                        setAdding(false);
+                    }}
+                />
+            )}
             {selection.status === 'loading' && <p className="empty">{t('anime.episodes.loading')}</p>}
             {selection.status === 'error' && selection.error && (
                 <p className="field__warning" role="alert" title={selection.error.raw}>
@@ -109,54 +113,8 @@ export function AnimeDetail() {
                 <>
                     <div className="queue__toolbar">
                         <span className="section-label">{t('anime.episodes.label', { count: selection.episodes.length })}</span>
-                        <span className="anime__actions">
-                            <button
-                                type="button"
-                                className="btn btn--small btn--ghost"
-                                onClick={() => {
-                                    setPicked(new Set(selection.episodes));
-                                }}
-                            >
-                                {t('anime.selectAll')}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn btn--small btn--ghost"
-                                disabled={picked.size === 0}
-                                onClick={() => {
-                                    setPicked(new Set());
-                                }}
-                            >
-                                {t('anime.selectNone')}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn btn--small btn--hot"
-                                disabled={picked.size !== 1}
-                                title={t('anime.watch.hint')}
-                                onClick={() => {
-                                    const [episode] = picked;
-                                    if (episode !== undefined) {
-                                        void watchEpisode(episode);
-                                    }
-                                }}
-                            >
-                                {t('anime.watch')}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn btn--small btn--primary"
-                                disabled={picked.size === 0}
-                                onClick={() => {
-                                    download(selection.episodes.filter((number) => {
-                                        return picked.has(number);
-                                    }));
-                                }}
-                            >
-                                {t('anime.download.selected', { count: picked.size })}
-                            </button>
-                        </span>
                     </div>
+                    <p className="field__hint">{t('anime.episodes.hint')}</p>
                     <div className="episode-grid" role="group" aria-label={t('anime.episodes.label', { count: selection.episodes.length })}>
                         {selection.episodes.map((number) => {
                             const isDownloaded = downloaded.has(number);
@@ -165,10 +123,9 @@ export function AnimeDetail() {
                                     key={number}
                                     type="button"
                                     className={`episode-chip${isDownloaded ? ' episode-chip--done' : ''}`}
-                                    aria-pressed={picked.has(number)}
                                     title={isDownloaded ? t('anime.inLibrary') : undefined}
                                     onClick={() => {
-                                        toggle(number);
+                                        void watchEpisode(number);
                                     }}
                                 >
                                     {t('anime.episode', { number })}

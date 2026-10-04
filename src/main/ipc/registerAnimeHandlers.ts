@@ -2,6 +2,8 @@ import {
     ANIME_AUDIOS,
     type AniError,
     type AnimeAudio,
+    type AnimeAvailability,
+    type AnimeAvailabilityTarget,
     type AnimeEpisodeRecord,
     type AnimeHistoryEntry,
     type AnimeHistoryRequest,
@@ -19,8 +21,8 @@ import {
     type AnimeSubtitleTrack
 } from '@shared/anime';
 import { IPC } from '@shared/constants';
-import { cleanSeasonName, cleanSeriesName, isValidSeason } from '@shared/series';
-import type { AnimeStatus } from '@shared/anime';
+import { cleanSeasonName, cleanSeriesName, isValidSeason, sameSeries } from '@shared/series';
+import type { AnimeAddResponse, AnimeRenameSeriesResponse, AnimeStatus } from '@shared/anime';
 import type { UpdateResult } from '@shared/types';
 import type { AnimeDb } from '../services/animeDb';
 import { animeFolderOf, animeFoldersToRemove, episodeFolderOf, filesOfEpisode, foldersWithoutOthers, seriesFolderOf } from '../services/animeFiles';
@@ -32,6 +34,8 @@ import type { IpcMainLike } from './registerHandlers';
 
 export const MAX_TEXT_LENGTH = 200;
 export const MAX_EPISODES_PER_REQUEST = 2000;
+// How many anime of the schedule can be asked about at once: a week has a few hundred at most.
+export const MAX_AVAILABILITY_TARGETS = 500;
 // The longest stretch that can be listed: a week, which is seven days (of 23 to 25 hours where the clock changes) and some more.
 export const MAX_SCHEDULE_SPAN_SECONDS = 8 * 24 * 60 * 60;
 
@@ -39,9 +43,12 @@ export interface AnimeHandlerDependencies {
     service: Pick<AniCliService, 'isAvailable' | 'info' | 'search' | 'episodes' | 'resolveStream'>;
     // The cover of an anime by its title (null when there is none).
     covers: { find: (title: string) => Promise<string | null> };
+    // Which anime of the schedule the source has: what is known is answered, the rest is checked in the background.
+    availability: { request: (targets: AnimeAvailabilityTarget[]) => AnimeAvailability[] };
     // The episodes that air in a stretch of time.
     schedule: { list: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse> };
     updateAniCli: () => Promise<UpdateResult>;
+    resetAniCli: () => UpdateResult;
     streams: Pick<StreamSessions, 'create' | 'close'>;
     // The quality of the settings, used to pick the stream.
     streamQuality: () => string;
@@ -89,6 +96,14 @@ function asAudio(value: unknown): AnimeAudio | null {
 
 function asId(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
+// The ids that came from the screen that are ids, without repeating one.
+function validIds(value: unknown): number[] {
+    const ids = (Array.isArray(value) ? value : []).map(asId).filter((id): id is number => {
+        return id !== null;
+    });
+    return [...new Set(ids)];
 }
 
 function invalid(raw: string): { ok: false; error: AniError } {
@@ -179,6 +194,31 @@ export function parseScheduleRequest(input: unknown): AnimeScheduleRequest | nul
     return { from, to, refresh: raw.refresh === true };
 }
 
+function nameOrNull(value: unknown): string | null {
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim().slice(0, MAX_TEXT_LENGTH) : null;
+}
+
+// Checks the anime the screen asks the availability of: a list of ids with their two names; what is not shaped so is left out.
+export function parseAvailabilityTargets(input: unknown): AnimeAvailabilityTarget[] {
+    if (!Array.isArray(input)) {
+        return [];
+    }
+    const targets: AnimeAvailabilityTarget[] = [];
+    input.slice(0, MAX_AVAILABILITY_TARGETS).forEach((item: unknown) => {
+        const raw = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+        const anilistId = raw.anilistId;
+        if (typeof anilistId !== 'number' || !Number.isInteger(anilistId) || anilistId < 1) {
+            return;
+        }
+        const english = nameOrNull(raw.english);
+        const romaji = nameOrNull(raw.romaji);
+        if (english !== null || romaji !== null) {
+            targets.push({ anilistId, english, romaji });
+        }
+    });
+    return targets;
+}
+
 export function parseProgress(input: unknown): AnimeProgressUpdate | null {
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const episodeId = asId(raw.episodeId);
@@ -232,11 +272,26 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeDownload, (): AnimeDownloadResponse => {
         return { ok: false, message: UNSUPPORTED.raw };
     });
+    ipcMain.handle(IPC.animeAddToLibrary, (): AnimeAddResponse => {
+        return { ok: false, reason: 'invalid' };
+    });
+    ipcMain.handle(IPC.animeDownloadMissing, (): void => {
+        return undefined;
+    });
+    ipcMain.handle(IPC.animeOpenSeriesFolder, (): void => {
+        return undefined;
+    });
+    ipcMain.handle(IPC.animeRenameSeries, (): AnimeRenameSeriesResponse => {
+        return { ok: false, reason: 'invalid' };
+    });
     ipcMain.handle(IPC.animeSchedule, (): AnimeScheduleResponse => {
         return { ok: false, error: UNSUPPORTED };
     });
     ipcMain.handle(IPC.animeCover, (): null => {
         return null;
+    });
+    ipcMain.handle(IPC.animeAvailability, (): AnimeAvailability[] => {
+        return [];
     });
     ipcMain.handle(IPC.animeLibrary, () => {
         return [];
@@ -251,6 +306,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
         return { ok: false, error: UNSUPPORTED };
     });
     ipcMain.handle(IPC.animeUpdateCli, (): UpdateResult => {
+        return { ok: false, output: UNSUPPORTED.raw };
+    });
+    ipcMain.handle(IPC.animeResetCli, (): UpdateResult => {
         return { ok: false, output: UNSUPPORTED.raw };
     });
     ipcMain.handle(IPC.animeImportLibrary, (): AnimeImportResponse => {
@@ -292,6 +350,9 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     ipcMain.handle(IPC.animeUpdateCli, (): Promise<UpdateResult> => {
         return deps.updateAniCli();
     });
+    ipcMain.handle(IPC.animeResetCli, (): UpdateResult => {
+        return deps.resetAniCli();
+    });
     ipcMain.handle(IPC.animeSearch, async (_event, query, audio) => {
         const cleaned = validQuery(query);
         const chosen = asAudio(audio);
@@ -320,6 +381,9 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         const cleaned = asText(title).trim().slice(0, MAX_TEXT_LENGTH);
         return cleaned.length === 0 ? Promise.resolve(null) : deps.covers.find(cleaned);
     });
+    ipcMain.handle(IPC.animeAvailability, (_event, input): AnimeAvailability[] => {
+        return deps.availability.request(parseAvailabilityTargets(input));
+    });
     ipcMain.handle(IPC.animeSchedule, (_event, input): Promise<AnimeScheduleResponse> | AnimeScheduleResponse => {
         const request = parseScheduleRequest(input);
         if (request === null) {
@@ -340,6 +404,31 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         }
         const anime = queue.enqueue(request);
         return anime ? { ok: true, anime } : { ok: false, message: 'The anime could not be saved.' };
+    });
+    ipcMain.handle(IPC.animeAddToLibrary, (_event, input): AnimeAddResponse => {
+        if (migrating) {
+            return { ok: false, reason: 'busy' };
+        }
+        const request = parseDownloadRequest(input);
+        if (typeof request === 'string') {
+            return { ok: false, reason: 'invalid' };
+        }
+        return queue.addToLibrary({
+            title: request.title,
+            query: request.query,
+            index: request.index,
+            audio: request.audio,
+            episodes: request.episodes,
+            series: request.series ?? null,
+            season: request.season ?? null,
+            seasonName: request.seasonName ?? null
+        });
+    });
+    ipcMain.handle(IPC.animeDownloadMissing, (_event, ids): void => {
+        if (migrating) {
+            return;
+        }
+        queue.downloadMissing(validIds(ids));
     });
     ipcMain.handle(IPC.animeLibrary, () => {
         return db.list().map((anime) => {
@@ -478,29 +567,43 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             }
         });
     };
+    // The series of an anime is fixed once it is in the library (it can only be renamed with the whole series, and leaving it is
+    // removing the anime): what can change here is its season, and the name it is shown with, inside the series it has.
     ipcMain.handle(IPC.animeSetSeries, (_event, animeId, series, season, seasonName): AnimeSeriesResponse => {
         const id = asId(animeId);
-        if (id === null || db.getAnime(id) === null) {
+        const current = id === null ? null : db.getAnime(id);
+        if (id === null || current === null || current.series === null) {
             return { ok: false, reason: 'invalid' };
         }
-        if (series === null && season === null) {
-            db.setSeries(id, null, null);
-            refreshMetadataOf(id);
-            deps.onLibraryChanged();
-            return { ok: true };
-        }
         const cleaned = typeof series === 'string' ? cleanSeriesName(series) : null;
-        if (cleaned === null || !isValidSeason(season)) {
+        if (cleaned === null || !sameSeries(cleaned, current.series) || !isValidSeason(season)) {
             return { ok: false, reason: 'invalid' };
         }
         const name = seasonName === null || seasonName === undefined ? null : typeof seasonName === 'string' ? cleanSeasonName(seasonName) : undefined;
         if (name === undefined) {
             return { ok: false, reason: 'invalid' };
         }
-        if (!db.setSeries(id, cleaned, season, name)) {
-            return { ok: false, reason: 'season-taken' };
+        if (!db.setSeries(id, current.series, season, name)) {
+            return { ok: false, reason: 'season-taken', suggested: db.firstFreeSeason(current.series, current.audio, [id]) };
         }
         refreshMetadataOf(id);
+        deps.onLibraryChanged();
+        return { ok: true };
+    });
+    // The anime of a series get another name for it together; a season the other series has too is refused (see AnimeDb.renameSeries).
+    ipcMain.handle(IPC.animeRenameSeries, (_event, ids, name): AnimeRenameSeriesResponse => {
+        const animeIds = validIds(ids).filter((id) => {
+            return db.getAnime(id) !== null;
+        });
+        const cleaned = typeof name === 'string' ? cleanSeriesName(name) : null;
+        if (animeIds.length === 0 || cleaned === null) {
+            return { ok: false, reason: 'invalid' };
+        }
+        const result = db.renameSeries(animeIds, cleaned);
+        if (!result.ok) {
+            return { ok: false, reason: 'season-taken', anime: result.anime, season: result.season, suggested: result.suggested };
+        }
+        animeIds.forEach(refreshMetadataOf);
         deps.onLibraryChanged();
         return { ok: true };
     });
@@ -513,6 +616,18 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         });
         if (downloaded?.filePath) {
             deps.openFolder(animeFolderOf(downloaded.filePath, downloaded.number, deps.platform));
+        }
+    });
+    // The folder of the series the anime is in: where the folders of its seasons are (an anime on its own has its own folder).
+    ipcMain.handle(IPC.animeOpenSeriesFolder, (_event, animeId): void => {
+        const id = asId(animeId);
+        const anime = id === null ? null : db.getLibraryAnime(id);
+        const downloaded = anime?.episodes.find((episode) => {
+            return episode.status === 'done' && episode.filePath !== null;
+        });
+        if (downloaded?.filePath) {
+            const folder = animeFolderOf(downloaded.filePath, downloaded.number, deps.platform);
+            deps.openFolder(seriesFolderOf(folder, deps.platform) ?? folder);
         }
     });
     ipcMain.handle(IPC.animeStreamOpen, async (_event, input): Promise<AnimeStreamResponse> => {
