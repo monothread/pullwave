@@ -11,7 +11,7 @@ const OPTIONS: SubtitleOption[] = [
 ];
 
 function makeStyle(overrides: Partial<SubtitleStyle> = {}): SubtitleStyle {
-    return { scale: 1, color: 'theme', background: 'dim', resize: vi.fn(), changeColor: vi.fn(), changeBackground: vi.fn(), ...overrides };
+    return { scale: 1, resize: vi.fn(), ...overrides };
 }
 
 interface Props {
@@ -79,7 +79,7 @@ describe('PlayerSettings', () => {
         const user = userEvent.setup();
         const { onOpenChange } = setup();
         await user.keyboard('a');
-        await user.click(screen.getByText('Subtitle color'));
+        await user.click(screen.getByText('Subtitle size'));
         expect(onOpenChange).not.toHaveBeenCalled();
     });
 
@@ -142,21 +142,9 @@ describe('PlayerSettings', () => {
         expect(screen.getByRole('button', { name: 'Smaller subtitles' })).toBeEnabled();
     });
 
-    it('shows the color and the background, and tells the choices', async () => {
-        const user = userEvent.setup();
-        const changeColor = vi.fn();
-        const changeBackground = vi.fn();
-        setup({ style: makeStyle({ color: 'yellow', background: 'solid', changeColor, changeBackground }) });
-        const color = screen.getByRole('combobox', { name: 'Subtitle color' });
-        const background = screen.getByRole('combobox', { name: 'Subtitle background' });
-        expect(color).toHaveValue('yellow');
-        expect(background).toHaveValue('solid');
-
-        await user.selectOptions(color, 'cyan');
-        expect(changeColor).toHaveBeenCalledTimes(1);
-        expect(changeColor).toHaveBeenCalledWith('cyan');
-        await user.selectOptions(background, 'none');
-        expect(changeBackground).toHaveBeenCalledTimes(1);
-        expect(changeBackground).toHaveBeenCalledWith('none');
+    it('has no color and no background control', () => {
+        setup();
+        expect(screen.queryByRole('combobox', { name: 'Subtitle color' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('combobox', { name: 'Subtitle background' })).not.toBeInTheDocument();
     });
 });

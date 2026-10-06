@@ -840,7 +840,48 @@ body::after {
 
 .player__title { margin: 0; font-size: 14px; letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player__video { width: 100%; flex: 1; min-height: 0; background: #000; display: block; object-fit: contain; cursor: pointer; }
-.player__video::cue { color: var(--subtitle-color, var(--text)); background: var(--subtitle-background, rgba(0, 0, 0, 0.72)); font-family: var(--font); font-size: calc(var(--subtitle-scale, 1) * 100%); }
+/* The outlined lettering of the fansubs: bold and wide, with no box behind it. Two rings of shadows draw the outline in em, so it follows the size of the letters. */
+.player__video::cue {
+    color: #f6e9ff;
+    background: transparent;
+    font-family: Verdana, 'DejaVu Sans', 'Open Sans', sans-serif;
+    font-size: calc(var(--subtitle-scale, 1) * 100%);
+    font-weight: 700;
+    text-shadow:
+        0.120em 0.000em 0 #0b1a4a,
+        0.111em 0.046em 0 #0b1a4a,
+        0.085em 0.085em 0 #0b1a4a,
+        0.046em 0.111em 0 #0b1a4a,
+        0.000em 0.120em 0 #0b1a4a,
+        -0.046em 0.111em 0 #0b1a4a,
+        -0.085em 0.085em 0 #0b1a4a,
+        -0.111em 0.046em 0 #0b1a4a,
+        -0.120em 0.000em 0 #0b1a4a,
+        -0.111em -0.046em 0 #0b1a4a,
+        -0.085em -0.085em 0 #0b1a4a,
+        -0.046em -0.111em 0 #0b1a4a,
+        -0.000em -0.120em 0 #0b1a4a,
+        0.046em -0.111em 0 #0b1a4a,
+        0.085em -0.085em 0 #0b1a4a,
+        0.111em -0.046em 0 #0b1a4a,
+        0.060em 0.000em 0 #0b1a4a,
+        0.055em 0.023em 0 #0b1a4a,
+        0.042em 0.042em 0 #0b1a4a,
+        0.023em 0.055em 0 #0b1a4a,
+        0.000em 0.060em 0 #0b1a4a,
+        -0.023em 0.055em 0 #0b1a4a,
+        -0.042em 0.042em 0 #0b1a4a,
+        -0.055em 0.023em 0 #0b1a4a,
+        -0.060em 0.000em 0 #0b1a4a,
+        -0.055em -0.023em 0 #0b1a4a,
+        -0.042em -0.042em 0 #0b1a4a,
+        -0.023em -0.055em 0 #0b1a4a,
+        -0.000em -0.060em 0 #0b1a4a,
+        0.023em -0.055em 0 #0b1a4a,
+        0.042em -0.042em 0 #0b1a4a,
+        0.055em -0.023em 0 #0b1a4a,
+        0 0.08em 0.1em rgba(0, 0, 0, 0.6);
+}
 
 .player__stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #000; border: 1px solid var(--line); }
 .player__stage:fullscreen { justify-content: center; }

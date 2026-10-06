@@ -147,9 +147,10 @@ Click a season to show or hide its episodes, and click a downloaded episode to p
 ### Player
 ![The player in fullscreen, cyberpunk theme](docs/screenshots/anime-player.png)
 
-Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show, size, color and background). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In the neon themes (Cyberpunk, Synthwave, Terminal) they float over the video with a glowing progress bar. Escape closes the player.
+Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show and the size). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In the neon themes (Cyberpunk, Synthwave, Terminal) they float over the video with a glowing progress bar. Escape closes the player.
 
 ### Subtitles
+- One look for every theme: bold white lettering with a navy outline and no box behind it, like the fansubs.
 - Subtitles in the language of the app, or the one you choose in the ⚙ of the ANIME tab, when the source has it. Every language the source offers is saved with the episode and can be picked in the player.
 - **Watching without downloading** offers every language the source lists in the ⚙ of the player, with the one that fits the language of the app shown first.
 - **CHECK SUBTITLES** looks again for languages the episode does not have yet and adds them.

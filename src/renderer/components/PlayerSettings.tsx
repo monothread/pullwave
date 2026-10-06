@@ -1,7 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { SubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useTranslator } from '../i18n/useTranslator';
-import { isSubtitleBackgroundId, isSubtitleColorId, SUBTITLE_BACKGROUNDS, SUBTITLE_COLORS } from './subtitleColor';
 import { MAX_SUBTITLE_SCALE, MIN_SUBTITLE_SCALE, scalePercent } from './subtitleScale';
 
 // A subtitle the viewer can choose. The id is also the id of its <track>, which is how the control finds it.
@@ -139,48 +138,6 @@ export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle
                                 A+
                             </button>
                         </span>
-                    </SettingRow>
-                    <SettingRow label={t('anime.player.subtitleColor')}>
-                        <select
-                            className="player__select"
-                            aria-label={t('anime.player.subtitleColor')}
-                            value={subtitleStyle.color}
-                            onChange={(event) => {
-                                const { value } = event.target;
-                                if (isSubtitleColorId(value)) {
-                                    subtitleStyle.changeColor(value);
-                                }
-                            }}
-                        >
-                            {SUBTITLE_COLORS.map((choice) => {
-                                return (
-                                    <option key={choice.id} value={choice.id}>
-                                        {t(choice.labelKey)}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </SettingRow>
-                    <SettingRow label={t('anime.player.subtitleBackground')}>
-                        <select
-                            className="player__select"
-                            aria-label={t('anime.player.subtitleBackground')}
-                            value={subtitleStyle.background}
-                            onChange={(event) => {
-                                const { value } = event.target;
-                                if (isSubtitleBackgroundId(value)) {
-                                    subtitleStyle.changeBackground(value);
-                                }
-                            }}
-                        >
-                            {SUBTITLE_BACKGROUNDS.map((choice) => {
-                                return (
-                                    <option key={choice.id} value={choice.id}>
-                                        {t(choice.labelKey)}
-                                    </option>
-                                );
-                            })}
-                        </select>
                     </SettingRow>
                 </div>
             )}

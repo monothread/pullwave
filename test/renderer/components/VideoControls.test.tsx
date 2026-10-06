@@ -457,8 +457,8 @@ describe('VideoControls', () => {
             const dialog = screen.getByRole('dialog', { name: 'Settings' });
             expect(within(dialog).getByRole('combobox', { name: 'Subtitles' })).toBeInTheDocument();
             expect(within(dialog).getByRole('group', { name: 'Subtitle size' })).toBeInTheDocument();
-            expect(within(dialog).getByRole('combobox', { name: 'Subtitle color' })).toBeInTheDocument();
-            expect(within(dialog).getByRole('combobox', { name: 'Subtitle background' })).toBeInTheDocument();
+            expect(within(dialog).queryByRole('combobox', { name: 'Subtitle color' })).not.toBeInTheDocument();
+            expect(within(dialog).queryByRole('combobox', { name: 'Subtitle background' })).not.toBeInTheDocument();
             expect(within(dialog).queryByRole('button', { name: 'Mute' })).not.toBeInTheDocument();
 
             await user.click(gear);
@@ -491,7 +491,7 @@ describe('VideoControls', () => {
             Object.defineProperty(video, 'currentTime', { value: 10, writable: true, configurable: true });
             openedPlayerSettings();
             const user = userEvent.setup();
-            screen.getByRole('combobox', { name: 'Subtitle color' }).focus();
+            screen.getByRole('combobox', { name: 'Subtitles' }).focus();
             await user.keyboard('{ArrowRight}');
             expect(video.currentTime).toBe(10);
         });
@@ -632,73 +632,6 @@ describe('VideoControls', () => {
             expect(screen.getByRole('button', { name: 'Smaller subtitles' })).toBeEnabled();
             await user.click(screen.getByRole('button', { name: 'Larger subtitles' }));
             expect(screen.getByText('300%')).toBeInTheDocument();
-        });
-
-        it('changes the color of the subtitles, remembers it and shows it on the video', async () => {
-            const { video } = setupOpen();
-            const user = userEvent.setup();
-            const select = screen.getByRole('combobox', { name: 'Subtitle color' });
-            expect(select).toHaveValue('theme');
-            expect(Array.from(select.querySelectorAll('option')).map((option) => {
-                return [option.value, option.textContent];
-            })).toEqual([
-                ['theme', 'Theme color'],
-                ['white', 'White'],
-                ['yellow', 'Yellow'],
-                ['cyan', 'Cyan'],
-                ['green', 'Green']
-            ]);
-            expect(video.style.getPropertyValue('--subtitle-color')).toBe('');
-
-            await user.selectOptions(select, 'yellow');
-            expect(video.style.getPropertyValue('--subtitle-color')).toBe('#ffeb3b');
-            expect(window.localStorage.getItem('pullwave-subtitle-color')).toBe('yellow');
-
-            await user.selectOptions(select, 'theme');
-            expect(video.style.getPropertyValue('--subtitle-color')).toBe('');
-            expect(window.localStorage.getItem('pullwave-subtitle-color')).toBe('theme');
-        });
-
-        it('changes the background of the subtitles, remembers it and shows it on the video', async () => {
-            const { video } = setupOpen();
-            const user = userEvent.setup();
-            const select = screen.getByRole('combobox', { name: 'Subtitle background' });
-            expect(select).toHaveValue('dim');
-            expect(Array.from(select.querySelectorAll('option')).map((option) => {
-                return [option.value, option.textContent];
-            })).toEqual([
-                ['dim', 'Dim'],
-                ['solid', 'Solid black'],
-                ['none', 'None']
-            ]);
-            expect(video.style.getPropertyValue('--subtitle-background')).toBe('');
-
-            await user.selectOptions(select, 'solid');
-            expect(video.style.getPropertyValue('--subtitle-background')).toBe('#000000');
-            expect(window.localStorage.getItem('pullwave-subtitle-background')).toBe('solid');
-
-            await user.selectOptions(select, 'none');
-            expect(video.style.getPropertyValue('--subtitle-background')).toBe('transparent');
-            expect(window.localStorage.getItem('pullwave-subtitle-background')).toBe('none');
-
-            await user.selectOptions(select, 'dim');
-            expect(video.style.getPropertyValue('--subtitle-background')).toBe('');
-        });
-
-        it('starts with the colors the viewer chose before', () => {
-            window.localStorage.setItem('pullwave-subtitle-color', 'green');
-            window.localStorage.setItem('pullwave-subtitle-background', 'none');
-            const { video } = setupOpen();
-            expect(screen.getByRole('combobox', { name: 'Subtitle color' })).toHaveValue('green');
-            expect(screen.getByRole('combobox', { name: 'Subtitle background' })).toHaveValue('none');
-            expect(video.style.getPropertyValue('--subtitle-color')).toBe('#69f0ae');
-            expect(video.style.getPropertyValue('--subtitle-background')).toBe('transparent');
-        });
-
-        it('has no color control when the video has no subtitles', () => {
-            setup([]);
-            expect(screen.queryByRole('combobox', { name: 'Subtitle color' })).not.toBeInTheDocument();
-            expect(screen.queryByRole('combobox', { name: 'Subtitle background' })).not.toBeInTheDocument();
         });
 
         it('has no size control when the video has no subtitles', () => {

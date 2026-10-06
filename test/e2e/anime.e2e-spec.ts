@@ -2095,11 +2095,31 @@ test.describe('watching without downloading', () => {
         await dialog.getByRole('button', { name: 'Settings' }).click();
         await expect(dialog.getByRole('combobox', { name: 'Subtitles' })).toBeVisible();
 
-        await dialog.getByRole('combobox', { name: 'Subtitle color' }).selectOption('yellow');
-        await dialog.getByRole('combobox', { name: 'Subtitle background' }).selectOption('solid');
-        const video = dialog.locator('video');
-        await expect(video).toHaveCSS('--subtitle-color', '#ffeb3b');
-        await expect(video).toHaveCSS('--subtitle-background', '#000000');
+        await expect(dialog.getByRole('combobox', { name: 'Subtitle color' })).toHaveCount(0);
+        await expect(dialog.getByRole('combobox', { name: 'Subtitle background' })).toHaveCount(0);
+        const cueStyle = await page.evaluate(() => {
+            const rule = Array.from(document.styleSheets).flatMap((sheet) => {
+                return Array.from(sheet.cssRules);
+            }).find((candidate) => {
+                return candidate instanceof CSSStyleRule && candidate.selectorText === '.player__video::cue';
+            });
+            const { style } = rule as CSSStyleRule;
+            return {
+                color: style.getPropertyValue('color'),
+                background: style.getPropertyValue('background-color'),
+                weight: style.getPropertyValue('font-weight'),
+                family: style.getPropertyValue('font-family'),
+                shadowLayers: style.getPropertyValue('text-shadow').split(/,\s*(?![^(]*\))/).length
+            };
+        });
+        expect(cueStyle).toEqual({
+            color: 'rgb(246, 233, 255)',
+            background: 'transparent',
+            weight: '700',
+            family: 'Verdana, "DejaVu Sans", "Open Sans", sans-serif',
+            shadowLayers: 33
+        });
+        await expect(dialog.locator('video')).toHaveCSS('--subtitle-scale', '1');
 
         await dialog.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
         await expect(page.locator('.toast--info .toast__message', { hasText: 'NEW SUBTITLES' })).toHaveText('NEW SUBTITLES ADDED (3): English, Portuguese, Spanish');
