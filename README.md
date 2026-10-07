@@ -19,6 +19,7 @@ There is nothing else to install: everything the app needs comes with it.
 - **Find stream:** when a page is not supported, the app looks for the video in it and lets you pick one.
 - An **anime library** of your own, with series and seasons, where you stopped watching and subtitles in every language the source offers.
 - A **player** inside the app, or watch an episode **without downloading** it.
+- **Subtitles made for you:** translate a subtitle into another language, or create one from the audio of an episode that has none, with your own account at OpenAI, Claude, Gemini and others.
 - The whole app in **English, Português, Español, 中文 and 日本語**.
 - Updates itself, and updates its video and anime tools from inside the app.
 
@@ -156,6 +157,23 @@ Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next 
 - **CHECK SUBTITLES** looks again for languages the episode does not have yet and adds them.
 - Language names appear in the language of the app ("Português (Brasil)").
 - **LOAD SUBTITLE** adds your own `.vtt` or `.srt` file to an episode.
+- **TRANSLATE SUBTITLE** (in the player) asks a language model to translate a subtitle of the episode into another language and saves it next to the video. **TRANSLATE SUBTITLES** (in the episodes of a season) does it for every downloaded episode of the season, one after the other. See [Translating and creating subtitles](#translating-and-creating-subtitles).
+- **CREATE SUBTITLE** (in the player, when the episode has no subtitle at all) writes one from the audio.
+
+### Translating and creating subtitles
+These use **your own account** with a provider; the app has no key of its own and nothing is charged by Pullwave. Everything is set in the anime settings (⚙ of the ANIME tab):
+- **Subtitle translation:** the provider (ChatGPT/OpenAI, Claude, Gemini, DeepSeek, GLM, Kimi, or any service that speaks the OpenAI protocol, with its address), the model (you write its name), the default language and the token.
+- **Subtitle creation (speech to text):** the service (OpenAI's Whisper, Gemini, or another that speaks the OpenAI protocol), the model (`whisper-1` for OpenAI; for Gemini a model of Gemini that takes audio) and its token. The token of the speech service is kept apart from the one of the translation.
+- **The tokens** are kept encrypted by your system's keyring, in the main process of the app, and are never shown again. Without a keyring (some Linux setups) the app says so and does not save them.
+
+How it works:
+- **Translate:** only the text of the subtitle is sent, in batches; the times never leave the computer. Before it starts, the window shows how many lines and requests it takes and about how many tokens, and nothing is sent until you confirm. The translation is saved as `<video>.translated-<Language>.vtt`.
+- **Create:** you choose the **language of the audio** (Japanese by default) and the **language of the subtitle** in the window. The audio (never the video) is taken out of the episode on your computer, cut into parts of ten minutes and sent to the speech service one at a time; the window says how long it is, how many bytes and to which service, and then shows the steps as they happen with the parts sent and the time. Only the subtitle in the language you asked for is saved, as `<video>.generated-<Language>.vtt`.
+  - Same language as the audio: it is transcribed.
+  - English: OpenAI's Whisper translates the audio into English at once. If the service refuses, the audio is transcribed and the text translated.
+  - Another language with Whisper: the audio is transcribed and then the text is translated with your translation provider (two charges).
+  - With **Gemini** as the speech service, any language is written at once from the audio, in one step.
+- Both can be cancelled. If something fails nothing half-made is saved. The quality depends on the model: transcription can miss names and invent text over music, and the times Gemini gives are by seconds, so they can drift a little.
 
 ### History
 Lists the anime you opened or watched, the most recent first, with the last episode you watched. OPEN brings it back with its episodes.
