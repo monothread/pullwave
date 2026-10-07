@@ -270,6 +270,22 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                                 {trayWarning}
                             </p>
                         )}
+                        <ToggleField
+                            label={t('settings.launchAtLogin')}
+                            checked={draft.launchAtLogin}
+                            hint={t('settings.launchAtLogin.hint')}
+                            onChange={(value) => {
+                                change('launchAtLogin', value);
+                            }}
+                        />
+                        <ToggleField
+                            label={t('settings.startMinimized')}
+                            checked={draft.startMinimized}
+                            hint={t('settings.startMinimized.hint')}
+                            onChange={(value) => {
+                                change('startMinimized', value);
+                            }}
+                        />
                     </fieldset>
 
                     <fieldset className="panel">

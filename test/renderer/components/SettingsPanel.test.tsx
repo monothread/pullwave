@@ -748,6 +748,59 @@ describe('SettingsPanel system tray', () => {
     });
 });
 
+describe('SettingsPanel start at login', () => {
+    const LOGIN_LABEL = 'Start Pullwave when I log in';
+    const MINIMIZED_LABEL = 'Start minimized to the system tray';
+
+    beforeEach(() => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS } });
+    });
+
+    it('are off by default and explain what they do', () => {
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText(LOGIN_LABEL)).not.toBeChecked();
+        expect(screen.getByLabelText(MINIMIZED_LABEL)).not.toBeChecked();
+        expect(screen.getByText('Opens the app automatically every time you log in to the computer.')).toBeInTheDocument();
+        expect(
+            screen.getByText('Only when started at login, and only with the tray option above on and a tray available; otherwise the window opens normally.')
+        ).toBeInTheDocument();
+    });
+
+    it('reflect the stored values', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, launchAtLogin: true, startMinimized: true } });
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText(LOGIN_LABEL)).toBeChecked();
+        expect(screen.getByLabelText(MINIMIZED_LABEL)).toBeChecked();
+    });
+
+    it('are not in the settings of the downloads', () => {
+        render(<SettingsPanel scope="downloads" />);
+        expect(screen.queryByLabelText(LOGIN_LABEL)).not.toBeInTheDocument();
+        expect(screen.queryByLabelText(MINIMIZED_LABEL)).not.toBeInTheDocument();
+    });
+
+    it('save the choice of starting at login', async () => {
+        render(<SettingsPanel scope="global" />);
+        fireEvent.click(screen.getByLabelText(LOGIN_LABEL));
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, launchAtLogin: true });
+    });
+
+    it('save the choice of starting minimized', async () => {
+        render(<SettingsPanel scope="global" />);
+        fireEvent.click(screen.getByLabelText(MINIMIZED_LABEL));
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, startMinimized: true });
+    });
+
+    it('are translated', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt' } });
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText('Abrir o Pullwave quando eu fizer login')).toBeInTheDocument();
+        expect(screen.getByLabelText('Iniciar minimizado na bandeja do sistema')).toBeInTheDocument();
+    });
+});
+
 describe('SettingsPanel live streams', () => {
     it('are off by default and explain what they do', () => {
         render(<SettingsPanel scope="downloads" />);

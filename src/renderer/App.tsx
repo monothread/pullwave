@@ -50,7 +50,16 @@ export function App() {
         return state.settings.theme;
     });
 
+    const settingsLoaded = useAppStore((state) => {
+        return state.settingsLoaded;
+    });
+
+    // Until the settings arrive the theme is the default one, which must neither replace the remembered theme that main.tsx already
+    // applied nor be remembered in its place.
     useEffect(() => {
+        if (!settingsLoaded) {
+            return undefined;
+        }
         applyTheme(theme);
         rememberTheme(theme);
         if (theme !== 'device' || typeof window.matchMedia !== 'function') {
@@ -64,7 +73,7 @@ export function App() {
         return () => {
             query.removeEventListener('change', follow);
         };
-    }, [theme]);
+    }, [theme, settingsLoaded]);
 
     useEffect(() => {
         document.documentElement.lang = language;

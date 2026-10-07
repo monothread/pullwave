@@ -237,6 +237,32 @@ describe('App theme', () => {
         expect(window.localStorage.getItem('cyber-dl-theme')).toBe('cyberpunk');
     });
 
+    it('keeps the remembered theme while the settings are still loading, instead of flashing the default', async () => {
+        window.localStorage.setItem('cyber-dl-theme', 'nord');
+        document.documentElement.dataset.theme = 'nord';
+        document.documentElement.dataset.themeStyle = THEME_STYLES.nord;
+        let resolveSettings: (settings: typeof DEFAULT_SETTINGS) => void = () => {
+            return undefined;
+        };
+        mock.api.getSettings.mockReturnValue(
+            new Promise((resolve) => {
+                resolveSettings = resolve;
+            })
+        );
+        render(<App />);
+        expect(screen.getByText('// BOOTING SYSTEMS…')).toBeInTheDocument();
+        expect(document.documentElement.dataset.theme).toBe('nord');
+        expect(document.documentElement.dataset.themeStyle).toBe(THEME_STYLES.nord);
+        expect(window.localStorage.getItem('cyber-dl-theme')).toBe('nord');
+
+        await act(async () => {
+            resolveSettings({ ...DEFAULT_SETTINGS, theme: 'nord' });
+        });
+        await screen.findByLabelText('Link 1');
+        expect(document.documentElement.dataset.theme).toBe('nord');
+        expect(window.localStorage.getItem('cyber-dl-theme')).toBe('nord');
+    });
+
     it('does not make a neon follow the mouse in the cyberpunk theme', async () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'cyberpunk' });
         render(<App />);

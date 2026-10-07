@@ -32,12 +32,14 @@ interface LaunchOptions {
     useFakeYtdlp?: boolean;
     settings?: Record<string, unknown>;
     env?: Record<string, string>;
+    // Command line arguments after the ones every launch has (the flag of the start at login, for one).
+    args?: string[];
     // Runs before the app starts, with the folder of its data (to leave files there, as an earlier run would have).
     prepare?: (userData: string) => void;
 }
 
 async function launch(options: LaunchOptions = {}): Promise<Session> {
-    const { useFakeYtdlp = true, settings = {}, env = {}, prepare } = options;
+    const { useFakeYtdlp = true, settings = {}, env = {}, args = [], prepare } = options;
     const workDir = mkdtempSync(join(tmpdir(), 'pullwave-e2e-'));
     const userData = join(workDir, 'user-data');
     const downloadDir = join(workDir, 'downloads');
@@ -47,7 +49,7 @@ async function launch(options: LaunchOptions = {}): Promise<Session> {
     writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', verifyLiveEnd: false, ...(useFakeYtdlp ? { ytdlpPath: FAKE_YTDLP } : {}), downloadDir, ...settings }));
     prepare?.(userData);
     const app = await electron.launch({
-        args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
+        args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`, ...args],
         env: { ...process.env, FAKE_YTDLP_LOG: logPath, ...env }
     });
     let exited = false;
@@ -2785,3 +2787,150 @@ test.describe('find stream', () => {
     });
 });
 
+
+test.describe('start at login', () => {
+    const LOGIN_LABEL = 'Start Pullwave when I log in';
+    const MINIMIZED_LABEL = 'Start minimized to the system tray';
+
+    function newAutostartDir(): string {
+        return mkdtempSync(join(tmpdir(), 'pullwave-autostart-'));
+    }
+
+    function windowState(own: Session): Promise<{ visible: boolean; maximized: boolean }> {
+        return own.app.evaluate(({ BrowserWindow }) => {
+            const window = BrowserWindow.getAllWindows()[0];
+            return { visible: window?.isVisible() ?? false, maximized: window?.isMaximized() ?? false };
+        });
+    }
+
+    test('both options are off by default and nothing is written to the autostart folder', async () => {
+        const dir = newAutostartDir();
+        const own = await launch({ env: { PULLWAVE_AUTOSTART_DIR: dir } });
+        try {
+            await openGlobalSettings(own.page);
+            await expect(own.page.getByLabel(LOGIN_LABEL)).not.toBeChecked();
+            await expect(own.page.getByLabel(MINIMIZED_LABEL)).not.toBeChecked();
+            expect(readdirSync(dir)).toEqual([]);
+            expect(readSettings(own.userData).launchAtLogin).toBeUndefined();
+        } finally {
+            await closeQuietly(own);
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('turning it on writes the login entry and turning it off removes it', async () => {
+        const dir = newAutostartDir();
+        const own = await launch({ env: { PULLWAVE_AUTOSTART_DIR: dir } });
+        try {
+            await openGlobalSettings(own.page);
+            await own.page.getByLabel(LOGIN_LABEL).check();
+            await expect(own.page.getByText('All changes saved.')).toBeVisible();
+            expect(readSettings(own.userData).launchAtLogin).toBe(true);
+            await expect.poll(() => {
+                return readdirSync(dir);
+            }).toEqual(['pullwave.desktop']);
+            const entry = readFileSync(join(dir, 'pullwave.desktop'), 'utf-8');
+            expect(entry).toContain('[Desktop Entry]\n');
+            expect(entry).toContain('Name=Pullwave\n');
+            expect(entry).toMatch(/^Exec=".+" --autostart$/m);
+
+            await own.page.getByLabel(LOGIN_LABEL).uncheck();
+            await expect.poll(() => {
+                return readdirSync(dir);
+            }).toEqual([]);
+            expect(readSettings(own.userData).launchAtLogin).toBe(false);
+        } finally {
+            await closeQuietly(own);
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    test('starting minimized is saved from the settings', async () => {
+        const own = await launch();
+        try {
+            await openGlobalSettings(own.page);
+            await own.page.getByLabel(MINIMIZED_LABEL).check();
+            await expect(own.page.getByText('All changes saved.')).toBeVisible();
+            expect(readSettings(own.userData).startMinimized).toBe(true);
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+
+    test('a start at login with the tray out of sight keeps the window hidden', async () => {
+        const own = await launch({ env: KDE_ENV, args: ['--autostart'], settings: { closeToTray: true, startMinimized: true } });
+        try {
+            await own.page.waitForTimeout(800);
+            expect((await windowState(own)).visible).toBe(false);
+            expect(appExited(own)).toBe(false);
+
+            spawnSync(ELECTRON_PATH, [ROOT, '--no-sandbox', `--user-data-dir=${own.userData}`], { timeout: 20000, env: { ...process.env, ...KDE_ENV } });
+            await expect.poll(() => {
+                return windowVisible(own);
+            }).toBe(true);
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+
+    test('a start at login without a tray opens the window anyway', async () => {
+        const own = await launch({ env: GNOME_WITHOUT_TRAY_ENV, args: ['--autostart'], settings: { closeToTray: true, startMinimized: true } });
+        try {
+            await expect.poll(() => {
+                return windowVisible(own);
+            }).toBe(true);
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+
+    test('a start by the person opens the window even with start minimized on', async () => {
+        const own = await launch({ env: KDE_ENV, settings: { closeToTray: true, startMinimized: true } });
+        try {
+            await expect.poll(() => {
+                return windowVisible(own);
+            }).toBe(true);
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+
+    test('a start at login without start minimized shows the window', async () => {
+        const own = await launch({ env: KDE_ENV, args: ['--autostart'], settings: { closeToTray: true } });
+        try {
+            await expect.poll(() => {
+                return windowVisible(own);
+            }).toBe(true);
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+
+    test('@resize opens maximized on the primary monitor after a start at login', async () => {
+        const own = await launch({ env: { ...KDE_ENV, PULLWAVE_E2E_DISPLAY: '' }, args: ['--autostart'] });
+        try {
+            await expect.poll(() => {
+                return windowState(own);
+            }).toEqual({ visible: true, maximized: true });
+            const onPrimary = await own.app.evaluate(({ BrowserWindow, screen }) => {
+                const bounds = BrowserWindow.getAllWindows()[0]?.getBounds() ?? { x: -1, y: -1 };
+                const primary = screen.getPrimaryDisplay().bounds;
+                return bounds.x >= primary.x && bounds.x < primary.x + primary.width && bounds.y >= primary.y && bounds.y < primary.y + primary.height;
+            });
+            expect(onPrimary).toBe(true);
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+
+    test('@resize opens maximized when started by the person too', async () => {
+        const own = await launch({ env: { PULLWAVE_E2E_DISPLAY: '' } });
+        try {
+            await expect.poll(() => {
+                return windowState(own);
+            }).toEqual({ visible: true, maximized: true });
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+});

@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { withoutAutostartFlag } from './startupLaunch';
 
 export type Environment = Record<string, string | undefined>;
 
@@ -36,7 +37,7 @@ const WAIT_THEN_START_SCRIPT = [
 ].join('\n');
 
 export function buildRelaunchOptions(argv: readonly string[]): RelaunchOptions {
-    return { args: argv.slice(1) };
+    return { args: withoutAutostartFlag(argv.slice(1)) };
 }
 
 function withoutMountEntries(list: string, mountDir: string): string {
@@ -75,7 +76,7 @@ export function cleanAppImageEnvironment(env: Environment): Environment {
 export function buildAppImageRestart(appImage: string, env: Environment, argv: readonly string[], pid: number): AppImageRestart {
     return {
         command: 'sh',
-        args: ['-c', WAIT_THEN_START_SCRIPT, 'pullwave-restart', String(pid), appImage, ...argv.slice(1)],
+        args: ['-c', WAIT_THEN_START_SCRIPT, 'pullwave-restart', String(pid), appImage, ...withoutAutostartFlag(argv.slice(1))],
         env: cleanAppImageEnvironment(env)
     };
 }

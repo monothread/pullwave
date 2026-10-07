@@ -197,6 +197,10 @@ export const ja: Messages = {
     'language.device': 'デバイス（システムに従う）',
     'settings.closeToTray': 'ウィンドウを閉じてもシステムトレイで実行を続ける',
     'settings.closeToTray.hint': 'ダウンロードはバックグラウンドで続行されます。完全に終了するには、トレイアイコンを右クリックしてください。',
+    'settings.launchAtLogin': 'ログイン時に Pullwave を起動する',
+    'settings.launchAtLogin.hint': 'コンピューターにログインするたびにアプリを自動で開きます。',
+    'settings.startMinimized': 'システムトレイに最小化して起動する',
+    'settings.startMinimized.hint': 'ログイン時の起動にのみ適用され、上のトレイの設定がオンでトレイが使える場合に限ります。それ以外はウィンドウが通常どおり開きます。',
     'tray.noTray':
         'システムトレイが検出されませんでした。GNOME では「AppIndicator and KStatusNotifierItem Support」拡張機能をインストールしてください。それまでは、ウィンドウを閉じるとアプリが終了します。',
     'tray.createFailed': 'トレイアイコンを作成できませんでした。ウィンドウを閉じるとアプリが終了します。',

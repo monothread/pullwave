@@ -198,6 +198,10 @@ export const es: Messages = {
     'language.device': 'Dispositivo (sigue el sistema)',
     'settings.closeToTray': 'Seguir en la bandeja del sistema al cerrar la ventana',
     'settings.closeToTray.hint': 'Las descargas continúan en segundo plano. Haz clic derecho en el icono de la bandeja para salir por completo.',
+    'settings.launchAtLogin': 'Abrir Pullwave al iniciar sesión',
+    'settings.launchAtLogin.hint': 'Abre la aplicación automáticamente cada vez que inicias sesión en el equipo.',
+    'settings.startMinimized': 'Iniciar minimizado en la bandeja del sistema',
+    'settings.startMinimized.hint': 'Solo al iniciar con la sesión y solo con la opción de bandeja de arriba activada y una bandeja disponible; si no, la ventana se abre normalmente.',
     'tray.noTray':
         'No se detectó ninguna bandeja del sistema. En GNOME, instala la extensión “AppIndicator and KStatusNotifierItem Support”. Hasta entonces, cerrar la ventana cierra la aplicación.',
     'tray.createFailed': 'No se pudo crear el icono de la bandeja. Cerrar la ventana cierra la aplicación.',

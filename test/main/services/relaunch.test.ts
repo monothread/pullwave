@@ -24,6 +24,10 @@ describe('buildRelaunchOptions', () => {
         expect(buildRelaunchOptions(ARGV)).toEqual({ args: ['--no-sandbox', '--user-data-dir=/tmp/x'] });
     });
 
+    it('drops the flag of the start at login, so a restart is not taken for one', () => {
+        expect(buildRelaunchOptions([...ARGV, '--autostart'])).toEqual({ args: ['--no-sandbox', '--user-data-dir=/tmp/x'] });
+    });
+
     it('returns no arguments when the app was started without any', () => {
         expect(buildRelaunchOptions(['/usr/bin/app'])).toEqual({ args: [] });
     });
@@ -67,6 +71,11 @@ describe('buildAppImageRestart', () => {
         expect(restart.args[0]).toBe('-c');
         expect(restart.args.slice(2)).toEqual(['pullwave-restart', '4321', APP_IMAGE, '--no-sandbox', '--user-data-dir=/tmp/x']);
         expect(restart.env).toEqual({});
+    });
+
+    it('drops the flag of the start at login from the arguments of the new instance', () => {
+        const restart = buildAppImageRestart(APP_IMAGE, {}, [...ARGV, '--autostart'], 4321);
+        expect(restart.args.slice(2)).toEqual(['pullwave-restart', '4321', APP_IMAGE, '--no-sandbox', '--user-data-dir=/tmp/x']);
     });
 
     it('never puts the path or the arguments inside the script text', () => {

@@ -161,6 +161,8 @@ export const DEFAULT_SETTINGS: Settings = {
     jsRuntime: '',
     checkUpdatesOnStart: true,
     closeToTray: false,
+    launchAtLogin: false,
+    startMinimized: false,
     liveFromStart: false,
     waitForLive: false,
     verifyLiveEnd: true,

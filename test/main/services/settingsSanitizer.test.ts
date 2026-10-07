@@ -38,6 +38,8 @@ describe('sanitizeSettings', () => {
             jsRuntime: 'node:/usr/bin/node',
             checkUpdatesOnStart: false,
             closeToTray: true,
+            launchAtLogin: true,
+            startMinimized: true,
             liveFromStart: true,
             waitForLive: true,
             theme: 'light',
@@ -194,6 +196,8 @@ describe('sanitizeSettings', () => {
             useBrowserCookies: 'yes',
             checkUpdatesOnStart: 'no',
             closeToTray: 'yes',
+            launchAtLogin: 'yes',
+            startMinimized: 1,
             liveFromStart: 1,
             waitForLive: 'true',
             cookiesBrowserDir: 7,
@@ -206,6 +210,8 @@ describe('sanitizeSettings', () => {
         expect(result.useBrowserCookies).toBe(false);
         expect(result.checkUpdatesOnStart).toBe(true);
         expect(result.closeToTray).toBe(false);
+        expect(result.launchAtLogin).toBe(false);
+        expect(result.startMinimized).toBe(false);
         expect(result.liveFromStart).toBe(false);
         expect(result.waitForLive).toBe(false);
         expect(result.autoSubtitles).toBe(false);

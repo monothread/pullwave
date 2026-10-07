@@ -73,6 +73,8 @@ export function sanitizeSettings(input: unknown): Settings {
         jsRuntime: pickString(raw.jsRuntime, defaults.jsRuntime),
         checkUpdatesOnStart: pickBoolean(raw.checkUpdatesOnStart, defaults.checkUpdatesOnStart),
         closeToTray: pickBoolean(raw.closeToTray, defaults.closeToTray),
+        launchAtLogin: pickBoolean(raw.launchAtLogin, defaults.launchAtLogin),
+        startMinimized: pickBoolean(raw.startMinimized, defaults.startMinimized),
         liveFromStart: pickBoolean(raw.liveFromStart, defaults.liveFromStart),
         waitForLive: pickBoolean(raw.waitForLive, defaults.waitForLive),
         verifyLiveEnd: pickBoolean(raw.verifyLiveEnd, defaults.verifyLiveEnd),

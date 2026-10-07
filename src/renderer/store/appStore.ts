@@ -48,6 +48,8 @@ export interface AppState {
     jobs: DownloadJob[];
     history: HistoryEntry[];
     settings: Settings;
+    // False until the settings have arrived from the main process; until then `settings` only holds the defaults.
+    settingsLoaded: boolean;
     binaries: BinariesStatus | null;
     notice: Notice | null;
     // The notices that are on the screen together, the newest on top of the others; each one goes away by itself.
@@ -136,6 +138,7 @@ export const useAppStore = create<AppState>((set, get) => {
         jobs: [],
         history: [],
         settings: DEFAULT_SETTINGS,
+        settingsLoaded: false,
         binaries: null,
         notice: null,
         toasts: [],
@@ -186,7 +189,7 @@ export const useAppStore = create<AppState>((set, get) => {
                 api.getAppUpdateState()
             ]);
             // The app opens on the tab the settings say (the anime one is left for the downloads when the section does not exist).
-            set({ settings, jobs, history, binaries, appUpdate, tab: settings.startTab });
+            set({ settings, settingsLoaded: true, jobs, history, binaries, appUpdate, tab: settings.startTab });
             const unsubscribers = [
                 api.onJobUpdate((job) => {
                     const finishedNow = job.status === 'done' && get().jobs.find((candidate) => {

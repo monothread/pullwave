@@ -9,7 +9,7 @@ const initial = useAppStore.getState();
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, toasts: [], updating: false, appUpdate: INITIAL_APP_UPDATE, traySupport: null, streamSearches: {}, tab: 'downloads', downloadsView: 'queue' });
+    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], updating: false, appUpdate: INITIAL_APP_UPDATE, traySupport: null, streamSearches: {}, tab: 'downloads', downloadsView: 'queue' });
 });
 
 const HISTORY_ENTRY: HistoryEntry = { id: 'h1', url: 'https://x.com', title: 'T', filePath: '/d/T.mp4', status: 'done', errorTitle: null, finishedAt: 5 };
@@ -31,6 +31,7 @@ describe('useAppStore basics', () => {
         expect(initial.downloadsView).toBe('queue');
         expect(initial.jobs).toEqual([]);
         expect(initial.binaries).toBeNull();
+        expect(initial.settingsLoaded).toBe(false);
         expect(initial.notice).toBeNull();
     });
 
@@ -133,6 +134,19 @@ describe('the tab the app opens on', () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
         await useAppStore.getState().init();
         expect(useAppStore.getState().tab).toBe('anime');
+    });
+});
+
+describe('the settings being loaded', () => {
+    it('are not loaded until init has read them', () => {
+        expect(useAppStore.getState().settingsLoaded).toBe(false);
+    });
+
+    it('are marked as loaded, with their values, once init has read them', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'nord' });
+        await useAppStore.getState().init();
+        expect(useAppStore.getState().settingsLoaded).toBe(true);
+        expect(useAppStore.getState().settings).toEqual({ ...DEFAULT_SETTINGS, theme: 'nord' });
     });
 });
 

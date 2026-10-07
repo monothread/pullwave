@@ -127,6 +127,8 @@ export interface Settings {
     jsRuntime: string;
     checkUpdatesOnStart: boolean;
     closeToTray: boolean;
+    launchAtLogin: boolean;
+    startMinimized: boolean;
     liveFromStart: boolean;
     waitForLive: boolean;
     verifyLiveEnd: boolean;

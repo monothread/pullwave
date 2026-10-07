@@ -206,6 +206,10 @@ export const en = {
     'language.device': 'Device (follows the system)',
     'settings.closeToTray': 'Keep running in the system tray when the window is closed',
     'settings.closeToTray.hint': 'Downloads keep going in the background. Right-click the tray icon to quit completely.',
+    'settings.launchAtLogin': 'Start Pullwave when I log in',
+    'settings.launchAtLogin.hint': 'Opens the app automatically every time you log in to the computer.',
+    'settings.startMinimized': 'Start minimized to the system tray',
+    'settings.startMinimized.hint': 'Only when started at login, and only with the tray option above on and a tray available; otherwise the window opens normally.',
     'tray.noTray':
         'No system tray was detected. On GNOME, install the “AppIndicator and KStatusNotifierItem Support” extension. Until then, closing the window quits the app.',
     'tray.createFailed': 'The tray icon could not be created. Closing the window quits the app.',

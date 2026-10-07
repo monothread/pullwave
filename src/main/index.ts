@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
@@ -17,6 +18,7 @@ import { BrowserCatalog } from './services/browserCatalog';
 import { defaultFileProbe, detectBrowsers, type DetectionEnvironment } from './services/browserDetector';
 import { listRegisteredBrowsers } from './services/browserRegistry';
 import { defaultExecFile } from './services/binaryLocator';
+import { Autostart, defaultAutostartFiles } from './services/autostart';
 import { createElectronTray } from './services/electronTray';
 import { getElectronUpdater } from './services/electronUpdater';
 import { findPartialFiles, removeFiles } from './services/partialFiles';
@@ -28,6 +30,7 @@ import { restartApplication } from './services/relaunch';
 import { mergeParts } from './services/partsMerger';
 import { salvageRecording } from './services/recordingSalvage';
 import { QueueManager } from './services/queueManager';
+import { isAutostartLaunch, shouldStartHidden } from './services/startupLaunch';
 import { SettingsStore } from './services/settingsStore';
 import { defaultFetchPage, scanPage } from './services/pageScanner';
 import { defaultFetchPlaylist, dropVariantPlaylists } from './services/playlistFilter';
@@ -138,20 +141,22 @@ function e2eDisplay(): Display | null {
     return null;
 }
 
-function e2eWindowPosition(width: number, height: number): { x: number; y: number } | Record<string, never> {
-    const display = e2eDisplay();
-    if (display === null) {
-        return {};
-    }
-    const area = display.workArea;
+// The app opens on the primary monitor, wherever the system would have put it.
+function startupDisplay(): Display {
+    return e2eDisplay() ?? screen.getPrimaryDisplay();
+}
+
+function windowPosition(width: number, height: number): { x: number; y: number } {
+    const area = startupDisplay().workArea;
     return { x: area.x + Math.max(0, Math.round((area.width - width) / 2)), y: area.y + Math.max(0, Math.round((area.height - height) / 2)) };
 }
 
-function createWindow(): BrowserWindow {
+function createWindow(options: { hidden: boolean }): BrowserWindow {
     const window = new BrowserWindow({
         width: 1100,
         height: 780,
-        ...e2eWindowPosition(1100, 780),
+        show: !options.hidden,
+        ...windowPosition(1100, 780),
         minWidth: 480,
         minHeight: 520,
         backgroundColor: '#07060f',
@@ -168,6 +173,11 @@ function createWindow(): BrowserWindow {
     window.webContents.setWindowOpenHandler(() => {
         return { action: 'deny' };
     });
+    // The app opens maximized (also when it starts out of sight, so it shows maximized from the tray). The end-to-end tests keep the
+    // size above, which the layout ones depend on.
+    if (e2eDisplay() === null) {
+        window.maximize();
+    }
     window.on('close', handleWindowClose);
     if (diagnosticLog) {
         attachWindowDiagnostics(window.webContents, diagnosticLog, { onBridgeMissing: warnAboutMissingBridge });
@@ -241,7 +251,29 @@ function createSecretCipher(): SecretCipher {
     };
 }
 
-function bootstrap(): void {
+// The login entry is written for the app as it is installed; PULLWAVE_AUTOSTART_DIR points it at another folder and makes it work in a
+// development run (used by the end-to-end tests).
+function createAutostart(): Autostart {
+    const customDir = process.env.PULLWAVE_AUTOSTART_DIR;
+    return new Autostart({
+        platform: process.platform,
+        canRegister: app.isPackaged || customDir !== undefined,
+        command: process.env.APPIMAGE ?? process.execPath,
+        autostartDir: customDir ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'autostart'),
+        files: defaultAutostartFiles,
+        setLoginItem: (enabled, args) => {
+            app.setLoginItemSettings({ openAtLogin: enabled, args });
+        }
+    });
+}
+
+interface BootstrapResult {
+    startMinimized: boolean;
+    // Resolves once the tray is known to exist or not, which is what tells whether the window can start out of sight.
+    trayReady: Promise<void>;
+}
+
+function bootstrap(): BootstrapResult {
     const dataDir = app.getPath('userData');
     const settingsStore = new SettingsStore(join(dataDir, 'settings.json'));
     const historyStore = new HistoryStore(join(dataDir, 'history.json'));
@@ -436,7 +468,9 @@ function bootstrap(): void {
         return detectBrowsers(environment, defaultFileProbe, registered);
     });
     trayManager = manager;
-    void manager.sync(settingsStore.get().closeToTray);
+    const trayReady = manager.sync(settingsStore.get().closeToTray);
+    const autostart = createAutostart();
+    autostart.sync(settingsStore.get().launchAtLogin);
 
     // Quitting asks live recordings to finish and gives them a moment to save their file before the app really exits.
     let shutdownDone = false;
@@ -488,6 +522,7 @@ function bootstrap(): void {
         },
         onSettingsSaved: (settings) => {
             applyLanguage(settings.language, app.getLocale());
+            autostart.sync(settings.launchAtLogin);
             void manager.sync(settings.closeToTray).then(() => {
                 return manager.rebuild();
             });
@@ -504,6 +539,7 @@ function bootstrap(): void {
             shell.showItemInFolder(path);
         }
     });
+    return { startMinimized: settingsStore.get().startMinimized, trayReady };
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -519,11 +555,19 @@ if (!app.requestSingleInstanceLock()) {
         }
         diagnosticLog = createDiagnosticLog(join(app.getPath('userData'), 'diagnostic.log'));
         applyContentSecurityPolicy();
-        bootstrap();
-        mainWindow = createWindow();
+        const autostart = isAutostartLaunch(process.argv);
+        const { startMinimized, trayReady } = bootstrap();
+        const hidden = shouldStartHidden({ autostart, startMinimized });
+        mainWindow = createWindow({ hidden });
+        // Out of sight only when there is a tray icon to bring the window back from; otherwise it opens like any other start.
+        void trayReady.then(() => {
+            if (hidden && !trayManager?.canHideToTray()) {
+                showWindow();
+            }
+        });
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) {
-                mainWindow = createWindow();
+                mainWindow = createWindow({ hidden: false });
             }
         });
     });
