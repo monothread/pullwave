@@ -1,4 +1,5 @@
 // Types of the anime section (ani-cli). It exists on Linux and Windows.
+import type { LlmError } from './llm';
 
 export type AnimeAudio = 'sub' | 'dub';
 
@@ -241,8 +242,9 @@ export function animeMediaUrl(kind: AnimeMediaKind, episodeId: number, trackId =
     return trackId.length > 0 ? `${base}/${encodeURIComponent(trackId)}` : base;
 }
 
-// A subtitle file of a downloaded episode: the one ani-cli picked, the others the source offered, or one the user loaded.
-export type AnimeSubtitleKind = 'default' | 'source' | 'imported';
+// A subtitle file of a downloaded episode: the one ani-cli picked, the others the source offered, one the user loaded, one made from
+// the audio of the episode, or one a language model translated from another.
+export type AnimeSubtitleKind = 'default' | 'source' | 'imported' | 'generated' | 'translated';
 
 export interface AnimeSubtitleTrack {
     // What identifies it among the subtitles of the episode (empty for the one ani-cli picked).
@@ -290,6 +292,186 @@ export type AnimeSubtitleCheckResponse =
     | { ok: true; added: string[]; tracks: AnimeSubtitleTrack[] }
     | { ok: false; reason: 'missing' }
     | { ok: false; reason: 'failed'; error: AniError };
+
+// The languages a subtitle can be translated into (the name a language model understands; it is also the label of the new track).
+export const TRANSLATION_LANGUAGES = [
+    'Portuguese (Brazil)',
+    'Portuguese',
+    'Spanish',
+    'English',
+    'French',
+    'German',
+    'Italian',
+    'Russian',
+    'Japanese',
+    'Chinese',
+    'Korean',
+    'Arabic',
+    'Turkish',
+    'Indonesian'
+] as const;
+export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number];
+export const DEFAULT_TRANSLATION_LANGUAGE: TranslationLanguage = 'Portuguese (Brazil)';
+
+// A subtitle of an episode to translate: `trackId` is the one to start from (null lets the app pick, the English one when it has it).
+export interface SubtitleTranslateRequest {
+    episodeId: number;
+    trackId: string | null;
+    language: TranslationLanguage;
+}
+
+// Why a subtitle was not translated: the episode or the subtitle is not there, the settings have no token, no model or (for a
+// provider of one's own) no address, the file cannot be read, is too big or has no cues, the episode is being translated already, or the user cancelled.
+export type SubtitleTranslateFailure = 'missing' | 'no-source' | 'no-token' | 'no-model' | 'no-address' | 'unreadable' | 'too-large' | 'empty' | 'busy' | 'cancelled';
+
+export type SubtitleTranslateResponse =
+    | { ok: true; tracks: AnimeSubtitleTrack[]; translated: AnimeSubtitleTrack }
+    | { ok: false; reason: SubtitleTranslateFailure }
+    | { ok: false; reason: 'failed'; error: LlmError };
+
+export interface SubtitleEstimateRequest {
+    episodeId: number;
+    trackId: string | null;
+}
+
+// What translating a subtitle takes, before it is asked for: the cues, the requests it makes and about how many tokens they use
+// (what is sent and what comes back).
+export type SubtitleEstimateResponse =
+    | { ok: true; cues: number; batches: number; approxTokens: number }
+    | { ok: false; reason: Extract<SubtitleTranslateFailure, 'missing' | 'no-source' | 'unreadable' | 'too-large' | 'empty'> };
+
+// Translates the subtitle of every one of these episodes, one after the other.
+export interface SubtitleTranslateManyRequest {
+    episodeIds: number[];
+    language: TranslationLanguage;
+}
+
+export type SubtitleTranslationStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
+
+// How the translation of the subtitle of an episode is going: the cues translated out of all of them; `reason` says why it failed.
+export interface SubtitleTranslationJob {
+    episodeId: number;
+    language: TranslationLanguage;
+    status: SubtitleTranslationStatus;
+    done: number;
+    total: number;
+    reason: string | null;
+}
+
+// The languages the audio of an episode can be in, to make its subtitle (the name is also the label of the new track, and the code is
+// what the service of speech to text is told).
+export const TRANSCRIPTION_LANGUAGES = [
+    'Japanese',
+    'English',
+    'Chinese',
+    'Korean',
+    'Spanish',
+    'Portuguese',
+    'French',
+    'German',
+    'Italian',
+    'Russian',
+    'Arabic',
+    'Turkish',
+    'Indonesian'
+] as const;
+export type TranscriptionLanguage = (typeof TRANSCRIPTION_LANGUAGES)[number];
+export const DEFAULT_TRANSCRIPTION_LANGUAGE: TranscriptionLanguage = 'Japanese';
+
+export const TRANSCRIPTION_LANGUAGE_CODES: Record<TranscriptionLanguage, string> = {
+    Japanese: 'ja',
+    English: 'en',
+    Chinese: 'zh',
+    Korean: 'ko',
+    Spanish: 'es',
+    Portuguese: 'pt',
+    French: 'fr',
+    German: 'de',
+    Italian: 'it',
+    Russian: 'ru',
+    Arabic: 'ar',
+    Turkish: 'tr',
+    Indonesian: 'id'
+};
+
+// The audio of an episode is cut in parts of this many seconds, each one a request to the service (they take files of a limited size).
+export const SPEECH_PART_SECONDS = 600;
+
+// Making the subtitle of an episode from its audio: `audioLanguage` is the one that is spoken and `language` the one of the subtitle that
+// is wanted (the only one that is saved). When they are the same the audio is only transcribed; when the wanted one is English the audio can
+// be translated into it at once (any language, for a service that can); otherwise the transcription is translated afterwards.
+export interface SubtitleGenerateRequest {
+    episodeId: number;
+    audioLanguage: TranscriptionLanguage;
+    language: TranslationLanguage;
+}
+
+// How the subtitle is made: by transcribing the audio, by having the audio translated into English at once, or by transcribing it and
+// translating the text afterwards.
+export type SubtitleGeneratePlan = 'transcribe' | 'direct' | 'transcribe-translate';
+
+// Whether the audio is spoken in the language of the subtitle that is wanted (Brazilian Portuguese is Portuguese, spoken).
+export function isSpokenLanguage(audioLanguage: TranscriptionLanguage, language: TranslationLanguage): boolean {
+    return audioLanguage === language || (audioLanguage === 'Portuguese' && language === 'Portuguese (Brazil)');
+}
+
+// How the subtitle is made, given what the speech service can write the audio in at once: only English (the protocol of OpenAI, the default)
+// or any language (Gemini).
+export function generatePlanOf(audioLanguage: TranscriptionLanguage, language: TranslationLanguage, translatesTo: 'english' | 'any' = 'english'): SubtitleGeneratePlan {
+    if (isSpokenLanguage(audioLanguage, language)) {
+        return 'transcribe';
+    }
+    return translatesTo === 'any' || language === 'English' ? 'direct' : 'transcribe-translate';
+}
+
+// Why a subtitle was not made: the episode is not there, the settings have no token, no model or (for a service of one's own) no
+// address (of the speech to text, or of the translation that the plan needs), the video has no audio or nothing was said, the audio could not be taken out of the video, the file could not be saved,
+// the episode is being worked on already, or the user cancelled.
+export type SubtitleGenerateFailure =
+    | 'missing'
+    | 'no-token'
+    | 'no-model'
+    | 'no-address'
+    | 'no-translation-token'
+    | 'no-translation-model'
+    | 'no-translation-address'
+    | 'no-audio'
+    | 'no-speech'
+    | 'extract-failed'
+    | 'unreadable'
+    | 'busy'
+    | 'cancelled';
+
+export type SubtitleGenerateResponse =
+    | { ok: true; tracks: AnimeSubtitleTrack[]; generated: AnimeSubtitleTrack }
+    | { ok: false; reason: SubtitleGenerateFailure }
+    | { ok: false; reason: 'failed'; error: LlmError };
+
+// What making the subtitle takes, before it is asked for: how long the audio is, in how many parts (requests) it goes and about how many
+// bytes that is (the audio is sent as mono MP3 of 32 kbps).
+export type SubtitleGenerateEstimateResponse =
+    | { ok: true; seconds: number; parts: number; approxBytes: number }
+    | { ok: false; reason: Extract<SubtitleGenerateFailure, 'missing' | 'no-audio' | 'extract-failed'> };
+
+// What the subtitle is going through: the audio is taken out of the video, its parts are sent to the service (which gives back the text),
+// the text is translated, and the subtitle is saved.
+export type SubtitleGenerationPhase = 'extracting' | 'sending' | 'translating' | 'saving';
+
+// How making the subtitle of an episode is going. `done` out of `total` counts what the phase works on: the parts of the audio that were
+// sent and answered, the lines that were translated. Once it started it also says how it is made (`plan`, which can change when the direct
+// translation is refused) and, while the parts are sent, how many bytes of audio were sent out of all of them. `reason` says why it failed.
+export interface SubtitleGenerationJob {
+    episodeId: number;
+    language: TranslationLanguage;
+    status: SubtitleTranslationStatus;
+    done: number;
+    total: number;
+    reason: string | null;
+    phase?: SubtitleGenerationPhase;
+    plan?: SubtitleGeneratePlan;
+    sentBytes?: number;
+    totalBytes?: number;
+}
 
 export const ANIME_STREAM_SCHEME = 'pullwave-stream';
 

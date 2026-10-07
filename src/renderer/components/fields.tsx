@@ -80,17 +80,19 @@ interface SelectFieldProps<T extends string> {
     value: T;
     options: readonly T[];
     hint?: string;
+    disabled?: boolean;
     formatOption?: (option: T) => string;
     onChange: (value: T) => void;
 }
 
-export function SelectField<T extends string>({ label, value, options, hint, formatOption, onChange }: SelectFieldProps<T>) {
+export function SelectField<T extends string>({ label, value, options, hint, disabled = false, formatOption, onChange }: SelectFieldProps<T>) {
     return (
         <FieldShell label={label} hint={hint}>
             <select
                 className="input"
                 aria-label={label}
                 value={value}
+                disabled={disabled}
                 onChange={(event) => {
                     onChange(event.target.value as T);
                 }}

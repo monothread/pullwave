@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
-import type { AnimeAvailability, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress } from '@shared/anime';
+import type { AnimeAvailability, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -185,6 +185,36 @@ const api: CyberApi = {
     importAnimeSubtitle: (episodeId) => {
         return ipcRenderer.invoke(IPC.animeSubtitleImport, episodeId);
     },
+    translateAnimeSubtitle: (request) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleTranslate, request);
+    },
+    estimateAnimeSubtitleTranslation: (request) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleTranslateEstimate, request);
+    },
+    translateAnimeSubtitles: (request) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleTranslateMany, request);
+    },
+    cancelAnimeSubtitleTranslation: (episodeId) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleTranslateCancel, episodeId);
+    },
+    generateAnimeSubtitle: (request) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleGenerate, request);
+    },
+    estimateAnimeSubtitleGeneration: (episodeId) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleGenerateEstimate, episodeId);
+    },
+    cancelAnimeSubtitleGeneration: (episodeId) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleGenerateCancel, episodeId);
+    },
+    getLlmStatus: () => {
+        return ipcRenderer.invoke(IPC.llmStatus);
+    },
+    setLlmToken: (provider, token) => {
+        return ipcRenderer.invoke(IPC.llmTokenSet, provider, token);
+    },
+    clearLlmToken: (provider) => {
+        return ipcRenderer.invoke(IPC.llmTokenClear, provider);
+    },
     updateAniCli: () => {
         return ipcRenderer.invoke(IPC.animeUpdateCli);
     },
@@ -205,6 +235,12 @@ const api: CyberApi = {
     },
     checkAnimeAvailability: (targets) => {
         return ipcRenderer.invoke(IPC.animeAvailability, targets);
+    },
+    onSubtitleGenerationUpdate: (listener) => {
+        return subscribe<SubtitleGenerationJob>(IPC.eventSubtitleGeneration, listener);
+    },
+    onSubtitleTranslationUpdate: (listener) => {
+        return subscribe<SubtitleTranslationJob>(IPC.eventSubtitleTranslation, listener);
     },
     onAnimeJobUpdate: (listener) => {
         return subscribe<AnimeJob>(IPC.eventAnimeJob, listener);

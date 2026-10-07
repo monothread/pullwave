@@ -22,6 +22,17 @@ import type {
     AnimeStatus,
     AnimeSubtitleCheckResponse,
     AnimeSubtitleImportResponse,
+    SubtitleEstimateRequest,
+    SubtitleGenerateEstimateResponse,
+    SubtitleGenerateRequest,
+    SubtitleGenerateResponse,
+    SubtitleGenerationJob,
+    SubtitleEstimateResponse,
+    SubtitleTranslateManyRequest,
+    SubtitleTranslateRequest,
+    SubtitleTranslateResponse,
+    SubtitleTranslationJob,
+    TranslationLanguage,
     AnimeSubtitleTrack,
     AnimeStreamRequest,
     AnimeStreamResponse,
@@ -30,6 +41,7 @@ import type {
     AnimeSubtitleSetting,
     LibraryAnime
 } from './anime';
+import type { LlmProviderId, LlmStatus, LlmTokenSlot, SpeechProviderId } from './llm';
 
 export type VideoContainer = 'mp4' | 'mkv' | 'webm';
 export type AudioFormat = 'mp3' | 'm4a' | 'opus';
@@ -128,6 +140,18 @@ export interface Settings {
     animeQuality: AnimeQuality;
     animeAudio: AnimeAudio;
     animeSubtitles: AnimeSubtitleSetting;
+    // Translating subtitles with a language model: which provider, which model, an address instead of the one of the provider (empty
+    // for the one of the provider) and the language it translates into. The token is not here: it is kept apart, encrypted.
+    translateProvider: LlmProviderId;
+    translateModel: string;
+    translateBaseUrl: string;
+    translateLanguage: TranslationLanguage;
+    // Making the subtitle of an episode that has none from its audio: the service of speech to text (OpenAI's protocol or Gemini), its model and an
+    // address instead of the one of the service (empty for the one of the service). Its token is kept apart too. The language that is spoken is
+    // not a setting: it is asked for each time, in the window that makes the subtitle.
+    transcribeProvider: SpeechProviderId;
+    transcribeModel: string;
+    transcribeBaseUrl: string;
 }
 
 export type ErrorCode =
@@ -361,6 +385,26 @@ export interface CyberApi {
     listAnimeSubtitles: (episodeId: number) => Promise<AnimeSubtitleTrack[]>;
     importAnimeSubtitle: (episodeId: number) => Promise<AnimeSubtitleImportResponse>;
     checkAnimeSubtitles: (episodeId: number) => Promise<AnimeSubtitleCheckResponse>;
+    // Translates a subtitle of an episode with the language model of the settings and saves it next to the video.
+    translateAnimeSubtitle: (request: SubtitleTranslateRequest) => Promise<SubtitleTranslateResponse>;
+    // What translating a subtitle takes, to ask the user before spending their token.
+    estimateAnimeSubtitleTranslation: (request: SubtitleEstimateRequest) => Promise<SubtitleEstimateResponse>;
+    // Queues the translation of the subtitle of each of these episodes; gives how many were queued (the progress comes in
+    // `onSubtitleTranslationUpdate`).
+    translateAnimeSubtitles: (request: SubtitleTranslateManyRequest) => Promise<number>;
+    // Cancels the translation of an episode, or all of them (null).
+    cancelAnimeSubtitleTranslation: (episodeId: number | null) => Promise<void>;
+    // Makes the subtitle of an episode from its audio with the service of speech to text of the settings and saves it next to the video.
+    generateAnimeSubtitle: (request: SubtitleGenerateRequest) => Promise<SubtitleGenerateResponse>;
+    // How long the audio is and in how many requests it goes, to ask the user before spending their token.
+    estimateAnimeSubtitleGeneration: (episodeId: number) => Promise<SubtitleGenerateEstimateResponse>;
+    cancelAnimeSubtitleGeneration: (episodeId: number) => Promise<void>;
+    getLlmStatus: () => Promise<LlmStatus>;
+    // Keeps the token of a provider (or of a service of speech to text, see `LlmTokenSlot`), encrypted; false when it was not kept.
+    setLlmToken: (slot: LlmTokenSlot, token: string) => Promise<boolean>;
+    clearLlmToken: (slot: LlmTokenSlot) => Promise<void>;
+    onSubtitleTranslationUpdate: (listener: (job: SubtitleTranslationJob) => void) => () => void;
+    onSubtitleGenerationUpdate: (listener: (job: SubtitleGenerationJob) => void) => () => void;
     updateAniCli: () => Promise<UpdateResult>;
     // Goes back to the ani-cli that ships with the app, removing the one an update saved.
     resetAniCli: () => Promise<UpdateResult>;

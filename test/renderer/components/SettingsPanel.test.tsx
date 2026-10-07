@@ -949,6 +949,147 @@ describe('SettingsPanel anime section', () => {
             expect(screen.getByLabelText('Anime subtitles')).toHaveValue('auto');
         });
 
+        describe('the translation of subtitles', () => {
+            it('has its own part, after the options of the anime, with the default values', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByText('SUBTITLE TRANSLATION (LANGUAGE MODEL)')).toBeInTheDocument();
+                expect(screen.getByLabelText('Provider')).toHaveValue('openai');
+                expect(screen.getByLabelText('Model')).toHaveValue('');
+                expect(screen.getByLabelText('Address (optional)')).toHaveValue('');
+                expect(screen.getByLabelText('Default language')).toHaveValue('Portuguese (Brazil)');
+                expect(screen.getByLabelText('Token (API key)')).toHaveValue('');
+                expect(mock.api.getLlmStatus).toHaveBeenCalledTimes(1);
+            });
+
+            it('shows the stored values', async () => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateProvider: 'kimi', translateModel: 'moonshot-x', translateBaseUrl: 'http://x/v1', translateLanguage: 'Italian' } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByLabelText('Provider')).toHaveValue('kimi');
+                expect(screen.getByLabelText('Model')).toHaveValue('moonshot-x');
+                expect(screen.getByLabelText('Address (optional)')).toHaveValue('http://x/v1');
+                expect(screen.getByLabelText('Default language')).toHaveValue('Italian');
+            });
+
+            it('is not in the settings of the whole app nor in the ones of the video downloader', async () => {
+                useAnimeStore.setState({ status: makeStatus() });
+                const { unmount } = render(<SettingsPanel scope="global" />);
+                await flushPromises();
+                expect(screen.queryByText('SUBTITLE TRANSLATION (LANGUAGE MODEL)')).not.toBeInTheDocument();
+                unmount();
+                render(<SettingsPanel scope="downloads" />);
+                await flushPromises();
+                expect(screen.queryByText('SUBTITLE TRANSLATION (LANGUAGE MODEL)')).not.toBeInTheDocument();
+                expect(mock.api.getLlmStatus).not.toHaveBeenCalled();
+            });
+
+            it('saves the provider and the language right away', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'gemini' } });
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, translateProvider: 'gemini' });
+                fireEvent.change(screen.getByLabelText('Default language'), { target: { value: 'Japanese' } });
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, translateProvider: 'gemini', translateLanguage: 'Japanese' });
+            });
+
+            it('saves the model and the address after the user stops typing', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                type('Model', 'my-model');
+                type('Address (optional)', 'http://localhost:1234/v1');
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, translateModel: 'my-model', translateBaseUrl: 'http://localhost:1234/v1' });
+            });
+
+            it('has a part for the speech to text with the default values', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByText('SUBTITLE CREATION (SPEECH TO TEXT)')).toBeInTheDocument();
+                expect(screen.getByLabelText('Speech-to-text service')).toHaveValue('openai');
+                expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('whisper-1');
+                expect(screen.getByLabelText('Speech-to-text address (optional)')).toHaveValue('');
+                expect(screen.queryByLabelText('Language spoken in the audio')).not.toBeInTheDocument();
+                expect(screen.getByLabelText('Speech-to-text token (API key)')).toHaveValue('');
+            });
+
+            it('shows the stored values of the speech to text', async () => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, transcribeProvider: 'custom', transcribeModel: 'whisper-large', transcribeBaseUrl: 'http://stt/v1' } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByLabelText('Speech-to-text service')).toHaveValue('custom');
+                expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('whisper-large');
+                expect(screen.getByLabelText('Speech-to-text address (optional)')).toHaveValue('http://stt/v1');
+            });
+
+            it('saves the service right away', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                fireEvent.change(screen.getByLabelText('Speech-to-text service'), { target: { value: 'custom' } });
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, transcribeProvider: 'custom' });
+            });
+
+            it('takes the model of OpenAI away when Gemini is chosen, since its models have other names, and saves both together', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                fireEvent.change(screen.getByLabelText('Speech-to-text service'), { target: { value: 'gemini' } });
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, transcribeProvider: 'gemini', transcribeModel: '' });
+                expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('');
+                expect(screen.getByLabelText('Speech-to-text address (optional)')).toHaveAttribute('placeholder', 'https://generativelanguage.googleapis.com/v1beta');
+            });
+
+            it('keeps the model the user wrote when Gemini is chosen', async () => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, transcribeModel: 'my-gemini-model' } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                fireEvent.change(screen.getByLabelText('Speech-to-text service'), { target: { value: 'gemini' } });
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, transcribeProvider: 'gemini', transcribeModel: 'my-gemini-model' });
+            });
+
+            it('puts the model of OpenAI back when a service of the protocol of OpenAI is chosen again with the model empty', async () => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, transcribeProvider: 'gemini', transcribeModel: '' } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                fireEvent.change(screen.getByLabelText('Speech-to-text service'), { target: { value: 'openai' } });
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, transcribeProvider: 'openai', transcribeModel: 'whisper-1' });
+            });
+
+            it('saves the model and the address of the speech to text after the user stops typing', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                type('Speech-to-text model', 'whisper-2');
+                type('Speech-to-text address (optional)', 'http://localhost:9000/v1');
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, transcribeModel: 'whisper-2', transcribeBaseUrl: 'http://localhost:9000/v1' });
+            });
+
+            it('keeps the token of the speech to text out of the settings that are saved', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                type('Speech-to-text token (API key)', 'sk-speech-secret');
+                type('Speech-to-text model', 'whisper-2');
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(JSON.stringify(mock.api.saveSettings.mock.calls)).not.toContain('sk-speech-secret');
+                expect(mock.api.setLlmToken).not.toHaveBeenCalled();
+            });
+
+            it('keeps the token out of the settings that are saved', async () => {
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                type('Token (API key)', 'sk-secret');
+                type('Model', 'my-model');
+                await advance(AUTOSAVE_DELAY_MS);
+                expect(JSON.stringify(mock.api.saveSettings.mock.calls)).not.toContain('sk-secret');
+                expect(mock.api.setLlmToken).not.toHaveBeenCalled();
+            });
+        });
+
         it('lists the qualities and the audios with readable labels', () => {
             render(<SettingsPanel scope="anime" />);
             const options = (label: string): Array<string | null> => {

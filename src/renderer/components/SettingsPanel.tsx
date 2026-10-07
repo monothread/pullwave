@@ -22,6 +22,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
 import { formatResolution } from './settingsFormat';
+import { TranslationSettings } from './TranslationSettings';
 import { UpdateActions } from './UpdateActions';
 import { updateSummary } from './updateText';
 
@@ -695,6 +696,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             change('animeSubtitles', value);
                         }}
                     />
+                    <TranslationSettings draft={draft} change={change} edit={edit} changeMany={changeMany} />
                     <div className="field">
                         <span className="field__label">ani-cli</span>
                         <p className="update-status" aria-live="polite">

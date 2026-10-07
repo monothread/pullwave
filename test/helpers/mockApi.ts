@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime } from '@shared/anime';
+import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { LlmStatus } from '@shared/llm';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
 export interface MockApiHandle {
@@ -14,6 +15,8 @@ export interface MockApiHandle {
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
     emitAnimeCover: (update: AnimeCoverUpdate) => void;
     emitAnimeAvailability: (availability: AnimeAvailability) => void;
+    emitSubtitleTranslation: (job: SubtitleTranslationJob) => void;
+    emitSubtitleGeneration: (job: SubtitleGenerationJob) => void;
     unsubscribers: Array<ReturnType<typeof vi.fn>>;
 }
 
@@ -30,6 +33,8 @@ export function createMockApi(): MockApiHandle {
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
     const animeCoverListeners: Array<(update: AnimeCoverUpdate) => void> = [];
     const animeAvailabilityListeners: Array<(availability: AnimeAvailability) => void> = [];
+    const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
+    const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
     const unsubscribers: Array<ReturnType<typeof vi.fn>> = [];
 
     function subscribe<T>(listeners: T[], listener: T): () => void {
@@ -214,6 +219,36 @@ export function createMockApi(): MockApiHandle {
         importAnimeSubtitle: vi.fn(async (): Promise<AnimeSubtitleImportResponse> => {
             return { ok: false, reason: 'cancelled' };
         }),
+        translateAnimeSubtitle: vi.fn(async (): Promise<SubtitleTranslateResponse> => {
+            return { ok: false, reason: 'missing' };
+        }),
+        estimateAnimeSubtitleTranslation: vi.fn(async (): Promise<SubtitleEstimateResponse> => {
+            return { ok: false, reason: 'missing' };
+        }),
+        translateAnimeSubtitles: vi.fn(async (): Promise<number> => {
+            return 0;
+        }),
+        cancelAnimeSubtitleTranslation: vi.fn(async () => {
+            return undefined;
+        }),
+        generateAnimeSubtitle: vi.fn(async (): Promise<SubtitleGenerateResponse> => {
+            return { ok: false, reason: 'missing' };
+        }),
+        estimateAnimeSubtitleGeneration: vi.fn(async (): Promise<SubtitleGenerateEstimateResponse> => {
+            return { ok: false, reason: 'missing' };
+        }),
+        cancelAnimeSubtitleGeneration: vi.fn(async () => {
+            return undefined;
+        }),
+        getLlmStatus: vi.fn(async (): Promise<LlmStatus> => {
+            return { canStore: true, providers: [] };
+        }),
+        setLlmToken: vi.fn(async (): Promise<boolean> => {
+            return true;
+        }),
+        clearLlmToken: vi.fn(async () => {
+            return undefined;
+        }),
         updateAniCli: vi.fn(async () => {
             return { ok: true, output: 'Updated ani-cli' };
         }),
@@ -246,6 +281,12 @@ export function createMockApi(): MockApiHandle {
         }),
         onAnimeMigrationProgress: vi.fn((listener: (progress: AnimeMigrationProgress) => void) => {
             return subscribe(animeMigrationListeners, listener);
+        }),
+        onSubtitleTranslationUpdate: vi.fn((listener: (job: SubtitleTranslationJob) => void) => {
+            return subscribe(subtitleTranslationListeners, listener);
+        }),
+        onSubtitleGenerationUpdate: vi.fn((listener: (job: SubtitleGenerationJob) => void) => {
+            return subscribe(subtitleGenerationListeners, listener);
         }),
         onAnimeCoverUpdate: vi.fn((listener: (update: AnimeCoverUpdate) => void) => {
             return subscribe(animeCoverListeners, listener);
@@ -293,6 +334,16 @@ export function createMockApi(): MockApiHandle {
         emitAnimeMigrationProgress: (progress) => {
             animeMigrationListeners.forEach((listener) => {
                 listener(progress);
+            });
+        },
+        emitSubtitleGeneration: (job) => {
+            subtitleGenerationListeners.forEach((listener) => {
+                listener(job);
+            });
+        },
+        emitSubtitleTranslation: (job) => {
+            subtitleTranslationListeners.forEach((listener) => {
+                listener(job);
             });
         },
         emitAnimeAvailability: (availability) => {

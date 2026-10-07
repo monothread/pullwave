@@ -1,10 +1,13 @@
 import { delimiter, join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, protocol, screen, session, shell, type Display } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerHandlers } from './ipc/registerHandlers';
+import { registerLlmHandlers } from './ipc/registerLlmHandlers';
+import { JsonStore } from './services/jsonStore';
+import { LlmTokenStore, type SecretCipher } from './services/llmTokenStore';
 import { createDiagnosticLog, type DiagnosticLog } from './services/diagnosticLog';
 import { attachWindowDiagnostics } from './services/windowDiagnostics';
 import { AppUpdateService } from './services/appUpdateService';
@@ -208,11 +211,42 @@ function scheduleStartupUpdateCheck(appUpdates: AppUpdateService, enabled: boole
     }, STARTUP_UPDATE_CHECK_DELAY_MS);
 }
 
+// The system keyring keeps the tokens of the language models. A Linux without one makes Electron fall back to a key kept in the open
+// ("basic_text"), which protects nothing, so then no token is saved. PULLWAVE_FAKE_SECRETS=1 keeps them as plain text (used by the end-to-end
+// tests, which cannot depend on the keyring of the machine).
+function createSecretCipher(): SecretCipher {
+    if (process.env.PULLWAVE_FAKE_SECRETS === '1') {
+        return {
+            isAvailable: () => {
+                return true;
+            },
+            encrypt: (text) => {
+                return Buffer.from(text, 'utf-8');
+            },
+            decrypt: (data) => {
+                return data.toString('utf-8');
+            }
+        };
+    }
+    return {
+        isAvailable: () => {
+            return safeStorage.isEncryptionAvailable() && !(process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text');
+        },
+        encrypt: (text) => {
+            return safeStorage.encryptString(text);
+        },
+        decrypt: (data) => {
+            return safeStorage.decryptString(data);
+        }
+    };
+}
+
 function bootstrap(): void {
     const dataDir = app.getPath('userData');
     const settingsStore = new SettingsStore(join(dataDir, 'settings.json'));
     const historyStore = new HistoryStore(join(dataDir, 'history.json'));
     const pausedStore = new PausedStore(join(dataDir, 'paused.json'));
+    const llmTokens = new LlmTokenStore(new JsonStore(join(dataDir, 'llm-tokens.json'), {}), createSecretCipher());
     applyLanguage(settingsStore.get().language, app.getLocale());
     const resolver = new BinaryResolver({
         bundledDir: app.isPackaged ? join(process.resourcesPath, 'bin') : join(app.getAppPath(), 'resources', 'bin'),
@@ -268,6 +302,9 @@ function bootstrap(): void {
         resolver,
         getSettings: () => {
             return settingsStore.get();
+        },
+        getLlmToken: (provider) => {
+            return llmTokens.get(provider);
         },
         // PULLWAVE_ANI_CLI replaces the ani-cli script that ships with the app (used by the end-to-end tests).
         customScriptPath: () => {
@@ -431,6 +468,7 @@ function bootstrap(): void {
     });
 
     registerAnimeHandlers(ipcMain, anime ? anime.handlers : null);
+    registerLlmHandlers(ipcMain, { tokens: llmTokens });
     // Which anime of today's schedule the source has is looked up in the background, so it is known by the time the screen is opened.
     anime?.startBackgroundChecks();
     registerHandlers({

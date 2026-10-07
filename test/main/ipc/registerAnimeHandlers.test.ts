@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AniRunResult, AnimeAvailability, AnimeAvailabilityTarget, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime } from '@shared/anime';
+import type { AniRunResult, AnimeAvailability, AnimeAvailabilityTarget, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleTranslateResponse } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
 import { MAX_AVAILABILITY_TARGETS, MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseAvailabilityTargets, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
@@ -67,7 +67,14 @@ const ANIME_CHANNELS = [
     IPC.animeStatus,
     IPC.animeStreamClose,
     IPC.animeStreamOpen,
+    IPC.animeSubtitleGenerate,
+    IPC.animeSubtitleGenerateCancel,
+    IPC.animeSubtitleGenerateEstimate,
     IPC.animeSubtitleImport,
+    IPC.animeSubtitleTranslate,
+    IPC.animeSubtitleTranslateCancel,
+    IPC.animeSubtitleTranslateEstimate,
+    IPC.animeSubtitleTranslateMany,
     IPC.animeSubtitles,
     IPC.animeSubtitlesCheck,
     IPC.animeResetCli,
@@ -162,7 +169,21 @@ function setup(available = true) {
         }),
         check: vi.fn(async (): Promise<AnimeSubtitleCheckResponse> => {
             return { ok: true, added: [], tracks: [] };
-        })
+        }),
+        translate: vi.fn(async (): Promise<SubtitleTranslateResponse> => {
+            return { ok: false, reason: 'no-token' };
+        }),
+        estimate: vi.fn(async (): Promise<SubtitleEstimateResponse> => {
+            return { ok: true, cues: 3, batches: 1, approxTokens: 200 };
+        }),
+        cancelTranslation: vi.fn(),
+        generate: vi.fn(async (): Promise<SubtitleGenerateResponse> => {
+            return { ok: false, reason: 'no-token' };
+        }),
+        estimateGeneration: vi.fn(async (): Promise<SubtitleGenerateEstimateResponse> => {
+            return { ok: true, seconds: 1440, parts: 3, approxBytes: 5_760_000 };
+        }),
+        cancelGeneration: vi.fn()
     };
     const deps = {
         service: { isAvailable: vi.fn(() => { return available; }), info: vi.fn(() => { return aniCliInfo; }), search, episodes, resolveStream },
@@ -487,6 +508,262 @@ describe('registerAnimeHandlers', () => {
                 const { call, subtitles } = setup();
                 expect(await call(IPC.animeSubtitlesCheck, episodeId)).toEqual({ ok: false, reason: 'missing' });
                 expect(subtitles.check).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('translating one', () => {
+            const translated: SubtitleTranslateResponse = {
+                ok: true,
+                tracks: [
+                    { id: '', label: 'Default', kind: 'default' },
+                    { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                ],
+                translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+            };
+
+            it('asks for the translation with what the screen sent and gives the answer as it is', async () => {
+                const { call, subtitles } = setup();
+                subtitles.translate.mockResolvedValueOnce(translated);
+                expect(await call(IPC.animeSubtitleTranslate, { episodeId: 4, trackId: 'subtitle-English', language: 'Spanish' })).toEqual(translated);
+                expect(subtitles.translate).toHaveBeenCalledTimes(1);
+                expect(subtitles.translate).toHaveBeenCalledWith({ episodeId: 4, trackId: 'subtitle-English', language: 'Spanish' });
+            });
+
+            it('lets the app pick the subtitle when none is given, and also accepts the default one (an empty id)', async () => {
+                const { call, subtitles } = setup();
+                await call(IPC.animeSubtitleTranslate, { episodeId: 4, trackId: null, language: 'Portuguese' });
+                await call(IPC.animeSubtitleTranslate, { episodeId: 4, language: 'Portuguese (Brazil)' });
+                await call(IPC.animeSubtitleTranslate, { episodeId: 4, trackId: '', language: 'French' });
+                expect(subtitles.translate.mock.calls).toEqual([
+                    [{ episodeId: 4, trackId: null, language: 'Portuguese' }],
+                    [{ episodeId: 4, trackId: null, language: 'Portuguese (Brazil)' }],
+                    [{ episodeId: 4, trackId: '', language: 'French' }]
+                ]);
+            });
+
+            it('writes again what is kept beside the video when it was translated', async () => {
+                const { call, subtitles, refreshMetadata } = setup();
+                subtitles.translate.mockResolvedValueOnce(translated);
+                await call(IPC.animeSubtitleTranslate, { episodeId: 4, trackId: null, language: 'Spanish' });
+                expect(refreshMetadata).toHaveBeenCalledTimes(1);
+                expect(refreshMetadata).toHaveBeenCalledWith(4);
+            });
+
+            it.each([
+                ['the settings have no token', { ok: false, reason: 'no-token' } as SubtitleTranslateResponse],
+                ['it was cancelled', { ok: false, reason: 'cancelled' } as SubtitleTranslateResponse],
+                ['the provider failed', { ok: false, reason: 'failed', error: { code: 'RATE_LIMITED', raw: 'slow down' } } as SubtitleTranslateResponse]
+            ])('leaves what is kept beside the video alone when %s', async (_name, answer) => {
+                const { call, subtitles, refreshMetadata } = setup();
+                subtitles.translate.mockResolvedValueOnce(answer);
+                expect(await call(IPC.animeSubtitleTranslate, { episodeId: 4, trackId: null, language: 'Spanish' })).toEqual(answer);
+                expect(refreshMetadata).not.toHaveBeenCalled();
+            });
+
+            it.each([
+                ['an invalid episode', { episodeId: '4', trackId: null, language: 'Spanish' }],
+                ['an episode that is zero', { episodeId: 0, trackId: null, language: 'Spanish' }],
+                ['a language that is not offered', { episodeId: 4, trackId: null, language: 'Klingon' }],
+                ['no language', { episodeId: 4, trackId: null }],
+                ['a subtitle id that is not text', { episodeId: 4, trackId: 7, language: 'Spanish' }],
+                ['a subtitle id that is too long', { episodeId: 4, trackId: 'x'.repeat(MAX_TEXT_LENGTH + 1), language: 'Spanish' }],
+                ['something that is not an object', 'translate'],
+                ['nothing', undefined]
+            ])('does not translate with %s', async (_name, request) => {
+                const { call, subtitles } = setup();
+                expect(await call(IPC.animeSubtitleTranslate, request)).toEqual({ ok: false, reason: 'missing' });
+                expect(subtitles.translate).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('estimating a translation', () => {
+            it('asks for the estimate of the subtitle and gives the answer as it is', async () => {
+                const { call, subtitles } = setup();
+                expect(await call(IPC.animeSubtitleTranslateEstimate, { episodeId: 4, trackId: 'subtitle-English' })).toEqual({ ok: true, cues: 3, batches: 1, approxTokens: 200 });
+                expect(subtitles.estimate).toHaveBeenCalledTimes(1);
+                expect(subtitles.estimate).toHaveBeenCalledWith({ episodeId: 4, trackId: 'subtitle-English' });
+            });
+
+            it('lets the app pick the subtitle when none is given', async () => {
+                const { call, subtitles } = setup();
+                await call(IPC.animeSubtitleTranslateEstimate, { episodeId: 4 });
+                expect(subtitles.estimate).toHaveBeenCalledWith({ episodeId: 4, trackId: null });
+            });
+
+            it.each([
+                ['an invalid episode', { episodeId: 'a', trackId: null }],
+                ['a subtitle id that is not text', { episodeId: 4, trackId: false }],
+                ['a subtitle id that is too long', { episodeId: 4, trackId: 'x'.repeat(MAX_TEXT_LENGTH + 1) }],
+                ['nothing', undefined]
+            ])('does not estimate with %s', async (_name, request) => {
+                const { call, subtitles } = setup();
+                expect(await call(IPC.animeSubtitleTranslateEstimate, request)).toEqual({ ok: false, reason: 'missing' });
+                expect(subtitles.estimate).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('translating many', () => {
+            it('queues the translation of each episode, with the subtitle picked by the app, and says how many', async () => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleTranslateMany, { episodeIds: [4, 5, 6], language: 'German' })).toBe(3);
+                await Promise.resolve();
+                expect(subtitles.translate.mock.calls).toEqual([
+                    [{ episodeId: 4, trackId: null, language: 'German' }],
+                    [{ episodeId: 5, trackId: null, language: 'German' }],
+                    [{ episodeId: 6, trackId: null, language: 'German' }]
+                ]);
+            });
+
+            it('leaves out the ids that are not valid and the ones that repeat', () => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleTranslateMany, { episodeIds: [4, '5', 0, 4, -1, 1.5, 7], language: 'German' })).toBe(2);
+                expect(subtitles.translate.mock.calls).toEqual([
+                    [{ episodeId: 4, trackId: null, language: 'German' }],
+                    [{ episodeId: 7, trackId: null, language: 'German' }]
+                ]);
+            });
+
+            it('takes no more episodes than a request may have', () => {
+                const { call, subtitles } = setup();
+                const episodeIds = Array.from({ length: MAX_EPISODES_PER_REQUEST + 5 }, (_value, index) => {
+                    return index + 1;
+                });
+                expect(call(IPC.animeSubtitleTranslateMany, { episodeIds, language: 'German' })).toBe(MAX_EPISODES_PER_REQUEST);
+                expect(subtitles.translate).toHaveBeenCalledTimes(MAX_EPISODES_PER_REQUEST);
+            });
+
+            it('writes again what is kept beside the video of each one that was translated', async () => {
+                const { call, subtitles, refreshMetadata } = setup();
+                subtitles.translate.mockResolvedValueOnce({ ok: true, tracks: [], translated: { id: 'translated-German', label: 'German', kind: 'translated' } });
+                subtitles.translate.mockResolvedValueOnce({ ok: false, reason: 'no-source' });
+                call(IPC.animeSubtitleTranslateMany, { episodeIds: [4, 5], language: 'German' });
+                await vi.waitFor(() => {
+                    expect(refreshMetadata).toHaveBeenCalledTimes(1);
+                });
+                expect(refreshMetadata).toHaveBeenCalledWith(4);
+            });
+
+            it.each([
+                ['a language that is not offered', { episodeIds: [4], language: 'Klingon' }],
+                ['no language', { episodeIds: [4] }],
+                ['no ids', { episodeIds: [], language: 'German' }],
+                ['ids that are not a list', { episodeIds: 4, language: 'German' }],
+                ['nothing', undefined]
+            ])('queues nothing with %s', (_name, request) => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleTranslateMany, request)).toBe(0);
+                expect(subtitles.translate).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('making one from the audio', () => {
+            const generated: SubtitleGenerateResponse = {
+                ok: true,
+                tracks: [{ id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }],
+                generated: { id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }
+            };
+
+            it('asks for the subtitle with what the screen sent and gives the answer as it is', async () => {
+                const { call, subtitles } = setup();
+                subtitles.generate.mockResolvedValueOnce(generated);
+                expect(await call(IPC.animeSubtitleGenerate, { episodeId: 4, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual(generated);
+                expect(subtitles.generate).toHaveBeenCalledTimes(1);
+                expect(subtitles.generate).toHaveBeenCalledWith({ episodeId: 4, audioLanguage: 'Japanese', language: 'Spanish' });
+            });
+
+            it('writes again what is kept beside the video when the subtitle was made', async () => {
+                const { call, subtitles, refreshMetadata } = setup();
+                subtitles.generate.mockResolvedValueOnce(generated);
+                await call(IPC.animeSubtitleGenerate, { episodeId: 4, audioLanguage: 'Japanese', language: 'Spanish' });
+                expect(refreshMetadata).toHaveBeenCalledTimes(1);
+                expect(refreshMetadata).toHaveBeenCalledWith(4);
+            });
+
+            it.each([
+                ['the settings have no token', { ok: false, reason: 'no-token' } as SubtitleGenerateResponse],
+                ['there was no speech', { ok: false, reason: 'no-speech' } as SubtitleGenerateResponse],
+                ['it was cancelled', { ok: false, reason: 'cancelled' } as SubtitleGenerateResponse],
+                ['the service failed', { ok: false, reason: 'failed', error: { code: 'RATE_LIMITED', raw: 'slow down' } } as SubtitleGenerateResponse]
+            ])('leaves what is kept beside the video alone when %s', async (_name, answer) => {
+                const { call, subtitles, refreshMetadata } = setup();
+                subtitles.generate.mockResolvedValueOnce(answer);
+                expect(await call(IPC.animeSubtitleGenerate, { episodeId: 4, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual(answer);
+                expect(refreshMetadata).not.toHaveBeenCalled();
+            });
+
+            it.each(['Japanese', 'English', 'Chinese', 'Korean', 'Spanish', 'Portuguese', 'French', 'German', 'Italian', 'Russian', 'Arabic', 'Turkish', 'Indonesian'])('takes the spoken language %s', async (audioLanguage) => {
+                const { call, subtitles } = setup();
+                await call(IPC.animeSubtitleGenerate, { episodeId: 4, audioLanguage, language: 'English' });
+                expect(subtitles.generate).toHaveBeenCalledWith({ episodeId: 4, audioLanguage, language: 'English' });
+            });
+
+            it.each(['Portuguese (Brazil)', 'Portuguese', 'Spanish', 'English', 'French', 'German', 'Italian', 'Russian', 'Japanese', 'Chinese', 'Korean', 'Arabic', 'Turkish', 'Indonesian'])('takes the language %s for the subtitle', async (language) => {
+                const { call, subtitles } = setup();
+                await call(IPC.animeSubtitleGenerate, { episodeId: 4, audioLanguage: 'Japanese', language });
+                expect(subtitles.generate).toHaveBeenCalledWith({ episodeId: 4, audioLanguage: 'Japanese', language });
+            });
+
+            it.each([
+                ['an invalid episode', { episodeId: '4', audioLanguage: 'Japanese', language: 'Spanish' }],
+                ['an episode that is zero', { episodeId: 0, audioLanguage: 'Japanese', language: 'Spanish' }],
+                ['an audio language that is not offered', { episodeId: 4, audioLanguage: 'Klingon', language: 'Spanish' }],
+                ['an audio language that only the subtitles have (Brazilian Portuguese)', { episodeId: 4, audioLanguage: 'Portuguese (Brazil)', language: 'Spanish' }],
+                ['no audio language', { episodeId: 4, language: 'Spanish' }],
+                ['a subtitle language that is not offered', { episodeId: 4, audioLanguage: 'Japanese', language: 'Klingon' }],
+                ['no subtitle language', { episodeId: 4, audioLanguage: 'Japanese' }],
+                ['something that is not an object', 'generate'],
+                ['nothing', undefined]
+            ])('does not make a subtitle with %s', async (_name, request) => {
+                const { call, subtitles } = setup();
+                expect(await call(IPC.animeSubtitleGenerate, request)).toEqual({ ok: false, reason: 'missing' });
+                expect(subtitles.generate).not.toHaveBeenCalled();
+            });
+
+            it('asks for the estimate of the episode and gives the answer as it is', async () => {
+                const { call, subtitles } = setup();
+                expect(await call(IPC.animeSubtitleGenerateEstimate, 4)).toEqual({ ok: true, seconds: 1440, parts: 3, approxBytes: 5_760_000 });
+                expect(subtitles.estimateGeneration).toHaveBeenCalledTimes(1);
+                expect(subtitles.estimateGeneration).toHaveBeenCalledWith(4);
+            });
+
+            it.each([['4'], [0], [-1], [1.5], [null], [undefined]])('does not estimate for the invalid episode %s', async (episodeId) => {
+                const { call, subtitles } = setup();
+                expect(await call(IPC.animeSubtitleGenerateEstimate, episodeId)).toEqual({ ok: false, reason: 'missing' });
+                expect(subtitles.estimateGeneration).not.toHaveBeenCalled();
+            });
+
+            it('cancels the subtitle of an episode', () => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleGenerateCancel, 4)).toBeUndefined();
+                expect(subtitles.cancelGeneration).toHaveBeenCalledTimes(1);
+                expect(subtitles.cancelGeneration).toHaveBeenCalledWith(4);
+            });
+
+            it.each([['4'], [0], [-1], [1.5], [null], [undefined]])('cancels nothing for the invalid episode %s', (episodeId) => {
+                const { call, subtitles } = setup();
+                call(IPC.animeSubtitleGenerateCancel, episodeId);
+                expect(subtitles.cancelGeneration).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('cancelling', () => {
+            it('cancels the translation of an episode', () => {
+                const { call, subtitles } = setup();
+                call(IPC.animeSubtitleTranslateCancel, 4);
+                expect(subtitles.cancelTranslation).toHaveBeenCalledTimes(1);
+                expect(subtitles.cancelTranslation).toHaveBeenCalledWith(4);
+            });
+
+            it('cancels all of them when the episode is null', () => {
+                const { call, subtitles } = setup();
+                call(IPC.animeSubtitleTranslateCancel, null);
+                expect(subtitles.cancelTranslation).toHaveBeenCalledWith(null);
+            });
+
+            it.each([['4'], [0], [-1], [1.5], [undefined]])('cancels nothing for the invalid episode %s (it is not taken for "all")', (episodeId) => {
+                const { call, subtitles } = setup();
+                call(IPC.animeSubtitleTranslateCancel, episodeId);
+                expect(subtitles.cancelTranslation).not.toHaveBeenCalled();
             });
         });
     });
@@ -1505,7 +1782,12 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeSubtitles, 1)).toEqual([]);
         expect(ipc.call(IPC.animeSubtitleImport, 1)).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitlesCheck, 1)).toEqual({ ok: false, reason: 'missing' });
-        [IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
+        expect(ipc.call(IPC.animeSubtitleTranslate, { episodeId: 1, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
+        expect(ipc.call(IPC.animeSubtitleTranslateEstimate, { episodeId: 1, trackId: null })).toEqual({ ok: false, reason: 'missing' });
+        expect(ipc.call(IPC.animeSubtitleTranslateMany, { episodeIds: [1], language: 'Spanish' })).toBe(0);
+        expect(ipc.call(IPC.animeSubtitleGenerate, { episodeId: 1, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
+        expect(ipc.call(IPC.animeSubtitleGenerateEstimate, 1)).toEqual({ ok: false, reason: 'missing' });
+        [IPC.animeSubtitleGenerateCancel, IPC.animeSubtitleTranslateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
             expect(ipc.call(channel, 1)).toBeUndefined();
         });
     });

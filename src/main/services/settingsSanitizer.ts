@@ -13,7 +13,8 @@ import {
     THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
-import { ANIME_AUDIOS, ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS } from '@shared/anime';
+import { ANIME_AUDIOS, ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, TRANSLATION_LANGUAGES } from '@shared/anime';
+import { LLM_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from '@shared/llm';
 import type { DownloadOptions, Settings } from '@shared/types';
 
 const RATE_LIMIT_PATTERN = /^\d+(\.\d+)?[KkMmGg]?$/;
@@ -83,7 +84,14 @@ export function sanitizeSettings(input: unknown): Settings {
         animeDownloadDir: pickString(raw.animeDownloadDir, defaults.animeDownloadDir),
         animeQuality: pickEnum(raw.animeQuality, ANIME_QUALITIES, defaults.animeQuality),
         animeAudio: pickEnum(raw.animeAudio, ANIME_AUDIOS, defaults.animeAudio),
-        animeSubtitles: pickEnum(raw.animeSubtitles, ANIME_SUBTITLE_SETTINGS, defaults.animeSubtitles)
+        animeSubtitles: pickEnum(raw.animeSubtitles, ANIME_SUBTITLE_SETTINGS, defaults.animeSubtitles),
+        translateProvider: pickEnum(raw.translateProvider, LLM_PROVIDER_IDS, defaults.translateProvider),
+        translateModel: pickString(raw.translateModel, defaults.translateModel),
+        translateBaseUrl: pickString(raw.translateBaseUrl, defaults.translateBaseUrl),
+        translateLanguage: pickEnum(raw.translateLanguage, TRANSLATION_LANGUAGES, defaults.translateLanguage),
+        transcribeProvider: pickEnum(raw.transcribeProvider, SPEECH_PROVIDER_IDS, defaults.transcribeProvider),
+        transcribeModel: pickString(raw.transcribeModel, defaults.transcribeModel),
+        transcribeBaseUrl: pickString(raw.transcribeBaseUrl, defaults.transcribeBaseUrl)
     };
 }
 

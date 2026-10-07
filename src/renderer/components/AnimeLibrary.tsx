@@ -10,6 +10,7 @@ import { cleanSeasonName, cleanSeriesName, foldSeries, isValidSeason, MAX_SEASON
 import { NumberField, TextField } from './fields';
 import { formatBytes, formatDuration } from './jobStatus';
 import { RowLink } from './RowLink';
+import { SeasonTranslation } from './SeasonTranslation';
 import { SeriesMenu } from './SeriesMenu';
 
 interface EpisodeRowProps {
@@ -327,6 +328,7 @@ function AnimeEntry({ anime, seriesName, t }: { anime: LibraryAnime; seriesName:
                 <div className="season__panel">
                     <div className="job__actions">
                         {edit}
+                        <SeasonTranslation anime={anime} />
                         {remove}
                     </div>
                     {editor}

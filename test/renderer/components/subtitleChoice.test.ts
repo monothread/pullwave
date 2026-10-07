@@ -45,6 +45,36 @@ describe('optionIdOf and optionsOf', () => {
         expect(optionsOf([])).toEqual([]);
     });
 
+    it('keeps the label of a generated subtitle, with and without the language of the app', () => {
+        const tracks = [
+            { id: '', label: 'English', kind: 'default' as const },
+            { id: 'generated-Japanese', label: 'Japanese', kind: 'generated' as const }
+        ];
+        expect(optionsOf(tracks)).toEqual([
+            { id: 'default', label: 'English' },
+            { id: 'generated-Japanese', label: 'Japanese' }
+        ]);
+        expect(optionsOf(tracks, 'pt')).toEqual([
+            { id: 'default', label: 'Inglês' },
+            { id: 'generated-Japanese', label: 'Japanese' }
+        ]);
+    });
+
+    it('keeps the label of a translated subtitle, with and without the language of the app', () => {
+        const tracks = [
+            { id: '', label: 'English', kind: 'default' as const },
+            { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' as const }
+        ];
+        expect(optionsOf(tracks)).toEqual([
+            { id: 'default', label: 'English' },
+            { id: 'translated-Spanish', label: 'Spanish' }
+        ]);
+        expect(optionsOf(tracks, 'pt')).toEqual([
+            { id: 'default', label: 'Inglês' },
+            { id: 'translated-Spanish', label: 'Spanish' }
+        ]);
+    });
+
     describe('with the language of the app', () => {
         const TRACKS = [
             { id: '', label: 'English', kind: 'default' as const },

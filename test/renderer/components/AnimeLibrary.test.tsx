@@ -1646,3 +1646,44 @@ describe('AnimeLibrary episodes that are not downloaded', () => {
     });
 
 });
+
+describe('AnimeLibrary translating the subtitles of a season', () => {
+    async function openSeason(library: ReturnType<typeof makeAnime>[]) {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ library });
+        render(<AnimeLibrary />);
+        await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+        return user;
+    }
+
+    const DOWNLOADED = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' }), makeEpisode({ id: 3, number: '3', status: 'queued', filePath: null })], { id: 10, title: 'Naruto' });
+
+    it('is only in the panel of the season, once its episodes are shown', async () => {
+        const user = await openSeason([DOWNLOADED]);
+        expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
+        const panel = screen.getByTestId('anime-season').querySelector('.season__panel') as HTMLElement;
+        expect(panel.querySelector('.job__actions')).toContainElement(within(panel).getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+        await user.click(screen.getByRole('button', { name: 'HIDE EPISODES: Naruto' }));
+        expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
+    });
+
+    it('asks first, and then queues the downloaded episodes of that season in the language of the settings', async () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'French' } });
+        const user = await openSeason([DOWNLOADED]);
+        await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
+        await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+        expect(screen.getByText('Translate the subtitles of 2 episodes into French with your account? Each episode is a request to the provider, and the cost is yours.')).toBeInTheDocument();
+        expect(mock.api.translateAnimeSubtitles).not.toHaveBeenCalled();
+        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        expect(mock.api.translateAnimeSubtitles).toHaveBeenCalledTimes(1);
+        expect(mock.api.translateAnimeSubtitles).toHaveBeenCalledWith({ episodeIds: [1, 2], language: 'French' });
+    });
+
+    it('says there is nothing to translate in a season with no downloaded episode', async () => {
+        const user = await openSeason([makeAnime([makeEpisode({ id: 3, number: '3', status: 'queued', filePath: null })], { id: 10, title: 'Naruto' })]);
+        await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
+        expect(screen.getByText('This season has no downloaded episode to translate.')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
+    });
+});

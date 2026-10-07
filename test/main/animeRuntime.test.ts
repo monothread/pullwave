@@ -9,6 +9,8 @@ import { createAnimeRuntime, fetchSubtitleText, REMOVE_RETRY_MS, SUBTITLE_FETCH_
 import { DatabaseSync } from 'node:sqlite';
 import { AnimeDb } from '@main/services/animeDb';
 import { BinaryResolver } from '@main/services/binaryResolver';
+import type { AudioFiles, FfmpegRunner } from '@main/services/audioExtractor';
+import type { LlmFetch } from '@main/services/llmProviders';
 import { cleanTempDirs, makeTempDir } from '../helpers/tempDir';
 
 // The library keeps its file open (and Windows will not delete an open file): close what a test opened before cleaning up.
@@ -184,6 +186,600 @@ describe('createAnimeRuntime', () => {
             expect(await runtime?.handlers.subtitles.import(episode.id)).toEqual({ ok: false, reason: 'cancelled' });
             expect(await runtime?.handlers.subtitles.import(99)).toEqual({ ok: false, reason: 'missing' });
             expect(existsSync(join(folder, 'Naruto Episode 1.import-ja.vtt'))).toBe(false);
+        });
+
+        describe('translating with a language model', () => {
+            const SOURCE = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi\n';
+            const TRANSLATED = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola\n';
+
+            function openAiAnswer(): Response {
+                return new Response(JSON.stringify({ choices: [{ message: { content: '["Hola"]' } }] }), { status: 200 });
+            }
+
+            function translating(settings: Partial<typeof DEFAULT_SETTINGS>, token: string | null, llmFetch: LlmFetch = vi.fn(async () => {
+                return openAiAnswer();
+            })) {
+                const downloadedFiles = downloaded({ 'Naruto Episode 1.vtt': SOURCE });
+                const getLlmToken = vi.fn(() => {
+                    return token;
+                });
+                const runtime = open({
+                    ...downloadedFiles.given,
+                    getSettings: () => {
+                        return { ...DEFAULT_SETTINGS, translateModel: 'model-1', ...settings };
+                    },
+                    getLlmToken,
+                    llmFetch
+                });
+                return { ...downloadedFiles, runtime, episode: addEpisode(runtime, downloadedFiles.video), getLlmToken, llmFetch, send: downloadedFiles.given.send as ReturnType<typeof vi.fn> };
+            }
+
+            it('translates the subtitle with the provider, model and token of the settings and saves it next to the video', async () => {
+                const llmFetch = vi.fn(async () => {
+                    return openAiAnswer();
+                });
+                const { runtime, episode, folder, getLlmToken } = translating({ translateProvider: 'openai' }, 'sk-1', llmFetch);
+                expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' })).toEqual({
+                    ok: true,
+                    tracks: [
+                        { id: '', label: 'Default', kind: 'default' },
+                        { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                    ],
+                    translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                });
+                expect(readFileSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'), 'utf-8')).toBe(TRANSLATED);
+                expect(getLlmToken).toHaveBeenCalledWith('openai');
+                expect(llmFetch).toHaveBeenCalledTimes(1);
+                const [url, init] = llmFetch.mock.calls[0] as unknown as [string, RequestInit];
+                expect(url).toBe('https://api.openai.com/v1/chat/completions');
+                expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: 'Bearer sk-1' });
+                expect(JSON.parse(init.body as string)).toMatchObject({ model: 'model-1', messages: [{ role: 'system' }, { role: 'user', content: '["Hi"]' }] });
+            });
+
+            it('tells the screen how it goes, from the line to the end', async () => {
+                const { runtime, episode, send } = translating({}, 'sk-1');
+                await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                const job = { episodeId: episode.id, language: 'Spanish', reason: null };
+                expect(send.mock.calls.filter((call) => {
+                    return call[0] === IPC.eventSubtitleTranslation;
+                })).toEqual([
+                    [IPC.eventSubtitleTranslation, { ...job, status: 'queued', done: 0, total: 0 }],
+                    [IPC.eventSubtitleTranslation, { ...job, status: 'running', done: 0, total: 0 }],
+                    [IPC.eventSubtitleTranslation, { ...job, status: 'running', done: 0, total: 1 }],
+                    [IPC.eventSubtitleTranslation, { ...job, status: 'running', done: 1, total: 1 }],
+                    [IPC.eventSubtitleTranslation, { ...job, status: 'done', done: 1, total: 1 }]
+                ]);
+            });
+
+            it('uses the address of the settings instead of the one of the provider', async () => {
+                const llmFetch = vi.fn(async () => {
+                    return openAiAnswer();
+                });
+                const { runtime, episode } = translating({ translateProvider: 'custom', translateBaseUrl: 'http://localhost:1234/v1' }, 'k', llmFetch);
+                await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                expect((llmFetch.mock.calls[0] as unknown as [string])[0]).toBe('http://localhost:1234/v1/chat/completions');
+            });
+
+            it.each([
+                ['has no token', {}, null, 'no-token'],
+                ['has no model', { translateModel: '' }, 'sk-1', 'no-model'],
+                ['is a provider of one\'s own with no address', { translateProvider: 'custom' as const, translateBaseUrl: '' }, 'sk-1', 'no-address']
+            ] as const)('says the settings lack something when the provider %s, and asks nothing', async (_name, settings, token, reason) => {
+                const llmFetch = vi.fn(async () => {
+                    return openAiAnswer();
+                });
+                const { runtime, episode, folder } = translating(settings, token, llmFetch);
+                expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason });
+                expect(llmFetch).not.toHaveBeenCalled();
+                expect(existsSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'))).toBe(false);
+            });
+
+            it('says there is no token when no way to get one is given', async () => {
+                const { given, video } = downloaded({ 'Naruto Episode 1.vtt': SOURCE });
+                const runtime = open({ ...given, getSettings: () => { return { ...DEFAULT_SETTINGS, translateModel: 'model-1' }; } });
+                const episode = addEpisode(runtime, video);
+                expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'no-token' });
+            });
+
+            it('gives what the provider said when it fails', async () => {
+                const llmFetch = vi.fn(async () => {
+                    return new Response('bad key', { status: 401 });
+                });
+                const { runtime, episode, folder } = translating({}, 'sk-1', llmFetch);
+                expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' })).toEqual({
+                    ok: false,
+                    reason: 'failed',
+                    error: { code: 'INVALID_TOKEN', raw: 'bad key' }
+                });
+                expect(existsSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'))).toBe(false);
+            });
+
+            it('says an episode is missing when it is not downloaded or does not exist, without asking the model', async () => {
+                const llmFetch = vi.fn(async () => {
+                    return openAiAnswer();
+                });
+                const { runtime } = translating({}, 'sk-1', llmFetch);
+                const db = runtime?.db as AnimeDb;
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                expect(await runtime?.handlers.subtitles.translate({ episodeId: waiting.id, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
+                expect(await runtime?.handlers.subtitles.translate({ episodeId: 99, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
+                expect(llmFetch).not.toHaveBeenCalled();
+            });
+
+            it('says an episode that is being translated is busy', async () => {
+                let release: (response: Response) => void = () => {
+                    return undefined;
+                };
+                const llmFetch = vi.fn(() => {
+                    return new Promise<Response>((resolve) => {
+                        release = resolve;
+                    });
+                });
+                const { runtime, episode } = translating({}, 'sk-1', llmFetch);
+                const first = runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'German' })).toEqual({ ok: false, reason: 'busy' });
+                release(openAiAnswer());
+                expect(await first).toMatchObject({ ok: true });
+            });
+
+            it('cancels the translation of an episode, and the request to the provider with it', async () => {
+                const llmFetch = vi.fn((_url: string, init: RequestInit) => {
+                    return new Promise<Response>((_resolve, reject) => {
+                        (init.signal as AbortSignal).addEventListener('abort', () => {
+                            reject(new Error('aborted'));
+                        });
+                    });
+                });
+                const { runtime, episode, folder, send } = translating({}, 'sk-1', llmFetch);
+                const answer = runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                runtime?.handlers.subtitles.cancelTranslation(episode.id);
+                expect(await answer).toEqual({ ok: false, reason: 'cancelled' });
+                expect(existsSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'))).toBe(false);
+                expect(send.mock.calls.at(-1)).toEqual([IPC.eventSubtitleTranslation, { episodeId: episode.id, language: 'Spanish', status: 'cancelled', done: 0, total: 1, reason: 'cancelled' }]);
+            });
+
+            it('cancels all the translations when no episode is given', async () => {
+                const llmFetch = vi.fn((_url: string, init: RequestInit) => {
+                    return new Promise<Response>((_resolve, reject) => {
+                        (init.signal as AbortSignal).addEventListener('abort', () => {
+                            reject(new Error('aborted'));
+                        });
+                    });
+                });
+                const { runtime, episode } = translating({}, 'sk-1', llmFetch);
+                const answer = runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                runtime?.handlers.subtitles.cancelTranslation(null);
+                expect(await answer).toEqual({ ok: false, reason: 'cancelled' });
+            });
+
+            it('says what translating would take, without asking the model', async () => {
+                const llmFetch = vi.fn(async () => {
+                    return openAiAnswer();
+                });
+                const { runtime, episode } = translating({}, 'sk-1', llmFetch);
+                expect(await runtime?.handlers.subtitles.estimate({ episodeId: episode.id, trackId: null })).toEqual({ ok: true, cues: 1, batches: 1, approxTokens: 2 * 1 + 150 });
+                expect(llmFetch).not.toHaveBeenCalled();
+            });
+
+            it('says an episode is missing for the estimate when it is not downloaded or does not exist', async () => {
+                const { runtime } = translating({}, 'sk-1');
+                const db = runtime?.db as AnimeDb;
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                expect(await runtime?.handlers.subtitles.estimate({ episodeId: waiting.id, trackId: null })).toEqual({ ok: false, reason: 'missing' });
+                expect(await runtime?.handlers.subtitles.estimate({ episodeId: 99, trackId: null })).toEqual({ ok: false, reason: 'missing' });
+            });
+        });
+
+        describe('making the subtitle from the audio', () => {
+            const PROBE = '  Duration: 00:25:00.00, start: 0.000000\n  Stream #0:1(jpn): Audio: aac (LC), 48000 Hz, stereo';
+            const PART_VTT = 'WEBVTT\n\n00:01.000 --> 00:02.000\nこんにちは\n';
+            const GENERATED = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nこんにちは\n';
+
+            function speechAnswer(): Response {
+                return new Response(PART_VTT, { status: 200 });
+            }
+
+            // ffmpeg that measures a video of 25 minutes with audio, and takes the audio out without failing.
+            function fakeFfmpeg(probe = PROBE): ReturnType<typeof vi.fn<FfmpegRunner>> {
+                return vi.fn<FfmpegRunner>(async (args) => {
+                    return args.includes('-vn') ? { code: 0, stderr: '' } : { code: 1, stderr: probe };
+                });
+            }
+
+            function fakeAudio(): AudioFiles & { removed: string[] } {
+                const removed: string[] = [];
+                return {
+                    removed,
+                    makeDirectory: () => {
+                        return join('/tmp', 'audio-work');
+                    },
+                    list: () => {
+                        return ['part-000.mp3'];
+                    },
+                    read: () => {
+                        return new Uint8Array([1, 2, 3]);
+                    },
+                    size: () => {
+                        return 3;
+                    },
+                    remove: (directory) => {
+                        removed.push(directory);
+                    }
+                };
+            }
+
+            function generating(settings: Partial<typeof DEFAULT_SETTINGS>, token: string | null, speechFetch: LlmFetch = vi.fn(async () => {
+                return speechAnswer();
+            }), ffmpeg = fakeFfmpeg()) {
+                const downloadedFiles = downloaded();
+                const getLlmToken = vi.fn(() => {
+                    return token;
+                });
+                const audio = fakeAudio();
+                const runtime = open({
+                    ...downloadedFiles.given,
+                    getSettings: () => {
+                        return { ...DEFAULT_SETTINGS, ...settings };
+                    },
+                    getLlmToken,
+                    speechFetch,
+                    runFfmpeg: ffmpeg,
+                    audioFiles: audio
+                });
+                return { ...downloadedFiles, runtime, episode: addEpisode(runtime, downloadedFiles.video), getLlmToken, speechFetch, ffmpeg, audio, send: downloadedFiles.given.send as ReturnType<typeof vi.fn> };
+            }
+
+            it('makes the subtitle with the service, model and token of the settings and saves it next to the video', async () => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const { runtime, episode, folder, getLlmToken, ffmpeg, audio, video } = generating({}, 'sk-speech', speechFetch);
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({
+                    ok: true,
+                    tracks: [{ id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }],
+                    generated: { id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }
+                });
+                expect(readFileSync(join(folder, 'Naruto Episode 1.generated-Japanese.vtt'), 'utf-8')).toBe(GENERATED);
+                expect(getLlmToken).toHaveBeenCalledWith('speech-openai');
+                expect(ffmpeg).toHaveBeenCalledTimes(1);
+                expect(ffmpeg.mock.calls[0]?.[0]).toContain(video);
+                expect(audio.removed).toEqual([join('/tmp', 'audio-work')]);
+                expect(speechFetch).toHaveBeenCalledTimes(1);
+                const [url, init] = speechFetch.mock.calls[0] as unknown as [string, RequestInit];
+                expect(url).toBe('https://api.openai.com/v1/audio/transcriptions');
+                expect(init.method).toBe('POST');
+                expect(init.headers).toEqual({ Authorization: 'Bearer sk-speech' });
+                const form = init.body as FormData;
+                expect([form.get('model'), form.get('language'), form.get('response_format')]).toEqual(['whisper-1', 'ja', 'vtt']);
+                const file = form.get('file') as File;
+                expect(file.name).toBe('part-0.mp3');
+                expect(new Uint8Array(await file.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+            });
+
+            it('tells the screen how it goes, from the audio taken out to the saving, with the phase, the plan and the bytes sent', async () => {
+                const { runtime, episode, send } = generating({}, 'sk-speech');
+                await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' });
+                const job = { episodeId: episode.id, language: 'Japanese', reason: null };
+                const sent = { plan: 'transcribe', sentBytes: 3, totalBytes: 3 };
+                expect(send.mock.calls.filter((call) => {
+                    return call[0] === IPC.eventSubtitleGeneration;
+                })).toEqual([
+                    [IPC.eventSubtitleGeneration, { ...job, status: 'queued', done: 0, total: 0 }],
+                    [IPC.eventSubtitleGeneration, { ...job, status: 'running', done: 0, total: 0 }],
+                    [IPC.eventSubtitleGeneration, { ...job, status: 'running', done: 0, total: 1, phase: 'extracting', plan: 'transcribe' }],
+                    [IPC.eventSubtitleGeneration, { ...job, status: 'running', done: 0, total: 1, phase: 'sending', plan: 'transcribe', sentBytes: 0, totalBytes: 3 }],
+                    [IPC.eventSubtitleGeneration, { ...job, status: 'running', done: 1, total: 1, phase: 'sending', ...sent }],
+                    [IPC.eventSubtitleGeneration, { ...job, status: 'running', done: 0, total: 1, phase: 'saving', ...sent }],
+                    [IPC.eventSubtitleGeneration, { ...job, status: 'done', done: 0, total: 1, phase: 'saving', ...sent }]
+                ]);
+            });
+
+            it('has the audio translated into English at once by the service, when the subtitle is wanted in English, without using the language model', async () => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const { runtime, episode, folder, getLlmToken } = generating({}, 'sk-speech', speechFetch);
+                const handlers = runtime?.handlers.subtitles;
+                expect(await handlers?.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'English' })).toMatchObject({ ok: true, generated: { id: 'generated-English' } });
+                expect((speechFetch.mock.calls[0] as unknown as [string])[0]).toBe('https://api.openai.com/v1/audio/translations');
+                expect(((speechFetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as FormData).has('language')).toBe(false);
+                expect(existsSync(join(folder, 'Naruto Episode 1.generated-English.vtt'))).toBe(true);
+                // The token of the translation was never looked for: only the speech service was used.
+                expect(getLlmToken).toHaveBeenCalledTimes(1);
+                expect(getLlmToken).toHaveBeenCalledWith('speech-openai');
+            });
+
+            it('transcribes the audio and has the language model of the settings translate the text, when the subtitle is wanted in another language', async () => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const llmFetch = vi.fn(async () => {
+                    return new Response(JSON.stringify({ choices: [{ message: { content: '["Hola"]' } }] }), { status: 200 });
+                });
+                const tokens: Record<string, string | null> = { 'speech-openai': 'sk-speech', openai: 'sk-translate' };
+                const downloadedFiles = downloaded();
+                const getLlmToken = vi.fn((slot: string) => {
+                    return tokens[slot] ?? null;
+                });
+                const runtime = open({
+                    ...downloadedFiles.given,
+                    getSettings: () => {
+                        return { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'chat-model' };
+                    },
+                    getLlmToken,
+                    speechFetch,
+                    llmFetch,
+                    runFfmpeg: fakeFfmpeg(),
+                    audioFiles: fakeAudio()
+                });
+                const episode = addEpisode(runtime, downloadedFiles.video);
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Spanish' })).toMatchObject({ ok: true, generated: { id: 'generated-Spanish' } });
+                expect(((speechFetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as FormData).get('language')).toBe('ja');
+                expect((speechFetch.mock.calls[0] as unknown as [string])[0]).toBe('https://api.openai.com/v1/audio/transcriptions');
+                expect(llmFetch).toHaveBeenCalledTimes(1);
+                const [url, init] = llmFetch.mock.calls[0] as unknown as [string, RequestInit];
+                expect(url).toBe('https://api.openai.com/v1/chat/completions');
+                expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: 'Bearer sk-translate' });
+                expect(JSON.parse(init.body as string)).toMatchObject({ model: 'chat-model', messages: [{ role: 'system' }, { role: 'user', content: '["こんにちは"]' }] });
+                expect(readFileSync(join(downloadedFiles.folder, 'Naruto Episode 1.generated-Spanish.vtt'), 'utf-8')).toBe('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola\n');
+                expect(existsSync(join(downloadedFiles.folder, 'Naruto Episode 1.generated-Japanese.vtt'))).toBe(false);
+            });
+
+            it.each([
+                ['has no token', {}, null, 'no-translation-token'],
+                ['has no model', { translateModel: '' }, 'sk-translate', 'no-translation-model'],
+                ['is a provider of one\'s own with no address', { translateProvider: 'custom' as const, translateBaseUrl: '' }, 'sk-translate', 'no-translation-address']
+            ] as const)('says the translation lacks something when its provider %s, before taking the audio out or sending it', async (_name, settings, translateToken, reason) => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const downloadedFiles = downloaded();
+                const ffmpeg = fakeFfmpeg();
+                const runtime = open({
+                    ...downloadedFiles.given,
+                    getSettings: () => {
+                        return { ...DEFAULT_SETTINGS, translateModel: 'chat-model', ...settings };
+                    },
+                    getLlmToken: (slot) => {
+                        return slot === 'speech-openai' ? 'sk-speech' : translateToken;
+                    },
+                    speechFetch,
+                    runFfmpeg: ffmpeg,
+                    audioFiles: fakeAudio()
+                });
+                const episode = addEpisode(runtime, downloadedFiles.video);
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({ ok: false, reason });
+                expect(ffmpeg).not.toHaveBeenCalled();
+                expect(speechFetch).not.toHaveBeenCalled();
+            });
+
+            it('tells the service the language that is spoken and names the subtitle after it', async () => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const { runtime, episode, folder } = generating({}, 'sk-speech', speechFetch);
+                await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'English', language: 'English' });
+                expect(((speechFetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as FormData).get('language')).toBe('en');
+                expect(existsSync(join(folder, 'Naruto Episode 1.generated-English.vtt'))).toBe(true);
+            });
+
+            it('uses the address of the settings, and the token of the service of its own, for a service that is not OpenAI', async () => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const { runtime, episode, getLlmToken } = generating({ transcribeProvider: 'custom', transcribeBaseUrl: 'http://localhost:9000/v1' }, 'k', speechFetch);
+                await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' });
+                expect(getLlmToken).toHaveBeenCalledWith('speech-custom');
+                expect((speechFetch.mock.calls[0] as unknown as [string])[0]).toBe('http://localhost:9000/v1/audio/transcriptions');
+            });
+
+            it.each([
+                ['has no token', {}, null, 'no-token'],
+                ['has no model', { transcribeModel: '' }, 'sk-speech', 'no-model'],
+                ['is a service of one\'s own with no address', { transcribeProvider: 'custom' as const, transcribeBaseUrl: '' }, 'sk-speech', 'no-address']
+            ] as const)('says the settings lack something when the service %s, and takes no audio out', async (_name, settings, token, reason) => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const { runtime, episode, folder, ffmpeg } = generating(settings, token, speechFetch);
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({ ok: false, reason });
+                expect(ffmpeg).not.toHaveBeenCalled();
+                expect(speechFetch).not.toHaveBeenCalled();
+                expect(existsSync(join(folder, 'Naruto Episode 1.generated-Japanese.vtt'))).toBe(false);
+            });
+
+            it('says there is no token when no way to get one is given', async () => {
+                const { given, video } = downloaded();
+                const runtime = open({ ...given, runFfmpeg: fakeFfmpeg(), audioFiles: fakeAudio() });
+                const episode = addEpisode(runtime, video);
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({ ok: false, reason: 'no-token' });
+            });
+
+            it('gives what the service said when it fails, and saves nothing', async () => {
+                const speechFetch = vi.fn(async () => {
+                    return new Response('bad key', { status: 401 });
+                });
+                const { runtime, episode, folder, audio } = generating({}, 'sk-speech', speechFetch);
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({
+                    ok: false,
+                    reason: 'failed',
+                    error: { code: 'INVALID_TOKEN', raw: 'bad key' }
+                });
+                expect(existsSync(join(folder, 'Naruto Episode 1.generated-Japanese.vtt'))).toBe(false);
+                expect(audio.removed).toEqual([join('/tmp', 'audio-work')]);
+            });
+
+            it('says an episode is missing when it is not downloaded or does not exist, without taking audio out', async () => {
+                const { runtime, ffmpeg } = generating({}, 'sk-speech');
+                const db = runtime?.db as AnimeDb;
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: waiting.id, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({ ok: false, reason: 'missing' });
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: 99, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({ ok: false, reason: 'missing' });
+                expect(ffmpeg).not.toHaveBeenCalled();
+            });
+
+            it('says an episode that is being worked on is busy', async () => {
+                let release: (response: Response) => void = () => {
+                    return undefined;
+                };
+                const speechFetch = vi.fn(() => {
+                    return new Promise<Response>((resolve) => {
+                        release = resolve;
+                    });
+                });
+                const { runtime, episode } = generating({}, 'sk-speech', speechFetch);
+                const first = runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' });
+                await vi.waitFor(() => {
+                    expect(speechFetch).toHaveBeenCalledTimes(1);
+                });
+                expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'English', language: 'English' })).toEqual({ ok: false, reason: 'busy' });
+                release(speechAnswer());
+                expect(await first).toMatchObject({ ok: true });
+            });
+
+            it('cancels the subtitle of an episode, and the request to the service with it', async () => {
+                const speechFetch = vi.fn((_url: string, init: RequestInit) => {
+                    return new Promise<Response>((_resolve, reject) => {
+                        (init.signal as AbortSignal).addEventListener('abort', () => {
+                            reject(new Error('aborted'));
+                        });
+                    });
+                });
+                const { runtime, episode, folder, send, audio } = generating({}, 'sk-speech', speechFetch);
+                const answer = runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' });
+                await vi.waitFor(() => {
+                    expect(speechFetch).toHaveBeenCalledTimes(1);
+                });
+                runtime?.handlers.subtitles.cancelGeneration(episode.id);
+                expect(await answer).toEqual({ ok: false, reason: 'cancelled' });
+                expect(existsSync(join(folder, 'Naruto Episode 1.generated-Japanese.vtt'))).toBe(false);
+                expect(audio.removed).toEqual([join('/tmp', 'audio-work')]);
+                expect(send.mock.calls.at(-1)).toEqual([IPC.eventSubtitleGeneration, { episodeId: episode.id, language: 'Japanese', status: 'cancelled', done: 0, total: 1, reason: 'cancelled', phase: 'sending', plan: 'transcribe', sentBytes: 0, totalBytes: 3 }]);
+            });
+
+            it('says how long the audio is and in how many parts it goes, without asking the service', async () => {
+                const speechFetch = vi.fn(async () => {
+                    return speechAnswer();
+                });
+                const { runtime, episode, ffmpeg } = generating({}, 'sk-speech', speechFetch);
+                expect(await runtime?.handlers.subtitles.estimateGeneration(episode.id)).toEqual({ ok: true, seconds: 1500, parts: 3, approxBytes: 6_000_000 });
+                expect(ffmpeg).toHaveBeenCalledTimes(1);
+                expect(speechFetch).not.toHaveBeenCalled();
+            });
+
+            it('says there is no audio for the estimate when the video has none', async () => {
+                const { runtime, episode } = generating({}, 'sk-speech', undefined, fakeFfmpeg('  Duration: 00:25:00.00, start: 0.0\n  Stream #0:0: Video: h264'));
+                expect(await runtime?.handlers.subtitles.estimateGeneration(episode.id)).toEqual({ ok: false, reason: 'no-audio' });
+            });
+
+            it('says an episode is missing for the estimate when it is not downloaded or does not exist', async () => {
+                const { runtime, ffmpeg } = generating({}, 'sk-speech');
+                const db = runtime?.db as AnimeDb;
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                expect(await runtime?.handlers.subtitles.estimateGeneration(waiting.id)).toEqual({ ok: false, reason: 'missing' });
+                expect(await runtime?.handlers.subtitles.estimateGeneration(99)).toEqual({ ok: false, reason: 'missing' });
+                expect(ffmpeg).not.toHaveBeenCalled();
+            });
+
+            describe('with Gemini as the speech service', () => {
+                const GEMINI_ANSWER = '[{"start":1,"end":2,"text":"Olá"}]';
+
+                function geminiAnswer(): Response {
+                    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: GEMINI_ANSWER }] } }] }), { status: 200 });
+                }
+
+                it('has the audio written in the language of the subtitle at once, with the key of its own slot, and never uses the language model', async () => {
+                    const speechFetch = vi.fn(async () => {
+                        return geminiAnswer();
+                    });
+                    const { runtime, episode, folder, getLlmToken } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model' }, 'gem-key', speechFetch);
+                    expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Portuguese (Brazil)' })).toEqual({
+                        ok: true,
+                        tracks: [{ id: 'generated-Portuguese (Brazil)', label: 'Portuguese (Brazil)', kind: 'generated' }],
+                        generated: { id: 'generated-Portuguese (Brazil)', label: 'Portuguese (Brazil)', kind: 'generated' }
+                    });
+                    expect(readFileSync(join(folder, 'Naruto Episode 1.generated-Portuguese (Brazil).vtt'), 'utf-8')).toBe('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nOlá\n');
+                    expect(getLlmToken).toHaveBeenCalledTimes(1);
+                    expect(getLlmToken).toHaveBeenCalledWith('speech-gemini');
+                    expect(speechFetch).toHaveBeenCalledTimes(1);
+                    const [url, init] = speechFetch.mock.calls[0] as unknown as [string, RequestInit];
+                    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gem-model:generateContent');
+                    expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'x-goog-api-key': 'gem-key' });
+                    const body = JSON.parse(init.body as string) as { contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> };
+                    expect(body.contents[0]?.parts[0]?.text).toContain('Write what is said translated into Portuguese (Brazil).');
+                    expect(body.contents[0]?.parts[1]?.inlineData).toEqual({ mimeType: 'audio/mp3', data: Buffer.from([1, 2, 3]).toString('base64') });
+                });
+
+                it('tells the screen the plan is the direct one, with no step of translating the text', async () => {
+                    const { runtime, episode, send } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model' }, 'gem-key', vi.fn(async () => {
+                        return geminiAnswer();
+                    }));
+                    await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Spanish' });
+                    const phases = send.mock.calls
+                        .filter((call) => {
+                            return call[0] === IPC.eventSubtitleGeneration && (call[1] as { phase?: string }).phase !== undefined;
+                        })
+                        .map((call) => {
+                            const job = call[1] as { phase: string; plan: string };
+                            return [job.phase, job.plan];
+                        });
+                    expect(phases).toEqual([['extracting', 'direct'], ['sending', 'direct'], ['sending', 'direct'], ['saving', 'direct'], ['saving', 'direct']]);
+                });
+
+                it('only transcribes, in the language that is spoken, when the subtitle is wanted in it', async () => {
+                    const speechFetch = vi.fn(async () => {
+                        return geminiAnswer();
+                    });
+                    const { runtime, episode } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model' }, 'gem-key', speechFetch);
+                    await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Japanese' });
+                    const body = JSON.parse((speechFetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string) as { contents: Array<{ parts: Array<{ text?: string }> }> };
+                    expect(body.contents[0]?.parts[0]?.text).toContain('Write what is said in Japanese, the language it is said in.');
+                });
+
+                it('uses the address of the settings instead of the one of Gemini', async () => {
+                    const speechFetch = vi.fn(async () => {
+                        return geminiAnswer();
+                    });
+                    const { runtime, episode } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: 'http://localhost:9000/v1beta' }, 'gem-key', speechFetch);
+                    await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Spanish' });
+                    expect((speechFetch.mock.calls[0] as unknown as [string])[0]).toBe('http://localhost:9000/v1beta/models/gem-model:generateContent');
+                });
+
+                it.each([
+                    ['has no token', 'gem-model', null, 'no-token'],
+                    ['has no model', '', 'gem-key', 'no-model']
+                ] as const)('says the settings lack something when Gemini %s, and takes no audio out', async (_name, model, token, reason) => {
+                    const speechFetch = vi.fn(async () => {
+                        return geminiAnswer();
+                    });
+                    const { runtime, episode, ffmpeg } = generating({ transcribeProvider: 'gemini', transcribeModel: model }, token, speechFetch);
+                    expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({ ok: false, reason });
+                    expect(ffmpeg).not.toHaveBeenCalled();
+                    expect(speechFetch).not.toHaveBeenCalled();
+                });
+
+                it('gives what Gemini said when it refuses the key, and saves nothing', async () => {
+                    const speechFetch = vi.fn(async () => {
+                        return new Response('API key not valid', { status: 400 });
+                    });
+                    const { runtime, episode, folder } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model' }, 'gem-key', speechFetch);
+                    expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({
+                        ok: false,
+                        reason: 'failed',
+                        error: { code: 'INVALID_TOKEN', raw: 'API key not valid' }
+                    });
+                    expect(existsSync(join(folder, 'Naruto Episode 1.generated-Spanish.vtt'))).toBe(false);
+                });
+            });
+
+            it.skipIf(process.platform === 'win32')('runs the ffmpeg of the settings when no other way to run it is given', async () => {
+                const { root, video, given } = downloaded();
+                const script = join(root, 'fake-ffmpeg.sh');
+                writeFileSync(script, `#!/bin/sh\necho "${PROBE.replace(/\n/g, '\\n')}" >&2\nexit 1\n`, { mode: 0o755 });
+                const runtime = open({ ...given, getSettings: () => { return { ...DEFAULT_SETTINGS, ffmpegPath: script }; } });
+                const episode = addEpisode(runtime, video);
+                expect(await runtime?.handlers.subtitles.estimateGeneration(episode.id)).toEqual({ ok: true, seconds: 1500, parts: 3, approxBytes: 6_000_000 });
+            });
         });
     });
 

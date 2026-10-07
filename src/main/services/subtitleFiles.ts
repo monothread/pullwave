@@ -6,9 +6,13 @@ import { MAX_SUBTITLE_BYTES, type AnimeSubtitleImportResponse, type AnimeSubtitl
 //   "<name>.vtt"                    the one ani-cli picked
 //   "<name>.subtitle-<language>.vtt" the ones the source offered (saved by the patch of ani-cli, see aniSubtitles.ts)
 //   "<name>.import-<name>.vtt"      the ones the user loaded
+//   "<name>.generated-<language>.vtt" the one made from the audio of the episode
+//   "<name>.translated-<language>.vtt" the ones a language model translated from another
 // The prefixes keep them apart from the subtitles of another episode whose name starts the same way ("... 1" and "... 1.5").
 export const SOURCE_SUBTITLE_PREFIX = 'subtitle-';
 export const IMPORTED_SUBTITLE_PREFIX = 'import-';
+export const GENERATED_SUBTITLE_PREFIX = 'generated-';
+export const TRANSLATED_SUBTITLE_PREFIX = 'translated-';
 export const DEFAULT_SUBTITLE_LABEL = 'Default';
 const MAX_LABEL_LENGTH = 60;
 const SUBTITLE_EXTENSIONS = ['.vtt', '.srt'];
@@ -73,10 +77,16 @@ function trackOf(middle: string): AnimeSubtitleTrack | null {
     if (middle.startsWith(IMPORTED_SUBTITLE_PREFIX) && middle.length > IMPORTED_SUBTITLE_PREFIX.length) {
         return { id: middle, label: middle.slice(IMPORTED_SUBTITLE_PREFIX.length), kind: 'imported' };
     }
+    if (middle.startsWith(GENERATED_SUBTITLE_PREFIX) && middle.length > GENERATED_SUBTITLE_PREFIX.length) {
+        return { id: middle, label: middle.slice(GENERATED_SUBTITLE_PREFIX.length), kind: 'generated' };
+    }
+    if (middle.startsWith(TRANSLATED_SUBTITLE_PREFIX) && middle.length > TRANSLATED_SUBTITLE_PREFIX.length) {
+        return { id: middle, label: middle.slice(TRANSLATED_SUBTITLE_PREFIX.length), kind: 'translated' };
+    }
     return null;
 }
 
-const KIND_ORDER = { default: 0, source: 1, imported: 2 } as const;
+const KIND_ORDER = { default: 0, source: 1, imported: 2, generated: 3, translated: 4 } as const;
 
 // Every subtitle file the episode has: the default one first, then the ones of the source, then the imported ones. When one of
 // the others is the same text as the default (the source offers it too), it is the default that stays, with its name.
@@ -168,6 +178,16 @@ export function sourceSubtitlePath(videoPath: string, label: string): string {
 
 export function importedSubtitlePath(videoPath: string, fileName: string): string {
     return join(dirname(videoPath), `${baseNameOf(videoPath)}.${IMPORTED_SUBTITLE_PREFIX}${importedLabel(fileName)}.vtt`);
+}
+
+// Where the subtitle made from the audio, in the language that is spoken, goes.
+export function generatedSubtitlePath(videoPath: string, language: string): string {
+    return join(dirname(videoPath), `${baseNameOf(videoPath)}.${GENERATED_SUBTITLE_PREFIX}${importedLabel(language)}.vtt`);
+}
+
+// Where the translation of a subtitle into a language goes; the language is cleaned the way the label of a loaded file is.
+export function translatedSubtitlePath(videoPath: string, language: string): string {
+    return join(dirname(videoPath), `${baseNameOf(videoPath)}.${TRANSLATED_SUBTITLE_PREFIX}${importedLabel(language)}.vtt`);
 }
 
 // The text as WebVTT, or null when it is neither WebVTT nor SubRip (the player only understands the first; the second is the

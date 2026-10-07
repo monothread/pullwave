@@ -49,7 +49,14 @@ describe('sanitizeSettings', () => {
             animeDownloadDir: '/media/anime',
             animeQuality: '720p',
             animeAudio: 'dub',
-            animeSubtitles: 'Portuguese'
+            animeSubtitles: 'Portuguese',
+            translateProvider: 'anthropic',
+            translateModel: 'my-model',
+            translateBaseUrl: 'https://llm.example/v1',
+            translateLanguage: 'Spanish',
+            transcribeProvider: 'custom',
+            transcribeModel: 'whisper-large',
+            transcribeBaseUrl: 'https://stt.example/v1'
         };
         expect(sanitizeSettings(valid)).toEqual(valid);
     });
@@ -97,6 +104,63 @@ describe('sanitizeSettings', () => {
 
     it.each(['english', 'Klingon', '', 3, null])('falls back to "auto" for the invalid anime subtitles %j', (animeSubtitles) => {
         expect(sanitizeSettings({ animeSubtitles }).animeSubtitles).toBe('auto');
+    });
+
+    it('has the translation of subtitles default to ChatGPT, with no model or address, into Brazilian Portuguese', () => {
+        const defaults = { translateProvider: 'openai', translateModel: '', translateBaseUrl: '', translateLanguage: 'Portuguese (Brazil)' };
+        expect(DEFAULT_SETTINGS).toMatchObject(defaults);
+        expect(sanitizeSettings({})).toMatchObject(defaults);
+    });
+
+    it.each(['openai', 'anthropic', 'gemini', 'deepseek', 'glm', 'kimi', 'custom'])('keeps the translation provider "%s"', (translateProvider) => {
+        expect(sanitizeSettings({ translateProvider }).translateProvider).toBe(translateProvider);
+    });
+
+    it.each(['OpenAI', 'mistral', '', 4, null])('falls back to "openai" for the invalid translation provider %j', (translateProvider) => {
+        expect(sanitizeSettings({ translateProvider }).translateProvider).toBe('openai');
+    });
+
+    it.each(['Portuguese (Brazil)', 'Portuguese', 'Spanish', 'English', 'French', 'German', 'Italian', 'Russian', 'Japanese', 'Chinese', 'Korean', 'Arabic', 'Turkish', 'Indonesian'])('keeps the translation language "%s"', (translateLanguage) => {
+        expect(sanitizeSettings({ translateLanguage }).translateLanguage).toBe(translateLanguage);
+    });
+
+    it.each(['spanish', 'Klingon', '', 2, null])('falls back to Brazilian Portuguese for the invalid translation language %j', (translateLanguage) => {
+        expect(sanitizeSettings({ translateLanguage }).translateLanguage).toBe('Portuguese (Brazil)');
+    });
+
+    it('trims the translation model and address and ignores ones that are not text', () => {
+        expect(sanitizeSettings({ translateModel: '  my-model ', translateBaseUrl: ' http://localhost:1234/v1 ' })).toMatchObject({
+            translateModel: 'my-model',
+            translateBaseUrl: 'http://localhost:1234/v1'
+        });
+        expect(sanitizeSettings({ translateModel: 5, translateBaseUrl: {} })).toMatchObject({ translateModel: '', translateBaseUrl: '' });
+    });
+
+    it('has the speech to text default to OpenAI and whisper-1, with no address', () => {
+        const defaults = { transcribeProvider: 'openai', transcribeModel: 'whisper-1', transcribeBaseUrl: '' };
+        expect(DEFAULT_SETTINGS).toMatchObject(defaults);
+        expect(sanitizeSettings({})).toMatchObject(defaults);
+    });
+
+    it('does not keep the language spoken in the audio: it is asked for each time, in the window that makes the subtitle', () => {
+        expect(DEFAULT_SETTINGS).not.toHaveProperty('transcribeLanguage');
+        expect(sanitizeSettings({ transcribeLanguage: 'English' })).not.toHaveProperty('transcribeLanguage');
+    });
+
+    it.each(['openai', 'gemini', 'custom'])('keeps the speech to text provider "%s"', (transcribeProvider) => {
+        expect(sanitizeSettings({ transcribeProvider }).transcribeProvider).toBe(transcribeProvider);
+    });
+
+    it.each(['anthropic', 'deepseek', 'OpenAI', 'Gemini', '', 4, null])('falls back to "openai" for the speech to text provider %j (only the protocols of OpenAI and Gemini are spoken)', (transcribeProvider) => {
+        expect(sanitizeSettings({ transcribeProvider }).transcribeProvider).toBe('openai');
+    });
+
+    it('trims the speech to text model and address and ignores ones that are not text', () => {
+        expect(sanitizeSettings({ transcribeModel: ' whisper-1 ', transcribeBaseUrl: ' http://localhost:9000/v1 ' })).toMatchObject({
+            transcribeModel: 'whisper-1',
+            transcribeBaseUrl: 'http://localhost:9000/v1'
+        });
+        expect(sanitizeSettings({ transcribeModel: 5, transcribeBaseUrl: {} })).toMatchObject({ transcribeModel: 'whisper-1', transcribeBaseUrl: '' });
     });
 
     it('trims the anime folder and ignores one that is not text', () => {

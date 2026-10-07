@@ -16,6 +16,8 @@ import {
     type SubtitleImportFailure
 } from './subtitleChoice';
 import { subtitleDisplayNames } from './subtitleName';
+import { SubtitleGenerateDialog } from './SubtitleGenerateDialog';
+import { SubtitleTranslateDialog } from './SubtitleTranslateDialog';
 import { VideoControls } from './VideoControls';
 import { animeErrorKey, isWatched, nextDownloadedEpisode, previousDownloadedEpisode, resumePosition } from './animeText';
 
@@ -67,6 +69,10 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
     const [subtitle, setSubtitle] = useState<string | null>(DEFAULT_OPTION_ID);
     const [importFailure, setImportFailure] = useState<SubtitleImportFailure | null>(null);
     const [checking, setChecking] = useState(false);
+    const [translating, setTranslating] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    // Whether the list of the subtitles of the episode has arrived: until then it is not known whether it has any.
+    const [tracksLoaded, setTracksLoaded] = useState(false);
     const setNotice = useAppStore((state) => {
         return state.setNotice;
     });
@@ -76,6 +82,7 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
         void window.api.listAnimeSubtitles(episode.id).then((found) => {
             if (current) {
                 setTracks(found);
+                setTracksLoaded(true);
                 setSubtitle(initialSubtitle(optionsOf(found), readSubtitleChoice(episode.id)));
             }
         });
@@ -190,6 +197,21 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                         >
                             {t('anime.player.loadSubtitle')}
                         </button>
+                        {tracksLoaded && (
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                onClick={() => {
+                                    if (tracks.length > 0) {
+                                        setTranslating(true);
+                                    } else {
+                                        setGenerating(true);
+                                    }
+                                }}
+                            >
+                                {tracks.length > 0 ? t('anime.player.translate') : t('anime.player.generate')}
+                            </button>
+                        )}
                         <button
                             type="button"
                             className="btn btn--small"
@@ -205,6 +227,35 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                         </button>
                     </span>
                 </header>
+                {translating && (
+                    <SubtitleTranslateDialog
+                        episodeId={episode.id}
+                        tracks={tracks}
+                        onTranslated={(updated, translated) => {
+                            setTracks(updated);
+                            chooseSubtitle(optionIdOf(translated));
+                            setTranslating(false);
+                            setNotice({ kind: 'info', message: t('anime.translate.done', { language: translated.label }) });
+                        }}
+                        onClose={() => {
+                            setTranslating(false);
+                        }}
+                    />
+                )}
+                {generating && (
+                    <SubtitleGenerateDialog
+                        episodeId={episode.id}
+                        onGenerated={(updated, generated) => {
+                            setTracks(updated);
+                            chooseSubtitle(optionIdOf(generated));
+                            setGenerating(false);
+                            setNotice({ kind: 'info', message: t('anime.generate.done', { language: generated.label }) });
+                        }}
+                        onClose={() => {
+                            setGenerating(false);
+                        }}
+                    />
+                )}
                 {failed && (
                     <p className="field__warning" role="alert">
                         {t('anime.player.error')}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeSubtitleTrack } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -670,5 +670,208 @@ describe('AnimePlayer', () => {
                 expect(screen.queryByRole('alert')).not.toBeInTheDocument();
             });
         });
+    });
+});
+
+describe('AnimePlayer translating subtitles', () => {
+    const SPANISH: AnimeSubtitleTrack = { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' };
+
+    beforeEach(() => {
+        mock.api.estimateAnimeSubtitleTranslation.mockResolvedValue({ ok: true, cues: 12, batches: 1, approxTokens: 350 });
+    });
+
+    async function opened() {
+        const user = userEvent.setup();
+        render(<AnimePlayer />);
+        await subtitleMenu();
+        await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLE' }));
+        await screen.findByText('12 lines, 1 requests, about 350 tokens of your account.');
+        return user;
+    }
+
+    it('has a button next to LOAD SUBTITLE and CHECK SUBTITLES, and no dialog until it is pressed', async () => {
+        render(<AnimePlayer />);
+        await subtitleMenu();
+        await screen.findByRole('button', { name: 'TRANSLATE SUBTITLE' });
+        const labels = screen.getAllByRole('button').map((button) => {
+            return button.textContent;
+        });
+        expect(labels.indexOf('LOAD SUBTITLE')).toBeLessThan(labels.indexOf('TRANSLATE SUBTITLE'));
+        expect(labels.indexOf('TRANSLATE SUBTITLE')).toBeLessThan(labels.indexOf('CHECK SUBTITLES'));
+        expect(screen.queryByRole('dialog', { name: 'Translate a subtitle' })).not.toBeInTheDocument();
+        expect(mock.api.estimateAnimeSubtitleTranslation).not.toHaveBeenCalled();
+    });
+
+    it('opens the dialog for the episode that is playing, with the subtitles it has', async () => {
+        mock.api.listAnimeSubtitles.mockResolvedValue([ENGLISH, JAPANESE]);
+        await opened();
+        expect(screen.getByRole('dialog', { name: 'Translate a subtitle' })).toBeInTheDocument();
+        expect(mock.api.estimateAnimeSubtitleTranslation).toHaveBeenCalledWith({ episodeId: 1, trackId: null });
+        expect(Array.from(screen.getByLabelText('Translate from').querySelectorAll('option')).map((option) => {
+            return option.textContent;
+        })).toEqual(['Automatic (English when there is one)', 'English', 'Japanese']);
+    });
+
+    it('closes the dialog and goes on playing', async () => {
+        const user = await opened();
+        await user.click(within(screen.getByRole('dialog', { name: 'Translate a subtitle' })).getByRole('button', { name: 'CLOSE' }));
+        expect(screen.queryByRole('dialog', { name: 'Translate a subtitle' })).not.toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Naruto · EP 1' })).toBeInTheDocument();
+        expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+    });
+
+    it('does not close the player when Esc closes the dialog', async () => {
+        await opened();
+        fireEvent.keyDown(screen.getByRole('dialog', { name: 'Translate a subtitle' }), { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Translate a subtitle' })).not.toBeInTheDocument();
+        expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+    });
+
+    describe('when the translation is done', () => {
+        async function translated() {
+            mock.api.translateAnimeSubtitle.mockResolvedValue({ ok: true, tracks: [ENGLISH, SPANISH], translated: SPANISH });
+            const user = await opened();
+            await user.click(screen.getByRole('button', { name: 'TRANSLATE' }));
+            await vi.waitFor(() => {
+                expect(screen.queryByRole('dialog', { name: 'Translate a subtitle' })).not.toBeInTheDocument();
+            });
+            return user;
+        }
+
+        it('puts the new subtitle in the list of the player and shows it', async () => {
+            await translated();
+            expect(mock.api.translateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 1, trackId: null, language: 'Portuguese (Brazil)' });
+            expect(await subtitleOption('Spanish')).toBeInTheDocument();
+            expect(document.querySelector('track[id="translated-Spanish"]')).toHaveAttribute('src', 'pullwave-media://subtitle/1/translated-Spanish');
+            expect(openedSubtitleMenu()).toHaveValue('translated-Spanish');
+        });
+
+        it('remembers the new subtitle as the choice of the episode', async () => {
+            await translated();
+            expect(window.localStorage.getItem('pullwave-subtitle-1')).toBe('translated-Spanish');
+        });
+
+        it('says it was translated with a notice of the app', async () => {
+            await translated();
+            expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'SUBTITLE TRANSLATED INTO Spanish.' });
+        });
+    });
+
+    it('keeps the dialog open, with the reason, when the translation fails', async () => {
+        mock.api.translateAnimeSubtitle.mockResolvedValue({ ok: false, reason: 'no-token' });
+        const user = await opened();
+        await user.click(screen.getByRole('button', { name: 'TRANSLATE' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('There is no token for this provider. Add one in the anime settings.');
+        expect(screen.getByRole('dialog', { name: 'Translate a subtitle' })).toBeInTheDocument();
+        expect(useAppStore.getState().notice).toBeNull();
+        expect(document.querySelector('track[id="translated-Spanish"]')).toBeNull();
+    });
+});
+
+describe('AnimePlayer creating the subtitle of an episode that has none', () => {
+    const JAPANESE_TRACK: AnimeSubtitleTrack = { id: 'generated-Japanese', label: 'Japanese', kind: 'generated' };
+
+    const AUDIO_TEXT = '25 min · about 5.7 MiB · 3 requests';
+
+    beforeEach(() => {
+        // The subtitle is wanted in the language of the audio, so the audio is only transcribed.
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'Japanese' } });
+        mock.api.listAnimeSubtitles.mockResolvedValue([]);
+        mock.api.estimateAnimeSubtitleGeneration.mockResolvedValue({ ok: true, seconds: 1500, parts: 3, approxBytes: 6_000_000 });
+    });
+
+    async function withoutSubtitles() {
+        const user = userEvent.setup();
+        render(<AnimePlayer />);
+        const button = await screen.findByRole('button', { name: 'CREATE SUBTITLE' });
+        return { user, button };
+    }
+
+    it('offers CREATE SUBTITLE instead of TRANSLATE SUBTITLE when the list of subtitles comes empty', async () => {
+        await withoutSubtitles();
+        expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLE' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog', { name: 'Create a subtitle' })).not.toBeInTheDocument();
+        expect(mock.api.estimateAnimeSubtitleGeneration).not.toHaveBeenCalled();
+    });
+
+    it('offers neither of them until the list of subtitles arrives, since it is not known yet whether there is one', async () => {
+        mock.api.listAnimeSubtitles.mockReturnValue(new Promise(() => {
+            return undefined;
+        }));
+        render(<AnimePlayer />);
+        await screen.findByRole('button', { name: 'LOAD SUBTITLE' });
+        expect(screen.queryByRole('button', { name: 'CREATE SUBTITLE' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLE' })).not.toBeInTheDocument();
+    });
+
+    it('offers TRANSLATE SUBTITLE, not CREATE SUBTITLE, when the episode has a subtitle', async () => {
+        mock.api.listAnimeSubtitles.mockResolvedValue([ENGLISH]);
+        render(<AnimePlayer />);
+        expect(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLE' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CREATE SUBTITLE' })).not.toBeInTheDocument();
+    });
+
+    it('opens the dialog for the episode that is playing, and measures its audio', async () => {
+        const { user, button } = await withoutSubtitles();
+        await user.click(button);
+        expect(screen.getByRole('dialog', { name: 'Create a subtitle' })).toBeInTheDocument();
+        expect(await screen.findByText(AUDIO_TEXT)).toBeInTheDocument();
+        expect(mock.api.estimateAnimeSubtitleGeneration).toHaveBeenCalledTimes(1);
+        expect(mock.api.estimateAnimeSubtitleGeneration).toHaveBeenCalledWith(1);
+        expect(mock.api.estimateAnimeSubtitleTranslation).not.toHaveBeenCalled();
+    });
+
+    it('closes the dialog and goes on playing', async () => {
+        const { user, button } = await withoutSubtitles();
+        await user.click(button);
+        await user.click(within(await screen.findByRole('dialog', { name: 'Create a subtitle' })).getByRole('button', { name: 'CLOSE' }));
+        expect(screen.queryByRole('dialog', { name: 'Create a subtitle' })).not.toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Naruto · EP 1' })).toBeInTheDocument();
+    });
+
+    describe('when the subtitle is made', () => {
+        async function created() {
+            mock.api.generateAnimeSubtitle.mockResolvedValue({ ok: true, tracks: [JAPANESE_TRACK], generated: JAPANESE_TRACK });
+            const { user, button } = await withoutSubtitles();
+            await user.click(button);
+            await screen.findByText(AUDIO_TEXT);
+            await user.click(screen.getByRole('button', { name: 'CREATE' }));
+            await vi.waitFor(() => {
+                expect(screen.queryByRole('dialog', { name: 'Create a subtitle' })).not.toBeInTheDocument();
+            });
+            return user;
+        }
+
+        it('asks for it with the languages of the settings, and puts it in the list of the player, showing it', async () => {
+            await created();
+            expect(mock.api.generateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 1, audioLanguage: 'Japanese', language: 'Japanese' });
+            expect(await subtitleOption('Japanese')).toBeInTheDocument();
+            expect(document.querySelector('track[id="generated-Japanese"]')).toHaveAttribute('src', 'pullwave-media://subtitle/1/generated-Japanese');
+            expect(openedSubtitleMenu()).toHaveValue('generated-Japanese');
+        });
+
+        it('remembers it as the choice of the episode and says so with a notice of the app', async () => {
+            await created();
+            expect(window.localStorage.getItem('pullwave-subtitle-1')).toBe('generated-Japanese');
+            expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'SUBTITLE CREATED IN Japanese.' });
+        });
+
+        it('turns the button into TRANSLATE SUBTITLE, since the episode has a subtitle now', async () => {
+            await created();
+            expect(screen.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'CREATE SUBTITLE' })).not.toBeInTheDocument();
+        });
+    });
+
+    it('keeps the dialog open, with the reason, when the subtitle could not be made', async () => {
+        mock.api.generateAnimeSubtitle.mockResolvedValue({ ok: false, reason: 'no-token' });
+        const { user, button } = await withoutSubtitles();
+        await user.click(button);
+        await screen.findByText(AUDIO_TEXT);
+        await user.click(screen.getByRole('button', { name: 'CREATE' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('There is no token for this service. Add one in the anime settings.');
+        expect(screen.getByRole('dialog', { name: 'Create a subtitle' })).toBeInTheDocument();
+        expect(useAppStore.getState().notice).toBeNull();
+        expect(screen.getByRole('button', { name: 'CREATE SUBTITLE' })).toBeInTheDocument();
     });
 });

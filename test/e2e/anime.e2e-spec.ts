@@ -2585,3 +2585,776 @@ test.describe('library of the search', () => {
         await expect(page.getByText('// THE LIBRARY IS EMPTY. SEARCH AN ANIME AND ADD IT TO THE LIBRARY.')).toBeVisible();
     });
 });
+
+test.describe('translating subtitles with a language model', () => {
+    const TOKEN = 'sk-e2e-token';
+    const ENGLISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nHello there\n\n2\n00:00:04.000 --> 00:00:06.000\nSee you\n';
+    const SPANISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nES: Hello there\n\n2\n00:00:04.000 --> 00:00:06.000\nES: See you\n';
+
+    interface LlmRequest {
+        method: string | undefined;
+        path: string;
+        authorization: string | undefined;
+        contentType: string | undefined;
+        body: { model: string; messages: Array<{ role: string; content: string }> };
+    }
+
+    // The provider the app is asked to use: it speaks the protocol of OpenAI and "translates" by putting ES: before each line.
+    let server: Server;
+    let baseUrl: string;
+    let received: LlmRequest[];
+    let answerWith: number;
+    let hold: boolean;
+
+    test.beforeAll(async () => {
+        received = [];
+        server = createServer((request, response) => {
+            const chunks: Buffer[] = [];
+            request.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            request.on('end', () => {
+                const body = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as LlmRequest['body'];
+                received.push({ method: request.method, path: request.url ?? '', authorization: request.headers.authorization, contentType: request.headers['content-type'], body });
+                if (hold) {
+                    return;
+                }
+                if (answerWith !== 200) {
+                    response.writeHead(answerWith, { 'Content-Type': 'text/plain' }).end('the provider says no');
+                    return;
+                }
+                const texts = JSON.parse(body.messages[1]?.content ?? '[]') as string[];
+                const translated = texts.map((text) => {
+                    return `ES: ${text}`;
+                });
+                response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(translated) } }] }));
+            });
+        });
+        await new Promise<void>((resolveListening) => {
+            server.listen(0, '127.0.0.1', resolveListening);
+        });
+        baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    });
+
+    test.afterAll(async () => {
+        server.closeAllConnections();
+        await new Promise<void>((resolveClosed) => {
+            server.close(() => {
+                resolveClosed();
+            });
+        });
+    });
+
+    test.beforeEach(async () => {
+        received.length = 0;
+        answerWith = 200;
+        hold = false;
+        // The keyring of the machine is not used: the tokens are kept the plain way, which only this variable allows.
+        const { userData } = session;
+        await session.app.close();
+        session = await launch(userData, { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, translateLanguage: 'Spanish' }, { PULLWAVE_FAKE_SECRETS: '1' });
+    });
+
+    function episodeFolder(episode: number): string {
+        return join(session.animeDir, 'Fake Anime', 'Season 1', `Episode ${episode}`);
+    }
+
+    function translatedFile(episode: number): string {
+        return join(episodeFolder(episode), `Fake Anime Episode ${episode}.translated-Spanish.vtt`);
+    }
+
+    // Downloads the episodes and gives each one an English subtitle with two lines (the fake ani-cli saves an empty one).
+    async function downloadWithSubtitles(page: Page, episodes: number[]): Promise<void> {
+        await openAnimeTab(page);
+        await openFirstResult(page);
+        await downloadFromLibrary(page, episodes);
+        await waitForDownloaded(page);
+        episodes.forEach((episode) => {
+            writeFileSync(join(episodeFolder(episode), `Fake Anime Episode ${episode}.subtitle-English.vtt`), ENGLISH_SUBTITLE);
+        });
+    }
+
+    async function showEpisodes(page: Page): Promise<void> {
+        await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+    }
+
+    async function openPlayer(page: Page): Promise<Locator> {
+        await showEpisodes(page);
+        await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        await expect(dialog).toBeVisible();
+        return dialog;
+    }
+
+    async function saveToken(page: Page): Promise<void> {
+        await openAnimeSettings(page);
+        await expect(page.getByLabel('Provider', { exact: true })).toHaveValue('custom');
+        await expect(page.getByLabel('Model', { exact: true })).toHaveValue('fake-model');
+        await expect(page.getByLabel('Address (optional)', { exact: true })).toHaveValue(`${baseUrl}/v1`);
+        await expect(page.getByLabel('Default language', { exact: true })).toHaveValue('Spanish');
+        await expect(page.getByText('No token is saved for this provider.')).toBeVisible();
+        await expect(page.getByLabel('Token (API key)', { exact: true })).toHaveAttribute('type', 'password');
+        await page.getByLabel('Token (API key)', { exact: true }).fill(TOKEN);
+        await page.getByRole('button', { name: 'SAVE TOKEN' }).click();
+        await expect(page.getByText('A token is saved for this provider.')).toBeVisible();
+    }
+
+    async function mediaRequest(url: string): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+        return session.app.evaluate(async ({ net }, target) => {
+            const response = await net.fetch(target);
+            const headers: Record<string, string> = {};
+            response.headers.forEach((value, key) => {
+                headers[key] = value;
+            });
+            return { status: response.status, headers, body: await response.text() };
+        }, url);
+    }
+
+    test('keeps the token in the main process, encrypted apart from the settings, and never shows it again', async () => {
+        const { page, userData } = session;
+        await saveToken(page);
+        await expect(page.getByLabel('Token (API key)', { exact: true })).toHaveValue('');
+        await expect(page.getByRole('button', { name: 'REMOVE TOKEN' })).toBeVisible();
+        const tokens = JSON.parse(readFileSync(join(userData, 'llm-tokens.json'), 'utf-8')) as Record<string, string>;
+        expect(Object.keys(tokens)).toEqual(['custom']);
+        expect(Buffer.from(tokens.custom as string, 'base64').toString('utf-8')).toBe(TOKEN);
+        await expect.poll(() => {
+            return readFileSync(join(userData, 'settings.json'), 'utf-8');
+        }).not.toContain(TOKEN);
+
+        await page.getByRole('button', { name: 'REMOVE TOKEN' }).click();
+        await expect(page.getByText('No token is saved for this provider.')).toBeVisible();
+        expect(JSON.parse(readFileSync(join(userData, 'llm-tokens.json'), 'utf-8'))).toEqual({});
+    });
+
+    test('shows the cost before it starts, translates the English subtitle and offers the result in the player', async () => {
+        const { page } = session;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1]);
+        const dialog = await openPlayer(page);
+        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
+        await expect(translate).toBeVisible();
+        await expect(translate.getByText('Provider: Other (OpenAI-compatible) · Model: fake-model')).toBeVisible();
+        await expect(translate.getByLabel('Translate into')).toHaveValue('Spanish');
+        await expect(translate.getByLabel('Translate from')).toHaveValue('auto');
+        // Nothing is asked of the provider before the user confirms.
+        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        expect(received).toEqual([]);
+
+        await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
+        await expect(translate).toBeHidden();
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE TRANSLATED' })).toHaveText('SUBTITLE TRANSLATED INTO Spanish.');
+
+        expect(received).toHaveLength(1);
+        const [sent] = received as [LlmRequest];
+        expect({ method: sent.method, path: sent.path, authorization: sent.authorization, contentType: sent.contentType, model: sent.body.model }).toEqual({
+            method: 'POST',
+            path: '/v1/chat/completions',
+            authorization: `Bearer ${TOKEN}`,
+            contentType: 'application/json',
+            model: 'fake-model'
+        });
+        expect(sent.body.messages.map((message) => {
+            return message.role;
+        })).toEqual(['system', 'user']);
+        expect(sent.body.messages[0]?.content).toContain('Translate each string into Spanish.');
+        expect(sent.body.messages[1]?.content).toBe('["Hello there","See you"]');
+        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(SPANISH_SUBTITLE);
+        // The subtitle it started from is as it was.
+        expect(readFileSync(join(episodeFolder(1), 'Fake Anime Episode 1.subtitle-English.vtt'), 'utf-8')).toBe(ENGLISH_SUBTITLE);
+
+        // The player has it, shows it, and the app serves it like any other subtitle of the episode.
+        await dialog.getByRole('button', { name: 'Settings' }).click();
+        const menu = dialog.getByRole('combobox', { name: 'Subtitles' });
+        await expect(menu).toHaveValue('translated-Spanish');
+        expect(await menu.locator('option').allTextContents()).toEqual(expect.arrayContaining(['English', 'Spanish']));
+        const served = await mediaRequest('pullwave-media://subtitle/1/translated-Spanish');
+        expect(served.status).toBe(200);
+        expect(served.headers['content-type']).toBe('text/vtt; charset=utf-8');
+        expect(served.body).toBe(SPANISH_SUBTITLE);
+    });
+
+    test('says the settings have no token, and asks the provider for nothing', async () => {
+        const { page } = session;
+        await downloadWithSubtitles(page, [1]);
+        const dialog = await openPlayer(page);
+        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
+        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
+        await expect(translate.getByRole('alert')).toHaveText('There is no token for this provider. Add one in the anime settings.');
+        await expect(translate.getByRole('button', { name: 'TRANSLATE', exact: true })).toBeEnabled();
+        expect(received).toEqual([]);
+        expect(existsSync(translatedFile(1))).toBe(false);
+    });
+
+    test('says what went wrong when the provider does not accept the token, and saves nothing', async () => {
+        const { page } = session;
+        answerWith = 401;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1]);
+        const dialog = await openPlayer(page);
+        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
+        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
+        await expect(translate.getByRole('alert')).toHaveText('The translation failed. The provider did not accept the token. Check it in the anime settings.');
+        expect(received).toHaveLength(1);
+        expect(received[0]?.authorization).toBe(`Bearer ${TOKEN}`);
+        expect(existsSync(translatedFile(1))).toBe(false);
+        // The notices of the downloads are still there: only the one that says the subtitle was made must not be.
+        await expect(page.locator('.toast--info', { hasText: 'SUBTITLE TRANSLATED' })).toHaveCount(0);
+    });
+
+    test('shows the progress and stops when the user cancels, without saving anything', async () => {
+        const { page } = session;
+        hold = true;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1]);
+        const dialog = await openPlayer(page);
+        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
+        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
+        await expect(translate.getByText('Translated 0 of 2 lines…')).toBeVisible();
+        await expect(translate.getByRole('button', { name: 'CLOSE' })).toBeDisabled();
+        await expect.poll(() => {
+            return received.length;
+        }).toBe(1);
+
+        await translate.getByRole('button', { name: 'CANCEL TRANSLATION' }).click();
+        await expect(translate.getByRole('button', { name: 'TRANSLATE', exact: true })).toBeEnabled();
+        await expect(translate.getByRole('alert')).toHaveCount(0);
+        expect(existsSync(translatedFile(1))).toBe(false);
+        await translate.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(translate).toBeHidden();
+    });
+
+    test('translates the subtitles of a whole season, only after the user confirms', async () => {
+        const { page } = session;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1, 2]);
+        await showEpisodes(page);
+        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await expect(page.getByText('Translate the subtitles of 2 episodes into Spanish with your account? Each episode is a request to the provider, and the cost is yours.')).toBeVisible();
+        expect(received).toEqual([]);
+
+        await page.getByRole('button', { name: 'CANCEL', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
+        expect(received).toEqual([]);
+
+        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+        await expect.poll(() => {
+            return existsSync(translatedFile(1)) && existsSync(translatedFile(2));
+        }, { timeout: 20000 }).toBe(true);
+        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(SPANISH_SUBTITLE);
+        expect(readFileSync(translatedFile(2), 'utf-8')).toBe(SPANISH_SUBTITLE);
+        expect(received).toHaveLength(2);
+        expect(received.map((request) => {
+            return [request.path, request.authorization, request.body.messages[1]?.content];
+        })).toEqual([
+            ['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]'],
+            ['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']
+        ]);
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
+        await expect(page.getByRole('alert')).toHaveCount(0);
+    });
+});
+
+test.describe('creating the subtitle of an episode from its audio', () => {
+    const SPEECH_TOKEN = 'sk-e2e-speech';
+    const TRANSLATION_TOKEN = 'sk-e2e-translation';
+    const FFMPEG = join(ROOT, 'resources', 'bin', `ffmpeg${EXE}`);
+    test.skip(!existsSync(FFMPEG), 'needs the bundled ffmpeg to make a video: run `npm run fetch-binaries`');
+
+    interface SpeechRequest {
+        method: string | undefined;
+        path: string;
+        authorization: string | undefined;
+        contentType: string | undefined;
+        // The form as text (the file in it is binary: only what is around it is read).
+        form: string;
+        fileStart: number[];
+    }
+
+    interface ChatRequest {
+        path: string;
+        authorization: string | undefined;
+        body: { model: string; messages: Array<{ role: string; content: string }> };
+    }
+
+    interface GeminiRequest {
+        path: string;
+        key: string | undefined;
+        body: { contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> };
+    }
+
+    const FIRST_PART = 'WEBVTT\n\n00:01.000 --> 00:03.000\nPart one\n';
+    const SECOND_PART = 'WEBVTT\n\n00:02.000 --> 00:04.000\nPart two\n';
+    const TRANSCRIBED = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nPart one\n\n00:10:02.000 --> 00:10:04.000\nPart two\n';
+    const TRANSLATED = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nES: Part one\n\n00:10:02.000 --> 00:10:04.000\nES: Part two\n';
+    const AUDIO_TEXT = /^11 min · about 2\.5 MiB · 2 requests$/;
+
+    // The services the app is asked to use: one that speaks the protocol of OpenAI for the speech to text (the transcriptions and the
+    // translations into English) and for the language model, which "translates" by putting ES: before each line.
+    let server: Server;
+    let baseUrl: string;
+    let received: SpeechRequest[];
+    let chats: ChatRequest[];
+    let geminis: GeminiRequest[];
+    let answerWith: number;
+    let refuseTranslations: boolean;
+    let hold: boolean;
+    let holdChat: boolean;
+
+    test.beforeAll(async () => {
+        received = [];
+        chats = [];
+        geminis = [];
+        server = createServer((request, response) => {
+            const chunks: Buffer[] = [];
+            request.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            request.on('end', () => {
+                const body = Buffer.concat(chunks);
+                const path = request.url ?? '';
+                if (path.startsWith('/v1beta/models/') && path.endsWith(':generateContent')) {
+                    geminis.push({ path, key: request.headers['x-goog-api-key'] as string | undefined, body: JSON.parse(body.toString('utf-8')) as GeminiRequest['body'] });
+                    const segments = geminis.length === 1 ? '[{"start":1,"end":3,"text":"Parte um"}]' : '[{"start":2,"end":4,"text":"Parte dois"}]';
+                    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ candidates: [{ content: { parts: [{ text: segments }] } }] }));
+                    return;
+                }
+                if (path === '/v1/chat/completions') {
+                    const parsed = JSON.parse(body.toString('utf-8')) as ChatRequest['body'];
+                    chats.push({ path, authorization: request.headers.authorization, body: parsed });
+                    if (holdChat) {
+                        return;
+                    }
+                    const texts = JSON.parse(parsed.messages[1]?.content ?? '[]') as string[];
+                    const translated = texts.map((text) => {
+                        return `ES: ${text}`;
+                    });
+                    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(translated) } }] }));
+                    return;
+                }
+                const form = body.toString('latin1');
+                const marker = 'Content-Type: audio/mpeg\r\n\r\n';
+                const fileStart = form.indexOf(marker);
+                received.push({
+                    method: request.method,
+                    path,
+                    authorization: request.headers.authorization,
+                    contentType: request.headers['content-type'],
+                    form: fileStart === -1 ? form : form.slice(0, fileStart + marker.length) + form.slice(form.indexOf('\r\n--', fileStart)),
+                    fileStart: fileStart === -1 ? [] : [...body.subarray(fileStart + marker.length, fileStart + marker.length + 3)]
+                });
+                if (hold) {
+                    return;
+                }
+                if (answerWith !== 200 || (refuseTranslations && path === '/v1/audio/translations')) {
+                    response.writeHead(answerWith === 200 ? 400 : answerWith, { 'Content-Type': 'text/plain' }).end('the service says no');
+                    return;
+                }
+                const answered = received.filter((entry) => {
+                    return entry.path === path;
+                }).length;
+                response.writeHead(200, { 'Content-Type': 'text/vtt' }).end(answered === 1 ? FIRST_PART : SECOND_PART);
+            });
+        });
+        await new Promise<void>((resolveListening) => {
+            server.listen(0, '127.0.0.1', resolveListening);
+        });
+        baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    });
+
+    test.afterAll(async () => {
+        server.closeAllConnections();
+        await new Promise<void>((resolveClosed) => {
+            server.close(() => {
+                resolveClosed();
+            });
+        });
+    });
+
+    test.beforeEach(async () => {
+        received.length = 0;
+        chats.length = 0;
+        geminis.length = 0;
+        answerWith = 200;
+        refuseTranslations = false;
+        hold = false;
+        holdChat = false;
+        const { userData } = session;
+        await session.app.close();
+        session = await launch(
+            userData,
+            {
+                transcribeProvider: 'custom',
+                transcribeModel: 'whisper-1',
+                transcribeBaseUrl: `${baseUrl}/v1`,
+                translateProvider: 'custom',
+                translateModel: 'fake-model',
+                translateBaseUrl: `${baseUrl}/v1`,
+                translateLanguage: 'Spanish'
+            },
+            { PULLWAVE_FAKE_SECRETS: '1' }
+        );
+    });
+
+    function episodeFolder(): string {
+        return join(session.animeDir, 'Fake Anime', 'Season 1', 'Episode 1');
+    }
+
+    function generatedFile(language: string): string {
+        return join(episodeFolder(), `Fake Anime Episode 1.generated-${language}.vtt`);
+    }
+
+    // Downloads the episode and makes its video a real one (the fake ani-cli writes a file that is not a video): 11 minutes of silence, or with no
+    // audio at all, and with no subtitle.
+    async function downloadWithoutSubtitle(page: Page, withAudio = true): Promise<void> {
+        await openAnimeTab(page);
+        await openFirstResult(page);
+        await downloadFromLibrary(page, [1]);
+        await waitForDownloaded(page);
+        const video = readdirSync(episodeFolder()).find((name) => {
+            return name.endsWith('.mp4');
+        }) as string;
+        const target = join(episodeFolder(), video);
+        const input = withAudio ? ['-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', '650', '-c:a', 'aac'] : ['-f', 'lavfi', '-i', 'testsrc=duration=2:size=64x64:rate=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p'];
+        execFileSync(FFMPEG, ['-y', '-loglevel', 'error', ...input, target]);
+        readdirSync(episodeFolder()).filter((name) => {
+            return name.endsWith('.vtt');
+        }).forEach((name) => {
+            rmSync(join(episodeFolder(), name));
+        });
+    }
+
+    async function openPlayer(page: Page): Promise<Locator> {
+        await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        await expect(dialog).toBeVisible();
+        return dialog;
+    }
+
+    // Saves the token of the speech to text and, when the subtitle is translated afterwards, the one of the translation.
+    async function saveTokens(page: Page, translation = false): Promise<void> {
+        await openAnimeSettings(page);
+        await expect(page.getByLabel('Speech-to-text service', { exact: true })).toHaveValue('custom');
+        await expect(page.getByLabel('Speech-to-text model', { exact: true })).toHaveValue('whisper-1');
+        await expect(page.getByLabel('Speech-to-text address (optional)', { exact: true })).toHaveValue(`${baseUrl}/v1`);
+        // The language that is spoken is asked for in the window that makes the subtitle, not here.
+        await expect(page.getByLabel('Language spoken in the audio', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('No token is saved for this service.')).toBeVisible();
+        await expect(page.getByLabel('Speech-to-text token (API key)', { exact: true })).toHaveAttribute('type', 'password');
+        await page.getByLabel('Speech-to-text token (API key)', { exact: true }).fill(SPEECH_TOKEN);
+        await page.getByRole('button', { name: 'SAVE SPEECH TOKEN' }).click();
+        await expect(page.getByText('A token is saved for this service.')).toBeVisible();
+        if (translation) {
+            await page.getByLabel('Token (API key)', { exact: true }).fill(TRANSLATION_TOKEN);
+            await page.getByRole('button', { name: 'SAVE TOKEN' }).click();
+            await expect(page.getByText('A token is saved for this provider.')).toBeVisible();
+        }
+    }
+
+    async function openGenerateDialog(page: Page, audio: string, subtitle: string): Promise<{ player: Locator; create: Locator }> {
+        const player = await openPlayer(page);
+        await expect(player.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toHaveCount(0);
+        await player.getByRole('button', { name: 'CREATE SUBTITLE' }).click();
+        const create = page.getByRole('dialog', { name: 'Create a subtitle' });
+        await expect(create).toBeVisible();
+        await create.getByLabel('Language of the audio', { exact: true }).selectOption(audio);
+        await create.getByLabel('Language of the subtitle', { exact: true }).selectOption(subtitle);
+        await expect(create.getByText(AUDIO_TEXT)).toBeVisible();
+        return { player, create };
+    }
+
+    test('keeps the token of the speech to text apart from the one of the translation, encrypted, and never shows it again', async () => {
+        const { page, userData } = session;
+        await saveTokens(page);
+        await expect(page.getByLabel('Speech-to-text token (API key)', { exact: true })).toHaveValue('');
+        await expect(page.getByRole('button', { name: 'REMOVE SPEECH TOKEN' })).toBeVisible();
+        // The token of the translation was not touched.
+        await expect(page.getByText('No token is saved for this provider.')).toBeVisible();
+        const tokens = JSON.parse(readFileSync(join(userData, 'llm-tokens.json'), 'utf-8')) as Record<string, string>;
+        expect(Object.keys(tokens)).toEqual(['speech-custom']);
+        expect(Buffer.from(tokens['speech-custom'] as string, 'base64').toString('utf-8')).toBe(SPEECH_TOKEN);
+        await expect.poll(() => {
+            return readFileSync(join(userData, 'settings.json'), 'utf-8');
+        }).not.toContain(SPEECH_TOKEN);
+    });
+
+    test('asks for the two languages, says what will be sent before it starts, and transcribes the audio in parts when the subtitle is in the language that is spoken', async () => {
+        const { page } = session;
+        await saveTokens(page);
+        await downloadWithoutSubtitle(page);
+        const { player, create } = await openGenerateDialog(page, 'Japanese', 'Japanese');
+        await expect(create.getByTestId('generate-plan')).toHaveText('The audio is transcribed in Japanese.');
+        const facts = create.getByRole('region', { name: 'What will be sent' });
+        await expect(facts.getByText('Only the audio of the episode is sent, never the video.')).toBeVisible();
+        await expect(facts.getByText('Other (OpenAI-compatible) · whisper-1')).toBeVisible();
+        await expect(facts.getByText('Translation (the text only)')).toHaveCount(0);
+        // Nothing is sent before the user confirms.
+        expect(received).toEqual([]);
+
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create).toBeHidden({ timeout: 60000 });
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN Japanese.');
+
+        expect(received).toHaveLength(2);
+        received.forEach((request, index) => {
+            expect({ method: request.method, path: request.path, authorization: request.authorization }).toEqual({
+                method: 'POST',
+                path: '/v1/audio/transcriptions',
+                authorization: `Bearer ${SPEECH_TOKEN}`
+            });
+            expect(request.contentType?.startsWith('multipart/form-data; boundary=')).toBe(true);
+            expect(request.form).toContain('name="model"\r\n\r\nwhisper-1');
+            expect(request.form).toContain('name="language"\r\n\r\nja');
+            expect(request.form).toContain('name="response_format"\r\n\r\nvtt');
+            expect(request.form).toContain(`name="file"; filename="part-${index}.mp3"`);
+            // What was sent is an MP3: it starts with an ID3 tag or with the sync of a frame.
+            expect(request.fileStart[0] === 0x49 || request.fileStart[0] === 0xff).toBe(true);
+        });
+        expect(chats).toEqual([]);
+        expect(readFileSync(generatedFile('Japanese'), 'utf-8')).toBe(TRANSCRIBED);
+
+        // The player has it and shows it, the app serves it, and the button now offers to translate it.
+        await player.getByRole('button', { name: 'Settings' }).click();
+        await expect(player.getByRole('combobox', { name: 'Subtitles' })).toHaveValue('generated-Japanese');
+        await expect(player.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toBeVisible();
+        await expect(player.getByRole('button', { name: 'CREATE SUBTITLE' })).toHaveCount(0);
+        const served = await session.app.evaluate(async ({ net }, target) => {
+            const response = await net.fetch(target);
+            const headers: Record<string, string> = {};
+            response.headers.forEach((value, key) => {
+                headers[key] = value;
+            });
+            return { status: response.status, headers, body: await response.text() };
+        }, 'pullwave-media://subtitle/1/generated-Japanese');
+        expect(served.status).toBe(200);
+        expect(served.headers['content-type']).toBe('text/vtt; charset=utf-8');
+        expect(served.body).toBe(TRANSCRIBED);
+    });
+
+    test('has the audio translated into English at once by the speech service, without using the language model, and saves only the subtitle in English', async () => {
+        const { page } = session;
+        await saveTokens(page);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'English');
+        await expect(create.getByTestId('generate-plan')).toHaveText('The audio, spoken in Japanese, is written in English at once by the speech service.');
+        await expect(create.getByRole('region', { name: 'What will be sent' }).getByText('Translation (the text only)')).toHaveCount(0);
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create).toBeHidden({ timeout: 60000 });
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN English.');
+
+        expect(
+            received.map((request) => {
+                return request.path;
+            })
+        ).toEqual(['/v1/audio/translations', '/v1/audio/translations']);
+        received.forEach((request) => {
+            expect(request.authorization).toBe(`Bearer ${SPEECH_TOKEN}`);
+            expect(request.form).toContain('name="model"\r\n\r\nwhisper-1');
+            expect(request.form).toContain('name="response_format"\r\n\r\nvtt');
+            // The service is not told which language is spoken: it answers in English whatever it is.
+            expect(request.form).not.toContain('name="language"');
+        });
+        expect(chats).toEqual([]);
+        expect(readFileSync(generatedFile('English'), 'utf-8')).toBe(TRANSCRIBED);
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+    });
+
+    test('transcribes the audio and has the language model translate the text for any other language, saving only the subtitle in that language', async () => {
+        const { page } = session;
+        await saveTokens(page, true);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Spanish');
+        await expect(create.getByTestId('generate-plan')).toHaveText('The audio is transcribed in Japanese, then the text is translated into Spanish.');
+        const facts = create.getByRole('region', { name: 'What will be sent' });
+        await expect(facts.getByText('Translation (the text only)')).toBeVisible();
+        await expect(facts.getByText('Other (OpenAI-compatible) · fake-model')).toBeVisible();
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create).toBeHidden({ timeout: 60000 });
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN Spanish.');
+
+        expect(
+            received.map((request) => {
+                return [request.path, request.authorization];
+            })
+        ).toEqual([
+            ['/v1/audio/transcriptions', `Bearer ${SPEECH_TOKEN}`],
+            ['/v1/audio/transcriptions', `Bearer ${SPEECH_TOKEN}`]
+        ]);
+        expect(received[0]?.form).toContain('name="language"\r\n\r\nja');
+        expect(chats).toHaveLength(1);
+        expect(chats[0]?.path).toBe('/v1/chat/completions');
+        expect(chats[0]?.authorization).toBe(`Bearer ${TRANSLATION_TOKEN}`);
+        expect(chats[0]?.body.model).toBe('fake-model');
+        expect(chats[0]?.body.messages[0]?.content).toContain('Translate each string into Spanish.');
+        expect(chats[0]?.body.messages[1]?.content).toBe('["Part one","Part two"]');
+        expect(readFileSync(generatedFile('Spanish'), 'utf-8')).toBe(TRANSLATED);
+        // The transcription is not kept: only the subtitle that was asked for.
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+    });
+
+    test('has Gemini write the audio in the language of the subtitle at once, in any language, without the language model', async () => {
+        const { userData } = session;
+        await session.app.close();
+        session = await launch(
+            userData,
+            { transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: `${baseUrl}/v1beta`, translateLanguage: 'Portuguese (Brazil)' },
+            { PULLWAVE_FAKE_SECRETS: '1' }
+        );
+        const { page } = session;
+        await openAnimeSettings(page);
+        await expect(page.getByLabel('Speech-to-text service', { exact: true })).toHaveValue('gemini');
+        await expect(page.getByLabel('Speech-to-text model', { exact: true })).toHaveValue('gem-model');
+        await page.getByLabel('Speech-to-text token (API key)', { exact: true }).fill('gem-key');
+        await page.getByRole('button', { name: 'SAVE SPEECH TOKEN' }).click();
+        await expect(page.getByText('A token is saved for this service.')).toBeVisible();
+        const tokens = JSON.parse(readFileSync(join(userData, 'llm-tokens.json'), 'utf-8')) as Record<string, string>;
+        expect(Object.keys(tokens)).toEqual(['speech-gemini']);
+
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Portuguese (Brazil)');
+        await expect(create.getByTestId('generate-plan')).toHaveText('The audio, spoken in Japanese, is written in Portuguese (Brazil) at once by the speech service.');
+        const facts = create.getByRole('region', { name: 'What will be sent' });
+        await expect(facts.getByText('Gemini (Google) · gem-model')).toBeVisible();
+        await expect(facts.getByText('Translation (the text only)')).toHaveCount(0);
+        expect(geminis).toEqual([]);
+
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create).toBeHidden({ timeout: 60000 });
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN Portuguese (Brazil).');
+
+        expect(geminis).toHaveLength(2);
+        geminis.forEach((request) => {
+            expect(request.path).toBe('/v1beta/models/gem-model:generateContent');
+            expect(request.key).toBe('gem-key');
+            const [text, audio] = request.body.contents[0]?.parts ?? [];
+            expect(text?.text).toContain('The audio is spoken in Japanese. Write what is said translated into Portuguese (Brazil).');
+            expect(audio?.inlineData?.mimeType).toBe('audio/mp3');
+            // What was sent is an MP3: it starts with an ID3 tag or with the sync of a frame.
+            const first = Buffer.from(audio?.inlineData?.data ?? '', 'base64')[0];
+            expect(first === 0x49 || first === 0xff).toBe(true);
+        });
+        expect(received).toEqual([]);
+        expect(chats).toEqual([]);
+        expect(readFileSync(generatedFile('Portuguese (Brazil)'), 'utf-8')).toBe('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nParte um\n\n00:10:02.000 --> 00:10:04.000\nParte dois\n');
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+    });
+
+    test('shows the steps, the parts sent and the time while it goes on, and warns when the service refuses to translate the audio at once', async () => {
+        const { page } = session;
+        refuseTranslations = true;
+        holdChat = true;
+        await saveTokens(page, true);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'English');
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        const progress = create.getByRole('region', { name: 'Progress' });
+        await expect(progress).toBeVisible();
+        await expect(create.getByLabel('Language of the audio', { exact: true })).toBeDisabled();
+        await expect(create.getByRole('button', { name: 'CLOSE' })).toBeDisabled();
+        await expect(progress.getByRole('progressbar', { name: 'Progress of the subtitle' })).toBeVisible();
+
+        // The service says no to the translation of the audio: it is sent again to be transcribed, and the text is translated afterwards.
+        await expect(create.getByText('The service does not translate the audio directly, so it is being transcribed first and the text translated afterwards.')).toBeVisible({ timeout: 60000 });
+        await expect(progress.getByText('Taking the audio out of the video')).toBeVisible();
+        await expect(progress.getByText('Translating the text into English')).toBeVisible();
+        await expect(create.getByRole('region', { name: 'What will be sent' }).getByText('Translation (the text only)')).toBeVisible();
+        await expect(progress.getByText(/Elapsed time: \d\d:\d\d/)).toBeVisible();
+        // The translation of the text is held by the test: the steps before it are done.
+        await expect(progress.getByText(/Line 0 of 2/)).toBeVisible({ timeout: 60000 });
+        await expect(progress.getByText(/\(Done\)/)).toHaveCount(2);
+        expect(
+            received.map((request) => {
+                return request.path;
+            })
+        ).toEqual(['/v1/audio/translations', '/v1/audio/transcriptions', '/v1/audio/transcriptions']);
+
+        await create.getByRole('button', { name: 'CANCEL', exact: true }).click();
+        await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeEnabled();
+        await expect(create.getByRole('alert')).toHaveCount(0);
+        expect(existsSync(generatedFile('English'))).toBe(false);
+    });
+
+    test('says the settings have no token for the speech to text, and sends nothing', async () => {
+        const { page } = session;
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Japanese');
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create.getByRole('alert')).toHaveText('There is no token for this service. Add one in the anime settings.');
+        await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeEnabled();
+        expect(received).toEqual([]);
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+    });
+
+    test('says the translation has no token before anything is sent, when the subtitle has to be translated afterwards', async () => {
+        const { page } = session;
+        await saveTokens(page);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Spanish');
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create.getByRole('alert')).toHaveText('There is no token for the translation. Add one in the anime settings.');
+        expect(received).toEqual([]);
+        expect(chats).toEqual([]);
+        expect(existsSync(generatedFile('Spanish'))).toBe(false);
+    });
+
+    test('says what went wrong when the service does not accept the token, stops at the first part and saves nothing', async () => {
+        const { page } = session;
+        answerWith = 401;
+        await saveTokens(page);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Japanese');
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create.getByRole('alert')).toHaveText('The subtitle could not be created. The provider did not accept the token. Check it in the anime settings.');
+        expect(received).toHaveLength(1);
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+        await expect(create.getByRole('region', { name: 'Progress' })).toHaveCount(0);
+        // The notices of the downloads are still there: only the one that says the subtitle was made must not be.
+        await expect(page.locator('.toast--info', { hasText: 'SUBTITLE CREATED' })).toHaveCount(0);
+    });
+
+    test('shows the parts that were sent and stops when the user cancels, without saving anything', async () => {
+        const { page } = session;
+        hold = true;
+        await saveTokens(page);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Japanese');
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create.getByText(/Part 0 of 2 · 0 B of .* sent/)).toBeVisible({ timeout: 30000 });
+        await expect(create.getByRole('button', { name: 'CLOSE' })).toBeDisabled();
+        await expect.poll(() => {
+            return received.length;
+        }).toBe(1);
+
+        await create.getByRole('button', { name: 'CANCEL', exact: true }).click();
+        await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeEnabled();
+        await expect(create.getByRole('alert')).toHaveCount(0);
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+        await create.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(create).toBeHidden();
+    });
+
+    test('says the video has no audio, and keeps CREATE off', async () => {
+        const { page } = session;
+        await saveTokens(page);
+        await downloadWithoutSubtitle(page, false);
+        const player = await openPlayer(page);
+        await player.getByRole('button', { name: 'CREATE SUBTITLE' }).click();
+        const create = page.getByRole('dialog', { name: 'Create a subtitle' });
+        await expect(create.getByText('This video has no audio to transcribe.')).toBeVisible();
+        await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeDisabled();
+        expect(received).toEqual([]);
+    });
+});

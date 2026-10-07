@@ -89,6 +89,16 @@ describe('SelectField', () => {
         })).toEqual(['BEST', '720']);
         expect(screen.getByText('pick')).toBeInTheDocument();
     });
+
+    it('is enabled by default and can be turned off, with no change reported', async () => {
+        const onChange = vi.fn();
+        const { rerender } = render(<SelectField label="Format" value="mp4" options={['mp4', 'mkv']} onChange={onChange} />);
+        expect(screen.getByLabelText('Format')).toBeEnabled();
+        rerender(<SelectField label="Format" value="mp4" options={['mp4', 'mkv']} disabled onChange={onChange} />);
+        expect(screen.getByLabelText('Format')).toBeDisabled();
+        await userEvent.setup().selectOptions(screen.getByLabelText('Format'), 'mkv');
+        expect(onChange).not.toHaveBeenCalled();
+    });
 });
 
 describe('ToggleField', () => {

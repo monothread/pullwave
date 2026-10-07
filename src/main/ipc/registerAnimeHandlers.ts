@@ -18,7 +18,18 @@ import {
     type AnimeStreamResponse,
     type AnimeSubtitleCheckResponse,
     type AnimeSubtitleImportResponse,
-    type AnimeSubtitleTrack
+    type AnimeSubtitleTrack,
+    type SubtitleEstimateRequest,
+    type SubtitleGenerateEstimateResponse,
+    type SubtitleGenerateRequest,
+    type SubtitleGenerateResponse,
+    TRANSCRIPTION_LANGUAGES,
+    type TranscriptionLanguage,
+    type SubtitleEstimateResponse,
+    type SubtitleTranslateRequest,
+    type SubtitleTranslateResponse,
+    TRANSLATION_LANGUAGES,
+    type TranslationLanguage
 } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, sameSeries } from '@shared/series';
@@ -79,6 +90,16 @@ export interface AnimeHandlerDependencies {
         list: (episodeId: number) => AnimeSubtitleTrack[];
         import: (episodeId: number) => Promise<AnimeSubtitleImportResponse>;
         check: (episodeId: number) => Promise<AnimeSubtitleCheckResponse>;
+        // Translates a subtitle with the language model of the settings (queued: the answer comes when it is done), says what that takes,
+        // and cancels the translation of an episode (or all of them, null).
+        translate: (request: SubtitleTranslateRequest) => Promise<SubtitleTranslateResponse>;
+        estimate: (request: SubtitleEstimateRequest) => Promise<SubtitleEstimateResponse>;
+        cancelTranslation: (episodeId: number | null) => void;
+        // Makes the subtitle of an episode from its audio with the service of speech to text of the settings (queued: the answer comes when
+        // it is done), says how long the audio is, and cancels it.
+        generate: (request: SubtitleGenerateRequest) => Promise<SubtitleGenerateResponse>;
+        estimateGeneration: (episodeId: number) => Promise<SubtitleGenerateEstimateResponse>;
+        cancelGeneration: (episodeId: number) => void;
     };
 }
 
@@ -104,6 +125,26 @@ function validIds(value: unknown): number[] {
         return id !== null;
     });
     return [...new Set(ids)];
+}
+
+function asLanguage(value: unknown): TranslationLanguage | null {
+    return TRANSLATION_LANGUAGES.find((language) => {
+        return language === value;
+    }) ?? null;
+}
+
+function asSpokenLanguage(value: unknown): TranscriptionLanguage | null {
+    return TRANSCRIPTION_LANGUAGES.find((language) => {
+        return language === value;
+    }) ?? null;
+}
+
+// The id of the subtitle to translate from: null lets the app pick one; anything else that is not a text is not accepted.
+function asTrackId(value: unknown): string | null | undefined {
+    if (value === null || value === undefined) {
+        return null;
+    }
+    return typeof value === 'string' && value.length <= MAX_TEXT_LENGTH ? value : undefined;
 }
 
 function invalid(raw: string): { ok: false; error: AniError } {
@@ -329,7 +370,22 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeSubtitlesCheck, (): AnimeSubtitleCheckResponse => {
         return { ok: false, reason: 'missing' };
     });
-    [IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
+    ipcMain.handle(IPC.animeSubtitleTranslate, (): SubtitleTranslateResponse => {
+        return { ok: false, reason: 'missing' };
+    });
+    ipcMain.handle(IPC.animeSubtitleTranslateEstimate, (): SubtitleEstimateResponse => {
+        return { ok: false, reason: 'missing' };
+    });
+    ipcMain.handle(IPC.animeSubtitleTranslateMany, (): number => {
+        return 0;
+    });
+    ipcMain.handle(IPC.animeSubtitleGenerate, (): SubtitleGenerateResponse => {
+        return { ok: false, reason: 'missing' };
+    });
+    ipcMain.handle(IPC.animeSubtitleGenerateEstimate, (): SubtitleGenerateEstimateResponse => {
+        return { ok: false, reason: 'missing' };
+    });
+    [IPC.animeSubtitleTranslateCancel, IPC.animeSubtitleGenerateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
         ipcMain.handle(channel, (): void => {
             return undefined;
         });
@@ -670,6 +726,82 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             deps.refreshMetadata(id);
         }
         return result;
+    });
+    // A translation that ended well is kept beside the video, which is written again with what it holds.
+    const translateAndRefresh = async (request: SubtitleTranslateRequest): Promise<SubtitleTranslateResponse> => {
+        const result = await deps.subtitles.translate(request);
+        if (result.ok) {
+            deps.refreshMetadata(request.episodeId);
+        }
+        return result;
+    };
+    ipcMain.handle(IPC.animeSubtitleTranslate, (_event, input): Promise<SubtitleTranslateResponse> => {
+        const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+        const episodeId = asId(raw.episodeId);
+        const trackId = asTrackId(raw.trackId);
+        const language = asLanguage(raw.language);
+        if (episodeId === null || trackId === undefined || language === null) {
+            return Promise.resolve({ ok: false, reason: 'missing' });
+        }
+        return translateAndRefresh({ episodeId, trackId, language });
+    });
+    ipcMain.handle(IPC.animeSubtitleTranslateEstimate, (_event, input): Promise<SubtitleEstimateResponse> => {
+        const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+        const episodeId = asId(raw.episodeId);
+        const trackId = asTrackId(raw.trackId);
+        if (episodeId === null || trackId === undefined) {
+            return Promise.resolve({ ok: false, reason: 'missing' });
+        }
+        return deps.subtitles.estimate({ episodeId, trackId });
+    });
+    // Queues the subtitle of each episode; the progress and the end of each one come as updates.
+    ipcMain.handle(IPC.animeSubtitleTranslateMany, (_event, input): number => {
+        const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+        const language = asLanguage(raw.language);
+        const ids = validIds(raw.episodeIds).slice(0, MAX_EPISODES_PER_REQUEST);
+        if (language === null) {
+            return 0;
+        }
+        ids.forEach((episodeId) => {
+            void translateAndRefresh({ episodeId, trackId: null, language });
+        });
+        return ids.length;
+    });
+    // Null cancels all of them; an id that is not one cancels nothing.
+    ipcMain.handle(IPC.animeSubtitleTranslateCancel, (_event, episodeId): void => {
+        if (episodeId === null) {
+            deps.subtitles.cancelTranslation(null);
+            return;
+        }
+        const id = asId(episodeId);
+        if (id !== null) {
+            deps.subtitles.cancelTranslation(id);
+        }
+    });
+    ipcMain.handle(IPC.animeSubtitleGenerate, async (_event, input): Promise<SubtitleGenerateResponse> => {
+        const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+        const episodeId = asId(raw.episodeId);
+        const audioLanguage = asSpokenLanguage(raw.audioLanguage);
+        const language = asLanguage(raw.language);
+        if (episodeId === null || audioLanguage === null || language === null) {
+            return { ok: false, reason: 'missing' };
+        }
+        const result = await deps.subtitles.generate({ episodeId, audioLanguage, language });
+        if (result.ok) {
+            deps.refreshMetadata(episodeId);
+        }
+        return result;
+    });
+    ipcMain.handle(IPC.animeSubtitleGenerateEstimate, (_event, episodeId): Promise<SubtitleGenerateEstimateResponse> => {
+        const id = asId(episodeId);
+        return id === null ? Promise.resolve({ ok: false, reason: 'missing' }) : deps.subtitles.estimateGeneration(id);
+    });
+    // An id that is not one cancels nothing.
+    ipcMain.handle(IPC.animeSubtitleGenerateCancel, (_event, episodeId): void => {
+        const id = asId(episodeId);
+        if (id !== null) {
+            deps.subtitles.cancelGeneration(id);
+        }
     });
     ipcMain.handle(IPC.animeProgress, (_event, input): void => {
         const update = parseProgress(input);

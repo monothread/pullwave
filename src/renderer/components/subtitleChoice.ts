@@ -38,7 +38,7 @@ export function optionsOf(tracks: readonly AnimeSubtitleTrack[], language?: Lang
         language
     );
     return tracks.map((track, position) => {
-        return { id: optionIdOf(track), label: track.kind === 'imported' ? track.label : (labels[position] as string) };
+        return { id: optionIdOf(track), label: track.kind === 'imported' || track.kind === 'generated' || track.kind === 'translated' ? track.label : (labels[position] as string) };
     });
 }
 
