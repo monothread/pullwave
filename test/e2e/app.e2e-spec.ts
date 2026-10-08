@@ -2923,6 +2923,26 @@ test.describe('start at login', () => {
         }
     });
 
+    test('@resize a start at login that stays in the tray is not maximized until the window is brought back', async () => {
+        const own = await launch({
+            env: { ...KDE_ENV, PULLWAVE_E2E_DISPLAY: '' },
+            args: ['--autostart'],
+            settings: { closeToTray: true, startMinimized: true }
+        });
+        try {
+            await own.page.waitForTimeout(800);
+            expect(await windowState(own)).toEqual({ visible: false, maximized: false });
+            expect(appExited(own)).toBe(false);
+
+            spawnSync(ELECTRON_PATH, [ROOT, '--no-sandbox', `--user-data-dir=${own.userData}`], { timeout: 20000, env: { ...process.env, ...KDE_ENV, PULLWAVE_E2E_DISPLAY: '' } });
+            await expect.poll(() => {
+                return windowState(own);
+            }).toEqual({ visible: true, maximized: true });
+        } finally {
+            await closeQuietly(own);
+        }
+    });
+
     test('@resize opens maximized when started by the person too', async () => {
         const own = await launch({ env: { PULLWAVE_E2E_DISPLAY: '' } });
         try {

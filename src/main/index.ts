@@ -89,6 +89,15 @@ function applyContentSecurityPolicy(): void {
     });
 }
 
+// The app opens maximized. maximize() also shows a window that is out of sight, so a start at login that stays in the tray leaves it
+// for the moment the window is brought back. The end-to-end tests keep the size set when the window is created, which the layout ones
+// depend on.
+function maximizeUnlessTesting(window: BrowserWindow): void {
+    if (e2eDisplay() === null && !window.isMaximized()) {
+        window.maximize();
+    }
+}
+
 function showWindow(): void {
     if (!mainWindow || mainWindow.isDestroyed()) {
         return;
@@ -96,6 +105,7 @@ function showWindow(): void {
     if (mainWindow.isMinimized()) {
         mainWindow.restore();
     }
+    maximizeUnlessTesting(mainWindow);
     mainWindow.show();
     mainWindow.focus();
 }
@@ -173,10 +183,8 @@ function createWindow(options: { hidden: boolean }): BrowserWindow {
     window.webContents.setWindowOpenHandler(() => {
         return { action: 'deny' };
     });
-    // The app opens maximized (also when it starts out of sight, so it shows maximized from the tray). The end-to-end tests keep the
-    // size above, which the layout ones depend on.
-    if (e2eDisplay() === null) {
-        window.maximize();
+    if (!options.hidden) {
+        maximizeUnlessTesting(window);
     }
     window.on('close', handleWindowClose);
     if (diagnosticLog) {
