@@ -44,6 +44,25 @@
     }
 }
 
+/* The cover cards are four to a row; they drop to three, two and then one only when the page is too narrow for them. */
+@container main (max-width: 1199px) {
+    .cover-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@container main (max-width: 899px) {
+    .cover-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@container main (max-width: 599px) {
+    .cover-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 @container main (min-width: 900px) {
     .settings {
         column-count: 2;

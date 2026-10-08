@@ -765,14 +765,14 @@ body::after {
 .schedule__day { display: flex; flex-direction: column; gap: 8px; }
 .schedule__day .section-label { margin: 0; }
 .schedule__today { color: var(--green); }
-.cover-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-/* Every card is as tall as its cover, so the ones with more on them (a button) are the same size as the others. */
-.cover-card { display: flex; justify-content: flex-start; align-items: stretch; flex-direction: row; gap: 12px; min-width: 0; min-height: calc(128px + 18px); padding: 8px 12px 8px 8px; }
+.cover-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+/* The cover is at the top of the card, as wide as the card, and what is said of the anime is under it. */
+.cover-card { display: flex; justify-content: flex-start; align-items: stretch; flex-direction: column; gap: 10px; min-width: 0; padding: 8px; }
 .cover-card .history__main, .cover-card__body { display: flex; flex-direction: column; justify-content: flex-start; flex: 1; gap: 4px; min-width: 0; }
-/* The title has room for three lines whatever its length, so what is under it (the season, the buttons) is always at the same place. */
-.cover-card .history__title, .cover-card .series__title { display: block; flex: none; height: 3.9em; margin: 0; overflow: hidden; font-size: 15px; line-height: 1.3; white-space: normal; }
+/* The title is as tall as its text (three lines at most), and what is under it (the season, the buttons) is at the bottom of the card. */
+.cover-card .history__title, .cover-card .series__title { display: block; flex: none; margin: 0; overflow: hidden; font-size: 15px; line-height: 1.3; white-space: normal; }
 .cover-card .row-link__text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-/* The buttons are at the bottom of the card, level with the bottom of the cover. */
+/* The buttons are at the bottom of the card. */
 .cover-card__action { align-self: flex-start; margin-top: auto; }
 /* What is said of the anime in the library is just above its button, at the bottom of the card. */
 .cover-card__footer { display: flex; flex-direction: column; gap: 4px; margin-top: auto; }
@@ -782,12 +782,12 @@ body::after {
 .cover-card .job__head { align-items: flex-start; flex-direction: column; gap: 6px; }
 .cover-card .library__footer { margin-top: auto; }
 .cover-card .history__meta { line-height: 1.3; }
-/* In the schedule the episode and the time are at the bottom of the card, level with the bottom of the cover. */
+/* A long word, a long date or a long list of badges breaks onto the next line instead of coming out of the card. */
+.cover-card .history__title, .cover-card .series__title, .cover-card .row-link__text, .cover-card .history__meta { overflow-wrap: anywhere; }
+.cover-card .job__badges, .cover-card .badge { flex-wrap: wrap; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+/* In the schedule the episode and the time are at the bottom of the card. */
 .cover-card--bottom-meta .history__meta { margin-top: auto; }
-/* With only one line under it, the title has room for five. */
-.cover-card--bottom-meta .history__title { height: 6.5em; }
-.cover-card--bottom-meta .row-link__text { -webkit-line-clamp: 5; }
-.cover { flex: none; width: 90px; height: 128px; object-fit: cover; border: 1px solid var(--line); background: var(--line); }
+.cover { flex: none; width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid var(--line); background: var(--line); }
 .cover--none { display: flex; align-items: center; justify-content: center; padding: 4px; box-sizing: border-box; text-align: center; font-size: 10px; line-height: 1.25; letter-spacing: 0.5px; color: var(--muted); overflow: hidden; }
 .anime__search, .anime__detail { display: flex; flex-direction: column; gap: 12px; }
 .anime__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
