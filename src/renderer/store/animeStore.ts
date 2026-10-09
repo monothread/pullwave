@@ -5,6 +5,7 @@ import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { readScheduleChoice, saveScheduleTimeZone, type AnimeScheduleView } from './scheduleChoice';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
 import { resolveAppLanguage } from '../i18n/language';
+import { groupLibrary, libraryEntry } from '../components/animeText';
 import { useAppStore } from './appStore';
 
 export type AnimeView = 'schedule' | 'search' | 'library' | 'history' | 'settings' | 'downloads';
@@ -89,6 +90,9 @@ export interface AnimeState {
     streaming: StreamingEpisode | null;
     // The anime of the library the screen goes to when it is opened from the search (its episodes are shown).
     libraryFocus: number | null;
+    // The series open on the screen of the library (the key of its card); null: the cards. It is a page of the app, so the back and forward
+    // buttons of the mouse go through it.
+    librarySeries: string | null;
     init: () => Promise<() => void>;
     updateCli: () => Promise<void>;
     // Goes back to the ani-cli that ships with the app.
@@ -96,6 +100,8 @@ export interface AnimeState {
     setView: (view: AnimeBrowseView) => void;
     openDownloads: () => void;
     closeDownloads: () => void;
+    openSeries: (key: string) => void;
+    closeSeries: () => void;
     setQuery: (query: string) => void;
     setAudio: (audio: AnimeAudio) => void;
     runSearch: () => Promise<void>;
@@ -113,6 +119,8 @@ export interface AnimeState {
     openResult: (result: AnimeSearchResult) => Promise<void>;
     // Opens an anime of the library in the search, as if it had been found there, so more episodes can be downloaded.
     openLibraryAnime: (anime: Pick<AnimeRecord, 'title' | 'query' | 'searchIndex' | 'audio'>) => Promise<void>;
+    // Opens an anime of the history: in the library, on its series, when it is there; otherwise in the search, with its episodes.
+    openHistoryEntry: (entry: AnimeHistoryEntry) => Promise<void>;
     // Asks for a folder of anime and puts what is in it into the library, then says what it did.
     importLibrary: () => Promise<void>;
     // Moves all the anime to a folder the user chooses, then says how it went. Returns what the migration answered.
@@ -254,6 +262,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         playing: null,
         streaming: null,
         libraryFocus: null,
+        librarySeries: null,
 
         init: async () => {
             const api = window.api;
@@ -323,7 +332,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         setView: (view) => {
-            set({ view, returnView: view, libraryFocus: null });
+            set({ view, returnView: view, libraryFocus: null, librarySeries: null });
             // Files can be moved or deleted while the app is open: the library says which ones are gone when it is shown.
             if (view === 'library') {
                 void get().refreshLibrary();
@@ -340,6 +349,14 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             set((state) => {
                 return { view: state.returnView };
             });
+        },
+
+        openSeries: (key) => {
+            set({ librarySeries: key });
+        },
+
+        closeSeries: () => {
+            set({ librarySeries: null, libraryFocus: null });
         },
 
         setQuery: (query) => {
@@ -573,8 +590,23 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             await get().openResult(result);
         },
 
+        openHistoryEntry: async (entry) => {
+            const saved = libraryEntry(get().library, entry.title, entry.audio);
+            if (saved) {
+                get().showInLibrary(saved.id);
+                return;
+            }
+            await get().openLibraryAnime(entry);
+        },
+
         showInLibrary: (animeId) => {
-            set({ view: 'library', returnView: 'library', selection: null, libraryFocus: animeId });
+            // The series of the anime is open, with its seasons.
+            const group = groupLibrary(get().library).find((candidate) => {
+                return candidate.entries.some((entry) => {
+                    return entry.id === animeId;
+                });
+            });
+            set({ view: 'library', returnView: 'library', selection: null, libraryFocus: animeId, librarySeries: group?.key ?? null });
             void get().refreshLibrary();
         },
 

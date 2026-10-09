@@ -3,7 +3,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { AnimeCover } from './AnimeCover';
 import { RowLink } from './RowLink';
 
-// The anime the viewer opened or watched, the most recent first. Opening one goes back to its episodes, in the search.
+// The anime the viewer opened or watched, the most recent first. Opening one goes to its series in the library when it is there, and to its episodes in the search when it is not.
 export function AnimeHistory() {
     const t = useTranslator();
     const language = useAppLanguage();
@@ -11,7 +11,7 @@ export function AnimeHistory() {
         return state.history;
     });
     const openAnime = useAnimeStore((state) => {
-        return state.openLibraryAnime;
+        return state.openHistoryEntry;
     });
     const removeEntry = useAnimeStore((state) => {
         return state.removeHistoryEntry;

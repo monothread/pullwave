@@ -27,6 +27,7 @@ beforeEach(() => {
         search: INITIAL_SEARCH,
         selection: null,
         libraryFocus: null,
+        librarySeries: null,
         playing: null,
         streaming: null
     });
@@ -65,11 +66,17 @@ function mount(): { unmount: () => void } {
 }
 
 describe('snapshotKey', () => {
-    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null };
+    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null };
 
     it('joins the parts that make a page', () => {
-        expect(snapshotKey(base)).toBe('anime|queue|library|library||');
-        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7 })).toBe('anime|queue|library|library|2:sub|7');
+        expect(snapshotKey(base)).toBe('anime|queue|library|library|||');
+        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren' })).toBe('anime|queue|library|library|2:sub|7|series-frieren');
+    });
+
+    it('differs between the cards of the library and each series open', () => {
+        const key = snapshotKey(base);
+        expect(snapshotKey({ ...base, librarySeries: 'series-frieren' })).not.toBe(key);
+        expect(snapshotKey({ ...base, librarySeries: 'series-frieren' })).not.toBe(snapshotKey({ ...base, librarySeries: 'anime-4' }));
     });
 
     it('does not change when the content of the same selection loads', () => {
@@ -270,7 +277,71 @@ describe('useMouseNavigation', () => {
         setView('search');
 
         press(MOUSE_BACK_BUTTON);
-        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', libraryFocus: 4 });
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', libraryFocus: 4, librarySeries: 'anime-4' });
+    });
+
+    it('goes back from a series of the library to the cards, and not past the library, and forward to the series again', () => {
+        useAppStore.setState({ tab: 'anime' });
+        mount();
+        setView('library');
+        act(() => {
+            useAnimeStore.getState().openSeries('series-frieren');
+        });
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', librarySeries: null });
+
+        press(MOUSE_FORWARD_BUTTON);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', librarySeries: 'series-frieren' });
+
+        press(MOUSE_BACK_BUTTON);
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'search', librarySeries: null });
+    });
+
+    it('goes through the series that were opened one after the other, in the order they were opened', () => {
+        useAppStore.setState({ tab: 'anime' });
+        mount();
+        setView('library');
+        act(() => {
+            useAnimeStore.getState().openSeries('series-frieren');
+        });
+        act(() => {
+            useAnimeStore.getState().closeSeries();
+        });
+        act(() => {
+            useAnimeStore.getState().openSeries('anime-4');
+        });
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState().librarySeries).toBeNull();
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState().librarySeries).toBe('series-frieren');
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState().librarySeries).toBeNull();
+        press(MOUSE_FORWARD_BUTTON);
+        expect(useAnimeStore.getState().librarySeries).toBe('series-frieren');
+        press(MOUSE_FORWARD_BUTTON);
+        expect(useAnimeStore.getState().librarySeries).toBeNull();
+        press(MOUSE_FORWARD_BUTTON);
+        expect(useAnimeStore.getState().librarySeries).toBe('anime-4');
+    });
+
+    it('comes back to the series of the library from another view and from another tab', () => {
+        mount();
+        setTab('anime');
+        setView('library');
+        act(() => {
+            useAnimeStore.getState().openSeries('series-frieren');
+        });
+        setView('history');
+        setTab('settings');
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAppStore.getState().tab).toBe('anime');
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'history', librarySeries: null });
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', librarySeries: 'series-frieren' });
     });
 
     it.each([

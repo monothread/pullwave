@@ -564,6 +564,26 @@ test('keeps the anime that was opened in the history, opens it again from there 
     await expect(page.getByText('// NOTHING OPENED YET. SEARCH AN ANIME OR PLAY AN EPISODE.')).toBeVisible();
 });
 
+test('opens an anime of the history on its series in the library when it is there, and goes back to the history with the mouse', async () => {
+    const { page } = session;
+    const subNav = page.getByRole('navigation', { name: 'Anime' });
+    await downloadFirstEpisode(page);
+    await subNav.getByRole('button', { name: 'HISTORY', exact: true }).click();
+    await page.getByRole('region', { name: 'Anime history' }).getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+
+    await expect(subNav.getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('series-view')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Fake Anime' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toHaveCount(0);
+
+    // Playwright cannot press the side buttons, so the events the browser sends for them are dispatched.
+    await page.evaluate(() => {
+        window.dispatchEvent(new MouseEvent('mouseup', { button: 3, bubbles: true, cancelable: true }));
+    });
+    await expect(subNav.getByRole('button', { name: 'HISTORY', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('region', { name: 'Anime history' })).toBeVisible();
+});
+
 test('the history of the anime survives closing the app and can be cleared', async () => {
     const { page } = session;
     await openAnimeTab(page);
@@ -639,6 +659,50 @@ test('opens a series, shows its episodes and plays one by clicking on the rows, 
     await expect(page.getByRole('button', { name: 'PLAY', exact: true })).toHaveCount(0);
     await clickOnRow(page, season.getByTestId('anime-episode').locator('.history__meta').first());
     await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 1' })).toBeVisible();
+});
+
+test('the back and forward buttons of the mouse go through the series of the library in the order it was opened', async () => {
+    const { page } = session;
+    // Playwright cannot press the side buttons, so the events the browser sends for them are dispatched.
+    const pressSideButton = async (button: 3 | 4): Promise<boolean> => {
+        return page.evaluate((which) => {
+            const event = new MouseEvent('mouseup', { button: which, bubbles: true, cancelable: true });
+            window.dispatchEvent(event);
+            return event.defaultPrevented;
+        }, button);
+    };
+    const animeBar = page.getByRole('navigation', { name: 'Anime' });
+    await downloadFirstEpisode(page);
+    await animeBar.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+    await expect(page.getByTestId('anime-card')).toHaveCount(1);
+    await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+    await expect(page.getByTestId('series-view')).toBeVisible();
+
+    // Back from the series goes to the cards of the library, not past the library.
+    expect(await pressSideButton(3)).toBe(true);
+    await expect(page.getByTestId('series-view')).toHaveCount(0);
+    await expect(page.getByTestId('anime-card')).toHaveCount(1);
+    await expect(animeBar.getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');
+
+    // Forward goes to the series again.
+    expect(await pressSideButton(4)).toBe(true);
+    await expect(page.getByTestId('series-view')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'BACK TO LIBRARY' })).toBeVisible();
+
+    // Back twice goes through the cards and then to the view before the library.
+    expect(await pressSideButton(3)).toBe(true);
+    expect(await pressSideButton(3)).toBe(true);
+    await expect(animeBar.getByRole('button', { name: 'SEARCH', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('series-view')).toHaveCount(0);
+
+    // The button of the screen closes the series like the mouse does: the cards, and then forward opens it again.
+    expect(await pressSideButton(4)).toBe(true);
+    expect(await pressSideButton(4)).toBe(true);
+    await expect(page.getByTestId('series-view')).toBeVisible();
+    await page.getByRole('button', { name: 'BACK TO LIBRARY' }).click();
+    await expect(page.getByTestId('anime-card')).toHaveCount(1);
+    expect(await pressSideButton(3)).toBe(true);
+    await expect(page.getByTestId('series-view')).toBeVisible();
 });
 
 test('in fullscreen, in the cyberpunk theme, only the part of the timeline already watched has the wave and the glow @resize', async () => {

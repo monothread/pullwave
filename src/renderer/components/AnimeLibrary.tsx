@@ -396,9 +396,6 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
     );
 }
 
-// What is open on the screen of the library besides the cards: one series (by the key of its card).
-type LibraryView = { key: string };
-
 // The name of the series, changed for all the anime in it: when the name is one another series has, the seasons of both join, and a season
 // they both have is refused with the one the other series could give.
 function SeriesRename({ group, t, onClose, onRenamed }: { group: LibraryGroup; t: Translator; onClose: () => void; onRenamed: (name: string) => void }) {
@@ -558,16 +555,15 @@ export function AnimeLibrary() {
         return state.importLibrary;
     });
     const [search, setSearch] = useState('');
-    // Coming from the search ("VIEW IN LIBRARY") the series of the anime that was being looked at is open.
-    const [view, setView] = useState<LibraryView | null>(() => {
-        const state = useAnimeStore.getState();
-        const focus = state.libraryFocus;
-        const group = focus === null ? undefined : groupLibrary(state.library).find((candidate) => {
-            return candidate.entries.some((entry) => {
-                return entry.id === focus;
-            });
-        });
-        return group ? { key: group.key } : null;
+    // The series that is open is in the store (coming from the search, "VIEW IN LIBRARY", it is the one of the anime that was being looked at).
+    const openKey = useAnimeStore((state) => {
+        return state.librarySeries;
+    });
+    const openSeries = useAnimeStore((state) => {
+        return state.openSeries;
+    });
+    const closeSeries = useAnimeStore((state) => {
+        return state.closeSeries;
     });
 
     const importButton = (
@@ -590,18 +586,16 @@ export function AnimeLibrary() {
             </section>
         );
     }
-    const openGroup = view ? groupLibrary(library).find((group) => { return group.key === view.key; }) : undefined;
+    const openGroup = openKey === null ? undefined : groupLibrary(library).find((group) => { return group.key === openKey; });
     if (openGroup) {
         return (
             <SeriesView
                 group={openGroup}
                 t={t}
-                onBack={() => {
-                    setView(null);
-                }}
+                onBack={closeSeries}
                 onRenamed={(renamed) => {
                     // The key of a series is made of its name, so the screen goes on with the series under its new one.
-                    setView({ key: `series-${foldSeries(renamed)}` });
+                    openSeries(`series-${foldSeries(renamed)}`);
                 }}
             />
         );
@@ -626,7 +620,7 @@ export function AnimeLibrary() {
                             group={group}
                             t={t}
                             onOpen={() => {
-                                setView({ key: group.key });
+                                openSeries(group.key);
                             }}
                         />
                     );

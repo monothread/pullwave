@@ -43,6 +43,7 @@ describe('useAnimeStore initial state', () => {
         expect(initialAnime.playing).toBeNull();
         expect(initialAnime.streaming).toBeNull();
         expect(initialAnime.libraryFocus).toBeNull();
+        expect(initialAnime.librarySeries).toBeNull();
     });
 });
 
@@ -387,6 +388,41 @@ describe('simple setters', () => {
         useAnimeStore.setState({ view: 'search', selection: { result: RESULT, query: 'naruto', audio: 'sub', status: 'ready', episodes: ['1'], error: null } });
         useAnimeStore.getState().showInLibrary(7);
         expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', selection: null, libraryFocus: 7 });
+    });
+
+    it('opens the series of the anime that was being looked at: its card, whether it has a series or not', () => {
+        useAnimeStore.setState({
+            library: [makeAnime([], { id: 7, title: 'Naruto' }), makeAnime([], { id: 8, title: 'Frieren Season 2', series: 'Frieren', season: 2 }), makeAnime([], { id: 9, title: 'Frieren', series: 'Frieren', season: 1 })]
+        });
+        useAnimeStore.getState().showInLibrary(7);
+        expect(useAnimeStore.getState().librarySeries).toBe('anime-7');
+        useAnimeStore.getState().showInLibrary(8);
+        expect(useAnimeStore.getState().librarySeries).toBe('series-frieren');
+        useAnimeStore.getState().showInLibrary(9);
+        expect(useAnimeStore.getState().librarySeries).toBe('series-frieren');
+    });
+
+    it('opens no series when the anime is not in the library', () => {
+        useAnimeStore.setState({ library: [], librarySeries: 'series-frieren' });
+        useAnimeStore.getState().showInLibrary(7);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', libraryFocus: 7, librarySeries: null });
+    });
+
+    it('opens and closes a series of the library, and forgets the anime in view when it closes', () => {
+        useAnimeStore.setState({ libraryFocus: 7 });
+        useAnimeStore.getState().openSeries('series-frieren');
+        expect(useAnimeStore.getState()).toMatchObject({ librarySeries: 'series-frieren', libraryFocus: 7 });
+        useAnimeStore.getState().closeSeries();
+        expect(useAnimeStore.getState()).toMatchObject({ librarySeries: null, libraryFocus: null });
+    });
+
+    it('closes the series when a view is chosen again', () => {
+        useAnimeStore.getState().openSeries('series-frieren');
+        useAnimeStore.getState().setView('library');
+        expect(useAnimeStore.getState().librarySeries).toBeNull();
+        useAnimeStore.getState().openSeries('series-frieren');
+        useAnimeStore.getState().setView('search');
+        expect(useAnimeStore.getState().librarySeries).toBeNull();
     });
 
     it('stops pointing at an anime of the library when the view is chosen again', () => {
@@ -1141,6 +1177,50 @@ describe('the history', () => {
         await useAnimeStore.getState().openLibraryAnime({ ...ENTRY, searchIndex: 0 });
         expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'dub');
         expect(useAnimeStore.getState()).toMatchObject({ view: 'search', selection: null });
+    });
+});
+
+describe('openHistoryEntry', () => {
+    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 10 };
+
+    beforeEach(() => {
+        mock.api.listAnimeLibrary.mockResolvedValue([]);
+    });
+
+    it('opens the series in the library when the anime of the entry is there (same title and audio), without searching', async () => {
+        useAnimeStore.setState({ view: 'history', library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'dub' })] });
+        await useAnimeStore.getState().openHistoryEntry(ENTRY);
+
+        expect(mock.api.listAnimeEpisodes).not.toHaveBeenCalled();
+        expect(mock.api.searchAnime).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', selection: null, libraryFocus: 7, librarySeries: 'anime-7' });
+    });
+
+    it('opens the series of an anime that belongs to one, by the key of the series', async () => {
+        useAnimeStore.setState({ library: [makeAnime([], { id: 8, title: 'Naruto', audio: 'dub', series: 'Naruto Saga', season: 1 })] });
+        await useAnimeStore.getState().openHistoryEntry(ENTRY);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', libraryFocus: 8, librarySeries: 'series-naruto saga' });
+    });
+
+    it('opens the entry in the search, with its episodes, when the anime is not in the library', async () => {
+        mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1', '2'] });
+        useAnimeStore.setState({ view: 'history', library: [] });
+        await useAnimeStore.getState().openHistoryEntry(ENTRY);
+
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+        expect(useAnimeStore.getState()).toMatchObject({
+            view: 'search',
+            returnView: 'search',
+            selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', audio: 'dub', status: 'ready', episodes: ['1', '2'] }
+        });
+    });
+
+    it('opens it in the search when the library has the title with another audio only', async () => {
+        mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1'] });
+        useAnimeStore.setState({ library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'sub' })] });
+        await useAnimeStore.getState().openHistoryEntry(ENTRY);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'search', librarySeries: null });
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
     });
 });
 

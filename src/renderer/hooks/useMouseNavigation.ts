@@ -15,17 +15,18 @@ export interface NavigationSnapshot {
     returnView: AnimeBrowseView;
     selection: AnimeSelection | null;
     libraryFocus: number | null;
+    librarySeries: string | null;
 }
 
 export function snapshotKey(snapshot: NavigationSnapshot): string {
     const selection = snapshot.selection === null ? '' : `${snapshot.selection.result.index}:${snapshot.selection.audio}`;
-    return [snapshot.tab, snapshot.downloadsView, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? ''].join('|');
+    return [snapshot.tab, snapshot.downloadsView, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? '', snapshot.librarySeries ?? ''].join('|');
 }
 
 function readSnapshot(): NavigationSnapshot {
-    const { view, returnView, selection, libraryFocus } = useAnimeStore.getState();
+    const { view, returnView, selection, libraryFocus, librarySeries } = useAnimeStore.getState();
     const { tab, downloadsView } = useAppStore.getState();
-    return { tab, downloadsView, view, returnView, selection, libraryFocus };
+    return { tab, downloadsView, view, returnView, selection, libraryFocus, librarySeries };
 }
 
 function showSnapshot(snapshot: NavigationSnapshot): void {
@@ -35,7 +36,8 @@ function showSnapshot(snapshot: NavigationSnapshot): void {
         view: snapshot.view,
         returnView: snapshot.returnView,
         selection: snapshot.selection,
-        libraryFocus: snapshot.libraryFocus
+        libraryFocus: snapshot.libraryFocus,
+        librarySeries: snapshot.librarySeries
     });
     // Files can be moved or deleted while the app is open: the library says which ones are gone when it is shown.
     if (snapshot.view === 'library') {

@@ -330,8 +330,18 @@ body::after {
     transition: width 0.25s ease;
 }
 
-.job--done .progress__bar { background: var(--green); box-shadow: 0 0 10px var(--green); }
-.job--error .progress__bar { background: var(--red); box-shadow: 0 0 10px var(--red); }
+/* The part of a download that has grown is a wave that flows: the two colours of the theme melt into each other with a bright crest, and the
+   tile is the same at both ends so the flow has no seam. The other kinds of bar (done, error, waiting, processing...) keep their own looks. */
+.progress:not([class*='progress--']) .progress__bar {
+    background: linear-gradient(90deg, var(--cyan), var(--magenta) 35%, color-mix(in srgb, var(--magenta) 80%, white) 50%, var(--magenta) 65%, var(--cyan));
+    background-size: 160px 100%;
+    animation: bar-wave-flow 1.4s linear infinite;
+}
+@keyframes bar-wave-flow { from { background-position: 0 0; } to { background-position: 160px 0; } }
+@media (prefers-reduced-motion: reduce) { .progress:not([class*='progress--']) .progress__bar { animation: none; } }
+
+.job--done .progress__bar { background: var(--green); box-shadow: 0 0 10px var(--green); animation: none; }
+.job--error .progress__bar { background: var(--red); box-shadow: 0 0 10px var(--red); animation: none; }
 
 .job__meta { display: flex; gap: 16px; color: var(--muted); font-size: 12px; }
 .job__actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -682,8 +692,36 @@ body::after {
 .job__merging { color: var(--green); font-weight: 700; letter-spacing: 1px; }
 .job__merging::after { content: '...'; display: inline-block; width: 1.5em; text-align: left; animation: wait-dots 1.4s steps(4, end) infinite; overflow: hidden; vertical-align: bottom; }
 
+/* Every progress bar glows like neon, in the colour of its state (so of the theme): a bright core, a close halo and a wide soft one. The track
+   used to keep the glow in (it clips what comes out of it), so it lets it out on every side: the sweeps stay inside the track on their own,
+   so nothing cuts the glow at the start or at the end of the bar. */
+.progress {
+    overflow: visible;
+}
+
+.progress .progress__bar {
+    --bar-glow: var(--cyan);
+    box-shadow:
+        inset 0 0 3px rgba(255, 255, 255, 0.85),
+        0 0 3px var(--bar-glow),
+        0 0 8px var(--bar-glow),
+        0 0 16px var(--bar-glow),
+        0 0 28px color-mix(in srgb, var(--bar-glow) 65%, transparent);
+}
+
+.job--done .progress__bar, .progress--merging .progress__bar { --bar-glow: var(--green); }
+.job--error .progress__bar, .progress--live .progress__bar { --bar-glow: var(--red); }
+.progress--verify .progress__bar { --bar-glow: var(--yellow); }
+.progress--waiting .progress__bar, .progress--processing .progress__bar { --bar-glow: var(--magenta); }
+
+/* The bars that wait or work were faded; they shine as much as the others. */
+.progress--waiting .progress__bar, .progress--processing .progress__bar, .progress--saving .progress__bar, .progress--merging .progress__bar { opacity: 0.9; }
+
+/* The timeline and the volume of the player. */
+.player__range { box-shadow: 0 0 3px var(--cyan), 0 0 10px var(--cyan), 0 0 20px color-mix(in srgb, var(--cyan) 60%, transparent); }
+
 @keyframes verify-drain { from { width: 100%; } to { width: 0%; } }
-@keyframes scan-sweep { from { left: -28%; } to { left: 100%; } }
+@keyframes scan-sweep { from { left: 0; } to { left: 72%; } }
 @keyframes badge-blink { 50% { opacity: 0.35; } }
 @keyframes wait-dots { from { width: 0; } to { width: 1.5em; } }
 @keyframes job-verify-pulse { 50% { box-shadow: var(--glow-yellow), inset 0 0 18px var(--tint-yellow); } }
@@ -1028,7 +1066,7 @@ body::after {
 
 .player__seek { flex: 1; min-width: 80px; }
 
-/* Neon themes only (cyberpunk, synthwave, terminal): while the video plays, the part already watched flows like a neon wave. */
+/* In every theme the part already watched is a neon wave in the colours of the theme; it flows while the video plays and stands still when it is paused. */
 @keyframes player-wave {
     from { background-position: 0 0, 0 0; }
     to { background-position: 0 0, 160px 0; }
@@ -1039,7 +1077,7 @@ body::after {
     50% { box-shadow: 0 0 14px color-mix(in srgb, var(--magenta) 65%, transparent); }
 }
 
-html[data-theme-style='neon'] .player__controls[data-playing='true'] .player__seek {
+.player__controls .player__seek {
     background:
         linear-gradient(
             to right,
@@ -1047,13 +1085,16 @@ html[data-theme-style='neon'] .player__controls[data-playing='true'] .player__se
             color-mix(in srgb, var(--cyan) 55%, var(--input-bg)) var(--progress) var(--buffered),
             var(--input-bg) var(--buffered)
         ),
-        repeating-linear-gradient(90deg, var(--cyan) 0, var(--magenta) 40px, var(--cyan) 80px, #ffffff 100px, var(--cyan) 120px, var(--magenta) 160px);
+        linear-gradient(90deg, var(--cyan), var(--magenta) 35%, color-mix(in srgb, var(--magenta) 80%, white) 50%, var(--magenta) 65%, var(--cyan));
     background-size: 100% 100%, 160px 100%;
     animation: player-wave 1.6s linear infinite, player-wave-glow 2.4s ease-in-out infinite;
+    animation-play-state: paused;
 }
 
+.player__controls[data-playing='true'] .player__seek { animation-play-state: running; }
+
 @media (prefers-reduced-motion: reduce) {
-    html[data-theme-style='neon'] .player__controls[data-playing='true'] .player__seek { animation: none; }
+    .player__controls .player__seek { animation: none; }
 }
 
 /* Neon themes in fullscreen: the bar floats over the video with no background, only the buttons and the timeline glow. */
@@ -1103,11 +1144,10 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls .playe
         repeating-linear-gradient(
             90deg,
             var(--cyan) var(--wave-phase),
-            var(--magenta) calc(var(--wave-phase) + 40px),
-            var(--cyan) calc(var(--wave-phase) + 80px),
-            #ffffff calc(var(--wave-phase) + 100px),
-            var(--cyan) calc(var(--wave-phase) + 120px),
-            var(--magenta) calc(var(--wave-phase) + 160px)
+            var(--magenta) calc(var(--wave-phase) + 56px),
+            color-mix(in srgb, var(--magenta) 80%, white) calc(var(--wave-phase) + 80px),
+            var(--magenta) calc(var(--wave-phase) + 104px),
+            var(--cyan) calc(var(--wave-phase) + 160px)
         )
         0 0 / var(--progress) 100% no-repeat,
         linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)) 0 0 / var(--buffered) 100% no-repeat,

@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeHistoryEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
+import { makeAnime } from '../../helpers/animeFixtures';
 import { AnimeHistory } from '@renderer/components/AnimeHistory';
 import { INITIAL_SEARCH, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
@@ -57,6 +58,28 @@ describe('AnimeHistory', () => {
             view: 'search',
             selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', audio: 'dub', status: 'ready', episodes: ['1', '2'] }
         });
+    });
+
+    it('opens an entry that is in the library on its series, and not in the search', async () => {
+        const user = userEvent.setup();
+        mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([], { id: 7, title: 'Naruto', audio: 'dub' })]);
+        useAnimeStore.setState({ history: [WATCHED, OPENED], library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'dub' })] });
+        render(<AnimeHistory />);
+
+        await user.click(screen.getByRole('button', { name: 'OPEN: Naruto' }));
+        expect(mock.api.listAnimeEpisodes).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', selection: null, libraryFocus: 7, librarySeries: 'anime-7' });
+    });
+
+    it('opens an entry that is in the library with another audio in the search', async () => {
+        const user = userEvent.setup();
+        mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1'] });
+        useAnimeStore.setState({ history: [OPENED], library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'sub' })] });
+        render(<AnimeHistory />);
+
+        await user.click(screen.getByRole('button', { name: 'OPEN: Naruto' }));
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'search', librarySeries: null });
     });
 
     it('removes one entry', async () => {

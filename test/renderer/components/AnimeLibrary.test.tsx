@@ -103,7 +103,9 @@ describe('AnimeLibrary', () => {
             useAnimeStore.setState({ library: SERIES_LIBRARY });
             render(<AnimeLibrary />);
 
+            expect(useAnimeStore.getState().librarySeries).toBeNull();
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+            expect(useAnimeStore.getState().librarySeries).toBe('series-frieren');
             expect(screen.getByTestId('series-view')).toBeInTheDocument();
             expect(screen.getAllByTestId('anime-season')).toHaveLength(2);
             expect(screen.queryByRole('textbox', { name: 'Search the library' })).not.toBeInTheDocument();
@@ -111,9 +113,37 @@ describe('AnimeLibrary', () => {
             expect(screen.getByRole('heading', { level: 3, name: 'Frieren' })).toBeInTheDocument();
 
             await user.click(screen.getByRole('button', { name: 'BACK TO LIBRARY' }));
+            expect(useAnimeStore.getState().librarySeries).toBeNull();
             expect(screen.queryByTestId('series-view')).not.toBeInTheDocument();
             expect(screen.getAllByTestId('anime-card')).toHaveLength(2);
             expect(screen.getByRole('textbox', { name: 'Search the library' })).toBeInTheDocument();
+        });
+
+        it('opens and closes the screen of the series as the store says, as when the buttons of the mouse go back and forward', () => {
+            useAnimeStore.setState({ library: SERIES_LIBRARY });
+            render(<AnimeLibrary />);
+            expect(screen.queryByTestId('series-view')).not.toBeInTheDocument();
+
+            act(() => {
+                useAnimeStore.setState({ librarySeries: 'series-frieren' });
+            });
+            expect(screen.getByTestId('series-view')).toBeInTheDocument();
+            expect(screen.getByRole('heading', { level: 3, name: 'Frieren' })).toBeInTheDocument();
+
+            act(() => {
+                useAnimeStore.setState({ librarySeries: null });
+            });
+            expect(screen.queryByTestId('series-view')).not.toBeInTheDocument();
+            expect(screen.getAllByTestId('anime-card')).toHaveLength(2);
+        });
+
+        it('forgets the anime that was in view when the screen of the series is closed', async () => {
+            const user = userEvent.setup();
+            Element.prototype.scrollIntoView = vi.fn();
+            useAnimeStore.setState({ library: SERIES_LIBRARY, libraryFocus: 40, librarySeries: 'series-frieren' });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'BACK TO LIBRARY' }));
+            expect(useAnimeStore.getState()).toMatchObject({ libraryFocus: null, librarySeries: null });
         });
 
         it('opens the screen of an anime on its own from its card, where there is no season to edit because it has no series to order it in', async () => {
@@ -248,7 +278,7 @@ describe('AnimeLibrary', () => {
         it('opens the screen of the series, with the season in view and every season closed, when it comes from the search', () => {
             const scrollIntoView = vi.fn();
             Element.prototype.scrollIntoView = scrollIntoView;
-            useAnimeStore.setState({ library: SERIES_LIBRARY, libraryFocus: 40 });
+            useAnimeStore.setState({ library: SERIES_LIBRARY, libraryFocus: 40, librarySeries: 'series-frieren' });
             render(<AnimeLibrary />);
             expect(screen.getByTestId('series-view')).toBeInTheDocument();
             expect(screen.getAllByTestId('anime-season')).toHaveLength(2);
@@ -660,7 +690,7 @@ describe('AnimeLibrary', () => {
         it('opens the screen of the anime that was looked at, in view and closed, even when it is the only season', () => {
             const scrollIntoView = vi.fn();
             Element.prototype.scrollIntoView = scrollIntoView;
-            useAnimeStore.setState({ library: LIBRARY, libraryFocus: 10 });
+            useAnimeStore.setState({ library: LIBRARY, libraryFocus: 10, librarySeries: 'anime-10' });
             render(<AnimeLibrary />);
 
             expect(screen.getByTestId('series-view')).toBeInTheDocument();
