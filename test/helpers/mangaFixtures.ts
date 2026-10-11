@@ -76,6 +76,10 @@ export function makeLibraryManga(chapters: MangaChapterRecord[], overrides: Part
         genres: [],
         status: 'unknown',
         createdAt: 1,
+        series: null,
+        season: null,
+        seasonName: null,
+        groupIds: [],
         chapters,
         ...overrides
     };

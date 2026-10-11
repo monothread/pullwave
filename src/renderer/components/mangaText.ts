@@ -1,4 +1,5 @@
-import type { MessageKey } from '@shared/i18n';
+import type { MessageKey, Translator } from '@shared/i18n';
+import { foldSeries } from '@shared/series';
 import type { LibraryManga, MangaChapterRecord, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
 
@@ -156,4 +157,93 @@ export function extensionLanguages(extensions: readonly MangaExtension[]): strin
     return [...new Set(extensions.map((extension) => {
         return extension.lang;
     }))].sort();
+}
+
+// One card of the library: a series with its seasons in order. Every manga is in one: a manga that was never joined to a series is the
+// only season of a series with its own title.
+export interface MangaLibraryGroup {
+    key: string;
+    // The name of the series.
+    series: string;
+    entries: LibraryManga[];
+}
+
+// Alphabetical order for names: no matter the case or the accents, and numbers by their value ("Naruto 2" before "Naruto 10").
+export function compareNames(first: string, second: string): number {
+    return first.localeCompare(second, undefined, { sensitivity: 'base', numeric: true });
+}
+
+// Joins the mangas of the library that are seasons of one series (the same name, whatever the case or the accents); a manga that has no
+// series is a series of its own. The cards are in alphabetical order and the seasons of a series by their place in it.
+export function groupLibrary(library: readonly LibraryManga[]): MangaLibraryGroup[] {
+    const groups: MangaLibraryGroup[] = [];
+    const bySeries = new Map<string, MangaLibraryGroup>();
+    library.forEach((manga) => {
+        if (manga.series === null || manga.season === null) {
+            groups.push({ key: `manga-${String(manga.id)}`, series: manga.title, entries: [manga] });
+            return;
+        }
+        const key = foldSeries(manga.series);
+        const found = bySeries.get(key);
+        if (found) {
+            found.entries.push(manga);
+            return;
+        }
+        const created: MangaLibraryGroup = { key: `series-${key}`, series: manga.series, entries: [manga] };
+        bySeries.set(key, created);
+        groups.push(created);
+    });
+    groups.forEach((group) => {
+        group.entries.sort((first, second) => {
+            return (first.season ?? 0) - (second.season ?? 0) || first.id - second.id;
+        });
+    });
+    return groups.sort((first, second) => {
+        return compareNames(first.series, second.series);
+    });
+}
+
+// The label of a manga inside its series: the name the user gave it, otherwise "SEASON N" from its place in the series.
+export function seasonLabel(manga: Pick<LibraryManga, 'season' | 'seasonName'>, t: Translator): string {
+    return manga.seasonName ?? t('anime.series.season', { number: manga.season ?? 1 });
+}
+
+function foldText(text: string): string {
+    return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+// Whether a text matches what was typed in the search of the library: no matter the case or the accents; an empty search matches all.
+export function matchesSearch(text: string, search: string): boolean {
+    const wanted = foldText(search.trim());
+    return wanted.length === 0 || foldText(text).includes(wanted);
+}
+
+// The mangas of the library that are in the group (every manga when no group is chosen).
+export function inGroup(library: readonly LibraryManga[], groupId: number | null): LibraryManga[] {
+    return groupId === null
+        ? [...library]
+        : library.filter((manga) => {
+              return manga.groupIds.includes(groupId);
+          });
+}
+
+// How many chapters of the mangas are downloaded, and how many there are.
+export function downloadedTotals(mangas: readonly LibraryManga[]): { done: number; total: number } {
+    return mangas.reduce(
+        (totals, manga) => {
+            return { done: totals.done + downloadedCount(manga), total: totals.total + manga.chapters.length };
+        },
+        { done: 0, total: 0 }
+    );
+}
+
+// The names of the series the library has, once each.
+export function seriesNames(library: readonly LibraryManga[]): string[] {
+    const seen = new Map<string, string>();
+    library.forEach((manga) => {
+        if (manga.series !== null && !seen.has(foldSeries(manga.series))) {
+            seen.set(foldSeries(manga.series), manga.series);
+        }
+    });
+    return [...seen.values()].sort(compareNames);
 }

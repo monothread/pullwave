@@ -6,7 +6,14 @@ import {
     activeJobCount,
     chapterState,
     chapterStatusKey,
+    compareNames,
     downloadedCount,
+    downloadedTotals,
+    groupLibrary,
+    inGroup,
+    matchesSearch,
+    seasonLabel,
+    seriesNames,
     extensionLanguages,
     filterExtensions,
     isCloudflareError,
@@ -193,5 +200,88 @@ describe('content for adults', () => {
         ).toEqual(['1', '3']);
         expect(listedSources(sources, true)).toEqual(sources);
         expect(listedSources([], false)).toEqual([]);
+    });
+});
+
+describe('grouping the library by series', () => {
+    const t = createTranslator('en');
+    const one = makeLibraryManga([makeChapterRecord({ id: 1, status: 'done' })], { id: 1, title: 'Frieren', series: 'Sousou no Frieren', season: 1 });
+    const two = makeLibraryManga([makeChapterRecord({ id: 2, status: 'idle' }), makeChapterRecord({ id: 3, status: 'done' })], { id: 2, title: 'Frieren Season 2', series: 'sousou  no frieren', season: 2, seasonName: 'Beyond' });
+    const alone = makeLibraryManga([], { id: 3, title: 'bleach' });
+    const apple = makeLibraryManga([], { id: 4, title: 'Álbum', series: 'Álbum', season: 1 });
+
+    it('puts the seasons of a series in one card, in their order, the series written however the library has it', () => {
+        const cards = groupLibrary([two, one]);
+        expect(cards).toEqual([{ key: 'series-sousou no frieren', series: 'sousou  no frieren', entries: [one, two] }]);
+        expect(groupLibrary([one, two])[0]?.series).toBe('Sousou no Frieren');
+    });
+
+    it('makes a card of its own for a manga that is on its own, with its title as the name', () => {
+        expect(groupLibrary([alone])).toEqual([{ key: 'manga-3', series: 'bleach', entries: [alone] }]);
+    });
+
+    it('treats a manga with a series but no season as being on its own', () => {
+        const odd = makeLibraryManga([], { id: 5, title: 'Odd', series: 'Odd', season: null });
+        expect(groupLibrary([odd])[0]?.key).toBe('manga-5');
+    });
+
+    it('orders the cards alphabetically, without regard to case or accents, and numbers by their value', () => {
+        const ten = makeLibraryManga([], { id: 6, title: 'Naruto 10' });
+        const nine = makeLibraryManga([], { id: 7, title: 'Naruto 9' });
+        expect(groupLibrary([ten, one, apple, alone, nine]).map((card) => {return card.series})).toEqual(['Álbum', 'bleach', 'Naruto 9', 'Naruto 10', 'Sousou no Frieren']);
+    });
+
+    it('keeps the order of the seasons even when two have the same place', () => {
+        const twin = makeLibraryManga([], { id: 9, title: 'Twin', series: 'Sousou no Frieren', season: 1 });
+        expect(groupLibrary([twin, one])[0]?.entries.map((manga) => {return manga.id})).toEqual([1, 9]);
+    });
+
+    it('gives nothing for an empty library, and does not change the one it is given', () => {
+        expect(groupLibrary([])).toEqual([]);
+        const library = [two, one];
+        groupLibrary(library);
+        expect(library).toEqual([two, one]);
+    });
+
+    it('labels a season by the name the user gave it, otherwise by its place', () => {
+        expect(seasonLabel(two, t)).toBe('Beyond');
+        expect(seasonLabel(one, t)).toBe('SEASON 1');
+        expect(seasonLabel(alone, t)).toBe('SEASON 1');
+        expect(seasonLabel({ season: 4, seasonName: null }, t)).toBe('SEASON 4');
+    });
+
+    it('compares names without regard to case or accents, and numbers by their value', () => {
+        expect(compareNames('a', 'B')).toBeLessThan(0);
+        expect(compareNames('Ábaco', 'abaco')).toBe(0);
+        expect(compareNames('Naruto 2', 'Naruto 10')).toBeLessThan(0);
+    });
+
+    it('matches what was typed without regard to case or accents, and an empty search matches everything', () => {
+        expect(matchesSearch('Sousou no FRIEREN', 'frieren')).toBe(true);
+        expect(matchesSearch('Álbum', '  album ')).toBe(true);
+        expect(matchesSearch('Bleach', 'frieren')).toBe(false);
+        expect(matchesSearch('Bleach', '')).toBe(true);
+        expect(matchesSearch('Bleach', '   ')).toBe(true);
+    });
+
+    it('limits the library to a group, or gives all of it', () => {
+        const inside = makeLibraryManga([], { id: 1, groupIds: [1, 2] });
+        const other = makeLibraryManga([], { id: 2, groupIds: [2] });
+        const none = makeLibraryManga([], { id: 3, groupIds: [] });
+        expect(inGroup([inside, other, none], null)).toEqual([inside, other, none]);
+        expect(inGroup([inside, other, none], 1)).toEqual([inside]);
+        expect(inGroup([inside, other, none], 2)).toEqual([inside, other]);
+        expect(inGroup([inside, other, none], 9)).toEqual([]);
+    });
+
+    it('counts the chapters downloaded and all of them in several mangas', () => {
+        expect(downloadedTotals([one, two, alone])).toEqual({ done: 2, total: 3 });
+        expect(downloadedTotals([])).toEqual({ done: 0, total: 0 });
+    });
+
+    it('lists the names of the series once each, as the library spells them, in order', () => {
+        expect(seriesNames([two, one, alone, apple])).toEqual(['Álbum', 'sousou  no frieren']);
+        expect(seriesNames([one, two])).toEqual(['Sousou no Frieren']);
+        expect(seriesNames([])).toEqual([]);
     });
 });

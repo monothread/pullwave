@@ -112,6 +112,30 @@ const manga: CyberApi['manga'] = {
     migrateFolder: () => {
         return ipcRenderer.invoke(IPC.mangaMigrateFolder);
     },
+    setSeries: (request) => {
+        return ipcRenderer.invoke(IPC.mangaSetSeries, request);
+    },
+    renameSeries: (mangaIds, series) => {
+        return ipcRenderer.invoke(IPC.mangaRenameSeries, mangaIds, series);
+    },
+    groups: () => {
+        return ipcRenderer.invoke(IPC.mangaGroups);
+    },
+    createGroup: (name) => {
+        return ipcRenderer.invoke(IPC.mangaGroupCreate, name);
+    },
+    renameGroup: (groupId, name) => {
+        return ipcRenderer.invoke(IPC.mangaGroupRename, groupId, name);
+    },
+    deleteGroup: (groupId) => {
+        return ipcRenderer.invoke(IPC.mangaGroupDelete, groupId);
+    },
+    setGroupMembers: (groupId, mangaIds, member) => {
+        return ipcRenderer.invoke(IPC.mangaGroupMembers, groupId, mangaIds, member);
+    },
+    migrateSource: (request) => {
+        return ipcRenderer.invoke(IPC.mangaMigrateSource, request);
+    },
     onMigrationProgress: (listener) => {
         return subscribe<MangaMigrationProgress>(IPC.eventMangaMigration, listener);
     },

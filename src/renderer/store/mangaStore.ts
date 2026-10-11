@@ -9,12 +9,19 @@ import type {
     MangaError,
     MangaFilter,
     MangaExtension,
+    MangaGroup,
+    MangaGroupResponse,
     MangaExtensionStore,
     MangaJob,
     MangaListKind,
     MangaMigrationFailure,
     MangaMigrationProgress,
     MangaMigrationResponse,
+    MangaRenameSeriesResponse,
+    MangaSeriesRequest,
+    MangaSeriesResponse,
+    MangaSourceMigrationRequest,
+    MangaSourceMigrationResponse,
     MangaSource,
     MangaSourcePreference,
     MangaStatusInfo,
@@ -154,6 +161,11 @@ interface MangaState {
     // Where the downloads screen goes back to.
     previousView: MangaBrowseView;
     library: LibraryManga[];
+    // The groups the user made (Mangas, Manhwas...), and the one the library is limited to (null: every manga).
+    groups: MangaGroup[];
+    libraryGroup: number | null;
+    // The series that is open in the library (its key, see `groupLibrary`), or null for the cards.
+    librarySeries: string | null;
     jobs: MangaJob[];
     browse: MangaBrowseState;
     selection: MangaSelection | null;
@@ -215,6 +227,19 @@ interface MangaState {
     searchByTerm: (term: string) => Promise<void>;
 
     refreshLibrary: () => Promise<void>;
+    refreshGroups: () => Promise<void>;
+    openSeries: (key: string) => void;
+    closeSeries: () => void;
+    setLibraryGroup: (groupId: number | null) => void;
+    // Joins a manga to a series with its place in it, or takes it out of one.
+    setSeries: (request: MangaSeriesRequest) => Promise<MangaSeriesResponse>;
+    renameSeries: (mangaIds: number[], series: string) => Promise<MangaRenameSeriesResponse>;
+    createGroup: (name: string) => Promise<MangaGroupResponse>;
+    renameGroup: (groupId: number, name: string) => Promise<MangaGroupResponse>;
+    deleteGroup: (groupId: number) => Promise<void>;
+    setGroupMembers: (groupId: number, mangaIds: number[], member: boolean) => Promise<void>;
+    // Moves a manga of the library to the same manga in another source; on success the manga that is open is the one of the new source.
+    migrateSource: (request: MangaSourceMigrationRequest) => Promise<MangaSourceMigrationResponse>;
     downloadMissing: (mangaId: number) => Promise<void>;
     openFolder: (mangaId: number) => Promise<void>;
     // Opens the page of the manga on the site of its source.
@@ -313,6 +338,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
         view: 'browse',
         previousView: 'browse',
         library: [],
+        groups: [],
+        libraryGroup: null,
+        librarySeries: null,
         jobs: [],
         browse: { ...EMPTY_BROWSE, sourceLanguage: initialPrefs.sourceLanguage },
         selection: null,
@@ -332,8 +360,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     return undefined;
                 };
             }
-            const [library, jobs] = await Promise.all([api.library(), api.jobs()]);
-            set({ library, jobs });
+            const [library, jobs, groups] = await Promise.all([api.library(), api.jobs(), api.groups()]);
+            set({ library, jobs, groups });
             const unsubscribers = [
                 api.onToolState((tool) => {
                     // Two programs are downloaded: the one that runs the extensions, and the one that gets past Cloudflare.
@@ -762,7 +790,91 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         refreshLibrary: async () => {
-            set({ library: await window.api.manga.library() });
+            const [library, groups] = await Promise.all([window.api.manga.library(), window.api.manga.groups()]);
+            set((state) => {
+                // A group that is gone is no longer the one the library is limited to.
+                const stillThere = state.libraryGroup === null || groups.some((group) => {
+                    return group.id === state.libraryGroup;
+                });
+                return { library, groups, libraryGroup: stillThere ? state.libraryGroup : null };
+            });
+        },
+
+        refreshGroups: async () => {
+            const groups = await window.api.manga.groups();
+            set((state) => {
+                const stillThere = state.libraryGroup === null || groups.some((group) => {
+                    return group.id === state.libraryGroup;
+                });
+                return { groups, libraryGroup: stillThere ? state.libraryGroup : null };
+            });
+        },
+
+        openSeries: (key) => {
+            set({ librarySeries: key });
+        },
+
+        closeSeries: () => {
+            set({ librarySeries: null });
+        },
+
+        setLibraryGroup: (groupId) => {
+            set({ libraryGroup: groupId, librarySeries: null });
+        },
+
+        setSeries: async (request) => {
+            const response = await window.api.manga.setSeries(request);
+            if (response.ok) {
+                await get().refreshLibrary();
+            }
+            return response;
+        },
+
+        renameSeries: async (mangaIds, series) => {
+            const response = await window.api.manga.renameSeries(mangaIds, series);
+            if (response.ok) {
+                await get().refreshLibrary();
+            }
+            return response;
+        },
+
+        createGroup: async (name) => {
+            const response = await window.api.manga.createGroup(name);
+            if (response.ok) {
+                await get().refreshGroups();
+            }
+            return response;
+        },
+
+        renameGroup: async (groupId, name) => {
+            const response = await window.api.manga.renameGroup(groupId, name);
+            if (response.ok) {
+                await get().refreshGroups();
+            }
+            return response;
+        },
+
+        deleteGroup: async (groupId) => {
+            await window.api.manga.deleteGroup(groupId);
+            await get().refreshLibrary();
+        },
+
+        setGroupMembers: async (groupId, mangaIds, member) => {
+            await window.api.manga.setGroupMembers(groupId, mangaIds, member);
+            await get().refreshLibrary();
+        },
+
+        migrateSource: async (request) => {
+            const response = await window.api.manga.migrateSource(request);
+            if (response.ok) {
+                await get().refreshLibrary();
+                // The manga that is open is the one of the new source now.
+                const manga = response.manga;
+                set({ selection: null });
+                await get().openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
+                toast('manga.migrateSource.done', { matched: response.matched, added: response.added, dropped: response.dropped });
+            }
+            return response;
         },
 
         downloadMissing: async (mangaId) => {

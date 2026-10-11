@@ -40,11 +40,13 @@ describe('MangaLibrary', () => {
         render(<MangaLibrary />);
         const entries = screen.getAllByTestId('manga-entry');
         expect(entries).toHaveLength(2);
-        expect(within(entries[0]!).getByRole('heading', { name: 'One Piece' })).toBeInTheDocument();
-        expect(within(entries[0]!).getByText('1 of 5 downloaded')).toBeInTheDocument();
-        expect(within(entries[1]!).getByText('0 of 0 downloaded')).toBeInTheDocument();
-        expect(within(entries[1]!).queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
-        expect(entries[1]!.querySelector('img')).toBeNull();
+        // Alphabetical, whatever the order the library comes in.
+        expect(within(entries[0]!).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
+        expect(within(entries[0]!).getByText('0 of 0 downloaded')).toBeInTheDocument();
+        expect(within(entries[0]!).queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
+        expect(entries[0]!.querySelector('img')).toBeNull();
+        expect(within(entries[1]!).getByRole('heading', { name: 'One Piece' })).toBeInTheDocument();
+        expect(within(entries[1]!).getByText('1 of 5 downloaded')).toBeInTheDocument();
     });
 
     it('has no button to download what is missing in the list: that is done inside the manga', () => {
@@ -118,5 +120,162 @@ describe('MangaLibrary and the manga opened from the browse', () => {
         });
         render(<MangaLibrary />);
         expect(screen.getByTestId('manga-entry')).toBeInTheDocument();
+    });
+});
+
+describe('MangaLibrary series, groups and search', () => {
+    const FRIEREN = makeLibraryManga([makeChapterRecord({ id: 20, status: 'done' })], { id: 20, remoteId: 21, title: 'Frieren', series: 'Sousou no Frieren', season: 1, groupIds: [1] });
+    const FRIEREN_2 = makeLibraryManga([makeChapterRecord({ id: 21, status: 'idle' })], { id: 21, remoteId: 22, title: 'Frieren 2', series: 'Sousou no Frieren', season: 2, groupIds: [1] });
+    const BLEACH = makeLibraryManga([], { id: 22, remoteId: 23, title: 'Bleach', groupIds: [2] });
+    const GROUPS = [{ id: 1, name: 'Mangas' }, { id: 2, name: 'Manhwas' }];
+
+    beforeEach(() => {
+        useMangaStore.setState({ library: [FRIEREN_2, BLEACH, FRIEREN], groups: GROUPS, libraryGroup: null, librarySeries: null });
+        mock.api.manga.library.mockResolvedValue([FRIEREN_2, BLEACH, FRIEREN]);
+        mock.api.manga.groups.mockResolvedValue(GROUPS);
+    });
+
+    it('shows a series of several seasons as one card, and a manga on its own as a card of its own, in alphabetical order', () => {
+        render(<MangaLibrary />);
+        expect(screen.getByText('Library (2)')).toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-entry')).toHaveLength(1);
+        expect(screen.getAllByTestId('manga-series')).toHaveLength(1);
+        const series = screen.getByTestId('manga-series');
+        expect(within(series).getByRole('heading', { name: 'Sousou no Frieren' })).toBeInTheDocument();
+        expect(within(series).getByText('2 SEASONS')).toBeInTheDocument();
+        expect(within(series).getByText('1 of 2 downloaded')).toBeInTheDocument();
+        expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
+        const order = screen.getAllByRole('heading', { level: 3 }).map((heading) => {
+            return heading.textContent;
+        });
+        expect(order).toEqual(['Bleach', 'Sousou no Frieren']);
+    });
+
+    it('says one season in the singular for a series with only one', () => {
+        useMangaStore.setState({ library: [FRIEREN] });
+        render(<MangaLibrary />);
+        expect(screen.getByText('1 SEASON')).toBeInTheDocument();
+    });
+
+    it('opens a series on its own screen and comes back to the cards', async () => {
+        const user = userEvent.setup();
+        render(<MangaLibrary />);
+        await user.click(screen.getByRole('button', { name: 'Open series: Sousou no Frieren' }));
+        expect(useMangaStore.getState().librarySeries).toBe('series-sousou no frieren');
+        expect(screen.getByTestId('manga-series-view')).toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-season')).toHaveLength(2);
+        await user.click(screen.getByRole('button', { name: 'BACK TO LIBRARY' }));
+        expect(useMangaStore.getState().librarySeries).toBeNull();
+        expect(screen.getByTestId('manga-series')).toBeInTheDocument();
+    });
+
+    it('goes on with the series under its new name after it is renamed', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ librarySeries: 'series-sousou no frieren' });
+        mock.api.manga.library.mockResolvedValue([{ ...FRIEREN_2, series: 'Frieren' }, BLEACH, { ...FRIEREN, series: 'Frieren' }]);
+        render(<MangaLibrary />);
+        await user.click(screen.getByRole('button', { name: 'Series options: Sousou no Frieren' }));
+        await user.click(screen.getByRole('button', { name: 'RENAME SERIES: Sousou no Frieren' }));
+        const field = screen.getByLabelText('Series name');
+        await user.clear(field);
+        await user.type(field, 'Frieren');
+        await user.click(screen.getByRole('button', { name: 'SAVE' }));
+        await vi.waitFor(() => {
+            expect(useMangaStore.getState().librarySeries).toBe('series-frieren');
+        });
+        expect(await screen.findByRole('heading', { name: 'Frieren', level: 3 })).toBeInTheDocument();
+    });
+
+    it('falls back to the cards when the series that is open is not there any more', () => {
+        useMangaStore.setState({ librarySeries: 'series-gone' });
+        render(<MangaLibrary />);
+        expect(screen.getByTestId('manga-series')).toBeInTheDocument();
+    });
+
+    it('searches by the title of a manga and by the name of a series, without regard to case or accents', async () => {
+        const user = userEvent.setup();
+        render(<MangaLibrary />);
+        const field = screen.getByLabelText('Search the library');
+        await user.type(field, 'SOUSOU');
+        expect(screen.queryByTestId('manga-entry')).not.toBeInTheDocument();
+        expect(screen.getByTestId('manga-series')).toBeInTheDocument();
+        await user.clear(field);
+        await user.type(field, 'bléach');
+        expect(screen.getByTestId('manga-entry')).toBeInTheDocument();
+        expect(screen.queryByTestId('manga-series')).not.toBeInTheDocument();
+        await user.clear(field);
+        await user.type(field, 'zzz');
+        expect(screen.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.')).toBeInTheDocument();
+    });
+
+    it('lists the groups as tabs with all of them first, and limits the library to the one picked', async () => {
+        const user = userEvent.setup();
+        render(<MangaLibrary />);
+        const nav = screen.getByRole('navigation', { name: 'Groups' });
+        expect(
+            within(nav)
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.textContent;
+                })
+        ).toEqual(['ALL', 'Mangas', 'Manhwas']);
+        expect(within(nav).getByRole('button', { name: 'ALL' })).toHaveAttribute('aria-current', 'page');
+        await user.click(within(nav).getByRole('button', { name: 'Manhwas' }));
+        expect(useMangaStore.getState().libraryGroup).toBe(2);
+        expect(screen.getByTestId('manga-entry')).toBeInTheDocument();
+        expect(screen.queryByTestId('manga-series')).not.toBeInTheDocument();
+        expect(within(nav).getByRole('button', { name: 'Manhwas' })).toHaveAttribute('aria-current', 'page');
+        await user.click(within(nav).getByRole('button', { name: 'Mangas' }));
+        expect(screen.getByTestId('manga-series')).toBeInTheDocument();
+        expect(screen.queryByTestId('manga-entry')).not.toBeInTheDocument();
+        await user.click(within(nav).getByRole('button', { name: 'ALL' }));
+        expect(useMangaStore.getState().libraryGroup).toBeNull();
+        expect(screen.getAllByTestId('manga-entry')).toHaveLength(1);
+        expect(screen.getAllByTestId('manga-series')).toHaveLength(1);
+    });
+
+    it('has no tabs while there are no groups', () => {
+        useMangaStore.setState({ groups: [] });
+        render(<MangaLibrary />);
+        expect(screen.queryByRole('navigation', { name: 'Groups' })).not.toBeInTheDocument();
+    });
+
+    it('says a group has nothing in it yet', () => {
+        useMangaStore.setState({ library: [FRIEREN, FRIEREN_2], libraryGroup: 2 });
+        render(<MangaLibrary />);
+        expect(screen.getByText('// NO MANGA IN THIS GROUP YET. OPEN A MANGA OR A SERIES TO PUT IT HERE.')).toBeInTheDocument();
+    });
+
+    it('searches inside the group', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ libraryGroup: 2 });
+        render(<MangaLibrary />);
+        await user.type(screen.getByLabelText('Search the library'), 'frieren');
+        expect(screen.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.')).toBeInTheDocument();
+    });
+
+    it('shows the groups a manga is in, beside its progress', () => {
+        useMangaStore.setState({ library: [BLEACH] });
+        render(<MangaLibrary />);
+        expect(screen.getByTestId('manga-entry-groups')).toHaveTextContent('Manhwas');
+    });
+
+    it('shows nothing about groups for a manga that is in none', () => {
+        useMangaStore.setState({ library: [makeLibraryManga([], { id: 30, title: 'Naruto' })] });
+        render(<MangaLibrary />);
+        expect(screen.queryByTestId('manga-entry-groups')).not.toBeInTheDocument();
+    });
+
+    it('opens and closes the panel to manage the groups', async () => {
+        const user = userEvent.setup();
+        render(<MangaLibrary />);
+        const button = screen.getByRole('button', { name: 'MANAGE GROUPS' });
+        expect(button).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.queryByText('No group yet.')).not.toBeInTheDocument();
+        await user.click(button);
+        expect(button).toHaveAttribute('aria-expanded', 'true');
+        expect(screen.getAllByTestId('manga-group')).toHaveLength(2);
+        await user.click(button);
+        expect(screen.queryByTestId('manga-group')).not.toBeInTheDocument();
     });
 });

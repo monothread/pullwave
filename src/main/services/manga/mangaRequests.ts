@@ -8,11 +8,14 @@ import type {
     MangaListRequest,
     MangaPreferenceChange,
     MangaReadRequest,
+    MangaSeriesRequest,
+    MangaSourceMigrationRequest,
     MangaPreferenceType,
     MangaStatus,
     MangaSummary
 } from '@shared/manga';
-import { MANGA_LIST_KINDS, MANGA_STATUSES, MANGA_TRI_STATES } from '@shared/manga';
+import { MANGA_LIST_KINDS, MANGA_STATUSES, MANGA_TRI_STATES, MAX_GROUP_NAME_LENGTH } from '@shared/manga';
+import { cleanSeasonName, cleanSeriesName, isValidSeason } from '@shared/series';
 
 // What comes from the screen is checked before it is used: the main process does not trust the shape of anything it is sent.
 export const MAX_TEXT = 500;
@@ -243,6 +246,45 @@ export function asDownloadRequest(value: unknown): MangaDownloadRequest | null {
         return null;
     }
     return { manga, details: asDetails(value['details'], manga), chapters };
+}
+
+// Joining a manga to a series: the manga, the name of the series, the place in it and the name of the season (all null to leave a series).
+export function asSeriesRequest(value: unknown): MangaSeriesRequest | null {
+    if (!isRecord(value)) {
+        return null;
+    }
+    const mangaId = asId(value['mangaId']);
+    if (mangaId === null) {
+        return null;
+    }
+    if (value['series'] === null) {
+        return { mangaId, series: null, season: null, seasonName: null };
+    }
+    const series = typeof value['series'] === 'string' ? cleanSeriesName(value['series']) : null;
+    const seasonName = value['seasonName'] === null || value['seasonName'] === undefined ? null : typeof value['seasonName'] === 'string' ? cleanSeasonName(value['seasonName']) : undefined;
+    if (series === null || !isValidSeason(value['season']) || seasonName === undefined) {
+        return null;
+    }
+    return { mangaId, series, season: value['season'], seasonName };
+}
+
+// The name of a group: in one piece, not empty, not too long.
+export function asGroupName(value: unknown): string | null {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const cleaned = value.replace(/\s+/g, ' ').trim();
+    return cleaned.length > 0 && cleaned.length <= MAX_GROUP_NAME_LENGTH ? cleaned : null;
+}
+
+// Moving a manga to another source: the manga of the library, and the manga of the other source with its chapters.
+export function asSourceMigrationRequest(value: unknown): MangaSourceMigrationRequest | null {
+    if (!isRecord(value)) {
+        return null;
+    }
+    const mangaId = asId(value['mangaId']);
+    const target = asDownloadRequest(value['target']);
+    return mangaId === null || target === null ? null : { mangaId, target };
 }
 
 const PREFERENCE_TYPES: readonly MangaPreferenceType[] = ['text', 'list', 'switch', 'checkbox', 'multiselect'];

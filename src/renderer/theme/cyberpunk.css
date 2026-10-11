@@ -1318,6 +1318,9 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .manga__tags { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 4px 0 0; padding: 0; }
 .manga__tag { padding: 2px 10px; background: transparent; color: var(--cyan); border: 1px solid var(--line); border-radius: 12px; font: inherit; font-size: 12px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
 .manga__tag:hover, .manga__tag:focus-visible { border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); outline: none; }
+.manga__tag--on { background: var(--cyan); color: var(--bg); border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.manga__tag--some { border-style: dashed; border-color: var(--cyan); }
+.manga__candidates { max-height: 320px; overflow-y: auto; }
 .manga__more { min-height: 48px; display: flex; align-items: center; justify-content: center; }
 .manga__head { gap: 14px; }
 

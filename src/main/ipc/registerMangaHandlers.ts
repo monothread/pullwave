@@ -1,9 +1,10 @@
 import { IPC } from '@shared/constants';
-import type { LibraryManga, MangaJob, MangaMigrationResponse, MangaResult, MangaStatusInfo } from '@shared/manga';
+import type { LibraryManga, MangaGroup, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
 import type { MangaDb } from '../services/manga/mangaDb';
 import type { MangaReader } from '../services/manga/mangaReader';
 import type { MangaDownloadQueue } from '../services/manga/mangaDownloadQueue';
-import { asDownloadRequest, asExtensionAction, asId, asIds, asListRequest, asPackageName, asPreferenceChange, asReadRequest, asSourceId, asStoreUrl } from '../services/manga/mangaRequests';
+import { asDownloadRequest, asExtensionAction, asGroupName, asId, asIds, asListRequest, asPackageName, asPreferenceChange, asReadRequest, asSeriesRequest, asSourceId, asSourceMigrationRequest, asStoreUrl } from '../services/manga/mangaRequests';
+import { cleanSeriesName } from '@shared/series';
 import type { MangaService } from '../services/manga/mangaService';
 import { fromStoredAddress, toStoredAddress } from '../services/manga/serverAddress';
 import type { IpcMainLike } from './registerHandlers';
@@ -54,6 +55,27 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     });
     ipcMain.handle(IPC.mangaMigrateFolder, (): MangaMigrationResponse => {
         return { ok: false, reason: 'failed' };
+    });
+    [IPC.mangaSetSeries, IPC.mangaRenameSeries].forEach((channel) => {
+        ipcMain.handle(channel, (): MangaSeriesResponse => {
+            return { ok: false, reason: 'invalid' };
+        });
+    });
+    ipcMain.handle(IPC.mangaGroups, (): MangaGroup[] => {
+        return [];
+    });
+    [IPC.mangaGroupCreate, IPC.mangaGroupRename].forEach((channel) => {
+        ipcMain.handle(channel, (): MangaGroupResponse => {
+            return { ok: false, reason: 'invalid' };
+        });
+    });
+    [IPC.mangaGroupDelete, IPC.mangaGroupMembers].forEach((channel) => {
+        ipcMain.handle(channel, () => {
+            return undefined;
+        });
+    });
+    ipcMain.handle(IPC.mangaMigrateSource, (): MangaSourceMigrationResponse => {
+        return { ok: false, reason: 'invalid' };
     });
     ipcMain.handle(IPC.mangaExtensionsUpdateAll, () => {
         return unsupported;
@@ -271,6 +293,91 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         if (folder !== null) {
             deps.openFolder(folder);
         }
+    });
+    ipcMain.handle(IPC.mangaSetSeries, (_event, request): MangaSeriesResponse => {
+        const checked = asSeriesRequest(request);
+        if (checked === null || db.getManga(checked.mangaId) === null) {
+            return { ok: false, reason: 'invalid' };
+        }
+        if (!db.setSeries(checked.mangaId, checked.series, checked.season, checked.seasonName)) {
+            return { ok: false, reason: 'season-taken', suggested: db.firstFreeSeason(checked.series ?? '', [checked.mangaId]) };
+        }
+        deps.onLibraryChanged();
+        return { ok: true };
+    });
+    ipcMain.handle(IPC.mangaRenameSeries, (_event, mangaIds, series): MangaRenameSeriesResponse => {
+        const ids = asIds(mangaIds);
+        const name = typeof series === 'string' ? cleanSeriesName(series) : null;
+        if (ids.length === 0 || name === null) {
+            return { ok: false, reason: 'invalid' };
+        }
+        const outcome = db.renameSeries(ids, name);
+        if (!outcome.ok) {
+            return { ok: false, reason: 'season-taken', manga: outcome.manga, season: outcome.season, suggested: outcome.suggested };
+        }
+        deps.onLibraryChanged();
+        return { ok: true };
+    });
+    ipcMain.handle(IPC.mangaGroups, (): MangaGroup[] => {
+        return db.listGroups();
+    });
+    ipcMain.handle(IPC.mangaGroupCreate, (_event, name): MangaGroupResponse => {
+        const cleaned = asGroupName(name);
+        if (cleaned === null) {
+            return { ok: false, reason: 'invalid' };
+        }
+        const group = db.createGroup(cleaned);
+        return group === null ? { ok: false, reason: 'taken' } : { ok: true, group };
+    });
+    ipcMain.handle(IPC.mangaGroupRename, (_event, groupId, name): MangaGroupResponse => {
+        const id = asId(groupId);
+        const cleaned = asGroupName(name);
+        if (id === null || cleaned === null) {
+            return { ok: false, reason: 'invalid' };
+        }
+        if (db.getGroup(id) === null) {
+            return { ok: false, reason: 'not-found' };
+        }
+        const group = db.renameGroup(id, cleaned);
+        return group === null ? { ok: false, reason: 'taken' } : { ok: true, group };
+    });
+    ipcMain.handle(IPC.mangaGroupDelete, (_event, groupId) => {
+        const id = asId(groupId);
+        if (id !== null) {
+            db.deleteGroup(id);
+            deps.onLibraryChanged();
+        }
+    });
+    ipcMain.handle(IPC.mangaGroupMembers, (_event, groupId, mangaIds, member) => {
+        const id = asId(groupId);
+        if (id !== null && typeof member === 'boolean') {
+            db.setGroupMembers(id, asIds(mangaIds), member);
+            deps.onLibraryChanged();
+        }
+    });
+    ipcMain.handle(IPC.mangaMigrateSource, (_event, request): MangaSourceMigrationResponse => {
+        const checked = asSourceMigrationRequest(request);
+        if (checked === null) {
+            return { ok: false, reason: 'invalid' };
+        }
+        // Not while the files are being moved, or while the manga is being downloaded.
+        const downloading = queue.list().some((job) => {
+            return job.mangaId === checked.mangaId && (job.status === 'queued' || job.status === 'running' || job.status === 'paused');
+        });
+        if (migrating || downloading) {
+            return { ok: false, reason: 'busy' };
+        }
+        const outcome = db.moveToSource(checked.mangaId, {
+            manga: store(checked.target.manga),
+            details: checked.target.details === null ? null : store(checked.target.details),
+            chapters: checked.target.chapters
+        });
+        if (!outcome.ok) {
+            return { ok: false, reason: outcome.reason };
+        }
+        deps.onLibraryChanged();
+        const manga = db.getLibraryManga(checked.mangaId);
+        return manga === null ? { ok: false, reason: 'not-found' } : { ok: true, manga: present(manga), matched: outcome.matched, added: outcome.added, dropped: outcome.dropped };
     });
     ipcMain.handle(IPC.mangaOpenSite, (_event, url) => {
         const address = asStoreUrl(url);

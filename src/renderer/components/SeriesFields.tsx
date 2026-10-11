@@ -14,6 +14,9 @@ interface SeriesFieldsProps {
     onSeriesChange: (series: string) => void;
     onSeasonChange: (season: number) => void;
     onSeasonNameChange: (name: string) => void;
+    // What the fields say when the mouse is over them, when it is not what an anime would need.
+    hint?: string;
+    nameHint?: string;
 }
 
 interface SeriesSearchProps {
@@ -82,15 +85,15 @@ function SeriesSearch({ label, value, placeholder, suggestions, onChange }: Seri
 }
 
 // What joins an anime to the others of its series: the name of the series, its place in it and the name it is shown with.
-export function SeriesFields({ series, season, seasonName, suggestions, onSeriesChange, onSeasonChange, onSeasonNameChange }: SeriesFieldsProps) {
+export function SeriesFields({ series, season, seasonName, suggestions, onSeriesChange, onSeasonChange, onSeasonNameChange, hint, nameHint }: SeriesFieldsProps) {
     const t = useTranslator();
     return (
         <div className="series-picker">
-            <div className="field-row series-fields" title={t('anime.series.hint')}>
+            <div className="field-row series-fields" title={hint ?? t('anime.series.hint')}>
                 <SeriesSearch label={t('anime.series.label')} value={series} placeholder={t('anime.series.placeholder')} suggestions={suggestions} onChange={onSeriesChange} />
                 <NumberField label={t('anime.season.label')} value={season} min={1} max={MAX_SEASON} onChange={onSeasonChange} />
             </div>
-            <div className="field-row series-name" title={t('anime.series.nameHint')}>
+            <div className="field-row series-name" title={nameHint ?? t('anime.series.nameHint')}>
                 <TextField
                     label={t('anime.season.name')}
                     value={seasonName}

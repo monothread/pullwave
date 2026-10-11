@@ -6,6 +6,9 @@ import {
     MAX_PREFERENCE_TEXT,
     MAX_TEXT,
     asDownloadRequest,
+    asGroupName,
+    asSeriesRequest,
+    asSourceMigrationRequest,
     asExtensionAction,
     asId,
     asIds,
@@ -312,5 +315,75 @@ describe('asPreferenceChange', () => {
         [{ sourceId: '1', position: 0, value: 'x' }]
     ])('refuses %j', (value) => {
         expect(asPreferenceChange(value)).toBeNull();
+    });
+});
+
+describe('asSeriesRequest', () => {
+    it('reads the manga, the series, the place in it and the name of the season', () => {
+        expect(asSeriesRequest({ mangaId: 4, series: '  Sousou   no Frieren ', season: 2, seasonName: ' Beyond   Journey ' })).toEqual({ mangaId: 4, series: 'Sousou no Frieren', season: 2, seasonName: 'Beyond Journey' });
+    });
+
+    it('takes the name of the season as none when it is empty or not given', () => {
+        expect(asSeriesRequest({ mangaId: 4, series: 'A', season: 1, seasonName: '   ' })?.seasonName).toBeNull();
+        expect(asSeriesRequest({ mangaId: 4, series: 'A', season: 1, seasonName: null })?.seasonName).toBeNull();
+        expect(asSeriesRequest({ mangaId: 4, series: 'A', season: 1 })?.seasonName).toBeNull();
+    });
+
+    it('leaves the series when the series is null, whatever else is sent', () => {
+        expect(asSeriesRequest({ mangaId: 4, series: null, season: 3, seasonName: 'x' })).toEqual({ mangaId: 4, series: null, season: null, seasonName: null });
+    });
+
+    it.each([
+        [{ series: 'A', season: 1 }],
+        [{ mangaId: 0, series: 'A', season: 1 }],
+        [{ mangaId: 4, series: '   ', season: 1 }],
+        [{ mangaId: 4, series: 'x'.repeat(101), season: 1 }],
+        [{ mangaId: 4, series: 5, season: 1 }],
+        [{ mangaId: 4, series: 'A', season: 0 }],
+        [{ mangaId: 4, series: 'A', season: 100 }],
+        [{ mangaId: 4, series: 'A', season: 1.5 }],
+        [{ mangaId: 4, series: 'A', season: '1' }],
+        [{ mangaId: 4, series: 'A', season: 1, seasonName: 'x'.repeat(61) }],
+        [{ mangaId: 4, series: 'A', season: 1, seasonName: 5 }],
+        ['x'],
+        [null]
+    ])('refuses %j', (value) => {
+        expect(asSeriesRequest(value)).toBeNull();
+    });
+});
+
+describe('asGroupName', () => {
+    it('is the name in one piece, without the spaces around', () => {
+        expect(asGroupName('  H   Mangas ')).toBe('H Mangas');
+        expect(asGroupName('x'.repeat(60))).toBe('x'.repeat(60));
+    });
+
+    it.each([[''], ['   '], ['x'.repeat(61)], [5], [null], [undefined], [{}]])('refuses %j', (value) => {
+        expect(asGroupName(value)).toBeNull();
+    });
+});
+
+describe('asSourceMigrationRequest', () => {
+    it('reads the manga of the library and the manga of the other source with its chapters', () => {
+        expect(asSourceMigrationRequest({ mangaId: 3, target: { manga: MANGA, details: null, chapters: [CHAPTER] } })).toEqual({
+            mangaId: 3,
+            target: {
+                manga: { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail' },
+                details: null,
+                chapters: [{ remoteId: 11, name: 'Romance Dawn', number: 1, dateUploaded: 1700000000000, scanlator: 'G', sourceOrder: 3 }]
+            }
+        });
+    });
+
+    it.each([
+        [{ target: { manga: MANGA, chapters: [CHAPTER] } }],
+        [{ mangaId: 0, target: { manga: MANGA, chapters: [CHAPTER] } }],
+        [{ mangaId: 3 }],
+        [{ mangaId: 3, target: { manga: MANGA, chapters: [] } }],
+        [{ mangaId: 3, target: { manga: { remoteId: 0 }, chapters: [CHAPTER] } }],
+        ['x'],
+        [null]
+    ])('refuses %j', (value) => {
+        expect(asSourceMigrationRequest(value)).toBeNull();
     });
 });

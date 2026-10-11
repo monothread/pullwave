@@ -213,6 +213,11 @@ export interface MangaRecord {
     genres: string[];
     status: MangaStatus;
     createdAt: number;
+    // The seasons of a manga are separate entries in the source: the user joins them with a series name and a season number (the number
+    // only orders them), and may name the season. All three are null for a manga on its own.
+    series: string | null;
+    season: number | null;
+    seasonName: string | null;
 }
 
 export interface MangaChapterRecord {
@@ -234,7 +239,48 @@ export interface MangaChapterRecord {
 
 export interface LibraryManga extends MangaRecord {
     chapters: MangaChapterRecord[];
+    // The groups (Mangas, Manhwas...) the manga is in; a manga can be in several.
+    groupIds: number[];
 }
+
+// A group the user made to keep the library in order: a name, and the mangas (the series, with all their seasons) the user put in it.
+export interface MangaGroup {
+    id: number;
+    name: string;
+}
+
+export const MAX_GROUP_NAME_LENGTH = 60;
+
+// Joining a manga to a series (or taking it out of one). `suggested` is the first season number the series does not have.
+export interface MangaSeriesRequest {
+    mangaId: number;
+    series: string | null;
+    season: number | null;
+    seasonName: string | null;
+}
+
+export type MangaSeriesResponse = { ok: true } | { ok: false; reason: 'invalid' } | { ok: false; reason: 'season-taken'; suggested: number };
+
+// Renaming a series changes it for all the mangas in it. When the name is one that another series has already, the seasons of both are
+// one series from then on, so a season number that both have is refused: `manga` is the one that clashes.
+export type MangaRenameSeriesResponse =
+    | { ok: true }
+    | { ok: false; reason: 'invalid' }
+    | { ok: false; reason: 'season-taken'; manga: string; season: number; suggested: number };
+
+export type MangaGroupResponse = { ok: true; group: MangaGroup } | { ok: false; reason: 'invalid' | 'taken' | 'not-found' };
+
+// Moving a manga of the library to the same manga in another source: the one the user picked in the other source, with its chapters.
+export interface MangaSourceMigrationRequest {
+    mangaId: number;
+    target: MangaDownloadRequest;
+}
+
+export type MangaSourceMigrationFailure = 'invalid' | 'not-found' | 'same' | 'exists' | 'busy';
+
+export type MangaSourceMigrationResponse =
+    | { ok: true; manga: LibraryManga; matched: number; added: number; dropped: number }
+    | { ok: false; reason: MangaSourceMigrationFailure };
 
 export interface MangaJob {
     chapterId: number;
@@ -379,6 +425,17 @@ export interface MangaApi {
     openSite: (url: string) => Promise<void>;
     // Asks for a folder and moves the downloaded chapters there, then says how it went.
     migrateFolder: () => Promise<MangaMigrationResponse>;
+    // Joins a manga to a series with its place in it, or takes it out of one.
+    setSeries: (request: MangaSeriesRequest) => Promise<MangaSeriesResponse>;
+    renameSeries: (mangaIds: number[], series: string) => Promise<MangaRenameSeriesResponse>;
+    groups: () => Promise<MangaGroup[]>;
+    createGroup: (name: string) => Promise<MangaGroupResponse>;
+    renameGroup: (groupId: number, name: string) => Promise<MangaGroupResponse>;
+    deleteGroup: (groupId: number) => Promise<void>;
+    // Puts mangas in a group, or takes them out of it.
+    setGroupMembers: (groupId: number, mangaIds: number[], member: boolean) => Promise<void>;
+    // Moves a manga of the library to the same manga in another source, keeping what was downloaded.
+    migrateSource: (request: MangaSourceMigrationRequest) => Promise<MangaSourceMigrationResponse>;
     onMigrationProgress: (listener: (progress: MangaMigrationProgress) => void) => () => void;
     // The hourly check added chapters to the library.
     onNewChapters: (listener: (news: MangaNewChapters) => void) => () => void;

@@ -137,6 +137,26 @@ export function createMockApi(): MockApiHandle {
         removeManga: vi.fn(async () => {return undefined}),
         openFolder: vi.fn(async () => {return undefined}),
         openSite: vi.fn(async () => {return undefined}),
+        setSeries: vi.fn(async () => {
+            return { ok: true };
+        }),
+        renameSeries: vi.fn(async () => {
+            return { ok: true };
+        }),
+        groups: vi.fn(async () => {
+            return [];
+        }),
+        createGroup: vi.fn(async (name: string) => {
+            return { ok: true, group: { id: 1, name } };
+        }),
+        renameGroup: vi.fn(async (groupId: number, name: string) => {
+            return { ok: true, group: { id: groupId, name } };
+        }),
+        deleteGroup: vi.fn(async () => {return undefined}),
+        setGroupMembers: vi.fn(async () => {return undefined}),
+        migrateSource: vi.fn(async () => {
+            return { ok: false, reason: 'invalid' };
+        }),
         migrateFolder: vi.fn(async () => {
             return { ok: false, reason: 'cancelled' };
         }),

@@ -14,6 +14,7 @@ const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string
 const STORE_URL = 'https://store.example/index.min.json';
 const EXTENSION_PKG = 'eu.kanade.tachiyomi.extension.en.fakedex';
 const SOURCE_ID = '4242';
+const OTHER_SOURCE_ID = '5252';
 // Enough of a JPEG for the app to recognize it by its first bytes.
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 // A picture a browser can decode: the covers are shown in the page, so they have to be real.
@@ -44,6 +45,9 @@ class FakeSuwayomi {
     adult = false;
     // The extension has an update, and the version of the library of extensions it was made for.
     hasUpdate = false;
+    // A second source (of the same extension) that has the same manga under another number, with these chapters (by their number).
+    otherSource = false;
+    otherChapters = [1, 2, 3];
     // Chapters the source has published after the first two (their numbers on the server).
     laterChapters: number[] = [];
     extensionLib = '1.4';
@@ -94,7 +98,7 @@ class FakeSuwayomi {
     }
 
     private manga(id: number, title: string): Record<string, unknown> {
-        return { id, sourceId: SOURCE_ID, title, thumbnailUrl: `/api/v1/manga/${id}/thumbnail` };
+        return { id, sourceId: id >= 70 && id < 80 ? OTHER_SOURCE_ID : SOURCE_ID, title, thumbnailUrl: `/api/v1/manga/${id}/thumbnail` };
     }
 
     private answer(query: string, variables: Record<string, unknown>): unknown {
@@ -129,7 +133,8 @@ class FakeSuwayomi {
         if (query.trim().startsWith('{ sources')) {
             const local = { id: '0', name: 'Local source', displayName: 'Local source', lang: 'localsourcelang', iconUrl: '', supportsLatest: false, contentWarning: 'SAFE', extension: { pkgName: 'local' } };
             const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: this.adult ? 'NSFW' : 'SAFE', extension: { pkgName: EXTENSION_PKG, storeIndexUrl: STORE_URL } };
-            return { sources: { nodes: this.installed ? [local, site] : [local] } };
+            const other = { ...site, id: OTHER_SOURCE_ID, name: 'Other Dex', displayName: 'Other Dex' };
+            return { sources: { nodes: this.installed ? [local, site, ...(this.otherSource ? [other] : [])] : [local] } };
         }
         if (query.includes('{ filters {')) {
             return {
@@ -144,13 +149,23 @@ class FakeSuwayomi {
             };
         }
         if (query.includes('fetchSourceManga')) {
-            const all = [this.manga(7, 'One Piece'), this.manga(8, 'Bleach')];
+            const all = variables['source'] === OTHER_SOURCE_ID ? [this.manga(70, 'One Piece')] : [this.manga(7, 'One Piece'), this.manga(8, 'Bleach')];
             const text = String(variables['query'] ?? '').toLowerCase();
             const mangas = variables['type'] === 'SEARCH' ? all.filter((item) => {return String(item['title']).toLowerCase().includes(text)}) : all;
             return { fetchSourceManga: { hasNextPage: false, mangas } };
         }
         if (query.includes('fetchMangaAndChapters')) {
             const id = Number(variables['id']);
+            if (id === 70) {
+                return {
+                    fetchMangaAndChapters: {
+                        manga: { ...this.manga(70, 'One Piece'), realUrl: 'https://other.example/manga/70', author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
+                        chapters: this.otherChapters.map((number) => {
+                            return { id: 700 + number, name: `Ch. ${number}`, chapterNumber: number, uploadDate: '1700000000000', scanlator: null, sourceOrder: number };
+                        })
+                    }
+                };
+            }
             return {
                 fetchMangaAndChapters: {
                     manga: { ...this.manga(id, id === 7 ? 'One Piece' : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
@@ -871,6 +886,158 @@ test.describe('manga section', () => {
         expect(fake.graphqlRequests('fetchMangaAndChapters')).toHaveLength(before);
         await goTo(session.page, 'LIBRARY');
         await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
+    });
+
+    test('keeps seasons together in a series and mangas in groups, which are made and used from the library', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByText('Library (2)')).toBeVisible();
+
+        // Groups are made in the library.
+        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
+        await session.page.getByLabel('Name of the group').fill('Mangas');
+        await session.page.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await session.page.getByLabel('Name of the group').fill('Favorites');
+        await session.page.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(session.page.getByTestId('manga-group')).toHaveCount(2);
+        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
+
+        // One Piece is put in two groups, and Bleach joins it as the second season of a series.
+        await session.page.getByTestId('manga-entry').filter({ hasText: 'One Piece' }).getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'Mangas', exact: true }).click();
+        await session.page.getByRole('button', { name: 'Favorites', exact: true }).click();
+        await expect(session.page.getByRole('button', { name: 'Mangas', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await session.page.getByLabel('Series').fill('Pirates');
+        await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
+        await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByLabel('Series').fill('pirates');
+        await session.page.getByLabel('Order').fill('2');
+        await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
+        await expect(session.page.getByText('In the series "Pirates", order 2.')).toBeVisible();
+        // The season that joined the series is in the groups the series is in.
+        await expect(session.page.getByRole('button', { name: 'Mangas', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(session.page.getByRole('button', { name: 'Favorites', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+
+        // The library shows the series as one card, which opens to its seasons; the groups limit it.
+        await expect(session.page.getByTestId('manga-series')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-entry')).toHaveCount(0);
+        await expect(session.page.getByText('2 SEASONS')).toBeVisible();
+        await session.page.getByRole('navigation', { name: 'Groups' }).getByRole('button', { name: 'Favorites' }).click();
+        await expect(session.page.getByTestId('manga-series')).toHaveCount(1);
+        await session.page.getByRole('button', { name: 'Open series: Pirates' }).click();
+        await expect(session.page.getByTestId('manga-season')).toHaveCount(2);
+        await expect(session.page.getByTestId('manga-season').first()).toContainText('SEASON 1');
+        await expect(session.page.getByRole('button', { name: 'Mangas', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await session.page.getByRole('button', { name: 'BACK TO LIBRARY' }).click();
+
+        // Deleting a group leaves the mangas.
+        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
+        await session.page.getByRole('button', { name: 'DELETE: Favorites' }).click();
+        await session.page.getByRole('button', { name: /^DELETE THE GROUP/ }).click();
+        await expect(session.page.getByTestId('manga-group')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-series')).toHaveCount(1);
+    });
+
+    test('keeps the groups and the series after the app is closed and opened again', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByLabel('Series').fill('Pirates');
+        await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
+        await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
+        await session.page.getByLabel('Name of the group').fill('Mangas');
+        await session.page.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(session.page.getByTestId('manga-group')).toHaveCount(1);
+        await session.app.close();
+
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByTestId('manga-series')).toContainText('Pirates');
+        await expect(session.page.getByRole('navigation', { name: 'Groups' }).getByRole('button', { name: 'Mangas' })).toBeVisible();
+    });
+
+    test('goes back and forward through the series and the groups with the buttons of the mouse', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByLabel('Series').fill('Pirates');
+        await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
+        await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'Open series: Pirates' }).click();
+        await expect(session.page.getByTestId('manga-series-view')).toBeVisible();
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await expect(session.page.getByLabel('Series')).toBeVisible();
+        // Back: the series, then the cards. Forward: the series, then the manga.
+        await session.page.evaluate(() => {
+            window.dispatchEvent(new MouseEvent('mouseup', { button: 3, bubbles: true, cancelable: true }));
+        });
+        await expect(session.page.getByTestId('manga-series-view')).toBeVisible();
+        await session.page.evaluate(() => {
+            window.dispatchEvent(new MouseEvent('mouseup', { button: 3, bubbles: true, cancelable: true }));
+        });
+        await expect(session.page.getByTestId('manga-series')).toBeVisible();
+        await session.page.evaluate(() => {
+            window.dispatchEvent(new MouseEvent('mouseup', { button: 4, bubbles: true, cancelable: true }));
+        });
+        await expect(session.page.getByTestId('manga-series-view')).toBeVisible();
+    });
+
+    test('moves a manga to the same manga in another source, keeping what was downloaded and matching the chapters by number', async () => {
+        fake.otherSource = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+        const file = join(mangaFolder(), 'One Piece', 'Chapter 1.cbz');
+        await expect.poll(() => {return existsSync(file)}).toBe(true);
+
+        await session.page.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' }).click();
+        await expect(session.page.getByLabel('Search in').locator('option')).toHaveText(['All sources', 'Other Dex (en)']);
+        await session.page.getByRole('button', { name: 'SEARCH', exact: true }).click();
+        await session.page.getByRole('button', { name: 'Pick: One Piece (Other Dex)' }).click();
+        await expect(session.page.getByTestId('manga-migration-preview')).toHaveText(
+            '2 of the 2 chapters of the library match chapters of the new source. 1 new chapter(s) will be added, 0 downloaded chapter(s) the new source lacks will be kept and 0 chapter(s) not downloaded will be removed.'
+        );
+        await session.page.getByRole('button', { name: 'MIGRATE', exact: true }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Migrated: 2 chapter(s) matched, 1 added, 0 removed.' }).first()).toBeVisible();
+
+        // The manga is the one of the other source now: its chapters (three of them) come from there, and the downloaded one is still downloaded.
+        await expect(session.page.getByTestId('manga-chapter')).toHaveCount(3);
+        await expect(session.page.getByTestId('manga-chapter').filter({ hasText: 'Ch. 1' }).locator('.badge--done')).toBeVisible();
+        await expect(session.page.getByTestId('manga-chapter').filter({ hasText: 'Ch. 3' }).locator('.badge--done')).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'OPEN SITE' })).toHaveAttribute('title', 'https://other.example/manga/70');
+        expect(existsSync(file)).toBe(true);
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await expect(session.page.getByText('1 of 3 downloaded')).toBeVisible();
+        await expect(session.page.getByRole('heading', { name: 'One Piece' })).toBeVisible();
+
+        // The chapters that are new download from the new source.
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('checkbox', { name: 'Select: Ch. 3' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 3.cbz']);
+        expect(fake.graphqlRequests('fetchChapterPages').map((item) => {return item.variables?.['chapterId']})).toEqual([101, 703]);
     });
 
     test('makes a folder of images when the setting says so', async () => {

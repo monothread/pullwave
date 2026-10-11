@@ -72,12 +72,12 @@ function mount(): { unmount: () => void } {
 }
 
 describe('snapshotKey', () => {
-    const manga: MangaPage = { view: 'browse', previousView: 'browse', sourceId: null, mode: 'popular', settingsOpen: false, selection: null, selectionFrom: 'browse' };
+    const manga: MangaPage = { view: 'browse', previousView: 'browse', sourceId: null, mode: 'popular', settingsOpen: false, selection: null, selectionFrom: 'browse', librarySeries: null, libraryGroup: null };
     const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null, manga };
 
     it('joins the parts that make a page', () => {
-        expect(snapshotKey(base)).toBe('anime|queue|library|library||||browse:browse::popular:false::browse');
-        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren' })).toBe('anime|queue|library|library|2:sub|7|series-frieren|browse:browse::popular:false::browse');
+        expect(snapshotKey(base)).toBe('anime|queue|library|library||||browse:browse::popular:false::browse::');
+        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren' })).toBe('anime|queue|library|library|2:sub|7|series-frieren|browse:browse::popular:false::browse::');
     });
 
     it('differs between the screens of the manga section, the sources, the modes, the settings of a source and the mangas open', () => {
@@ -89,11 +89,13 @@ describe('snapshotKey', () => {
             { ...manga, sourceId: '5', mode: 'search' as const },
             { ...manga, sourceId: '5', settingsOpen: true },
             { ...manga, selection: { manga: makeSummary({ remoteId: 7 }), status: 'ready' as const, details: null, chapters: [], selected: [], error: null } },
-            { ...manga, selectionFrom: 'library' as const }
+            { ...manga, selectionFrom: 'library' as const },
+            { ...manga, librarySeries: 'series-frieren' },
+            { ...manga, libraryGroup: 2 }
         ].map((page) => {
             return snapshotKey({ ...base, manga: page });
         });
-        expect(new Set([key, ...keys]).size).toBe(8);
+        expect(new Set([key, ...keys]).size).toBe(10);
     });
 
     it('does not change when the content of the same manga loads', () => {

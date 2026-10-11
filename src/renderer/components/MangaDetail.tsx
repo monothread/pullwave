@@ -1,6 +1,10 @@
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
+import { useState } from 'react';
 import { MangaCover } from './MangaCover';
+import { MangaGroupChips } from './MangaGroupChips';
+import { MangaMigrateSource } from './MangaMigrateSource';
+import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { RowLink } from './RowLink';
 import { chapterState, chapterStatusKey, downloadedCount, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
 
@@ -95,6 +99,8 @@ export function MangaDetail() {
         });
     });
 
+    const [migrating, setMigrating] = useState(false);
+
     if (selection === null) {
         return null;
     }
@@ -168,6 +174,35 @@ export function MangaDetail() {
                     )}
                 </div>
             </header>
+            {inLibraryPage && saved && (
+                <>
+                    <section className="panel" aria-label={t('manga.library.groups')}>
+                        <span className="section-label">{t('manga.library.groups')}</span>
+                        <MangaGroupChips mangaIds={[saved.id]} title={saved.title} />
+                    </section>
+                    <MangaSeriesSettings key={`${String(saved.id)}-${saved.series ?? ''}-${String(saved.season ?? '')}`} manga={saved} />
+                    {migrating ? (
+                        <MangaMigrateSource
+                            manga={saved}
+                            onClose={() => {
+                                setMigrating(false);
+                            }}
+                        />
+                    ) : (
+                        <div className="job__actions">
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                onClick={() => {
+                                    setMigrating(true);
+                                }}
+                            >
+                                {t('manga.migrateSource.title')}
+                            </button>
+                        </div>
+                    )}
+                </>
+            )}
             {selection.status === 'loading' && <p className="empty">{t('manga.detail.loading')}</p>}
             {selection.status === 'error' && selection.error && (
                 <p className="field__warning" role="alert" title={selection.error.message}>

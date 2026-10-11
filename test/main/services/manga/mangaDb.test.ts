@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
-import type { MangaChapter, MangaSummary } from '@shared/manga';
+import type { MangaChapter, MangaDetails, MangaSummary } from '@shared/manga';
 import { INTERRUPTED_MESSAGE, MangaDb } from '@main/services/manga/mangaDb';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
 
@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('MangaDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(3);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(4);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -34,7 +34,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(3);
+        expect(second.schemaVersion).toBe(4);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -55,7 +55,10 @@ describe('MangaDb mangas', () => {
             description: null,
             genres: [],
             status: 'unknown',
-            createdAt: 5000
+            createdAt: 5000,
+            series: null,
+            season: null,
+            seasonName: null
         });
     });
 
@@ -275,8 +278,8 @@ describe('MangaDb the page of the manga on its site', () => {
             PRAGMA user_version = 2;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(3);
-        expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, chapters: [] }]);
+        expect(db.schemaVersion).toBe(4);
+        expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, series: null, season: null, seasonName: null, groupIds: [], chapters: [] }]);
         db.close();
     });
 });
@@ -317,6 +320,306 @@ describe('MangaDb moving the files', () => {
         expect(() => {
             db.relinkChapters([]);
         }).not.toThrow();
+    });
+});
+
+describe('MangaDb series', () => {
+    function addManga(db: MangaDb, remoteId: number, title: string) {
+        return db.upsertManga({ remoteId, sourceId: '123', title, thumbnailUrl: null });
+    }
+
+    it('starts with no series', () => {
+        const { manga } = setup();
+        expect(manga).toMatchObject({ series: null, season: null, seasonName: null });
+    });
+
+    it('joins a manga to a series with its place and its name in it, and takes it out again', () => {
+        const { db, manga } = setup();
+        expect(db.setSeries(manga.id, 'Frieren', 2, 'Beyond Journey')).toBe(true);
+        expect(db.getManga(manga.id)).toMatchObject({ series: 'Frieren', season: 2, seasonName: 'Beyond Journey' });
+        expect(db.setSeries(manga.id, null, null)).toBe(true);
+        expect(db.getManga(manga.id)).toMatchObject({ series: null, season: null, seasonName: null });
+    });
+
+    it('forgets the season and its name when the series is taken away', () => {
+        const { db, manga } = setup();
+        db.setSeries(manga.id, 'Frieren', 2, 'Name');
+        db.setSeries(manga.id, null, 5, 'Name');
+        expect(db.getManga(manga.id)).toMatchObject({ series: null, season: null, seasonName: null });
+    });
+
+    it('says no for a manga that is not there', () => {
+        const { db } = setup();
+        expect(db.setSeries(999, 'Frieren', 1)).toBe(false);
+    });
+
+    it('refuses a season another manga of the series has, the same series written another way too', () => {
+        const { db, manga } = setup();
+        const other = addManga(db, 8, 'Frieren 2');
+        db.setSeries(manga.id, 'Frieren', 1);
+        expect(db.setSeries(other.id, '  FRIEREN ', 1)).toBe(false);
+        expect(db.getManga(other.id)?.series).toBeNull();
+        expect(db.setSeries(other.id, 'Frieren', 2)).toBe(true);
+        expect(db.setSeries(manga.id, 'Frieren', 1)).toBe(true);
+    });
+
+    it('uses the spelling the library already has for a series', () => {
+        const { db, manga } = setup();
+        const other = addManga(db, 8, 'Frieren 2');
+        db.setSeries(manga.id, 'Sousou no Frieren', 1);
+        db.setSeries(other.id, 'sousou  no frieren', 2);
+        expect(db.getManga(other.id)?.series).toBe('Sousou no Frieren');
+        expect(db.canonicalSeries('SOUSOU NO FRIEREN')).toBe('Sousou no Frieren');
+        expect(db.canonicalSeries('Another')).toBe('Another');
+        expect(db.canonicalSeries('Sousou no Frieren', [manga.id, other.id])).toBe('Sousou no Frieren');
+    });
+
+    it('gives the seasons a series has and the first free one', () => {
+        const { db, manga } = setup();
+        const other = addManga(db, 8, 'Frieren 2');
+        db.setSeries(manga.id, 'Frieren', 1);
+        db.setSeries(other.id, 'Frieren', 3);
+        expect(db.seasonsOfSeries('frieren').sort()).toEqual([1, 3]);
+        expect(db.seasonsOfSeries('Frieren', [other.id])).toEqual([1]);
+        expect(db.firstFreeSeason('Frieren')).toBe(4);
+        expect(db.firstFreeSeason('Nothing')).toBe(1);
+        expect(db.seasonTaken('Frieren', 3, manga.id)).toBe(true);
+        expect(db.seasonTaken('Frieren', 3, other.id)).toBe(false);
+    });
+
+    it('renames a series for all the mangas in it, keeping each season', () => {
+        const { db, manga } = setup();
+        const other = addManga(db, 8, 'Frieren 2');
+        const alone = addManga(db, 9, 'Alone');
+        db.setSeries(manga.id, 'Frieren', 1, 'First');
+        db.setSeries(other.id, 'Frieren', 2);
+        expect(db.renameSeries([manga.id, other.id, alone.id], 'Sousou no Frieren')).toEqual({ ok: true });
+        expect(db.getManga(manga.id)).toMatchObject({ series: 'Sousou no Frieren', season: 1, seasonName: 'First' });
+        expect(db.getManga(other.id)).toMatchObject({ series: 'Sousou no Frieren', season: 2 });
+        // A manga that was on its own becomes the first season, but the season 1 is taken in this series.
+        expect(db.getManga(alone.id)).toMatchObject({ series: 'Sousou no Frieren', season: 1 });
+    });
+
+    it('joins two series when the name is the one the other has, unless a season is in both, and then changes nothing', () => {
+        const { db, manga } = setup();
+        const two = addManga(db, 8, 'Two');
+        const three = addManga(db, 9, 'Three');
+        db.setSeries(manga.id, 'A', 1);
+        db.setSeries(two.id, 'B', 1);
+        db.setSeries(three.id, 'B', 2);
+        expect(db.renameSeries([two.id, three.id], 'a')).toEqual({ ok: false, manga: 'Two', season: 1, suggested: 2 });
+        expect(db.getManga(two.id)?.series).toBe('B');
+        expect(db.getManga(three.id)?.series).toBe('B');
+        db.setSeries(manga.id, 'A', 7);
+        expect(db.renameSeries([two.id, three.id], 'a')).toEqual({ ok: true });
+        expect(db.getManga(two.id)).toMatchObject({ series: 'A', season: 1 });
+        expect(db.getManga(three.id)).toMatchObject({ series: 'A', season: 2 });
+    });
+
+    it('ignores the mangas of a rename that are not in the library', () => {
+        const { db, manga } = setup();
+        expect(db.renameSeries([manga.id, 999], 'X')).toEqual({ ok: true });
+        expect(db.getManga(manga.id)).toMatchObject({ series: 'X', season: 1 });
+    });
+
+    it('keeps the series when the manga is added to the library again', () => {
+        const { db, manga } = setup();
+        db.setSeries(manga.id, 'Frieren', 2, 'Name');
+        expect(db.upsertManga({ ...MANGA, title: 'Frieren 2' })).toMatchObject({ series: 'Frieren', season: 2, seasonName: 'Name' });
+    });
+});
+
+describe('MangaDb groups', () => {
+    function addManga(db: MangaDb, remoteId: number, title: string) {
+        return db.upsertManga({ remoteId, sourceId: '123', title, thumbnailUrl: null });
+    }
+
+    it('makes groups, lists them by name and finds each by its id', () => {
+        const { db } = setup();
+        const manhwas = db.createGroup('Manhwas');
+        const mangas = db.createGroup('mangas');
+        expect(manhwas).toEqual({ id: 1, name: 'Manhwas' });
+        expect(db.listGroups()).toEqual([mangas, manhwas]);
+        expect(db.getGroup(1)).toEqual(manhwas);
+        expect(db.getGroup(99)).toBeNull();
+    });
+
+    it('does not make two groups with the same name, whatever the case or the accents', () => {
+        const { db } = setup();
+        db.createGroup('Mangás');
+        expect(db.createGroup('MANGAS')).toBeNull();
+        expect(db.listGroups()).toHaveLength(1);
+    });
+
+    it('renames a group, but not to the name of another one, nor a group that is not there', () => {
+        const { db } = setup();
+        const first = db.createGroup('Mangas')!;
+        db.createGroup('Manhwas');
+        expect(db.renameGroup(first.id, 'Shonen')).toEqual({ id: first.id, name: 'Shonen' });
+        expect(db.renameGroup(first.id, 'manhwas')).toBeNull();
+        expect(db.renameGroup(first.id, 'SHONEN')).toEqual({ id: first.id, name: 'SHONEN' });
+        expect(db.renameGroup(99, 'X')).toBeNull();
+    });
+
+    it('puts mangas in a group, in several groups, and takes them out', () => {
+        const { db, manga } = setup();
+        const other = addManga(db, 8, 'Bleach');
+        const mangas = db.createGroup('Mangas')!;
+        const favorites = db.createGroup('Favorites')!;
+        db.setGroupMembers(mangas.id, [manga.id, other.id], true);
+        db.setGroupMembers(favorites.id, [manga.id], true);
+        db.setGroupMembers(favorites.id, [manga.id], true);
+        expect(db.groupIdsOf(manga.id)).toEqual([mangas.id, favorites.id]);
+        expect(db.groupIdsOf(other.id)).toEqual([mangas.id]);
+        expect(db.getLibraryManga(manga.id)?.groupIds).toEqual([mangas.id, favorites.id]);
+        expect(db.list().map((item) => {return item.groupIds})).toEqual([[mangas.id], [mangas.id, favorites.id]]);
+        db.setGroupMembers(mangas.id, [manga.id], false);
+        expect(db.groupIdsOf(manga.id)).toEqual([favorites.id]);
+    });
+
+    it('ignores mangas that are not there and groups that are not there', () => {
+        const { db, manga } = setup();
+        const group = db.createGroup('Mangas')!;
+        db.setGroupMembers(group.id, [999], true);
+        db.setGroupMembers(99, [manga.id], true);
+        expect(db.groupIdsOf(manga.id)).toEqual([]);
+    });
+
+    it('deletes a group but not its mangas, and a manga that is removed leaves its groups', () => {
+        const { db, manga } = setup();
+        const other = addManga(db, 8, 'Bleach');
+        const group = db.createGroup('Mangas')!;
+        db.setGroupMembers(group.id, [manga.id, other.id], true);
+        db.removeManga(other.id);
+        expect(db.groupIdsOf(other.id)).toEqual([]);
+        db.deleteGroup(group.id);
+        expect(db.listGroups()).toEqual([]);
+        expect(db.getManga(manga.id)).not.toBeNull();
+        expect(db.groupIdsOf(manga.id)).toEqual([]);
+        expect(() => {
+            db.deleteGroup(99);
+        }).not.toThrow();
+    });
+
+    it('puts a manga that joins a series in the groups the series is in', () => {
+        const { db, manga } = setup();
+        const second = addManga(db, 8, 'Frieren 2');
+        const third = addManga(db, 9, 'Frieren 3');
+        const mangas = db.createGroup('Mangas')!;
+        const favorites = db.createGroup('Favorites')!;
+        db.setSeries(manga.id, 'Frieren', 1);
+        db.setGroupMembers(mangas.id, [manga.id], true);
+        db.setSeries(second.id, 'Frieren', 2);
+        expect(db.groupIdsOf(second.id)).toEqual([mangas.id]);
+        db.setGroupMembers(favorites.id, [second.id], true);
+        db.setSeries(third.id, 'frieren', 3);
+        expect(db.groupIdsOf(third.id)).toEqual([mangas.id, favorites.id]);
+    });
+
+    it('does that for a series that is renamed to the name of another one too', () => {
+        const { db, manga } = setup();
+        const second = addManga(db, 8, 'Other');
+        const mangas = db.createGroup('Mangas')!;
+        db.setSeries(manga.id, 'A', 5);
+        db.setGroupMembers(mangas.id, [manga.id], true);
+        db.setSeries(second.id, 'B', 1);
+        db.renameSeries([second.id], 'a');
+        expect(db.getManga(second.id)?.series).toBe('A');
+        expect(db.groupIdsOf(second.id)).toEqual([mangas.id]);
+    });
+});
+
+describe('MangaDb moving a manga to another source', () => {
+    const TARGET = { remoteId: 70, sourceId: '999', title: 'One Piece (other)', thumbnailUrl: 'http://127.0.0.1:1/other.jpg' };
+
+    function details(overrides: Partial<MangaDetails> = {}): MangaDetails {
+        return { ...TARGET, url: 'https://other.example/op', author: 'Oda', artist: null, description: 'D', genres: ['Action'], status: 'completed', ...overrides };
+    }
+
+    function inLibrary() {
+        const context = setup();
+        const one = context.db.ensureChapter(context.manga.id, chapter(1));
+        const two = context.db.ensureChapter(context.manga.id, chapter(2));
+        const three = context.db.ensureChapter(context.manga.id, chapter(3));
+        const four = context.db.ensureChapter(context.manga.id, chapter(4));
+        context.db.markDone(one.id, '/m/One Piece/Chapter 1.cbz', 10, 3);
+        context.db.markDone(three.id, '/m/One Piece/Chapter 3.cbz', 30, 3);
+        context.db.markFailed(four.id, 'error', { code: 'IMAGE', message: 'x' });
+        return { ...context, one, two, three, four };
+    }
+
+    it('makes the manga the one of the other source, keeping its title, its series, its groups and its folder', () => {
+        const { db, manga, one } = inLibrary();
+        db.setSeries(manga.id, 'One Piece', 1, 'Arc');
+        const group = db.createGroup('Mangas')!;
+        db.setGroupMembers(group.id, [manga.id], true);
+        const result = db.moveToSource(manga.id, { manga: TARGET, details: details(), chapters: [chapter(1, { remoteId: 701 }), chapter(2, { remoteId: 702 }), chapter(5, { remoteId: 705 })] });
+        expect(result).toEqual({ ok: true, matched: 2, added: 1, dropped: 1 });
+        expect(db.getManga(manga.id)).toMatchObject({
+            id: manga.id,
+            sourceId: '999',
+            remoteId: 70,
+            title: 'One Piece',
+            thumbnailUrl: 'http://127.0.0.1:1/other.jpg',
+            url: 'https://other.example/op',
+            author: 'Oda',
+            genres: ['Action'],
+            status: 'completed',
+            series: 'One Piece',
+            season: 1,
+            seasonName: 'Arc'
+        });
+        expect(db.groupIdsOf(manga.id)).toEqual([group.id]);
+        expect(db.findManga('123', 7)).toBeNull();
+        expect(db.findManga('999', 70)?.id).toBe(manga.id);
+        expect(db.getChapter(one.id)).toMatchObject({ remoteId: 701, status: 'done', filePath: '/m/One Piece/Chapter 1.cbz', sizeBytes: 10 });
+    });
+
+    it('keeps the state and the file of the chapters that match, and takes the data of the new ones', () => {
+        const { db, manga, one, two } = inLibrary();
+        db.moveToSource(manga.id, {
+            manga: TARGET,
+            details: null,
+            chapters: [chapter(1, { remoteId: 701, name: 'Romance Dawn', scanlator: 'G', dateUploaded: 5, sourceOrder: 11 }), chapter(2, { remoteId: 702 })]
+        });
+        expect(db.getChapter(one.id)).toMatchObject({ remoteId: 701, name: 'Romance Dawn', scanlator: 'G', dateUploaded: 5, sourceOrder: 11, status: 'done', pageCount: 3 });
+        expect(db.getChapter(two.id)).toMatchObject({ remoteId: 702, status: 'idle', filePath: null });
+    });
+
+    it('keeps a downloaded chapter the other source lacks, removes the others, and adds the new ones as not downloaded', () => {
+        const { db, manga, three, four } = inLibrary();
+        db.moveToSource(manga.id, { manga: TARGET, details: null, chapters: [chapter(1, { remoteId: 701 }), chapter(9, { remoteId: 709 })] });
+        expect(db.getChapter(three.id)).toMatchObject({ remoteId: three.remoteId, status: 'done', filePath: '/m/One Piece/Chapter 3.cbz' });
+        expect(db.getChapter(four.id)).toBeNull();
+        const byRemote = db.chaptersOf(manga.id).map((item) => {return [item.remoteId, item.status]}).sort();
+        expect(byRemote).toEqual([[3, 'done'], [701, 'done'], [709, 'idle']]);
+    });
+
+    it('keeps the cover and what the source says when the other one gives no details', () => {
+        const { db, manga } = inLibrary();
+        db.saveDetails(manga.id, { url: 'https://old.example/op', author: 'Old', artist: null, description: null, genres: [], status: 'ongoing' });
+        db.moveToSource(manga.id, { manga: TARGET, details: null, chapters: [chapter(1, { remoteId: 701 })] });
+        expect(db.getManga(manga.id)).toMatchObject({ url: 'https://old.example/op', author: 'Old', thumbnailUrl: 'http://127.0.0.1:1/other.jpg' });
+    });
+
+    it('says why it does not happen, and changes nothing', () => {
+        const { db, manga } = inLibrary();
+        const other = db.upsertManga({ remoteId: 70, sourceId: '999', title: 'Already here', thumbnailUrl: null });
+        expect(db.moveToSource(999, { manga: TARGET, details: null, chapters: [] })).toEqual({ ok: false, reason: 'not-found' });
+        expect(db.moveToSource(manga.id, { manga: { ...TARGET, sourceId: '123', remoteId: 7 }, details: null, chapters: [] })).toEqual({ ok: false, reason: 'same' });
+        expect(db.moveToSource(manga.id, { manga: TARGET, details: null, chapters: [chapter(1, { remoteId: 701 })] })).toEqual({ ok: false, reason: 'exists' });
+        expect(db.getManga(manga.id)).toMatchObject({ sourceId: '123', remoteId: 7 });
+        expect(db.chaptersOf(manga.id)).toHaveLength(4);
+        expect(db.getManga(other.id)?.title).toBe('Already here');
+    });
+
+    it('changes nothing when it fails half way', () => {
+        const { db, manga, one } = inLibrary();
+        expect(() => {
+            db.moveToSource(manga.id, { manga: { ...TARGET, sourceId: undefined as unknown as string }, details: null, chapters: [chapter(1, { remoteId: 701 })] });
+        }).toThrow();
+        expect(db.getManga(manga.id)).toMatchObject({ sourceId: '123', remoteId: 7 });
+        expect(db.getChapter(one.id)?.remoteId).toBe(1);
     });
 });
 

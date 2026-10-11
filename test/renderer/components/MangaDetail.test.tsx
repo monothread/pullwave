@@ -501,3 +501,61 @@ describe('MangaDetail the site of the source and the chapters that failed', () =
         expect(screen.queryByRole('button', { name: /^RETRY/ })).not.toBeInTheDocument();
     });
 });
+
+describe('MangaDetail organizing a manga of the library', () => {
+    const SAVED = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' })], { id: 9 });
+
+    beforeEach(() => {
+        mock.api.manga.groups.mockResolvedValue([{ id: 1, name: 'Mangas' }]);
+        mock.api.manga.library.mockResolvedValue([SAVED]);
+        useMangaStore.setState({ library: [SAVED], groups: [{ id: 1, name: 'Mangas' }], browse: { ...initialManga.browse, sources: [makeSource({ id: '123' }), makeSource({ id: '200', name: 'Other Dex' })], sourcesStatus: 'ready' } });
+    });
+
+    it('shows the groups, the series and the move to another source for a manga of the library, in the library page', () => {
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('list', { name: 'Groups of One Piece' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Series')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeInTheDocument();
+    });
+
+    it('puts the manga in a group from there', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'Mangas' }));
+        expect(mock.api.manga.setGroupMembers).toHaveBeenCalledWith(1, [9], true);
+    });
+
+    it('joins the manga to a series from there', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        await user.type(screen.getByLabelText('Series'), 'One Piece');
+        await user.click(screen.getByRole('button', { name: 'SAVE SERIES' }));
+        expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 9, series: 'One Piece', season: 1, seasonName: null });
+    });
+
+    it('opens the panel to move the manga to another source, and closes it', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' }));
+        expect(screen.getByRole('region', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        expect(screen.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeInTheDocument();
+    });
+
+    it('shows none of that on the page of the browse, nor for a manga that is not in the library', () => {
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse' });
+        open();
+        const { rerender } = render(<MangaDetail />);
+        expect(screen.queryByLabelText('Series')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).not.toBeInTheDocument();
+        useMangaStore.setState({ selectionFrom: 'library', view: 'library', library: [] });
+        rerender(<MangaDetail />);
+        expect(screen.queryByLabelText('Series')).not.toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: /^Groups of/ })).not.toBeInTheDocument();
+    });
+});

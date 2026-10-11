@@ -43,8 +43,16 @@ const MANGA_CHANNELS = [
     IPC.mangaHelperRemove,
     IPC.mangaInstall,
     IPC.mangaJobs,
+    IPC.mangaGroupCreate,
+    IPC.mangaGroupDelete,
+    IPC.mangaGroupMembers,
+    IPC.mangaGroupRename,
+    IPC.mangaGroups,
     IPC.mangaMigrateFolder,
+    IPC.mangaMigrateSource,
     IPC.mangaOpenSite,
+    IPC.mangaRenameSeries,
+    IPC.mangaSetSeries,
     IPC.mangaLibrary,
     IPC.mangaList,
     IPC.mangaOpenFolder,
@@ -210,6 +218,14 @@ describe('registerMangaHandlers', () => {
         });
         expect(ipc.call(IPC.mangaExtensionsUpdateAll)).toEqual(unsupported);
         expect(ipc.call(IPC.mangaOpenSite)).toBeUndefined();
+        expect(ipc.call(IPC.mangaSetSeries)).toEqual({ ok: false, reason: 'invalid' });
+        expect(ipc.call(IPC.mangaRenameSeries)).toEqual({ ok: false, reason: 'invalid' });
+        expect(ipc.call(IPC.mangaGroups)).toEqual([]);
+        expect(ipc.call(IPC.mangaGroupCreate)).toEqual({ ok: false, reason: 'invalid' });
+        expect(ipc.call(IPC.mangaGroupRename)).toEqual({ ok: false, reason: 'invalid' });
+        expect(ipc.call(IPC.mangaGroupDelete)).toBeUndefined();
+        expect(ipc.call(IPC.mangaGroupMembers)).toBeUndefined();
+        expect(ipc.call(IPC.mangaMigrateSource)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaMigrateFolder)).toEqual({ ok: false, reason: 'failed' });
         expect(ipc.call(IPC.mangaHelperInstall)).toBeUndefined();
         expect(ipc.call(IPC.mangaHelperRemove)).toBeUndefined();
@@ -644,5 +660,188 @@ describe('the site and the folder of the mangas', () => {
         });
         await expect(call(IPC.mangaMigrateFolder)).rejects.toThrow('disk');
         await expect(call(IPC.mangaMigrateFolder)).rejects.toThrow('disk');
+    });
+});
+
+describe('series, groups and the move to another source', () => {
+    function addManga(context: ReturnType<typeof setup>, remoteId: number, title: string): number {
+        return context.db.upsertManga({ remoteId, sourceId: '123', title, thumbnailUrl: `${BASE}/api/v1/manga/${remoteId}/thumbnail` }).id;
+    }
+
+    it('joins a manga to a series and tells the screen the library changed', () => {
+        const context = setup();
+        const id = addManga(context, 7, 'Frieren');
+        expect(context.call(IPC.mangaSetSeries, { mangaId: id, series: ' Sousou  no Frieren ', season: 2, seasonName: 'Beyond' })).toEqual({ ok: true });
+        expect(context.db.getManga(id)).toMatchObject({ series: 'Sousou no Frieren', season: 2, seasonName: 'Beyond' });
+        expect(context.libraryChanges.count).toBe(1);
+        expect(context.call(IPC.mangaSetSeries, { mangaId: id, series: null })).toEqual({ ok: true });
+        expect(context.db.getManga(id)).toMatchObject({ series: null, season: null });
+    });
+
+    it('refuses a season another manga of the series has, and suggests the next one', () => {
+        const context = setup();
+        const first = addManga(context, 7, 'Frieren');
+        const second = addManga(context, 8, 'Frieren 2');
+        context.call(IPC.mangaSetSeries, { mangaId: first, series: 'Frieren', season: 1, seasonName: null });
+        context.call(IPC.mangaSetSeries, { mangaId: second, series: 'Frieren', season: 2, seasonName: null });
+        expect(context.call(IPC.mangaSetSeries, { mangaId: second, series: 'FRIEREN', season: 1, seasonName: null })).toEqual({ ok: false, reason: 'season-taken', suggested: 2 });
+        expect(context.db.getManga(second)?.season).toBe(2);
+    });
+
+    it.each([[{ mangaId: 999, series: 'A', season: 1, seasonName: null }], [{ mangaId: 1, series: '', season: 1 }], [{ series: 'A', season: 1 }], ['x'], [null]])('refuses the series request %j', (request) => {
+        const context = setup();
+        addManga(context, 7, 'Frieren');
+        expect(context.call(IPC.mangaSetSeries, request)).toEqual({ ok: false, reason: 'invalid' });
+        expect(context.libraryChanges.count).toBe(0);
+    });
+
+    it('renames a series for the mangas in it', () => {
+        const context = setup();
+        const first = addManga(context, 7, 'Frieren');
+        const second = addManga(context, 8, 'Frieren 2');
+        context.call(IPC.mangaSetSeries, { mangaId: first, series: 'Frieren', season: 1, seasonName: null });
+        context.call(IPC.mangaSetSeries, { mangaId: second, series: 'Frieren', season: 2, seasonName: null });
+        expect(context.call(IPC.mangaRenameSeries, [first, second, 'x', -1], '  Sousou no Frieren ')).toEqual({ ok: true });
+        expect(context.db.getManga(first)?.series).toBe('Sousou no Frieren');
+        expect(context.db.getManga(second)).toMatchObject({ series: 'Sousou no Frieren', season: 2 });
+    });
+
+    it('says which season clashes when the new name is a series that has it', () => {
+        const context = setup();
+        const first = addManga(context, 7, 'A1');
+        const second = addManga(context, 8, 'B1');
+        context.call(IPC.mangaSetSeries, { mangaId: first, series: 'A', season: 1, seasonName: null });
+        context.call(IPC.mangaSetSeries, { mangaId: second, series: 'B', season: 1, seasonName: null });
+        expect(context.call(IPC.mangaRenameSeries, [second], 'A')).toEqual({ ok: false, reason: 'season-taken', manga: 'B1', season: 1, suggested: 2 });
+    });
+
+    it.each([[[], 'A'], [[1], ''], [[1], 5], ['x', 'A'], [[1], 'x'.repeat(101)]])('refuses to rename a series with %j and %j', (ids, name) => {
+        const context = setup();
+        addManga(context, 7, 'Frieren');
+        expect(context.call(IPC.mangaRenameSeries, ids, name)).toEqual({ ok: false, reason: 'invalid' });
+    });
+
+    it('makes, lists, renames and deletes groups', () => {
+        const context = setup();
+        expect(context.call(IPC.mangaGroupCreate, '  Manhwas ')).toEqual({ ok: true, group: { id: 1, name: 'Manhwas' } });
+        expect(context.call(IPC.mangaGroups)).toEqual([{ id: 1, name: 'Manhwas' }]);
+        expect(context.call(IPC.mangaGroupRename, 1, 'Webtoons')).toEqual({ ok: true, group: { id: 1, name: 'Webtoons' } });
+        context.call(IPC.mangaGroupDelete, 1);
+        expect(context.call(IPC.mangaGroups)).toEqual([]);
+        expect(context.libraryChanges.count).toBe(1);
+    });
+
+    it('refuses a group name that is empty, too long or taken, and a group that is not there', () => {
+        const context = setup();
+        context.call(IPC.mangaGroupCreate, 'Mangas');
+        expect(context.call(IPC.mangaGroupCreate, '   ')).toEqual({ ok: false, reason: 'invalid' });
+        expect(context.call(IPC.mangaGroupCreate, 'x'.repeat(61))).toEqual({ ok: false, reason: 'invalid' });
+        expect(context.call(IPC.mangaGroupCreate, 'MANGAS')).toEqual({ ok: false, reason: 'taken' });
+        context.call(IPC.mangaGroupCreate, 'Other');
+        expect(context.call(IPC.mangaGroupRename, 2, 'mangas')).toEqual({ ok: false, reason: 'taken' });
+        expect(context.call(IPC.mangaGroupRename, 99, 'Fine')).toEqual({ ok: false, reason: 'not-found' });
+        expect(context.call(IPC.mangaGroupRename, 0, 'Fine')).toEqual({ ok: false, reason: 'invalid' });
+        expect(context.call(IPC.mangaGroupRename, 2, '')).toEqual({ ok: false, reason: 'invalid' });
+        expect(context.call(IPC.mangaGroups)).toHaveLength(2);
+    });
+
+    it('puts mangas in a group and takes them out', () => {
+        const context = setup();
+        const id = addManga(context, 7, 'Frieren');
+        context.call(IPC.mangaGroupCreate, 'Mangas');
+        context.call(IPC.mangaGroupMembers, 1, [id, 'x'], true);
+        expect(context.db.groupIdsOf(id)).toEqual([1]);
+        context.call(IPC.mangaGroupMembers, 1, [id], false);
+        expect(context.db.groupIdsOf(id)).toEqual([]);
+        expect(context.libraryChanges.count).toBe(2);
+    });
+
+    it('ignores a change of members that is not valid', () => {
+        const context = setup();
+        const id = addManga(context, 7, 'Frieren');
+        context.call(IPC.mangaGroupCreate, 'Mangas');
+        context.call(IPC.mangaGroupMembers, 0, [id], true);
+        context.call(IPC.mangaGroupMembers, 1, [id], 'yes');
+        context.call(IPC.mangaGroupDelete, 'x');
+        expect(context.db.groupIdsOf(id)).toEqual([]);
+        expect(context.libraryChanges.count).toBe(0);
+    });
+
+    describe('moving a manga to another source', () => {
+        const TARGET = {
+            manga: { remoteId: 70, sourceId: '999', title: 'One Piece', thumbnailUrl: `${BASE}/api/v1/manga/70/thumbnail` },
+            details: null,
+            chapters: [chapter(1), chapter(3)]
+        };
+
+        function withChapters(context: ReturnType<typeof setup>): number {
+            const id = addManga(context, 7, 'One Piece');
+            context.db.registerChapters(id, [chapter(1), chapter(2)]);
+            return id;
+        }
+
+        it('moves it, tells how many chapters matched, were added and were dropped, and gives the manga as the screen shows it', () => {
+            const context = setup();
+            const id = withChapters(context);
+            const response = context.call(IPC.mangaMigrateSource, { mangaId: id, target: TARGET }) as { ok: true; manga: LibraryManga; matched: number; added: number; dropped: number };
+            expect(response).toMatchObject({ ok: true, matched: 1, added: 1, dropped: 1 });
+            expect(response.manga).toMatchObject({ id, sourceId: '999', remoteId: 70, thumbnailUrl: `${BASE}/api/v1/manga/70/thumbnail` });
+            expect(context.db.getManga(id)).toMatchObject({ sourceId: '999', remoteId: 70, thumbnailUrl: '/api/v1/manga/70/thumbnail' });
+            expect(context.libraryChanges.count).toBe(1);
+        });
+
+        it.each([
+            ['the manga is not there', { mangaId: 999 }, 'not-found'],
+            ['the other manga is the same one', { mangaId: 0, same: true }, 'same'],
+            ['the other manga is in the library already', { mangaId: 0, taken: true }, 'exists']
+        ])('says why when %s', (_name, options, reason) => {
+            const context = setup();
+            const id = withChapters(context);
+            if ('taken' in options) {
+                context.db.upsertManga({ remoteId: 70, sourceId: '999', title: 'Already', thumbnailUrl: null });
+            }
+            const target = 'same' in options ? { ...TARGET, manga: { ...TARGET.manga, sourceId: '123', remoteId: 7 } } : TARGET;
+            const mangaId = options.mangaId === 0 ? id : options.mangaId;
+            expect(context.call(IPC.mangaMigrateSource, { mangaId, target })).toEqual({ ok: false, reason });
+            expect(context.libraryChanges.count).toBe(0);
+        });
+
+        it.each([[{ mangaId: 1 }], [{ mangaId: 1, target: { manga: { remoteId: 70 }, chapters: [] } }], [{ target: TARGET }], ['x'], [null]])('refuses the request %j', (request) => {
+            const context = setup();
+            withChapters(context);
+            expect(context.call(IPC.mangaMigrateSource, request)).toEqual({ ok: false, reason: 'invalid' });
+        });
+
+        it('is busy while the manga has a chapter waiting or being downloaded', () => {
+            const context = setup();
+            const id = withChapters(context);
+            context.queue.enqueue({ manga: { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null }, details: null, chapters: [chapter(2)] });
+            expect(context.call(IPC.mangaMigrateSource, { mangaId: id, target: TARGET })).toEqual({ ok: false, reason: 'busy' });
+            expect(context.db.getManga(id)).toMatchObject({ sourceId: '123', remoteId: 7 });
+        });
+
+        it('is not busy because of the downloads of another manga', () => {
+            const context = setup();
+            const id = withChapters(context);
+            context.queue.enqueue({ manga: { remoteId: 8, sourceId: '123', title: 'Bleach', thumbnailUrl: null }, details: null, chapters: [chapter(1)] });
+            expect(context.call(IPC.mangaMigrateSource, { mangaId: id, target: TARGET })).toMatchObject({ ok: true });
+        });
+
+        it('is busy while the folder is being moved', async () => {
+            let finish: (value: MangaMigrationResponse) => void = () => {return undefined};
+            const context = setup({
+                migrate: () => {
+                    return new Promise((resolve) => {
+                        finish = resolve;
+                    });
+                }
+            });
+            const id = withChapters(context);
+            const moving = context.call(IPC.mangaMigrateFolder);
+            expect(context.call(IPC.mangaMigrateSource, { mangaId: id, target: TARGET })).toEqual({ ok: false, reason: 'busy' });
+            finish({ ok: false, reason: 'cancelled' });
+            await moving;
+            expect(context.call(IPC.mangaMigrateSource, { mangaId: id, target: TARGET })).toMatchObject({ ok: true });
+        });
     });
 });

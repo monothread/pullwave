@@ -1141,3 +1141,120 @@ describe('mangaStore reader', () => {
         expect(state().reader).toEqual({ status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null });
     });
 });
+
+describe('mangaStore series, groups and the move to another source', () => {
+    const GROUPS = [{ id: 1, name: 'Mangas' }, { id: 2, name: 'Manhwas' }];
+
+    it('reads the groups with the library, and drops the group the library was limited to when it is gone', async () => {
+        mock.api.manga.library.mockResolvedValue([makeLibraryManga([])]);
+        mock.api.manga.groups.mockResolvedValue(GROUPS);
+        await state().refreshLibrary();
+        expect(state().groups).toEqual(GROUPS);
+        useMangaStore.setState({ libraryGroup: 2 });
+        await state().refreshLibrary();
+        expect(state().libraryGroup).toBe(2);
+        mock.api.manga.groups.mockResolvedValue([GROUPS[0]!]);
+        await state().refreshLibrary();
+        expect(state().libraryGroup).toBeNull();
+    });
+
+    it('reads the groups on their own, with the same care', async () => {
+        useMangaStore.setState({ libraryGroup: 2 });
+        mock.api.manga.groups.mockResolvedValue([GROUPS[0]!]);
+        await state().refreshGroups();
+        expect(state().groups).toEqual([GROUPS[0]]);
+        expect(state().libraryGroup).toBeNull();
+        useMangaStore.setState({ libraryGroup: 1 });
+        await state().refreshGroups();
+        expect(state().libraryGroup).toBe(1);
+    });
+
+    it('reads the groups when it starts', async () => {
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
+        mock.api.manga.groups.mockResolvedValue(GROUPS);
+        const unsubscribe = await state().init();
+        expect(state().groups).toEqual(GROUPS);
+        unsubscribe();
+    });
+
+    it('opens and closes a series, and limits the library to a group, which closes the series', () => {
+        state().openSeries('series-frieren');
+        expect(state().librarySeries).toBe('series-frieren');
+        state().closeSeries();
+        expect(state().librarySeries).toBeNull();
+        state().openSeries('series-frieren');
+        state().setLibraryGroup(2);
+        expect(state()).toMatchObject({ libraryGroup: 2, librarySeries: null });
+        state().setLibraryGroup(null);
+        expect(state().libraryGroup).toBeNull();
+    });
+
+    it('joins a manga to a series and reads the library again, only when it worked', async () => {
+        const request = { mangaId: 3, series: 'Frieren', season: 2, seasonName: null };
+        await expect(state().setSeries(request)).resolves.toEqual({ ok: true });
+        expect(mock.api.manga.setSeries).toHaveBeenCalledWith(request);
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        mock.api.manga.setSeries.mockResolvedValue({ ok: false, reason: 'season-taken', suggested: 3 });
+        await expect(state().setSeries(request)).resolves.toEqual({ ok: false, reason: 'season-taken', suggested: 3 });
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+    });
+
+    it('renames a series and reads the library again, only when it worked', async () => {
+        await expect(state().renameSeries([1, 2], 'Sousou')).resolves.toEqual({ ok: true });
+        expect(mock.api.manga.renameSeries).toHaveBeenCalledWith([1, 2], 'Sousou');
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        mock.api.manga.renameSeries.mockResolvedValue({ ok: false, reason: 'invalid' });
+        await state().renameSeries([1], 'x');
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+    });
+
+    it('makes and renames groups and reads them again, only when it worked', async () => {
+        mock.api.manga.groups.mockResolvedValue(GROUPS);
+        await expect(state().createGroup('Mangas')).resolves.toEqual({ ok: true, group: { id: 1, name: 'Mangas' } });
+        expect(state().groups).toEqual(GROUPS);
+        await expect(state().renameGroup(1, 'Shonen')).resolves.toEqual({ ok: true, group: { id: 1, name: 'Shonen' } });
+        expect(mock.api.manga.renameGroup).toHaveBeenCalledWith(1, 'Shonen');
+        expect(mock.api.manga.groups).toHaveBeenCalledTimes(2);
+        mock.api.manga.createGroup.mockResolvedValue({ ok: false, reason: 'taken' });
+        mock.api.manga.renameGroup.mockResolvedValue({ ok: false, reason: 'taken' });
+        await expect(state().createGroup('Mangas')).resolves.toEqual({ ok: false, reason: 'taken' });
+        await expect(state().renameGroup(1, 'x')).resolves.toEqual({ ok: false, reason: 'taken' });
+        expect(mock.api.manga.groups).toHaveBeenCalledTimes(2);
+    });
+
+    it('deletes a group and puts mangas in one or takes them out, reading the library after each', async () => {
+        await state().deleteGroup(2);
+        expect(mock.api.manga.deleteGroup).toHaveBeenCalledWith(2);
+        await state().setGroupMembers(1, [4, 5], true);
+        expect(mock.api.manga.setGroupMembers).toHaveBeenCalledWith(1, [4, 5], true);
+        await state().setGroupMembers(1, [4], false);
+        expect(mock.api.manga.setGroupMembers).toHaveBeenLastCalledWith(1, [4], false);
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(3);
+    });
+
+    describe('moving a manga to another source', () => {
+        const REQUEST = { mangaId: 3, target: { manga: makeSummary({ remoteId: 70, sourceId: '999' }), details: null, chapters: [makeChapter()] } };
+
+        it('reads the library, opens the manga of the new source and says what happened', async () => {
+            const moved = makeLibraryManga([], { id: 3, sourceId: '999', remoteId: 70 });
+            mock.api.manga.migrateSource.mockResolvedValue({ ok: true, manga: moved, matched: 4, added: 2, dropped: 1 });
+            mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails({ remoteId: 70, sourceId: '999' }), chapters: [makeChapter()] } });
+            useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: null, chapters: [], selected: [], error: null } });
+            await expect(state().migrateSource(REQUEST)).resolves.toMatchObject({ ok: true, matched: 4, added: 2, dropped: 1 });
+            expect(mock.api.manga.migrateSource).toHaveBeenCalledWith(REQUEST);
+            expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+            expect(mock.api.manga.details).toHaveBeenCalledWith(70);
+            expect(state().selection).toMatchObject({ manga: { remoteId: 70, sourceId: '999' }, status: 'ready' });
+            expect(toasts()).toEqual(['Migrated: 4 chapter(s) matched, 2 added, 1 removed.']);
+        });
+
+        it('changes nothing on the screen when it did not happen', async () => {
+            mock.api.manga.migrateSource.mockResolvedValue({ ok: false, reason: 'exists' });
+            useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: null, chapters: [], selected: [], error: null } });
+            await expect(state().migrateSource(REQUEST)).resolves.toEqual({ ok: false, reason: 'exists' });
+            expect(mock.api.manga.library).not.toHaveBeenCalled();
+            expect(state().selection?.manga.remoteId).toBe(7);
+            expect(toasts()).toEqual([]);
+        });
+    });
+});

@@ -1,6 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { matchChapters, droppedChapters } from '@shared/mangaSourceMigration';
+import { sameSeries } from '@shared/series';
 import {
     MANGA_CHAPTER_STATUSES,
     MANGA_STATUSES,
@@ -11,6 +13,7 @@ import {
     type MangaDetails,
     type MangaError,
     type MangaErrorCode,
+    type MangaGroup,
     type MangaRecord,
     type MangaStatus,
     type MangaSummary
@@ -54,7 +57,22 @@ const MIGRATIONS: readonly string[] = [
     ALTER TABLE manga ADD COLUMN genres TEXT;
     ALTER TABLE manga ADD COLUMN status TEXT;`,
     // The page of the manga on the site of its source.
-    `ALTER TABLE manga ADD COLUMN url TEXT;`
+    `ALTER TABLE manga ADD COLUMN url TEXT;`,
+    // The seasons of a manga are separate entries in the source: the user joins them under a series with a season number. And the groups
+    // (Mangas, Manhwas...) the user makes to keep the library in order: a manga can be in several.
+    `ALTER TABLE manga ADD COLUMN series TEXT;
+    ALTER TABLE manga ADD COLUMN season INTEGER;
+    ALTER TABLE manga ADD COLUMN season_name TEXT;
+    CREATE TABLE manga_group (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    );
+    CREATE TABLE manga_group_member (
+        group_id INTEGER NOT NULL REFERENCES manga_group (id) ON DELETE CASCADE,
+        manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE,
+        PRIMARY KEY (group_id, manga_id)
+    );`
 ];
 
 type Row = Record<string, unknown>;
@@ -109,8 +127,15 @@ function toManga(row: Row): MangaRecord {
         description: nullableText(row, 'description'),
         genres: genresOf(row),
         status: mangaStatusOf(nullableText(row, 'status')),
-        createdAt: numeric(row, 'created_at')
+        createdAt: numeric(row, 'created_at'),
+        series: nullableText(row, 'series'),
+        season: nullableNumeric(row, 'season'),
+        seasonName: nullableText(row, 'season_name')
     };
+}
+
+function toGroup(row: Row): MangaGroup {
+    return { id: numeric(row, 'id'), name: text(row, 'name') };
 }
 
 function statusOf(value: string): MangaChapterStatus {
@@ -243,13 +268,13 @@ export class MangaDb {
 
     getLibraryManga(id: number): LibraryManga | null {
         const manga = this.getManga(id);
-        return manga === null ? null : { ...manga, chapters: this.chaptersOf(id) };
+        return manga === null ? null : { ...manga, chapters: this.chaptersOf(id), groupIds: this.groupIdsOf(id) };
     }
 
     list(): LibraryManga[] {
         return this.all('SELECT * FROM manga ORDER BY title COLLATE NOCASE, id').map((row) => {
             const manga = toManga(row);
-            return { ...manga, chapters: this.chaptersOf(manga.id) };
+            return { ...manga, chapters: this.chaptersOf(manga.id), groupIds: this.groupIdsOf(manga.id) };
         });
     }
 
@@ -349,6 +374,216 @@ export class MangaDb {
             this.db.exec('ROLLBACK');
             throw error;
         }
+    }
+
+    // ----- Moving to another source -----
+
+    // Makes the manga of the library the same manga in another source. It keeps its title (the folder of its chapters is named after it),
+    // its series and its groups; the cover, the page on the site and what the source says come from the other one. The chapters the
+    // other source has are matched with the ones of the library: those keep their state and their files and take the data of the new
+    // ones; the downloaded chapters the other source lacks stay as they are; the others go; and the chapters that are new are added,
+    // not downloaded.
+    moveToSource(mangaId: number, target: { manga: MangaSummary; details: MangaDetails | null; chapters: readonly MangaChapter[] }): { ok: true; matched: number; added: number; dropped: number } | { ok: false; reason: 'not-found' | 'same' | 'exists' } {
+        const current = this.getManga(mangaId);
+        if (current === null) {
+            return { ok: false, reason: 'not-found' };
+        }
+        if (current.sourceId === target.manga.sourceId && current.remoteId === target.manga.remoteId) {
+            return { ok: false, reason: 'same' };
+        }
+        if (this.findManga(target.manga.sourceId, target.manga.remoteId) !== null) {
+            return { ok: false, reason: 'exists' };
+        }
+        const matching = matchChapters(this.chaptersOf(mangaId), target.chapters);
+        const dropped = droppedChapters(matching);
+        this.db.exec('BEGIN');
+        try {
+            this.run('UPDATE manga SET source_id = ?, remote_id = ?, thumbnail_url = ? WHERE id = ?', target.manga.sourceId, target.manga.remoteId, target.manga.thumbnailUrl, mangaId);
+            if (target.details !== null) {
+                this.saveDetails(mangaId, target.details);
+            }
+            dropped.forEach((record) => {
+                this.run('DELETE FROM chapter WHERE id = ?', record.id);
+            });
+            matching.matched.forEach(({ record, incoming }) => {
+                this.run(
+                    'UPDATE chapter SET remote_id = ?, name = ?, number = ?, date_uploaded = ?, scanlator = ?, source_order = ? WHERE id = ?',
+                    incoming.remoteId,
+                    incoming.name,
+                    incoming.number,
+                    incoming.dateUploaded,
+                    incoming.scanlator,
+                    incoming.sourceOrder,
+                    record.id
+                );
+            });
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+        this.registerChapters(mangaId, matching.added);
+        return { ok: true, matched: matching.matched.length, added: matching.added.length, dropped: dropped.length };
+    }
+
+    // ----- Series -----
+
+    // Whether another manga (not the one with this id) already has this season of the series.
+    seasonTaken(series: string, season: number, exceptMangaId: number): boolean {
+        return this.all('SELECT * FROM manga WHERE series IS NOT NULL AND season = ? AND id != ?', season, exceptMangaId).some((row) => {
+            return sameSeries(text(row, 'series'), series);
+        });
+    }
+
+    // The name a series goes by: the spelling the library already has for it (the same name in another case, with other accents or extra
+    // spaces is the same series), otherwise the name as it is. The manga that is being joined does not count.
+    canonicalSeries(series: string, exceptMangaIds: readonly number[] = []): string {
+        const known = this.all('SELECT id, series FROM manga WHERE series IS NOT NULL ORDER BY id').find((row) => {
+            return !exceptMangaIds.includes(numeric(row, 'id')) && sameSeries(text(row, 'series'), series);
+        });
+        return known ? text(known, 'series') : series;
+    }
+
+    // The seasons a series has, without counting the mangas in `exceptMangaIds`.
+    seasonsOfSeries(series: string, exceptMangaIds: readonly number[] = []): number[] {
+        return this.all('SELECT * FROM manga WHERE series IS NOT NULL AND season IS NOT NULL')
+            .filter((row) => {
+                return !exceptMangaIds.includes(numeric(row, 'id')) && sameSeries(text(row, 'series'), series);
+            })
+            .map((row) => {
+                return numeric(row, 'season');
+            });
+    }
+
+    // The first season number a series does not have: the last one plus one (1 for a series that has none).
+    firstFreeSeason(series: string, exceptMangaIds: readonly number[] = []): number {
+        return Math.max(0, ...this.seasonsOfSeries(series, exceptMangaIds)) + 1;
+    }
+
+    // Joins a manga to a series with its place in it (and, if wanted, the name it is shown with), or takes it out of one. It enters the
+    // groups the other seasons of the series are in. False when the manga is not there, or when the season is taken.
+    setSeries(mangaId: number, series: string | null, season: number | null, seasonName: string | null = null): boolean {
+        if (this.getManga(mangaId) === null) {
+            return false;
+        }
+        if (series !== null && season !== null && this.seasonTaken(series, season, mangaId)) {
+            return false;
+        }
+        const name = series === null ? null : this.canonicalSeries(series, [mangaId]);
+        this.run('UPDATE manga SET series = ?, season = ?, season_name = ? WHERE id = ?', name, series === null ? null : season, series === null ? null : seasonName, mangaId);
+        if (name !== null) {
+            this.joinGroupsOfSeries(mangaId, name);
+        }
+        return true;
+    }
+
+    // Gives every manga of the list the name of a series, keeping the season each one has (a manga that was on its own is the first
+    // season). The spelling is the one another manga of the library already has for that series, if any. When that series has a season
+    // one of them has too, nothing changes and the manga that clashes is told.
+    renameSeries(mangaIds: readonly number[], series: string): { ok: true } | { ok: false; manga: string; season: number; suggested: number } {
+        const mangas = mangaIds.flatMap((id) => {
+            const manga = this.getManga(id);
+            return manga === null ? [] : [manga];
+        });
+        const name = this.canonicalSeries(series, mangaIds);
+        const taken = this.seasonsOfSeries(name, mangaIds);
+        for (const manga of mangas) {
+            const season = manga.season ?? 1;
+            if (taken.includes(season)) {
+                return { ok: false, manga: manga.title, season, suggested: this.firstFreeSeason(name, mangaIds) };
+            }
+        }
+        this.db.exec('BEGIN');
+        try {
+            mangas.forEach((manga) => {
+                this.run('UPDATE manga SET series = ?, season = ?, season_name = ? WHERE id = ?', name, manga.season ?? 1, manga.seasonName, manga.id);
+            });
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+        mangas.forEach((manga) => {
+            this.joinGroupsOfSeries(manga.id, name);
+        });
+        return { ok: true };
+    }
+
+    // ----- Groups -----
+
+    listGroups(): MangaGroup[] {
+        return this.all('SELECT * FROM manga_group ORDER BY name COLLATE NOCASE, id').map(toGroup);
+    }
+
+    getGroup(id: number): MangaGroup | null {
+        const row = this.one('SELECT * FROM manga_group WHERE id = ?', id);
+        return row === null ? null : toGroup(row);
+    }
+
+    private groupNameTaken(name: string, exceptGroupId: number): boolean {
+        return this.listGroups().some((group) => {
+            return group.id !== exceptGroupId && sameSeries(group.name, name);
+        });
+    }
+
+    // Makes a group. Null when another group has the name (the same name in another case, with other accents or extra spaces is the same).
+    createGroup(name: string): MangaGroup | null {
+        if (this.groupNameTaken(name, 0)) {
+            return null;
+        }
+        return toGroup(this.one('INSERT INTO manga_group (name, created_at) VALUES (?, ?) RETURNING *', name, this.now()) ?? {});
+    }
+
+    // Null when the group is not there or another group has the name.
+    renameGroup(id: number, name: string): MangaGroup | null {
+        if (this.getGroup(id) === null || this.groupNameTaken(name, id)) {
+            return null;
+        }
+        this.run('UPDATE manga_group SET name = ? WHERE id = ?', name, id);
+        return this.getGroup(id);
+    }
+
+    // The mangas stay in the library: only the group goes.
+    deleteGroup(id: number): void {
+        this.run('DELETE FROM manga_group WHERE id = ?', id);
+    }
+
+    groupIdsOf(mangaId: number): number[] {
+        return this.all('SELECT group_id FROM manga_group_member WHERE manga_id = ? ORDER BY group_id', mangaId).map((row) => {
+            return numeric(row, 'group_id');
+        });
+    }
+
+    // Puts mangas in a group, or takes them out of it. Mangas that are not there are ignored.
+    setGroupMembers(groupId: number, mangaIds: readonly number[], member: boolean): void {
+        if (this.getGroup(groupId) === null) {
+            return;
+        }
+        this.db.exec('BEGIN');
+        try {
+            mangaIds.forEach((mangaId) => {
+                if (member) {
+                    this.run('INSERT OR IGNORE INTO manga_group_member (group_id, manga_id) SELECT ?, id FROM manga WHERE id = ?', groupId, mangaId);
+                } else {
+                    this.run('DELETE FROM manga_group_member WHERE group_id = ? AND manga_id = ?', groupId, mangaId);
+                }
+            });
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+    }
+
+    // A manga that joins a series is in the groups the series is already in.
+    private joinGroupsOfSeries(mangaId: number, series: string): void {
+        this.all('SELECT id, series FROM manga WHERE series IS NOT NULL AND id != ?', mangaId)
+            .filter((row) => {
+                return sameSeries(text(row, 'series'), series);
+            })
+            .forEach((row) => {
+                this.run('INSERT OR IGNORE INTO manga_group_member (group_id, manga_id) SELECT group_id, ? FROM manga_group_member WHERE manga_id = ?', mangaId, numeric(row, 'id'));
+            });
     }
 
     // The chapter is no longer in the library; the file it had (if any) is for the caller to delete.

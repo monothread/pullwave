@@ -19,6 +19,9 @@ export interface MangaPage {
     settingsOpen: boolean;
     selection: MangaSelection | null;
     selectionFrom: 'browse' | 'library';
+    // The series open in the library, and the group the library is limited to.
+    librarySeries: string | null;
+    libraryGroup: number | null;
 }
 
 // Everything that makes a page of the app.
@@ -36,13 +39,13 @@ export interface NavigationSnapshot {
 export function snapshotKey(snapshot: NavigationSnapshot): string {
     const selection = snapshot.selection === null ? '' : `${snapshot.selection.result.index}:${snapshot.selection.audio}`;
     const { manga } = snapshot;
-    const mangaKey = [manga.view, manga.previousView, manga.sourceId ?? '', manga.mode, manga.settingsOpen, manga.selection?.manga.remoteId ?? '', manga.selectionFrom].join(':');
+    const mangaKey = [manga.view, manga.previousView, manga.sourceId ?? '', manga.mode, manga.settingsOpen, manga.selection?.manga.remoteId ?? '', manga.selectionFrom, manga.librarySeries ?? '', manga.libraryGroup ?? ''].join(':');
     return [snapshot.tab, snapshot.downloadsView, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? '', snapshot.librarySeries ?? '', mangaKey].join('|');
 }
 
 function readMangaPage(): MangaPage {
-    const { view, previousView, browse, sourceSettings, selection, selectionFrom } = useMangaStore.getState();
-    return { view, previousView, sourceId: browse.sourceId, mode: browse.mode, settingsOpen: sourceSettings.open, selection, selectionFrom };
+    const { view, previousView, browse, sourceSettings, selection, selectionFrom, librarySeries, libraryGroup } = useMangaStore.getState();
+    return { view, previousView, sourceId: browse.sourceId, mode: browse.mode, settingsOpen: sourceSettings.open, selection, selectionFrom, librarySeries, libraryGroup };
 }
 
 function readSnapshot(): NavigationSnapshot {
@@ -64,7 +67,7 @@ function showMangaPage(page: MangaPage): void {
     } else if (page.sourceId !== null && manga.browse.mode !== page.mode) {
         manga.setMode(page.mode);
     }
-    useMangaStore.setState({ view: page.view, previousView: page.previousView, selection: page.selection, selectionFrom: page.selectionFrom });
+    useMangaStore.setState({ view: page.view, previousView: page.previousView, selection: page.selection, selectionFrom: page.selectionFrom, librarySeries: page.librarySeries, libraryGroup: page.libraryGroup });
     if (page.settingsOpen && !manga.sourceSettings.open) {
         void manga.openSourceSettings();
     } else if (!page.settingsOpen && manga.sourceSettings.open) {
