@@ -9,7 +9,7 @@ import { fromStoredAddress, toStoredAddress } from '../services/manga/serverAddr
 import type { IpcMainLike } from './registerHandlers';
 
 export interface MangaHandlerDependencies {
-    service: Pick<MangaService, 'status' | 'install' | 'stores' | 'addStore' | 'removeStore' | 'extensions' | 'changeExtension' | 'sources' | 'list' | 'details' | 'warmUp' | 'sourcePreferences' | 'sourceFilters' | 'setSourcePreference'> & {
+    service: Pick<MangaService, 'status' | 'install' | 'installHelper' | 'removeHelper' | 'updateAllExtensions' | 'stores' | 'addStore' | 'removeStore' | 'extensions' | 'changeExtension' | 'sources' | 'list' | 'details' | 'warmUp' | 'sourcePreferences' | 'sourceFilters' | 'setSourcePreference'> & {
         readonly baseUrl: string | null;
     };
     queue: MangaDownloadQueue;
@@ -42,6 +42,14 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     });
     ipcMain.handle(IPC.mangaInstall, () => {
         return null;
+    });
+    [IPC.mangaHelperInstall, IPC.mangaHelperRemove].forEach((channel) => {
+        ipcMain.handle(channel, () => {
+            return undefined;
+        });
+    });
+    ipcMain.handle(IPC.mangaExtensionsUpdateAll, () => {
+        return unsupported;
     });
     [IPC.mangaStores, IPC.mangaStoreAdd, IPC.mangaStoreRemove, IPC.mangaExtensions, IPC.mangaExtensionChange, IPC.mangaSources, IPC.mangaSourcePreferences, IPC.mangaSourcePreferenceSet, IPC.mangaSourceFilters, IPC.mangaReadPages, IPC.mangaList, IPC.mangaDetails].forEach((channel) => {
         ipcMain.handle(channel, () => {
@@ -104,6 +112,15 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaInstall, () => {
         return service.install();
+    });
+    ipcMain.handle(IPC.mangaHelperInstall, async () => {
+        await service.installHelper();
+    });
+    ipcMain.handle(IPC.mangaHelperRemove, async () => {
+        await service.removeHelper();
+    });
+    ipcMain.handle(IPC.mangaExtensionsUpdateAll, () => {
+        return service.updateAllExtensions();
     });
     ipcMain.handle(IPC.mangaStores, () => {
         return service.stores();

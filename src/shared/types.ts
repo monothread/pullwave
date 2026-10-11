@@ -149,6 +149,8 @@ export interface Settings {
     mangaFormat: MangaOutputFormat;
     // The address of a FlareSolverr the user runs already (empty: the app runs one in Docker).
     mangaFlaresolverrUrl: string;
+    // Whether the user installed the helper for sites behind Cloudflare (FlareSolverr, which runs in Docker); it is not installed by itself.
+    mangaFlaresolverrEnabled: boolean;
     // Whether the sources and the extensions for adults (+18) are listed; hidden by default.
     mangaShowAdult: boolean;
     // Translating subtitles with a language model: which provider, which model, an address instead of the one of the provider (empty

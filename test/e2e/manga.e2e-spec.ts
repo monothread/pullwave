@@ -40,6 +40,9 @@ class FakeSuwayomi {
     pagesArePicture = false;
     // The extension and its source are for adults.
     adult = false;
+    // The extension has an update, and the version of the library of extensions it was made for.
+    hasUpdate = false;
+    extensionLib = '1.4';
     private server: Server | null = null;
 
     get url(): string {
@@ -77,11 +80,12 @@ class FakeSuwayomi {
             lang: 'en',
             versionName: '1.0.0',
             isInstalled: this.installed,
-            hasUpdate: false,
+            hasUpdate: this.hasUpdate,
             isObsolete: false,
             iconUrl: null,
             contentWarning: this.adult ? 'NSFW' : 'SAFE',
-            storeIndexUrl: STORE_URL
+            storeIndexUrl: STORE_URL,
+            extensionLib: this.extensionLib
         };
     }
 
@@ -107,6 +111,10 @@ class FakeSuwayomi {
         if (query.includes('fetchExtensions')) {
             return { fetchExtensions: { extensions: this.stores.length > 0 ? [this.extension()] : [] } };
         }
+        if (query.includes('updateExtensions')) {
+            this.hasUpdate = false;
+            return { updateExtensions: { extensions: [this.extension()] } };
+        }
         if (query.includes('updateExtension')) {
             this.installed = (variables['patch'] as Record<string, boolean>)['install'] === true || ((variables['patch'] as Record<string, boolean>)['uninstall'] !== true && this.installed);
             return { updateExtension: { extension: this.extension() } };
@@ -116,7 +124,7 @@ class FakeSuwayomi {
         }
         if (query.trim().startsWith('{ sources')) {
             const local = { id: '0', name: 'Local source', displayName: 'Local source', lang: 'localsourcelang', iconUrl: '', supportsLatest: false, contentWarning: 'SAFE', extension: { pkgName: 'local' } };
-            const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: this.adult ? 'NSFW' : 'SAFE', extension: { pkgName: EXTENSION_PKG } };
+            const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: this.adult ? 'NSFW' : 'SAFE', extension: { pkgName: EXTENSION_PKG, storeIndexUrl: STORE_URL } };
             return { sources: { nodes: this.installed ? [local, site] : [local] } };
         }
         if (query.includes('{ filters {')) {
@@ -229,16 +237,22 @@ async function openManga(page: Page): Promise<void> {
     await expect(page.getByRole('region', { name: 'Manga' })).toBeVisible();
 }
 
-async function goTo(page: Page, view: 'BROWSE' | 'LIBRARY' | 'EXTENSIONS'): Promise<void> {
+async function goTo(page: Page, view: 'BROWSE' | 'LIBRARY' | 'EXTENSIONS' | 'SETTINGS'): Promise<void> {
     await page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: view, exact: true }).click();
+}
+
+// Adds the store, in the settings of the manga section.
+async function addStore(page: Page): Promise<void> {
+    await goTo(page, 'SETTINGS');
+    await page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
+    await page.getByRole('button', { name: 'ADD', exact: true }).click();
+    await expect(page.getByText('Fake Store')).toBeVisible();
 }
 
 // Adds the store and installs the extension, which is what makes a source appear.
 async function installExtension(page: Page): Promise<void> {
+    await addStore(page);
     await goTo(page, 'EXTENSIONS');
-    await page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
-    await page.getByRole('button', { name: 'ADD', exact: true }).click();
-    await expect(page.getByText('Fake Store')).toBeVisible();
     // Only the installed extensions are listed at first: the one to install is shown by turning that off.
     await expect(page.getByText('No extension is installed. Turn off "Installed only" to see the ones you can install.')).toBeVisible();
     await page.getByRole('switch', { name: 'Installed only' }).uncheck();
@@ -292,10 +306,8 @@ test.describe('manga section', () => {
     test('lists only the installed extensions at first and remembers the choices after the app is closed', async () => {
         session = await launch();
         await openManga(session.page);
+        await addStore(session.page);
         await goTo(session.page, 'EXTENSIONS');
-        await session.page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
-        await session.page.getByRole('button', { name: 'ADD', exact: true }).click();
-        await expect(session.page.getByText('Fake Store')).toBeVisible();
         const installedOnly = session.page.getByRole('switch', { name: 'Installed only' });
         await expect(installedOnly).toBeChecked();
         await expect(installedOnly).toHaveAttribute('type', 'checkbox');
@@ -304,7 +316,6 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await goTo(session.page, 'EXTENSIONS');
-        await expect(session.page.getByText('Fake Store')).toBeVisible();
         await expect(session.page.getByRole('switch', { name: 'Installed only' })).not.toBeChecked();
         await expect(session.page.getByTestId('manga-extension')).toContainText('Tachiyomi: Fake Dex');
     });
@@ -313,10 +324,8 @@ test.describe('manga section', () => {
         fake.adult = true;
         session = await launch();
         await openManga(session.page);
+        await addStore(session.page);
         await goTo(session.page, 'EXTENSIONS');
-        await session.page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
-        await session.page.getByRole('button', { name: 'ADD', exact: true }).click();
-        await expect(session.page.getByText('Fake Store')).toBeVisible();
         await session.page.getByRole('switch', { name: 'Installed only' }).uncheck();
         await expect(session.page.getByText('No extension found.')).toBeVisible();
         await expect(session.page.getByTestId('manga-extension')).toHaveCount(0);
@@ -340,6 +349,68 @@ test.describe('manga section', () => {
         await expect(session.page.getByTestId('manga-source')).toHaveCount(0);
     });
 
+    test('keeps the stores in the settings, and sends the address of a store to the server', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'EXTENSIONS');
+        await expect(session.page.getByText('No store yet. Add one in the manga SETTINGS to see its extensions.')).toBeVisible();
+        await expect(session.page.getByLabel('Address of a store (index.min.json)')).toHaveCount(0);
+        await session.page.getByRole('button', { name: 'OPEN SETTINGS' }).click();
+        await expect(session.page.getByText('Extension stores')).toBeVisible();
+        await session.page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
+        await session.page.getByRole('button', { name: 'ADD', exact: true }).click();
+        await expect(session.page.getByTestId('manga-store')).toContainText('Fake Store');
+        await expect(session.page.getByTestId('manga-store')).toContainText(STORE_URL);
+        expect(fake.graphqlRequests('addExtensionStore')[0]?.variables).toEqual({ indexUrl: STORE_URL });
+        await session.page.getByRole('button', { name: 'REMOVE: Fake Store' }).click();
+        await expect(session.page.getByTestId('manga-store')).toHaveCount(0);
+        expect(fake.graphqlRequests('removeExtensionStore')[0]?.variables).toEqual({ indexUrl: STORE_URL });
+    });
+
+    test('explains what extensions are, updates all that have an update and marks the ones the server cannot run', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await goTo(session.page, 'EXTENSIONS');
+        const about = session.page.getByRole('region', { name: 'WHAT ARE EXTENSIONS?' });
+        await expect(about).toContainText('you alone are responsible for installing them');
+        await expect(about).toContainText('The authors of Pullwave take no responsibility');
+        await expect(session.page.getByRole('button', { name: /UPDATE ALL/ })).toHaveCount(0);
+        fake.hasUpdate = true;
+        await session.page.getByRole('button', { name: 'REFRESH LIST' }).click();
+        await session.page.getByRole('button', { name: 'UPDATE ALL (1)' }).click();
+        await expect(session.page.getByRole('button', { name: /UPDATE ALL/ })).toHaveCount(0);
+        const updates = fake.graphqlRequests('updateExtensions(');
+        expect(updates).toHaveLength(1);
+        expect(updates[0]?.variables).toEqual({ ids: [EXTENSION_PKG] });
+        expect(updates[0]?.path).toBe('/api/graphql');
+        fake.extensionLib = '1.2';
+        await session.page.getByRole('button', { name: 'REFRESH LIST' }).click();
+        await expect(session.page.getByText('INCOMPATIBLE')).toHaveAttribute('title', 'Made for version 1.2 of the extension library, which the server does not support.');
+        await expect(session.page.getByRole('button', { name: 'UNINSTALL: Tachiyomi: Fake Dex' })).toBeVisible();
+    });
+
+    test('says which store a source comes from', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await goTo(session.page, 'BROWSE');
+        await expect(session.page.getByTestId('manga-source')).toContainText('Store: Fake Store');
+    });
+
+    test('installs the helper for Cloudflare from the settings, with the warning that Docker is needed', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'SETTINGS');
+        await expect(session.page.getByTestId('manga-helper-docker')).toContainText('Docker must be installed and running.');
+        await expect(session.page.getByText('Not installed. Only the sites protected by Cloudflare need it.')).toBeVisible();
+        await session.page.getByRole('button', { name: 'INSTALL', exact: true }).click();
+        await expect.poll(() => {
+            return JSON.parse(readFileSync(join(session!.userData, 'settings.json'), 'utf8')) as { mangaFlaresolverrEnabled?: boolean };
+        }).toMatchObject({ mangaFlaresolverrEnabled: true });
+        await expect(session.page.getByRole('button', { name: 'REMOVE', exact: true })).toBeVisible();
+    });
+
     test('adds a store, installs an extension and finds its source', async () => {
         session = await launch();
         await openManga(session.page);
@@ -347,7 +418,7 @@ test.describe('manga section', () => {
         const added = fake.graphqlRequests('addExtensionStore');
         expect(added).toHaveLength(1);
         expect(added[0]).toMatchObject({ method: 'POST', path: '/api/graphql', contentType: 'application/json', variables: { indexUrl: STORE_URL } });
-        const installs = fake.graphqlRequests('updateExtension');
+        const installs = fake.graphqlRequests('updateExtension(');
         expect(installs).toHaveLength(1);
         expect(installs[0]?.variables).toEqual({ id: EXTENSION_PKG, patch: { install: true } });
         // The list of sources has the one the extension brings (not the local one of the server), and opens on its popular mangas.

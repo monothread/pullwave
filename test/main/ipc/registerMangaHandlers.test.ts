@@ -38,6 +38,9 @@ const MANGA_CHANNELS = [
     IPC.mangaDownloadMissing,
     IPC.mangaExtensionChange,
     IPC.mangaExtensions,
+    IPC.mangaExtensionsUpdateAll,
+    IPC.mangaHelperInstall,
+    IPC.mangaHelperRemove,
     IPC.mangaInstall,
     IPC.mangaJobs,
     IPC.mangaLibrary,
@@ -123,6 +126,15 @@ function setup(options: { baseUrl?: string | null; folder?: string | null } = {}
         changeExtension: vi.fn(() => {
             return Promise.resolve({ ok: true as const, value: null });
         }),
+        updateAllExtensions: vi.fn(() => {
+            return Promise.resolve({ ok: true as const, value: 2 });
+        }),
+        installHelper: vi.fn(() => {
+            return Promise.resolve();
+        }),
+        removeHelper: vi.fn(() => {
+            return Promise.resolve();
+        }),
         sources: vi.fn(() => {
             return Promise.resolve({ ok: true as const, value: [] });
         }),
@@ -187,6 +199,9 @@ describe('registerMangaHandlers', () => {
         [IPC.mangaStores, IPC.mangaStoreAdd, IPC.mangaStoreRemove, IPC.mangaExtensions, IPC.mangaExtensionChange, IPC.mangaSources, IPC.mangaSourcePreferences, IPC.mangaSourcePreferenceSet, IPC.mangaSourceFilters, IPC.mangaList, IPC.mangaDetails].forEach((channel) => {
             expect(ipc.call(channel)).toEqual(unsupported);
         });
+        expect(ipc.call(IPC.mangaExtensionsUpdateAll)).toEqual(unsupported);
+        expect(ipc.call(IPC.mangaHelperInstall)).toBeUndefined();
+        expect(ipc.call(IPC.mangaHelperRemove)).toBeUndefined();
         expect(ipc.call(IPC.mangaAddToLibrary)).toBeNull();
         expect(ipc.call(IPC.mangaDownload)).toBeNull();
         expect(ipc.call(IPC.mangaLibrary)).toEqual([]);
@@ -203,6 +218,16 @@ describe('the extension channels', () => {
         expect(call(IPC.mangaStatus)).toEqual(READY_STATUS);
         await expect(call(IPC.mangaInstall)).resolves.toBeNull();
         expect(service.install).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates every extension that has an update, and installs or removes the helper for Cloudflare', async () => {
+        const { call, service } = setup();
+        await expect(call(IPC.mangaExtensionsUpdateAll)).resolves.toEqual({ ok: true, value: 2 });
+        expect(service.updateAllExtensions).toHaveBeenCalledTimes(1);
+        await call(IPC.mangaHelperInstall);
+        expect(service.installHelper).toHaveBeenCalledTimes(1);
+        await call(IPC.mangaHelperRemove);
+        expect(service.removeHelper).toHaveBeenCalledTimes(1);
     });
 
     it('lists, adds and removes stores', async () => {

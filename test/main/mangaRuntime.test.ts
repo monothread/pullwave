@@ -143,7 +143,7 @@ describe('createMangaRuntime downloading the program', () => {
             dataDir: dir,
             defaultDownloadDir: dir,
             getSettings: () => {
-                return DEFAULT_SETTINGS;
+                return { ...DEFAULT_SETTINGS, mangaFlaresolverrEnabled: true };
             },
             send: (channel, payload) => {
                 if (channel === IPC.eventMangaTool) {
@@ -181,6 +181,47 @@ describe('createMangaRuntime downloading the program', () => {
         })).toMatchObject({ version: FLARESOLVERR_VERSION });
     });
 
+    it('does not touch Docker when the app opens until the user installs the helper', async () => {
+        const dir = makeTempDir();
+        const docker = fakeDocker({ imagePresent: false });
+        const states: ToolState[] = [];
+        const runtime = createMangaRuntime({
+            platform: 'linux',
+            arch: 'x64',
+            dataDir: dir,
+            defaultDownloadDir: dir,
+            getSettings: () => {
+                return DEFAULT_SETTINGS;
+            },
+            send: (channel, payload) => {
+                if (channel === IPC.eventMangaTool) {
+                    states.push(payload as ToolState);
+                }
+            },
+            openFolder: () => {
+                return undefined;
+            },
+            toolDependencies: {
+                download: () => {
+                    return Promise.reject(new Error('offline'));
+                }
+            },
+            helperDependencies: { docker: docker.runner }
+        });
+        expect(runtime?.service.status().helper).toBeNull();
+        runtime?.prepare();
+        await vi.waitFor(() => {
+            expect(states.some((state) => {
+                return state.id === 'suwayomi' && state.status === 'error';
+            })).toBe(true);
+        });
+        expect(docker.calls).toEqual([]);
+        await runtime?.service.installHelper();
+        expect(docker.calls).toContainEqual(['pull', FLARESOLVERR_IMAGE]);
+        await runtime?.service.removeHelper();
+        expect(docker.calls.at(-1)).toEqual(['rmi', FLARESOLVERR_IMAGE]);
+    });
+
     it('says on the screen that Docker is missing, and what to do', async () => {
         const dir = makeTempDir();
         const states: ToolState[] = [];
@@ -190,7 +231,7 @@ describe('createMangaRuntime downloading the program', () => {
             dataDir: dir,
             defaultDownloadDir: dir,
             getSettings: () => {
-                return DEFAULT_SETTINGS;
+                return { ...DEFAULT_SETTINGS, mangaFlaresolverrEnabled: true };
             },
             send: (channel, payload) => {
                 if (channel === IPC.eventMangaTool) {
@@ -446,7 +487,7 @@ describe('createMangaRuntime Cloudflare helper', () => {
             dataDir,
             defaultDownloadDir: dir,
             getSettings: () => {
-                return { ...DEFAULT_SETTINGS, ...settings };
+                return { ...DEFAULT_SETTINGS, mangaFlaresolverrEnabled: true, ...settings };
             },
             send: (channel, payload) => {
                 sent.push({ channel, payload });
@@ -475,6 +516,16 @@ describe('createMangaRuntime Cloudflare helper', () => {
         });
         return { runtime: runtime!, dataDir, sent, children, docker };
     }
+
+    it('starts no container and keeps the bypass off while the user has not installed the helper', async () => {
+        const { runtime, dataDir, docker } = setupInstalled({ mangaFlaresolverrEnabled: false });
+        await runtime.service.install();
+        await runtime.service.requireServer();
+        const conf = readFileSync(join(dataDir, 'manga', 'server', 'server.conf'), 'utf-8');
+        expect(conf).toContain('server.flareSolverrEnabled = false');
+        expect(docker.calls).toEqual([]);
+        await runtime.shutdown();
+    });
 
     it('starts the container with the server, and points the server at the monitor of the app, not at the container', async () => {
         const { runtime, dataDir, children, docker } = setupInstalled();
@@ -571,7 +622,7 @@ describe('createMangaRuntime Cloudflare helper', () => {
             dataDir,
             defaultDownloadDir: dir,
             getSettings: () => {
-                return DEFAULT_SETTINGS;
+                return { ...DEFAULT_SETTINGS, mangaFlaresolverrEnabled: true };
             },
             send: () => {return undefined},
             openFolder: () => {return undefined},

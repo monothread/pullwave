@@ -3,7 +3,6 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaExtensions } from '@renderer/components/MangaExtensions';
-import { STORE_PLACEHOLDER } from '@renderer/components/mangaText';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeExtension } from '../../helpers/mangaFixtures';
@@ -39,10 +38,11 @@ function names(): Array<string | null | undefined> {
 describe('MangaExtensions', () => {
     it('reads the stores and the extensions when it opens', async () => {
         render(<MangaExtensions />);
-        expect(await screen.findByText('My store')).toBeInTheDocument();
+        expect(await screen.findByText('Alpha')).toBeInTheDocument();
+        expect(mock.api.manga.stores).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.extensions).toHaveBeenCalledWith(false);
-        expect(screen.getByText('https://store.example/index.min.json')).toBeInTheDocument();
-        expect(screen.getByText(/Extensions are small programs/)).toBeInTheDocument();
+        expect(screen.queryByText('My store')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Address of a store (index.min.json)')).not.toBeInTheDocument();
     });
 
     it('lists the installed extensions first, then the others by name', async () => {
@@ -62,55 +62,97 @@ describe('MangaExtensions', () => {
         expect(within(gamma!).getByText('OBSOLETE')).toBeInTheDocument();
     });
 
-    it('says there is no store yet, and suggests none: the user adds the stores', async () => {
+    it('explains what extensions are and whose responsibility they are', async () => {
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        const about = screen.getByRole('region', { name: 'WHAT ARE EXTENSIONS?' });
+        expect(within(about).getByText(/Extensions are small programs, made by the Mihon\/Tachiyomi community/)).toBeInTheDocument();
+        expect(within(about).getByText(/you alone are responsible for installing them/)).toBeInTheDocument();
+        expect(within(about).getByText(/The authors of Pullwave take no responsibility/)).toBeInTheDocument();
+    });
+
+    it('says there is no store yet, suggests none, and takes the user to the settings to add one', async () => {
+        const user = userEvent.setup();
         mock.api.manga.stores.mockResolvedValue({ ok: true, value: [] });
         mock.api.manga.extensions.mockResolvedValue({ ok: true, value: [] });
         render(<MangaExtensions />);
-        expect(await screen.findByText('No store yet. Add one to see its extensions.')).toBeInTheDocument();
+        expect(await screen.findByText('No store yet. Add one in the manga SETTINGS to see its extensions.')).toBeInTheDocument();
         expect(screen.queryByLabelText('Filter extensions')).not.toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: /KEIYOUSHI/ })).not.toBeInTheDocument();
-        expect(screen.getAllByRole('button').map((button) => {
-            return button.textContent;
-        })).not.toContain('ADD KEIYOUSHI');
-        expect(screen.getByLabelText('Address of a store (index.min.json)')).toHaveAttribute('placeholder', STORE_PLACEHOLDER);
+        expect(screen.queryByLabelText('Address of a store (index.min.json)')).not.toBeInTheDocument();
         expect(mock.api.manga.addStore).not.toHaveBeenCalled();
+        await user.click(screen.getByRole('button', { name: 'OPEN SETTINGS' }));
+        expect(useMangaStore.getState().view).toBe('settings');
     });
 
-    it('adds a store from the address typed, and clears the field', async () => {
-        const user = userEvent.setup();
-        render(<MangaExtensions />);
-        await screen.findByText('My store');
-        const field = screen.getByLabelText('Address of a store (index.min.json)');
-        const add = screen.getByRole('button', { name: 'ADD' });
-        expect(add).toBeDisabled();
-        await user.type(field, '  https://other.example/index.min.json ');
-        await user.click(add);
-        expect(mock.api.manga.addStore).toHaveBeenCalledWith('https://other.example/index.min.json');
-        await vi.waitFor(() => {
-            expect(field).toHaveValue('');
+    it('marks an extension the server cannot run, with the version it was made for, and offers no install for it', async () => {
+        mock.api.manga.extensions.mockResolvedValue({
+            ok: true,
+            value: [
+                makeExtension({ pkgName: 'old.en', name: 'Old', lang: 'en', extensionLib: '1.2', isCompatible: false }),
+                makeExtension({ pkgName: 'ok.en', name: 'Fine', lang: 'en' })
+            ]
         });
+        render(<MangaExtensions />);
+        await screen.findByText('Old');
+        const old = screen.getAllByTestId('manga-extension').find((row) => {
+            return row.textContent?.includes('Old');
+        })!;
+        const fine = screen.getAllByTestId('manga-extension').find((row) => {
+            return row.textContent?.includes('Fine');
+        })!;
+        expect(within(old).getByText('INCOMPATIBLE')).toHaveAttribute('title', 'Made for version 1.2 of the extension library, which the server does not support.');
+        expect(within(old).queryByRole('button', { name: 'INSTALL: Old' })).not.toBeInTheDocument();
+        expect(within(fine).queryByText('INCOMPATIBLE')).not.toBeInTheDocument();
+        expect(within(fine).getByRole('button', { name: 'INSTALL: Fine' })).toBeInTheDocument();
     });
 
-    it('keeps the address typed when the store is refused, and shows why', async () => {
-        const user = userEvent.setup();
-        mock.api.manga.addStore.mockResolvedValue({ ok: false, error: { code: 'API_ERROR', message: 'bad index' } });
+    it('still offers to remove an installed extension that is no longer compatible', async () => {
+        mock.api.manga.extensions.mockResolvedValue({ ok: true, value: [makeExtension({ pkgName: 'old.en', name: 'Old', isInstalled: true, extensionLib: '1.9', isCompatible: false })] });
         render(<MangaExtensions />);
-        await screen.findByText('My store');
-        const field = screen.getByLabelText('Address of a store (index.min.json)');
-        await user.type(field, 'https://bad.example/i.json');
-        await user.click(screen.getByRole('button', { name: 'ADD' }));
+        await screen.findByText('Old');
+        expect(screen.getByText('INCOMPATIBLE')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'UNINSTALL: Old' })).toBeInTheDocument();
+    });
+
+    it('updates every extension that has an update with one button that counts them', async () => {
+        const user = userEvent.setup();
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        mock.api.manga.updateAllExtensions.mockResolvedValue({ ok: true, value: 1 });
+        await user.click(screen.getByRole('button', { name: 'UPDATE ALL (1)' }));
+        expect(mock.api.manga.updateAllExtensions).toHaveBeenCalledTimes(1);
+        await vi.waitFor(() => {
+            expect(mock.api.manga.extensions).toHaveBeenCalledTimes(2);
+        });
+        expect(mock.api.manga.sources).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows no button to update all when no installed extension has an update', async () => {
+        mock.api.manga.extensions.mockResolvedValue({
+            ok: true,
+            value: [makeExtension({ pkgName: 'a', name: 'Alpha', isInstalled: true, hasUpdate: false }), makeExtension({ pkgName: 'b', name: 'Beta', isInstalled: false, hasUpdate: true })]
+        });
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        expect(screen.queryByRole('button', { name: /UPDATE ALL/ })).not.toBeInTheDocument();
+    });
+
+    it('disables the button to update all while it works, and shows why it failed', async () => {
+        const user = userEvent.setup();
+        let finish: (value: unknown) => void = () => {return undefined};
+        mock.api.manga.updateAllExtensions.mockReturnValue(
+            new Promise((resolve) => {
+                finish = resolve;
+            })
+        );
+        render(<MangaExtensions />);
+        await screen.findByText('Alpha');
+        await user.click(screen.getByRole('button', { name: 'UPDATE ALL (1)' }));
+        expect(screen.getByRole('button', { name: 'UPDATING…' })).toBeDisabled();
+        finish({ ok: false, error: { code: 'API_ERROR', message: 'boom' } });
         const alert = await screen.findByRole('alert');
-        expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(alert).toHaveAttribute('title', 'bad index');
-        expect(field).toHaveValue('https://bad.example/i.json');
-    });
-
-    it('removes a store', async () => {
-        const user = userEvent.setup();
-        render(<MangaExtensions />);
-        await screen.findByText('My store');
-        await user.click(screen.getByRole('button', { name: 'REMOVE: My store' }));
-        expect(mock.api.manga.removeStore).toHaveBeenCalledWith(STORE.indexUrl);
+        expect(alert).toHaveAttribute('title', 'boom');
+        expect(mock.api.manga.extensions).toHaveBeenCalledTimes(1);
     });
 
     it('filters by text, language and what is installed', async () => {

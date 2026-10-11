@@ -55,10 +55,12 @@ test('installs the Suwayomi extension from its store, sets its source up and dow
     const nav = page.getByRole('navigation', { name: 'Manga' });
 
     // The store and the extension.
-    await nav.getByRole('button', { name: 'EXTENSIONS', exact: true }).click();
+    await nav.getByRole('button', { name: 'SETTINGS', exact: true }).click();
     await page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
     await page.getByRole('button', { name: 'ADD', exact: true }).click();
     await expect(page.getByText('Suwayomi Extension Repo')).toBeVisible({ timeout: 90000 });
+    await nav.getByRole('button', { name: 'EXTENSIONS', exact: true }).click();
+    await page.getByRole('switch', { name: 'Installed only' }).uncheck();
     await page.getByRole('button', { name: 'INSTALL: Suwayomi', exact: true }).click();
     await expect(page.getByText('INSTALLED', { exact: true })).toBeVisible({ timeout: 90000 });
 

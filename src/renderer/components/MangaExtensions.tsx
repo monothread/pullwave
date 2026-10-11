@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
-import { useMangaStore } from '../store/mangaStore';
+import { UPDATE_ALL_KEY, useMangaStore } from '../store/mangaStore';
+import { MangaExtensionsAbout } from './MangaExtensionsAbout';
 import { SelectField, TextField, ToggleField } from './fields';
-import { ALL_LANGUAGES, extensionLanguages, filterExtensions, isListed, mangaErrorKey, STORE_PLACEHOLDER } from './mangaText';
+import { ALL_LANGUAGES, extensionLanguages, filterExtensions, isListed, mangaErrorKey } from './mangaText';
 
 // The stores the extensions come from, and the extensions to install, update or remove.
 export function MangaExtensions() {
@@ -14,11 +15,11 @@ export function MangaExtensions() {
     const loadExtensions = useMangaStore((state) => {
         return state.loadExtensions;
     });
-    const addStore = useMangaStore((state) => {
-        return state.addStore;
+    const updateAllExtensions = useMangaStore((state) => {
+        return state.updateAllExtensions;
     });
-    const removeStore = useMangaStore((state) => {
-        return state.removeStore;
+    const setView = useMangaStore((state) => {
+        return state.setView;
     });
     const changeExtension = useMangaStore((state) => {
         return state.changeExtension;
@@ -29,7 +30,6 @@ export function MangaExtensions() {
     const showAdult = useAppStore((state) => {
         return state.settings.mangaShowAdult;
     });
-    const [address, setAddress] = useState('');
     const { stores, status, error, busy, filter } = extensions;
 
     useEffect(() => {
@@ -45,6 +45,9 @@ export function MangaExtensions() {
     // A language that was remembered but is not there any more (its extensions are gone or hidden) lists everything.
     const lang = languages.includes(filter.lang) ? filter.lang : ALL_LANGUAGES;
     const shown = filterExtensions(extensions.extensions, { ...filter, lang }, showAdult);
+    const updatable = listedExtensions.filter((extension) => {
+        return extension.isInstalled && extension.hasUpdate;
+    }).length;
 
     // Nothing is installed yet, so the switch is what hides the extensions that are there to be installed.
     const onlyInstalledHidesAll =
@@ -53,54 +56,25 @@ export function MangaExtensions() {
         listedExtensions.length > 0 &&
         filterExtensions(listedExtensions, { ...filter, lang, onlyInstalled: false }, showAdult).length > 0;
 
-    async function handleAdd(indexUrl: string): Promise<void> {
-        if (await addStore(indexUrl)) {
-            setAddress('');
-        }
-    }
-
     return (
         <section className="manga__extensions" aria-label={t('manga.nav.extensions')}>
-            <p className="field__hint">{t('manga.ext.hint')}</p>
-            <fieldset className="panel">
-                <legend>{t('manga.ext.stores')}</legend>
-                {stores.length === 0 && status !== 'loading' && <p className="empty">{t('manga.ext.noStores')}</p>}
-                <ul className="history__list">
-                    {stores.map((store) => {
-                        return (
-                            <li key={store.indexUrl} className="history__item">
-                                <div className="history__main">
-                                    <span className="history__title">{store.name}</span>
-                                    <span className="history__meta">{store.indexUrl}</span>
-                                </div>
-                                <button
-                                    type="button"
-                                    className="btn btn--small btn--hot"
-                                    disabled={busy.includes(store.indexUrl)}
-                                    aria-label={`${t('manga.ext.removeStore')}: ${store.name}`}
-                                    onClick={() => {
-                                        void removeStore(store.indexUrl);
-                                    }}
-                                >
-                                    {t('manga.ext.removeStore')}
-                                </button>
-                            </li>
-                        );
-                    })}
-                </ul>
-                <form
-                    className="field-row"
-                    onSubmit={(event) => {
-                        event.preventDefault();
-                        void handleAdd(address.trim());
-                    }}
-                >
-                    <TextField label={t('manga.ext.storeUrl')} value={address} placeholder={STORE_PLACEHOLDER} onChange={setAddress} />
-                    <button type="submit" className="btn btn--primary" disabled={address.trim().length === 0 || busy.includes(address.trim())}>
-                        {t('manga.ext.addStore')}
-                    </button>
-                </form>
-            </fieldset>
+            <MangaExtensionsAbout />
+            {stores.length === 0 && status !== 'loading' && (
+                <div className="panel">
+                    <p className="empty">{t('manga.ext.noStores')}</p>
+                    <div className="job__actions">
+                        <button
+                            type="button"
+                            className="btn btn--small btn--primary"
+                            onClick={() => {
+                                setView('settings');
+                            }}
+                        >
+                            {t('manga.ext.openSettings')}
+                        </button>
+                    </div>
+                </div>
+            )}
             {error && (
                 <p className="field__warning" role="alert" title={error.message}>
                     {t(mangaErrorKey(error.code))}
@@ -145,6 +119,18 @@ export function MangaExtensions() {
                         >
                             {t('manga.ext.refresh')}
                         </button>
+                        {updatable > 0 && (
+                            <button
+                                type="button"
+                                className="btn btn--small btn--primary"
+                                disabled={busy.includes(UPDATE_ALL_KEY)}
+                                onClick={() => {
+                                    void updateAllExtensions();
+                                }}
+                            >
+                                {busy.includes(UPDATE_ALL_KEY) ? t('manga.ext.updatingAll') : t('manga.ext.updateAll', { count: updatable })}
+                            </button>
+                        )}
                     </div>
                     {status === 'ready' && shown.length === 0 && <p className="empty">{t(onlyInstalledHidesAll ? 'manga.ext.noneInstalled' : 'manga.ext.none')}</p>}
                     <ul className="history__list">
@@ -157,10 +143,15 @@ export function MangaExtensions() {
                                         <span className="history__meta">{`${extension.lang} · ${extension.versionName}`}</span>
                                     </div>
                                     {extension.contentWarning === 'NSFW' && <span className="badge badge--error">{t('manga.ext.nsfw')}</span>}
+                                    {!extension.isCompatible && (
+                                        <span className="badge badge--error" title={t('manga.ext.incompatibleHint', { lib: extension.extensionLib ?? '?' })}>
+                                            {t('manga.ext.incompatible')}
+                                        </span>
+                                    )}
                                     {extension.isObsolete && <span className="badge badge--cancelled">{t('manga.ext.obsolete')}</span>}
                                     {extension.isInstalled && <span className="badge badge--done">{t('manga.ext.installed')}</span>}
                                     <span className="anime__actions">
-                                        {!extension.isInstalled && (
+                                        {!extension.isInstalled && extension.isCompatible && (
                                             <button
                                                 type="button"
                                                 className="btn btn--small btn--primary"

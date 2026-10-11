@@ -22,6 +22,15 @@ const manga: CyberApi['manga'] = {
     install: () => {
         return ipcRenderer.invoke(IPC.mangaInstall);
     },
+    installHelper: () => {
+        return ipcRenderer.invoke(IPC.mangaHelperInstall);
+    },
+    removeHelper: () => {
+        return ipcRenderer.invoke(IPC.mangaHelperRemove);
+    },
+    updateAllExtensions: () => {
+        return ipcRenderer.invoke(IPC.mangaExtensionsUpdateAll);
+    },
     stores: () => {
         return ipcRenderer.invoke(IPC.mangaStores);
     },

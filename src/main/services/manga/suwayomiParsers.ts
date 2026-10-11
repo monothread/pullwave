@@ -1,6 +1,7 @@
 import {
     CONTENT_WARNINGS,
     MANGA_TRI_STATES,
+    isExtensionLibSupported,
     type ContentWarning,
     type MangaChapter,
     type MangaDetails,
@@ -104,6 +105,7 @@ export function parseStore(value: unknown): MangaExtensionStore {
 
 export function parseExtension(value: unknown, baseUrl: string): MangaExtension {
     const raw = record(value, 'An extension');
+    const extensionLib = optionalText(raw['extensionLib']);
     return {
         pkgName: requiredText(raw['pkgName'], 'The package of an extension'),
         name: requiredText(raw['name'], 'The name of an extension'),
@@ -114,7 +116,9 @@ export function parseExtension(value: unknown, baseUrl: string): MangaExtension 
         isObsolete: raw['isObsolete'] === true,
         iconUrl: resolveAddress(raw['iconUrl'], baseUrl),
         contentWarning: parseContentWarning(raw['contentWarning']),
-        storeIndexUrl: optionalText(raw['storeIndexUrl'], MAX_URL_LENGTH)
+        storeIndexUrl: optionalText(raw['storeIndexUrl'], MAX_URL_LENGTH),
+        extensionLib,
+        isCompatible: isExtensionLibSupported(extensionLib)
     };
 }
 
@@ -130,7 +134,8 @@ export function parseSource(value: unknown, baseUrl: string): MangaSource {
         supportsLatest: raw['supportsLatest'] === true,
         isConfigurable: raw['isConfigurable'] === true,
         contentWarning: parseContentWarning(raw['contentWarning']),
-        extensionPkg: extension === null ? null : optionalText(extension['pkgName'])
+        extensionPkg: extension === null ? null : optionalText(extension['pkgName']),
+        storeIndexUrl: extension === null ? null : optionalText(extension['storeIndexUrl'], MAX_URL_LENGTH)
     };
 }
 

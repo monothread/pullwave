@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { MangaSource } from '@shared/manga';
+import type { MangaExtensionStore, MangaSource } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
@@ -21,6 +21,15 @@ export function sourceLanguages(sources: readonly MangaSource[]): string[] {
     ].sort((first, second) => {
         return Number(first === SEVERAL_LANGUAGES) - Number(second === SEVERAL_LANGUAGES) || first.localeCompare(second);
     });
+}
+
+// The name of the store an address belongs to (the address itself when the store is not known).
+export function storeName(stores: readonly MangaExtensionStore[], indexUrl: string): string {
+    return (
+        stores.find((store) => {
+            return store.indexUrl === indexUrl;
+        })?.name ?? indexUrl
+    );
 }
 
 interface MangaSourceIconProps {
@@ -62,6 +71,9 @@ export function MangaSources() {
     });
     const showAdult = useAppStore((state) => {
         return state.settings.mangaShowAdult;
+    });
+    const stores = useMangaStore((state) => {
+        return state.extensions.stores;
     });
     const sources = listedSources(browse.sources, showAdult);
 
@@ -123,7 +135,11 @@ export function MangaSources() {
                                                     {source.name}
                                                 </RowLink>
                                             </span>
-                                            {source.contentWarning === 'NSFW' && <span className="history__meta">{t('manga.ext.nsfw')}</span>}
+                                            <span className="history__meta">
+                                                {[source.storeIndexUrl === null ? null : t('manga.sources.store', { name: storeName(stores, source.storeIndexUrl) }), source.contentWarning === 'NSFW' ? t('manga.ext.nsfw') : null]
+                                                    .filter(Boolean)
+                                                    .join(' · ')}
+                                            </span>
                                         </div>
                                         <span className="anime__actions">
                                             <button

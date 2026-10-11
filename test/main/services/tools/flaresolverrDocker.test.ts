@@ -253,6 +253,32 @@ describe('FlareSolverrDocker container', () => {
         ).toHaveLength(1);
     });
 
+    it('removes the container and the image, and is as if it was never installed', async () => {
+        const { helper, docker, states } = setup({ imagePresent: true, containerId: 'abc123' });
+        await helper.prepare();
+        await helper.ensureRunning();
+        await helper.remove();
+        expect(docker.calls.slice(-2)).toEqual([
+            ['stop', '--time', '3', 'abc123'],
+            ['rmi', FLARESOLVERR_IMAGE]
+        ]);
+        expect(helper.status).toBe('stopped');
+        expect(helper.baseUrl).toBeNull();
+        expect(helper.failure).toBeNull();
+        expect(helper.state).toEqual({ id: 'flaresolverr', status: 'missing', version: FLARESOLVERR_VERSION, bytesDone: 0, bytesTotal: 0, percent: 0, error: null });
+        expect(states.at(-1)).toEqual(helper.state);
+    });
+
+    it('removes the image even when no container was started, and forgets an earlier problem', async () => {
+        const { helper, docker } = setup({ dockerMissing: true });
+        await helper.prepare();
+        expect(helper.failure).not.toBeNull();
+        await helper.remove();
+        expect(docker.calls.at(-1)).toEqual(['rmi', FLARESOLVERR_IMAGE]);
+        expect(helper.failure).toBeNull();
+        expect(helper.state.status).toBe('missing');
+    });
+
     it('fails with Docker missing when it is started without Docker', async () => {
         const { helper } = setup({ dockerMissing: true });
         await expect(helper.ensureRunning()).rejects.toMatchObject({ code: 'NO_DOCKER', message: 'docker: command not found' });

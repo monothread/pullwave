@@ -137,8 +137,8 @@ describe('SuwayomiClient stores', () => {
 });
 
 describe('SuwayomiClient extensions', () => {
-    const raw = { pkgName: 'eu.kanade.x', name: 'X', lang: 'en', versionName: '1', isInstalled: false, hasUpdate: false, isObsolete: false, iconUrl: '/icon', contentWarning: 'SAFE', storeIndexUrl: null };
-    const parsed = { pkgName: 'eu.kanade.x', name: 'X', lang: 'en', versionName: '1', isInstalled: false, hasUpdate: false, isObsolete: false, iconUrl: `${BASE}/icon`, contentWarning: 'SAFE', storeIndexUrl: null };
+    const raw = { pkgName: 'eu.kanade.x', name: 'X', lang: 'en', versionName: '1', isInstalled: false, hasUpdate: false, isObsolete: false, iconUrl: '/icon', contentWarning: 'SAFE', storeIndexUrl: null, extensionLib: '1.4' };
+    const parsed = { pkgName: 'eu.kanade.x', name: 'X', lang: 'en', versionName: '1', isInstalled: false, hasUpdate: false, isObsolete: false, iconUrl: `${BASE}/icon`, contentWarning: 'SAFE', storeIndexUrl: null, extensionLib: '1.4', isCompatible: true };
 
     it('refreshes the lists of the stores and gives what they offer', async () => {
         const { client, calls } = setup([data({ fetchExtensions: { extensions: [raw] } })]);
@@ -159,12 +159,27 @@ describe('SuwayomiClient extensions', () => {
         expect(calls[0]?.body).toEqual({ query: QUERIES.updateExtension, variables: { id: 'eu.kanade.x', patch: { [action]: true } } });
     });
 
+    it('asks for the version of the library of each extension', () => {
+        expect(QUERIES.extensions).toContain('extensionLib');
+        expect(QUERIES.refreshExtensions).toContain('extensionLib');
+    });
+
+    it('updates the extensions given in one request', async () => {
+        const { client, calls } = setup([data({ updateExtensions: { extensions: [raw] } })]);
+        await expect(client.updateExtensions(['eu.kanade.x', 'eu.kanade.y'])).resolves.toBeUndefined();
+        expect(calls[0]?.body).toEqual({ query: QUERIES.updateExtensions, variables: { ids: ['eu.kanade.x', 'eu.kanade.y'] } });
+        expect(QUERIES.updateExtensions).toContain('patch: { update: true }');
+    });
+
     it('lists the sources', async () => {
-        const { client } = setup([data({ sources: { nodes: [{ id: '1', name: 'S', displayName: 'S (EN)', lang: 'en', iconUrl: '/i', supportsLatest: true, isConfigurable: true, contentWarning: 'SAFE', extension: { pkgName: 'eu.kanade.x' } }] } })]);
+        const { client } = setup([
+            data({ sources: { nodes: [{ id: '1', name: 'S', displayName: 'S (EN)', lang: 'en', iconUrl: '/i', supportsLatest: true, isConfigurable: true, contentWarning: 'SAFE', extension: { pkgName: 'eu.kanade.x', storeIndexUrl: 'https://a.example/i.json' } }] } })
+        ]);
         await expect(client.sources()).resolves.toEqual([
-            { id: '1', name: 'S (EN)', lang: 'en', iconUrl: `${BASE}/i`, supportsLatest: true, isConfigurable: true, contentWarning: 'SAFE', extensionPkg: 'eu.kanade.x' }
+            { id: '1', name: 'S (EN)', lang: 'en', iconUrl: `${BASE}/i`, supportsLatest: true, isConfigurable: true, contentWarning: 'SAFE', extensionPkg: 'eu.kanade.x', storeIndexUrl: 'https://a.example/i.json' }
         ]);
         expect(QUERIES.sources).toContain('isConfigurable');
+        expect(QUERIES.sources).toContain('extension { pkgName storeIndexUrl }');
     });
 
     describe('settings of a source', () => {

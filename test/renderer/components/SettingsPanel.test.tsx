@@ -1432,6 +1432,31 @@ describe('SettingsPanel manga section', () => {
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaShowAdult: true });
     });
 
+    it('has the stores and the helper for Cloudflare in the settings of the manga, and not in the others', () => {
+        const { unmount } = render(<SettingsPanel scope="manga" />);
+        expect(screen.getByText('Extension stores')).toBeInTheDocument();
+        expect(screen.getByText('FlareSolverr (sites protected by Cloudflare)')).toBeInTheDocument();
+        unmount();
+        render(<SettingsPanel scope="downloads" />);
+        expect(screen.queryByText('Extension stores')).not.toBeInTheDocument();
+        expect(screen.queryByText('FlareSolverr (sites protected by Cloudflare)')).not.toBeInTheDocument();
+    });
+
+    it('saves that the helper for Cloudflare is wanted when it is installed, and that it is not when it is removed', async () => {
+        render(<SettingsPanel scope="manga" />);
+        fireEvent.click(screen.getByRole('button', { name: 'INSTALL' }));
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaFlaresolverrEnabled: true });
+        expect(mock.api.manga.installHelper).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not offer to install the helper while the user has an address of their own', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaFlaresolverrUrl: 'http://192.168.0.5:8191' } });
+        render(<SettingsPanel scope="manga" />);
+        expect(screen.queryByRole('button', { name: 'INSTALL' })).not.toBeInTheDocument();
+        expect(screen.getByText('You gave the address of your own FlareSolverr, so the app installs and runs none.')).toBeInTheDocument();
+    });
+
     it('saves the folder only after the delay', async () => {
         render(<SettingsPanel scope="manga" />);
         type('Manga folder', '/media/manga');

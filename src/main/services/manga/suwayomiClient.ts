@@ -46,8 +46,8 @@ export interface SuwayomiClientDependencies {
     fetchImpl?: typeof fetch;
 }
 
-const EXTENSION_FIELDS = 'pkgName name lang versionName isInstalled hasUpdate isObsolete iconUrl contentWarning storeIndexUrl';
-const SOURCE_FIELDS = 'id name displayName lang iconUrl supportsLatest isConfigurable contentWarning extension { pkgName }';
+const EXTENSION_FIELDS = 'pkgName name lang versionName isInstalled hasUpdate isObsolete iconUrl contentWarning storeIndexUrl extensionLib';
+const SOURCE_FIELDS = 'id name displayName lang iconUrl supportsLatest isConfigurable contentWarning extension { pkgName storeIndexUrl }';
 const MANGA_FIELDS = 'id sourceId title thumbnailUrl';
 const MANGA_DETAIL_FIELDS = `${MANGA_FIELDS} author artist description genre status`;
 // The kinds of setting have fields of the same name with different types: each is asked for under a name of its own.
@@ -77,6 +77,7 @@ export const QUERIES = {
     refreshExtensions: `mutation { fetchExtensions(input: {}) { extensions { ${EXTENSION_FIELDS} } } }`,
     extensions: `{ extensions { nodes { ${EXTENSION_FIELDS} } } }`,
     updateExtension: `mutation ($id: String!, $patch: UpdateExtensionPatchInput!) { updateExtension(input: { id: $id, patch: $patch }) { extension { ${EXTENSION_FIELDS} } } }`,
+    updateExtensions: `mutation ($ids: [String!]!) { updateExtensions(input: { ids: $ids, patch: { update: true } }) { extensions { ${EXTENSION_FIELDS} } } }`,
     sources: `{ sources { nodes { ${SOURCE_FIELDS} } } }`,
     sourcePreferences: `query ($id: LongString!) { source(id: $id) { preferences { ${PREFERENCE_FIELDS} } } }`,
     sourceFilters: `query ($id: LongString!) { source(id: $id) { filters { ${FILTER_FIELDS} } } }`,
@@ -189,6 +190,11 @@ export class SuwayomiClient {
 
     async changeExtension(pkgName: string, action: 'install' | 'uninstall' | 'update'): Promise<void> {
         await this.request(QUERIES.updateExtension, { id: pkgName, patch: { [action]: true } }, SOURCE_TIMEOUT_MS);
+    }
+
+    // Updates the extensions given (the ones that have no update are left as they are).
+    async updateExtensions(pkgNames: string[]): Promise<void> {
+        await this.request(QUERIES.updateExtensions, { ids: pkgNames }, SOURCE_TIMEOUT_MS * 3);
     }
 
     async sources(): Promise<MangaSource[]> {

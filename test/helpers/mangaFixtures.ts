@@ -107,10 +107,12 @@ export function makeExtension(overrides: Partial<MangaExtension> = {}): MangaExt
         iconUrl: null,
         contentWarning: 'SAFE',
         storeIndexUrl: 'https://store.example/index.min.json',
+        extensionLib: '1.4',
+        isCompatible: true,
         ...overrides
     };
 }
 
 export function makeSource(overrides: Partial<MangaSource> = {}): MangaSource {
-    return { id: '123', name: 'MangaDex', lang: 'en', iconUrl: null, supportsLatest: true, isConfigurable: false, contentWarning: 'SAFE', extensionPkg: 'eu.kanade.tachiyomi.extension.en.mangadex', ...overrides };
+    return { id: '123', name: 'MangaDex', lang: 'en', iconUrl: null, supportsLatest: true, isConfigurable: false, contentWarning: 'SAFE', extensionPkg: 'eu.kanade.tachiyomi.extension.en.mangadex', storeIndexUrl: 'https://store.example/index.min.json', ...overrides };
 }

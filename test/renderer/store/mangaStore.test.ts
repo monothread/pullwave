@@ -2,7 +2,7 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaError, MangaFilter } from '@shared/manga';
 import { useAppStore } from '@renderer/store/appStore';
-import { upsertMangaJob, useMangaStore } from '@renderer/store/mangaStore';
+import { UPDATE_ALL_KEY, upsertMangaJob, useMangaStore } from '@renderer/store/mangaStore';
 import type { MangaSourcePreference } from '@shared/manga';
 import { makeChapter, makeChapterRecord, makeDetails, makeExtension, makeLibraryManga, makeMangaJob, makeMangaStatus, makeSource, makeSummary, makeTool } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -218,6 +218,22 @@ describe('mangaStore browsing', () => {
         mock.api.manga.sources.mockResolvedValue({ ok: false, error: FAILURE });
         await state().loadSources();
         expect(state().browse).toMatchObject({ sourcesStatus: 'error', sourcesError: FAILURE });
+    });
+
+    it('reads the stores with the sources, so each source can say which store it comes from', async () => {
+        mock.api.manga.sources.mockResolvedValue({ ok: true, value: [makeSource({ id: '5' })] });
+        mock.api.manga.stores.mockResolvedValue({ ok: true, value: [{ indexUrl: 'https://store.example/index.min.json', name: 'My store' }] });
+        await state().loadSources();
+        expect(state().extensions.stores).toEqual([{ indexUrl: 'https://store.example/index.min.json', name: 'My store' }]);
+    });
+
+    it('lists the sources even when the stores cannot be read, and keeps the stores it had', async () => {
+        useMangaStore.setState({ extensions: { ...state().extensions, stores: [{ indexUrl: 'https://a/i.json', name: 'A' }] } });
+        mock.api.manga.sources.mockResolvedValue({ ok: true, value: [makeSource({ id: '5' })] });
+        mock.api.manga.stores.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().loadSources();
+        expect(state().browse).toMatchObject({ sourcesStatus: 'ready' });
+        expect(state().extensions.stores).toEqual([{ indexUrl: 'https://a/i.json', name: 'A' }]);
     });
 
     it('limits the list of sources to a language', () => {
@@ -733,6 +749,37 @@ describe('mangaStore extensions', () => {
         await state().changeExtension('eu.kanade.x', 'uninstall');
         expect(state().extensions).toMatchObject({ error: FAILURE, busy: [] });
         expect(mock.api.manga.sources).not.toHaveBeenCalled();
+    });
+
+    it('updates every extension that has an update, and reads the extensions and the sources again', async () => {
+        mock.api.manga.updateAllExtensions.mockResolvedValue({ ok: true, value: 3 });
+        const pending = state().updateAllExtensions();
+        expect(state().extensions.busy).toEqual([UPDATE_ALL_KEY]);
+        await pending;
+        expect(mock.api.manga.updateAllExtensions).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.extensions).toHaveBeenCalledWith(false);
+        expect(mock.api.manga.sources).toHaveBeenCalledTimes(1);
+        expect(state().extensions).toMatchObject({ error: null, busy: [] });
+    });
+
+    it('shows why the update of every extension failed, and reads nothing again', async () => {
+        mock.api.manga.updateAllExtensions.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().updateAllExtensions();
+        expect(state().extensions).toMatchObject({ error: FAILURE, busy: [] });
+        expect(mock.api.manga.extensions).not.toHaveBeenCalled();
+        expect(mock.api.manga.sources).not.toHaveBeenCalled();
+    });
+
+    it('installs and removes the helper for Cloudflare, and reads the status after each', async () => {
+        const status = makeMangaStatus({ helper: makeTool({ id: 'flaresolverr', status: 'ready' }) });
+        mock.api.manga.status.mockResolvedValue(status);
+        await state().installHelper();
+        expect(mock.api.manga.installHelper).toHaveBeenCalledTimes(1);
+        expect(state().status).toEqual(status);
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
+        await state().removeHelper();
+        expect(mock.api.manga.removeHelper).toHaveBeenCalledTimes(1);
+        expect(state().status).toEqual(makeMangaStatus());
     });
 
     it('changes the filter a piece at a time', () => {

@@ -80,6 +80,9 @@ export interface MangaSourceSettingsState {
     saving: boolean;
 }
 
+// What `busy` holds while every extension is being updated.
+export const UPDATE_ALL_KEY = 'update-all';
+
 export type ChapterSelectionKind = 'all' | 'none' | 'missing';
 
 const EMPTY_STATUS: MangaStatusInfo = { supported: false, tool: null, helper: null, helperProblem: null, helperExternal: false, server: 'stopped', serverError: null };
@@ -158,6 +161,9 @@ interface MangaState {
     init: () => Promise<() => void>;
     refreshStatus: () => Promise<void>;
     retryInstall: () => Promise<void>;
+    // Installs, or removes, the helper for the sites protected by Cloudflare (it needs Docker).
+    installHelper: () => Promise<void>;
+    removeHelper: () => Promise<void>;
     setView: (view: MangaBrowseView) => void;
     openDownloads: () => void;
     closeDownloads: () => void;
@@ -210,6 +216,8 @@ interface MangaState {
     loadExtensions: (refresh?: boolean) => Promise<void>;
     addStore: (indexUrl: string) => Promise<boolean>;
     removeStore: (indexUrl: string) => Promise<void>;
+    // Updates every installed extension that has an update.
+    updateAllExtensions: () => Promise<void>;
     changeExtension: (pkgName: string, action: ExtensionAction) => Promise<void>;
     setExtensionFilter: (filter: Partial<ExtensionFilter>) => void;
 }
@@ -360,6 +368,16 @@ export const useMangaStore = create<MangaState>((set, get) => {
             await get().refreshStatus();
         },
 
+        installHelper: async () => {
+            await window.api.manga.installHelper();
+            await get().refreshStatus();
+        },
+
+        removeHelper: async () => {
+            await window.api.manga.removeHelper();
+            await get().refreshStatus();
+        },
+
         setView: (view) => {
             set({ view });
         },
@@ -378,7 +396,11 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         loadSources: async () => {
             patchBrowse({ sourcesStatus: 'loading', sourcesError: null });
-            const result = await window.api.manga.sources();
+            const [result, stores] = await Promise.all([window.api.manga.sources(), window.api.manga.stores()]);
+            // The name of the store each source comes from is shown beside it; the list is shown even when the stores cannot be read.
+            if (stores.ok) {
+                patchExtensions({ stores: stores.value });
+            }
             if (!result.ok) {
                 patchBrowse({ sourcesStatus: 'error', sourcesError: result.error });
                 return;
@@ -761,6 +783,19 @@ export const useMangaStore = create<MangaState>((set, get) => {
             patchExtensions({ error: null });
             await get().loadExtensions(false);
             // What the sources are changes with the extensions.
+            await get().loadSources();
+        },
+
+        updateAllExtensions: async () => {
+            setBusy(UPDATE_ALL_KEY, true);
+            const result = await window.api.manga.updateAllExtensions();
+            setBusy(UPDATE_ALL_KEY, false);
+            if (!result.ok) {
+                patchExtensions({ error: result.error });
+                return;
+            }
+            patchExtensions({ error: null });
+            await get().loadExtensions(false);
             await get().loadSources();
         },
 

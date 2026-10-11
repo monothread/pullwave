@@ -60,8 +60,34 @@ describe('MangaSources', () => {
     it('marks the sources that are for adults', () => {
         render(<MangaSources />);
         const rows = screen.getAllByTestId('manga-source');
-        expect(within(rows.find((row) => {return row.textContent?.includes('Beta Scans')})!).getByText('18+')).toBeInTheDocument();
-        expect(within(rows.find((row) => {return row.textContent?.includes('Alpha Scans')})!).queryByText('18+')).not.toBeInTheDocument();
+        expect(within(rows.find((row) => {return row.textContent?.includes('Beta Scans')})!).getByText(/18\+/)).toBeInTheDocument();
+        expect(within(rows.find((row) => {return row.textContent?.includes('Alpha Scans')})!).queryByText(/18\+/)).not.toBeInTheDocument();
+    });
+
+    it('says which store each source comes from, by its name, or by its address when the store is not known', () => {
+        useMangaStore.setState({
+            extensions: { ...useMangaStore.getState().extensions, stores: [{ indexUrl: 'https://store.example/index.min.json', name: 'My store' }] },
+            browse: {
+                ...useMangaStore.getState().browse,
+                sources: [
+                    makeSource({ id: '1', name: 'Zeta Scans', lang: 'pt', storeIndexUrl: 'https://store.example/index.min.json' }),
+                    makeSource({ id: '2', name: 'Alpha Scans', lang: 'en', storeIndexUrl: 'https://other.example/index.min.json', contentWarning: 'NSFW' }),
+                    makeSource({ id: '3', name: 'Mixed Site', lang: 'all', storeIndexUrl: null })
+                ]
+            }
+        });
+        render(<MangaSources />);
+        const meta = (name: string): string | null | undefined => {
+            return screen
+                .getAllByTestId('manga-source')
+                .find((row) => {
+                    return row.textContent?.includes(name);
+                })
+                ?.querySelector('.history__meta')?.textContent;
+        };
+        expect(meta('Zeta Scans')).toBe('Store: My store');
+        expect(meta('Alpha Scans')).toBe('Store: https://other.example/index.min.json · 18+');
+        expect(meta('Mixed Site')).toBe('');
     });
 
     it('shows the icon a source has, and a plain block for one that has none or whose icon does not load', () => {
@@ -129,7 +155,7 @@ describe('MangaSources', () => {
         render(<MangaSources />);
         expect(screen.getByText('Sources: 3')).toBeInTheDocument();
         expect(screen.queryByText('Beta Scans')).not.toBeInTheDocument();
-        expect(screen.queryByText('18+')).not.toBeInTheDocument();
+        expect(screen.queryByText(/18\+/)).not.toBeInTheDocument();
         expect(
             screen.getAllByTestId('manga-source').map((row) => {
                 return row.querySelector('.row-link__text')?.textContent;

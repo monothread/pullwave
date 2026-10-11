@@ -108,7 +108,8 @@ describe('parseExtension', () => {
                     isObsolete: true,
                     iconUrl: '/api/v1/extension/icon/x',
                     contentWarning: 'NSFW',
-                    storeIndexUrl: 'https://a.example/i.json'
+                    storeIndexUrl: 'https://a.example/i.json',
+                    extensionLib: '1.5'
                 },
                 BASE
             )
@@ -122,8 +123,27 @@ describe('parseExtension', () => {
             isObsolete: true,
             iconUrl: 'http://127.0.0.1:4321/api/v1/extension/icon/x',
             contentWarning: 'NSFW',
-            storeIndexUrl: 'https://a.example/i.json'
+            storeIndexUrl: 'https://a.example/i.json',
+            extensionLib: '1.5',
+            isCompatible: true
         });
+    });
+
+    it.each([
+        ['1.3', true],
+        ['1.4', true],
+        ['1.6', true],
+        ['1.2', false],
+        ['1.7', false],
+        ['2.0', false],
+        ['abc', false],
+        [null, true],
+        [undefined, true],
+        ['', true]
+    ])('knows an extension made for the library %j is compatible: %j', (extensionLib, compatible) => {
+        const parsed = parseExtension({ pkgName: 'p', name: 'N', extensionLib }, BASE);
+        expect(parsed.isCompatible).toBe(compatible);
+        expect(parsed.extensionLib).toBe(typeof extensionLib === 'string' && extensionLib.length > 0 ? extensionLib : null);
     });
 
     it('defaults what is missing or unknown', () => {
@@ -137,7 +157,9 @@ describe('parseExtension', () => {
             isObsolete: false,
             iconUrl: null,
             contentWarning: 'SAFE',
-            storeIndexUrl: null
+            storeIndexUrl: null,
+            extensionLib: null,
+            isCompatible: true
         });
     });
 
@@ -154,8 +176,8 @@ describe('parseExtension', () => {
 describe('parseSource', () => {
     it('reads the source with the name it is shown by and its extension', () => {
         expect(
-            parseSource({ id: '123', name: 'Site', displayName: 'Site (EN)', lang: 'en', iconUrl: '/i.png', supportsLatest: true, isConfigurable: true, contentWarning: 'MIXED', extension: { pkgName: 'eu.kanade.x' } }, BASE)
-        ).toEqual({ id: '123', name: 'Site (EN)', lang: 'en', iconUrl: 'http://127.0.0.1:4321/i.png', supportsLatest: true, isConfigurable: true, contentWarning: 'MIXED', extensionPkg: 'eu.kanade.x' });
+            parseSource({ id: '123', name: 'Site', displayName: 'Site (EN)', lang: 'en', iconUrl: '/i.png', supportsLatest: true, isConfigurable: true, contentWarning: 'MIXED', extension: { pkgName: 'eu.kanade.x', storeIndexUrl: 'https://a.example/i.json' } }, BASE)
+        ).toEqual({ id: '123', name: 'Site (EN)', lang: 'en', iconUrl: 'http://127.0.0.1:4321/i.png', supportsLatest: true, isConfigurable: true, contentWarning: 'MIXED', extensionPkg: 'eu.kanade.x', storeIndexUrl: 'https://a.example/i.json' });
     });
 
     it('falls back to the name and to no extension', () => {
@@ -167,7 +189,8 @@ describe('parseSource', () => {
             supportsLatest: false,
             isConfigurable: false,
             contentWarning: 'SAFE',
-            extensionPkg: null
+            extensionPkg: null,
+            storeIndexUrl: null
         });
     });
 

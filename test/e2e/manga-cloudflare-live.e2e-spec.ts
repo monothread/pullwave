@@ -28,7 +28,7 @@ test.beforeEach(async () => {
     const userData = join(workDir, 'userData');
     mkdirSync(join(userData, 'manga'), { recursive: true });
     symlinkSync(TOOLS, join(userData, 'manga', 'tools'));
-    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', checkUpdatesOnStart: false, downloadDir: join(workDir, 'downloads'), mangaDirectory: join(workDir, 'manga') }));
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', checkUpdatesOnStart: false, downloadDir: join(workDir, 'downloads'), mangaDirectory: join(workDir, 'manga'), mangaFlaresolverrEnabled: true }));
     app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, PULLWAVE_E2E_LIVE: '1' } });
     page = await app.firstWindow();
     await page.waitForSelector('.logo');
@@ -57,9 +57,12 @@ test('reads a site that is behind Cloudflare through the helper, and says that a
     await expect(nav).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('region', { name: 'Helper for sites protected by Cloudflare' })).toHaveCount(0, { timeout: 20000 });
 
-    await nav.getByRole('button', { name: 'EXTENSIONS', exact: true }).click();
+    await nav.getByRole('button', { name: 'SETTINGS', exact: true }).click();
     await page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
     await page.getByRole('button', { name: 'ADD', exact: true }).click();
+    await expect(page.getByTestId('manga-store')).toBeVisible({ timeout: 40000 });
+    await nav.getByRole('button', { name: 'EXTENSIONS', exact: true }).click();
+    await page.getByRole('switch', { name: 'Installed only' }).uncheck();
     await expect(page.getByLabel('Filter extensions')).toBeVisible({ timeout: 40000 });
     await page.getByLabel('Filter extensions').fill('Manganato');
     await page.getByRole('button', { name: 'INSTALL: Manganato', exact: true }).click();

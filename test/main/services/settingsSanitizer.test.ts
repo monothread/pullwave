@@ -55,6 +55,7 @@ describe('sanitizeSettings', () => {
             mangaDirectory: '/media/manga',
             mangaFormat: 'folder',
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
+            mangaFlaresolverrEnabled: true,
             mangaShowAdult: true,
             translateProvider: 'anthropic',
             translateModel: 'my-model',
@@ -70,6 +71,19 @@ describe('sanitizeSettings', () => {
     it('keeps the manga folder empty and the format a CBZ by default', () => {
         expect(DEFAULT_SETTINGS).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
         expect(sanitizeSettings({})).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
+    });
+
+    it('does not install the helper for Cloudflare by itself', () => {
+        expect(DEFAULT_SETTINGS.mangaFlaresolverrEnabled).toBe(false);
+        expect(sanitizeSettings({}).mangaFlaresolverrEnabled).toBe(false);
+    });
+
+    it.each([true, false])('keeps the choice of having the helper for Cloudflare (%j)', (mangaFlaresolverrEnabled) => {
+        expect(sanitizeSettings({ mangaFlaresolverrEnabled }).mangaFlaresolverrEnabled).toBe(mangaFlaresolverrEnabled);
+    });
+
+    it.each(['yes', 1, null, []])('falls back to no helper for the invalid value %j', (mangaFlaresolverrEnabled) => {
+        expect(sanitizeSettings({ mangaFlaresolverrEnabled }).mangaFlaresolverrEnabled).toBe(false);
     });
 
     it('hides the sources for adults by default', () => {

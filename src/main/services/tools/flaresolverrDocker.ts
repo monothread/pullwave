@@ -203,6 +203,16 @@ export class FlareSolverrDocker {
         return this.current;
     }
 
+    // Stops the container and removes the image; the helper is then as if it was never installed.
+    async remove(): Promise<void> {
+        await this.stop();
+        await this.docker(['rmi', FLARESOLVERR_IMAGE]);
+        this.problem = null;
+        this.lastError = null;
+        this.currentStatus = 'stopped';
+        this.update({ status: 'missing', percent: 0, bytesDone: 0, bytesTotal: 0, error: null });
+    }
+
     ensureRunning(): Promise<string> {
         if (this.currentStatus === 'running' && this.address !== null) {
             return Promise.resolve(this.address);

@@ -78,6 +78,15 @@ export function createMockApi(): MockApiHandle {
         extensions: vi.fn(async () => {
             return { ok: true, value: [] };
         }),
+        updateAllExtensions: vi.fn(async () => {
+            return { ok: true, value: 0 };
+        }),
+        installHelper: vi.fn(async () => {
+            return undefined;
+        }),
+        removeHelper: vi.fn(async () => {
+            return undefined;
+        }),
         changeExtension: vi.fn(async () => {
             return { ok: true, value: null };
         }),

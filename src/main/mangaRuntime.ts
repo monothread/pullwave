@@ -127,6 +127,10 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         if (helper === null || monitor === null) {
             return null;
         }
+        // The helper is not installed by itself: it is used when the user installed it, or gave the address of one of their own.
+        if (externalHelper().length === 0 && !options.getSettings().mangaFlaresolverrEnabled) {
+            return null;
+        }
         // The container is started first, so one that cannot start is told now and not at the first check.
         if (externalHelper().length === 0) {
             if (!helper.isReady) {
@@ -157,6 +161,9 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         spec,
         helper,
         externalHelper,
+        helperEnabled: () => {
+            return options.getSettings().mangaFlaresolverrEnabled;
+        },
         helperUrl,
         tool: installer,
         server,

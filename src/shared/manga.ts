@@ -19,6 +19,19 @@ export interface MangaExtensionStore {
     name: string;
 }
 
+// The versions of the library of extensions the server runs (the ones outside of it are refused when installed).
+export const EXTENSION_LIB_MIN = 1.3;
+export const EXTENSION_LIB_MAX = 1.6;
+
+// Whether the server can run an extension made for this version of the library (true when the store does not say).
+export function isExtensionLibSupported(extensionLib: string | null): boolean {
+    if (extensionLib === null) {
+        return true;
+    }
+    const version = Number.parseFloat(extensionLib);
+    return Number.isFinite(version) && version >= EXTENSION_LIB_MIN && version <= EXTENSION_LIB_MAX;
+}
+
 export interface MangaExtension {
     pkgName: string;
     name: string;
@@ -31,6 +44,10 @@ export interface MangaExtension {
     iconUrl: string | null;
     contentWarning: ContentWarning;
     storeIndexUrl: string | null;
+    // The version of the library of extensions it was made for, when the store says.
+    extensionLib: string | null;
+    // The server can run it (its library version is one the server supports).
+    isCompatible: boolean;
 }
 
 // A site an installed extension reads.
@@ -44,6 +61,8 @@ export interface MangaSource {
     isConfigurable: boolean;
     contentWarning: ContentWarning;
     extensionPkg: string | null;
+    // The store the extension of the source comes from.
+    storeIndexUrl: string | null;
 }
 
 // One setting of a source, as the server describes it. `position` is its place in the list of the source, which is how a change names
@@ -302,6 +321,11 @@ export interface MangaApi {
     // `refresh` asks the stores for their lists again first.
     extensions: (refresh: boolean) => Promise<MangaResult<MangaExtension[]>>;
     changeExtension: (pkgName: string, action: ExtensionAction) => Promise<MangaResult<null>>;
+    // Updates every installed extension that has an update; answers with how many were updated.
+    updateAllExtensions: () => Promise<MangaResult<number>>;
+    // Installs the helper for sites behind Cloudflare (needs Docker), or removes it.
+    installHelper: () => Promise<void>;
+    removeHelper: () => Promise<void>;
     sources: () => Promise<MangaResult<MangaSource[]>>;
     // The settings of a source, and a change to one of them (answered with the settings as they are now).
     sourcePreferences: (sourceId: string) => Promise<MangaResult<MangaSourcePreference[]>>;

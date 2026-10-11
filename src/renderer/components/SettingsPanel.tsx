@@ -22,6 +22,8 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
+import { MangaHelperSettings } from './MangaHelperSettings';
+import { MangaStoreSettings } from './MangaStoreSettings';
 import { formatResolution } from './settingsFormat';
 import { TranslationSettings } from './TranslationSettings';
 import { UpdateActions } from './UpdateActions';
@@ -646,6 +648,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
             )}
 
             {scope === 'manga' && (
+                <>
                 <fieldset className="panel">
                     <legend>{t('settings.manga')}</legend>
                     <div className="field-row">
@@ -697,6 +700,15 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         }}
                     />
                 </fieldset>
+                <MangaStoreSettings />
+                <MangaHelperSettings
+                    enabled={draft.mangaFlaresolverrEnabled}
+                    external={draft.mangaFlaresolverrUrl.trim().length > 0}
+                    onEnabledChange={(value) => {
+                        change('mangaFlaresolverrEnabled', value);
+                    }}
+                />
+                </>
             )}
 
             {scope === 'anime' && animeSupported && (

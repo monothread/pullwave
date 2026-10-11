@@ -36,6 +36,8 @@ export interface ToolControl {
 export interface HelperControl {
     // Checks that Docker is there and pulls the image if it is not.
     prepare: () => Promise<ToolState>;
+    // Stops it and removes its image.
+    remove: () => Promise<void>;
     stop: () => Promise<void>;
     readonly state: ToolState;
     readonly status: MangaServerStatus;
@@ -49,6 +51,8 @@ export interface MangaServiceDependencies {
     helper?: HelperControl | null;
     // The address of a FlareSolverr the user runs, when they gave one: the app runs none then.
     externalHelper?: () => string | null;
+    // Whether the user installed the helper (it is not installed by itself); installed when this is not given.
+    helperEnabled?: () => boolean;
     // The address of the helper (started if it is ready and does not run), or null when there is none to use.
     helperUrl?: () => Promise<string | null>;
     tool: ToolControl;
@@ -87,7 +91,7 @@ export class MangaService {
             return { supported: true, tool: null, helper: null, helperProblem: null, helperExternal: false, server: 'running', serverError: null };
         }
         const helperExternal = this.externalHelper() !== null;
-        const usesHelper = helper != null && !helperExternal;
+        const usesHelper = helper != null && !helperExternal && this.helperEnabled();
         return {
             supported: spec !== null,
             tool: spec === null ? null : tool.stateOf(spec),
@@ -97,6 +101,10 @@ export class MangaService {
             server: server.status,
             serverError: server.error
         };
+    }
+
+    private helperEnabled(): boolean {
+        return this.deps.helperEnabled?.() ?? true;
     }
 
     private externalHelper(): string | null {
@@ -112,11 +120,23 @@ export class MangaService {
             return null;
         }
         const state = await tool.install(spec);
-        if (helper != null && this.externalHelper() === null) {
+        if (helper != null && this.externalHelper() === null && this.helperEnabled()) {
             await helper.prepare();
         }
         await this.applyHelper();
         return state;
+    }
+
+    // Installs the helper for Cloudflare (the user asked for it in the settings): Docker is checked and the image is pulled.
+    async installHelper(): Promise<void> {
+        await this.deps.helper?.prepare();
+        await this.applyHelper();
+    }
+
+    // Removes the helper (the user asked for it in the settings): the container is stopped and the image removed.
+    async removeHelper(): Promise<void> {
+        await this.deps.helper?.remove();
+        await this.applyHelper();
     }
 
     // The server may have started before the helper was there (opening the section is enough to start it): once the helper is ready the
@@ -193,6 +213,23 @@ export class MangaService {
         return this.call(async (client) => {
             await client.changeExtension(pkgName, action);
             return null;
+        });
+    }
+
+    // Updates every installed extension that has an update, and answers with how many there were.
+    updateAllExtensions(): Promise<MangaResult<number>> {
+        return this.call(async (client) => {
+            const outdated = (await client.extensions())
+                .filter((extension) => {
+                    return extension.isInstalled && extension.hasUpdate;
+                })
+                .map((extension) => {
+                    return extension.pkgName;
+                });
+            if (outdated.length > 0) {
+                await client.updateExtensions(outdated);
+            }
+            return outdated.length;
         });
     }
 

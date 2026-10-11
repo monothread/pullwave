@@ -65,9 +65,11 @@ describe('MangaPanel', () => {
         await user.click(screen.getByRole('button', { name: 'LIBRARY' }));
         expect(screen.getByTestId('manga-entry')).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'EXTENSIONS' }));
-        expect(await screen.findByText('Stores')).toBeInTheDocument();
+        expect(await screen.findByText('WHAT ARE EXTENSIONS?')).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'SETTINGS' }));
         expect(await screen.findByLabelText('Manga folder')).toBeInTheDocument();
+        expect(screen.getByText('Extension stores')).toBeInTheDocument();
+        expect(screen.getByText('FlareSolverr (sites protected by Cloudflare)')).toBeInTheDocument();
         expect(useMangaStore.getState().view).toBe('settings');
     });
 

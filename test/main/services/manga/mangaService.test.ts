@@ -58,6 +58,10 @@ function setup(overrides: Partial<MangaServiceDependencies> & { ready?: boolean 
             calls.push('changeExtension');
             return Promise.resolve();
         }),
+        updateExtensions: vi.fn(() => {
+            calls.push('updateExtensions');
+            return Promise.resolve();
+        }),
         sources: vi.fn(() => {
             calls.push('sources');
             return Promise.resolve([]);
@@ -138,7 +142,7 @@ describe('MangaService status', () => {
 describe('MangaService helper for Cloudflare', () => {
     const HELPER_READY: ToolState = { ...READY, id: 'flaresolverr', version: 'v3.5.2' };
 
-    function makeHelper(overrides: Partial<HelperControl> = {}): HelperControl & { prepare: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> } {
+    function makeHelper(overrides: Partial<HelperControl> = {}): HelperControl & { prepare: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> } {
         return {
             state: HELPER_READY,
             status: 'stopped',
@@ -149,8 +153,11 @@ describe('MangaService helper for Cloudflare', () => {
             stop: vi.fn(() => {
                 return Promise.resolve();
             }),
+            remove: vi.fn(() => {
+                return Promise.resolve();
+            }),
             ...overrides
-        } as HelperControl & { prepare: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> };
+        } as HelperControl & { prepare: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> };
     }
 
     it('says what the helper is doing besides the program', () => {
@@ -169,6 +176,47 @@ describe('MangaService helper for Cloudflare', () => {
         const failure = { code: 'no-docker', message: 'no' } as const;
         const { service } = setup({ helper: makeHelper({ failure }), externalHelper: () => {return 'http://192.168.0.5:8191'} });
         expect(service.status()).toMatchObject({ helper: null, helperProblem: null, helperExternal: true });
+    });
+
+    it('shows nothing of the helper, and prepares none, until the user installed it', async () => {
+        const helper = makeHelper();
+        const { service } = setup({ helper, helperEnabled: () => {return false} });
+        expect(service.status()).toMatchObject({ helper: null, helperProblem: null, helperExternal: false });
+        await service.install();
+        expect(helper.prepare).not.toHaveBeenCalled();
+    });
+
+    it('prepares the helper when the app opens once the user installed it', async () => {
+        const helper = makeHelper();
+        const { service } = setup({ helper, helperEnabled: () => {return true} });
+        expect(service.status().helper).toEqual(HELPER_READY);
+        await service.install();
+        expect(helper.prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it('installs the helper on request, and tells the server that runs to use it', async () => {
+        const helper = makeHelper();
+        const { service, client, server } = setup({ helper, helperUrl: () => {return Promise.resolve('http://127.0.0.1:8191')} });
+        Object.assign(server, { status: 'running' });
+        await service.installHelper();
+        expect(helper.prepare).toHaveBeenCalledTimes(1);
+        expect(client.setFlareSolverr).toHaveBeenCalledWith('http://127.0.0.1:8191');
+    });
+
+    it('removes the helper on request, and tells the server that runs to stop using it', async () => {
+        const helper = makeHelper();
+        const { service, client, server } = setup({ helper, helperUrl: () => {return Promise.resolve(null)} });
+        Object.assign(server, { status: 'running' });
+        await service.removeHelper();
+        expect(helper.remove).toHaveBeenCalledTimes(1);
+        expect(client.setFlareSolverr).toHaveBeenCalledWith(null);
+    });
+
+    it('installs and removes nothing where there is no helper', async () => {
+        const { service, client } = setup();
+        await expect(service.installHelper()).resolves.toBeUndefined();
+        await expect(service.removeHelper()).resolves.toBeUndefined();
+        expect(client.setFlareSolverr).not.toHaveBeenCalled();
     });
 
     it('treats an empty address as none', () => {
@@ -386,5 +434,39 @@ describe('toMangaError', () => {
     it('turns anything else into an unknown error', () => {
         expect(toMangaError(new Error('e'))).toEqual({ code: 'UNKNOWN', message: 'e' });
         expect(toMangaError('text')).toEqual({ code: 'UNKNOWN', message: 'text' });
+    });
+});
+
+describe('MangaService update of every extension', () => {
+    function withExtensions(extensions: Array<{ pkgName: string; isInstalled: boolean; hasUpdate: boolean }>) {
+        const context = setup();
+        context.client.extensions.mockImplementation(() => {
+            return Promise.resolve(extensions as never);
+        });
+        return context;
+    }
+
+    it('updates, in one request, the installed extensions that have an update, and answers with how many', async () => {
+        const { service, client } = withExtensions([
+            { pkgName: 'a', isInstalled: true, hasUpdate: true },
+            { pkgName: 'b', isInstalled: true, hasUpdate: false },
+            { pkgName: 'c', isInstalled: false, hasUpdate: true },
+            { pkgName: 'd', isInstalled: true, hasUpdate: true }
+        ]);
+        await expect(service.updateAllExtensions()).resolves.toEqual({ ok: true, value: 2 });
+        expect(client.updateExtensions).toHaveBeenCalledTimes(1);
+        expect(client.updateExtensions).toHaveBeenCalledWith(['a', 'd']);
+    });
+
+    it('asks for nothing when no extension has an update', async () => {
+        const { service, client } = withExtensions([{ pkgName: 'a', isInstalled: true, hasUpdate: false }]);
+        await expect(service.updateAllExtensions()).resolves.toEqual({ ok: true, value: 0 });
+        expect(client.updateExtensions).not.toHaveBeenCalled();
+    });
+
+    it('answers with the failure of the server', async () => {
+        const { service, client } = withExtensions([{ pkgName: 'a', isInstalled: true, hasUpdate: true }]);
+        client.updateExtensions.mockRejectedValue(new SuwayomiApiError('API_ERROR', 'boom'));
+        await expect(service.updateAllExtensions()).resolves.toEqual({ ok: false, error: { code: 'API_ERROR', message: 'boom' } });
     });
 });
