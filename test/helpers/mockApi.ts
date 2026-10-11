@@ -1,10 +1,19 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { LlmStatus } from '@shared/llm';
+import type { MangaApi, MangaCloudflareActivity, MangaJob, MangaServerStatus } from '@shared/manga';
+import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
+export type MockMangaApi = { [K in keyof MangaApi]: ReturnType<typeof vi.fn> };
+
 export interface MockApiHandle {
-    api: { [K in keyof CyberApi]: ReturnType<typeof vi.fn> };
+    api: { [K in Exclude<keyof CyberApi, 'manga'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi };
+    emitMangaTool: (state: ToolState) => void;
+    emitMangaServer: (status: MangaServerStatus) => void;
+    emitMangaCloudflare: (active: MangaCloudflareActivity[]) => void;
+    emitMangaJob: (job: MangaJob) => void;
+    emitMangaLibraryChanged: () => void;
     emitJobUpdate: (job: DownloadJob) => void;
     emitJobRemoved: (id: string) => void;
     emitHistoryChanged: () => void;
@@ -35,6 +44,11 @@ export function createMockApi(): MockApiHandle {
     const animeAvailabilityListeners: Array<(availability: AnimeAvailability) => void> = [];
     const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
+    const mangaToolListeners: Array<(state: ToolState) => void> = [];
+    const mangaServerListeners: Array<(status: MangaServerStatus) => void> = [];
+    const mangaCloudflareListeners: Array<(active: MangaCloudflareActivity[]) => void> = [];
+    const mangaJobListeners: Array<(job: MangaJob) => void> = [];
+    const mangaLibraryListeners: Array<() => void> = [];
     const unsubscribers: Array<ReturnType<typeof vi.fn>> = [];
 
     function subscribe<T>(listeners: T[], listener: T): () => void {
@@ -44,7 +58,90 @@ export function createMockApi(): MockApiHandle {
         return unsubscribe;
     }
 
+    const manga: MockMangaApi = {
+        // Like the anime section, the manga section is off until a test turns it on.
+        status: vi.fn(async () => {
+            return { supported: false, tool: null, helper: null, helperProblem: null, helperExternal: false, server: 'stopped', serverError: null };
+        }),
+        install: vi.fn(async () => {
+            return null;
+        }),
+        stores: vi.fn(async () => {
+            return { ok: true, value: [] };
+        }),
+        addStore: vi.fn(async (indexUrl: string) => {
+            return { ok: true, value: { indexUrl, name: indexUrl } };
+        }),
+        removeStore: vi.fn(async () => {
+            return { ok: true, value: null };
+        }),
+        extensions: vi.fn(async () => {
+            return { ok: true, value: [] };
+        }),
+        changeExtension: vi.fn(async () => {
+            return { ok: true, value: null };
+        }),
+        sources: vi.fn(async () => {
+            return { ok: true, value: [] };
+        }),
+        readPages: vi.fn(async () => {
+            return { ok: true, value: { pages: [], local: false } };
+        }),
+        sourceFilters: vi.fn(async () => {
+            return { ok: true, value: [] };
+        }),
+        sourcePreferences: vi.fn(async () => {
+            return { ok: true, value: [] };
+        }),
+        setSourcePreference: vi.fn(async () => {
+            return { ok: true, value: [] };
+        }),
+        list: vi.fn(async () => {
+            return { ok: true, value: { items: [], hasNextPage: false } };
+        }),
+        details: vi.fn(async () => {
+            return { ok: false, error: { code: 'NOT_FOUND', message: 'not set up' } };
+        }),
+        addToLibrary: vi.fn(async () => {
+            return null;
+        }),
+        download: vi.fn(async () => {
+            return null;
+        }),
+        downloadMissing: vi.fn(async () => {return undefined}),
+        library: vi.fn(async () => {
+            return [];
+        }),
+        jobs: vi.fn(async () => {
+            return [];
+        }),
+        cancel: vi.fn(async () => {return undefined}),
+        retry: vi.fn(async () => {return undefined}),
+        pause: vi.fn(async () => {return undefined}),
+        resume: vi.fn(async () => {return undefined}),
+        clearFinished: vi.fn(async () => {return undefined}),
+        removeChapter: vi.fn(async () => {return undefined}),
+        removeManga: vi.fn(async () => {return undefined}),
+        openFolder: vi.fn(async () => {return undefined}),
+        onToolState: vi.fn((listener: (state: ToolState) => void) => {
+            return subscribe(mangaToolListeners, listener);
+        }),
+        onServerStatus: vi.fn((listener: (status: MangaServerStatus) => void) => {
+            return subscribe(mangaServerListeners, listener);
+        }),
+        onCloudflareActivity: vi.fn((listener: (active: MangaCloudflareActivity[]) => void) => {
+            return subscribe(mangaCloudflareListeners, listener);
+        }),
+        onJobUpdate: vi.fn((listener: (job: MangaJob) => void) => {
+            return subscribe(mangaJobListeners, listener);
+        }),
+        onLibraryChanged: vi.fn((listener: () => void) => {
+            return subscribe(mangaLibraryListeners, listener);
+        })
+    };
+
     const api: MockApiHandle['api'] = {
+        manga,
         getSettings: vi.fn(async () => {
             return DEFAULT_SETTINGS;
         }),
@@ -311,6 +408,31 @@ export function createMockApi(): MockApiHandle {
     return {
         api,
         unsubscribers,
+        emitMangaTool: (state) => {
+            mangaToolListeners.forEach((listener) => {
+                listener(state);
+            });
+        },
+        emitMangaServer: (status) => {
+            mangaServerListeners.forEach((listener) => {
+                listener(status);
+            });
+        },
+        emitMangaCloudflare: (active) => {
+            mangaCloudflareListeners.forEach((listener) => {
+                listener(active);
+            });
+        },
+        emitMangaJob: (job) => {
+            mangaJobListeners.forEach((listener) => {
+                listener(job);
+            });
+        },
+        emitMangaLibraryChanged: () => {
+            mangaLibraryListeners.forEach((listener) => {
+                listener();
+            });
+        },
         emitJobUpdate: (job) => {
             jobListeners.forEach((listener) => {
                 listener(job);

@@ -1,0 +1,769 @@
+import { create } from 'zustand';
+import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
+import type {
+    ExtensionAction,
+    LibraryManga,
+    MangaChapter,
+    MangaCloudflareActivity,
+    MangaDetails,
+    MangaError,
+    MangaFilter,
+    MangaExtension,
+    MangaExtensionStore,
+    MangaJob,
+    MangaListKind,
+    MangaSource,
+    MangaSourcePreference,
+    MangaStatusInfo,
+    MangaSummary
+} from '@shared/manga';
+import { resolveAppLanguage } from '../i18n/language';
+import { ALL_LANGUAGES, chapterState, libraryEntry, type ExtensionFilter } from '../components/mangaText';
+import { useAppStore } from './appStore';
+
+export type MangaView = 'browse' | 'library' | 'extensions' | 'settings' | 'downloads';
+// The views the downloads screen can go back to.
+export type MangaBrowseView = Exclude<MangaView, 'downloads'>;
+
+export interface MangaBrowseState {
+    sources: MangaSource[];
+    sourcesStatus: 'idle' | 'loading' | 'ready' | 'error';
+    sourcesError: MangaError | null;
+    // The language the list of sources is limited to (all of them by default).
+    sourceLanguage: string;
+    // The source that is open (its mangas are listed); null while the list of sources is shown.
+    sourceId: string | null;
+    mode: MangaListKind;
+    query: string;
+    // The filters of the search of the open source: what it offers (`initialFilters`, to start over from) and what the user has set.
+    filters: MangaFilter[];
+    initialFilters: MangaFilter[];
+    filtersStatus: 'idle' | 'loading' | 'ready' | 'error';
+    filtersOpen: boolean;
+    status: 'idle' | 'loading' | 'done' | 'error';
+    items: MangaSummary[];
+    page: number;
+    hasNextPage: boolean;
+    loadingMore: boolean;
+    error: MangaError | null;
+}
+
+// The manga that is open: what the source says about it, its chapters and the ones picked.
+export interface MangaSelection {
+    manga: MangaSummary;
+    status: 'loading' | 'ready' | 'error';
+    details: MangaDetails | null;
+    chapters: MangaChapter[];
+    // The chapters picked, by their number on the server.
+    selected: number[];
+    error: MangaError | null;
+}
+
+export interface MangaExtensionsState {
+    stores: MangaExtensionStore[];
+    extensions: MangaExtension[];
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    error: MangaError | null;
+    // What is being installed, updated or removed (the package name), or added or removed (the address of the store).
+    busy: string[];
+    filter: ExtensionFilter;
+}
+
+// The settings of the source that is being browsed.
+export interface MangaSourceSettingsState {
+    open: boolean;
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    preferences: MangaSourcePreference[];
+    error: MangaError | null;
+    // A change is being saved.
+    saving: boolean;
+}
+
+export type ChapterSelectionKind = 'all' | 'none' | 'missing';
+
+const EMPTY_STATUS: MangaStatusInfo = { supported: false, tool: null, helper: null, helperProblem: null, helperExternal: false, server: 'stopped', serverError: null };
+
+const EMPTY_BROWSE: MangaBrowseState = {
+    sources: [],
+    sourcesStatus: 'idle',
+    sourcesError: null,
+    sourceLanguage: ALL_LANGUAGES,
+    sourceId: null,
+    mode: 'popular',
+    query: '',
+    filters: [],
+    initialFilters: [],
+    filtersStatus: 'idle',
+    filtersOpen: false,
+    status: 'idle',
+    items: [],
+    page: 1,
+    hasNextPage: false,
+    loadingMore: false,
+    error: null
+};
+
+const EMPTY_SOURCE_SETTINGS: MangaSourceSettingsState = { open: false, status: 'idle', preferences: [], error: null, saving: false };
+
+const EMPTY_EXTENSIONS: MangaExtensionsState = {
+    stores: [],
+    extensions: [],
+    status: 'idle',
+    error: null,
+    busy: [],
+    filter: { query: '', lang: ALL_LANGUAGES, onlyInstalled: false }
+};
+
+// A chapter that can be read: its number on the server and, when it is in the library, its number there (its file is read when it was
+// downloaded).
+export interface ReaderChapter {
+    remoteId: number;
+    libraryChapterId: number | null;
+    name: string;
+    number: number | null;
+}
+
+// The chapter being read, among the chapters of its manga (in reading order, the oldest first).
+export interface MangaReaderState {
+    status: 'closed' | 'loading' | 'ready' | 'error';
+    mangaTitle: string;
+    chapters: ReaderChapter[];
+    index: number;
+    pages: string[];
+    // The pages are read from the downloaded file.
+    local: boolean;
+    error: MangaError | null;
+}
+
+const CLOSED_READER: MangaReaderState = { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null };
+
+interface MangaState {
+    reader: MangaReaderState;
+    // The view the manga that is open was opened from: the browse and the library each show only their own.
+    selectionFrom: 'browse' | 'library';
+    status: MangaStatusInfo;
+    view: MangaBrowseView | 'downloads';
+    // Where the downloads screen goes back to.
+    previousView: MangaBrowseView;
+    library: LibraryManga[];
+    jobs: MangaJob[];
+    browse: MangaBrowseState;
+    selection: MangaSelection | null;
+    sourceSettings: MangaSourceSettingsState;
+    extensions: MangaExtensionsState;
+    // The checks of Cloudflare that are going on (the helper is solving them in a browser, which can take a minute).
+    cloudflare: MangaCloudflareActivity[];
+
+    init: () => Promise<() => void>;
+    refreshStatus: () => Promise<void>;
+    retryInstall: () => Promise<void>;
+    setView: (view: MangaBrowseView) => void;
+    openDownloads: () => void;
+    closeDownloads: () => void;
+
+    loadSources: () => Promise<void>;
+    setSourceLanguage: (language: string) => void;
+    // Opens a source, listing its popular (or latest) mangas, and goes back to the list of sources.
+    openSource: (sourceId: string, mode?: MangaListKind) => void;
+    closeSource: () => void;
+    // Shows the settings of the source being browsed (reading them), or hides them.
+    openSourceSettings: () => Promise<void>;
+    closeSourceSettings: () => void;
+    // Changes one setting of the source; the list is asked for again after, since what a source gives can depend on it.
+    changePreference: (preference: MangaSourcePreference, value: MangaSourcePreference['value']) => Promise<void>;
+    setMode: (mode: MangaListKind) => void;
+    setQuery: (query: string) => void;
+    // Lists the mangas of the source, from the first page.
+    // Opens the reader on a chapter of the list (in reading order).
+    openReader: (mangaTitle: string, chapters: ReaderChapter[], index: number) => Promise<void>;
+    // Goes to the next chapter (1) or the previous one (-1); false when there is none.
+    goToChapter: (step: 1 | -1) => Promise<boolean>;
+    closeReader: () => void;
+    runList: () => Promise<void>;
+    loadFilters: () => Promise<void>;
+    setFilters: (filters: MangaFilter[]) => void;
+    resetFilters: () => void;
+    toggleFilters: () => void;
+    loadMore: () => Promise<void>;
+    openManga: (manga: MangaSummary) => Promise<void>;
+    closeManga: () => void;
+    toggleChapter: (remoteId: number) => void;
+    selectChapters: (kind: ChapterSelectionKind) => void;
+    downloadSelected: () => Promise<void>;
+    addToLibrary: () => Promise<boolean>;
+    // Goes to the library.
+    showInLibrary: () => void;
+
+    refreshLibrary: () => Promise<void>;
+    downloadMissing: (mangaId: number) => Promise<void>;
+    openFolder: (mangaId: number) => Promise<void>;
+    removeManga: (mangaId: number) => Promise<void>;
+    removeChapter: (chapterId: number) => Promise<void>;
+
+    cancelJob: (chapterId: number) => Promise<void>;
+    retryJob: (chapterId: number) => Promise<void>;
+    pauseJob: (chapterId: number) => Promise<void>;
+    resumeJob: (chapterId: number) => Promise<void>;
+    clearFinishedJobs: () => Promise<void>;
+
+    loadExtensions: (refresh?: boolean) => Promise<void>;
+    addStore: (indexUrl: string) => Promise<boolean>;
+    removeStore: (indexUrl: string) => Promise<void>;
+    changeExtension: (pkgName: string, action: ExtensionAction) => Promise<void>;
+    setExtensionFilter: (filter: Partial<ExtensionFilter>) => void;
+}
+
+function translateNow(key: MessageKey, params?: MessageParams): string {
+    return createTranslator(resolveAppLanguage(useAppStore.getState().settings.language))(key, params);
+}
+
+function toast(key: MessageKey, params?: MessageParams): void {
+    useAppStore.getState().pushToast(translateNow(key, params));
+}
+
+// A job in the list replaced by its newer state (or added).
+export function upsertMangaJob(jobs: readonly MangaJob[], job: MangaJob): MangaJob[] {
+    const index = jobs.findIndex((candidate) => {
+        return candidate.chapterId === job.chapterId;
+    });
+    if (index === -1) {
+        return [...jobs, job];
+    }
+    return jobs.map((candidate, position) => {
+        return position === index ? job : candidate;
+    });
+}
+
+// The manga as the source describes it, kept as the summary the library knows it by.
+function summaryOf(selection: MangaSelection): MangaSummary {
+    return selection.details === null
+        ? selection.manga
+        : { remoteId: selection.details.remoteId, sourceId: selection.details.sourceId, title: selection.details.title, thumbnailUrl: selection.details.thumbnailUrl };
+}
+
+export const useMangaStore = create<MangaState>((set, get) => {
+    function patchBrowse(patch: Partial<MangaBrowseState>): void {
+        set((state) => {
+            return { browse: { ...state.browse, ...patch } };
+        });
+    }
+
+    function patchExtensions(patch: Partial<MangaExtensionsState>): void {
+        set((state) => {
+            return { extensions: { ...state.extensions, ...patch } };
+        });
+    }
+
+    function setBusy(key: string, busy: boolean): void {
+        set((state) => {
+            const others = state.extensions.busy.filter((item) => {
+                return item !== key;
+            });
+            return { extensions: { ...state.extensions, busy: busy ? [...others, key] : others } };
+        });
+    }
+
+    function chaptersToSend(selection: MangaSelection): MangaChapter[] {
+        const picked = new Set(selection.selected);
+        return selection.chapters.filter((chapter) => {
+            return picked.has(chapter.remoteId);
+        });
+    }
+
+    return {
+        status: EMPTY_STATUS,
+        view: 'browse',
+        previousView: 'browse',
+        library: [],
+        jobs: [],
+        browse: EMPTY_BROWSE,
+        selection: null,
+        sourceSettings: EMPTY_SOURCE_SETTINGS,
+        reader: CLOSED_READER,
+        selectionFrom: 'browse',
+        extensions: EMPTY_EXTENSIONS,
+        cloudflare: [],
+
+        init: async () => {
+            const api = window.api.manga;
+            const status = await api.status();
+            set({ status });
+            if (!status.supported) {
+                return (): void => {
+                    return undefined;
+                };
+            }
+            const [library, jobs] = await Promise.all([api.library(), api.jobs()]);
+            set({ library, jobs });
+            const unsubscribers = [
+                api.onToolState((tool) => {
+                    // Two programs are downloaded: the one that runs the extensions, and the one that gets past Cloudflare.
+                    set((state) => {
+                        return { status: tool.id === 'flaresolverr' ? { ...state.status, helper: tool } : { ...state.status, tool } };
+                    });
+                    if (tool.status === 'ready' || tool.status === 'error') {
+                        void get().refreshStatus();
+                    }
+                }),
+                api.onServerStatus((server) => {
+                    set((state) => {
+                        return { status: { ...state.status, server } };
+                    });
+                    // The covers of the library need the server: they are asked for again once it is up.
+                    if (server === 'running') {
+                        void get().refreshLibrary();
+                    }
+                    if (server === 'error') {
+                        void get().refreshStatus();
+                    }
+                }),
+                api.onCloudflareActivity((cloudflare) => {
+                    set({ cloudflare });
+                }),
+                api.onJobUpdate((job) => {
+                    if (job.status === 'done') {
+                        // A chapter that is complete says so and leaves the screen of the downloads: it is in the library.
+                        set((state) => {
+                            return {
+                                jobs: state.jobs.filter((candidate) => {
+                                    return candidate.chapterId !== job.chapterId;
+                                })
+                            };
+                        });
+                        toast('notice.downloadDone', { title: `${job.mangaTitle} · ${job.chapterName}` });
+                        return;
+                    }
+                    set((state) => {
+                        return { jobs: upsertMangaJob(state.jobs, job) };
+                    });
+                }),
+                api.onLibraryChanged(() => {
+                    void get().refreshLibrary();
+                })
+            ];
+            return (): void => {
+                unsubscribers.forEach((unsubscribe) => {
+                    unsubscribe();
+                });
+            };
+        },
+
+        refreshStatus: async () => {
+            set({ status: await window.api.manga.status() });
+        },
+
+        retryInstall: async () => {
+            await window.api.manga.install();
+            await get().refreshStatus();
+        },
+
+        setView: (view) => {
+            set({ view });
+        },
+
+        openDownloads: () => {
+            set((state) => {
+                return { view: 'downloads', previousView: state.view === 'downloads' ? state.previousView : state.view };
+            });
+        },
+
+        closeDownloads: () => {
+            set((state) => {
+                return { view: state.previousView };
+            });
+        },
+
+        loadSources: async () => {
+            patchBrowse({ sourcesStatus: 'loading', sourcesError: null });
+            const result = await window.api.manga.sources();
+            if (!result.ok) {
+                patchBrowse({ sourcesStatus: 'error', sourcesError: result.error });
+                return;
+            }
+            const sources = result.value.filter((source) => {
+                return source.id !== '0';
+            });
+            const current = get().browse.sourceId;
+            const stillThere = sources.some((source) => {
+                return source.id === current;
+            });
+            // A source that is not there any more (its extension was removed) is no longer open.
+            patchBrowse({ sources, sourcesStatus: 'ready', ...(stillThere ? {} : { sourceId: null, status: 'idle', items: [], page: 1, hasNextPage: false, error: null }) });
+            if (!stillThere) {
+                set({ sourceSettings: EMPTY_SOURCE_SETTINGS });
+            }
+        },
+
+        setSourceLanguage: (language) => {
+            patchBrowse({ sourceLanguage: language });
+        },
+
+        openSource: (sourceId, mode = 'popular') => {
+            patchBrowse({ sourceId, mode, query: '', filters: [], initialFilters: [], filtersStatus: 'idle', filtersOpen: false, status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
+            set({ sourceSettings: EMPTY_SOURCE_SETTINGS, selection: null });
+        },
+
+        closeSource: () => {
+            patchBrowse({ sourceId: null, query: '', filters: [], initialFilters: [], filtersStatus: 'idle', filtersOpen: false, status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
+            set({ sourceSettings: EMPTY_SOURCE_SETTINGS });
+        },
+
+        openSourceSettings: async () => {
+            const { sourceId } = get().browse;
+            if (sourceId === null) {
+                return;
+            }
+            set({ sourceSettings: { ...EMPTY_SOURCE_SETTINGS, open: true, status: 'loading' } });
+            const result = await window.api.manga.sourcePreferences(sourceId);
+            // The source may have changed, or the settings been closed, meanwhile.
+            if (get().browse.sourceId !== sourceId || !get().sourceSettings.open) {
+                return;
+            }
+            set({ sourceSettings: result.ok ? { ...EMPTY_SOURCE_SETTINGS, open: true, status: 'ready', preferences: result.value } : { ...EMPTY_SOURCE_SETTINGS, open: true, status: 'error', error: result.error } });
+        },
+
+        closeSourceSettings: () => {
+            set({ sourceSettings: EMPTY_SOURCE_SETTINGS });
+        },
+
+        changePreference: async (preference, value) => {
+            const { sourceId } = get().browse;
+            if (sourceId === null) {
+                return;
+            }
+            set((state) => {
+                return { sourceSettings: { ...state.sourceSettings, saving: true, error: null } };
+            });
+            const result = await window.api.manga.setSourcePreference({ sourceId, position: preference.position, type: preference.type, value });
+            if (get().browse.sourceId !== sourceId) {
+                return;
+            }
+            if (!result.ok) {
+                set((state) => {
+                    return { sourceSettings: { ...state.sourceSettings, saving: false, error: result.error } };
+                });
+                return;
+            }
+            set((state) => {
+                return { sourceSettings: { ...state.sourceSettings, saving: false, status: 'ready', preferences: result.value } };
+            });
+            // What the source gives can depend on its settings: the list is asked for again.
+            patchBrowse({ status: 'idle', items: [], page: 1, hasNextPage: false, error: null });
+        },
+
+        setMode: (mode) => {
+            patchBrowse({ mode, status: 'idle', items: [], page: 1, hasNextPage: false, error: null });
+        },
+
+        setQuery: (query) => {
+            patchBrowse({ query });
+        },
+
+        loadFilters: async () => {
+            const { sourceId, filtersStatus } = get().browse;
+            if (sourceId === null || filtersStatus === 'loading' || filtersStatus === 'ready') {
+                return;
+            }
+            patchBrowse({ filtersStatus: 'loading' });
+            const result = await window.api.manga.sourceFilters(sourceId);
+            if (get().browse.sourceId !== sourceId) {
+                return;
+            }
+            patchBrowse(result.ok ? { filtersStatus: 'ready', filters: result.value, initialFilters: result.value } : { filtersStatus: 'error' });
+        },
+
+        setFilters: (filters) => {
+            patchBrowse({ filters });
+        },
+
+        resetFilters: () => {
+            patchBrowse({ filters: get().browse.initialFilters });
+        },
+
+        toggleFilters: () => {
+            patchBrowse({ filtersOpen: !get().browse.filtersOpen });
+        },
+
+        runList: async () => {
+            const { sourceId, mode, query, filters } = get().browse;
+            if (sourceId === null || (mode === 'search' && query.trim().length === 0 && filters.length === 0)) {
+                return;
+            }
+            patchBrowse({ status: 'loading', error: null, items: [], page: 1, hasNextPage: false });
+            const result = await window.api.manga.list({ sourceId, kind: mode, page: 1, query: query.trim(), ...(mode === 'search' ? { filters } : {}) });
+            // The answer of a list that was asked for before another one is not shown.
+            const now = get().browse;
+            if (now.sourceId !== sourceId || now.mode !== mode || now.query !== query) {
+                return;
+            }
+            if (!result.ok) {
+                patchBrowse({ status: 'error', error: result.error });
+                return;
+            }
+            patchBrowse({ status: 'done', items: result.value.items, hasNextPage: result.value.hasNextPage, page: 1 });
+        },
+
+        loadMore: async () => {
+            const { sourceId, mode, query, filters, page, hasNextPage, loadingMore } = get().browse;
+            if (sourceId === null || !hasNextPage || loadingMore) {
+                return;
+            }
+            patchBrowse({ loadingMore: true });
+            const result = await window.api.manga.list({ sourceId, kind: mode, page: page + 1, query: query.trim(), ...(mode === 'search' ? { filters } : {}) });
+            const now = get().browse;
+            if (now.sourceId !== sourceId || now.mode !== mode || now.query !== query) {
+                patchBrowse({ loadingMore: false });
+                return;
+            }
+            if (!result.ok) {
+                patchBrowse({ loadingMore: false, error: result.error });
+                return;
+            }
+            const known = new Set(
+                now.items.map((item) => {
+                    return item.remoteId;
+                })
+            );
+            patchBrowse({
+                loadingMore: false,
+                page: page + 1,
+                hasNextPage: result.value.hasNextPage,
+                items: [
+                    ...now.items,
+                    ...result.value.items.filter((item) => {
+                        return !known.has(item.remoteId);
+                    })
+                ]
+            });
+        },
+
+        openManga: async (manga) => {
+            set({ selection: { manga, status: 'loading', details: null, chapters: [], selected: [], error: null }, selectionFrom: get().view === 'library' ? 'library' : 'browse' });
+            const result = await window.api.manga.details(manga.remoteId);
+            const current = get().selection;
+            if (current === null || current.manga.remoteId !== manga.remoteId) {
+                return;
+            }
+            if (!result.ok) {
+                set({ selection: { ...current, status: 'error', error: result.error } });
+                return;
+            }
+            set({ selection: { ...current, status: 'ready', details: result.value.details, chapters: result.value.chapters } });
+        },
+
+        openReader: async (mangaTitle, chapters, index) => {
+            const chapter = chapters[index];
+            if (chapter === undefined) {
+                return;
+            }
+            set({ reader: { status: 'loading', mangaTitle, chapters, index, pages: [], local: false, error: null } });
+            const result = await window.api.manga.readPages({ chapterRemoteId: chapter.remoteId, libraryChapterId: chapter.libraryChapterId });
+            // The answer for a chapter that is no longer the one on the screen is dropped.
+            const now = get().reader;
+            if (now.status === 'closed' || now.index !== index || now.chapters !== chapters) {
+                return;
+            }
+            set({
+                reader: result.ok
+                    ? { ...now, status: 'ready', pages: result.value.pages, local: result.value.local, error: null }
+                    : { ...now, status: 'error', pages: [], error: result.error }
+            });
+        },
+
+        goToChapter: async (step) => {
+            const { reader } = get();
+            const target = reader.index + step;
+            if (reader.status === 'closed' || reader.chapters[target] === undefined) {
+                return false;
+            }
+            await get().openReader(reader.mangaTitle, reader.chapters, target);
+            return true;
+        },
+
+        closeReader: () => {
+            set({ reader: CLOSED_READER });
+        },
+
+        closeManga: () => {
+            set({ selection: null });
+        },
+
+        toggleChapter: (remoteId) => {
+            set((state) => {
+                if (state.selection === null) {
+                    return {};
+                }
+                const selected = state.selection.selected.includes(remoteId)
+                    ? state.selection.selected.filter((item) => {
+                          return item !== remoteId;
+                      })
+                    : [...state.selection.selected, remoteId];
+                return { selection: { ...state.selection, selected } };
+            });
+        },
+
+        selectChapters: (kind) => {
+            set((state) => {
+                const { selection, library } = state;
+                if (selection === null) {
+                    return {};
+                }
+                const inLibrary = libraryEntry(library, selection.manga.sourceId, selection.manga.remoteId);
+                const ids = selection.chapters
+                    .filter((chapter) => {
+                        return kind === 'all' || (kind === 'missing' && chapterState(inLibrary, chapter.remoteId)?.status !== 'done');
+                    })
+                    .map((chapter) => {
+                        return chapter.remoteId;
+                    });
+                return { selection: { ...selection, selected: ids } };
+            });
+        },
+
+        downloadSelected: async () => {
+            const { selection } = get();
+            if (selection === null || selection.status !== 'ready') {
+                return;
+            }
+            const chapters = chaptersToSend(selection);
+            if (chapters.length === 0) {
+                return;
+            }
+            const library = await window.api.manga.download({ manga: summaryOf(selection), details: selection.details, chapters });
+            if (library !== null) {
+                toast('manga.notice.queued', { count: chapters.length });
+            }
+            await get().refreshLibrary();
+            set((state) => {
+                return state.selection === null ? {} : { selection: { ...state.selection, selected: [] } };
+            });
+        },
+
+        addToLibrary: async () => {
+            const { selection } = get();
+            if (selection === null || selection.status !== 'ready' || selection.chapters.length === 0) {
+                return false;
+            }
+            const library = await window.api.manga.addToLibrary({ manga: summaryOf(selection), details: selection.details, chapters: selection.chapters });
+            await get().refreshLibrary();
+            if (library !== null) {
+                toast('manga.notice.added', { title: library.title });
+            }
+            return library !== null;
+        },
+
+        showInLibrary: () => {
+            set({ view: 'library', selection: null });
+        },
+
+        refreshLibrary: async () => {
+            set({ library: await window.api.manga.library() });
+        },
+
+        downloadMissing: async (mangaId) => {
+            await window.api.manga.downloadMissing([mangaId]);
+            await get().refreshLibrary();
+        },
+
+        openFolder: async (mangaId) => {
+            await window.api.manga.openFolder(mangaId);
+        },
+
+        removeManga: async (mangaId) => {
+            await window.api.manga.removeManga(mangaId);
+            await get().refreshLibrary();
+        },
+
+        removeChapter: async (chapterId) => {
+            await window.api.manga.removeChapter(chapterId);
+            await get().refreshLibrary();
+        },
+
+        cancelJob: async (chapterId) => {
+            await window.api.manga.cancel(chapterId);
+        },
+
+        retryJob: async (chapterId) => {
+            await window.api.manga.retry(chapterId);
+        },
+
+        pauseJob: async (chapterId) => {
+            await window.api.manga.pause(chapterId);
+        },
+
+        resumeJob: async (chapterId) => {
+            await window.api.manga.resume(chapterId);
+        },
+
+        clearFinishedJobs: async () => {
+            await window.api.manga.clearFinished();
+            set((state) => {
+                return {
+                    jobs: state.jobs.filter((job) => {
+                        return job.status === 'queued' || job.status === 'running' || job.status === 'paused';
+                    })
+                };
+            });
+        },
+
+        loadExtensions: async (refresh = false) => {
+            patchExtensions({ status: 'loading', error: null });
+            const stores = await window.api.manga.stores();
+            if (!stores.ok) {
+                patchExtensions({ status: 'error', error: stores.error });
+                return;
+            }
+            // The stores are shown while the extensions are still coming.
+            patchExtensions({ stores: stores.value });
+            const extensions = await window.api.manga.extensions(refresh);
+            if (!extensions.ok) {
+                patchExtensions({ status: 'error', error: extensions.error, stores: stores.value });
+                return;
+            }
+            patchExtensions({ status: 'ready', stores: stores.value, extensions: extensions.value });
+        },
+
+        addStore: async (indexUrl) => {
+            setBusy(indexUrl, true);
+            const result = await window.api.manga.addStore(indexUrl);
+            setBusy(indexUrl, false);
+            if (!result.ok) {
+                patchExtensions({ error: result.error });
+                return false;
+            }
+            await get().loadExtensions(true);
+            return true;
+        },
+
+        removeStore: async (indexUrl) => {
+            setBusy(indexUrl, true);
+            const result = await window.api.manga.removeStore(indexUrl);
+            setBusy(indexUrl, false);
+            if (!result.ok) {
+                patchExtensions({ error: result.error });
+                return;
+            }
+            await get().loadExtensions(false);
+        },
+
+        changeExtension: async (pkgName, action) => {
+            setBusy(pkgName, true);
+            const result = await window.api.manga.changeExtension(pkgName, action);
+            setBusy(pkgName, false);
+            if (!result.ok) {
+                patchExtensions({ error: result.error });
+                return;
+            }
+            patchExtensions({ error: null });
+            await get().loadExtensions(false);
+            // What the sources are changes with the extensions.
+            await get().loadSources();
+        },
+
+        setExtensionFilter: (filter) => {
+            set((state) => {
+                return { extensions: { ...state.extensions, filter: { ...state.extensions.filter, ...filter } } };
+            });
+        }
+    };
+});

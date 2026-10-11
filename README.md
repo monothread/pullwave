@@ -52,12 +52,13 @@ Ubuntu 22.04 and newer need FUSE 2 for AppImages (`sudo apt install libfuse2`, o
 Once installed, the app looks for new versions by itself (the ⚙ of the top bar, APP UPDATES): one click downloads the update and another restarts into it.
 
 ## Getting around
-The top bar has **VIDEO DOWNLOADER**, **ANIME** and a ⚙ for the settings of the whole app. Each part has its own bar and its own ⚙:
+The top bar has **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the settings of the whole app. Each part has its own bar and its own ⚙:
 
 | Part | Screens |
 |---|---|
 | VIDEO DOWNLOADER | QUEUE · HISTORY · ⚙ |
 | ANIME | SCHEDULE · SEARCH · LIBRARY · HISTORY · ⚙ (and a DOWNLOADS button) |
+| MANGA | BROWSE · LIBRARY · EXTENSIONS · ⚙ (and a DOWNLOADS button) |
 
 The back and forward buttons of the mouse take you through the screens you have been to.
 
@@ -185,6 +186,17 @@ Lists the anime you opened or watched, the most recent first, with the last epis
 
 ### Good to know
 The episodes come from an external source that can change or block requests at any time; updating ani-cli often fixes that. Some antivirus programs distrust the small tools ani-cli uses on Windows; they are the official builds (see [`resources/THIRD_PARTY_NOTICES.md`](resources/THIRD_PARTY_NOTICES.md)). Some video formats may not play inside the app. The same disclaimer applies: see [DISCLAIMER.md](DISCLAIMER.md).
+
+## Manga
+Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](https://mihon.app) support, on Linux and Windows (64 bits). The extensions run in [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server), which Pullwave downloads **once, when it opens** (about 330 MB, checked against the checksum of its release) and runs for you in the background, together with [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr), which gets past the check of Cloudflare that some sites have and runs in **Docker** (Pullwave pulls its image once, about 1 GB; without Docker the sites behind Cloudflare do not work, and the section says so, unless you give the address of a FlareSolverr of your own in SETTINGS → MANGA); nothing else is installed. The downloads themselves (the queue, the pages, the CBZ files) are Pullwave's.
+
+- **Filters and reader:** the SEARCH of a source has a FILTERS panel with what the source offers (genres, tags, status, order...), like the WebUI of Suwayomi. A chapter is read with READ, from the source or, when it was downloaded, from its file: single page, vertical scroll or webtoon, left to right or right to left, with the size and the background of your choice, and it comes back to the page you left on.
+- **EXTENSIONS:** add a *store* (the address of an `index.min.json`, for instance the [keiyoushi](https://github.com/keiyoushi/extensions) one, which has a button) and install the extensions you want. An extension brings one or more *sources*, the sites that have the manga. Extensions are made by other people: install only the ones you trust.
+- **BROWSE:** the sources of the installed extensions, by language (as in the Suwayomi WebUI). Open one on its **popular** or **latest** manga, search it, open a manga and pick chapters. Some sources need to be set up first (a server address, a mirror, a language): the ⚙ on the page of the source.
+- **Downloads:** one chapter at a time for each site, three tries, pause and resume, and a chapter that is cut short goes on from the pages it has. Each chapter is a **CBZ** (or a folder of images, in the settings) with a `ComicInfo.xml`, in `Pullwave Manga/<manga>/` inside your downloads folder (or the folder you choose).
+- **LIBRARY:** your mangas with how many chapters are downloaded, download what is missing, open the folder, remove a chapter or a manga with its files.
+
+Use it only for content you have the right to download; see [DISCLAIMER.md](DISCLAIMER.md).
 
 ## Settings, themes and languages
 Settings are saved as you change them. The ⚙ of the top bar has the ones of the whole app:

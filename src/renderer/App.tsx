@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { AnimePanel } from './components/AnimePanel';
 import { BinaryStatus } from './components/BinaryStatus';
 import { DownloadsPanel } from './components/DownloadsPanel';
+import { MangaPanel } from './components/MangaPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './components/TabButton';
 import { Toast } from './components/Toast';
@@ -10,12 +11,14 @@ import type { MessageKey } from '@shared/i18n';
 import { useMouseNavigation } from './hooks/useMouseNavigation';
 import { useAppLanguage, useTranslator } from './i18n/useTranslator';
 import { useAnimeStore } from './store/animeStore';
+import { useMangaStore } from './store/mangaStore';
 import { useAppStore, type Tab } from './store/appStore';
 import { applyTheme, DARK_SCHEME_QUERY, rememberTheme } from './theme/resolveTheme';
 
 const TABS: ReadonlyArray<{ id: Tab; label: MessageKey; icon?: string }> = [
     { id: 'downloads', label: 'tab.downloads' },
     { id: 'anime', label: 'tab.anime' },
+    { id: 'manga', label: 'tab.manga' },
     { id: 'settings', label: 'tab.settings', icon: SETTINGS_ICON }
 ];
 
@@ -42,8 +45,15 @@ export function App() {
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
+    const initManga = useMangaStore((state) => {
+        return state.init;
+    });
+    // The manga section only exists on Linux and Windows (64 bits); elsewhere its tab is left out too.
+    const mangaSupported = useMangaStore((state) => {
+        return state.status.supported;
+    });
     const visibleTabs = TABS.filter((item) => {
-        return item.id !== 'anime' || animeSupported;
+        return (item.id !== 'anime' || animeSupported) && (item.id !== 'manga' || mangaSupported);
     });
 
     const theme = useAppStore((state) => {
@@ -82,10 +92,11 @@ export function App() {
     useEffect(() => {
         let dispose: (() => void) | null = null;
         let cancelled = false;
-        void Promise.all([init(), initAnime()]).then(([unsubscribeApp, unsubscribeAnime]) => {
+        void Promise.all([init(), initAnime(), initManga()]).then(([unsubscribeApp, unsubscribeAnime, unsubscribeManga]) => {
             const unsubscribe = (): void => {
                 unsubscribeApp();
                 unsubscribeAnime();
+                unsubscribeManga();
             };
             if (cancelled) {
                 unsubscribe();
@@ -95,12 +106,15 @@ export function App() {
             if (!useAnimeStore.getState().status.supported && useAppStore.getState().tab === 'anime') {
                 setTab('downloads');
             }
+            if (!useMangaStore.getState().status.supported && useAppStore.getState().tab === 'manga') {
+                setTab('downloads');
+            }
         });
         return () => {
             cancelled = true;
             dispose?.();
         };
-    }, [init, initAnime, setTab]);
+    }, [init, initAnime, initManga, setTab]);
 
     return (
         <div className="app">
@@ -130,6 +144,7 @@ export function App() {
                 {!ready && <p className="empty">{t('app.booting')}</p>}
                 {ready && tab === 'downloads' && <DownloadsPanel />}
                 {ready && tab === 'anime' && animeSupported && <AnimePanel />}
+                {ready && tab === 'manga' && mangaSupported && <MangaPanel />}
                 {ready && tab === 'settings' && <SettingsPanel scope="global" />}
             </main>
             <Toast />

@@ -6,7 +6,9 @@ import { App } from '@renderer/App';
 import { SETTINGS_ICON } from '@renderer/components/TabButton';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeStatus } from '../helpers/animeFixtures';
+import { makeMangaStatus, makeTool } from '../helpers/mangaFixtures';
 import { APP_UPDATE_IDLE, installMockApi, makeJob, type MockApiHandle } from '../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -15,6 +17,7 @@ const initial = useAppStore.getState();
 beforeEach(() => {
     mock = installMockApi();
     useAnimeStore.setState({ status: UNSUPPORTED_STATUS, jobs: [], library: [], selection: null, playing: null });
+    useMangaStore.setState({ status: makeMangaStatus({ supported: false, tool: null }), jobs: [], library: [], selection: null, view: 'browse' });
     useAppStore.setState({ ...initial, tab: 'downloads', jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, updating: false, appUpdate: { ...APP_UPDATE_IDLE, currentVersion: '' } });
 });
 
@@ -369,6 +372,94 @@ describe('App anime section', () => {
         await screen.findByRole('button', { name: 'ANIME' });
         unmount();
         expect(mock.unsubscribers).toHaveLength(10);
+        mock.unsubscribers.forEach((unsubscribe) => {
+            expect(unsubscribe).toHaveBeenCalledTimes(1);
+        });
+    });
+});
+
+describe('App manga section', () => {
+    const supported = makeMangaStatus();
+
+    it('has no manga tab where the section does not exist', async () => {
+        render(<App />);
+        await screen.findByLabelText('Link 1');
+        expect(screen.queryByRole('button', { name: 'MANGA' })).not.toBeInTheDocument();
+        expect(mock.api.manga.status).toHaveBeenCalledTimes(1);
+    });
+
+    it('adds the manga tab, after the anime one and before the settings, where it exists', async () => {
+        mock.api.manga.status.mockResolvedValue(supported);
+        mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
+        render(<App />);
+        await screen.findByRole('button', { name: 'MANGA' });
+        expect(
+            within(screen.getByRole('navigation', { name: 'Sections' }))
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.getAttribute('aria-label') ?? button.textContent;
+                })
+        ).toEqual(['VIDEO DOWNLOADER', 'ANIME', 'MANGA', 'SETTINGS (GLOBAL)']);
+    });
+
+    it('shows the manga section when its tab is chosen', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.status.mockResolvedValue(supported);
+        mock.api.manga.sources.mockResolvedValue({ ok: true, value: [] });
+        render(<App />);
+        await user.click(await screen.findByRole('button', { name: 'MANGA' }));
+        expect(screen.getByRole('button', { name: 'MANGA' })).toHaveAttribute('aria-current', 'page');
+        expect(screen.getByRole('region', { name: 'Manga' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'BROWSE' })).toHaveAttribute('aria-current', 'page');
+        expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
+    });
+
+    it('shows the preparation of the program in the manga section until it is downloaded', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus({ tool: makeTool({ status: 'downloading', percent: 30 }) }));
+        render(<App />);
+        await user.click(await screen.findByRole('button', { name: 'MANGA' }));
+        expect(screen.getByText('PREPARING THE MANGA SERVER')).toBeInTheDocument();
+        expect(screen.getByText('Downloading… 30%')).toBeInTheDocument();
+        expect(mock.api.manga.sources).not.toHaveBeenCalled();
+    });
+
+    it('moves on from the preparation when the program is ready', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus({ tool: makeTool({ status: 'downloading', percent: 30 }) }));
+        mock.api.manga.sources.mockResolvedValue({ ok: true, value: [] });
+        render(<App />);
+        await user.click(await screen.findByRole('button', { name: 'MANGA' }));
+        mock.api.manga.status.mockResolvedValue(supported);
+        act(() => {
+            mock.emitMangaTool(makeTool({ status: 'ready' }));
+        });
+        expect(await screen.findByRole('button', { name: 'BROWSE' })).toBeInTheDocument();
+        expect(screen.queryByText('PREPARING THE MANGA SERVER')).not.toBeInTheDocument();
+    });
+
+    it('loads the library and the downloads of the section', async () => {
+        mock.api.manga.status.mockResolvedValue(supported);
+        render(<App />);
+        await screen.findByRole('button', { name: 'MANGA' });
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.jobs).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to the video downloader when the manga tab was the one saved and the section does not exist', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' as never });
+        render(<App />);
+        expect(await screen.findByLabelText('Link 1')).toBeInTheDocument();
+        expect(useAppStore.getState().tab).toBe('downloads');
+    });
+
+    it('unsubscribes from the events of the section too on unmount', async () => {
+        mock.api.manga.status.mockResolvedValue(supported);
+        const { unmount } = render(<App />);
+        await screen.findByRole('button', { name: 'MANGA' });
+        const before = mock.unsubscribers.length;
+        unmount();
+        expect(before).toBe(10);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

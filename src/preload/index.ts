@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
 import type { AnimeAvailability, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
+import type { MangaCloudflareActivity, MangaJob, MangaServerStatus } from '@shared/manga';
+import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -13,7 +15,109 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
     };
 }
 
+const manga: CyberApi['manga'] = {
+    status: () => {
+        return ipcRenderer.invoke(IPC.mangaStatus);
+    },
+    install: () => {
+        return ipcRenderer.invoke(IPC.mangaInstall);
+    },
+    stores: () => {
+        return ipcRenderer.invoke(IPC.mangaStores);
+    },
+    addStore: (indexUrl) => {
+        return ipcRenderer.invoke(IPC.mangaStoreAdd, indexUrl);
+    },
+    removeStore: (indexUrl) => {
+        return ipcRenderer.invoke(IPC.mangaStoreRemove, indexUrl);
+    },
+    extensions: (refresh) => {
+        return ipcRenderer.invoke(IPC.mangaExtensions, refresh);
+    },
+    changeExtension: (pkgName, action) => {
+        return ipcRenderer.invoke(IPC.mangaExtensionChange, pkgName, action);
+    },
+    sources: () => {
+        return ipcRenderer.invoke(IPC.mangaSources);
+    },
+    sourcePreferences: (sourceId) => {
+        return ipcRenderer.invoke(IPC.mangaSourcePreferences, sourceId);
+    },
+    setSourcePreference: (change) => {
+        return ipcRenderer.invoke(IPC.mangaSourcePreferenceSet, change);
+    },
+    readPages: (request) => {
+        return ipcRenderer.invoke(IPC.mangaReadPages, request);
+    },
+    sourceFilters: (sourceId) => {
+        return ipcRenderer.invoke(IPC.mangaSourceFilters, sourceId);
+    },
+    list: (request) => {
+        return ipcRenderer.invoke(IPC.mangaList, request);
+    },
+    details: (remoteId) => {
+        return ipcRenderer.invoke(IPC.mangaDetails, remoteId);
+    },
+    addToLibrary: (request) => {
+        return ipcRenderer.invoke(IPC.mangaAddToLibrary, request);
+    },
+    download: (request) => {
+        return ipcRenderer.invoke(IPC.mangaDownload, request);
+    },
+    downloadMissing: (mangaIds) => {
+        return ipcRenderer.invoke(IPC.mangaDownloadMissing, mangaIds);
+    },
+    library: () => {
+        return ipcRenderer.invoke(IPC.mangaLibrary);
+    },
+    jobs: () => {
+        return ipcRenderer.invoke(IPC.mangaJobs);
+    },
+    cancel: (chapterId) => {
+        return ipcRenderer.invoke(IPC.mangaCancel, chapterId);
+    },
+    retry: (chapterId) => {
+        return ipcRenderer.invoke(IPC.mangaRetry, chapterId);
+    },
+    pause: (chapterId) => {
+        return ipcRenderer.invoke(IPC.mangaPause, chapterId);
+    },
+    resume: (chapterId) => {
+        return ipcRenderer.invoke(IPC.mangaResume, chapterId);
+    },
+    clearFinished: () => {
+        return ipcRenderer.invoke(IPC.mangaClearFinished);
+    },
+    removeChapter: (chapterId) => {
+        return ipcRenderer.invoke(IPC.mangaRemoveChapter, chapterId);
+    },
+    removeManga: (mangaId) => {
+        return ipcRenderer.invoke(IPC.mangaRemoveManga, mangaId);
+    },
+    openFolder: (mangaId) => {
+        return ipcRenderer.invoke(IPC.mangaOpenFolder, mangaId);
+    },
+    onToolState: (listener) => {
+        return subscribe<ToolState>(IPC.eventMangaTool, listener);
+    },
+    onServerStatus: (listener) => {
+        return subscribe<MangaServerStatus>(IPC.eventMangaServer, listener);
+    },
+    onCloudflareActivity: (listener) => {
+        return subscribe<MangaCloudflareActivity[]>(IPC.eventMangaCloudflare, listener);
+    },
+    onJobUpdate: (listener) => {
+        return subscribe<MangaJob>(IPC.eventMangaJob, listener);
+    },
+    onLibraryChanged: (listener) => {
+        return subscribe<undefined>(IPC.eventMangaLibrary, () => {
+            listener();
+        });
+    }
+};
+
 const api: CyberApi = {
+    manga,
     getSettings: () => {
         return ipcRenderer.invoke(IPC.settingsGet);
     },

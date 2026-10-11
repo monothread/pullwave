@@ -1,0 +1,247 @@
+import { IPC } from '@shared/constants';
+import type { LibraryManga, MangaJob, MangaResult, MangaStatusInfo } from '@shared/manga';
+import type { MangaDb } from '../services/manga/mangaDb';
+import type { MangaReader } from '../services/manga/mangaReader';
+import type { MangaDownloadQueue } from '../services/manga/mangaDownloadQueue';
+import { asDownloadRequest, asExtensionAction, asId, asIds, asListRequest, asPackageName, asPreferenceChange, asReadRequest, asSourceId, asStoreUrl } from '../services/manga/mangaRequests';
+import type { MangaService } from '../services/manga/mangaService';
+import { fromStoredAddress, toStoredAddress } from '../services/manga/serverAddress';
+import type { IpcMainLike } from './registerHandlers';
+
+export interface MangaHandlerDependencies {
+    service: Pick<MangaService, 'status' | 'install' | 'stores' | 'addStore' | 'removeStore' | 'extensions' | 'changeExtension' | 'sources' | 'list' | 'details' | 'warmUp' | 'sourcePreferences' | 'sourceFilters' | 'setSourcePreference'> & {
+        readonly baseUrl: string | null;
+    };
+    queue: MangaDownloadQueue;
+    db: MangaDb;
+    reader: Pick<MangaReader, 'pages'>;
+    // Deletes the files (CBZ files and folders of images) of chapters; only what the app made is deleted.
+    removeChapterFiles: (paths: string[]) => void;
+    // The folder the chapters of a manga are in, or null when none is known.
+    folderOf: (mangaId: number) => string | null;
+    openFolder: (path: string) => void;
+    onLibraryChanged: () => void;
+}
+
+const UNSUPPORTED_STATUS: MangaStatusInfo = { supported: false, tool: null, helper: null, helperProblem: null, helperExternal: false, server: 'stopped', serverError: null };
+const UNSUPPORTED_MESSAGE = 'The manga section is only available on Linux and Windows (64 bits).';
+
+function failure(code: 'INVALID_REQUEST' | 'UNKNOWN', message: string): { ok: false; error: { code: typeof code; message: string } } {
+    return { ok: false, error: { code, message } };
+}
+
+function invalid(message: string): MangaResult<never> {
+    return failure('INVALID_REQUEST', message);
+}
+
+// The channels of a system where the manga section does not exist answer that it does not.
+function registerUnsupported(ipcMain: IpcMainLike): void {
+    const unsupported = failure('UNKNOWN', UNSUPPORTED_MESSAGE);
+    ipcMain.handle(IPC.mangaStatus, (): MangaStatusInfo => {
+        return UNSUPPORTED_STATUS;
+    });
+    ipcMain.handle(IPC.mangaInstall, () => {
+        return null;
+    });
+    [IPC.mangaStores, IPC.mangaStoreAdd, IPC.mangaStoreRemove, IPC.mangaExtensions, IPC.mangaExtensionChange, IPC.mangaSources, IPC.mangaSourcePreferences, IPC.mangaSourcePreferenceSet, IPC.mangaSourceFilters, IPC.mangaReadPages, IPC.mangaList, IPC.mangaDetails].forEach((channel) => {
+        ipcMain.handle(channel, () => {
+            return unsupported;
+        });
+    });
+    [IPC.mangaAddToLibrary, IPC.mangaDownload].forEach((channel) => {
+        ipcMain.handle(channel, () => {
+            return null;
+        });
+    });
+    [IPC.mangaLibrary, IPC.mangaJobs].forEach((channel) => {
+        ipcMain.handle(channel, () => {
+            return [];
+        });
+    });
+    [
+        IPC.mangaDownloadMissing,
+        IPC.mangaCancel,
+        IPC.mangaRetry,
+        IPC.mangaPause,
+        IPC.mangaResume,
+        IPC.mangaClearFinished,
+        IPC.mangaRemoveChapter,
+        IPC.mangaRemoveManga,
+        IPC.mangaOpenFolder
+    ].forEach((channel) => {
+        ipcMain.handle(channel, () => {
+            return undefined;
+        });
+    });
+}
+
+export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDependencies | null): void {
+    if (deps === null) {
+        registerUnsupported(ipcMain);
+        return;
+    }
+    const { service, queue, db, reader, removeChapterFiles } = deps;
+
+    // The covers are kept as paths of the server (its port changes), and given with the server of the moment.
+    function present(manga: LibraryManga): LibraryManga {
+        return { ...manga, thumbnailUrl: fromStoredAddress(manga.thumbnailUrl, service.baseUrl) };
+    }
+
+    function store<T extends { thumbnailUrl: string | null }>(value: T): T {
+        return { ...value, thumbnailUrl: toStoredAddress(value.thumbnailUrl, service.baseUrl) };
+    }
+
+    function removeFilesOf(paths: Array<string | null>): void {
+        removeChapterFiles(
+            paths.filter((path): path is string => {
+                return path !== null;
+            })
+        );
+    }
+
+    ipcMain.handle(IPC.mangaStatus, (): MangaStatusInfo => {
+        return service.status();
+    });
+    ipcMain.handle(IPC.mangaInstall, () => {
+        return service.install();
+    });
+    ipcMain.handle(IPC.mangaStores, () => {
+        return service.stores();
+    });
+    ipcMain.handle(IPC.mangaStoreAdd, (_event, indexUrl) => {
+        const address = asStoreUrl(indexUrl);
+        return address === null ? invalid('The address of the store must start with http:// or https://.') : service.addStore(address);
+    });
+    ipcMain.handle(IPC.mangaStoreRemove, (_event, indexUrl) => {
+        const address = asStoreUrl(indexUrl);
+        return address === null ? invalid('The address of the store is not valid.') : service.removeStore(address);
+    });
+    ipcMain.handle(IPC.mangaExtensions, (_event, refresh) => {
+        return service.extensions(refresh === true);
+    });
+    ipcMain.handle(IPC.mangaExtensionChange, (_event, pkgName, action) => {
+        const pkg = asPackageName(pkgName);
+        const chosen = asExtensionAction(action);
+        return pkg === null || chosen === null ? invalid('The extension or the action is not valid.') : service.changeExtension(pkg, chosen);
+    });
+    ipcMain.handle(IPC.mangaSources, () => {
+        return service.sources();
+    });
+    ipcMain.handle(IPC.mangaSourcePreferences, (_event, sourceId) => {
+        const id = asSourceId(sourceId);
+        return id === null ? invalid('The source is not valid.') : service.sourcePreferences(id);
+    });
+    ipcMain.handle(IPC.mangaReadPages, (_event, request) => {
+        const checked = asReadRequest(request);
+        return checked === null ? invalid('The chapter is not valid.') : reader.pages(checked);
+    });
+    ipcMain.handle(IPC.mangaSourceFilters, (_event, sourceId) => {
+        const id = asSourceId(sourceId);
+        return id === null ? invalid('The source is not valid.') : service.sourceFilters(id);
+    });
+    ipcMain.handle(IPC.mangaSourcePreferenceSet, (_event, change) => {
+        const checked = asPreferenceChange(change);
+        return checked === null ? invalid('The change to the setting is not valid.') : service.setSourcePreference(checked);
+    });
+    ipcMain.handle(IPC.mangaList, (_event, request) => {
+        const checked = asListRequest(request);
+        if (checked === null) {
+            return invalid('The request for the list is not valid.');
+        }
+        // A search can have no text when it has filters (genres, tags, status...).
+        if (checked.kind === 'search' && checked.query.length === 0 && (checked.filters ?? []).length === 0) {
+            return invalid('The search is empty.');
+        }
+        return service.list(checked);
+    });
+    ipcMain.handle(IPC.mangaDetails, (_event, remoteId) => {
+        const id = asId(remoteId);
+        return id === null ? invalid('The manga is not valid.') : service.details(id);
+    });
+    ipcMain.handle(IPC.mangaAddToLibrary, (_event, request) => {
+        const checked = asDownloadRequest(request);
+        if (checked === null) {
+            return null;
+        }
+        const manga = queue.addToLibrary({
+            ...checked,
+            manga: store(checked.manga),
+            details: checked.details === null ? null : store(checked.details)
+        });
+        return manga === null ? null : present(manga);
+    });
+    ipcMain.handle(IPC.mangaDownload, (_event, request) => {
+        const checked = asDownloadRequest(request);
+        if (checked === null) {
+            return null;
+        }
+        const manga = queue.enqueue({
+            ...checked,
+            manga: store(checked.manga),
+            details: checked.details === null ? null : store(checked.details)
+        });
+        return manga === null ? null : present(manga);
+    });
+    ipcMain.handle(IPC.mangaDownloadMissing, (_event, mangaIds) => {
+        queue.downloadMissing(asIds(mangaIds));
+    });
+    ipcMain.handle(IPC.mangaLibrary, (): LibraryManga[] => {
+        const library = db.list();
+        if (service.baseUrl === null && library.some((manga) => {
+            return manga.thumbnailUrl?.startsWith('/') === true;
+        })) {
+            // The covers need the server: it is started now, and the screen is told when it is ready.
+            service.warmUp();
+        }
+        return library.map(present);
+    });
+    ipcMain.handle(IPC.mangaJobs, (): MangaJob[] => {
+        return queue.list();
+    });
+    const byChapter: Array<[string, 'cancel' | 'retry' | 'pause' | 'resume']> = [
+        [IPC.mangaCancel, 'cancel'],
+        [IPC.mangaRetry, 'retry'],
+        [IPC.mangaPause, 'pause'],
+        [IPC.mangaResume, 'resume']
+    ];
+    byChapter.forEach(([channel, action]) => {
+        ipcMain.handle(channel, (_event, chapterId) => {
+            const id = asId(chapterId);
+            if (id !== null) {
+                queue[action](id);
+            }
+        });
+    });
+    ipcMain.handle(IPC.mangaClearFinished, () => {
+        queue.clearFinished();
+    });
+    ipcMain.handle(IPC.mangaRemoveChapter, (_event, chapterId) => {
+        const id = asId(chapterId);
+        if (id === null || db.getChapter(id) === null) {
+            return;
+        }
+        queue.forget([id]);
+        removeFilesOf([db.removeChapter(id)]);
+        deps.onLibraryChanged();
+    });
+    ipcMain.handle(IPC.mangaRemoveManga, (_event, mangaId) => {
+        const id = asId(mangaId);
+        if (id === null || db.getManga(id) === null) {
+            return;
+        }
+        queue.forget(
+            db.chaptersOf(id).map((chapter) => {
+                return chapter.id;
+            })
+        );
+        removeFilesOf(db.removeManga(id));
+        deps.onLibraryChanged();
+    });
+    ipcMain.handle(IPC.mangaOpenFolder, (_event, mangaId) => {
+        const id = asId(mangaId);
+        const folder = id === null ? null : deps.folderOf(id);
+        if (folder !== null) {
+            deps.openFolder(folder);
+        }
+    });
+}

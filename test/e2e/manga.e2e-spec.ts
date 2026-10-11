@@ -1,0 +1,635 @@
+import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import './display';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { createRequire } from 'node:module';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { readZipEntries } from '../helpers/zipEntries';
+
+const ROOT = resolve(__dirname, '../..');
+const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
+
+const STORE_URL = 'https://store.example/index.min.json';
+const EXTENSION_PKG = 'eu.kanade.tachiyomi.extension.en.fakedex';
+const SOURCE_ID = '4242';
+// Enough of a JPEG for the app to recognize it by its first bytes.
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+// A picture a browser can decode: the covers are shown in the page, so they have to be real.
+const COVER = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+interface RecordedRequest {
+    method: string;
+    path: string;
+    contentType: string | undefined;
+    query: string | null;
+    variables: Record<string, unknown> | null;
+}
+
+// Stands in for Suwayomi-Server: the app is pointed at it with PULLWAVE_MANGA_URL, so nothing is downloaded and no Java is started.
+class FakeSuwayomi {
+    readonly requests: RecordedRequest[] = [];
+    stores: Array<{ name: string; indexUrl: string }> = [];
+    installed = false;
+    // Chapters (by their number on the server) whose pages the server cannot give.
+    failingChapters = new Set<number>();
+    // How long an image takes to arrive.
+    imageDelayMs = 0;
+    // The pages are real pictures a page can show (the reader needs them; the downloads only look at the bytes).
+    pagesArePicture = false;
+    private server: Server | null = null;
+
+    get url(): string {
+        return `http://127.0.0.1:${(this.server!.address() as AddressInfo).port}`;
+    }
+
+    async start(): Promise<void> {
+        this.server = createServer((request, response) => {
+            void this.handle(request, response);
+        });
+        await new Promise<void>((resolveStart) => {
+            this.server!.listen(0, '127.0.0.1', resolveStart);
+        });
+    }
+
+    async stop(): Promise<void> {
+        await new Promise<void>((resolveStop) => {
+            this.server?.close(() => {
+                resolveStop();
+            });
+            this.server?.closeAllConnections();
+        });
+    }
+
+    graphqlRequests(contains: string): RecordedRequest[] {
+        return this.requests.filter((item) => {
+            return item.query?.includes(contains) === true;
+        });
+    }
+
+    private extension(): Record<string, unknown> {
+        return {
+            pkgName: EXTENSION_PKG,
+            name: 'Tachiyomi: Fake Dex',
+            lang: 'en',
+            versionName: '1.0.0',
+            isInstalled: this.installed,
+            hasUpdate: false,
+            isObsolete: false,
+            iconUrl: null,
+            contentWarning: 'SAFE',
+            storeIndexUrl: STORE_URL
+        };
+    }
+
+    private manga(id: number, title: string): Record<string, unknown> {
+        return { id, sourceId: SOURCE_ID, title, thumbnailUrl: `/api/v1/manga/${id}/thumbnail` };
+    }
+
+    private answer(query: string, variables: Record<string, unknown>): unknown {
+        if (query.includes('addExtensionStore')) {
+            const store = { name: 'Fake Store', indexUrl: String(variables['indexUrl']) };
+            this.stores.push(store);
+            return { addExtensionStore: { extensionStore: store } };
+        }
+        if (query.includes('removeExtensionStore')) {
+            this.stores = this.stores.filter((store) => {
+                return store.indexUrl !== variables['indexUrl'];
+            });
+            return { removeExtensionStore: { extensionStore: null } };
+        }
+        if (query.includes('extensionStores')) {
+            return { extensionStores: { nodes: this.stores } };
+        }
+        if (query.includes('fetchExtensions')) {
+            return { fetchExtensions: { extensions: this.stores.length > 0 ? [this.extension()] : [] } };
+        }
+        if (query.includes('updateExtension')) {
+            this.installed = (variables['patch'] as Record<string, boolean>)['install'] === true || ((variables['patch'] as Record<string, boolean>)['uninstall'] !== true && this.installed);
+            return { updateExtension: { extension: this.extension() } };
+        }
+        if (query.trim().startsWith('{ extensions')) {
+            return { extensions: { nodes: this.stores.length > 0 ? [this.extension()] : [] } };
+        }
+        if (query.trim().startsWith('{ sources')) {
+            const local = { id: '0', name: 'Local source', displayName: 'Local source', lang: 'localsourcelang', iconUrl: '', supportsLatest: false, contentWarning: 'SAFE', extension: { pkgName: 'local' } };
+            const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: 'SAFE', extension: { pkgName: EXTENSION_PKG } };
+            return { sources: { nodes: this.installed ? [local, site] : [local] } };
+        }
+        if (query.includes('{ filters {')) {
+            return {
+                source: {
+                    filters: [
+                        { __typename: 'CheckBoxFilter', name: 'Has chapters', checkValue: false },
+                        { __typename: 'TriStateFilter', name: 'Action', triValue: 'IGNORE' },
+                        { __typename: 'SortFilter', name: 'Sort', sortOptions: ['Name', 'Date'], sortValue: { index: 0, ascending: true } },
+                        { __typename: 'GroupFilter', name: 'Genre', filters: [{ __typename: 'TriStateFilter', name: 'Drama', triValue: 'IGNORE' }] }
+                    ]
+                }
+            };
+        }
+        if (query.includes('fetchSourceManga')) {
+            const all = [this.manga(7, 'One Piece'), this.manga(8, 'Bleach')];
+            const text = String(variables['query'] ?? '').toLowerCase();
+            const mangas = variables['type'] === 'SEARCH' ? all.filter((item) => {return String(item['title']).toLowerCase().includes(text)}) : all;
+            return { fetchSourceManga: { hasNextPage: false, mangas } };
+        }
+        if (query.includes('fetchMangaAndChapters')) {
+            const id = Number(variables['id']);
+            return {
+                fetchMangaAndChapters: {
+                    manga: { ...this.manga(id, id === 7 ? 'One Piece' : 'Bleach'), author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
+                    chapters: [
+                        { id: 101, name: 'Romance Dawn', chapterNumber: 1, uploadDate: '1700000000000', scanlator: 'Group A', sourceOrder: 1 },
+                        { id: 102, name: 'The Great Race', chapterNumber: 2, uploadDate: '1700100000000', scanlator: null, sourceOrder: 2 }
+                    ]
+                }
+            };
+        }
+        if (query.includes('fetchChapterPages')) {
+            const chapterId = Number(variables['chapterId']);
+            if (this.failingChapters.has(chapterId)) {
+                throw new Error('The source could not give the pages');
+            }
+            return { fetchChapterPages: { pages: [0, 1, 2].map((page) => {return `/api/v1/chapter/${chapterId}/page/${page}`}) } };
+        }
+        throw new Error(`Unexpected query: ${query.slice(0, 60)}`);
+    }
+
+    private async handle(request: IncomingMessage, response: import('node:http').ServerResponse): Promise<void> {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) {
+            chunks.push(chunk as Buffer);
+        }
+        const path = request.url ?? '';
+        const contentType = request.headers['content-type'];
+        if (request.method === 'POST' && path === '/api/graphql') {
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as { query: string; variables: Record<string, unknown> };
+            this.requests.push({ method: 'POST', path, contentType, query: body.query, variables: body.variables });
+            let payload: unknown;
+            try {
+                payload = { data: this.answer(body.query, body.variables) };
+            } catch (error) {
+                payload = { errors: [{ message: (error as Error).message }] };
+            }
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify(payload));
+            return;
+        }
+        this.requests.push({ method: request.method ?? 'GET', path, contentType, query: null, variables: null });
+        if (this.imageDelayMs > 0) {
+            await new Promise((resolveWait) => {
+                setTimeout(resolveWait, this.imageDelayMs);
+            });
+        }
+        const isCover = path.endsWith('/thumbnail') || path.endsWith('/icon');
+        const picture = isCover || this.pagesArePicture;
+        response.writeHead(200, { 'Content-Type': picture ? 'image/png' : 'image/jpeg' });
+        response.end(picture ? COVER : JPEG);
+    }
+}
+
+interface Session {
+    app: ElectronApplication;
+    page: Page;
+    userData: string;
+}
+
+let workDir: string;
+let fake: FakeSuwayomi;
+let session: Session;
+
+function mangaFolder(): string {
+    return join(workDir, 'manga');
+}
+
+async function launch(settings: Record<string, unknown> = {}): Promise<Session> {
+    const userData = join(workDir, 'userData');
+    mkdirSync(userData, { recursive: true });
+    writeFileSync(
+        join(userData, 'settings.json'),
+        JSON.stringify({ language: 'en', checkUpdatesOnStart: false, downloadDir: join(workDir, 'downloads'), mangaDirectory: mangaFolder(), ...settings })
+    );
+    const app = await electron.launch({
+        executablePath: ELECTRON_PATH,
+        args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
+        env: { ...process.env, PULLWAVE_MANGA_URL: fake.url }
+    });
+    const page = await app.firstWindow();
+    await page.waitForSelector('.logo');
+    await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+    return { app, page, userData };
+}
+
+async function openManga(page: Page): Promise<void> {
+    await page.getByRole('button', { name: 'MANGA', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Manga' })).toBeVisible();
+}
+
+async function goTo(page: Page, view: 'BROWSE' | 'LIBRARY' | 'EXTENSIONS'): Promise<void> {
+    await page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: view, exact: true }).click();
+}
+
+// Adds the store and installs the extension, which is what makes a source appear.
+async function installExtension(page: Page): Promise<void> {
+    await goTo(page, 'EXTENSIONS');
+    await page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
+    await page.getByRole('button', { name: 'ADD', exact: true }).click();
+    await expect(page.getByText('Fake Store')).toBeVisible();
+    await page.getByRole('button', { name: 'INSTALL: Tachiyomi: Fake Dex' }).click();
+    await expect(page.getByText('INSTALLED', { exact: true })).toBeVisible();
+}
+
+// The browse opens on the list of sources; the source of the extension is opened on its popular mangas (when it is not open already).
+async function openSource(page: Page): Promise<void> {
+    await goTo(page, 'BROWSE');
+    const popular = page.getByRole('button', { name: 'POPULAR: Fake Dex', exact: true });
+    if (await popular.isVisible()) {
+        await popular.click();
+    }
+}
+
+async function openOnePiece(page: Page): Promise<void> {
+    await openSource(page);
+    await page.getByRole('button', { name: 'Open: One Piece' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Romance Dawn' })).toBeVisible();
+}
+
+async function waitForDownloaded(page: Page): Promise<void> {
+    await expect(page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 20000 });
+}
+
+test.beforeEach(async () => {
+    workDir = mkdtempSync(join(tmpdir(), 'pullwave-manga-e2e-'));
+    fake = new FakeSuwayomi();
+    await fake.start();
+});
+
+test.afterEach(async () => {
+    await session?.app.close();
+    await fake.stop();
+    rmSync(workDir, { recursive: true, force: true });
+});
+
+test.describe('manga section', () => {
+    test('has a MANGA tab that opens on the browse with no source yet', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await expect(session.page.getByRole('button', { name: 'MANGA', exact: true })).toHaveAttribute('aria-current', 'page');
+        await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'BROWSE', exact: true })).toHaveAttribute('aria-current', 'page');
+        await expect(session.page.getByText('No source yet. Add a store and install an extension in EXTENSIONS.')).toBeVisible();
+        // Nothing is downloaded when a server is given.
+        await expect(session.page.getByText('PREPARING THE MANGA SERVER')).toHaveCount(0);
+    });
+
+    test('adds a store, installs an extension and finds its source', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        const added = fake.graphqlRequests('addExtensionStore');
+        expect(added).toHaveLength(1);
+        expect(added[0]).toMatchObject({ method: 'POST', path: '/api/graphql', contentType: 'application/json', variables: { indexUrl: STORE_URL } });
+        const installs = fake.graphqlRequests('updateExtension');
+        expect(installs).toHaveLength(1);
+        expect(installs[0]?.variables).toEqual({ id: EXTENSION_PKG, patch: { install: true } });
+        // The list of sources has the one the extension brings (not the local one of the server), and opens on its popular mangas.
+        await goTo(session.page, 'BROWSE');
+        await expect(session.page.getByTestId('manga-source')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-source')).toContainText('Fake Dex');
+        await expect(session.page.getByTestId('manga-source-group').locator('h3')).toHaveText('EN');
+        await expect(session.page.getByRole('button', { name: 'LATEST: Fake Dex' })).toBeVisible();
+        await session.page.getByRole('button', { name: 'POPULAR: Fake Dex', exact: true }).click();
+        await expect(session.page.getByRole('heading', { name: 'Fake Dex' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'Open: One Piece' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'Open: Bleach' })).toBeVisible();
+        await expect(session.page.getByText('Results: 2')).toBeVisible();
+        // Back to the list of sources.
+        await session.page.getByRole('button', { name: '← SOURCES' }).click();
+        await expect(session.page.getByTestId('manga-source')).toHaveCount(1);
+    });
+
+    test('shows the covers the server gives', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        const cover = session.page.locator('img.cover').first();
+        await expect(cover).toBeVisible();
+        // The page could decode it: it is a real picture, loaded from the server of the app.
+        await expect.poll(() => {return cover.evaluate((image: HTMLImageElement) => {return image.complete && image.naturalWidth > 0})}).toBe(true);
+        expect(fake.requests.some((item) => {return item.method === 'GET' && item.path === '/api/v1/manga/7/thumbnail'})).toBe(true);
+    });
+
+    test('searches a source', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        await expect(session.page.getByRole('button', { name: 'Open: Bleach' })).toBeVisible();
+        await session.page.getByRole('button', { name: 'SEARCH', exact: true }).first().click();
+        await session.page.getByLabel('Manga name').fill('bleach');
+        await session.page.keyboard.press('Enter');
+        await expect(session.page.getByRole('button', { name: 'Open: One Piece' })).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'Open: Bleach' })).toBeVisible();
+        const searches = fake.graphqlRequests('fetchSourceManga').filter((item) => {return item.variables?.['type'] === 'SEARCH'});
+        expect(searches).toHaveLength(1);
+        expect(searches[0]?.variables).toEqual({ source: SOURCE_ID, type: 'SEARCH', page: 1, query: 'bleach',
+            // The filters the source offers go with the search as they are (nothing was changed).
+            filters: [
+                { position: 0, checkBoxState: false },
+                { position: 1, triState: 'IGNORE' },
+                { position: 2, sortState: { index: 0, ascending: true } },
+                { position: 3, groupChange: { position: 0, triState: 'IGNORE' } }
+            ]
+        });
+    });
+
+    test('sets the filters of a search and sends them with it', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        await session.page.getByRole('button', { name: 'SEARCH', exact: true }).first().click();
+        await session.page.getByRole('button', { name: 'FILTERS', exact: true }).click();
+        await session.page.getByRole('checkbox', { name: 'Has chapters' }).check();
+        await session.page.getByRole('checkbox', { name: 'Action', exact: true }).click();
+        await session.page.getByLabel('Sort').first().selectOption('1');
+        // The options of a group are picked by typing.
+        await session.page.getByRole('combobox', { name: 'Genre' }).fill('dra');
+        await session.page.getByRole('option', { name: 'Drama' }).click();
+        await session.page.getByRole('button', { name: 'Drama: Only with this' }).click();
+        await session.page.getByRole('button', { name: 'APPLY' }).click();
+        await expect(session.page.getByRole('button', { name: 'Open: One Piece' })).toBeVisible();
+        const searches = fake.graphqlRequests('fetchSourceManga').filter((item) => {return item.variables?.['type'] === 'SEARCH'});
+        expect(searches).toHaveLength(1);
+        expect(searches[0]?.variables).toEqual({
+            source: SOURCE_ID,
+            type: 'SEARCH',
+            page: 1,
+            query: '',
+            filters: [
+                { position: 0, checkBoxState: true },
+                { position: 1, triState: 'INCLUDE' },
+                { position: 2, sortState: { index: 1, ascending: true } },
+                { position: 3, groupChange: { position: 0, triState: 'EXCLUDE' } }
+            ]
+        });
+        // Starting over puts every filter back as the source gave it.
+        await session.page.getByRole('button', { name: 'RESET' }).click();
+        await expect(session.page.getByRole('checkbox', { name: 'Has chapters' })).not.toBeChecked();
+        await expect(session.page.getByRole('checkbox', { name: 'Action', exact: true })).toHaveAttribute('aria-checked', 'false');
+    });
+
+    test('reads a chapter from the source: pages, keys, modes and the page it was left on', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(reader).toBeVisible();
+        await expect(reader.getByText('One Piece · Romance Dawn')).toBeVisible();
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        const image = reader.getByRole('img');
+        await expect(image).toHaveAttribute('src', `${fake.url}/api/v1/chapter/101/page/0`);
+        await expect.poll(() => {return image.evaluate((element: HTMLImageElement) => {return element.complete && element.naturalWidth > 0})}).toBe(true);
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('2 / 3')).toBeVisible();
+        await expect(image).toHaveAttribute('src', `${fake.url}/api/v1/chapter/101/page/1`);
+        // The scroll shows all the pages, and the settings are kept for the next chapter.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('vertical');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByRole('img')).toHaveCount(3);
+        // The next chapter.
+        await reader.getByRole('button', { name: 'NEXT CHAPTER' }).click();
+        await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
+        await expect(reader.getByRole('img')).toHaveCount(3);
+        await expect(reader.getByRole('button', { name: 'NEXT CHAPTER' })).toBeDisabled();
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+        await expect(session.page.getByRole('checkbox', { name: 'Romance Dawn' })).toBeVisible();
+        // Opened again, it comes back in the mode that was chosen.
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        await expect(session.page.getByRole('region', { name: 'Reader' }).getByRole('img')).toHaveCount(3);
+    });
+
+    test('reads a downloaded chapter from its file, with no request to the server for the pages', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        const before = fake.requests.filter((item) => {return item.path.startsWith('/api/v1/chapter/101/page/')}).length;
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        const image = reader.getByRole('img');
+        const source = await image.getAttribute('src');
+        expect(source).toMatch(/^pullwave-manga:\/\/page\/\d+\/0$/);
+        await expect.poll(() => {return image.evaluate((element: HTMLImageElement) => {return element.complete && element.naturalWidth > 0})}).toBe(true);
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('2 / 3')).toBeVisible();
+        await expect.poll(() => {return image.evaluate((element: HTMLImageElement) => {return element.complete && element.naturalWidth > 0})}).toBe(true);
+        expect(fake.requests.filter((item) => {return item.path.startsWith('/api/v1/chapter/101/page/')})).toHaveLength(before);
+    });
+
+    test('downloads a chapter into a CBZ with the pages in order and the ComicInfo', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await expect(session.page.getByText('Author: Oda')).toBeVisible();
+        await expect(session.page.getByText('Chapters (2)')).toBeVisible();
+        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+
+        const file = join(mangaFolder(), 'One Piece', 'Chapter 1.cbz');
+        await expect.poll(() => {return existsSync(file)}).toBe(true);
+        const entries = readZipEntries(readFileSync(file));
+        expect(entries.map((entry) => {return entry.name})).toEqual(['001.jpg', '002.jpg', '003.jpg', 'ComicInfo.xml']);
+        expect([...entries[0]!.data]).toEqual([...JPEG]);
+        const info = entries[3]!.data.toString('utf-8');
+        expect(info).toContain('<Series>One Piece</Series>');
+        expect(info).toContain('<Title>Romance Dawn</Title>');
+        expect(info).toContain('<Number>1</Number>');
+        expect(info).toContain('<Writer>Oda</Writer>');
+        expect(info).toContain('<PageCount>3</PageCount>');
+        // Nothing is left beside it.
+        expect(readdirSync(join(mangaFolder(), 'One Piece'))).toEqual(['Chapter 1.cbz']);
+
+        const pages = fake.graphqlRequests('fetchChapterPages');
+        expect(pages).toHaveLength(1);
+        expect(pages[0]?.variables).toEqual({ chapterId: 101 });
+        expect(fake.requests.filter((item) => {return item.path.startsWith('/api/v1/chapter/101/page/')}).map((item) => {return item.path})).toEqual([
+            '/api/v1/chapter/101/page/0',
+            '/api/v1/chapter/101/page/1',
+            '/api/v1/chapter/101/page/2'
+        ]);
+    });
+
+    test('keeps the downloaded chapter in the library, with its state in the manga', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+
+        await goTo(session.page, 'LIBRARY');
+        const entry = session.page.getByTestId('manga-entry');
+        await expect(entry.getByRole('heading', { name: 'One Piece' })).toBeVisible();
+        await expect(entry.getByText('1 of 1 downloaded')).toBeVisible();
+
+        // The browse goes back to the manga that was open, whose chapter says it is downloaded; the list says the manga is in the library.
+        await goTo(session.page, 'BROWSE');
+        await expect(session.page.locator('.badge--done', { hasText: 'Downloaded' })).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await expect(session.page.getByText('IN LIBRARY')).toBeVisible();
+
+        // The manga is opened from the library by clicking on its card, and its chapter says it is downloaded there too.
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        await expect(session.page.getByRole('checkbox', { name: 'Romance Dawn' })).toBeVisible();
+        await expect(session.page.locator('.badge--done', { hasText: 'Downloaded' })).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await expect(session.page.getByTestId('manga-entry')).toBeVisible();
+    });
+
+    test('adds a manga to the library with all its chapters, and downloads what is missing', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
+        expect(existsSync(join(mangaFolder(), 'One Piece'))).toBe(false);
+
+        await session.page.getByRole('button', { name: 'DOWNLOAD MISSING' }).click();
+        await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible({ timeout: 30000 });
+        // The oldest chapter goes first.
+        const order = fake.graphqlRequests('fetchChapterPages').map((item) => {return item.variables?.['chapterId']});
+        expect(order).toEqual([101, 102]);
+        expect(readdirSync(join(mangaFolder(), 'One Piece')).sort()).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('makes a folder of images when the setting says so', async () => {
+        session = await launch({ mangaFormat: 'folder' });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('checkbox', { name: 'The Great Race' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+        const folder = join(mangaFolder(), 'One Piece', 'Chapter 2');
+        await expect.poll(() => {return existsSync(folder)}).toBe(true);
+        expect(readdirSync(folder).sort()).toEqual(['001.jpg', '002.jpg', '003.jpg', 'ComicInfo.xml']);
+    });
+
+    test('changes the format in the settings of the section', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'SETTINGS' }).click();
+        await expect(session.page.getByLabel('Manga folder')).toHaveValue(mangaFolder());
+        await session.page.getByLabel('Format of each chapter').selectOption('folder');
+        await expect(session.page.getByText('All changes saved.')).toBeVisible();
+        const saved = JSON.parse(readFileSync(join(session.userData, 'settings.json'), 'utf-8')) as Record<string, unknown>;
+        expect(saved['mangaFormat']).toBe('folder');
+        expect(saved['mangaDirectory']).toBe(mangaFolder());
+    });
+
+    test('tries a chapter whose pages the server cannot give three times, then shows why and lets it be retried', async () => {
+        fake.failingChapters.add(101);
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        const job = session.page.getByTestId('manga-job');
+        await expect(job.getByText('Failed', { exact: true })).toBeVisible({ timeout: 20000 });
+        await expect(job.getByRole('alert')).toHaveText('The site or the extension reported an error.');
+        await expect(job.getByRole('alert')).toHaveAttribute('title', 'The source could not give the pages');
+        expect(fake.graphqlRequests('fetchChapterPages')).toHaveLength(3);
+        expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))).toBe(false);
+
+        fake.failingChapters.clear();
+        await job.getByRole('button', { name: 'RETRY' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
+        await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(true);
+    });
+
+    test('pauses a download and goes on from where it was', async () => {
+        fake.imageDelayMs = 400;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        const job = session.page.getByTestId('manga-job');
+        await job.getByRole('button', { name: 'PAUSE' }).click();
+        await expect(job.getByText('Paused', { exact: true })).toBeVisible();
+        expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))).toBe(false);
+        await job.getByRole('button', { name: 'RESUME' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
+        await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(true);
+        expect(readdirSync(join(mangaFolder(), 'One Piece'))).toEqual(['Chapter 1.cbz']);
+    });
+
+    test('removes a chapter with its file, and a manga with its folder', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ALL' }).click();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (2)' }).click();
+        await expect(session.page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 30000 });
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible({ timeout: 30000 });
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'Remove chapter: Romance Dawn' }).click();
+        await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(false);
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await expect(session.page.getByText('1 of 1 downloaded')).toBeVisible();
+        await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(false);
+        expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 2.cbz'))).toBe(true);
+
+        await session.page.getByRole('button', { name: 'REMOVE', exact: true }).click();
+        await session.page.getByRole('button', { name: 'REMOVE WITH FILES?' }).click();
+        await expect(session.page.getByText('Your library is empty.')).toBeVisible();
+        await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece'))}).toBe(false);
+    });
+
+    test('keeps the library, with its covers, after the app is closed and opened again', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await session.app.close();
+
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        const entry = session.page.getByTestId('manga-entry');
+        await expect(entry.getByRole('heading', { name: 'One Piece' })).toBeVisible();
+        await expect(entry.getByText('0 of 2 downloaded')).toBeVisible();
+        await expect(entry.locator('img.cover')).toBeVisible();
+        // The cover is asked of the server of this run.
+        await expect.poll(() => {return fake.requests.filter((item) => {return item.path === '/api/v1/manga/7/thumbnail'}).length}).toBeGreaterThan(0);
+    });
+});

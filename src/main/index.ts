@@ -1,10 +1,13 @@
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
+import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
+import { registerMangaHandlers } from './ipc/registerMangaHandlers';
+import { createMangaRuntime } from './mangaRuntime';
 import { registerHandlers } from './ipc/registerHandlers';
 import { registerLlmHandlers } from './ipc/registerLlmHandlers';
 import { JsonStore } from './services/jsonStore';
@@ -44,17 +47,22 @@ import { runYtdlp } from './services/ytdlpRunner';
 
 const APP_ID = 'dev.lucas.pullwave';
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
+// The covers of the manga section are served by the manga server of the app, on this machine and on a port that changes (hence the
+// wildcard); only images may come from there.
 const PRODUCTION_CSP =
-    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}:`;
+    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co http://127.0.0.1:* ${MANGA_PAGE_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}:`;
 
-// The schemes the anime player reads files and streams through have to be declared before the app is ready (only where the
-// anime section exists).
-if (isAnimeSupported(process.platform)) {
-    protocol.registerSchemesAsPrivileged([
-        { scheme: ANIME_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
-        { scheme: ANIME_STREAM_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
-    ]);
-}
+// Declared once (Electron takes the list in a single call): the pages of the chapters the manga library has, and, where the anime section
+// exists, the video files and the streams of its player.
+protocol.registerSchemesAsPrivileged([
+    { scheme: MANGA_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    ...(isAnimeSupported(process.platform)
+        ? [
+              { scheme: ANIME_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
+              { scheme: ANIME_STREAM_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
+          ]
+        : [])
+]);
 
 ignoreStdioErrors();
 // Must run before the single-instance lock below, which is what creates the data folder.
@@ -386,6 +394,27 @@ function bootstrap(): BootstrapResult {
         },
         send: sendToRenderer
     });
+    // PULLWAVE_MANGA_URL points the manga section at a server that is already running instead of the one it downloads (used by the
+    // end-to-end tests).
+    const manga = createMangaRuntime({
+        platform: process.platform,
+        arch: process.arch,
+        dataDir,
+        defaultDownloadDir: app.getPath('downloads'),
+        getSettings: () => {
+            return settingsStore.get();
+        },
+        send: sendToRenderer,
+        openFolder: (path) => {
+            void shell.openPath(path);
+        },
+        externalBaseUrl: process.env.PULLWAVE_MANGA_URL ?? null
+    });
+    if (manga) {
+        protocol.handle(MANGA_PAGE_SCHEME, (request) => {
+            return manga.pageHandler(request);
+        });
+    }
     if (anime) {
         const handleMedia = createMediaHandler(anime.media, defaultMediaFileSystem);
         protocol.handle(ANIME_MEDIA_SCHEME, (request) => {
@@ -396,7 +425,7 @@ function bootstrap(): BootstrapResult {
         });
     }
     const pendingDownloads = (): number => {
-        return queue.pendingCount() + (anime?.queue.pendingCount() ?? 0);
+        return queue.pendingCount() + (anime?.queue.pendingCount() ?? 0) + (manga?.queue.pendingCount() ?? 0);
     };
     const appUpdates = new AppUpdateService(
         getElectronUpdater(),
@@ -493,9 +522,9 @@ function bootstrap(): BootstrapResult {
             return;
         }
         const endAll = (): Promise<unknown> => {
-            return Promise.all([queue.shutdown(), anime?.queue.shutdown()]);
+            return Promise.all([queue.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
         };
-        if (queue.hasRunsToEnd() || anime?.queue.hasRunsToEnd()) {
+        if (queue.hasRunsToEnd() || anime?.queue.hasRunsToEnd() || manga?.queue.hasRunsToEnd() || manga?.hasProcessesToEnd()) {
             // Downloads that are running are cancelled and what they left behind is deleted before the app exits.
             event.preventDefault();
             shuttingDown = true;
@@ -510,6 +539,9 @@ function bootstrap(): BootstrapResult {
     });
 
     registerAnimeHandlers(ipcMain, anime ? anime.handlers : null);
+    registerMangaHandlers(ipcMain, manga ? manga.handlers : null);
+    // The program that runs the manga extensions is downloaded when the app opens (nothing happens when it is there already).
+    manga?.prepare();
     registerLlmHandlers(ipcMain, { tokens: llmTokens });
     // Which anime of today's schedule the source has is looked up in the background, so it is known by the time the screen is opened.
     anime?.startBackgroundChecks();
@@ -534,6 +566,8 @@ function bootstrap(): BootstrapResult {
             void manager.sync(settings.closeToTray).then(() => {
                 return manager.rebuild();
             });
+            // A new address of the user's own FlareSolverr is used by the manga server that is running already.
+            void manga?.service.applyHelper();
         },
         animeFolderLocked: () => {
             return anime !== null && anime.db.list().length > 0;

@@ -150,7 +150,7 @@ test('adds the anime tab and opens its search', async () => {
     const { page } = session;
     // The settings are a gear, named for the screen readers, not a word.
     const sections = page.getByRole('navigation', { name: 'Sections' });
-    await expect(sections.getByRole('button')).toHaveText(['VIDEO DOWNLOADER', 'ANIME', '\u2699\uFE0E']);
+    await expect(sections.getByRole('button')).toHaveText(['VIDEO DOWNLOADER', 'ANIME', 'MANGA', '\u2699\uFE0E']);
     await expect(sections.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true })).toHaveAttribute('title', 'SETTINGS (GLOBAL)');
     await openAnimeTab(page);
     await expect(page.getByRole('button', { name: 'ANIME', exact: true })).toHaveAttribute('aria-current', 'page');

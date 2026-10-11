@@ -52,6 +52,9 @@ describe('sanitizeSettings', () => {
             animeQuality: '720p',
             animeAudio: 'dub',
             animeSubtitles: 'Portuguese',
+            mangaDirectory: '/media/manga',
+            mangaFormat: 'folder',
+            mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
             translateProvider: 'anthropic',
             translateModel: 'my-model',
             translateBaseUrl: 'https://llm.example/v1',
@@ -61,6 +64,42 @@ describe('sanitizeSettings', () => {
             transcribeBaseUrl: 'https://stt.example/v1'
         };
         expect(sanitizeSettings(valid)).toEqual(valid);
+    });
+
+    it('keeps the manga folder empty and the format a CBZ by default', () => {
+        expect(DEFAULT_SETTINGS).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
+        expect(sanitizeSettings({})).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
+    });
+
+    it.each(['cbz', 'folder'])('keeps the manga format "%s"', (mangaFormat) => {
+        expect(sanitizeSettings({ mangaFormat }).mangaFormat).toBe(mangaFormat);
+    });
+
+    it.each(['zip', 'CBZ', '', 5, null])('falls back to a CBZ for the invalid manga format %j', (mangaFormat) => {
+        expect(sanitizeSettings({ mangaFormat }).mangaFormat).toBe('cbz');
+    });
+
+    it('has no FlareSolverr of the user by default', () => {
+        expect(DEFAULT_SETTINGS.mangaFlaresolverrUrl).toBe('');
+        expect(sanitizeSettings({}).mangaFlaresolverrUrl).toBe('');
+    });
+
+    it.each([
+        ['http://192.168.0.5:8191', 'http://192.168.0.5:8191'],
+        ['  https://flare.example/  ', 'https://flare.example'],
+        ['http://localhost:8191///', 'http://localhost:8191']
+    ])('keeps the address of the FlareSolverr %j as %j', (value, expected) => {
+        expect(sanitizeSettings({ mangaFlaresolverrUrl: value }).mangaFlaresolverrUrl).toBe(expected);
+    });
+
+    it.each(['flare', 'ftp://host:8191', 'javascript:alert(1)', '', '   ', 5, null])('drops the invalid address of a FlareSolverr %j', (value) => {
+        expect(sanitizeSettings({ mangaFlaresolverrUrl: value }).mangaFlaresolverrUrl).toBe('');
+    });
+
+    it('keeps the manga folder as text and falls back to an empty one for anything else', () => {
+        expect(sanitizeSettings({ mangaDirectory: '/media/manga' }).mangaDirectory).toBe('/media/manga');
+        expect(sanitizeSettings({ mangaDirectory: 5 }).mangaDirectory).toBe('');
+        expect(sanitizeSettings({ mangaDirectory: null }).mangaDirectory).toBe('');
     });
 
     it('opens on the video downloader by default, and keeps the anime tab when it is the one saved', () => {

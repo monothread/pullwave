@@ -12,6 +12,7 @@ import {
 } from '@shared/constants';
 import { useEffect } from 'react';
 import { ANIME_AUDIOS, ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, type AnimeAudio, type AnimeQuality, type AnimeSubtitleSetting } from '@shared/anime';
+import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import { chosenBrowserWarning, findChosenBrowser, NO_BROWSER_CHOSEN } from '@shared/browserChoice';
 import { LANGUAGE_NAMES, type Translator } from '@shared/i18n';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
@@ -89,8 +90,9 @@ function formatBrowser(browsers: readonly DetectedBrowser[], dataDir: string, t:
     return findBrowserByDir(browsers, dataDir)?.label ?? t('settings.browser.choose');
 }
 
-// Where the settings are shown: the ones of the whole app, and the ones of the video downloader and of the anime section.
-export type SettingsScope = 'global' | 'downloads' | 'anime';
+// Where the settings are shown: the ones of the whole app, and the ones of the video downloader, of the anime section and of the manga
+// section.
+export type SettingsScope = 'global' | 'downloads' | 'anime' | 'manga';
 
 interface SettingsPanelProps {
     scope: SettingsScope;
@@ -190,6 +192,13 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
         const directory = await chooseDirectory();
         if (directory) {
             change('downloadDir', directory);
+        }
+    }
+
+    async function handleChooseMangaDirectory(): Promise<void> {
+        const directory = await chooseDirectory();
+        if (directory) {
+            change('mangaDirectory', directory);
         }
     }
 
@@ -634,6 +643,52 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         />
                     </fieldset>
                 </>
+            )}
+
+            {scope === 'manga' && (
+                <fieldset className="panel">
+                    <legend>{t('settings.manga')}</legend>
+                    <div className="field-row">
+                        <TextField
+                            label={t('settings.mangaDir')}
+                            value={draft.mangaDirectory}
+                            placeholder={t('settings.mangaDir.placeholder')}
+                            onChange={(value) => {
+                                edit('mangaDirectory', value);
+                            }}
+                        />
+                        <button
+                            type="button"
+                            className="btn btn--small"
+                            onClick={() => {
+                                void handleChooseMangaDirectory();
+                            }}
+                        >
+                            {t('settings.browse')}
+                        </button>
+                    </div>
+                    <SelectField
+                        label={t('settings.mangaFormat')}
+                        value={draft.mangaFormat}
+                        options={MANGA_OUTPUT_FORMATS}
+                        formatOption={(format) => {
+                            return format === 'cbz' ? t('settings.mangaFormat.cbz') : t('settings.mangaFormat.folder');
+                        }}
+                        hint={t('settings.mangaFormat.hint')}
+                        onChange={(value) => {
+                            change('mangaFormat', value);
+                        }}
+                    />
+                    <TextField
+                        label={t('settings.mangaFlaresolverrUrl')}
+                        value={draft.mangaFlaresolverrUrl}
+                        placeholder={t('settings.mangaFlaresolverrUrl.placeholder')}
+                        hint={t('settings.mangaFlaresolverrUrl.hint')}
+                        onChange={(value) => {
+                            edit('mangaFlaresolverrUrl', value);
+                        }}
+                    />
+                </fieldset>
             )}
 
             {scope === 'anime' && animeSupported && (

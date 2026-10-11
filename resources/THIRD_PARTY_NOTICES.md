@@ -15,3 +15,16 @@ This application redistributes unmodified binaries of the following projects.
 | Electron / Chromium | Application runtime | MIT and various (see the bundled `LICENSE.electron.txt` / `LICENSE` and `LICENSES.chromium.html`) | https://www.electronjs.org |
 
 The FFmpeg, ani-cli, BusyBox and curl binaries are separate programs executed as child processes; they are not linked into the application.
+
+## Downloaded when the manga section is opened (not part of the package)
+
+| Component | Purpose | License | Source |
+|---|---|---|---|
+| Suwayomi-Server (with its Java runtime, Azul Zulu) | Runs the Mihon/Tachiyomi extensions that read the manga sites; a separate program, started as a child process and driven over its network interface | MPL-2.0 (the compatibility layer and parts adopted from Mihon: Apache-2.0; the runtime: GPLv2 with Classpath Exception) | https://github.com/Suwayomi/Suwayomi-Server |
+
+| FlareSolverr (with a Chromium it carries) | Gets requests to sites past the check of Cloudflare, by opening the page in a real browser; a separate program, run by the app as a Docker container (image `ghcr.io/flaresolverr/flaresolverr`) that listens on this machine only | MIT (Chromium: BSD-style and others) | https://github.com/FlareSolverr/FlareSolverr |
+
+Suwayomi is downloaded from the releases of the project, checked against the checksum the release publishes and kept in the data folder of the app; FlareSolverr's image is pulled by Docker from the registry of the project; neither is redistributed by Pullwave.
+
+The packages `tar` (ISC), `yauzl` (MIT) and `yazl` (MIT) unpack the download and write the CBZ files; they are part of the application.
+

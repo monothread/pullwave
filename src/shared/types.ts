@@ -41,6 +41,7 @@ import type {
     AnimeSubtitleSetting,
     LibraryAnime
 } from './anime';
+import type { MangaApi, MangaOutputFormat } from './manga';
 import type { LlmProviderId, LlmStatus, LlmTokenSlot, SpeechProviderId } from './llm';
 
 export type VideoContainer = 'mp4' | 'mkv' | 'webm';
@@ -142,6 +143,12 @@ export interface Settings {
     animeQuality: AnimeQuality;
     animeAudio: AnimeAudio;
     animeSubtitles: AnimeSubtitleSetting;
+    // Manga section (Linux and Windows): where the mangas are kept (empty is a folder inside the downloads folder) and whether a
+    // chapter is made a CBZ file or a folder of images.
+    mangaDirectory: string;
+    mangaFormat: MangaOutputFormat;
+    // The address of a FlareSolverr the user runs already (empty: the app runs one in Docker).
+    mangaFlaresolverrUrl: string;
     // Translating subtitles with a language model: which provider, which model, an address instead of the one of the provider (empty
     // for the one of the provider) and the language it translates into. The token is not here: it is kept apart, encrypted.
     translateProvider: LlmProviderId;
@@ -319,6 +326,8 @@ export interface StreamFindProgress {
 }
 
 export interface CyberApi {
+    // The manga section.
+    manga: MangaApi;
     getSettings: () => Promise<Settings>;
     saveSettings: (settings: Settings) => Promise<Settings>;
     addDownload: (url: string, downloadDir?: string, options?: DownloadOptions) => Promise<AddJobResult>;

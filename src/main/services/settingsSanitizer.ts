@@ -15,6 +15,7 @@ import {
 } from '@shared/constants';
 import { ANIME_AUDIOS, ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, TRANSLATION_LANGUAGES } from '@shared/anime';
 import { LLM_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from '@shared/llm';
+import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import type { DownloadOptions, Settings } from '@shared/types';
 
 const RATE_LIMIT_PATTERN = /^\d+(\.\d+)?[KkMmGg]?$/;
@@ -31,6 +32,20 @@ function pickBoolean(value: unknown, fallback: boolean): boolean {
 
 function pickString(value: unknown, fallback: string): string {
     return typeof value === 'string' ? value.trim() : fallback;
+}
+
+// An address with http or https, or empty when the value is not one.
+function pickHttpAddress(value: unknown): string {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    const trimmed = value.trim();
+    try {
+        const protocol = new URL(trimmed).protocol;
+        return protocol === 'http:' || protocol === 'https:' ? trimmed.replace(/\/+$/, '') : '';
+    } catch {
+        return '';
+    }
 }
 
 function pickClampedInteger(value: unknown, min: number, max: number, fallback: number): number {
@@ -87,6 +102,9 @@ export function sanitizeSettings(input: unknown): Settings {
         animeQuality: pickEnum(raw.animeQuality, ANIME_QUALITIES, defaults.animeQuality),
         animeAudio: pickEnum(raw.animeAudio, ANIME_AUDIOS, defaults.animeAudio),
         animeSubtitles: pickEnum(raw.animeSubtitles, ANIME_SUBTITLE_SETTINGS, defaults.animeSubtitles),
+        mangaDirectory: pickString(raw.mangaDirectory, defaults.mangaDirectory),
+        mangaFormat: pickEnum(raw.mangaFormat, MANGA_OUTPUT_FORMATS, defaults.mangaFormat),
+        mangaFlaresolverrUrl: pickHttpAddress(raw.mangaFlaresolverrUrl),
         translateProvider: pickEnum(raw.translateProvider, LLM_PROVIDER_IDS, defaults.translateProvider),
         translateModel: pickString(raw.translateModel, defaults.translateModel),
         translateBaseUrl: pickString(raw.translateBaseUrl, defaults.translateBaseUrl),

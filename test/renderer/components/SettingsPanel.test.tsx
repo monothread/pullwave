@@ -1360,3 +1360,94 @@ describe('SettingsPanel anime section', () => {
         });
     });
 });
+
+describe('SettingsPanel manga section', () => {
+    it('shows only the manga settings in the manga scope', () => {
+        render(<SettingsPanel scope="manga" />);
+        expect(screen.getByText('Manga', { selector: 'legend' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Manga folder')).toHaveValue('');
+        expect(screen.getByLabelText('Manga folder')).toHaveAttribute('placeholder', 'Empty uses "Pullwave Manga" inside the downloads folder');
+        expect(screen.getByLabelText('Format of each chapter')).toHaveValue('cbz');
+        expect(screen.getByText('Applies to the chapters downloaded from now on.')).toBeInTheDocument();
+        ['APPEARANCE & WINDOW', 'OUTPUT', 'ANIME'].forEach((legend) => {
+            expect(screen.queryByText(legend)).not.toBeInTheDocument();
+        });
+        expect(screen.queryByLabelText('Download folder')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
+    });
+
+    it('does not show the manga settings in the other scopes', () => {
+        (['global', 'downloads', 'anime'] as const).forEach((scope) => {
+            const { unmount } = render(<SettingsPanel scope={scope} />);
+            expect(screen.queryByLabelText('Manga folder')).not.toBeInTheDocument();
+            expect(screen.queryByLabelText('Format of each chapter')).not.toBeInTheDocument();
+            unmount();
+        });
+    });
+
+    it('has no save button and explains that changes are saved automatically', () => {
+        render(<SettingsPanel scope="manga" />);
+        expect(screen.queryByRole('button', { name: 'SAVE SETTINGS' })).not.toBeInTheDocument();
+        expect(screen.getByText('Changes are saved automatically.')).toBeInTheDocument();
+    });
+
+    it('lists the two formats with readable labels', () => {
+        render(<SettingsPanel scope="manga" />);
+        const options = Array.from(screen.getByLabelText('Format of each chapter').querySelectorAll('option')).map((option) => {
+            return [option.getAttribute('value'), option.textContent];
+        });
+        expect(options).toEqual([
+            ['cbz', 'CBZ (one file per chapter)'],
+            ['folder', 'Folder of images']
+        ]);
+    });
+
+    it('saves the format right away', async () => {
+        render(<SettingsPanel scope="manga" />);
+        fireEvent.change(screen.getByLabelText('Format of each chapter'), { target: { value: 'folder' } });
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaFormat: 'folder' });
+    });
+
+    it('has a field for the address of a FlareSolverr of the user, empty by default, and saves it after the delay', async () => {
+        render(<SettingsPanel scope="manga" />);
+        const field = screen.getByLabelText('Address of your FlareSolverr');
+        expect(field).toHaveValue('');
+        expect(field).toHaveAttribute('placeholder', 'http://127.0.0.1:8191');
+        expect(screen.getByText('Optional. When filled, the app uses it and does not run FlareSolverr in Docker. Applies when you save.')).toBeInTheDocument();
+        type('Address of your FlareSolverr', 'http://192.168.0.5:8191');
+        await advance(AUTOSAVE_DELAY_MS);
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaFlaresolverrUrl: 'http://192.168.0.5:8191' });
+    });
+
+    it('saves the folder only after the delay', async () => {
+        render(<SettingsPanel scope="manga" />);
+        type('Manga folder', '/media/manga');
+        expect(screen.getByText('Unsaved changes…')).toBeInTheDocument();
+        await advance(AUTOSAVE_DELAY_MS - 1);
+        expect(mock.api.saveSettings).not.toHaveBeenCalled();
+        await advance(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaDirectory: '/media/manga' });
+    });
+
+    it('fills the folder from the directory chooser and saves it right away', async () => {
+        mock.api.chooseDirectory.mockResolvedValueOnce('/picked/manga');
+        render(<SettingsPanel scope="manga" />);
+        fireEvent.click(screen.getByRole('button', { name: 'BROWSE' }));
+        await flushPromises();
+        expect(screen.getByLabelText('Manga folder')).toHaveValue('/picked/manga');
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaDirectory: '/picked/manga' });
+    });
+
+    it('keeps the folder when the chooser is cancelled', async () => {
+        mock.api.chooseDirectory.mockResolvedValueOnce(null);
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaDirectory: '/keep' } });
+        render(<SettingsPanel scope="manga" />);
+        fireEvent.click(screen.getByRole('button', { name: 'BROWSE' }));
+        await flushPromises();
+        expect(screen.getByLabelText('Manga folder')).toHaveValue('/keep');
+        expect(mock.api.saveSettings).not.toHaveBeenCalled();
+    });
+});

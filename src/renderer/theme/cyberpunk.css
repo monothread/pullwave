@@ -827,6 +827,11 @@ body::after {
 .cover-card--bottom-meta .history__meta { margin-top: auto; }
 .cover { flex: none; width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid var(--line); background: var(--line); }
 .cover--none { display: flex; align-items: center; justify-content: center; padding: 4px; box-sizing: border-box; text-align: center; font-size: 10px; line-height: 1.25; letter-spacing: 0.5px; color: var(--muted); overflow: hidden; }
+/* Manga section: in a row (the library, the head of a manga) the cover has a size of its own; as wide as the row it would push the rest out. */
+.manga__entry .cover, .manga__head .cover { width: 72px; }
+.manga__head { align-items: flex-start; }
+.manga__description { margin: 4px 0 0; white-space: pre-line; }
+.manga__chapters { margin-top: 6px; }
 .anime__search, .anime__detail { display: flex; flex-direction: column; gap: 12px; }
 .anime__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .anime-remove { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -1236,3 +1241,100 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
     .generate__languages { grid-template-columns: 1fr; }
     .generate__arrow { display: none; }
 }
+/* Manga sources: the icon of a source in the list, and the name of the source whose page is open. */
+.manga__source-icon { flex: none; width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--line); }
+.manga__source-icon--none { display: inline-block; }
+.manga__source-name { flex: 1; min-width: 0; margin: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manga__source-group { display: flex; flex-direction: column; gap: 6px; }
+.manga__sources { display: flex; flex-direction: column; gap: 10px; }
+
+/* Manga section: everything in it is spaced the same way, so no block touches the next (the sections, the notices, the bars and the grids
+   used to sit one on the other). */
+.manga, .manga__browse, .manga__library, .manga__extensions, .manga__detail, .manga__jobs, .manga__sources, .manga__reader {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+.manga { margin-top: 4px; }
+.manga > .anime__bar { margin-bottom: 2px; }
+.manga .tabs { margin-top: 0; }
+.manga .queue__toolbar { gap: 10px; }
+.manga .section-label { margin-bottom: 0; }
+.manga .cover-grid { margin-top: 2px; }
+.manga .job__actions { margin-top: 2px; }
+.manga__chapters { margin-top: 0; }
+.manga__head { gap: 14px; }
+
+/* The gear of a source is a button the size of a finger, with a gear that can be seen. */
+.manga__gear { min-width: 40px; min-height: 40px; padding: 0; font-size: 24px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+
+/* The check of Cloudflare has no end that is known: a wave that always flows from one end of the bar to the other, with a bright
+   crest that sweeps it. It moves also when the system asks for less motion, since it is the only sign that something is going on. */
+.progress--cloudflare { position: relative; overflow: hidden; height: 10px; }
+.progress--cloudflare .progress__bar {
+    width: 100%;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta) 35%, color-mix(in srgb, var(--magenta) 80%, white) 50%, var(--magenta) 65%, var(--cyan));
+    background-size: 160px 100%;
+    animation: bar-wave-flow 1s linear infinite;
+    opacity: 1;
+}
+.progress--cloudflare::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -30%;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    animation: cloudflare-sweep 1.4s ease-in-out infinite;
+}
+@keyframes cloudflare-sweep { from { left: -30%; } to { left: 100%; } }
+
+/* The filters of the search of a source. */
+.manga__filters { display: flex; flex-direction: column; gap: 10px; }
+.manga__filter-list { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; }
+.manga__filter-list > .field, .manga__filter-list > .manga__filter-header, .manga__filter-list > .manga__filter-separator, .manga__filter-list > .manga__filter-group { flex: 1 1 100%; }
+.manga__filter-header { margin: 4px 0 0; }
+.manga__filter-separator { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.manga__filter-group { border: 1px solid var(--line); padding: 8px 12px; }
+.manga__filter-group > summary { cursor: pointer; color: var(--magenta); letter-spacing: 1px; margin-bottom: 8px; }
+.manga__filter-group[open] > summary { margin-bottom: 10px; }
+.manga__tri--include { color: var(--green); border-color: var(--green); }
+.manga__tri--exclude { color: var(--red); border-color: var(--red); }
+
+/* The reader of a chapter. */
+.manga__reader.reader { gap: 8px; }
+/* The bar stays at the top of the scroll of the page: it reaches up over the padding of the page (16 px), so nothing shows above it. */
+.reader__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; position: sticky; top: -16px; z-index: 2; margin-top: -16px; padding: 22px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.reader__title { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader__page { color: var(--muted); letter-spacing: 1px; min-width: 64px; text-align: center; }
+.reader__settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 16px; }
+.reader__stage, .reader__scroll { display: flex; flex-direction: column; align-items: center; min-height: 40vh; padding: 8px; border: 1px solid var(--line); }
+.reader__stage { cursor: pointer; justify-content: center; }
+.reader__scroll { gap: 8px; }
+.reader__scroll--webtoon { gap: 0; padding: 0; }
+.reader--dark .reader__stage, .reader--dark .reader__scroll { background: #14141c; }
+.reader--black .reader__stage, .reader--black .reader__scroll { background: #000; }
+.reader--gray .reader__stage, .reader--gray .reader__scroll { background: #555; }
+.reader--white .reader__stage, .reader--white .reader__scroll { background: #fff; }
+.reader__img { display: block; }
+.reader__stage--width .reader__img { width: 100%; height: auto; }
+.reader__stage--height .reader__img { height: calc(100vh - 160px); width: auto; max-width: 100%; object-fit: contain; }
+.reader__stage--screen .reader__img { max-width: 100%; max-height: calc(100vh - 160px); width: auto; height: auto; object-fit: contain; }
+.reader__stage--original .reader__img { max-width: none; width: auto; height: auto; }
+.reader__stage--original { overflow: auto; align-items: flex-start; }
+.reader__failed { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; }
+
+/* The options of a group of filters, picked by typing: a field with a list of what matches, and what was picked as chips. */
+.manga__picker { position: relative; }
+.manga__picker-box { position: relative; }
+.manga__picker-list { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px 0; list-style: none; max-height: 240px; overflow-y: auto; background: var(--panel, var(--bg)); border: 1px solid var(--cyan); box-shadow: var(--glow); }
+.manga__picker-option { display: block; width: 100%; text-align: left; padding: 6px 12px; background: transparent; border: 0; color: var(--text); cursor: pointer; font: inherit; }
+.manga__picker-option:hover, .manga__picker-option:focus-visible { background: var(--input-bg); color: var(--cyan); }
+.manga__picker-empty { padding: 6px 12px; color: var(--muted); font-size: 12px; }
+.manga__chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 8px 0 0; padding: 0; }
+.manga__chip { display: inline-flex; align-items: center; border: 1px solid var(--green); color: var(--green); font-size: 12px; }
+.manga__chip--exclude { border-color: var(--red); color: var(--red); }
+.manga__chip-state, .manga__chip-remove { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 3px 8px; }
+.manga__chip-remove { border-left: 1px solid currentColor; padding: 3px 7px; }
