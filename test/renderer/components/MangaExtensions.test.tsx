@@ -23,8 +23,9 @@ const EXTENSIONS = [
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
-    useMangaStore.setState({ ...initialManga });
+    window.localStorage.clear();
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true }, toasts: [] });
+    useMangaStore.setState({ ...initialManga, extensions: { ...initialManga.extensions, filter: { query: '', lang: 'all-languages', onlyInstalled: false } } });
     mock.api.manga.stores.mockResolvedValue({ ok: true, value: [STORE] });
     mock.api.manga.extensions.mockResolvedValue({ ok: true, value: EXTENSIONS });
 });
@@ -122,7 +123,7 @@ describe('MangaExtensions', () => {
         expect(names()).toEqual(['Beta']);
         await user.clear(screen.getByLabelText('Filter extensions'));
         await user.selectOptions(screen.getByLabelText('Language'), 'all-languages');
-        await user.click(screen.getByRole('checkbox', { name: 'Installed only' }));
+        await user.click(screen.getByRole('switch', { name: 'Installed only' }));
         expect(names()).toEqual(['Alpha', 'Beta']);
     });
 
@@ -207,5 +208,74 @@ describe('MangaExtensions', () => {
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The request to the manga server failed.');
         expect(alert).toHaveAttribute('title', 'offline');
+    });
+
+    describe('with the choices the app starts from', () => {
+        beforeEach(() => {
+            window.localStorage.clear();
+            useAppStore.setState({ settings: DEFAULT_SETTINGS });
+            useMangaStore.setState({ extensions: { ...initialManga.extensions, filter: { query: '', lang: 'all-languages', onlyInstalled: true } } });
+        });
+
+        it('lists only the installed extensions, with the switch on', async () => {
+            render(<MangaExtensions />);
+            await screen.findByText('Alpha');
+            expect(screen.getByRole('switch', { name: 'Installed only' })).toBeChecked();
+            expect(names()).toEqual(['Alpha', 'Beta']);
+        });
+
+        it('says that the switch is what hides the extensions to install when none is installed', async () => {
+            mock.api.manga.extensions.mockResolvedValue({ ok: true, value: [makeExtension({ pkgName: 'd.ja', name: 'Delta', lang: 'ja' })] });
+            const user = userEvent.setup();
+            render(<MangaExtensions />);
+            expect(await screen.findByText('No extension is installed. Turn off "Installed only" to see the ones you can install.')).toBeInTheDocument();
+            expect(screen.queryByText('No extension found.')).not.toBeInTheDocument();
+            await user.click(screen.getByRole('switch', { name: 'Installed only' }));
+            expect(names()).toEqual(['Delta']);
+        });
+
+        it('says no extension was found, not that none is installed, when the text typed matches nothing', async () => {
+            mock.api.manga.extensions.mockResolvedValue({ ok: true, value: [makeExtension({ pkgName: 'd.ja', name: 'Delta', lang: 'ja' })] });
+            const user = userEvent.setup();
+            render(<MangaExtensions />);
+            await screen.findByText('No extension is installed. Turn off "Installed only" to see the ones you can install.');
+            await user.type(screen.getByLabelText('Filter extensions'), 'zzz');
+            expect(screen.getByText('No extension found.')).toBeInTheDocument();
+        });
+
+        it('says no extension was found when the store has nothing to install either', async () => {
+            mock.api.manga.extensions.mockResolvedValue({ ok: true, value: [] });
+            render(<MangaExtensions />);
+            expect(await screen.findByText('No extension found.')).toBeInTheDocument();
+        });
+
+        it('hides the extensions for adults until they are asked for', async () => {
+            const user = userEvent.setup();
+            await user.click((render(<MangaExtensions />), await screen.findByRole('switch', { name: 'Installed only' })));
+            expect(names()).toEqual(['Alpha', 'Beta', 'Delta']);
+            expect(screen.queryByText('Gamma')).not.toBeInTheDocument();
+            expect(within(screen.getByLabelText('Language')).getAllByRole('option').map((option) => {
+                return option.textContent;
+            })).toEqual(['All', 'en', 'ja', 'pt']);
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+            expect(await screen.findByText('Gamma')).toBeInTheDocument();
+        });
+
+        it('remembers the language and the switch', async () => {
+            const user = userEvent.setup();
+            render(<MangaExtensions />);
+            await screen.findByText('Alpha');
+            await user.selectOptions(screen.getByLabelText('Language'), 'en');
+            await user.click(screen.getByRole('switch', { name: 'Installed only' }));
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toEqual({ extensionLanguage: 'en', onlyInstalled: false, sourceLanguage: 'all-languages' });
+        });
+
+        it('lists everything when the language that was remembered has no extension left', async () => {
+            useMangaStore.setState({ extensions: { ...initialManga.extensions, filter: { query: '', lang: 'zz', onlyInstalled: true } } });
+            render(<MangaExtensions />);
+            await screen.findByText('Alpha');
+            expect(screen.getByLabelText('Language')).toHaveValue('all-languages');
+            expect(names()).toEqual(['Alpha', 'Beta']);
+        });
     });
 });

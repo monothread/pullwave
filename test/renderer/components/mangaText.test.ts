@@ -10,6 +10,8 @@ import {
     extensionLanguages,
     filterExtensions,
     isCloudflareError,
+    isListed,
+    listedSources,
     jobStatusKey,
     STORE_PLACEHOLDER,
     libraryEntry,
@@ -17,7 +19,7 @@ import {
     mangaStatusKey,
     toolErrorKey
 } from '@renderer/components/mangaText';
-import { makeChapterRecord, makeExtension, makeLibraryManga, makeMangaJob } from '../../helpers/mangaFixtures';
+import { makeChapterRecord, makeExtension, makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
 
 const t = createTranslator('en');
 
@@ -102,7 +104,7 @@ describe('extension helpers', () => {
     const everything = { query: '', lang: ALL_LANGUAGES, onlyInstalled: false };
 
     function names(filter: Partial<typeof everything>): string[] {
-        return filterExtensions(extensions, { ...everything, ...filter }).map((extension) => {
+        return filterExtensions(extensions, { ...everything, ...filter }, true).map((extension) => {
             return extension.name;
         });
     }
@@ -127,12 +129,23 @@ describe('extension helpers', () => {
         const before = extensions.map((extension) => {
             return extension.pkgName;
         });
-        filterExtensions(extensions, everything);
+        filterExtensions(extensions, everything, true);
         expect(
             extensions.map((extension) => {
                 return extension.pkgName;
             })
         ).toEqual(before);
+    });
+
+    it('hides the extensions for adults unless they are asked for', () => {
+        const withAdult = [...extensions, makeExtension({ pkgName: 'e', name: 'Adult', lang: 'en', contentWarning: 'NSFW' }), makeExtension({ pkgName: 'f', name: 'Mixed', lang: 'en', contentWarning: 'MIXED' })];
+        const listed = (showAdult: boolean): string[] => {
+            return filterExtensions(withAdult, everything, showAdult).map((extension) => {
+                return extension.name;
+            });
+        };
+        expect(listed(false)).toEqual(['Alpha', 'Beta', 'Gamma', 'Mixed', 'Zeta']);
+        expect(listed(true)).toEqual(['Alpha', 'Beta', 'Adult', 'Gamma', 'Mixed', 'Zeta']);
     });
 
     it('lists the languages once each, sorted', () => {
@@ -156,5 +169,29 @@ describe('isCloudflareError', () => {
 
     it.each([[''], ['Empty list doesn\'t contain element at index 0.'], ['timeout'], ['Source not found']])('knows %j is not', (message) => {
         expect(isCloudflareError({ message })).toBe(false);
+    });
+});
+
+describe('content for adults', () => {
+    it.each([
+        ['SAFE', false, true],
+        ['MIXED', false, true],
+        ['NSFW', false, false],
+        ['SAFE', true, true],
+        ['MIXED', true, true],
+        ['NSFW', true, true]
+    ] as const)('lists %s content with the choice %j: %j', (warning, showAdult, expected) => {
+        expect(isListed(warning, showAdult)).toBe(expected);
+    });
+
+    it('keeps the sources that are not for adults, in their order, unless the adult ones are asked for', () => {
+        const sources = [makeSource({ id: '1', contentWarning: 'SAFE' }), makeSource({ id: '2', contentWarning: 'NSFW' }), makeSource({ id: '3', contentWarning: 'MIXED' })];
+        expect(
+            listedSources(sources, false).map((source) => {
+                return source.id;
+            })
+        ).toEqual(['1', '3']);
+        expect(listedSources(sources, true)).toEqual(sources);
+        expect(listedSources([], false)).toEqual([]);
     });
 });

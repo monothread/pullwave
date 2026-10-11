@@ -58,8 +58,8 @@ describe('MangaSourceSettings', () => {
             ['NONE', 'None'],
             ['BASIC_AUTH', 'Basic Authentication']
         ]);
-        expect(screen.getByRole('checkbox', { name: 'High quality' })).not.toBeChecked();
-        expect(screen.getByRole('checkbox', { name: 'Safe mode' })).toBeChecked();
+        expect(screen.getByRole('switch', { name: 'High quality' })).not.toBeChecked();
+        expect(screen.getByRole('switch', { name: 'Safe mode' })).toBeChecked();
         expect(screen.getByRole('checkbox', { name: 'Languages: English' })).toBeChecked();
         expect(screen.getByRole('checkbox', { name: 'Languages: Portuguese' })).not.toBeChecked();
         expect(screen.getByText('Pick some')).toBeInTheDocument();
@@ -115,8 +115,8 @@ describe('MangaSourceSettings', () => {
         open();
         render(<MangaSourceSettings />);
         await user.selectOptions(screen.getByLabelText('Login Mode'), 'BASIC_AUTH');
-        await user.click(screen.getByRole('checkbox', { name: 'High quality' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Safe mode' }));
+        await user.click(screen.getByRole('switch', { name: 'High quality' }));
+        await user.click(screen.getByRole('switch', { name: 'Safe mode' }));
         expect(mock.api.manga.setSourcePreference.mock.calls).toEqual([
             [{ sourceId: '5', position: 1, type: 'list', value: 'BASIC_AUTH' }],
             [{ sourceId: '5', position: 2, type: 'switch', value: true }],

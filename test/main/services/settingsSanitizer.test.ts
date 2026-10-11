@@ -55,6 +55,7 @@ describe('sanitizeSettings', () => {
             mangaDirectory: '/media/manga',
             mangaFormat: 'folder',
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
+            mangaShowAdult: true,
             translateProvider: 'anthropic',
             translateModel: 'my-model',
             translateBaseUrl: 'https://llm.example/v1',
@@ -69,6 +70,19 @@ describe('sanitizeSettings', () => {
     it('keeps the manga folder empty and the format a CBZ by default', () => {
         expect(DEFAULT_SETTINGS).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
         expect(sanitizeSettings({})).toMatchObject({ mangaDirectory: '', mangaFormat: 'cbz' });
+    });
+
+    it('hides the sources for adults by default', () => {
+        expect(DEFAULT_SETTINGS.mangaShowAdult).toBe(false);
+        expect(sanitizeSettings({}).mangaShowAdult).toBe(false);
+    });
+
+    it.each([true, false])('keeps the choice to show the sources for adults (%j)', (mangaShowAdult) => {
+        expect(sanitizeSettings({ mangaShowAdult }).mangaShowAdult).toBe(mangaShowAdult);
+    });
+
+    it.each(['yes', 1, null, []])('falls back to hiding the sources for adults for the invalid value %j', (mangaShowAdult) => {
+        expect(sanitizeSettings({ mangaShowAdult }).mangaShowAdult).toBe(false);
     });
 
     it.each(['cbz', 'folder'])('keeps the manga format "%s"', (mangaFormat) => {

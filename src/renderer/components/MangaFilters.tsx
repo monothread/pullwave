@@ -39,7 +39,9 @@ function FilterItem({ filter, onChange }: { filter: MangaFilter; onChange: (filt
             return (
                 <label className="toggle">
                     <input
+                        className="switch"
                         type="checkbox"
+                        role="switch"
                         checked={filter.value}
                         aria-label={filter.name}
                         onChange={(event) => {

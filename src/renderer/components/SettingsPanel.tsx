@@ -688,6 +688,14 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             edit('mangaFlaresolverrUrl', value);
                         }}
                     />
+                    <ToggleField
+                        label={t('settings.mangaShowAdult')}
+                        checked={draft.mangaShowAdult}
+                        hint={t('settings.mangaShowAdult.hint')}
+                        onChange={(value) => {
+                            change('mangaShowAdult', value);
+                        }}
+                    />
                 </fieldset>
             )}
 

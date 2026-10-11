@@ -67,7 +67,7 @@ describe('MangaFilters', () => {
         expect(screen.getByText('Only one at a time')).toBeInTheDocument();
         expect(screen.getByRole('separator')).toBeInTheDocument();
         expect(screen.getByLabelText('Author')).toHaveValue('');
-        expect(screen.getByRole('checkbox', { name: 'Has chapters' })).not.toBeChecked();
+        expect(screen.getByRole('switch', { name: 'Has chapters' })).not.toBeChecked();
         expect(screen.getByRole('checkbox', { name: 'Action' })).toHaveAttribute('aria-checked', 'false');
         const select = screen.getByRole('combobox', { name: 'Created within' });
         expect(select).toHaveValue('0');
@@ -84,7 +84,7 @@ describe('MangaFilters', () => {
         setBrowse({ filtersStatus: 'ready', filters: FILTERS, initialFilters: FILTERS, filtersOpen: true });
         render(<MangaFilters onApply={() => {return undefined}} />);
         await user.type(screen.getByLabelText('Author'), 'Oda');
-        await user.click(screen.getByRole('checkbox', { name: 'Has chapters' }));
+        await user.click(screen.getByRole('switch', { name: 'Has chapters' }));
         await user.selectOptions(screen.getByRole('combobox', { name: 'Created within' }), '1');
         await user.selectOptions(screen.getByRole('combobox', { name: 'Sort' }), '0');
         await user.click(screen.getByRole('button', { name: 'Sort: Descending' }));
@@ -143,11 +143,11 @@ describe('MangaFilters', () => {
         const onApply = vi.fn();
         setBrowse({ filtersStatus: 'ready', filters: FILTERS, initialFilters: FILTERS, filtersOpen: true });
         render(<MangaFilters onApply={onApply} />);
-        await user.click(screen.getByRole('checkbox', { name: 'Has chapters' }));
+        await user.click(screen.getByRole('switch', { name: 'Has chapters' }));
         await user.click(screen.getByRole('button', { name: 'APPLY' }));
         expect(onApply).toHaveBeenCalledTimes(1);
         await user.click(screen.getByRole('button', { name: 'RESET' }));
         expect(useMangaStore.getState().browse.filters).toEqual(FILTERS);
-        expect(screen.getByRole('checkbox', { name: 'Has chapters' })).not.toBeChecked();
+        expect(screen.getByRole('switch', { name: 'Has chapters' })).not.toBeChecked();
     });
 });

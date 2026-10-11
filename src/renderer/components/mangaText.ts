@@ -1,5 +1,5 @@
 import type { MessageKey } from '@shared/i18n';
-import type { LibraryManga, MangaChapterRecord, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaStatus } from '@shared/manga';
+import type { LibraryManga, MangaChapterRecord, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
 
 // The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
@@ -121,15 +121,29 @@ export interface ExtensionFilter {
 
 export const ALL_LANGUAGES = 'all-languages';
 
-// The extensions that match the text, the language and the installed-only choice, the installed ones first and then by name.
-export function filterExtensions(extensions: readonly MangaExtension[], filter: ExtensionFilter): MangaExtension[] {
+// Whether something with this content warning is listed: the ones for adults only when the user asked for them.
+export function isListed(contentWarning: MangaSource['contentWarning'], showAdult: boolean): boolean {
+    return showAdult || contentWarning !== 'NSFW';
+}
+
+// The sources that are listed (the ones for adults only when the user asked for them).
+export function listedSources(sources: readonly MangaSource[], showAdult: boolean): MangaSource[] {
+    return sources.filter((source) => {
+        return isListed(source.contentWarning, showAdult);
+    });
+}
+
+// The extensions that match the text, the language and the installed-only choice (the ones for adults only when the user asked for them),
+// the installed ones first and then by name.
+export function filterExtensions(extensions: readonly MangaExtension[], filter: ExtensionFilter, showAdult: boolean): MangaExtension[] {
     const query = filter.query.trim().toLowerCase();
     return extensions
         .filter((extension) => {
             return (
                 (query.length === 0 || extension.name.toLowerCase().includes(query)) &&
                 (filter.lang === ALL_LANGUAGES || extension.lang === filter.lang) &&
-                (!filter.onlyInstalled || extension.isInstalled)
+                (!filter.onlyInstalled || extension.isInstalled) &&
+                isListed(extension.contentWarning, showAdult)
             );
         })
         .sort((first, second) => {

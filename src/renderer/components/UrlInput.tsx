@@ -4,6 +4,7 @@ import type { DownloadOptions } from '@shared/types';
 import { useAppStore } from '../store/appStore';
 import { DownloadOptionsDialog } from './DownloadOptionsDialog';
 import { hasOptions } from './downloadOptions';
+import { SwitchInput } from './fields';
 
 interface LinkRow {
     id: number;
@@ -209,16 +210,13 @@ export function UrlInput() {
                 })}
             </div>
             <div className="url-input__row">
-                <label className="toggle">
-                    <input
-                        type="checkbox"
-                        checked={settings.audioOnly}
-                        onChange={(event) => {
-                            void saveSettings({ ...settings, audioOnly: event.target.checked });
-                        }}
-                    />
-                    <span>{t('url.audioOnly')}</span>
-                </label>
+                <SwitchInput
+                    label={t('url.audioOnly')}
+                    checked={settings.audioOnly}
+                    onChange={(audioOnly) => {
+                        void saveSettings({ ...settings, audioOnly });
+                    }}
+                />
                 <div className="url-input__buttons">
                     <button type="button" className="btn" onClick={addRow}>
                         {t('url.addLink')}

@@ -323,7 +323,7 @@ describe('MangaBrowse filters of the search', () => {
         expect(await screen.findByRole('button', { name: 'FILTERS' })).toBeInTheDocument();
         expect(mock.api.manga.sourceFilters).toHaveBeenCalledWith('5');
         await user.click(screen.getByRole('button', { name: 'FILTERS' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Has chapters' }));
+        await user.click(screen.getByRole('switch', { name: 'Has chapters' }));
         await user.click(screen.getByRole('button', { name: 'APPLY' }));
         expect(mock.api.manga.list).toHaveBeenLastCalledWith({ sourceId: '5', kind: 'search', page: 1, query: '', filters: [{ type: 'checkbox', name: 'Has chapters', value: true }] });
         expect(await screen.findByRole('button', { name: 'Open: Naruto' })).toBeInTheDocument();

@@ -149,6 +149,8 @@ export interface Settings {
     mangaFormat: MangaOutputFormat;
     // The address of a FlareSolverr the user runs already (empty: the app runs one in Docker).
     mangaFlaresolverrUrl: string;
+    // Whether the sources and the extensions for adults (+18) are listed; hidden by default.
+    mangaShowAdult: boolean;
     // Translating subtitles with a language model: which provider, which model, an address instead of the one of the provider (empty
     // for the one of the provider) and the language it translates into. The token is not here: it is kept apart, encrypted.
     translateProvider: LlmProviderId;

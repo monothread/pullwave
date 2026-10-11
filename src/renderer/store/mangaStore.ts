@@ -19,6 +19,7 @@ import type {
 } from '@shared/manga';
 import { resolveAppLanguage } from '../i18n/language';
 import { ALL_LANGUAGES, chapterState, libraryEntry, type ExtensionFilter } from '../components/mangaText';
+import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { useAppStore } from './appStore';
 
 export type MangaView = 'browse' | 'library' | 'extensions' | 'settings' | 'downloads';
@@ -111,7 +112,7 @@ const EMPTY_EXTENSIONS: MangaExtensionsState = {
     status: 'idle',
     error: null,
     busy: [],
-    filter: { query: '', lang: ALL_LANGUAGES, onlyInstalled: false }
+    filter: { query: '', lang: ALL_LANGUAGES, onlyInstalled: true }
 };
 
 // A chapter that can be read: its number on the server and, when it is in the library, its number there (its file is read when it was
@@ -270,18 +271,20 @@ export const useMangaStore = create<MangaState>((set, get) => {
         });
     }
 
+    const initialPrefs = loadMangaUiPrefs();
+
     return {
         status: EMPTY_STATUS,
         view: 'browse',
         previousView: 'browse',
         library: [],
         jobs: [],
-        browse: EMPTY_BROWSE,
+        browse: { ...EMPTY_BROWSE, sourceLanguage: initialPrefs.sourceLanguage },
         selection: null,
         sourceSettings: EMPTY_SOURCE_SETTINGS,
         reader: CLOSED_READER,
         selectionFrom: 'browse',
-        extensions: EMPTY_EXTENSIONS,
+        extensions: { ...EMPTY_EXTENSIONS, filter: { ...EMPTY_EXTENSIONS.filter, lang: initialPrefs.extensionLanguage, onlyInstalled: initialPrefs.onlyInstalled } },
         cloudflare: [],
 
         init: async () => {
@@ -395,6 +398,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         setSourceLanguage: (language) => {
+            saveMangaUiPrefs({ sourceLanguage: language });
             patchBrowse({ sourceLanguage: language });
         },
 
@@ -761,6 +765,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         setExtensionFilter: (filter) => {
+            if (filter.lang !== undefined) {
+                saveMangaUiPrefs({ extensionLanguage: filter.lang });
+            }
+            if (filter.onlyInstalled !== undefined) {
+                saveMangaUiPrefs({ onlyInstalled: filter.onlyInstalled });
+            }
             set((state) => {
                 return { extensions: { ...state.extensions, filter: { ...state.extensions.filter, ...filter } } };
             });

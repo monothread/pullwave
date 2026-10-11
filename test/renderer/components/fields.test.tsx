@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { NumberField, SelectField, TextField, ToggleField } from '@renderer/components/fields';
+import { NumberField, SelectField, SwitchInput, TextField, ToggleField } from '@renderer/components/fields';
 
 describe('TextField', () => {
     it('renders label, value, placeholder and hint and reports changes', async () => {
@@ -112,9 +112,56 @@ describe('ToggleField', () => {
         expect(screen.getByText('explain')).toBeInTheDocument();
     });
 
+    it('is a switch', () => {
+        render(<ToggleField label="Enable" checked={false} onChange={vi.fn()} />);
+        const toggle = screen.getByRole('switch', { name: 'Enable' });
+        expect(toggle).toHaveClass('switch');
+        expect(toggle).toHaveAttribute('type', 'checkbox');
+    });
+
     it('renders checked without a hint', () => {
         render(<ToggleField label="Enable" checked onChange={vi.fn()} />);
         expect(screen.getByLabelText('Enable')).toBeChecked();
         expect(document.querySelector('.field__hint')).toBeNull();
+    });
+});
+
+describe('SwitchInput', () => {
+    it('is a switch named by its label, that shows the label beside it and reports changes', async () => {
+        const onChange = vi.fn();
+        render(<SwitchInput label="Audio only" checked={false} onChange={onChange} />);
+        const toggle = screen.getByRole('switch', { name: 'Audio only' });
+        expect(toggle).not.toBeChecked();
+        expect(toggle).toBeEnabled();
+        expect(screen.getByText('Audio only')).toBeInTheDocument();
+        await userEvent.setup().click(toggle);
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange).toHaveBeenCalledWith(true);
+    });
+
+    it('reports the switch turned off', async () => {
+        const onChange = vi.fn();
+        render(<SwitchInput label="Audio only" checked onChange={onChange} />);
+        expect(screen.getByRole('switch', { name: 'Audio only' })).toBeChecked();
+        await userEvent.setup().click(screen.getByRole('switch', { name: 'Audio only' }));
+        expect(onChange).toHaveBeenCalledWith(false);
+    });
+
+    it('shows other content beside the switch when it is given, and keeps the label for the name', () => {
+        render(
+            <SwitchInput label="Audio only" checked onChange={vi.fn()}>
+                <em>Only the sound</em>
+            </SwitchInput>
+        );
+        expect(screen.getByRole('switch', { name: 'Audio only' })).toBeInTheDocument();
+        expect(screen.getByText('Only the sound')).toBeInTheDocument();
+    });
+
+    it('does not change while disabled', async () => {
+        const onChange = vi.fn();
+        render(<SwitchInput label="Audio only" checked={false} disabled onChange={onChange} />);
+        expect(screen.getByRole('switch', { name: 'Audio only' })).toBeDisabled();
+        await userEvent.setup().click(screen.getByRole('switch', { name: 'Audio only' }));
+        expect(onChange).not.toHaveBeenCalled();
     });
 });

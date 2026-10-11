@@ -210,6 +210,7 @@ export const DEFAULT_SETTINGS: Settings = {
     mangaDirectory: '',
     mangaFormat: 'cbz',
     mangaFlaresolverrUrl: '',
+    mangaShowAdult: false,
     translateProvider: 'openai',
     translateModel: '',
     translateBaseUrl: '',

@@ -14,6 +14,7 @@ const initialManga = useMangaStore.getState();
 const FAILURE: MangaError = { code: 'REQUEST_FAILED', message: 'site down' };
 
 beforeEach(() => {
+    window.localStorage.clear();
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
     useMangaStore.setState({ ...initialManga });
@@ -224,6 +225,11 @@ describe('mangaStore browsing', () => {
         expect(state().browse.sourceLanguage).toBe('pt');
         state().setSourceLanguage('all-languages');
         expect(state().browse.sourceLanguage).toBe('all-languages');
+    });
+
+    it('remembers the language of the sources', () => {
+        state().setSourceLanguage('pt');
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toEqual({ sourceLanguage: 'pt', extensionLanguage: 'all-languages', onlyInstalled: true });
     });
 
     it('opens a source on its popular mangas, with nothing left of the one before', () => {
@@ -734,6 +740,26 @@ describe('mangaStore extensions', () => {
         state().setExtensionFilter({ lang: 'pt' });
         state().setExtensionFilter({ onlyInstalled: true });
         expect(state().extensions.filter).toEqual({ query: 'dex', lang: 'pt', onlyInstalled: true });
+    });
+
+    it('lists only the installed extensions until the user says otherwise', () => {
+        expect(initialManga.extensions.filter).toEqual({ query: '', lang: 'all-languages', onlyInstalled: true });
+    });
+
+    it('remembers the language and the installed-only switch, but not the text typed', () => {
+        state().setExtensionFilter({ query: 'dex' });
+        expect(window.localStorage.getItem('pullwave.manga.ui')).toBeNull();
+        state().setExtensionFilter({ lang: 'ja' });
+        state().setExtensionFilter({ onlyInstalled: false });
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toEqual({ sourceLanguage: 'all-languages', extensionLanguage: 'ja', onlyInstalled: false });
+    });
+
+    it('starts from what was remembered', async () => {
+        window.localStorage.setItem('pullwave.manga.ui', JSON.stringify({ sourceLanguage: 'pt', extensionLanguage: 'en', onlyInstalled: false }));
+        vi.resetModules();
+        const fresh = (await import('@renderer/store/mangaStore')).useMangaStore.getState();
+        expect(fresh.browse.sourceLanguage).toBe('pt');
+        expect(fresh.extensions.filter).toEqual({ query: '', lang: 'en', onlyInstalled: false });
     });
 });
 

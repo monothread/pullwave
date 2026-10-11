@@ -1421,6 +1421,17 @@ describe('SettingsPanel manga section', () => {
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaFlaresolverrUrl: 'http://192.168.0.5:8191' });
     });
 
+    it('has a switch for the sources for adults, off by default, with its hint, and saves it right away', async () => {
+        render(<SettingsPanel scope="manga" />);
+        const toggle = screen.getByRole('switch', { name: 'Show adult (+18) sources' });
+        expect(toggle).not.toBeChecked();
+        expect(screen.getByText('Off by default. When on, the sources and the extensions made for adults are listed in Browse and in Extensions.')).toBeInTheDocument();
+        fireEvent.click(toggle);
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaShowAdult: true });
+    });
+
     it('saves the folder only after the delay', async () => {
         render(<SettingsPanel scope="manga" />);
         type('Manga folder', '/media/manga');

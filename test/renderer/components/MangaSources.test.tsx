@@ -20,7 +20,8 @@ const SOURCES = [
 
 beforeEach(() => {
     installMockApi();
-    useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
+    window.localStorage.clear();
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true }, toasts: [] });
     useMangaStore.setState({ ...initialManga, browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready' } });
 });
 
@@ -121,5 +122,33 @@ describe('MangaSources', () => {
         render(<MangaSources />);
         await user.click(screen.getByRole('button', { name: 'Open: Mixed Site' }));
         expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '3', mode: 'popular' });
+    });
+
+    it('hides the sources for adults by default, and the languages only they have', () => {
+        useAppStore.setState({ settings: DEFAULT_SETTINGS });
+        render(<MangaSources />);
+        expect(screen.getByText('Sources: 3')).toBeInTheDocument();
+        expect(screen.queryByText('Beta Scans')).not.toBeInTheDocument();
+        expect(screen.queryByText('18+')).not.toBeInTheDocument();
+        expect(
+            screen.getAllByTestId('manga-source').map((row) => {
+                return row.querySelector('.row-link__text')?.textContent;
+            })
+        ).toEqual(['Alpha Scans', 'Zeta Scans', 'Mixed Site']);
+    });
+
+    it('lists everything when the language that was remembered has no source left', () => {
+        useAppStore.setState({ settings: DEFAULT_SETTINGS });
+        useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sourceLanguage: 'ja' } });
+        render(<MangaSources />);
+        expect(screen.getByLabelText('Language')).toHaveValue('all-languages');
+        expect(screen.getByText('Sources: 3')).toBeInTheDocument();
+    });
+
+    it('remembers the language that was picked', async () => {
+        const user = userEvent.setup();
+        render(<MangaSources />);
+        await user.selectOptions(screen.getByLabelText('Language'), 'pt');
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toMatchObject({ sourceLanguage: 'pt' });
     });
 });

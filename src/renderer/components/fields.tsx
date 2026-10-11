@@ -109,6 +109,35 @@ export function SelectField<T extends string>({ label, value, options, hint, dis
     );
 }
 
+interface SwitchInputProps {
+    label: string;
+    checked: boolean;
+    // The text beside the switch (the label when omitted).
+    children?: ReactNode;
+    disabled?: boolean;
+    onChange: (checked: boolean) => void;
+}
+
+// An on/off setting: a switch that reads as one to assistive technology and changes with a click or the space bar.
+export function SwitchInput({ label, checked, children, disabled = false, onChange }: SwitchInputProps) {
+    return (
+        <span className="toggle">
+            <input
+                className="switch"
+                type="checkbox"
+                role="switch"
+                aria-label={label}
+                checked={checked}
+                disabled={disabled}
+                onChange={(event) => {
+                    onChange(event.target.checked);
+                }}
+            />
+            <span>{children ?? label}</span>
+        </span>
+    );
+}
+
 interface ToggleFieldProps {
     label: string;
     checked: boolean;
@@ -119,17 +148,7 @@ interface ToggleFieldProps {
 export function ToggleField({ label, checked, hint, onChange }: ToggleFieldProps) {
     return (
         <label className="field field--toggle">
-            <span className="toggle">
-                <input
-                    type="checkbox"
-                    aria-label={label}
-                    checked={checked}
-                    onChange={(event) => {
-                        onChange(event.target.checked);
-                    }}
-                />
-                <span>{label}</span>
-            </span>
+            <SwitchInput label={label} checked={checked} onChange={onChange} />
             {hint && <span className="field__hint">{hint}</span>}
         </label>
     );

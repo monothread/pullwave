@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { MangaSource } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
+import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { SelectField } from './fields';
-import { ALL_LANGUAGES } from './mangaText';
+import { ALL_LANGUAGES, listedSources } from './mangaText';
 import { RowLink } from './RowLink';
 
 // The language of a source that reads sites in several languages (the extension says "all").
@@ -59,9 +60,14 @@ export function MangaSources() {
     const setSourceLanguage = useMangaStore((state) => {
         return state.setSourceLanguage;
     });
-    const { sources, sourceLanguage } = browse;
+    const showAdult = useAppStore((state) => {
+        return state.settings.mangaShowAdult;
+    });
+    const sources = listedSources(browse.sources, showAdult);
 
     const languages = sourceLanguages(sources);
+    // A language that was remembered but is not there any more (its sources are gone or hidden) lists everything.
+    const sourceLanguage = languages.includes(browse.sourceLanguage) ? browse.sourceLanguage : ALL_LANGUAGES;
     const shown = sources.filter((source) => {
         return sourceLanguage === ALL_LANGUAGES || source.lang === sourceLanguage;
     });

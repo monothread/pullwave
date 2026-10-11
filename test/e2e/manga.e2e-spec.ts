@@ -38,6 +38,8 @@ class FakeSuwayomi {
     imageDelayMs = 0;
     // The pages are real pictures a page can show (the reader needs them; the downloads only look at the bytes).
     pagesArePicture = false;
+    // The extension and its source are for adults.
+    adult = false;
     private server: Server | null = null;
 
     get url(): string {
@@ -78,7 +80,7 @@ class FakeSuwayomi {
             hasUpdate: false,
             isObsolete: false,
             iconUrl: null,
-            contentWarning: 'SAFE',
+            contentWarning: this.adult ? 'NSFW' : 'SAFE',
             storeIndexUrl: STORE_URL
         };
     }
@@ -114,7 +116,7 @@ class FakeSuwayomi {
         }
         if (query.trim().startsWith('{ sources')) {
             const local = { id: '0', name: 'Local source', displayName: 'Local source', lang: 'localsourcelang', iconUrl: '', supportsLatest: false, contentWarning: 'SAFE', extension: { pkgName: 'local' } };
-            const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: 'SAFE', extension: { pkgName: EXTENSION_PKG } };
+            const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: this.adult ? 'NSFW' : 'SAFE', extension: { pkgName: EXTENSION_PKG } };
             return { sources: { nodes: this.installed ? [local, site] : [local] } };
         }
         if (query.includes('{ filters {')) {
@@ -237,6 +239,9 @@ async function installExtension(page: Page): Promise<void> {
     await page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
     await page.getByRole('button', { name: 'ADD', exact: true }).click();
     await expect(page.getByText('Fake Store')).toBeVisible();
+    // Only the installed extensions are listed at first: the one to install is shown by turning that off.
+    await expect(page.getByText('No extension is installed. Turn off "Installed only" to see the ones you can install.')).toBeVisible();
+    await page.getByRole('switch', { name: 'Installed only' }).uncheck();
     await page.getByRole('button', { name: 'INSTALL: Tachiyomi: Fake Dex' }).click();
     await expect(page.getByText('INSTALLED', { exact: true })).toBeVisible();
 }
@@ -282,6 +287,57 @@ test.describe('manga section', () => {
         await expect(session.page.getByText('No source yet. Add a store and install an extension in EXTENSIONS.')).toBeVisible();
         // Nothing is downloaded when a server is given.
         await expect(session.page.getByText('PREPARING THE MANGA SERVER')).toHaveCount(0);
+    });
+
+    test('lists only the installed extensions at first and remembers the choices after the app is closed', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'EXTENSIONS');
+        await session.page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
+        await session.page.getByRole('button', { name: 'ADD', exact: true }).click();
+        await expect(session.page.getByText('Fake Store')).toBeVisible();
+        const installedOnly = session.page.getByRole('switch', { name: 'Installed only' });
+        await expect(installedOnly).toBeChecked();
+        await expect(installedOnly).toHaveAttribute('type', 'checkbox');
+        await installedOnly.uncheck();
+        await session.app.close();
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'EXTENSIONS');
+        await expect(session.page.getByText('Fake Store')).toBeVisible();
+        await expect(session.page.getByRole('switch', { name: 'Installed only' })).not.toBeChecked();
+        await expect(session.page.getByTestId('manga-extension')).toContainText('Tachiyomi: Fake Dex');
+    });
+
+    test('hides the extensions and the sources for adults until the setting is turned on', async () => {
+        fake.adult = true;
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'EXTENSIONS');
+        await session.page.getByLabel('Address of a store (index.min.json)').fill(STORE_URL);
+        await session.page.getByRole('button', { name: 'ADD', exact: true }).click();
+        await expect(session.page.getByText('Fake Store')).toBeVisible();
+        await session.page.getByRole('switch', { name: 'Installed only' }).uncheck();
+        await expect(session.page.getByText('No extension found.')).toBeVisible();
+        await expect(session.page.getByTestId('manga-extension')).toHaveCount(0);
+        await session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'SETTINGS', exact: true }).click();
+        const adult = session.page.getByRole('switch', { name: 'Show adult (+18) sources' });
+        await expect(adult).not.toBeChecked();
+        await adult.check();
+        await expect.poll(() => {
+            return JSON.parse(readFileSync(join(session!.userData, 'settings.json'), 'utf8')) as { mangaShowAdult?: boolean };
+        }).toMatchObject({ mangaShowAdult: true });
+        await goTo(session.page, 'EXTENSIONS');
+        await expect(session.page.getByTestId('manga-extension')).toContainText('Tachiyomi: Fake Dex');
+        await expect(session.page.getByTestId('manga-extension')).toContainText('18+');
+        await session.page.getByRole('button', { name: 'INSTALL: Tachiyomi: Fake Dex' }).click();
+        await expect(session.page.getByText('INSTALLED', { exact: true })).toBeVisible();
+        await goTo(session.page, 'BROWSE');
+        await expect(session.page.getByTestId('manga-source')).toContainText('Fake Dex');
+        await session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'SETTINGS', exact: true }).click();
+        await session.page.getByRole('switch', { name: 'Show adult (+18) sources' }).uncheck();
+        await goTo(session.page, 'BROWSE');
+        await expect(session.page.getByTestId('manga-source')).toHaveCount(0);
     });
 
     test('adds a store, installs an extension and finds its source', async () => {
@@ -353,7 +409,7 @@ test.describe('manga section', () => {
         await openSource(session.page);
         await session.page.getByRole('button', { name: 'SEARCH', exact: true }).first().click();
         await session.page.getByRole('button', { name: 'FILTERS', exact: true }).click();
-        await session.page.getByRole('checkbox', { name: 'Has chapters' }).check();
+        await session.page.getByRole('switch', { name: 'Has chapters' }).check();
         await session.page.getByRole('checkbox', { name: 'Action', exact: true }).click();
         await session.page.getByLabel('Sort').first().selectOption('1');
         // The options of a group are picked by typing.
@@ -378,7 +434,7 @@ test.describe('manga section', () => {
         });
         // Starting over puts every filter back as the source gave it.
         await session.page.getByRole('button', { name: 'RESET' }).click();
-        await expect(session.page.getByRole('checkbox', { name: 'Has chapters' })).not.toBeChecked();
+        await expect(session.page.getByRole('switch', { name: 'Has chapters' })).not.toBeChecked();
         await expect(session.page.getByRole('checkbox', { name: 'Action', exact: true })).toHaveAttribute('aria-checked', 'false');
     });
 

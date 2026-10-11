@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
+import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { SelectField, TextField, ToggleField } from './fields';
-import { ALL_LANGUAGES, extensionLanguages, filterExtensions, mangaErrorKey, STORE_PLACEHOLDER } from './mangaText';
+import { ALL_LANGUAGES, extensionLanguages, filterExtensions, isListed, mangaErrorKey, STORE_PLACEHOLDER } from './mangaText';
 
 // The stores the extensions come from, and the extensions to install, update or remove.
 export function MangaExtensions() {
@@ -25,6 +26,9 @@ export function MangaExtensions() {
     const setExtensionFilter = useMangaStore((state) => {
         return state.setExtensionFilter;
     });
+    const showAdult = useAppStore((state) => {
+        return state.settings.mangaShowAdult;
+    });
     const [address, setAddress] = useState('');
     const { stores, status, error, busy, filter } = extensions;
 
@@ -34,8 +38,20 @@ export function MangaExtensions() {
         }
     }, [status, loadExtensions]);
 
-    const shown = filterExtensions(extensions.extensions, filter);
-    const languages = [ALL_LANGUAGES, ...extensionLanguages(extensions.extensions)];
+    const listedExtensions = extensions.extensions.filter((extension) => {
+        return isListed(extension.contentWarning, showAdult);
+    });
+    const languages = [ALL_LANGUAGES, ...extensionLanguages(listedExtensions)];
+    // A language that was remembered but is not there any more (its extensions are gone or hidden) lists everything.
+    const lang = languages.includes(filter.lang) ? filter.lang : ALL_LANGUAGES;
+    const shown = filterExtensions(extensions.extensions, { ...filter, lang }, showAdult);
+
+    // Nothing is installed yet, so the switch is what hides the extensions that are there to be installed.
+    const onlyInstalledHidesAll =
+        filter.onlyInstalled &&
+        filter.query.trim().length === 0 &&
+        listedExtensions.length > 0 &&
+        filterExtensions(listedExtensions, { ...filter, lang, onlyInstalled: false }, showAdult).length > 0;
 
     async function handleAdd(indexUrl: string): Promise<void> {
         if (await addStore(indexUrl)) {
@@ -103,7 +119,7 @@ export function MangaExtensions() {
                         />
                         <SelectField
                             label={t('manga.ext.lang')}
-                            value={filter.lang}
+                            value={lang}
                             options={languages}
                             formatOption={(lang) => {
                                 return lang === ALL_LANGUAGES ? t('manga.ext.allLangs') : lang;
@@ -130,7 +146,7 @@ export function MangaExtensions() {
                             {t('manga.ext.refresh')}
                         </button>
                     </div>
-                    {status === 'ready' && shown.length === 0 && <p className="empty">{t('manga.ext.none')}</p>}
+                    {status === 'ready' && shown.length === 0 && <p className="empty">{t(onlyInstalledHidesAll ? 'manga.ext.noneInstalled' : 'manga.ext.none')}</p>}
                     <ul className="history__list">
                         {shown.map((extension) => {
                             const working = busy.includes(extension.pkgName);

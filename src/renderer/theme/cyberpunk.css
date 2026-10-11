@@ -260,6 +260,57 @@ body::after {
     height: 16px;
 }
 
+/* An on/off setting: a track with a knob that slides, lit with the neon of the theme when it is on. */
+.toggle input.switch {
+    appearance: none;
+    flex-shrink: 0;
+    position: relative;
+    width: 34px;
+    height: 18px;
+    margin: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.toggle input.switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: transform 0.15s, background 0.15s;
+}
+
+.toggle input.switch:checked {
+    border-color: var(--magenta);
+    box-shadow: 0 0 6px var(--magenta);
+}
+
+.toggle input.switch:checked::after {
+    background: var(--magenta);
+    transform: translateX(16px);
+}
+
+.toggle input.switch:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+}
+
+.toggle input.switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toggle input.switch, .toggle input.switch::after { transition: none; }
+}
+
 .queue, .history { display: flex; flex-direction: column; gap: 12px; }
 .queue__toolbar { display: flex; align-items: center; justify-content: space-between; }
 .queue__toolbar .section-label { margin: 0; }

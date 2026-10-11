@@ -105,6 +105,7 @@ export function sanitizeSettings(input: unknown): Settings {
         mangaDirectory: pickString(raw.mangaDirectory, defaults.mangaDirectory),
         mangaFormat: pickEnum(raw.mangaFormat, MANGA_OUTPUT_FORMATS, defaults.mangaFormat),
         mangaFlaresolverrUrl: pickHttpAddress(raw.mangaFlaresolverrUrl),
+        mangaShowAdult: pickBoolean(raw.mangaShowAdult, defaults.mangaShowAdult),
         translateProvider: pickEnum(raw.translateProvider, LLM_PROVIDER_IDS, defaults.translateProvider),
         translateModel: pickString(raw.translateModel, defaults.translateModel),
         translateBaseUrl: pickString(raw.translateBaseUrl, defaults.translateBaseUrl),
