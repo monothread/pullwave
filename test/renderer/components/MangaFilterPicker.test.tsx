@@ -134,8 +134,10 @@ describe('MangaFilterPicker', () => {
         });
         render(<Harness initial={many} />);
         const field = screen.getByRole('combobox', { name: 'Genre' });
+        // A click lists the first of all the options at once, and says how many more there are.
         await user.click(field);
-        expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+        expect(screen.getAllByRole('option')).toHaveLength(MAX_SUGGESTIONS);
+        expect(screen.getByText('1970 more: type to narrow down.')).toBeInTheDocument();
         await user.type(field, 'artist 1');
         expect(screen.getAllByRole('option')).toHaveLength(MAX_SUGGESTIONS);
         expect(screen.getByText('1081 more: type to narrow down.')).toBeInTheDocument();
@@ -158,11 +160,24 @@ describe('MangaFilterPicker', () => {
         expect(screen.getByRole('option', { name: 'Romance' })).toBeInTheDocument();
     });
 
-    it('says nothing when every option was picked and nothing was typed', async () => {
+    it('says no option is left when every option was picked and the field is clicked', async () => {
         const user = userEvent.setup();
         render(<Harness initial={[{ type: 'tristate', name: 'Only', value: 'include' }]} />);
         await user.click(screen.getByRole('combobox', { name: 'Genre' }));
+        expect(screen.getByRole('listbox')).toBeInTheDocument();
+        expect(screen.queryByRole('option')).not.toBeInTheDocument();
+        expect(screen.getByText('Nothing matches.')).toBeInTheDocument();
+    });
+
+    it('opens the list again with a click on the field after an option was picked', async () => {
+        const user = userEvent.setup();
+        render(<Harness initial={OPTIONS} />);
+        const field = screen.getByRole('combobox', { name: 'Genre' });
+        await user.click(field);
+        await user.click(screen.getAllByRole('option')[0]!);
         expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+        await user.click(field);
+        expect(screen.getByRole('listbox')).toBeInTheDocument();
     });
 
     it('closes the list when the field loses the focus', async () => {

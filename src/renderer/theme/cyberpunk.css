@@ -1394,6 +1394,9 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .manga__picker-list { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px 0; list-style: none; max-height: 240px; overflow-y: auto; background: var(--panel, var(--bg)); border: 1px solid var(--cyan); box-shadow: var(--glow); }
 .manga__picker-option { display: block; width: 100%; text-align: left; padding: 6px 12px; background: transparent; border: 0; color: var(--text); cursor: pointer; font: inherit; }
 .manga__picker-option:hover, .manga__picker-option:focus-visible { background: var(--input-bg); color: var(--cyan); }
+.manga__picker-option--chosen { color: var(--cyan); }
+.manga__sort { display: flex; align-items: flex-end; gap: 8px; }
+.manga__sort > .field { flex: 1; }
 .manga__picker-empty { padding: 6px 12px; color: var(--muted); font-size: 12px; }
 .manga__chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 8px 0 0; padding: 0; }
 .manga__chip { display: inline-flex; align-items: center; border: 1px solid var(--green); color: var(--green); font-size: 12px; }

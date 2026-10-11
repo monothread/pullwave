@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaFilter } from '@shared/manga';
@@ -69,12 +69,8 @@ describe('MangaFilters', () => {
         expect(screen.getByLabelText('Author')).toHaveValue('');
         expect(screen.getByRole('switch', { name: 'Has chapters' })).not.toBeChecked();
         expect(screen.getByRole('checkbox', { name: 'Action' })).toHaveAttribute('aria-checked', 'false');
-        const select = screen.getByRole('combobox', { name: 'Created within' });
-        expect(select).toHaveValue('0');
-        expect(within(select).getAllByRole('option').map((option) => {
-            return option.textContent;
-        })).toEqual(['Any', 'A day']);
-        expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveValue('1');
+        expect(screen.getByRole('combobox', { name: 'Created within' })).toHaveValue('Any');
+        expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveValue('Date');
         expect(screen.getByRole('button', { name: 'Sort: Descending' })).toHaveTextContent('↓');
         expect(screen.getByText('Genre')).toBeInTheDocument();
     });
@@ -85,8 +81,10 @@ describe('MangaFilters', () => {
         render(<MangaFilters onApply={() => {return undefined}} />);
         await user.type(screen.getByLabelText('Author'), 'Oda');
         await user.click(screen.getByRole('switch', { name: 'Has chapters' }));
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Created within' }), '1');
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Sort' }), '0');
+        await user.click(screen.getByRole('combobox', { name: 'Created within' }));
+        await user.click(screen.getByRole('option', { name: 'A day' }));
+        await user.click(screen.getByRole('combobox', { name: 'Sort' }));
+        await user.click(screen.getByRole('option', { name: 'Name' }));
         await user.click(screen.getByRole('button', { name: 'Sort: Descending' }));
         const filters = useMangaStore.getState().browse.filters;
         expect(filters[2]).toEqual({ type: 'text', name: 'Author', value: 'Oda' });

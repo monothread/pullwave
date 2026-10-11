@@ -520,7 +520,13 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'FILTERS', exact: true }).click();
         await session.page.getByRole('switch', { name: 'Has chapters' }).check();
         await session.page.getByRole('checkbox', { name: 'Action', exact: true }).click();
-        await session.page.getByLabel('Sort').first().selectOption('1');
+        // The order is a field that lists its options when it is clicked, and narrows them as the user types.
+        await session.page.getByRole('combobox', { name: 'Sort' }).click();
+        await expect(session.page.getByRole('option')).toHaveText(['Name', 'Date']);
+        await session.page.getByRole('combobox', { name: 'Sort' }).fill('da');
+        await expect(session.page.getByRole('option')).toHaveText(['Date']);
+        await session.page.getByRole('option', { name: 'Date' }).click();
+        await expect(session.page.getByRole('combobox', { name: 'Sort' })).toHaveValue('Date');
         // The options of a group are picked by typing.
         await session.page.getByRole('combobox', { name: 'Genre' }).fill('dra');
         await session.page.getByRole('option', { name: 'Drama' }).click();

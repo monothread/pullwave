@@ -42,7 +42,8 @@ export function MangaFilterPicker({ name, filters, onChange }: { name: string; f
             return !isChosen(entry.filter) && entry.filter.name.toLowerCase().includes(needle);
         });
     const suggestions = matches.slice(0, MAX_SUGGESTIONS);
-    const showList = focused && (needle.length > 0 || (matches.length > 0 && matches.length <= MAX_SUGGESTIONS));
+    // The list opens with a click on the field, with everything that can be picked, and narrows as the user types.
+    const showList = focused;
 
     function set(position: number, state: MangaTriState): void {
         onChange(
@@ -74,6 +75,9 @@ export function MangaFilterPicker({ name, filters, onChange }: { name: string; f
                         setFocused(true);
                     }}
                     onFocus={() => {
+                        setFocused(true);
+                    }}
+                    onClick={() => {
                         setFocused(true);
                     }}
                     onBlur={() => {

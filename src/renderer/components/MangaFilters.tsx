@@ -1,7 +1,8 @@
 import type { MangaFilter, MangaTriState } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { FieldShell, TextField } from './fields';
+import { TextField } from './fields';
+import { MangaOptionCombo } from './MangaOptionCombo';
 import { isPickable, MangaFilterPicker, type PickableFilter } from './MangaFilterPicker';
 
 const NEXT_STATE: Record<MangaTriState, MangaTriState> = { ignore: 'include', include: 'exclude', exclude: 'ignore' };
@@ -69,57 +70,37 @@ function FilterItem({ filter, onChange }: { filter: MangaFilter; onChange: (filt
             );
         case 'select':
             return (
-                <FieldShell label={filter.name}>
-                    <select
-                        className="input"
-                        aria-label={filter.name}
-                        value={filter.value}
-                        onChange={(event) => {
-                            onChange({ ...filter, value: Number(event.target.value) });
-                        }}
-                    >
-                        {filter.options.map((option, index) => {
-                            return (
-                                <option key={`${option}-${String(index)}`} value={index}>
-                                    {option}
-                                </option>
-                            );
-                        })}
-                    </select>
-                </FieldShell>
+                <MangaOptionCombo
+                    label={filter.name}
+                    options={filter.options}
+                    value={filter.value}
+                    onChange={(index) => {
+                        onChange({ ...filter, value: index });
+                    }}
+                />
             );
         case 'sort':
             return (
-                <FieldShell label={filter.name}>
-                    <div className="field-row">
-                        <select
-                            className="input"
-                            aria-label={filter.name}
-                            value={filter.value.index}
-                            onChange={(event) => {
-                                onChange({ ...filter, value: { ...filter.value, index: Number(event.target.value) } });
-                            }}
-                        >
-                            {filter.options.map((option, index) => {
-                                return (
-                                    <option key={`${option}-${String(index)}`} value={index}>
-                                        {option}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                        <button
-                            type="button"
-                            className="btn btn--small"
-                            aria-label={`${filter.name}: ${t(filter.value.ascending ? 'manga.filters.ascending' : 'manga.filters.descending')}`}
-                            onClick={() => {
-                                onChange({ ...filter, value: { ...filter.value, ascending: !filter.value.ascending } });
-                            }}
-                        >
-                            {filter.value.ascending ? '↑' : '↓'}
-                        </button>
-                    </div>
-                </FieldShell>
+                <div className="manga__sort">
+                    <MangaOptionCombo
+                        label={filter.name}
+                        options={filter.options}
+                        value={filter.value.index}
+                        onChange={(index) => {
+                            onChange({ ...filter, value: { ...filter.value, index } });
+                        }}
+                    />
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        aria-label={`${filter.name}: ${t(filter.value.ascending ? 'manga.filters.ascending' : 'manga.filters.descending')}`}
+                        onClick={() => {
+                            onChange({ ...filter, value: { ...filter.value, ascending: !filter.value.ascending } });
+                        }}
+                    >
+                        {filter.value.ascending ? '↑' : '↓'}
+                    </button>
+                </div>
             );
         case 'group':
             // The options of a group (genres, tags, artists...) are picked by typing, not ticked in a list of thousands.
