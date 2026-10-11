@@ -592,11 +592,40 @@ describe('mangaStore opening a manga', () => {
         expect(mock.api.manga.download).toHaveBeenCalledWith(expect.objectContaining({ manga: makeSummary({ title: 'From the list' }), details: null }));
     });
 
-    it('goes to the library and closes the manga', () => {
-        useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: null, chapters: [], selected: [], error: null } });
-        state().showInLibrary();
+    it('goes to the library and opens the manga there, as a page of the library', async () => {
+        mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: [makeChapter()] } });
+        useMangaStore.setState({ view: 'browse', selectionFrom: 'browse', selection: { manga: makeSummary(), status: 'ready', details: null, chapters: [], selected: [], error: null } });
+        await state().showInLibrary();
         expect(state().view).toBe('library');
-        expect(state().selection).toBeNull();
+        expect(state().selectionFrom).toBe('library');
+        expect(state().selection).toMatchObject({ manga: makeSummary(), status: 'ready', chapters: [makeChapter()] });
+        expect(mock.api.manga.details).toHaveBeenCalledWith(7);
+    });
+
+    it('does nothing to go to the library, or to the source, with no manga open', async () => {
+        await state().showInLibrary();
+        await state().showInSource();
+        await state().searchByTerm('Action');
+        expect(state().view).toBe('browse');
+        expect(mock.api.manga.details).not.toHaveBeenCalled();
+        expect(mock.api.manga.list).not.toHaveBeenCalled();
+    });
+
+    it('goes to the source of the manga and opens it there, as a page of the browse', async () => {
+        mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: [] } });
+        useMangaStore.setState({ view: 'library', selectionFrom: 'library', selection: { manga: makeSummary({ sourceId: '55' }), status: 'ready', details: null, chapters: [], selected: [], error: null } });
+        await state().showInSource();
+        expect(state().view).toBe('browse');
+        expect(state().selectionFrom).toBe('browse');
+        expect(state().browse).toMatchObject({ sourceId: '55', mode: 'popular' });
+        expect(state().selection?.status).toBe('ready');
+    });
+
+    it('does not search by a term that is empty', async () => {
+        useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: null, chapters: [], selected: [], error: null } });
+        await state().searchByTerm('   ');
+        expect(mock.api.manga.sourceFilters).not.toHaveBeenCalled();
+        expect(state().selection).not.toBeNull();
     });
 });
 

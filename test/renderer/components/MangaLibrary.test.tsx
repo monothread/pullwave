@@ -43,23 +43,20 @@ describe('MangaLibrary', () => {
         expect(within(entries[0]!).getByRole('heading', { name: 'One Piece' })).toBeInTheDocument();
         expect(within(entries[0]!).getByText('1 of 5 downloaded')).toBeInTheDocument();
         expect(within(entries[1]!).getByText('0 of 0 downloaded')).toBeInTheDocument();
-        expect(within(entries[1]!).getByRole('button', { name: 'DOWNLOAD MISSING' })).toBeDisabled();
+        expect(within(entries[1]!).queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
         expect(entries[1]!.querySelector('img')).toBeNull();
     });
 
-    it('cannot download what is missing when everything is downloaded', () => {
-        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ status: 'done' })])] });
-        render(<MangaLibrary />);
-        expect(screen.getByRole('button', { name: 'DOWNLOAD MISSING' })).toBeDisabled();
-    });
-
-    it('downloads what is missing and opens the folder', async () => {
-        const user = userEvent.setup();
-        mock.api.manga.library.mockResolvedValue([ONE_PIECE]);
+    it('has no button to download what is missing in the list: that is done inside the manga', () => {
         useMangaStore.setState({ library: [ONE_PIECE] });
         render(<MangaLibrary />);
-        await user.click(screen.getByRole('button', { name: 'DOWNLOAD MISSING' }));
-        expect(mock.api.manga.downloadMissing).toHaveBeenCalledWith([9]);
+        expect(screen.queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
+    });
+
+    it('opens the folder', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [ONE_PIECE] });
+        render(<MangaLibrary />);
         await user.click(screen.getByRole('button', { name: 'OPEN FOLDER' }));
         expect(mock.api.manga.openFolder).toHaveBeenCalledWith(9);
     });
@@ -83,7 +80,7 @@ describe('MangaLibrary', () => {
         expect(useMangaStore.getState().selectionFrom).toBe('library');
         expect(mock.api.manga.details).toHaveBeenCalledWith(7);
         expect(useMangaStore.getState().selection?.manga).toEqual({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: ONE_PIECE.thumbnailUrl });
-        expect(await screen.findByText('Author: Oda')).toBeInTheDocument();
+        expect(await screen.findByText(/^Author:/)).toHaveTextContent('Author: Oda');
         await user.click(screen.getByRole('button', { name: '← BACK' }));
         expect(screen.getByRole('button', { name: 'Open: One Piece' })).toBeInTheDocument();
     });

@@ -2,14 +2,17 @@
 import { act, renderHook } from '@testing-library/react';
 import type { AnimeSearchResult } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import { MOUSE_BACK_BUTTON, MOUSE_FORWARD_BUTTON, snapshotKey, useMouseNavigation, type NavigationSnapshot } from '@renderer/hooks/useMouseNavigation';
+import { MOUSE_BACK_BUTTON, MOUSE_FORWARD_BUTTON, snapshotKey, useMouseNavigation, type MangaPage, type NavigationSnapshot } from '@renderer/hooks/useMouseNavigation';
 import { INITIAL_SEARCH, useAnimeStore, type AnimeSelection } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { useMangaStore } from '@renderer/store/mangaStore';
+import { makeDetails, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { makeAnime } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
+const initialManga = useMangaStore.getState();
 const RESULT: AnimeSearchResult = { index: 2, title: 'Naruto' };
 const SELECTION: AnimeSelection = { result: RESULT, query: 'naruto', audio: 'sub', status: 'ready', episodes: ['1', '2'], error: null };
 
@@ -31,6 +34,9 @@ beforeEach(() => {
         playing: null,
         streaming: null
     });
+    useMangaStore.setState({ ...initialManga });
+    mock.api.manga.sources.mockResolvedValue({ ok: true, value: [makeSource({ id: '5' }), makeSource({ id: '6' })] });
+    mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: [] } });
 });
 
 function press(button: number): MouseEvent {
@@ -66,11 +72,34 @@ function mount(): { unmount: () => void } {
 }
 
 describe('snapshotKey', () => {
-    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null };
+    const manga: MangaPage = { view: 'browse', previousView: 'browse', sourceId: null, mode: 'popular', settingsOpen: false, selection: null, selectionFrom: 'browse' };
+    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null, manga };
 
     it('joins the parts that make a page', () => {
-        expect(snapshotKey(base)).toBe('anime|queue|library|library|||');
-        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren' })).toBe('anime|queue|library|library|2:sub|7|series-frieren');
+        expect(snapshotKey(base)).toBe('anime|queue|library|library||||browse:browse::popular:false::browse');
+        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren' })).toBe('anime|queue|library|library|2:sub|7|series-frieren|browse:browse::popular:false::browse');
+    });
+
+    it('differs between the screens of the manga section, the sources, the modes, the settings of a source and the mangas open', () => {
+        const key = snapshotKey(base);
+        const keys = [
+            { ...manga, view: 'library' as const },
+            { ...manga, view: 'downloads' as const, previousView: 'library' as const },
+            { ...manga, sourceId: '5' },
+            { ...manga, sourceId: '5', mode: 'search' as const },
+            { ...manga, sourceId: '5', settingsOpen: true },
+            { ...manga, selection: { manga: makeSummary({ remoteId: 7 }), status: 'ready' as const, details: null, chapters: [], selected: [], error: null } },
+            { ...manga, selectionFrom: 'library' as const }
+        ].map((page) => {
+            return snapshotKey({ ...base, manga: page });
+        });
+        expect(new Set([key, ...keys]).size).toBe(8);
+    });
+
+    it('does not change when the content of the same manga loads', () => {
+        const loading = { manga: makeSummary({ remoteId: 7 }), status: 'loading' as const, details: null, chapters: [], selected: [], error: null };
+        const ready = { ...loading, status: 'ready' as const, details: makeDetails({ remoteId: 7 }), selected: [1] };
+        expect(snapshotKey({ ...base, manga: { ...manga, selection: loading } })).toBe(snapshotKey({ ...base, manga: { ...manga, selection: ready } }));
     });
 
     it('differs between the cards of the library and each series open', () => {
@@ -379,6 +408,165 @@ describe('useMouseNavigation', () => {
         const event = press(MOUSE_FORWARD_BUTTON);
         expect(event.defaultPrevented).toBe(true);
         expect(useAppStore.getState().tab).toBe('anime');
+    });
+
+    describe('in the manga section', () => {
+        beforeEach(() => {
+            useAppStore.setState({ tab: 'manga' });
+        });
+
+        it('goes back and forward through the screens of the section', () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().setView('library');
+            });
+            act(() => {
+                useMangaStore.getState().setView('extensions');
+            });
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().view).toBe('library');
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().view).toBe('browse');
+            press(MOUSE_FORWARD_BUTTON);
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState().view).toBe('extensions');
+        });
+
+        it('goes back from the downloads screen to the screen it came from', () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().setView('library');
+            });
+            act(() => {
+                useMangaStore.getState().openDownloads();
+            });
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState()).toMatchObject({ view: 'library' });
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState()).toMatchObject({ view: 'downloads', previousView: 'library' });
+        });
+
+        it('goes back from a source to the list of sources, and forward to the source again, with its mode', () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().openSource('5', 'latest');
+            });
+            act(() => {
+                useMangaStore.getState().setMode('search');
+            });
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '5', mode: 'latest' });
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().browse.sourceId).toBeNull();
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '5', mode: 'latest' });
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '5', mode: 'search' });
+        });
+
+        it('goes from one source to another and back, opening each again', () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().openSource('5');
+            });
+            act(() => {
+                useMangaStore.getState().openSource('6');
+            });
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '5', mode: 'popular', status: 'idle', items: [] });
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState().browse.sourceId).toBe('6');
+        });
+
+        it('goes back from a manga to the list, and forward to the manga with what was loaded', async () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().openSource('5');
+            });
+            await act(async () => {
+                await useMangaStore.getState().openManga(makeSummary({ remoteId: 7 }));
+            });
+            expect(useMangaStore.getState().selection?.status).toBe('ready');
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().selection).toBeNull();
+            expect(useMangaStore.getState().browse.sourceId).toBe('5');
+            press(MOUSE_FORWARD_BUTTON);
+            expect(useMangaStore.getState().selection).toMatchObject({ manga: { remoteId: 7 }, status: 'ready', details: makeDetails() });
+            expect(useMangaStore.getState().selectionFrom).toBe('browse');
+        });
+
+        it('opens and closes the settings of a source with the buttons', async () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().openSource('5');
+            });
+            await act(async () => {
+                await useMangaStore.getState().openSourceSettings();
+            });
+            expect(useMangaStore.getState().sourceSettings.open).toBe(true);
+
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().sourceSettings.open).toBe(false);
+            await act(async () => {
+                press(MOUSE_FORWARD_BUTTON);
+            });
+            expect(useMangaStore.getState().sourceSettings.open).toBe(true);
+        });
+
+        it('reads the library again when it comes back to it', () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().setView('library');
+            });
+            act(() => {
+                useMangaStore.getState().setView('extensions');
+            });
+            mock.api.manga.library.mockClear();
+            press(MOUSE_BACK_BUTTON);
+            expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        });
+
+        it('closes the reader first: going back from it does not leave the page', () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().setView('library');
+            });
+            act(() => {
+                useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+            });
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().reader.status).toBe('closed');
+            expect(useMangaStore.getState().view).toBe('library');
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().view).toBe('browse');
+        });
+
+        it('does not go forward while the reader is open', () => {
+            mount();
+            act(() => {
+                useMangaStore.getState().setView('library');
+            });
+            press(MOUSE_BACK_BUTTON);
+            act(() => {
+                useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+            });
+            const event = press(MOUSE_FORWARD_BUTTON);
+            expect(event.defaultPrevented).toBe(true);
+            expect(useMangaStore.getState().view).toBe('browse');
+        });
+
+        it('stops recording the store of the manga when it is removed', () => {
+            const { unmount } = mount();
+            unmount();
+            act(() => {
+                useMangaStore.getState().setView('library');
+            });
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().view).toBe('library');
+        });
     });
 
     it('stops listening and recording when it is removed', () => {

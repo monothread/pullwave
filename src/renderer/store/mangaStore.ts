@@ -19,6 +19,7 @@ import type {
 } from '@shared/manga';
 import { resolveAppLanguage } from '../i18n/language';
 import { ALL_LANGUAGES, chapterState, libraryEntry, type ExtensionFilter } from '../components/mangaText';
+import { activateFilter } from '../components/mangaFilterSearch';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { useAppStore } from './appStore';
 
@@ -198,8 +199,13 @@ interface MangaState {
     selectChapters: (kind: ChapterSelectionKind) => void;
     downloadSelected: () => Promise<void>;
     addToLibrary: () => Promise<boolean>;
-    // Goes to the library.
-    showInLibrary: () => void;
+    // Goes to the library, on the page of the manga that is open.
+    showInLibrary: () => Promise<void>;
+    // Goes to the source of the manga that is open (from the library), on the page of the manga there.
+    showInSource: () => Promise<void>;
+    // Opens the search of the source of the manga that is open with a genre, a tag, an author or an artist: as a filter when the source
+    // has one by that name, else as the text of the search.
+    searchByTerm: (term: string) => Promise<void>;
 
     refreshLibrary: () => Promise<void>;
     downloadMissing: (mangaId: number) => Promise<void>;
@@ -678,8 +684,44 @@ export const useMangaStore = create<MangaState>((set, get) => {
             return library !== null;
         },
 
-        showInLibrary: () => {
+        showInLibrary: async () => {
+            const { selection } = get();
+            if (selection === null) {
+                return;
+            }
+            const manga = summaryOf(selection);
             set({ view: 'library', selection: null });
+            await get().openManga(manga);
+        },
+
+        showInSource: async () => {
+            const { selection } = get();
+            if (selection === null) {
+                return;
+            }
+            const manga = summaryOf(selection);
+            set({ view: 'browse' });
+            get().openSource(manga.sourceId, 'popular');
+            await get().openManga(manga);
+        },
+
+        searchByTerm: async (term) => {
+            const { selection } = get();
+            const text = term.trim();
+            if (selection === null || text.length === 0) {
+                return;
+            }
+            set({ view: 'browse' });
+            get().openSource(selection.manga.sourceId, 'search');
+            await get().loadFilters();
+            const { filters } = get().browse;
+            const activated = activateFilter(filters, text);
+            if (activated === null) {
+                patchBrowse({ query: text });
+            } else {
+                patchBrowse({ filters: activated, filtersOpen: true });
+            }
+            await get().runList();
         },
 
         refreshLibrary: async () => {

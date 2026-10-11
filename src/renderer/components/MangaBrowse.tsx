@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { MangaListKind } from '@shared/manga';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
@@ -88,6 +89,15 @@ export function MangaBrowse() {
             void loadFilters();
         }
     }, [sourceId, mode, settingsOpen, loadFilters]);
+
+    // The next page comes when the end of the list is reached.
+    const endOfList = useInfiniteScroll(
+        () => {
+            void loadMore();
+        },
+        sourceId !== null && hasNextPage && !loadingMore && status === 'done',
+        items.length
+    );
 
     if (selection !== null && selectionFrom === 'browse') {
         return <MangaDetail />;
@@ -228,17 +238,8 @@ export function MangaBrowse() {
                         })}
                     </ul>
                     {hasNextPage && (
-                        <div className="job__actions">
-                            <button
-                                type="button"
-                                className="btn"
-                                disabled={loadingMore}
-                                onClick={() => {
-                                    void loadMore();
-                                }}
-                            >
-                                {loadingMore ? t('manga.browse.loading') : t('manga.browse.more')}
-                            </button>
+                        <div ref={endOfList} className="manga__more" data-testid="manga-end-of-list">
+                            {loadingMore && <p className="empty">{t('manga.browse.loading')}</p>}
                         </div>
                     )}
                 </>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaBrowse } from '@renderer/components/MangaBrowse';
@@ -177,18 +177,108 @@ describe('MangaBrowse a source', () => {
         expect(within(cards[1]!).getByText('IN LIBRARY')).toBeInTheDocument();
     });
 
-    it('loads more when there is another page', async () => {
-        const user = userEvent.setup();
-        mock.api.manga.list.mockResolvedValueOnce({ ok: true, value: { items: ITEMS, hasNextPage: true } });
-        mock.api.manga.list.mockResolvedValueOnce({ ok: true, value: { items: [makeSummary({ remoteId: 3, title: 'One Piece' })], hasNextPage: false } });
-        render(<MangaBrowse />);
-        await openSourceNamed(user, 'Site A');
-        await screen.findByText('Naruto', { selector: '.row-link__text' });
-        await user.click(screen.getByRole('button', { name: 'LOAD MORE' }));
-        expect(await screen.findByText('One Piece', { selector: '.row-link__text' })).toBeInTheDocument();
-        expect(mock.api.manga.list).toHaveBeenLastCalledWith({ sourceId: '5', kind: 'popular', page: 2, query: '' });
-        expect(screen.queryByRole('button', { name: 'LOAD MORE' })).not.toBeInTheDocument();
-        expect(screen.getByText('Results: 3')).toBeInTheDocument();
+    describe('the next page', () => {
+        type Observed = { callback: IntersectionObserverCallback; target: Element | null; disconnected: boolean };
+        let observers: Observed[] = [];
+
+        beforeEach(() => {
+            observers = [];
+            vi.stubGlobal(
+                'IntersectionObserver',
+                class {
+                    private readonly record: Observed;
+                    constructor(callback: IntersectionObserverCallback) {
+                        this.record = { callback, target: null, disconnected: false };
+                        observers.push(this.record);
+                    }
+                    observe(target: Element): void {
+                        this.record.target = target;
+                    }
+                    disconnect(): void {
+                        this.record.disconnected = true;
+                    }
+                    unobserve(): void {
+                        return undefined;
+                    }
+                }
+            );
+        });
+
+        afterEach(() => {
+            vi.unstubAllGlobals();
+        });
+
+        function reachTheEnd(): void {
+            const live = observers.filter((observer) => {
+                return !observer.disconnected && observer.target !== null;
+            });
+            act(() => {
+                live.at(-1)!.callback([{ isIntersecting: true, target: live.at(-1)!.target! } as IntersectionObserverEntry], {} as IntersectionObserver);
+            });
+        }
+
+        it('is loaded when the end of the list is reached, with no button to ask for it', async () => {
+            const user = userEvent.setup();
+            mock.api.manga.list.mockResolvedValueOnce({ ok: true, value: { items: ITEMS, hasNextPage: true } });
+            mock.api.manga.list.mockResolvedValueOnce({ ok: true, value: { items: [makeSummary({ remoteId: 3, title: 'One Piece' })], hasNextPage: false } });
+            render(<MangaBrowse />);
+            await openSourceNamed(user, 'Site A');
+            await screen.findByText('Naruto', { selector: '.row-link__text' });
+            expect(screen.queryByRole('button', { name: 'LOAD MORE' })).not.toBeInTheDocument();
+            expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
+            reachTheEnd();
+            expect(await screen.findByText('One Piece', { selector: '.row-link__text' })).toBeInTheDocument();
+            expect(mock.api.manga.list).toHaveBeenLastCalledWith({ sourceId: '5', kind: 'popular', page: 2, query: '' });
+            expect(screen.getByText('Results: 3')).toBeInTheDocument();
+            expect(screen.queryByTestId('manga-end-of-list')).not.toBeInTheDocument();
+        });
+
+        it('shows that it is loading at the end of the list while the next page comes', async () => {
+            const user = userEvent.setup();
+            let answer: (value: unknown) => void = () => {return undefined};
+            mock.api.manga.list.mockResolvedValueOnce({ ok: true, value: { items: ITEMS, hasNextPage: true } });
+            mock.api.manga.list.mockReturnValueOnce(
+                new Promise((resolve) => {
+                    answer = resolve;
+                })
+            );
+            render(<MangaBrowse />);
+            await openSourceNamed(user, 'Site A');
+            await screen.findByText('Naruto', { selector: '.row-link__text' });
+            expect(within(screen.getByTestId('manga-end-of-list')).queryByText('LOADING…')).not.toBeInTheDocument();
+            reachTheEnd();
+            expect(await within(screen.getByTestId('manga-end-of-list')).findByText('LOADING…')).toBeInTheDocument();
+            answer({ ok: true, value: { items: [], hasNextPage: false } });
+            await vi.waitFor(() => {
+                expect(screen.queryByTestId('manga-end-of-list')).not.toBeInTheDocument();
+            });
+        });
+
+        it('is not asked for twice while one is on its way', async () => {
+            const user = userEvent.setup();
+            mock.api.manga.list.mockResolvedValueOnce({ ok: true, value: { items: ITEMS, hasNextPage: true } });
+            mock.api.manga.list.mockReturnValueOnce(new Promise(() => {return undefined}));
+            render(<MangaBrowse />);
+            await openSourceNamed(user, 'Site A');
+            await screen.findByText('Naruto', { selector: '.row-link__text' });
+            reachTheEnd();
+            await screen.findByText('LOADING…');
+            expect(
+                observers.filter((observer) => {
+                    return !observer.disconnected;
+                })
+            ).toHaveLength(0);
+            expect(mock.api.manga.list).toHaveBeenCalledTimes(2);
+        });
+
+        it('has no end to reach when there is no other page', async () => {
+            const user = userEvent.setup();
+            mock.api.manga.list.mockResolvedValue({ ok: true, value: { items: ITEMS, hasNextPage: false } });
+            render(<MangaBrowse />);
+            await openSourceNamed(user, 'Site A');
+            await screen.findByText('Naruto', { selector: '.row-link__text' });
+            expect(screen.queryByTestId('manga-end-of-list')).not.toBeInTheDocument();
+        });
     });
 
     it('opens a manga from its card, and comes back to the page of the source', async () => {

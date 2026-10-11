@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaDetail } from '@renderer/components/MangaDetail';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaSelection } from '@renderer/store/mangaStore';
-import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSummary } from '../../helpers/mangaFixtures';
+import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -27,7 +27,7 @@ function open(overrides: Partial<MangaSelection> = {}): void {
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
-    useMangaStore.setState({ ...initialManga, library: [], selection: null });
+    useMangaStore.setState({ ...initialManga, library: [], selection: null, selectionFrom: 'library', view: 'library' });
 });
 
 describe('MangaDetail', () => {
@@ -40,10 +40,16 @@ describe('MangaDetail', () => {
         open();
         render(<MangaDetail />);
         expect(screen.getByRole('heading', { name: 'One Piece' })).toBeInTheDocument();
-        expect(screen.getByText('Author: Oda')).toBeInTheDocument();
-        expect(screen.getByText('Artist: Oda E.')).toBeInTheDocument();
+        expect(screen.getByText(/^Author:/)).toHaveTextContent('Author: Oda');
+        expect(screen.getByText(/^Artist:/)).toHaveTextContent('Artist: Oda E.');
         expect(screen.getByText('Ongoing')).toBeInTheDocument();
-        expect(screen.getByText('Action · Adventure')).toBeInTheDocument();
+        expect(
+            within(screen.getByRole('list', { name: 'Genres and tags' }))
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.textContent;
+                })
+        ).toEqual(['Action', 'Adventure']);
         expect(screen.getByText('Pirates search for a treasure.')).toBeInTheDocument();
         expect(document.querySelector('img.cover')).toHaveAttribute('src', 'http://127.0.0.1:4321/api/v1/manga/7/thumbnail');
     });
@@ -97,19 +103,19 @@ describe('MangaDetail', () => {
         open();
         render(<MangaDetail />);
         expect(screen.getByText('Chapters (3)')).toBeInTheDocument();
-        const rows = screen.getAllByRole('listitem');
+        const rows = screen.getAllByTestId('manga-chapter');
         expect(rows).toHaveLength(3);
-        expect(within(rows[0]!).getByRole('checkbox', { name: 'Romance Dawn' })).not.toBeChecked();
+        expect(within(rows[0]!).getByRole('checkbox', { name: 'Select: Romance Dawn' })).not.toBeChecked();
         expect(rows[0]).toHaveTextContent(`Group A · ${new Date(Date.UTC(2023, 10, 14, 12)).toLocaleDateString()}`);
-        expect(within(rows[1]!).getByRole('checkbox', { name: '#2' })).toBeInTheDocument();
-        expect(rows[2]!.querySelector('input')).toHaveAttribute('aria-label', '');
+        expect(within(rows[1]!).getByRole('checkbox', { name: 'Select: #2' })).toBeInTheDocument();
+        expect(rows[2]!.querySelector('input')).toHaveAttribute('aria-label', 'Select: ');
     });
 
     it('shows the state of the chapters the library already has', () => {
         useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ remoteId: 11, status: 'done' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'error' })])] });
         open();
         render(<MangaDetail />);
-        const rows = screen.getAllByRole('listitem');
+        const rows = screen.getAllByTestId('manga-chapter');
         expect(within(rows[0]!).getByText('Downloaded')).toHaveClass('badge--done');
         expect(within(rows[1]!).getByText('Failed')).toHaveClass('badge--error');
         expect(within(rows[2]!).queryByText(/Downloaded|Failed|Waiting/)).not.toBeInTheDocument();
@@ -119,11 +125,11 @@ describe('MangaDetail', () => {
         const user = userEvent.setup();
         open();
         render(<MangaDetail />);
-        await user.click(screen.getByRole('checkbox', { name: 'Romance Dawn' }));
-        await user.click(screen.getByRole('checkbox', { name: '#2' }));
+        await user.click(screen.getByRole('checkbox', { name: 'Select: Romance Dawn' }));
+        await user.click(screen.getByRole('checkbox', { name: 'Select: #2' }));
         expect(useMangaStore.getState().selection?.selected).toEqual([11, 12]);
         expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (2)' })).toBeEnabled();
-        await user.click(screen.getByRole('checkbox', { name: 'Romance Dawn' }));
+        await user.click(screen.getByRole('checkbox', { name: 'Select: Romance Dawn' }));
         expect(useMangaStore.getState().selection?.selected).toEqual([12]);
     });
 
@@ -153,15 +159,6 @@ describe('MangaDetail', () => {
         render(<MangaDetail />);
         await user.click(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }));
         expect(mock.api.manga.download).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: [CHAPTERS[1]] });
-    });
-
-    it('adds the manga to the library', async () => {
-        const user = userEvent.setup();
-        mock.api.manga.addToLibrary.mockResolvedValue(makeLibraryManga([]));
-        open();
-        render(<MangaDetail />);
-        await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
-        expect(mock.api.manga.addToLibrary).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: CHAPTERS });
     });
 
     it('goes back to the list', async () => {
@@ -233,5 +230,219 @@ describe('MangaDetail removing a chapter of the library', () => {
         open();
         render(<MangaDetail />);
         expect(screen.queryByRole('button', { name: /^Remove chapter/ })).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaDetail in the library page', () => {
+    const SAVED = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'idle' })], { id: 9 });
+
+    it('downloads what is missing from the page of the manga, and not from the list', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.library.mockResolvedValue([SAVED]);
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD MISSING' }));
+        expect(mock.api.manga.downloadMissing).toHaveBeenCalledWith([9]);
+    });
+
+    it('cannot download what is missing when everything is downloaded', () => {
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ remoteId: 11, status: 'done' })])] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'DOWNLOAD MISSING' })).toBeDisabled();
+    });
+
+    it('goes to the source, on the page of the manga there, when the extension is installed', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [SAVED], browse: { ...initialManga.browse, sources: [makeSource({ id: '123' })], sourcesStatus: 'ready' } });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'GO TO SOURCE' }));
+        expect(useMangaStore.getState().view).toBe('browse');
+        expect(useMangaStore.getState().browse.sourceId).toBe('123');
+        expect(useMangaStore.getState().selectionFrom).toBe('browse');
+        expect(mock.api.manga.details).toHaveBeenCalledWith(7);
+    });
+
+    it('cannot go to the source when its extension is not installed, and says why', () => {
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        const button = screen.getByRole('button', { name: 'GO TO SOURCE' });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'The extension of this source is not installed.');
+    });
+
+    it('has no button to add to the library or to go to it, since it is there', () => {
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'GO TO LIBRARY' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /ADD MISSING CHAPTERS/ })).not.toBeInTheDocument();
+    });
+
+    it('reads a chapter by clicking on its row, with no READ button', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        const row = screen.getAllByTestId('manga-chapter')[0]!;
+        expect(row).toHaveClass('row--link');
+        expect(within(row).getAllByRole('button')).toHaveLength(1);
+        expect(within(row).queryByText('READ')).not.toBeInTheDocument();
+        await user.click(within(row).getByRole('button', { name: 'READ: Romance Dawn' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 11, libraryChapterId: null });
+    });
+});
+
+describe('MangaDetail in the page of the browse', () => {
+    const SAVED = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' })], { id: 9 });
+
+    beforeEach(() => {
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse' });
+    });
+
+    it('only reads and adds: no way to pick, download or remove chapters', () => {
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /DOWNLOAD/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'ALL' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'NONE' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'NOT DOWNLOADED' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Remove chapter/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'GO TO SOURCE' })).not.toBeInTheDocument();
+    });
+
+    it('still shows the state of the chapters the library has', () => {
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        expect(within(screen.getAllByTestId('manga-chapter')[0]!).getByText('Downloaded')).toBeInTheDocument();
+    });
+
+    it('adds the manga to the library', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.addToLibrary.mockResolvedValue(makeLibraryManga([]));
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'GO TO LIBRARY' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /ADD MISSING CHAPTERS/ })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
+        expect(mock.api.manga.addToLibrary).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: CHAPTERS });
+    });
+
+    it('goes to the library, on the page of the manga there, when it is in it', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'GO TO LIBRARY' }));
+        expect(useMangaStore.getState().view).toBe('library');
+        expect(useMangaStore.getState().selectionFrom).toBe('library');
+        expect(mock.api.manga.details).toHaveBeenCalledWith(7);
+    });
+
+    it('adds the chapters the library does not have yet, and says how many', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.addToLibrary.mockResolvedValue(SAVED);
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'ADD MISSING CHAPTERS (2)' }));
+        expect(mock.api.manga.addToLibrary).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: CHAPTERS });
+    });
+
+    it('cannot add chapters when the library has them all', () => {
+        useMangaStore.setState({ library: [makeLibraryManga(CHAPTERS.map((chapter, index) => {
+            return makeChapterRecord({ id: index + 1, remoteId: chapter.remoteId });
+        }), { id: 9 })] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'ADD MISSING CHAPTERS (0)' })).toBeDisabled();
+    });
+
+    it('reads a chapter by clicking on its row', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'READ: Romance Dawn' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 11, libraryChapterId: null });
+    });
+});
+
+describe('MangaDetail searching by what the source says', () => {
+    beforeEach(() => {
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse', browse: { ...initialManga.browse, sources: [makeSource({ id: '123' })], sourcesStatus: 'ready' } });
+        mock.api.manga.sourceFilters.mockResolvedValue({
+            ok: true,
+            value: [
+                { type: 'text', name: 'Title', value: '' },
+                { type: 'group', name: 'Genres', filters: [{ type: 'tristate', name: 'Action', value: 'ignore' }, { type: 'tristate', name: 'Adventure', value: 'ignore' }] },
+                { type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: false }] }
+            ]
+        });
+        mock.api.manga.list.mockResolvedValue({ ok: true, value: { items: [], hasNextPage: false } });
+    });
+
+    it('opens the search of the source with the genre as a filter that is on', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'Search by: Adventure' }));
+        await vi.waitFor(() => {
+            expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
+        });
+        expect(mock.api.manga.sourceFilters).toHaveBeenCalledWith('123');
+        expect(mock.api.manga.list).toHaveBeenCalledWith({
+            sourceId: '123',
+            kind: 'search',
+            page: 1,
+            query: '',
+            filters: [
+                { type: 'text', name: 'Title', value: '' },
+                { type: 'group', name: 'Genres', filters: [{ type: 'tristate', name: 'Action', value: 'ignore' }, { type: 'tristate', name: 'Adventure', value: 'include' }] },
+                { type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: false }] }
+            ]
+        });
+        expect(useMangaStore.getState()).toMatchObject({ view: 'browse', selection: null });
+        expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'search', filtersOpen: true });
+    });
+
+    it('does the same for the author when the source has a filter for them', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'Search by: Oda' }));
+        await vi.waitFor(() => {
+            expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
+        });
+        const sent = mock.api.manga.list.mock.calls[0]![0];
+        expect(sent).toMatchObject({ kind: 'search', query: '' });
+        expect(sent.filters?.[2]).toEqual({ type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: true }] });
+    });
+
+    it('searches by the text when the source has no filter for it', async () => {
+        const user = userEvent.setup();
+        open({ details: makeDetails({ artist: 'Someone Else' }) });
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'Search by: Someone Else' }));
+        await vi.waitFor(() => {
+            expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
+        });
+        expect(mock.api.manga.list).toHaveBeenCalledWith({
+            sourceId: '123',
+            kind: 'search',
+            page: 1,
+            query: 'Someone Else',
+            filters: [
+                { type: 'text', name: 'Title', value: '' },
+                { type: 'group', name: 'Genres', filters: [{ type: 'tristate', name: 'Action', value: 'ignore' }, { type: 'tristate', name: 'Adventure', value: 'ignore' }] },
+                { type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: false }] }
+            ]
+        });
     });
 });

@@ -272,7 +272,16 @@ async function openSource(page: Page): Promise<void> {
 async function openOnePiece(page: Page): Promise<void> {
     await openSource(page);
     await page.getByRole('button', { name: 'Open: One Piece' }).click();
-    await expect(page.getByRole('checkbox', { name: 'Romance Dawn' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'READ: Romance Dawn' })).toBeVisible();
+}
+
+// Adds One Piece to the library from the browse and opens it there: the chapters are picked, downloaded and removed in the library.
+async function openOnePieceInLibrary(page: Page): Promise<void> {
+    await openOnePiece(page);
+    await page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+    await goTo(page, 'LIBRARY');
+    await page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Select: Romance Dawn' })).toBeVisible();
 }
 
 async function waitForDownloaded(page: Page): Promise<void> {
@@ -538,7 +547,8 @@ test.describe('manga section', () => {
         await expect(reader.getByRole('button', { name: 'NEXT CHAPTER' })).toBeDisabled();
         await session.page.keyboard.press('Escape');
         await expect(reader).toHaveCount(0);
-        await expect(session.page.getByRole('checkbox', { name: 'Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('checkbox')).toHaveCount(0);
         // Opened again, it comes back in the mode that was chosen.
         await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
         await expect(session.page.getByRole('region', { name: 'Reader' }).getByRole('img')).toHaveCount(3);
@@ -549,12 +559,10 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
-        await openOnePiece(session.page);
-        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' }).check();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
         await waitForDownloaded(session.page);
-        await goTo(session.page, 'LIBRARY');
-        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
         const before = fake.requests.filter((item) => {return item.path.startsWith('/api/v1/chapter/101/page/')}).length;
         await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
@@ -574,9 +582,15 @@ test.describe('manga section', () => {
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePiece(session.page);
-        await expect(session.page.getByText('Author: Oda')).toBeVisible();
+        await expect(session.page.getByText(/^Author:/)).toHaveText('Author: Oda');
         await expect(session.page.getByText('Chapters (2)')).toBeVisible();
-        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        // The page of the browse only reads and adds: nothing to pick or download there.
+        await expect(session.page.getByRole('checkbox')).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: /^DOWNLOAD (SELECTED|MISSING)/ })).toHaveCount(0);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' }).check();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
         await waitForDownloaded(session.page);
 
@@ -608,32 +622,74 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
-        await openOnePiece(session.page);
-        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' }).check();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
         await waitForDownloaded(session.page);
+        await expect(session.page.locator('.badge--done', { hasText: 'Downloaded' })).toBeVisible();
 
-        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: '← BACK' }).click();
         const entry = session.page.getByTestId('manga-entry');
         await expect(entry.getByRole('heading', { name: 'One Piece' })).toBeVisible();
-        await expect(entry.getByText('1 of 1 downloaded')).toBeVisible();
+        await expect(entry.getByText('1 of 2 downloaded')).toBeVisible();
+        // There is no button to download what is missing in the list: that is in the page of the manga.
+        await expect(entry.getByRole('button', { name: 'DOWNLOAD MISSING' })).toHaveCount(0);
 
-        // The browse goes back to the manga that was open, whose chapter says it is downloaded; the list says the manga is in the library.
+        // The list of the browse says the manga is in the library.
         await goTo(session.page, 'BROWSE');
-        await expect(session.page.locator('.badge--done', { hasText: 'Downloaded' })).toBeVisible();
-        await session.page.getByRole('button', { name: '← BACK' }).click();
         await expect(session.page.getByText('IN LIBRARY')).toBeVisible();
-
-        // The manga is opened from the library by clicking on its card, and its chapter says it is downloaded there too.
-        await goTo(session.page, 'LIBRARY');
-        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
-        await expect(session.page.getByRole('checkbox', { name: 'Romance Dawn' })).toBeVisible();
-        await expect(session.page.locator('.badge--done', { hasText: 'Downloaded' })).toBeVisible();
-        await session.page.getByRole('button', { name: '← BACK' }).click();
-        await expect(session.page.getByTestId('manga-entry')).toBeVisible();
     });
 
-    test('adds a manga to the library with all its chapters, and downloads what is missing', async () => {
+    test('goes from the source to the library and from the library to the source, and adds the chapters the library lacks', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await expect(session.page.getByRole('button', { name: 'GO TO LIBRARY' })).toHaveCount(0);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await expect(session.page.getByRole('button', { name: 'GO TO LIBRARY' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'ADD MISSING CHAPTERS (0)' })).toBeDisabled();
+        await session.page.getByRole('button', { name: 'GO TO LIBRARY' }).click();
+        await expect(session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');
+        await session.page.getByRole('button', { name: 'GO TO SOURCE' }).click();
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('checkbox')).toHaveCount(0);
+        await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'BROWSE', exact: true })).toHaveAttribute('aria-current', 'page');
+    });
+
+    test('searches the source by a genre as a filter, and by the author as text when the source has no filter for them', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'Search by: Action', exact: true }).click();
+        await expect(session.page.getByRole('button', { name: 'Open: One Piece' })).toBeVisible();
+        const searches = (): ReturnType<FakeSuwayomi['graphqlRequests']> => {
+            return fake.graphqlRequests('fetchSourceManga').filter((item) => {return item.variables?.['type'] === 'SEARCH'});
+        };
+        expect(searches()).toHaveLength(1);
+        expect(searches()[0]?.variables).toEqual({
+            source: SOURCE_ID,
+            type: 'SEARCH',
+            page: 1,
+            query: '',
+            filters: [
+                { position: 0, checkBoxState: false },
+                { position: 1, triState: 'INCLUDE' },
+                { position: 2, sortState: { index: 0, ascending: true } },
+                { position: 3, groupChange: { position: 0, triState: 'IGNORE' } }
+            ]
+        });
+        await expect(session.page.getByRole('checkbox', { name: 'Action', exact: true })).toHaveAttribute('aria-checked', 'true');
+
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'Search by: Oda', exact: true }).click();
+        await expect.poll(() => {return searches().length}).toBe(2);
+        expect(searches()[1]?.variables).toMatchObject({ source: SOURCE_ID, type: 'SEARCH', page: 1, query: 'Oda' });
+    });
+
+    test('adds a manga to the library with all its chapters, and downloads what is missing from the page of the manga', async () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
@@ -643,7 +699,10 @@ test.describe('manga section', () => {
         await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
         expect(existsSync(join(mangaFolder(), 'One Piece'))).toBe(false);
 
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
         await session.page.getByRole('button', { name: 'DOWNLOAD MISSING' }).click();
+        await expect(session.page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 30000 });
+        await session.page.getByRole('button', { name: '← BACK' }).click();
         await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible({ timeout: 30000 });
         // The oldest chapter goes first.
         const order = fake.graphqlRequests('fetchChapterPages').map((item) => {return item.variables?.['chapterId']});
@@ -655,8 +714,8 @@ test.describe('manga section', () => {
         session = await launch({ mangaFormat: 'folder' });
         await openManga(session.page);
         await installExtension(session.page);
-        await openOnePiece(session.page);
-        await session.page.getByRole('checkbox', { name: 'The Great Race' }).check();
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('checkbox', { name: 'Select: The Great Race' }).check();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
         await waitForDownloaded(session.page);
         const folder = join(mangaFolder(), 'One Piece', 'Chapter 2');
@@ -681,8 +740,8 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
-        await openOnePiece(session.page);
-        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' }).check();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
         await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
         const job = session.page.getByTestId('manga-job');
@@ -703,8 +762,8 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
-        await openOnePiece(session.page);
-        await session.page.getByRole('checkbox', { name: 'Romance Dawn' }).check();
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' }).check();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
         await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
         const job = session.page.getByTestId('manga-job');
@@ -721,11 +780,11 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
-        await openOnePiece(session.page);
+        await openOnePieceInLibrary(session.page);
         await session.page.getByRole('button', { name: 'ALL' }).click();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (2)' }).click();
         await expect(session.page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 30000 });
-        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: '← BACK' }).click();
         await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible({ timeout: 30000 });
         await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
         await session.page.getByRole('button', { name: 'Remove chapter: Romance Dawn' }).click();

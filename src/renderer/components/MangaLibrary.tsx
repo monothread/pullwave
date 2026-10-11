@@ -13,9 +13,6 @@ interface MangaRowProps {
 
 function MangaRow({ manga }: MangaRowProps) {
     const t = useTranslator();
-    const downloadMissing = useMangaStore((state) => {
-        return state.downloadMissing;
-    });
     const openFolder = useMangaStore((state) => {
         return state.openFolder;
     });
@@ -27,7 +24,6 @@ function MangaRow({ manga }: MangaRowProps) {
     });
     const [confirming, setConfirming] = useState(false);
     const done = downloadedCount(manga);
-    const complete = manga.chapters.length > 0 && done === manga.chapters.length;
 
     return (
         <li className="manga__entry" data-testid="manga-entry">
@@ -48,16 +44,6 @@ function MangaRow({ manga }: MangaRowProps) {
                     <span className="history__meta">{t('manga.library.progress', { done, total: manga.chapters.length })}</span>
                 </div>
                 <span className="anime__actions">
-                    <button
-                        type="button"
-                        className="btn btn--small btn--primary"
-                        disabled={complete || manga.chapters.length === 0}
-                        onClick={() => {
-                            void downloadMissing(manga.id);
-                        }}
-                    >
-                        {t('manga.library.downloadMissing')}
-                    </button>
                     <button
                         type="button"
                         className="btn btn--small"
