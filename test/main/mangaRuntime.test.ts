@@ -11,6 +11,7 @@ import type { Settings } from '@shared/types';
 import type { ToolState } from '@shared/tools';
 import { createMangaRuntime, type MangaRuntimeOptions } from '@main/mangaRuntime';
 import { MangaDb } from '@main/services/manga/mangaDb';
+import { CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS } from '@main/services/manga/mangaUpdateChecker';
 import { FLARESOLVERR_IMAGE, FLARESOLVERR_VERSION } from '@main/services/tools/flaresolverrDocker';
 import { suwayomiSpec } from '@main/services/tools/suwayomiRelease';
 import { fakeDocker } from '../helpers/fakeDocker';
@@ -415,6 +416,24 @@ describe('createMangaRuntime files', () => {
         expect(opened).toEqual(['/some/folder']);
     });
 
+    it('opens the page of a manga on its site through the app', () => {
+        const sites: string[] = [];
+        const { runtime } = setup({
+            openSite: (url) => {
+                sites.push(url);
+            }
+        });
+        runtime!.handlers.openSite('https://dex.example/one-piece');
+        expect(sites).toEqual(['https://dex.example/one-piece']);
+    });
+
+    it('does nothing when the system gives no way to open a site', () => {
+        const { runtime } = setup();
+        expect(() => {
+            runtime!.handlers.openSite('https://dex.example/one-piece');
+        }).not.toThrow();
+    });
+
     it('tells the screen when the library changes', () => {
         const { runtime, sent } = setup();
         runtime!.handlers.onLibraryChanged();
@@ -440,6 +459,187 @@ function installProgram(root: string, spec: { id: string; version: string; sha25
     writeFileSync(join(directory, spec.entry), 'x');
     writeFileSync(join(directory, '.pullwave-tool.json'), JSON.stringify({ id: spec.id, version: spec.version, sha256: spec.sha256 }));
 }
+
+describe('createMangaRuntime migrating the folder', () => {
+    function addDownloaded(runtime: NonNullable<ReturnType<typeof createMangaRuntime>>, base: string): { chapterId: number; path: string } {
+        const manga = runtime.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        const chapter = runtime.db.ensureChapter(manga.id, { remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 });
+        const path = join(base, 'One Piece', 'Chapter 1.cbz');
+        mkdirSync(join(base, 'One Piece'), { recursive: true });
+        writeFileSync(path, 'zip');
+        runtime.db.markDone(chapter.id, path, 3, 1);
+        return { chapterId: chapter.id, path };
+    }
+
+    it('asks for a folder starting at the current one, moves the chapters there, saves the folder and tells how far it is', async () => {
+        const asked: string[] = [];
+        const saved: string[] = [];
+        const dir = makeTempDir();
+        const current = join(dir, 'current');
+        const target = join(dir, 'target');
+        const { runtime, sent } = setup({
+            settings: { mangaDirectory: current },
+            chooseMigrationFolder: (startAt) => {
+                asked.push(startAt);
+                return Promise.resolve(target);
+            },
+            saveMangaDirectory: (directory) => {
+                saved.push(directory);
+            }
+        });
+        const { chapterId } = addDownloaded(runtime!, current);
+
+        await expect(runtime!.handlers.migrateFolder()).resolves.toEqual({ ok: true, chapters: 1, files: 1, destination: target });
+
+        expect(asked).toEqual([current]);
+        expect(saved).toEqual([target]);
+        expect(runtime!.db.getChapter(chapterId)?.filePath).toBe(join(target, 'One Piece', 'Chapter 1.cbz'));
+        expect(readFileSync(join(target, 'One Piece', 'Chapter 1.cbz'), 'utf-8')).toBe('zip');
+        expect(sent.filter((item) => {return item.channel === IPC.eventMangaMigration}).map((item) => {return item.payload})).toEqual([
+            { done: 0, total: 1 },
+            { done: 1, total: 1 }
+        ]);
+    });
+
+    it('starts at the default folder when the settings have none', async () => {
+        const asked: string[] = [];
+        const { runtime, dir } = setup({
+            chooseMigrationFolder: (startAt) => {
+                asked.push(startAt);
+                return Promise.resolve(null);
+            }
+        });
+        await runtime!.handlers.migrateFolder();
+        expect(asked).toEqual([join(dir, 'Downloads', 'Pullwave Manga')]);
+    });
+
+    it('says it was called off when no folder is chosen, and moves and saves nothing', async () => {
+        const saved: string[] = [];
+        const { runtime, sent } = setup({
+            chooseMigrationFolder: () => {
+                return Promise.resolve(null);
+            },
+            saveMangaDirectory: (directory) => {
+                saved.push(directory);
+            }
+        });
+        await expect(runtime!.handlers.migrateFolder()).resolves.toEqual({ ok: false, reason: 'cancelled' });
+        expect(saved).toEqual([]);
+        expect(sent).toEqual([]);
+    });
+
+    it('says it was called off when the system has no way to ask for a folder', async () => {
+        const { runtime } = setup();
+        await expect(runtime!.handlers.migrateFolder()).resolves.toEqual({ ok: false, reason: 'cancelled' });
+    });
+
+    it('answers why it did not happen, changing nothing', async () => {
+        const dir = makeTempDir();
+        const current = join(dir, 'current');
+        const saved: string[] = [];
+        const { runtime } = setup({
+            settings: { mangaDirectory: current },
+            chooseMigrationFolder: () => {
+                return Promise.resolve(current);
+            },
+            saveMangaDirectory: (directory) => {
+                saved.push(directory);
+            }
+        });
+        const { chapterId, path } = addDownloaded(runtime!, current);
+        await expect(runtime!.handlers.migrateFolder()).resolves.toEqual({ ok: false, reason: 'same' });
+        expect(runtime!.db.getChapter(chapterId)?.filePath).toBe(path);
+        expect(saved).toEqual([]);
+    });
+});
+
+describe('createMangaRuntime looking for new chapters', () => {
+    function fetchWithChapters(chapters: number[]): typeof fetch {
+        return vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+            const body = JSON.parse(String(init?.body)) as { query: string };
+            if (body.query.includes('fetchMangaAndChapters')) {
+                const manga = { id: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null, realUrl: 'https://dex.example/one-piece', author: 'Oda', artist: null, description: null, genre: ['Action'], status: 'ONGOING' };
+                const list = chapters.map((id) => {
+                    return { id, name: `Chapter ${id}`, chapterNumber: id, uploadDate: '0', scanlator: null, sourceOrder: id };
+                });
+                return Promise.resolve(new Response(JSON.stringify({ data: { fetchMangaAndChapters: { manga, chapters: list } } }), { status: 200 }));
+            }
+            return Promise.resolve(new Response(JSON.stringify({ errors: [{ message: 'not faked' }] }), { status: 200 }));
+        }) as unknown as typeof fetch;
+    }
+
+    function addManga(runtime: NonNullable<ReturnType<typeof createMangaRuntime>>): number {
+        const manga = runtime.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        runtime.db.registerChapters(manga.id, [{ remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 }]);
+        return manga.id;
+    }
+
+    it('adds the chapters the source has that the library does not, keeps the page of the site, and tells the screen', async () => {
+        const { runtime, sent } = setup({ fetchImpl: fetchWithChapters([1, 2, 3]) });
+        const id = addManga(runtime!);
+
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ count: 2, titles: ['One Piece'] });
+
+        expect(runtime!.db.chaptersOf(id).map((chapter) => {return [chapter.remoteId, chapter.status]}).sort()).toEqual([[1, 'idle'], [2, 'idle'], [3, 'idle']]);
+        expect(runtime!.db.getManga(id)).toMatchObject({ url: 'https://dex.example/one-piece', author: 'Oda', genres: ['Action'], status: 'ongoing' });
+        expect(sent).toEqual([
+            { channel: IPC.eventMangaLibrary, payload: undefined },
+            { channel: IPC.eventMangaNewChapters, payload: { count: 2, titles: ['One Piece'] } }
+        ]);
+    });
+
+    it('does not look when the setting is off', async () => {
+        const fetchImpl = fetchWithChapters([1, 2, 3]);
+        const { runtime, sent } = setup({ fetchImpl, settings: { mangaCheckNewChapters: false } });
+        addManga(runtime!);
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ count: 0, titles: [] });
+        expect(fetchImpl).not.toHaveBeenCalled();
+        expect(sent).toEqual([]);
+    });
+
+    it('leaves the library alone when the server cannot answer', async () => {
+        const { runtime, sent } = setup();
+        const id = addManga(runtime!);
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ count: 0, titles: [] });
+        expect(runtime!.db.chaptersOf(id)).toHaveLength(1);
+        expect(sent).toEqual([]);
+    });
+
+    it('uses the times it is told to use', async () => {
+        vi.useFakeTimers();
+        try {
+            const fetchImpl = fetchWithChapters([1, 2]);
+            const { runtime } = setup({ fetchImpl, checkTimes: { firstMs: 30, everyMs: 1000 } });
+            addManga(runtime!);
+            runtime!.prepare();
+            await vi.advanceTimersByTimeAsync(29);
+            expect(fetchImpl).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1);
+            expect(fetchImpl).toHaveBeenCalled();
+            await runtime!.shutdown();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('starts when the app opens and stops when it closes', async () => {
+        vi.useFakeTimers();
+        try {
+            const fetchImpl = fetchWithChapters([1, 2]);
+            const { runtime } = setup({ fetchImpl });
+            addManga(runtime!);
+            runtime!.prepare();
+            await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
+            expect(fetchImpl).toHaveBeenCalled();
+            const calls = (fetchImpl as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+            await runtime!.shutdown();
+            await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS * 2);
+            expect((fetchImpl as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(calls);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
 
 describe('createMangaRuntime Cloudflare helper', () => {
     let flare: Server;

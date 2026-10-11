@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import type { MangaChapter, MangaSummary } from '@shared/manga';
 import { INTERRUPTED_MESSAGE, MangaDb } from '@main/services/manga/mangaDb';
@@ -23,7 +24,7 @@ afterEach(() => {
 
 describe('MangaDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(2);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(3);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -33,7 +34,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(2);
+        expect(second.schemaVersion).toBe(3);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -48,6 +49,7 @@ describe('MangaDb mangas', () => {
             remoteId: 7,
             title: 'One Piece',
             thumbnailUrl: 'http://127.0.0.1:1/t.jpg',
+            url: null,
             author: null,
             artist: null,
             description: null,
@@ -73,8 +75,8 @@ describe('MangaDb mangas', () => {
 
     it('keeps what the source says about a manga, and keeps it when the manga is added again', () => {
         const { db, manga } = setup();
-        db.saveDetails(manga.id, { author: 'Oda', artist: 'Oda E.', description: 'Pirates', genres: ['Action', 'Adventure'], status: 'ongoing' });
-        const expected = { author: 'Oda', artist: 'Oda E.', description: 'Pirates', genres: ['Action', 'Adventure'], status: 'ongoing' };
+        db.saveDetails(manga.id, { url: 'https://dex.example/one-piece', author: 'Oda', artist: 'Oda E.', description: 'Pirates', genres: ['Action', 'Adventure'], status: 'ongoing' });
+        const expected = { url: 'https://dex.example/one-piece', author: 'Oda', artist: 'Oda E.', description: 'Pirates', genres: ['Action', 'Adventure'], status: 'ongoing' };
         expect(db.getManga(manga.id)).toMatchObject(expected);
         expect(db.upsertManga({ ...MANGA, title: 'One Piece 2' })).toMatchObject({ ...expected, title: 'One Piece 2' });
     });
@@ -248,6 +250,73 @@ describe('MangaDb states of a download', () => {
         expect(states.slice(2).map((state) => {
             return state?.status;
         })).toEqual(['paused', 'done', 'idle']);
+    });
+});
+
+describe('MangaDb the page of the manga on its site', () => {
+    it('is kept with the details, replaced when the source says another one, and cleared when it says none', () => {
+        const { db, manga } = setup();
+        const details = { url: 'https://dex.example/one-piece', author: null, artist: null, description: null, genres: [], status: 'unknown' as const };
+        db.saveDetails(manga.id, details);
+        expect(db.getManga(manga.id)?.url).toBe('https://dex.example/one-piece');
+        db.saveDetails(manga.id, { ...details, url: 'https://other.example/op' });
+        expect(db.getLibraryManga(manga.id)?.url).toBe('https://other.example/op');
+        db.saveDetails(manga.id, { ...details, url: null });
+        expect(db.getManga(manga.id)?.url).toBeNull();
+    });
+
+    it('is added to a library made before it existed, keeping what was in it', () => {
+        const path = join(makeTempDir(), 'old.db');
+        const old = new DatabaseSync(path);
+        old.exec(`CREATE TABLE manga (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, remote_id INTEGER NOT NULL, title TEXT NOT NULL, thumbnail_url TEXT, created_at INTEGER NOT NULL, UNIQUE (source_id, remote_id));
+            CREATE TABLE chapter (id INTEGER PRIMARY KEY AUTOINCREMENT, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, remote_id INTEGER NOT NULL, name TEXT NOT NULL, number REAL, date_uploaded INTEGER, scanlator TEXT, source_order INTEGER NOT NULL, status TEXT NOT NULL, page_count INTEGER NOT NULL DEFAULT 0, file_path TEXT, size_bytes INTEGER, error_code TEXT, error_raw TEXT, downloaded_at INTEGER, UNIQUE (manga_id, remote_id));
+            ALTER TABLE manga ADD COLUMN author TEXT; ALTER TABLE manga ADD COLUMN artist TEXT; ALTER TABLE manga ADD COLUMN description TEXT; ALTER TABLE manga ADD COLUMN genres TEXT; ALTER TABLE manga ADD COLUMN status TEXT;
+            INSERT INTO manga (source_id, remote_id, title, thumbnail_url, created_at, author) VALUES ('s', 1, 'Old', NULL, 3, 'Someone');
+            PRAGMA user_version = 2;`);
+        old.close();
+        const db = new MangaDb(path);
+        expect(db.schemaVersion).toBe(3);
+        expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, chapters: [] }]);
+        db.close();
+    });
+});
+
+describe('MangaDb moving the files', () => {
+    it('points chapters at the files they were moved to, with their new size, and touches no other', () => {
+        const { db, manga } = setup();
+        const first = db.ensureChapter(manga.id, chapter(1));
+        const second = db.ensureChapter(manga.id, chapter(2));
+        const third = db.ensureChapter(manga.id, chapter(3));
+        db.markDone(first.id, '/old/1.cbz', 10, 3);
+        db.markDone(second.id, '/old/2.cbz', 20, 3);
+        db.markDone(third.id, '/old/3.cbz', 30, 3);
+        db.relinkChapters([
+            { chapterId: first.id, filePath: '/new/1.cbz', sizeBytes: 11 },
+            { chapterId: second.id, filePath: '/new/2', sizeBytes: null }
+        ]);
+        expect(db.getChapter(first.id)).toMatchObject({ filePath: '/new/1.cbz', sizeBytes: 11, status: 'done' });
+        expect(db.getChapter(second.id)).toMatchObject({ filePath: '/new/2', sizeBytes: null, status: 'done' });
+        expect(db.getChapter(third.id)).toMatchObject({ filePath: '/old/3.cbz', sizeBytes: 30 });
+    });
+
+    it('changes nothing when one of them fails', () => {
+        const { db, manga } = setup();
+        const first = db.ensureChapter(manga.id, chapter(1));
+        db.markDone(first.id, '/old/1.cbz', 10, 3);
+        expect(() => {
+            db.relinkChapters([
+                { chapterId: first.id, filePath: '/new/1.cbz', sizeBytes: 11 },
+                { chapterId: 1, filePath: undefined as unknown as string, sizeBytes: 1 }
+            ]);
+        }).toThrow();
+        expect(db.getChapter(first.id)?.filePath).toBe('/old/1.cbz');
+    });
+
+    it('does nothing for no chapters', () => {
+        const { db } = setup();
+        expect(() => {
+            db.relinkChapters([]);
+        }).not.toThrow();
     });
 });
 

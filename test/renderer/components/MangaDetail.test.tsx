@@ -446,3 +446,58 @@ describe('MangaDetail searching by what the source says', () => {
         });
     });
 });
+
+describe('MangaDetail the site of the source and the chapters that failed', () => {
+    it('opens the page of the manga on its site', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        const button = screen.getByRole('button', { name: 'OPEN SITE' });
+        expect(button).toHaveAttribute('title', 'https://dex.example/manga/one-piece');
+        await user.click(button);
+        expect(mock.api.manga.openSite).toHaveBeenCalledWith('https://dex.example/manga/one-piece');
+    });
+
+    it('has no such button when the source does not say where the manga is, or while it loads', () => {
+        open({ details: makeDetails({ url: null }) });
+        const { rerender } = render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'OPEN SITE' })).not.toBeInTheDocument();
+        open({ status: 'loading', details: null, chapters: [] });
+        rerender(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'OPEN SITE' })).not.toBeInTheDocument();
+    });
+
+    it('shows the button on the page of the browse too', () => {
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse' });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'OPEN SITE' })).toBeInTheDocument();
+    });
+
+    it('offers to try again a chapter that failed or was cancelled, in the library page only', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({
+            library: [
+                makeLibraryManga([
+                    makeChapterRecord({ id: 1, remoteId: 11, status: 'error' }),
+                    makeChapterRecord({ id: 2, remoteId: 12, status: 'cancelled' }),
+                    makeChapterRecord({ id: 3, remoteId: 13, status: 'done' })
+                ])
+            ]
+        });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'RETRY: #3' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'RETRY: Romance Dawn' }));
+        expect(mock.api.manga.retry).toHaveBeenCalledWith(1);
+        await user.click(screen.getByRole('button', { name: 'RETRY: #2' }));
+        expect(mock.api.manga.retry).toHaveBeenLastCalledWith(2);
+    });
+
+    it('does not offer it on the page of the browse', () => {
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse', library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'error' })])] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: /^RETRY/ })).not.toBeInTheDocument();
+    });
+});

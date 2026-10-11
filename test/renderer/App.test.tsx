@@ -459,7 +459,7 @@ describe('App manga section', () => {
         await screen.findByRole('button', { name: 'MANGA' });
         const before = mock.unsubscribers.length;
         unmount();
-        expect(before).toBe(10);
+        expect(before).toBe(12);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

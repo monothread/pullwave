@@ -7,6 +7,8 @@ import type { MangaHandlerDependencies } from './ipc/registerMangaHandlers';
 import { MangaChapterDownloader } from './services/manga/mangaChapterDownloader';
 import { MangaDb } from './services/manga/mangaDb';
 import { MangaDownloadQueue } from './services/manga/mangaDownloadQueue';
+import { migrateMangaFolder, type MangaMigrationFileSystem } from './services/manga/mangaMigration';
+import { MangaUpdateChecker } from './services/manga/mangaUpdateChecker';
 import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, mangaDirectory } from './services/manga/mangaFiles';
 import { createImageFetcher } from './services/manga/mangaImages';
 import { LocalPages } from './services/manga/localPages';
@@ -30,6 +32,16 @@ export interface MangaRuntimeOptions {
     send: (channel: string, payload?: unknown) => void;
     // Opens a folder in the file manager of the system (the tests replace it).
     openFolder: (path: string) => void;
+    // When the first look for new chapters is made after the app opens, and how often after that, when not the usual (the end-to-end tests).
+    checkTimes?: { firstMs: number; everyMs: number };
+    // Opens an address in the browser of the system (the tests replace it).
+    openSite?: (url: string) => void;
+    // Asks the user for the folder the mangas are migrated to, starting at the given folder; null when they gave up (the tests replace it).
+    chooseMigrationFolder?: (startAt: string) => Promise<string | null>;
+    // Saves the folder the mangas are in now in the settings (once a migration has moved them).
+    saveMangaDirectory?: (directory: string) => void;
+    // How the files are copied and removed by a migration (the tests replace it).
+    migrationFiles?: MangaMigrationFileSystem;
     // A server that is already running: nothing is downloaded and nothing is started (used by the end-to-end tests).
     externalBaseUrl?: string | null;
     // How the program is downloaded and how the server is started (the tests replace them).
@@ -44,6 +56,8 @@ export interface MangaRuntime {
     queue: MangaDownloadQueue;
     db: MangaDb;
     handlers: MangaHandlerDependencies;
+    // Looks for new chapters in the mangas of the library, once an hour.
+    checker: MangaUpdateChecker;
     // Serves the pages of the chapters of the library to the screen (registered for the scheme of the pages).
     pageHandler: (request: Request) => Promise<Response>;
     // Downloads the program in the background when it is not there (done when the app opens).
@@ -240,15 +254,62 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             return downloaded?.filePath != null ? dirname(downloaded.filePath) : mangaDirectory(baseDirectory(), manga.title, options.platform);
         },
         openFolder: options.openFolder,
+        openSite: (url) => {
+            options.openSite?.(url);
+        },
+        migrateFolder: async () => {
+            const currentDirectory = baseDirectory();
+            const chosen = await (options.chooseMigrationFolder?.(currentDirectory) ?? Promise.resolve(null));
+            if (chosen === null) {
+                return { ok: false, reason: 'cancelled' };
+            }
+            const outcome = await migrateMangaFolder({
+                db,
+                files: options.migrationFiles,
+                platform: options.platform,
+                currentDirectory,
+                newDirectory: chosen,
+                saveDirectory: (directory) => {
+                    options.saveMangaDirectory?.(directory);
+                },
+                onProgress: (progress) => {
+                    send(IPC.eventMangaMigration, progress);
+                }
+            });
+            return outcome.ok ? { ...outcome, destination: chosen } : outcome;
+        },
         onLibraryChanged: () => {
             send(IPC.eventMangaLibrary);
         }
     };
+    // Looks, once an hour, for chapters the sources have published for the mangas of the library, and puts them in the library.
+    const checker = new MangaUpdateChecker({
+        db,
+        fetchManga: async (remoteId) => {
+            const result = await service.details(remoteId);
+            if (!result.ok) {
+                throw new Error(result.error.message);
+            }
+            return result.value;
+        },
+        isEnabled: () => {
+            return options.getSettings().mangaCheckNewChapters;
+        },
+        firstDelayMs: options.checkTimes?.firstMs,
+        intervalMs: options.checkTimes?.everyMs,
+        onNewChapters: (news) => {
+            send(IPC.eventMangaNewChapters, news);
+        },
+        onLibraryChanged: () => {
+            send(IPC.eventMangaLibrary);
+        }
+    });
     return {
         service,
         queue,
         db,
         handlers,
+        checker,
         pageHandler: createPageHandler({
             fileOf,
             read: (path, index) => {
@@ -260,8 +321,10 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         prepare: () => {
             void service.install();
+            checker.start();
         },
         shutdown: async () => {
+            checker.stop();
             await Promise.all([queue.shutdown(), service.shutdown(), monitor?.stop()]);
         }
     };

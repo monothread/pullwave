@@ -6,6 +6,10 @@ import { jobStatusKey, mangaErrorKey } from './mangaText';
 
 const ORDER: Record<MangaJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
+function isFailed(job: MangaJob): boolean {
+    return job.status === 'error' || job.status === 'cancelled';
+}
+
 function isFinished(job: MangaJob): boolean {
     return job.status === 'done' || job.status === 'error' || job.status === 'cancelled';
 }
@@ -31,10 +35,14 @@ export function MangaJobs() {
     const clearFinishedJobs = useMangaStore((state) => {
         return state.clearFinishedJobs;
     });
+    const retryFailedJobs = useMangaStore((state) => {
+        return state.retryFailedJobs;
+    });
 
     if (jobs.length === 0) {
         return <p className="empty">{t('manga.jobs.empty')}</p>;
     }
+    const failed = jobs.filter(isFailed).length;
     const sorted = [...jobs].sort((first, second) => {
         return ORDER[first.status] - ORDER[second.status];
     });
@@ -43,6 +51,17 @@ export function MangaJobs() {
         <section className="manga__jobs queue" aria-label={t('manga.jobs.label', { count: jobs.length })}>
             <div className="queue__toolbar">
                 <span className="section-label">{t('manga.jobs.label', { count: jobs.length })}</span>
+                {failed > 0 && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void retryFailedJobs();
+                        }}
+                    >
+                        {t('manga.jobs.retryAll', { count: failed })}
+                    </button>
+                )}
                 {jobs.some(isFinished) && (
                     <button
                         type="button"

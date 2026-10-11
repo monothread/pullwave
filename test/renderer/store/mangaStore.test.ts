@@ -61,7 +61,7 @@ describe('mangaStore init', () => {
         expect(state().library).toEqual(library);
         expect(state().jobs).toEqual(jobs);
         unsubscribe();
-        expect(mock.unsubscribers).toHaveLength(5);
+        expect(mock.unsubscribers).toHaveLength(7);
         mock.unsubscribers.forEach((fn) => {
             expect(fn).toHaveBeenCalledTimes(1);
         });
@@ -159,6 +159,84 @@ describe('mangaStore init', () => {
                 expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
             });
         });
+
+        it('follows the migration of the folder as it goes', () => {
+            mock.emitMangaMigration({ done: 2, total: 9 });
+            expect(state().migration).toEqual({ done: 2, total: 9 });
+        });
+
+        it('says how many chapters the hourly check added, and to which mangas', () => {
+            mock.emitMangaNewChapters({ count: 3, titles: ['One Piece', 'Bleach'] });
+            expect(toasts()).toEqual(['3 new chapter(s) added to the library: One Piece, Bleach']);
+        });
+    });
+});
+
+describe('mangaStore the site, the folder and the downloads that failed', () => {
+    it('opens the page of a manga on its site', async () => {
+        await state().openSite('https://dex.example/one-piece');
+        expect(mock.api.manga.openSite).toHaveBeenCalledWith('https://dex.example/one-piece');
+    });
+
+    it('moves the chapters to a folder, shows the progress while it goes and says how it ended', async () => {
+        let finish: (value: unknown) => void = () => {return undefined};
+        mock.api.manga.migrateFolder.mockReturnValue(
+            new Promise((resolve) => {
+                finish = resolve;
+            })
+        );
+        const pending = state().migrateFolder();
+        expect(state().migration).toEqual({ done: 0, total: 0 });
+        finish({ ok: true, chapters: 4, files: 4, destination: '/mnt/manga' });
+        await expect(pending).resolves.toEqual({ ok: true, chapters: 4, files: 4, destination: '/mnt/manga' });
+        expect(state().migration).toBeNull();
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: '4 chapter(s) moved to /mnt/manga.' });
+    });
+
+    it.each([
+        ['busy', 'Chapters are being downloaded or the folder is being moved. Try again when that is done.'],
+        ['same', 'That is the folder the mangas are in already.'],
+        ['inside', 'The new folder cannot be inside the current one.'],
+        ['conflict', 'The new folder already has files with the names of some chapters. Nothing was moved.'],
+        ['failed', 'The chapters could not be moved. Nothing changed.']
+    ] as const)('says why the migration did not happen (%s)', async (reason, message) => {
+        mock.api.manga.migrateFolder.mockResolvedValue({ ok: false, reason });
+        await expect(state().migrateFolder()).resolves.toEqual({ ok: false, reason });
+        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message });
+        expect(state().migration).toBeNull();
+    });
+
+    it('says nothing when the user gave up choosing a folder', async () => {
+        mock.api.manga.migrateFolder.mockResolvedValue({ ok: false, reason: 'cancelled' });
+        await state().migrateFolder();
+        expect(useAppStore.getState().notice).toBeNull();
+        expect(state().migration).toBeNull();
+    });
+
+    it('takes the progress away even when the migration throws', async () => {
+        mock.api.manga.migrateFolder.mockRejectedValue(new Error('boom'));
+        await expect(state().migrateFolder()).rejects.toThrow('boom');
+        expect(state().migration).toBeNull();
+    });
+
+    it('tries again every download that failed or was cancelled, and none of the others', async () => {
+        useMangaStore.setState({
+            jobs: [
+                makeMangaJob({ chapterId: 1, status: 'error' }),
+                makeMangaJob({ chapterId: 2, status: 'cancelled' }),
+                makeMangaJob({ chapterId: 3, status: 'running' }),
+                makeMangaJob({ chapterId: 4, status: 'queued' }),
+                makeMangaJob({ chapterId: 5, status: 'paused' })
+            ]
+        });
+        await state().retryFailedJobs();
+        expect(mock.api.manga.retry.mock.calls).toEqual([[1], [2]]);
+    });
+
+    it('does nothing when no download failed', async () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 3, status: 'running' })] });
+        await state().retryFailedJobs();
+        expect(mock.api.manga.retry).not.toHaveBeenCalled();
     });
 });
 

@@ -1,5 +1,5 @@
 import { IPC } from '@shared/constants';
-import type { LibraryManga, MangaJob, MangaResult, MangaStatusInfo } from '@shared/manga';
+import type { LibraryManga, MangaJob, MangaMigrationResponse, MangaResult, MangaStatusInfo } from '@shared/manga';
 import type { MangaDb } from '../services/manga/mangaDb';
 import type { MangaReader } from '../services/manga/mangaReader';
 import type { MangaDownloadQueue } from '../services/manga/mangaDownloadQueue';
@@ -20,6 +20,10 @@ export interface MangaHandlerDependencies {
     // The folder the chapters of a manga are in, or null when none is known.
     folderOf: (mangaId: number) => string | null;
     openFolder: (path: string) => void;
+    // Opens an address in the browser of the system (the handler only gives it http and https addresses).
+    openSite: (url: string) => void;
+    // Asks for the folder the chapters are moved to and moves them there (see mangaMigration.ts).
+    migrateFolder: () => Promise<MangaMigrationResponse>;
     onLibraryChanged: () => void;
 }
 
@@ -43,10 +47,13 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.mangaInstall, () => {
         return null;
     });
-    [IPC.mangaHelperInstall, IPC.mangaHelperRemove].forEach((channel) => {
+    [IPC.mangaHelperInstall, IPC.mangaHelperRemove, IPC.mangaOpenSite].forEach((channel) => {
         ipcMain.handle(channel, () => {
             return undefined;
         });
+    });
+    ipcMain.handle(IPC.mangaMigrateFolder, (): MangaMigrationResponse => {
+        return { ok: false, reason: 'failed' };
     });
     ipcMain.handle(IPC.mangaExtensionsUpdateAll, () => {
         return unsupported;
@@ -89,6 +96,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         return;
     }
     const { service, queue, db, reader, removeChapterFiles } = deps;
+    let migrating = false;
 
     // The covers are kept as paths of the server (its port changes), and given with the server of the moment.
     function present(manga: LibraryManga): LibraryManga {
@@ -189,7 +197,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaDownload, (_event, request) => {
         const checked = asDownloadRequest(request);
-        if (checked === null) {
+        if (checked === null || migrating) {
             return null;
         }
         const manga = queue.enqueue({
@@ -200,7 +208,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         return manga === null ? null : present(manga);
     });
     ipcMain.handle(IPC.mangaDownloadMissing, (_event, mangaIds) => {
-        queue.downloadMissing(asIds(mangaIds));
+        if (!migrating) {
+            queue.downloadMissing(asIds(mangaIds));
+        }
     });
     ipcMain.handle(IPC.mangaLibrary, (): LibraryManga[] => {
         const library = db.list();
@@ -224,7 +234,8 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     byChapter.forEach(([channel, action]) => {
         ipcMain.handle(channel, (_event, chapterId) => {
             const id = asId(chapterId);
-            if (id !== null) {
+            // Nothing is started while the files are being moved.
+            if (id !== null && (!migrating || action === 'cancel' || action === 'pause')) {
                 queue[action](id);
             }
         });
@@ -234,7 +245,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaRemoveChapter, (_event, chapterId) => {
         const id = asId(chapterId);
-        if (id === null || db.getChapter(id) === null) {
+        if (id === null || migrating || db.getChapter(id) === null) {
             return;
         }
         queue.forget([id]);
@@ -243,7 +254,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaRemoveManga, (_event, mangaId) => {
         const id = asId(mangaId);
-        if (id === null || db.getManga(id) === null) {
+        if (id === null || migrating || db.getManga(id) === null) {
             return;
         }
         queue.forget(
@@ -259,6 +270,26 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         const folder = id === null ? null : deps.folderOf(id);
         if (folder !== null) {
             deps.openFolder(folder);
+        }
+    });
+    ipcMain.handle(IPC.mangaOpenSite, (_event, url) => {
+        const address = asStoreUrl(url);
+        if (address !== null) {
+            deps.openSite(address);
+        }
+    });
+    // The files are moved one migration at a time, and never while a chapter is being downloaded (nor is one started meanwhile).
+    ipcMain.handle(IPC.mangaMigrateFolder, async (): Promise<MangaMigrationResponse> => {
+        if (migrating || queue.pendingCount() > 0) {
+            return { ok: false, reason: 'busy' };
+        }
+        migrating = true;
+        try {
+            const result = await deps.migrateFolder();
+            deps.onLibraryChanged();
+            return result;
+        } finally {
+            migrating = false;
         }
     });
 }

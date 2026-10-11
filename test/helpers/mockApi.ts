@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { LlmStatus } from '@shared/llm';
-import type { MangaApi, MangaCloudflareActivity, MangaJob, MangaServerStatus } from '@shared/manga';
+import type { MangaApi, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
@@ -14,6 +14,8 @@ export interface MockApiHandle {
     emitMangaCloudflare: (active: MangaCloudflareActivity[]) => void;
     emitMangaJob: (job: MangaJob) => void;
     emitMangaLibraryChanged: () => void;
+    emitMangaMigration: (progress: MangaMigrationProgress) => void;
+    emitMangaNewChapters: (news: MangaNewChapters) => void;
     emitJobUpdate: (job: DownloadJob) => void;
     emitJobRemoved: (id: string) => void;
     emitHistoryChanged: () => void;
@@ -49,6 +51,8 @@ export function createMockApi(): MockApiHandle {
     const mangaCloudflareListeners: Array<(active: MangaCloudflareActivity[]) => void> = [];
     const mangaJobListeners: Array<(job: MangaJob) => void> = [];
     const mangaLibraryListeners: Array<() => void> = [];
+    const mangaMigrationListeners: Array<(progress: MangaMigrationProgress) => void> = [];
+    const mangaNewChaptersListeners: Array<(news: MangaNewChapters) => void> = [];
     const unsubscribers: Array<ReturnType<typeof vi.fn>> = [];
 
     function subscribe<T>(listeners: T[], listener: T): () => void {
@@ -132,6 +136,16 @@ export function createMockApi(): MockApiHandle {
         removeChapter: vi.fn(async () => {return undefined}),
         removeManga: vi.fn(async () => {return undefined}),
         openFolder: vi.fn(async () => {return undefined}),
+        openSite: vi.fn(async () => {return undefined}),
+        migrateFolder: vi.fn(async () => {
+            return { ok: false, reason: 'cancelled' };
+        }),
+        onMigrationProgress: vi.fn((listener: (progress: MangaMigrationProgress) => void) => {
+            return subscribe(mangaMigrationListeners, listener);
+        }),
+        onNewChapters: vi.fn((listener: (news: MangaNewChapters) => void) => {
+            return subscribe(mangaNewChaptersListeners, listener);
+        }),
         onToolState: vi.fn((listener: (state: ToolState) => void) => {
             return subscribe(mangaToolListeners, listener);
         }),
@@ -440,6 +454,16 @@ export function createMockApi(): MockApiHandle {
         emitMangaLibraryChanged: () => {
             mangaLibraryListeners.forEach((listener) => {
                 listener();
+            });
+        },
+        emitMangaMigration: (progress) => {
+            mangaMigrationListeners.forEach((listener) => {
+                listener(progress);
+            });
+        },
+        emitMangaNewChapters: (news) => {
+            mangaNewChaptersListeners.forEach((listener) => {
+                listener(news);
             });
         },
         emitJobUpdate: (job) => {

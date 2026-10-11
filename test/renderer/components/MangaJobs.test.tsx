@@ -130,3 +130,26 @@ describe('MangaJobs', () => {
         })).toEqual([1]);
     });
 });
+
+describe('MangaJobs trying the failed ones again', () => {
+    it('counts the downloads that failed or were cancelled on a button that tries them all again', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({
+            jobs: [
+                makeMangaJob({ chapterId: 1, status: 'error' }),
+                makeMangaJob({ chapterId: 2, status: 'cancelled' }),
+                makeMangaJob({ chapterId: 3, status: 'running' }),
+                makeMangaJob({ chapterId: 4, status: 'queued' })
+            ]
+        });
+        render(<MangaJobs />);
+        await user.click(screen.getByRole('button', { name: 'RETRY FAILED (2)' }));
+        expect(mock.api.manga.retry.mock.calls).toEqual([[1], [2]]);
+    });
+
+    it('has no such button when nothing failed', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 3, status: 'running' }), makeMangaJob({ chapterId: 4, status: 'paused' })] });
+        render(<MangaJobs />);
+        expect(screen.queryByRole('button', { name: /RETRY FAILED/ })).not.toBeInTheDocument();
+    });
+});

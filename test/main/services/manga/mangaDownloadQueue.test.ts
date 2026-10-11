@@ -17,6 +17,7 @@ const DETAILS: MangaDetails = {
     sourceId: 'src-a',
     title: 'One Piece',
     thumbnailUrl: null,
+    url: null,
     author: 'Oda',
     artist: null,
     description: 'Pirates',

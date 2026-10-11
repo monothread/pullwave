@@ -83,6 +83,12 @@ export function MangaDetail() {
     const downloadMissing = useMangaStore((state) => {
         return state.downloadMissing;
     });
+    const openSite = useMangaStore((state) => {
+        return state.openSite;
+    });
+    const retryJob = useMangaStore((state) => {
+        return state.retryJob;
+    });
     const sourceInstalled = useMangaStore((state) => {
         return state.browse.sources.some((source) => {
             return source.id === state.selection?.manga.sourceId;
@@ -146,6 +152,20 @@ export function MangaDetail() {
                         </ul>
                     )}
                     {details?.description && <p className="field__hint manga__description">{details.description}</p>}
+                    {details?.url && (
+                        <div className="job__actions">
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                title={details.url}
+                                onClick={() => {
+                                    void openSite(details.url!);
+                                }}
+                            >
+                                {t('manga.detail.openSite')}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </header>
             {selection.status === 'loading' && <p className="empty">{t('manga.detail.loading')}</p>}
@@ -297,6 +317,18 @@ export function MangaDetail() {
                                         <span className="history__meta">{[chapter.scanlator, formatDate(chapter.dateUploaded)].filter(Boolean).join(' · ')}</span>
                                     </div>
                                     {state && <span className={`badge badge--${state.status}`}>{t(chapterStatusKey(state.status))}</span>}
+                                    {inLibraryPage && state && (state.status === 'error' || state.status === 'cancelled') && (
+                                        <button
+                                            type="button"
+                                            className="btn btn--small btn--primary"
+                                            aria-label={`${t('manga.jobs.retry')}: ${label}`}
+                                            onClick={() => {
+                                                void retryJob(state.id);
+                                            }}
+                                        >
+                                            {t('manga.jobs.retry')}
+                                        </button>
+                                    )}
                                     {inLibraryPage && state && state.status !== 'queued' && state.status !== 'downloading' && (
                                         <button
                                             type="button"

@@ -49,7 +49,7 @@ export interface SuwayomiClientDependencies {
 const EXTENSION_FIELDS = 'pkgName name lang versionName isInstalled hasUpdate isObsolete iconUrl contentWarning storeIndexUrl extensionLib';
 const SOURCE_FIELDS = 'id name displayName lang iconUrl supportsLatest isConfigurable contentWarning extension { pkgName storeIndexUrl }';
 const MANGA_FIELDS = 'id sourceId title thumbnailUrl';
-const MANGA_DETAIL_FIELDS = `${MANGA_FIELDS} author artist description genre status`;
+const MANGA_DETAIL_FIELDS = `${MANGA_FIELDS} realUrl author artist description genre status`;
 // The kinds of setting have fields of the same name with different types: each is asked for under a name of its own.
 const PREFERENCE_FIELDS = `__typename
     ... on EditTextPreference { key title summary visible enabled editValue: currentValue }

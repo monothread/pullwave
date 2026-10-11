@@ -81,6 +81,20 @@ export function resolveAddress(value: unknown, baseUrl: string): string | null {
     }
 }
 
+// An address of a site (not of the server): it has to be complete and http(s); anything else is dropped.
+export function siteAddress(value: unknown): string | null {
+    const text = optionalText(value, MAX_URL_LENGTH);
+    if (text === null) {
+        return null;
+    }
+    try {
+        const parsed = new URL(text);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : null;
+    } catch {
+        return null;
+    }
+}
+
 function parseContentWarning(value: unknown): ContentWarning {
     return (CONTENT_WARNINGS as readonly unknown[]).includes(value) ? (value as ContentWarning) : 'SAFE';
 }
@@ -154,6 +168,7 @@ export function parseDetails(value: unknown, baseUrl: string): MangaDetails {
     const genres = Array.isArray(raw['genre']) ? raw['genre'] : [];
     return {
         ...parseSummary(raw, baseUrl),
+        url: siteAddress(raw['realUrl']),
         author: optionalText(raw['author']),
         artist: optionalText(raw['artist']),
         description: optionalText(raw['description'], MAX_DESCRIPTION_LENGTH),

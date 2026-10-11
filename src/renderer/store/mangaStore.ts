@@ -12,6 +12,9 @@ import type {
     MangaExtensionStore,
     MangaJob,
     MangaListKind,
+    MangaMigrationFailure,
+    MangaMigrationProgress,
+    MangaMigrationResponse,
     MangaSource,
     MangaSourcePreference,
     MangaStatusInfo,
@@ -158,6 +161,8 @@ interface MangaState {
     extensions: MangaExtensionsState;
     // The checks of Cloudflare that are going on (the helper is solving them in a browser, which can take a minute).
     cloudflare: MangaCloudflareActivity[];
+    // How far the migration of the folder of the mangas is, or null when none is running.
+    migration: MangaMigrationProgress | null;
 
     init: () => Promise<() => void>;
     refreshStatus: () => Promise<void>;
@@ -212,11 +217,17 @@ interface MangaState {
     refreshLibrary: () => Promise<void>;
     downloadMissing: (mangaId: number) => Promise<void>;
     openFolder: (mangaId: number) => Promise<void>;
+    // Opens the page of the manga on the site of its source.
+    openSite: (url: string) => Promise<void>;
+    // Moves the downloaded chapters to a folder the user chooses, then says how it went. Returns what the migration answered.
+    migrateFolder: () => Promise<MangaMigrationResponse>;
     removeManga: (mangaId: number) => Promise<void>;
     removeChapter: (chapterId: number) => Promise<void>;
 
     cancelJob: (chapterId: number) => Promise<void>;
     retryJob: (chapterId: number) => Promise<void>;
+    // Tries again every download that failed or was cancelled.
+    retryFailedJobs: () => Promise<void>;
     pauseJob: (chapterId: number) => Promise<void>;
     resumeJob: (chapterId: number) => Promise<void>;
     clearFinishedJobs: () => Promise<void>;
@@ -237,6 +248,14 @@ function translateNow(key: MessageKey, params?: MessageParams): string {
 function toast(key: MessageKey, params?: MessageParams): void {
     useAppStore.getState().pushToast(translateNow(key, params));
 }
+
+const MIGRATION_ERRORS: Record<Exclude<MangaMigrationFailure, 'cancelled'>, MessageKey> = {
+    busy: 'manga.migrate.error.busy',
+    same: 'manga.migrate.error.same',
+    inside: 'manga.migrate.error.inside',
+    conflict: 'manga.migrate.error.conflict',
+    failed: 'manga.migrate.error.failed'
+};
 
 // A job in the list replaced by its newer state (or added).
 export function upsertMangaJob(jobs: readonly MangaJob[], job: MangaJob): MangaJob[] {
@@ -300,6 +319,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         sourceSettings: EMPTY_SOURCE_SETTINGS,
         reader: CLOSED_READER,
         selectionFrom: 'browse',
+        migration: null,
         extensions: { ...EMPTY_EXTENSIONS, filter: { ...EMPTY_EXTENSIONS.filter, lang: initialPrefs.extensionLanguage, onlyInstalled: initialPrefs.onlyInstalled } },
         cloudflare: [],
 
@@ -358,6 +378,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 }),
                 api.onLibraryChanged(() => {
                     void get().refreshLibrary();
+                }),
+                api.onMigrationProgress((migration) => {
+                    set({ migration });
+                }),
+                api.onNewChapters((news) => {
+                    toast('manga.notice.newChapters', { count: news.count, titles: news.titles.join(', ') });
                 })
             ];
             return (): void => {
@@ -748,6 +774,25 @@ export const useMangaStore = create<MangaState>((set, get) => {
             await window.api.manga.openFolder(mangaId);
         },
 
+        openSite: async (url) => {
+            await window.api.manga.openSite(url);
+        },
+
+        migrateFolder: async () => {
+            set({ migration: { done: 0, total: 0 } });
+            try {
+                const response = await window.api.manga.migrateFolder();
+                if (response.ok) {
+                    useAppStore.getState().setNotice({ kind: 'info', message: translateNow('manga.migrate.done', { chapters: response.chapters, folder: response.destination }) });
+                } else if (response.reason !== 'cancelled') {
+                    useAppStore.getState().setNotice({ kind: 'error', message: translateNow(MIGRATION_ERRORS[response.reason]) });
+                }
+                return response;
+            } finally {
+                set({ migration: null });
+            }
+        },
+
         removeManga: async (mangaId) => {
             await window.api.manga.removeManga(mangaId);
             await get().refreshLibrary();
@@ -764,6 +809,17 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         retryJob: async (chapterId) => {
             await window.api.manga.retry(chapterId);
+        },
+
+        retryFailedJobs: async () => {
+            const failed = get().jobs.filter((job) => {
+                return job.status === 'error' || job.status === 'cancelled';
+            });
+            await Promise.all(
+                failed.map((job) => {
+                    return window.api.manga.retry(job.chapterId);
+                })
+            );
         },
 
         pauseJob: async (chapterId) => {

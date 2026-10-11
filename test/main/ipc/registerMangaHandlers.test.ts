@@ -1,4 +1,4 @@
-import type { LibraryManga, MangaChapter, MangaJob, MangaStatusInfo } from '@shared/manga';
+import type { LibraryManga, MangaChapter, MangaJob, MangaMigrationResponse, MangaStatusInfo } from '@shared/manga';
 import { IPC } from '@shared/constants';
 import { registerMangaHandlers, type MangaHandlerDependencies } from '@main/ipc/registerMangaHandlers';
 import type { IpcMainLike } from '@main/ipc/registerHandlers';
@@ -43,6 +43,8 @@ const MANGA_CHANNELS = [
     IPC.mangaHelperRemove,
     IPC.mangaInstall,
     IPC.mangaJobs,
+    IPC.mangaMigrateFolder,
+    IPC.mangaOpenSite,
     IPC.mangaLibrary,
     IPC.mangaList,
     IPC.mangaOpenFolder,
@@ -75,13 +77,14 @@ const REQUEST = {
     chapters: [chapter(1), chapter(2)]
 };
 
-function setup(options: { baseUrl?: string | null; folder?: string | null } = {}) {
+function setup(options: { baseUrl?: string | null; folder?: string | null; migrate?: () => Promise<MangaMigrationResponse> } = {}) {
     const db = new MangaDb(':memory:', () => {
         return 1000;
     });
     const downloads: ChapterDownloadOptions[] = [];
     const removedFiles: string[][] = [];
     const opened: string[] = [];
+    const sites: string[] = [];
     const libraryChanges = { count: 0 };
     const queue = new MangaDownloadQueue({
         db,
@@ -175,13 +178,19 @@ function setup(options: { baseUrl?: string | null; folder?: string | null } = {}
         openFolder: (path) => {
             opened.push(path);
         },
+        openSite: (url) => {
+            sites.push(url);
+        },
+        migrateFolder: () => {
+            return options.migrate === undefined ? Promise.resolve<MangaMigrationResponse>({ ok: true, chapters: 2, files: 2, destination: '/new' }) : options.migrate();
+        },
         onLibraryChanged: () => {
             libraryChanges.count += 1;
         }
     };
     const ipc = makeIpc();
     registerMangaHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, queue, service, reader, downloads, removedFiles, opened, libraryChanges };
+    return { ...ipc, db, queue, service, reader, downloads, removedFiles, opened, sites, libraryChanges };
 }
 
 describe('registerMangaHandlers', () => {
@@ -200,6 +209,8 @@ describe('registerMangaHandlers', () => {
             expect(ipc.call(channel)).toEqual(unsupported);
         });
         expect(ipc.call(IPC.mangaExtensionsUpdateAll)).toEqual(unsupported);
+        expect(ipc.call(IPC.mangaOpenSite)).toBeUndefined();
+        expect(ipc.call(IPC.mangaMigrateFolder)).toEqual({ ok: false, reason: 'failed' });
         expect(ipc.call(IPC.mangaHelperInstall)).toBeUndefined();
         expect(ipc.call(IPC.mangaHelperRemove)).toBeUndefined();
         expect(ipc.call(IPC.mangaAddToLibrary)).toBeNull();
@@ -535,5 +546,103 @@ describe('the library channels', () => {
         call(IPC.mangaOpenFolder, 1);
         call(IPC.mangaOpenFolder, 'x');
         expect(opened).toEqual([]);
+    });
+});
+
+describe('the site and the folder of the mangas', () => {
+    it('opens the page of a manga in the browser, only when it is an http or https address', () => {
+        const { call, sites } = setup();
+        call(IPC.mangaOpenSite, 'https://dex.example/manga/one-piece');
+        call(IPC.mangaOpenSite, 'http://dex.example/a');
+        call(IPC.mangaOpenSite, 'file:///etc/passwd');
+        call(IPC.mangaOpenSite, 'javascript:alert(1)');
+        call(IPC.mangaOpenSite, '');
+        call(IPC.mangaOpenSite, 5);
+        call(IPC.mangaOpenSite, null);
+        expect(sites).toEqual(['https://dex.example/manga/one-piece', 'http://dex.example/a']);
+    });
+
+    it('migrates the folder and tells the screen the library changed', async () => {
+        const { call, libraryChanges } = setup();
+        await expect(call(IPC.mangaMigrateFolder)).resolves.toEqual({ ok: true, chapters: 2, files: 2, destination: '/new' });
+        expect(libraryChanges.count).toBe(1);
+    });
+
+    it('answers the reason when the migration does not happen', async () => {
+        const { call } = setup({
+            migrate: () => {
+                return Promise.resolve({ ok: false, reason: 'cancelled' });
+            }
+        });
+        await expect(call(IPC.mangaMigrateFolder)).resolves.toEqual({ ok: false, reason: 'cancelled' });
+    });
+
+    it('does not migrate while a chapter is being downloaded', async () => {
+        const { call, queue, db, service } = setup();
+        const migrate = vi.spyOn(queue, 'pendingCount').mockReturnValue(1);
+        await expect(call(IPC.mangaMigrateFolder)).resolves.toEqual({ ok: false, reason: 'busy' });
+        migrate.mockRestore();
+        expect(db.list()).toEqual([]);
+        expect(service.status).not.toHaveBeenCalled();
+    });
+
+    it('does one migration at a time, and starts nothing while the files are moved', async () => {
+        let finish: (value: MangaMigrationResponse) => void = () => {return undefined};
+        const { call, db, queue, downloads } = setup({
+            migrate: () => {
+                return new Promise((resolve) => {
+                    finish = resolve;
+                });
+            }
+        });
+        const first = call(IPC.mangaMigrateFolder);
+        await expect(call(IPC.mangaMigrateFolder)).resolves.toEqual({ ok: false, reason: 'busy' });
+        // Downloads, retries, resumes and removals wait.
+        expect(call(IPC.mangaDownload, REQUEST)).toBeNull();
+        call(IPC.mangaDownloadMissing, [1]);
+        call(IPC.mangaRetry, 1);
+        call(IPC.mangaResume, 1);
+        call(IPC.mangaRemoveChapter, 1);
+        call(IPC.mangaRemoveManga, 1);
+        expect(downloads).toEqual([]);
+        expect(queue.list()).toEqual([]);
+        expect(db.list()).toEqual([]);
+        finish({ ok: true, chapters: 0, files: 0, destination: '/new' });
+        await first;
+        // Once it is over, the downloads work again.
+        expect(call(IPC.mangaDownload, REQUEST)).not.toBeNull();
+    });
+
+    it('lets a download be paused or cancelled while the files are moved', async () => {
+        let finish: (value: MangaMigrationResponse) => void = () => {return undefined};
+        const { call, queue } = setup({
+            migrate: () => {
+                return new Promise((resolve) => {
+                    finish = resolve;
+                });
+            }
+        });
+        const pause = vi.spyOn(queue, 'pause');
+        const cancel = vi.spyOn(queue, 'cancel');
+        const retry = vi.spyOn(queue, 'retry');
+        const first = call(IPC.mangaMigrateFolder);
+        call(IPC.mangaPause, 4);
+        call(IPC.mangaCancel, 5);
+        call(IPC.mangaRetry, 6);
+        expect(pause).toHaveBeenCalledWith(4);
+        expect(cancel).toHaveBeenCalledWith(5);
+        expect(retry).not.toHaveBeenCalled();
+        finish({ ok: false, reason: 'cancelled' });
+        await first;
+    });
+
+    it('lets the next migration happen after one failed with an error', async () => {
+        const { call } = setup({
+            migrate: () => {
+                return Promise.reject(new Error('disk'));
+            }
+        });
+        await expect(call(IPC.mangaMigrateFolder)).rejects.toThrow('disk');
+        await expect(call(IPC.mangaMigrateFolder)).rejects.toThrow('disk');
     });
 });

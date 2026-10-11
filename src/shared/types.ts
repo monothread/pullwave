@@ -153,6 +153,8 @@ export interface Settings {
     mangaFlaresolverrEnabled: boolean;
     // Whether the sources and the extensions for adults (+18) are listed; hidden by default.
     mangaShowAdult: boolean;
+    // Whether, once an hour, the mangas of the library are checked for new chapters (which are added to the library, not downloaded).
+    mangaCheckNewChapters: boolean;
     // Translating subtitles with a language model: which provider, which model, an address instead of the one of the provider (empty
     // for the one of the provider) and the language it translates into. The token is not here: it is kept apart, encrypted.
     translateProvider: LlmProviderId;

@@ -194,7 +194,7 @@ describe('asDownloadRequest', () => {
     it('reads the details when they are given', () => {
         const request = asDownloadRequest({
             manga: MANGA,
-            details: { author: ' Oda ', artist: '', description: 'Pirates', genres: ['Action', '', 5, 'Adventure'], status: 'ongoing', extra: 1 },
+            details: { url: ' https://dex.example/one-piece ', author: ' Oda ', artist: '', description: 'Pirates', genres: ['Action', '', 5, 'Adventure'], status: 'ongoing', extra: 1 },
             chapters: [CHAPTER]
         });
         expect(request?.details).toEqual({
@@ -202,12 +202,18 @@ describe('asDownloadRequest', () => {
             sourceId: '123',
             title: 'One Piece',
             thumbnailUrl: '/api/v1/manga/7/thumbnail',
+            url: 'https://dex.example/one-piece',
             author: 'Oda',
             artist: null,
             description: 'Pirates',
             genres: ['Action', 'Adventure'],
             status: 'ongoing'
         });
+    });
+
+    it.each([['file:///etc/passwd'], ['javascript:alert(1)'], ['/relative/path'], [''], [5], [null], [undefined]])('drops the page of the site %j, which is not an http or https address', (url) => {
+        const request = asDownloadRequest({ manga: MANGA, details: { url, status: 'ongoing' }, chapters: [CHAPTER] });
+        expect(request?.details?.url).toBeNull();
     });
 
     it('defaults an unknown status and cuts the genres', () => {

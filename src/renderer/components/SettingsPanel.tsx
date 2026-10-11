@@ -21,6 +21,7 @@ import { useAutoSaveSettings, type SaveStatus } from '../hooks/useAutoSaveSettin
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
+import { useMangaStore } from '../store/mangaStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
 import { MangaHelperSettings } from './MangaHelperSettings';
 import { MangaStoreSettings } from './MangaStoreSettings';
@@ -165,6 +166,12 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const migrateFolder = useAnimeStore((state) => {
         return state.migrateFolder;
     });
+    const mangaMigration = useMangaStore((state) => {
+        return state.migration;
+    });
+    const migrateMangaFolder = useMangaStore((state) => {
+        return state.migrateFolder;
+    });
     const { draft, status, change, edit, changeMany } = useAutoSaveSettings(stored, saveSettings);
     const detectedBrowsers = browsers ?? [];
     const chosenBrowser = findChosenBrowser(detectedBrowsers, draft);
@@ -214,6 +221,15 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     // With anime in the library the folder changes only by a migration, which moves the files too.
     const animeFolderLocked = library.length > 0;
     const migrating = migration !== null;
+
+    const mangaMigrating = mangaMigration !== null;
+
+    async function handleMigrateMangaFolder(): Promise<void> {
+        const response = await migrateMangaFolder();
+        if (response.ok) {
+            change('mangaDirectory', response.destination);
+        }
+    }
 
     async function handleMigrateAnimeFolder(): Promise<void> {
         const response = await migrateFolder();
@@ -670,6 +686,21 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             {t('settings.browse')}
                         </button>
                     </div>
+                    <div className="field">
+                        <div className="field-row">
+                            <button
+                                type="button"
+                                className="btn btn--small btn--primary"
+                                disabled={mangaMigrating}
+                                onClick={() => {
+                                    void handleMigrateMangaFolder();
+                                }}
+                            >
+                                {mangaMigration === null ? t('settings.mangaMigrate') : t('settings.mangaMigrate.running', { done: mangaMigration.done, total: mangaMigration.total })}
+                            </button>
+                        </div>
+                        <span className="field__hint">{t('settings.mangaMigrate.hint')}</span>
+                    </div>
                     <SelectField
                         label={t('settings.mangaFormat')}
                         value={draft.mangaFormat}
@@ -697,6 +728,14 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         hint={t('settings.mangaShowAdult.hint')}
                         onChange={(value) => {
                             change('mangaShowAdult', value);
+                        }}
+                    />
+                    <ToggleField
+                        label={t('settings.mangaCheckNewChapters')}
+                        checked={draft.mangaCheckNewChapters}
+                        hint={t('settings.mangaCheckNewChapters.hint')}
+                        onChange={(value) => {
+                            change('mangaCheckNewChapters', value);
                         }}
                     />
                 </fieldset>

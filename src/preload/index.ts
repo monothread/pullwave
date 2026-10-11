@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
 import type { AnimeAvailability, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
-import type { MangaCloudflareActivity, MangaJob, MangaServerStatus } from '@shared/manga';
+import type { MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
 
@@ -105,6 +105,18 @@ const manga: CyberApi['manga'] = {
     },
     openFolder: (mangaId) => {
         return ipcRenderer.invoke(IPC.mangaOpenFolder, mangaId);
+    },
+    openSite: (url) => {
+        return ipcRenderer.invoke(IPC.mangaOpenSite, url);
+    },
+    migrateFolder: () => {
+        return ipcRenderer.invoke(IPC.mangaMigrateFolder);
+    },
+    onMigrationProgress: (listener) => {
+        return subscribe<MangaMigrationProgress>(IPC.eventMangaMigration, listener);
+    },
+    onNewChapters: (listener) => {
+        return subscribe<MangaNewChapters>(IPC.eventMangaNewChapters, listener);
     },
     onToolState: (listener) => {
         return subscribe<ToolState>(IPC.eventMangaTool, listener);

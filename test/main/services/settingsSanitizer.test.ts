@@ -57,6 +57,7 @@ describe('sanitizeSettings', () => {
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
             mangaFlaresolverrEnabled: true,
             mangaShowAdult: true,
+            mangaCheckNewChapters: false,
             translateProvider: 'anthropic',
             translateModel: 'my-model',
             translateBaseUrl: 'https://llm.example/v1',
@@ -84,6 +85,19 @@ describe('sanitizeSettings', () => {
 
     it.each(['yes', 1, null, []])('falls back to no helper for the invalid value %j', (mangaFlaresolverrEnabled) => {
         expect(sanitizeSettings({ mangaFlaresolverrEnabled }).mangaFlaresolverrEnabled).toBe(false);
+    });
+
+    it('looks for new chapters every hour by default', () => {
+        expect(DEFAULT_SETTINGS.mangaCheckNewChapters).toBe(true);
+        expect(sanitizeSettings({}).mangaCheckNewChapters).toBe(true);
+    });
+
+    it.each([true, false])('keeps the choice of looking for new chapters (%j)', (mangaCheckNewChapters) => {
+        expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(mangaCheckNewChapters);
+    });
+
+    it.each(['yes', 0, null, []])('falls back to looking for new chapters for the invalid value %j', (mangaCheckNewChapters) => {
+        expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(true);
     });
 
     it('hides the sources for adults by default', () => {

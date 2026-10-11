@@ -28,6 +28,7 @@ export function makeSummary(overrides: Partial<MangaSummary> = {}): MangaSummary
 export function makeDetails(overrides: Partial<MangaDetails> = {}): MangaDetails {
     return {
         ...makeSummary(),
+        url: 'https://dex.example/manga/one-piece',
         author: 'Oda',
         artist: 'Oda E.',
         description: 'Pirates search for a treasure.',
@@ -68,6 +69,7 @@ export function makeLibraryManga(chapters: MangaChapterRecord[], overrides: Part
         remoteId: 7,
         title: 'One Piece',
         thumbnailUrl: 'http://127.0.0.1:4321/api/v1/manga/7/thumbnail',
+        url: null,
         author: null,
         artist: null,
         description: null,

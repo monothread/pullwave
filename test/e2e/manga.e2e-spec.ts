@@ -44,6 +44,8 @@ class FakeSuwayomi {
     adult = false;
     // The extension has an update, and the version of the library of extensions it was made for.
     hasUpdate = false;
+    // Chapters the source has published after the first two (their numbers on the server).
+    laterChapters: number[] = [];
     extensionLib = '1.4';
     private server: Server | null = null;
 
@@ -151,10 +153,13 @@ class FakeSuwayomi {
             const id = Number(variables['id']);
             return {
                 fetchMangaAndChapters: {
-                    manga: { ...this.manga(id, id === 7 ? 'One Piece' : 'Bleach'), author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
+                    manga: { ...this.manga(id, id === 7 ? 'One Piece' : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
                     chapters: [
                         { id: 101, name: 'Romance Dawn', chapterNumber: 1, uploadDate: '1700000000000', scanlator: 'Group A', sourceOrder: 1 },
-                        { id: 102, name: 'The Great Race', chapterNumber: 2, uploadDate: '1700100000000', scanlator: null, sourceOrder: 2 }
+                        { id: 102, name: 'The Great Race', chapterNumber: 2, uploadDate: '1700100000000', scanlator: null, sourceOrder: 2 },
+                        ...this.laterChapters.map((chapterId, index) => {
+                            return { id: chapterId, name: `Chapter ${index + 3}`, chapterNumber: index + 3, uploadDate: '1700200000000', scanlator: null, sourceOrder: index + 3 };
+                        })
                     ]
                 }
             };
@@ -223,7 +228,7 @@ function mangaFolder(): string {
     return join(workDir, 'manga');
 }
 
-async function launch(settings: Record<string, unknown> = {}): Promise<Session> {
+async function launch(settings: Record<string, unknown> = {}, env: Record<string, string> = {}): Promise<Session> {
     const userData = join(workDir, 'userData');
     mkdirSync(userData, { recursive: true });
     writeFileSync(
@@ -233,7 +238,7 @@ async function launch(settings: Record<string, unknown> = {}): Promise<Session> 
     const app = await electron.launch({
         executablePath: ELECTRON_PATH,
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-        env: { ...process.env, PULLWAVE_MANGA_URL: fake.url }
+        env: { ...process.env, PULLWAVE_MANGA_URL: fake.url, ...env }
     });
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
@@ -790,6 +795,82 @@ test.describe('manga section', () => {
         const order = fake.graphqlRequests('fetchChapterPages').map((item) => {return item.variables?.['chapterId']});
         expect(order).toEqual([101, 102]);
         expect(readdirSync(join(mangaFolder(), 'One Piece')).sort()).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('opens the page of a manga on the site of its source', async () => {
+        const log = join(workDir, 'opened.log');
+        session = await launch({}, { PULLWAVE_MANGA_OPEN_LOG: log });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        const button = session.page.getByRole('button', { name: 'OPEN SITE' });
+        await expect(button).toHaveAttribute('title', 'https://dex.example/manga/7');
+        await button.click();
+        await expect.poll(() => {return existsSync(log) ? readFileSync(log, 'utf-8') : ''}).toBe('https://dex.example/manga/7\n');
+    });
+
+    test('moves the downloaded chapters to another folder, checks them and points the library to them', async () => {
+        const target = join(workDir, 'moved');
+        session = await launch({}, { PULLWAVE_MANGA_MIGRATE_DIR: target });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+        const oldFile = join(mangaFolder(), 'One Piece', 'Chapter 1.cbz');
+        await expect.poll(() => {return existsSync(oldFile)}).toBe(true);
+        const original = readFileSync(oldFile);
+
+        await goTo(session.page, 'SETTINGS');
+        await session.page.getByRole('button', { name: 'MIGRATE FOLDER' }).click();
+        await expect(session.page.getByLabel('Manga folder')).toHaveValue(target);
+        await expect(session.page.locator('.toast, .notice').filter({ hasText: `1 chapter(s) moved to ${target}.` }).first()).toBeVisible();
+
+        const newFile = join(target, 'One Piece', 'Chapter 1.cbz');
+        expect(readFileSync(newFile).equals(original)).toBe(true);
+        expect(existsSync(oldFile)).toBe(false);
+        expect(existsSync(mangaFolder())).toBe(false);
+        const saved = JSON.parse(readFileSync(join(session.userData, 'settings.json'), 'utf-8')) as Record<string, unknown>;
+        expect(saved['mangaDirectory']).toBe(target);
+
+        // The chapter is read from its new place, and a new download goes to the new folder.
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.locator('.badge--done', { hasText: 'Downloaded' })).toBeVisible();
+        await session.page.getByRole('checkbox', { name: 'Select: The Great Race' }).check();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
+        await waitForDownloaded(session.page);
+        await expect.poll(() => {return readdirSync(join(target, 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('looks for new chapters by itself and adds them to the library without downloading them', async () => {
+        session = await launch({}, { PULLWAVE_MANGA_CHECK_MS: '1500' });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
+
+        fake.laterChapters = [103, 104];
+        await expect(session.page.getByText('0 of 4 downloaded')).toBeVisible({ timeout: 20000 });
+        await expect(session.page.locator('.toast').filter({ hasText: '2 new chapter(s) added to the library: One Piece' }).first()).toBeVisible();
+        expect(existsSync(join(mangaFolder(), 'One Piece'))).toBe(false);
+        expect(fake.graphqlRequests('fetchChapterPages')).toHaveLength(0);
+    });
+
+    test('does not look for new chapters when the setting is off', async () => {
+        session = await launch({ mangaCheckNewChapters: false }, { PULLWAVE_MANGA_CHECK_MS: '700' });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        fake.laterChapters = [103];
+        const before = fake.graphqlRequests('fetchMangaAndChapters').length;
+        await session.page.waitForTimeout(3000);
+        expect(fake.graphqlRequests('fetchMangaAndChapters')).toHaveLength(before);
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
     });
 
     test('makes a folder of images when the setting says so', async () => {

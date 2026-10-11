@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SettingsPanel } from '@renderer/components/SettingsPanel';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { INITIAL_APP_UPDATE, useAppStore } from '@renderer/store/appStore';
+import { useMangaStore } from '@renderer/store/mangaStore';
 import { ANI_CLI_INFO, makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
 import { APP_UPDATE_IDLE, installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -1455,6 +1456,45 @@ describe('SettingsPanel manga section', () => {
         render(<SettingsPanel scope="manga" />);
         expect(screen.queryByRole('button', { name: 'INSTALL' })).not.toBeInTheDocument();
         expect(screen.getByText('You gave the address of your own FlareSolverr, so the app installs and runs none.')).toBeInTheDocument();
+    });
+
+    it('has a switch to look for new chapters every hour, on by default, with its hint, and saves it right away', async () => {
+        render(<SettingsPanel scope="manga" />);
+        const toggle = screen.getByRole('switch', { name: 'Look for new chapters every hour' });
+        expect(toggle).toBeChecked();
+        expect(screen.getByText('Asks the sources about the mangas of the library and adds the new chapters to it. They are not downloaded.')).toBeInTheDocument();
+        fireEvent.click(toggle);
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaCheckNewChapters: false });
+    });
+
+    it('migrates the folder of the mangas from the settings, and shows the new folder when it worked', async () => {
+        mock.api.manga.migrateFolder.mockResolvedValue({ ok: true, chapters: 2, files: 2, destination: '/mnt/manga' });
+        render(<SettingsPanel scope="manga" />);
+        expect(screen.getByText(/Moves the downloaded chapters to another folder/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'MIGRATE FOLDER' }));
+        await flushPromises();
+        expect(mock.api.manga.migrateFolder).toHaveBeenCalledTimes(1);
+        expect(screen.getByLabelText('Manga folder')).toHaveValue('/mnt/manga');
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaDirectory: '/mnt/manga' });
+    });
+
+    it('leaves the folder as it is when the migration did not happen', async () => {
+        mock.api.manga.migrateFolder.mockResolvedValue({ ok: false, reason: 'conflict' });
+        render(<SettingsPanel scope="manga" />);
+        fireEvent.click(screen.getByRole('button', { name: 'MIGRATE FOLDER' }));
+        await flushPromises();
+        expect(screen.getByLabelText('Manga folder')).toHaveValue('');
+        expect(mock.api.saveSettings).not.toHaveBeenCalled();
+    });
+
+    it('shows how far the migration is and cannot be started twice', () => {
+        useMangaStore.setState({ migration: { done: 3, total: 10 } });
+        render(<SettingsPanel scope="manga" />);
+        const button = screen.getByRole('button', { name: 'MOVING… 3/10' });
+        expect(button).toBeDisabled();
+        useMangaStore.setState({ migration: null });
     });
 
     it('saves the folder only after the delay', async () => {

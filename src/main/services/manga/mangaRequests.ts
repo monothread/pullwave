@@ -195,6 +195,7 @@ function asDetails(value: unknown, summary: MangaSummary): MangaDetails | null {
     const status = (MANGA_STATUSES as readonly unknown[]).includes(value['status']) ? (value['status'] as MangaStatus) : 'unknown';
     return {
         ...summary,
+        url: asStoreUrl(value['url']),
         author: optionalText(value['author'], MAX_TEXT),
         artist: optionalText(value['artist'], MAX_TEXT),
         description: optionalText(value['description'], MAX_DESCRIPTION),

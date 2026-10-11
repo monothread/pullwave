@@ -293,17 +293,19 @@ describe('SuwayomiClient mangas', () => {
         const { client, calls } = setup([
             data({
                 fetchMangaAndChapters: {
-                    manga: { ...MANGA, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
+                    manga: { ...MANGA, realUrl: 'https://dex.example/one-piece', author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
                     chapters: [{ id: 11, name: 'Romance Dawn', chapterNumber: 1, uploadDate: '1700000000000', scanlator: null, sourceOrder: 1100 }]
                 }
             })
         ]);
+        expect(QUERIES.mangaWithChapters).toContain('realUrl');
         await expect(client.mangaWithChapters(7)).resolves.toEqual({
             details: {
                 remoteId: 7,
                 sourceId: '123',
                 title: 'One Piece',
                 thumbnailUrl: `${BASE}/api/v1/manga/7/thumbnail`,
+                url: 'https://dex.example/one-piece',
                 author: 'Oda',
                 artist: null,
                 description: 'Pirates',

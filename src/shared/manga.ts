@@ -110,6 +110,8 @@ export interface MangaListing {
 }
 
 export interface MangaDetails extends MangaSummary {
+    // The page of the manga on the site of the source.
+    url: string | null;
     author: string | null;
     artist: string | null;
     description: string | null;
@@ -203,6 +205,8 @@ export interface MangaRecord {
     remoteId: number;
     title: string;
     thumbnailUrl: string | null;
+    // The page of the manga on the site of the source, when the source told it.
+    url: string | null;
     author: string | null;
     artist: string | null;
     description: string | null;
@@ -311,6 +315,27 @@ export interface MangaReadPages {
 
 export type ExtensionAction = 'install' | 'uninstall' | 'update';
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Moving the library to another folder
+// ---------------------------------------------------------------------------------------------------------------------
+
+export interface MangaMigrationProgress {
+    // Files copied so far, and the files to copy in all.
+    done: number;
+    total: number;
+}
+
+export type MangaMigrationFailure = 'cancelled' | 'busy' | 'same' | 'inside' | 'conflict' | 'failed';
+
+export type MangaMigrationResponse = { ok: true; chapters: number; files: number; destination: string } | { ok: false; reason: MangaMigrationFailure };
+
+// New chapters that the hourly check found in the mangas of the library.
+export interface MangaNewChapters {
+    // How many chapters were added to the library, and the titles of the mangas that got them.
+    count: number;
+    titles: string[];
+}
+
 export interface MangaApi {
     status: () => Promise<MangaStatusInfo>;
     // Downloads the program again after it failed.
@@ -350,6 +375,13 @@ export interface MangaApi {
     removeChapter: (chapterId: number) => Promise<void>;
     removeManga: (mangaId: number) => Promise<void>;
     openFolder: (mangaId: number) => Promise<void>;
+    // Opens the page of a manga on the site of its source, in the browser of the system (only an http or https address is opened).
+    openSite: (url: string) => Promise<void>;
+    // Asks for a folder and moves the downloaded chapters there, then says how it went.
+    migrateFolder: () => Promise<MangaMigrationResponse>;
+    onMigrationProgress: (listener: (progress: MangaMigrationProgress) => void) => () => void;
+    // The hourly check added chapters to the library.
+    onNewChapters: (listener: (news: MangaNewChapters) => void) => () => void;
     onToolState: (listener: (state: ToolState) => void) => () => void;
     onServerStatus: (listener: (status: MangaServerStatus) => void) => () => void;
     // The checks of Cloudflare that are going on, every time they change (an empty list when none is).

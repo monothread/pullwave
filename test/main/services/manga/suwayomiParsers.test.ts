@@ -19,7 +19,8 @@ import {
     parseStore,
     parseSummary,
     record,
-    resolveAddress
+    resolveAddress,
+    siteAddress
 } from '@main/services/manga/suwayomiParsers';
 
 const BASE = 'http://127.0.0.1:4321';
@@ -229,8 +230,24 @@ describe('parseSummary and parseDetails', () => {
 
     it('reads the details', () => {
         expect(
-            parseDetails({ id: 7, sourceId: '1', title: 'T', thumbnailUrl: null, author: 'A', artist: 'B', description: 'D', genre: ['x', '', 5, 'y'], status: 'ONGOING' }, BASE)
-        ).toEqual({ remoteId: 7, sourceId: '1', title: 'T', thumbnailUrl: null, author: 'A', artist: 'B', description: 'D', genres: ['x', 'y'], status: 'ongoing' });
+            parseDetails({ id: 7, sourceId: '1', title: 'T', thumbnailUrl: null, realUrl: 'https://dex.example/t', author: 'A', artist: 'B', description: 'D', genre: ['x', '', 5, 'y'], status: 'ONGOING' }, BASE)
+        ).toEqual({ remoteId: 7, sourceId: '1', title: 'T', thumbnailUrl: null, url: 'https://dex.example/t', author: 'A', artist: 'B', description: 'D', genres: ['x', 'y'], status: 'ongoing' });
+    });
+
+    it.each([
+        ['https://dex.example/manga/1', 'https://dex.example/manga/1'],
+        ['http://dex.example/a?b=1', 'http://dex.example/a?b=1'],
+        ['  https://dex.example  ', 'https://dex.example/'],
+        ['/api/v1/manga/1', null],
+        ['file:///etc/passwd', null],
+        ['javascript:alert(1)', null],
+        ['not an address', null],
+        ['', null],
+        [5, null],
+        [null, null]
+    ])('reads the page of the manga on its site from %j: %j', (realUrl, expected) => {
+        expect(parseDetails({ id: 1, sourceId: '1', title: 'T', realUrl }, BASE).url).toBe(expected);
+        expect(siteAddress(realUrl)).toBe(expected);
     });
 
     it('defaults the missing details and cuts the long ones', () => {

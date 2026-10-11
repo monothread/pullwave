@@ -1,3 +1,4 @@
+import { appendFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
@@ -408,6 +409,29 @@ function bootstrap(): BootstrapResult {
         openFolder: (path) => {
             void shell.openPath(path);
         },
+        // PULLWAVE_MANGA_OPEN_LOG is a file the addresses are written to instead of being opened (used by the end-to-end tests).
+        openSite: (url) => {
+            if (process.env.PULLWAVE_MANGA_OPEN_LOG) {
+                appendFileSync(process.env.PULLWAVE_MANGA_OPEN_LOG, `${url}\n`);
+                return;
+            }
+            void shell.openExternal(url);
+        },
+        // PULLWAVE_MANGA_MIGRATE_DIR answers the question of which folder to migrate the mangas to (used by the end-to-end tests).
+        chooseMigrationFolder: async (startAt) => {
+            if (process.env.PULLWAVE_MANGA_MIGRATE_DIR) {
+                return process.env.PULLWAVE_MANGA_MIGRATE_DIR;
+            }
+            const options = { defaultPath: startAt, properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'> };
+            const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+            return result.canceled ? null : (result.filePaths[0] ?? null);
+        },
+        saveMangaDirectory: (directory) => {
+            settingsStore.save({ ...settingsStore.get(), mangaDirectory: directory });
+        },
+        // PULLWAVE_MANGA_CHECK_MS makes the look for new chapters happen that many milliseconds after the app opens, and again that often
+        // (used by the end-to-end tests).
+        checkTimes: Number(process.env.PULLWAVE_MANGA_CHECK_MS) > 0 ? { firstMs: Number(process.env.PULLWAVE_MANGA_CHECK_MS), everyMs: Number(process.env.PULLWAVE_MANGA_CHECK_MS) } : undefined,
         externalBaseUrl: process.env.PULLWAVE_MANGA_URL ?? null
     });
     if (manga) {

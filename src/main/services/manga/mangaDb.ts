@@ -52,7 +52,9 @@ const MIGRATIONS: readonly string[] = [
     ALTER TABLE manga ADD COLUMN artist TEXT;
     ALTER TABLE manga ADD COLUMN description TEXT;
     ALTER TABLE manga ADD COLUMN genres TEXT;
-    ALTER TABLE manga ADD COLUMN status TEXT;`
+    ALTER TABLE manga ADD COLUMN status TEXT;`,
+    // The page of the manga on the site of its source.
+    `ALTER TABLE manga ADD COLUMN url TEXT;`
 ];
 
 type Row = Record<string, unknown>;
@@ -101,6 +103,7 @@ function toManga(row: Row): MangaRecord {
         remoteId: numeric(row, 'remote_id'),
         title: text(row, 'title'),
         thumbnailUrl: nullableText(row, 'thumbnail_url'),
+        url: nullableText(row, 'url'),
         author: nullableText(row, 'author'),
         artist: nullableText(row, 'artist'),
         description: nullableText(row, 'description'),
@@ -215,9 +218,10 @@ export class MangaDb {
     }
 
     // What the source says about the manga (its people, its description, its genres and whether it is still going).
-    saveDetails(mangaId: number, details: Pick<MangaDetails, 'author' | 'artist' | 'description' | 'genres' | 'status'>): void {
+    saveDetails(mangaId: number, details: Pick<MangaDetails, 'url' | 'author' | 'artist' | 'description' | 'genres' | 'status'>): void {
         this.run(
-            'UPDATE manga SET author = ?, artist = ?, description = ?, genres = ?, status = ? WHERE id = ?',
+            'UPDATE manga SET url = ?, author = ?, artist = ?, description = ?, genres = ?, status = ? WHERE id = ?',
+            details.url,
             details.author,
             details.artist,
             details.description,
@@ -331,6 +335,20 @@ export class MangaDb {
     // A download that was going on when the app closed did not finish: it is an error that can be retried.
     failInterrupted(): void {
         this.run(`UPDATE chapter SET status = 'error', error_code = 'UNKNOWN', error_raw = ? WHERE status IN ('queued', 'downloading')`, INTERRUPTED_MESSAGE);
+    }
+
+    // Points chapters at the files they were moved to (the folder of the library changed).
+    relinkChapters(updates: ReadonlyArray<{ chapterId: number; filePath: string; sizeBytes: number | null }>): void {
+        this.db.exec('BEGIN');
+        try {
+            updates.forEach((update) => {
+                this.run('UPDATE chapter SET file_path = ?, size_bytes = ? WHERE id = ?', update.filePath, update.sizeBytes, update.chapterId);
+            });
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
     }
 
     // The chapter is no longer in the library; the file it had (if any) is for the caller to delete.
