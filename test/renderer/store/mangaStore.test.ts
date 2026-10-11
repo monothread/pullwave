@@ -1012,7 +1012,22 @@ describe('mangaStore reader', () => {
 
     it('does not go anywhere when the reader is closed', async () => {
         await expect(state().goToChapter(1)).resolves.toBe(false);
+        await expect(state().goToChapterIndex(1)).resolves.toBe(false);
         expect(mock.api.manga.readPages).not.toHaveBeenCalled();
+    });
+
+    it('jumps to the chapter at a place of the list, forward or back, and says there is none outside of it', async () => {
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['a'], local: false } });
+        await state().openReader('One Piece', CHAPTERS, 1);
+        await expect(state().goToChapterIndex(0)).resolves.toBe(true);
+        expect(state().reader.index).toBe(0);
+        expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 1, libraryChapterId: null });
+        await expect(state().goToChapterIndex(2)).resolves.toBe(true);
+        expect(state().reader).toMatchObject({ index: 2, status: 'ready', pages: ['a'] });
+        expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+        await expect(state().goToChapterIndex(3)).resolves.toBe(false);
+        await expect(state().goToChapterIndex(-1)).resolves.toBe(false);
+        expect(state().reader.index).toBe(2);
     });
 
     it('drops the answer for a chapter that is no longer on the screen, and for a reader that was closed', async () => {

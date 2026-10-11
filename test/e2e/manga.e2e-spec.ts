@@ -38,6 +38,8 @@ class FakeSuwayomi {
     imageDelayMs = 0;
     // The pages are real pictures a page can show (the reader needs them; the downloads only look at the bytes).
     pagesArePicture = false;
+    // Addresses that answer with an error, and how many times they do before they answer well (the next pages are asked for ahead of time too).
+    failTimes = new Map<string, number>();
     // The extension and its source are for adults.
     adult = false;
     // The extension has an update, and the version of the library of extensions it was made for.
@@ -192,6 +194,13 @@ class FakeSuwayomi {
             await new Promise((resolveWait) => {
                 setTimeout(resolveWait, this.imageDelayMs);
             });
+        }
+        const failures = this.failTimes.get(path) ?? 0;
+        if (failures > 0) {
+            this.failTimes.set(path, failures - 1);
+            response.writeHead(500);
+            response.end();
+            return;
         }
         const isCover = path.endsWith('/thumbnail') || path.endsWith('/icon');
         const picture = isCover || this.pagesArePicture;
@@ -552,6 +561,79 @@ test.describe('manga section', () => {
         // Opened again, it comes back in the mode that was chosen.
         await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
         await expect(session.page.getByRole('region', { name: 'Reader' }).getByRole('img')).toHaveCount(3);
+    });
+
+    test('shows the progress of the chapter, lets the user jump to a chapter and tries again only the page that failed', async () => {
+        fake.pagesArePicture = true;
+        fake.failTimes.set('/api/v1/chapter/101/page/1', 2);
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const bar = reader.getByRole('progressbar', { name: 'Reading progress' });
+        await expect(bar).toHaveAttribute('aria-valuenow', '33');
+        await expect(bar.locator('.progress__bar')).toHaveCSS('box-shadow', /rgb/);
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('2 / 3')).toBeVisible();
+        await expect(bar).toHaveAttribute('aria-valuenow', '67');
+        // The second page answered with an error: only it is asked for again.
+        await expect(reader.getByRole('alert')).toHaveText('Page 2 could not be loaded.');
+        await reader.getByRole('button', { name: 'TRY AGAIN' }).click();
+        const image = reader.getByRole('img');
+        await expect.poll(() => {return image.evaluate((element: HTMLImageElement) => {return element.complete && element.naturalWidth > 0})}).toBe(true);
+        expect(fake.requests.filter((item) => {return item.path === '/api/v1/chapter/101/page/1'}).length).toBeGreaterThanOrEqual(3);
+        expect(fake.requests.filter((item) => {return item.path === '/api/v1/chapter/101/page/0'})).toHaveLength(1);
+        // Between the buttons of the chapters there is a list to jump to one.
+        const chapters = reader.getByLabel('Go to chapter');
+        await expect(chapters).toHaveValue('0');
+        await chapters.selectOption('1');
+        await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
+        await expect(chapters).toHaveValue('1');
+    });
+
+    test('keeps the settings in view wherever the chapter is, goes back to the top, and scrolls by itself', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(reader.getByRole('button', { name: 'AUTO SCROLL' })).toBeDisabled();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        const area = session.page.locator('.app__main');
+        await expect(reader.getByRole('img')).toHaveCount(3);
+        await expect.poll(() => {return area.evaluate((element) => {return element.scrollHeight - element.clientHeight})}).toBeGreaterThan(1500);
+        await expect(session.page.getByRole('button', { name: 'Back to the top' })).toHaveCount(0);
+
+        // Far into the chapter, the settings still open where the user is looking.
+        await area.evaluate((element) => {
+            element.scrollTop = 1200;
+        });
+        await expect(session.page.getByRole('button', { name: 'Back to the top' })).toBeVisible();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByLabel('Reading mode')).toBeInViewport();
+        await expect(reader.getByLabel('Auto scroll speed (pixels per second)')).toHaveValue('80');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByLabel('Reading mode')).toHaveCount(0);
+
+        // It scrolls by itself, and stops when asked to.
+        const before = await area.evaluate((element) => {return element.scrollTop});
+        await reader.getByRole('button', { name: 'AUTO SCROLL' }).click();
+        await expect.poll(() => {return area.evaluate((element) => {return element.scrollTop})}).toBeGreaterThan(before + 40);
+        await reader.getByRole('button', { name: 'STOP SCROLL' }).click();
+        const stopped = await area.evaluate((element) => {return element.scrollTop});
+        await session.page.waitForTimeout(400);
+        expect(await area.evaluate((element) => {return element.scrollTop})).toBe(stopped);
+
+        // The button at the corner takes it back to the top.
+        await session.page.getByRole('button', { name: 'Back to the top' }).click();
+        await expect.poll(() => {return area.evaluate((element) => {return element.scrollTop})}).toBe(0);
+        await expect(session.page.getByRole('button', { name: 'Back to the top' })).toHaveCount(0);
     });
 
     test('reads a downloaded chapter from its file, with no request to the server for the pages', async () => {

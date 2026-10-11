@@ -11,14 +11,20 @@ export type ReaderDirection = (typeof READER_DIRECTIONS)[number];
 export type ReaderScale = (typeof READER_SCALES)[number];
 export type ReaderBackground = (typeof READER_BACKGROUNDS)[number];
 
+// How fast the scroll goes by itself, in pixels per second.
+export const MIN_AUTO_SCROLL_SPEED = 10;
+export const MAX_AUTO_SCROLL_SPEED = 600;
+export const AUTO_SCROLL_STEP = 10;
+
 export interface ReaderPrefs {
     mode: ReaderMode;
     direction: ReaderDirection;
     scale: ReaderScale;
     background: ReaderBackground;
+    autoScrollSpeed: number;
 }
 
-export const DEFAULT_READER_PREFS: ReaderPrefs = { mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark' };
+export const DEFAULT_READER_PREFS: ReaderPrefs = { mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark', autoScrollSpeed: 80 };
 
 export const PREFS_KEY = 'pullwave.manga.reader';
 export const PROGRESS_KEY = 'pullwave.manga.progress';
@@ -28,6 +34,10 @@ function pick<T extends string>(value: unknown, allowed: readonly T[], fallback:
     return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
+function pickSpeed(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) ? Math.min(MAX_AUTO_SCROLL_SPEED, Math.max(MIN_AUTO_SCROLL_SPEED, Math.round(value))) : fallback;
+}
+
 export function loadReaderPrefs(): ReaderPrefs {
     try {
         const raw = JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}') as Record<string, unknown>;
@@ -35,7 +45,8 @@ export function loadReaderPrefs(): ReaderPrefs {
             mode: pick(raw['mode'], READER_MODES, DEFAULT_READER_PREFS.mode),
             direction: pick(raw['direction'], READER_DIRECTIONS, DEFAULT_READER_PREFS.direction),
             scale: pick(raw['scale'], READER_SCALES, DEFAULT_READER_PREFS.scale),
-            background: pick(raw['background'], READER_BACKGROUNDS, DEFAULT_READER_PREFS.background)
+            background: pick(raw['background'], READER_BACKGROUNDS, DEFAULT_READER_PREFS.background),
+            autoScrollSpeed: pickSpeed(raw['autoScrollSpeed'], DEFAULT_READER_PREFS.autoScrollSpeed)
         };
     } catch {
         return DEFAULT_READER_PREFS;

@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useScrolledDown } from '../hooks/useScrolledDown';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { SelectField } from './fields';
+import { NumberField, SelectField } from './fields';
 import {
+    AUTO_SCROLL_STEP,
     loadProgress,
     loadReaderPrefs,
+    MAX_AUTO_SCROLL_SPEED,
+    MIN_AUTO_SCROLL_SPEED,
     progressKey,
     READER_BACKGROUNDS,
     READER_DIRECTIONS,
@@ -19,6 +24,8 @@ import { mangaErrorKey } from './mangaText';
 
 const PRELOAD_AHEAD = 2;
 const FIELD_TAGS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
+// How far down the page is scrolled before the button to go back to the top shows.
+const TOP_BUTTON_THRESHOLD = 400;
 
 function chapterTitle(name: string, number: number | null): string {
     if (name.length > 0) {
@@ -37,6 +44,9 @@ export function MangaReader() {
     const goToChapter = useMangaStore((state) => {
         return state.goToChapter;
     });
+    const goToChapterIndex = useMangaStore((state) => {
+        return state.goToChapterIndex;
+    });
     const closeReader = useMangaStore((state) => {
         return state.closeReader;
     });
@@ -45,7 +55,16 @@ export function MangaReader() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [failed, setFailed] = useState<number[]>([]);
     const [attempt, setAttempt] = useState(0);
+    // How many times each page was tried again: a page that is tried again is loaded again, and only that one.
+    const [retries, setRetries] = useState<Record<number, number>>({});
+    const [autoScrolling, setAutoScrolling] = useState(false);
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const sectionRef = useRef<HTMLElement | null>(null);
+
+    // The page scrolls inside the main area of the app (or the document, where there is none).
+    const scroller = useCallback((): HTMLElement => {
+        return (sectionRef.current?.closest('.app__main') as HTMLElement | null) ?? (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+    }, []);
 
     const chapter = reader.chapters[reader.index];
     const key = chapter === undefined ? '' : progressKey(reader.mangaTitle, chapter.remoteId);
@@ -64,6 +83,7 @@ export function MangaReader() {
         const saved = reader.status === 'ready' ? loadProgress(key) : 0;
         setPage(saved >= total ? 0 : saved);
         setFailed([]);
+        setRetries({});
     }
 
     useEffect(() => {
@@ -122,6 +142,14 @@ export function MangaReader() {
             }
         }
     }, [reader.status, reader.pages, page, continuous]);
+
+    const scrolledDown = useScrolledDown(scroller, TOP_BUTTON_THRESHOLD);
+    // Auto scroll only makes sense where the pages are in a scroll; it stops at the end of the chapter.
+    const scrolling = autoScrolling && continuous && reader.status === 'ready';
+    const stopAutoScroll = useCallback(() => {
+        setAutoScrolling(false);
+    }, []);
+    useAutoScroll(scroller, scrolling, prefs.autoScrollSpeed, stopAutoScroll);
 
     const changePrefs = useCallback((patch: Partial<ReaderPrefs>) => {
         setPrefs((current) => {
@@ -233,6 +261,7 @@ export function MangaReader() {
                                     return item !== index;
                                 })
                             );
+                            setRetries({ ...retries, [index]: (retries[index] ?? 0) + 1 });
                             setAttempt(attempt + 1);
                         }}
                     >
@@ -243,7 +272,7 @@ export function MangaReader() {
         }
         return (
             <img
-                key={`${address}-${String(attempt)}`}
+                key={`${address}-${String(retries[index] ?? 0)}`}
                 className="reader__img"
                 src={address}
                 alt={t('manga.reader.pageAlt', { page: index + 1 })}
@@ -259,7 +288,7 @@ export function MangaReader() {
     }
 
     return (
-        <section className={`manga__reader reader reader--${prefs.background}`} aria-label={t('manga.reader.aria')}>
+        <section ref={sectionRef} className={`manga__reader reader reader--${prefs.background}`} aria-label={t('manga.reader.aria')}>
             <header className="reader__bar">
                 <button type="button" className="btn btn--small btn--ghost" onClick={closeReader}>
                     {t('manga.reader.close')}
@@ -274,8 +303,36 @@ export function MangaReader() {
                     <button type="button" className="btn btn--small" disabled={!hasPrevious} onClick={() => {return void goToChapter(-1)}}>
                         {t('manga.reader.prevChapter')}
                     </button>
+                    <select
+                        className="input reader__chapters"
+                        aria-label={t('manga.reader.chapterSelect')}
+                        value={reader.index}
+                        onChange={(event) => {
+                            void goToChapterIndex(Number(event.target.value));
+                        }}
+                    >
+                        {reader.chapters.map((item, index) => {
+                            return (
+                                <option key={item.remoteId} value={index}>
+                                    {chapterTitle(item.name, item.number)}
+                                </option>
+                            );
+                        })}
+                    </select>
                     <button type="button" className="btn btn--small" disabled={!hasNext} onClick={() => {return void goToChapter(1)}}>
                         {t('manga.reader.nextChapter')}
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn btn--small${scrolling ? ' btn--primary' : ''}`}
+                        disabled={!continuous || reader.status !== 'ready'}
+                        title={continuous ? undefined : t('manga.reader.autoScrollOnlyScroll')}
+                        aria-pressed={scrolling}
+                        onClick={() => {
+                            setAutoScrolling(!autoScrolling);
+                        }}
+                    >
+                        {scrolling ? t('manga.reader.autoScrollStop') : t('manga.reader.autoScroll')}
                     </button>
                     <button
                         type="button"
@@ -290,7 +347,18 @@ export function MangaReader() {
                         <span aria-hidden="true">{SETTINGS_ICON}</span>
                     </button>
                 </span>
-            </header>
+                {reader.status === 'ready' && total > 0 && (
+                    <div
+                        className="progress reader__progress"
+                        role="progressbar"
+                        aria-label={t('manga.reader.progress')}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(((page + 1) / total) * 100)}
+                    >
+                        <div className="progress__bar" style={{ width: `${String(((page + 1) / total) * 100)}%` }} />
+                    </div>
+                )}
             {settingsOpen && (
                 <div className="panel reader__settings">
                     <SelectField
@@ -339,8 +407,19 @@ export function MangaReader() {
                             changePrefs({ background });
                         }}
                     />
+                    <NumberField
+                        label={t('manga.reader.autoScrollSpeed')}
+                        value={prefs.autoScrollSpeed}
+                        min={MIN_AUTO_SCROLL_SPEED}
+                        max={MAX_AUTO_SCROLL_SPEED}
+                        step={AUTO_SCROLL_STEP}
+                        onChange={(autoScrollSpeed) => {
+                            changePrefs({ autoScrollSpeed: Math.min(MAX_AUTO_SCROLL_SPEED, Math.max(MIN_AUTO_SCROLL_SPEED, Math.round(autoScrollSpeed))) });
+                        }}
+                    />
                 </div>
             )}
+            </header>
             {reader.status === 'loading' && <p className="empty">{t('manga.reader.loading')}</p>}
             {reader.status === 'error' && reader.error && (
                 <p className="field__warning" role="alert" title={reader.error.message}>
@@ -363,6 +442,19 @@ export function MangaReader() {
                         return renderPage(index);
                     })}
                 </div>
+            )}
+            {scrolledDown && (
+                <button
+                    type="button"
+                    className="btn btn--primary reader__top"
+                    aria-label={t('manga.reader.top')}
+                    title={t('manga.reader.top')}
+                    onClick={() => {
+                        scroller().scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                >
+                    <span aria-hidden="true">↑</span>
+                </button>
             )}
         </section>
     );

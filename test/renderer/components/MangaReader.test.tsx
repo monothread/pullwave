@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaReader } from '@renderer/components/MangaReader';
@@ -185,6 +185,28 @@ describe('MangaReader single page', () => {
         expect(sources).toEqual([PAGES[1], PAGES[2]]);
     });
 
+    it('tries again only the page that failed, and loads it again', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaReader />);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        const before = screen.getAllByRole('img');
+        fireEvent.error(before[1]!);
+        const alerts = screen.getAllByRole('alert');
+        expect(alerts).toHaveLength(1);
+        expect(alerts[0]).toHaveTextContent('Page 2 could not be loaded.');
+        await user.click(screen.getByRole('button', { name: 'TRY AGAIN' }));
+        const after = screen.getAllByRole('img');
+        expect(after).toHaveLength(3);
+        // The pages that did not fail are the same elements: they were not loaded again.
+        expect(after[0]).toBe(before[0]);
+        expect(after[2]).toBe(before[2]);
+        expect(after[1]).toHaveAttribute('src', PAGES[1]);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('says a page could not be loaded and tries it again', async () => {
         const user = userEvent.setup();
         open();
@@ -320,10 +342,236 @@ describe('MangaReader settings', () => {
         await user.selectOptions(screen.getByLabelText('Background'), 'white');
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
         expect(screen.getByRole('region', { name: 'Reader' })).toHaveClass('reader--white');
-        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white' });
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white', autoScrollSpeed: 80 });
         unmount();
         render(<MangaReader />);
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
         expect(screen.getByRole('region', { name: 'Reader' })).toHaveClass('reader--white');
+    });
+});
+
+describe('MangaReader the progress of the chapter', () => {
+    it('shows how much of the chapter was read, in the bar of the neon of the app', async () => {
+        open();
+        render(<MangaReader />);
+        const bar = screen.getByRole('progressbar', { name: 'Reading progress' });
+        expect(bar).toHaveClass('progress', 'reader__progress');
+        expect(bar).toHaveAttribute('aria-valuenow', '33');
+        expect(bar.querySelector('.progress__bar')).toHaveStyle({ width: `${String((1 / 3) * 100)}%` });
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(await screen.findByText('2 / 3')).toBeInTheDocument();
+        expect(screen.getByRole('progressbar', { name: 'Reading progress' })).toHaveAttribute('aria-valuenow', '67');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(await screen.findByText('3 / 3')).toBeInTheDocument();
+        expect(screen.getByRole('progressbar', { name: 'Reading progress' })).toHaveAttribute('aria-valuenow', '100');
+        expect(screen.getByRole('progressbar', { name: 'Reading progress' }).querySelector('.progress__bar')).toHaveStyle({ width: '100%' });
+    });
+
+    it('is not there while the pages load or when there are none', () => {
+        open({ status: 'loading', pages: [] });
+        const { rerender } = render(<MangaReader />);
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        open({ pages: [] });
+        rerender(<MangaReader />);
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaReader the chapter list', () => {
+    it('is between the previous and the next chapter, with every chapter and the one being read chosen', () => {
+        open();
+        render(<MangaReader />);
+        const select = screen.getByLabelText('Go to chapter');
+        expect(select).toHaveValue('1');
+        expect(
+            Array.from(select.querySelectorAll('option')).map((option) => {
+                return [option.getAttribute('value'), option.textContent];
+            })
+        ).toEqual([
+            ['0', 'Chapter 1'],
+            ['1', 'Chapter 2'],
+            ['2', '#3']
+        ]);
+        const buttons = Array.from(select.parentElement!.children);
+        expect(buttons.indexOf(select)).toBe(1);
+        expect(buttons[0]).toHaveTextContent('PREVIOUS CHAPTER');
+        expect(buttons[2]).toHaveTextContent('NEXT CHAPTER');
+    });
+
+    it('jumps to the chapter that is picked, reading it from where it is', async () => {
+        const user = userEvent.setup();
+        open({ index: 0 });
+        render(<MangaReader />);
+        await user.selectOptions(screen.getByLabelText('Go to chapter'), '2');
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+        expect(useMangaStore.getState().reader.index).toBe(2);
+    });
+});
+
+describe('MangaReader the settings stay in view', () => {
+    it('opens inside the bar that stays on top of the page, wherever the user is reading', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaReader />);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        const panel = screen.getByLabelText('Reading mode').closest('.reader__settings');
+        expect(panel).not.toBeNull();
+        expect(panel!.parentElement).toHaveClass('reader__bar');
+    });
+});
+
+describe('MangaReader back to the top', () => {
+    function scrollArea(): HTMLElement {
+        const area = document.createElement('div');
+        area.className = 'app__main';
+        area.scrollTo = vi.fn() as unknown as typeof area.scrollTo;
+        document.body.appendChild(area);
+        return area;
+    }
+
+    afterEach(() => {
+        document.querySelectorAll('.app__main').forEach((element) => {
+            element.remove();
+        });
+    });
+
+    it('shows a button at the corner once the page is scrolled down, and takes the page back up', async () => {
+        const user = userEvent.setup();
+        const area = scrollArea();
+        open();
+        render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
+        expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+        area.scrollTop = 900;
+        fireEvent.scroll(area);
+        const button = await screen.findByRole('button', { name: 'Back to the top' });
+        expect(button).toHaveClass('reader__top');
+        await user.click(button);
+        expect(area.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
+        area.scrollTop = 100;
+        fireEvent.scroll(area);
+        await vi.waitFor(() => {
+            expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+        });
+    });
+});
+
+describe('MangaReader auto scroll', () => {
+    let frames: Array<(time: number) => void> = [];
+    let area: HTMLElement;
+
+    beforeEach(() => {
+        frames = [];
+        vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => {
+            frames.push(callback);
+            return frames.length;
+        });
+        vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+            frames[id - 1] = () => {
+                return undefined;
+            };
+        });
+        area = document.createElement('div');
+        area.className = 'app__main';
+        Object.defineProperty(area, 'clientHeight', { value: 500, configurable: true });
+        Object.defineProperty(area, 'scrollHeight', { value: 5000, configurable: true });
+        document.body.appendChild(area);
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        area.remove();
+    });
+
+    function tick(time: number): void {
+        const run = frames.splice(0);
+        act(() => {
+            run.forEach((frame) => {
+                frame(time);
+            });
+        });
+    }
+
+    async function openScroll(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+        open();
+        render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+    }
+
+    it('is off in the single page mode, and says why', () => {
+        open();
+        render(<MangaReader />);
+        const button = screen.getByRole('button', { name: 'AUTO SCROLL' });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'Auto scroll works in the vertical scroll and webtoon modes.');
+    });
+
+    it('scrolls the page down by itself at the speed chosen, and stops when told to', async () => {
+        const user = userEvent.setup();
+        await openScroll(user);
+        const button = screen.getByRole('button', { name: 'AUTO SCROLL' });
+        expect(button).toBeEnabled();
+        expect(button).toHaveAttribute('aria-pressed', 'false');
+        await user.click(button);
+        expect(screen.getByRole('button', { name: 'STOP SCROLL' })).toHaveAttribute('aria-pressed', 'true');
+        tick(1000);
+        tick(2000);
+        expect(area.scrollTop).toBe(80);
+        tick(3000);
+        expect(area.scrollTop).toBe(160);
+        await user.click(screen.getByRole('button', { name: 'STOP SCROLL' }));
+        expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toHaveAttribute('aria-pressed', 'false');
+        tick(4000);
+        expect(area.scrollTop).toBe(160);
+    });
+
+    it('uses the speed of the settings, and keeps it', async () => {
+        const user = userEvent.setup();
+        await openScroll(user);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        const speed = screen.getByLabelText('Auto scroll speed (pixels per second)');
+        expect(speed).toHaveValue(80);
+        expect(speed).toHaveAttribute('min', '10');
+        expect(speed).toHaveAttribute('max', '600');
+        expect(speed).toHaveAttribute('step', '10');
+        fireEvent.change(speed, { target: { value: '200' } });
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toMatchObject({ autoScrollSpeed: 200 });
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
+        tick(1000);
+        tick(2000);
+        expect(area.scrollTop).toBe(200);
+    });
+
+    it('keeps the speed inside its limits', async () => {
+        const user = userEvent.setup();
+        await openScroll(user);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        const speed = screen.getByLabelText('Auto scroll speed (pixels per second)');
+        fireEvent.change(speed, { target: { value: '99999' } });
+        expect(speed).toHaveValue(600);
+        fireEvent.change(speed, { target: { value: '1' } });
+        expect(speed).toHaveValue(10);
+    });
+
+    it('stops by itself at the end of the chapter', async () => {
+        const user = userEvent.setup();
+        await openScroll(user);
+        area.scrollTop = 4600;
+        await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
+        tick(1000);
+        tick(2000);
+        expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('stops when the reader goes back to one page at a time', async () => {
+        const user = userEvent.setup();
+        await openScroll(user);
+        await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'single');
+        expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toHaveAttribute('aria-pressed', 'false');
     });
 });

@@ -186,6 +186,8 @@ interface MangaState {
     openReader: (mangaTitle: string, chapters: ReaderChapter[], index: number) => Promise<void>;
     // Goes to the next chapter (1) or the previous one (-1); false when there is none.
     goToChapter: (step: 1 | -1) => Promise<boolean>;
+    // Goes to the chapter at this place of the list; false when there is none.
+    goToChapterIndex: (index: number) => Promise<boolean>;
     closeReader: () => void;
     runList: () => Promise<void>;
     loadFilters: () => Promise<void>;
@@ -609,6 +611,15 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 return false;
             }
             await get().openReader(reader.mangaTitle, reader.chapters, target);
+            return true;
+        },
+
+        goToChapterIndex: async (index) => {
+            const { reader } = get();
+            if (reader.status === 'closed' || reader.chapters[index] === undefined) {
+                return false;
+            }
+            await get().openReader(reader.mangaTitle, reader.chapters, index);
             return true;
         },
 

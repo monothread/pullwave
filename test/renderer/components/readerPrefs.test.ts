@@ -17,19 +17,36 @@ beforeEach(() => {
 
 describe('reader preferences', () => {
     it('start from the defaults', () => {
-        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark' });
-        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark' });
+        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark', autoScrollSpeed: 80 });
+        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark', autoScrollSpeed: 80 });
     });
 
     it('are kept and read back', () => {
-        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black' });
-        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black"}');
-        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black' });
+        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150 });
+        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black","autoScrollSpeed":150}');
+        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150 });
     });
 
     it('fall back to the default for each value that is not valid', () => {
-        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'vertical', direction: 'up', scale: 5, background: null }));
-        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'screen', background: 'dark' });
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'vertical', direction: 'up', scale: 5, background: null, autoScrollSpeed: 'fast' }));
+        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'screen', background: 'dark', autoScrollSpeed: 80 });
+    });
+
+    it.each([
+        [5, 10],
+        [10, 10],
+        [333.4, 333],
+        [600, 600],
+        [9000, 600],
+        [-20, 10]
+    ])('keep the speed of the auto scroll %j inside its limits: %j', (stored, expected) => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ autoScrollSpeed: stored }));
+        expect(loadReaderPrefs().autoScrollSpeed).toBe(expected);
+    });
+
+    it.each([[null], ['80'], [Number.NaN], [undefined]])('fall back to the default speed for %j', (stored) => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ autoScrollSpeed: stored }));
+        expect(loadReaderPrefs().autoScrollSpeed).toBe(80);
     });
 
     it('fall back to the defaults when what is stored is not JSON, and when the storage refuses', () => {
