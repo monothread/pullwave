@@ -97,8 +97,8 @@ const manga: CyberApi['manga'] = {
     clearFinished: () => {
         return ipcRenderer.invoke(IPC.mangaClearFinished);
     },
-    removeChapter: (chapterId) => {
-        return ipcRenderer.invoke(IPC.mangaRemoveChapter, chapterId);
+    removeDownload: (chapterId) => {
+        return ipcRenderer.invoke(IPC.mangaRemoveDownload, chapterId);
     },
     removeManga: (mangaId) => {
         return ipcRenderer.invoke(IPC.mangaRemoveManga, mangaId);

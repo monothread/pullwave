@@ -102,7 +102,7 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
         IPC.mangaPause,
         IPC.mangaResume,
         IPC.mangaClearFinished,
-        IPC.mangaRemoveChapter,
+        IPC.mangaRemoveDownload,
         IPC.mangaRemoveManga,
         IPC.mangaOpenFolder
     ].forEach((channel) => {
@@ -265,13 +265,14 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     ipcMain.handle(IPC.mangaClearFinished, () => {
         queue.clearFinished();
     });
-    ipcMain.handle(IPC.mangaRemoveChapter, (_event, chapterId) => {
+    ipcMain.handle(IPC.mangaRemoveDownload, (_event, chapterId) => {
         const id = asId(chapterId);
-        if (id === null || migrating || db.getChapter(id) === null) {
+        // Only a chapter that is downloaded has a download to remove: it stays in the library as one that is not downloaded.
+        if (id === null || migrating || db.getChapter(id)?.status !== 'done') {
             return;
         }
         queue.forget([id]);
-        removeFilesOf([db.removeChapter(id)]);
+        removeFilesOf([db.removeDownload(id)]);
         deps.onLibraryChanged();
     });
     ipcMain.handle(IPC.mangaRemoveManga, (_event, mangaId) => {

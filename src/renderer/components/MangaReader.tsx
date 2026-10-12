@@ -9,12 +9,16 @@ import {
     loadProgress,
     loadReaderPrefs,
     MAX_AUTO_SCROLL_SPEED,
+    MAX_PAGE_GAP,
     MIN_AUTO_SCROLL_SPEED,
+    MIN_PAGE_GAP,
+    PAGE_GAP_STEP,
     progressKey,
     READER_BACKGROUNDS,
     READER_DIRECTIONS,
     READER_MODES,
     READER_SCALES,
+    saveLastChapter,
     saveProgress,
     saveReaderPrefs,
     type ReaderPrefs
@@ -49,6 +53,9 @@ export function MangaReader() {
     });
     const closeReader = useMangaStore((state) => {
         return state.closeReader;
+    });
+    const markRead = useMangaStore((state) => {
+        return state.markRead;
     });
     const [prefs, setPrefs] = useState<ReaderPrefs>(loadReaderPrefs);
     const [page, setPage] = useState(0);
@@ -91,6 +98,18 @@ export function MangaReader() {
             saveProgress(key, page >= total - 1 ? 0 : page);
         }
     }, [reader.status, key, page, total]);
+
+    // The manga remembers the chapter it was left on, and a chapter read to the last page is read.
+    useEffect(() => {
+        if (reader.status === 'ready' && chapter !== undefined) {
+            saveLastChapter(reader.mangaTitle, chapter.remoteId);
+        }
+    }, [reader.status, reader.mangaTitle, chapter]);
+    useEffect(() => {
+        if (reader.status === 'ready' && total > 0 && page >= total - 1) {
+            markRead([key], true);
+        }
+    }, [reader.status, total, page, key, markRead]);
 
     // In the scroll the chapter is brought to the page it starts on.
     useEffect(() => {
@@ -324,18 +343,6 @@ export function MangaReader() {
                     </button>
                     <button
                         type="button"
-                        className={`btn btn--small${scrolling ? ' btn--primary' : ''}`}
-                        disabled={!continuous || reader.status !== 'ready'}
-                        title={continuous ? undefined : t('manga.reader.autoScrollOnlyScroll')}
-                        aria-pressed={scrolling}
-                        onClick={() => {
-                            setAutoScrolling(!autoScrolling);
-                        }}
-                    >
-                        {scrolling ? t('manga.reader.autoScrollStop') : t('manga.reader.autoScroll')}
-                    </button>
-                    <button
-                        type="button"
                         className="btn btn--ghost manga__gear"
                         aria-label={t('manga.reader.settings')}
                         title={t('manga.reader.settings')}
@@ -408,6 +415,18 @@ export function MangaReader() {
                         }}
                     />
                     <NumberField
+                        label={t('manga.reader.pageGap')}
+                        value={prefs.pageGap}
+                        min={MIN_PAGE_GAP}
+                        max={MAX_PAGE_GAP}
+                        step={PAGE_GAP_STEP}
+                        disabled={prefs.mode !== 'vertical'}
+                        hint={prefs.mode === 'vertical' ? undefined : t('manga.reader.pageGapOnlyVertical')}
+                        onChange={(pageGap) => {
+                            changePrefs({ pageGap: Math.min(MAX_PAGE_GAP, Math.max(MIN_PAGE_GAP, Math.round(pageGap))) });
+                        }}
+                    />
+                    <NumberField
                         label={t('manga.reader.autoScrollSpeed')}
                         value={prefs.autoScrollSpeed}
                         min={MIN_AUTO_SCROLL_SPEED}
@@ -437,24 +456,40 @@ export function MangaReader() {
                 </div>
             )}
             {reader.status === 'ready' && total > 0 && continuous && (
-                <div ref={scrollRef} className={`reader__scroll reader__scroll--${prefs.mode} reader__stage--${scale}`} data-testid="reader-scroll">
+                <div ref={scrollRef} className={`reader__scroll reader__scroll--${prefs.mode} reader__stage--${scale}`} style={prefs.mode === 'vertical' ? { gap: `${String(prefs.pageGap)}px` } : undefined} data-testid="reader-scroll">
                     {reader.pages.map((_address, index) => {
                         return renderPage(index);
                     })}
                 </div>
             )}
-            {scrolledDown && (
-                <button
-                    type="button"
-                    className="btn btn--primary reader__top"
-                    aria-label={t('manga.reader.top')}
-                    title={t('manga.reader.top')}
-                    onClick={() => {
-                        scroller().scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                >
-                    <span aria-hidden="true">↑</span>
-                </button>
+            {reader.status === 'ready' && total > 0 && (
+                <div className="reader__float">
+                    <button
+                        type="button"
+                        className={`btn reader__auto${scrolling ? ' btn--primary' : ''}`}
+                        disabled={!continuous}
+                        title={continuous ? undefined : t('manga.reader.autoScrollOnlyScroll')}
+                        aria-pressed={scrolling}
+                        onClick={() => {
+                            setAutoScrolling(!autoScrolling);
+                        }}
+                    >
+                        {scrolling ? t('manga.reader.autoScrollStop') : t('manga.reader.autoScroll')}
+                    </button>
+                    {scrolledDown && (
+                        <button
+                            type="button"
+                            className="btn btn--primary reader__top"
+                            aria-label={t('manga.reader.top')}
+                            title={t('manga.reader.top')}
+                            onClick={() => {
+                                scroller().scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                        >
+                            <span aria-hidden="true">↑</span>
+                        </button>
+                    )}
+                </div>
             )}
         </section>
     );

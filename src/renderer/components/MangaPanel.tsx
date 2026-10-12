@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore, type MangaBrowseView } from '../store/mangaStore';
 import { MangaBrowse } from './MangaBrowse';
@@ -48,6 +49,17 @@ export function MangaPanel() {
     const active = useMangaStore((state) => {
         return activeJobCount(state.jobs);
     });
+    // Whatever page of the section is opened (a screen, a source, a manga, a series, the reader) starts at the top.
+    const page = useMangaStore((state) => {
+        return [state.view, state.browse.sourceId ?? '', state.browse.mode, state.sourceSettings.open, state.selection?.manga.remoteId ?? '', state.librarySeries ?? '', state.libraryGroup ?? '', state.reader.status === 'closed'].join('|');
+    });
+
+    useEffect(() => {
+        const area = document.querySelector<HTMLElement>('.app__main');
+        if (area !== null) {
+            area.scrollTop = 0;
+        }
+    }, [page]);
 
     if (!status.supported) {
         return (

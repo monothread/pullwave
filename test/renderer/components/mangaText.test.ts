@@ -7,6 +7,7 @@ import {
     chapterState,
     chapterStatusKey,
     compareNames,
+    continueIndex,
     downloadedCount,
     downloadedTotals,
     groupLibrary,
@@ -283,5 +284,37 @@ describe('grouping the library by series', () => {
         expect(seriesNames([two, one, alone, apple])).toEqual(['Álbum', 'sousou  no frieren']);
         expect(seriesNames([one, two])).toEqual(['Sousou no Frieren']);
         expect(seriesNames([])).toEqual([]);
+    });
+});
+
+describe('continueIndex', () => {
+    const chapters = [{ remoteId: 11 }, { remoteId: 12 }, { remoteId: 13 }];
+    const none = (): boolean => {
+        return false;
+    };
+    const reading = (...read: number[]): ((remoteId: number) => boolean) => {
+        return (remoteId) => {
+            return read.includes(remoteId);
+        };
+    };
+
+    it('is the chapter the manga was left on, when it is not read', () => {
+        expect(continueIndex(chapters, none, 12)).toBe(1);
+        expect(continueIndex(chapters, reading(11), 13)).toBe(2);
+    });
+
+    it('is the first chapter that is not read when the one it was left on is read, or is not there, or there is none', () => {
+        expect(continueIndex(chapters, reading(11, 12), 12)).toBe(2);
+        expect(continueIndex(chapters, reading(11), 99)).toBe(1);
+        expect(continueIndex(chapters, reading(11), null)).toBe(1);
+        expect(continueIndex(chapters, none, null)).toBe(0);
+    });
+
+    it('is the first chapter when everything is read', () => {
+        expect(continueIndex(chapters, reading(11, 12, 13), 13)).toBe(0);
+    });
+
+    it('is -1 when there are no chapters', () => {
+        expect(continueIndex([], none, 12)).toBe(-1);
     });
 });

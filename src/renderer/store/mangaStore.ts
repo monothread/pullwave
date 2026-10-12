@@ -31,6 +31,7 @@ import { resolveAppLanguage } from '../i18n/language';
 import { ALL_LANGUAGES, chapterState, libraryEntry, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter } from '../components/mangaFilterSearch';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
+import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
 import { useAppStore } from './appStore';
 
 export type MangaView = 'browse' | 'library' | 'extensions' | 'settings' | 'downloads';
@@ -175,7 +176,11 @@ interface MangaState {
     cloudflare: MangaCloudflareActivity[];
     // How far the migration of the folder of the mangas is, or null when none is running.
     migration: MangaMigrationProgress | null;
+    // The chapters that were read to the end or marked as read (see `progressKey`).
+    readKeys: string[];
 
+    // Marks chapters as read, or as not read.
+    markRead: (keys: readonly string[], read: boolean) => void;
     init: () => Promise<() => void>;
     refreshStatus: () => Promise<void>;
     retryInstall: () => Promise<void>;
@@ -247,7 +252,7 @@ interface MangaState {
     // Moves the downloaded chapters to a folder the user chooses, then says how it went. Returns what the migration answered.
     migrateFolder: () => Promise<MangaMigrationResponse>;
     removeManga: (mangaId: number) => Promise<void>;
-    removeChapter: (chapterId: number) => Promise<void>;
+    removeDownload: (chapterId: number) => Promise<void>;
 
     cancelJob: (chapterId: number) => Promise<void>;
     retryJob: (chapterId: number) => Promise<void>;
@@ -348,6 +353,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         reader: CLOSED_READER,
         selectionFrom: 'browse',
         migration: null,
+        readKeys: loadReadKeys(),
         extensions: { ...EMPTY_EXTENSIONS, filter: { ...EMPTY_EXTENSIONS.filter, lang: initialPrefs.extensionLanguage, onlyInstalled: initialPrefs.onlyInstalled } },
         cloudflare: [],
 
@@ -419,6 +425,18 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     unsubscribe();
                 });
             };
+        },
+
+        markRead: (keys, read) => {
+            set((state) => {
+                const wanted = new Set(keys);
+                const others = state.readKeys.filter((key) => {
+                    return !wanted.has(key);
+                });
+                const readKeys = read ? [...others, ...wanted] : others;
+                saveReadKeys(readKeys);
+                return { readKeys };
+            });
         },
 
         refreshStatus: async () => {
@@ -910,8 +928,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
             await get().refreshLibrary();
         },
 
-        removeChapter: async (chapterId) => {
-            await window.api.manga.removeChapter(chapterId);
+        removeDownload: async (chapterId) => {
+            await window.api.manga.removeDownload(chapterId);
             await get().refreshLibrary();
         },
 

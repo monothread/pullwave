@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaReader } from '@renderer/components/MangaReader';
-import { loadProgress, PREFS_KEY, saveProgress } from '@renderer/components/readerPrefs';
+import { loadLastChapter, loadProgress, PREFS_KEY, progressKey, saveProgress } from '@renderer/components/readerPrefs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaReaderState, type ReaderChapter } from '@renderer/store/mangaStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -337,12 +337,12 @@ describe('MangaReader settings', () => {
         open();
         const { unmount } = render(<MangaReader />);
         await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
-        expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--screen');
+        expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--width');
         await user.selectOptions(screen.getByLabelText('Page size'), 'original');
         await user.selectOptions(screen.getByLabelText('Background'), 'white');
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
         expect(screen.getByRole('region', { name: 'Reader' })).toHaveClass('reader--white');
-        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white', autoScrollSpeed: 80 });
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white', autoScrollSpeed: 80, pageGap: 8 });
         unmount();
         render(<MangaReader />);
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
@@ -573,5 +573,136 @@ describe('MangaReader auto scroll', () => {
         await user.selectOptions(screen.getByLabelText('Reading mode'), 'single');
         expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toHaveAttribute('aria-pressed', 'false');
+    });
+});
+
+describe('MangaReader the space between the pages', () => {
+    async function openVertical(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+        open();
+        render(<MangaReader />);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
+    }
+
+    it('is 8 pixels by default in the vertical scroll', async () => {
+        const user = userEvent.setup();
+        await openVertical(user);
+        expect(screen.getByLabelText('Space between pages (pixels)')).toHaveValue(8);
+        expect(screen.getByTestId('reader-scroll')).toHaveStyle({ gap: '8px' });
+    });
+
+    it('can be made zero, which joins the pages, and is kept', async () => {
+        const user = userEvent.setup();
+        await openVertical(user);
+        const field = screen.getByLabelText('Space between pages (pixels)');
+        expect(field).toHaveAttribute('min', '0');
+        expect(field).toHaveAttribute('max', '100');
+        expect(field).toHaveAttribute('step', '4');
+        fireEvent.change(field, { target: { value: '0' } });
+        expect(screen.getByTestId('reader-scroll')).toHaveStyle({ gap: '0px' });
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toMatchObject({ pageGap: 0 });
+    });
+
+    it('can be made wider, within its limits', async () => {
+        const user = userEvent.setup();
+        await openVertical(user);
+        const field = screen.getByLabelText('Space between pages (pixels)');
+        fireEvent.change(field, { target: { value: '40' } });
+        expect(screen.getByTestId('reader-scroll')).toHaveStyle({ gap: '40px' });
+        fireEvent.change(field, { target: { value: '5000' } });
+        expect(field).toHaveValue(100);
+        fireEvent.change(field, { target: { value: '-3' } });
+        expect(field).toHaveValue(0);
+    });
+
+    it('is off, and says why, in the single page mode and in the webtoon mode', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaReader />);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        expect(screen.getByLabelText('Space between pages (pixels)')).toBeDisabled();
+        expect(screen.getByText('Only in the vertical scroll; the webtoon mode has none.')).toBeInTheDocument();
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'webtoon');
+        expect(screen.getByLabelText('Space between pages (pixels)')).toBeDisabled();
+        expect(screen.getByTestId('reader-scroll')).not.toHaveAttribute('style');
+    });
+});
+
+describe('MangaReader what was read', () => {
+    beforeEach(() => {
+        useMangaStore.setState({ readKeys: [] });
+    });
+
+    it('remembers the chapter the manga is being read in', () => {
+        open();
+        render(<MangaReader />);
+        expect(loadLastChapter('One Piece')).toBe(2);
+        open({ index: 0 });
+        expect(loadLastChapter('One Piece')).toBe(1);
+    });
+
+    it('does not remember a chapter that did not load', () => {
+        open({ status: 'loading', pages: [] });
+        render(<MangaReader />);
+        expect(loadLastChapter('One Piece')).toBeNull();
+    });
+
+    it('marks the chapter as read only when its last page is reached', async () => {
+        open();
+        render(<MangaReader />);
+        expect(useMangaStore.getState().readKeys).toEqual([]);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(await screen.findByText('2 / 3')).toBeInTheDocument();
+        expect(useMangaStore.getState().readKeys).toEqual([]);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(await screen.findByText('3 / 3')).toBeInTheDocument();
+        expect(useMangaStore.getState().readKeys).toEqual([progressKey('One Piece', 2)]);
+    });
+
+    it('marks a chapter of one page as read right away', () => {
+        open({ pages: [PAGES[0]!] });
+        render(<MangaReader />);
+        expect(useMangaStore.getState().readKeys).toEqual([progressKey('One Piece', 2)]);
+    });
+});
+
+describe('MangaReader the buttons at the corner', () => {
+    it('has the auto scroll beside the one that goes back to the top, at the bottom right, and none in the bar', async () => {
+        const user = userEvent.setup();
+        open();
+        const area = document.createElement('div');
+        area.className = 'app__main';
+        area.scrollTo = vi.fn() as unknown as typeof area.scrollTo;
+        document.body.appendChild(area);
+        render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
+        const auto = screen.getByRole('button', { name: 'AUTO SCROLL' });
+        expect(auto.closest('.reader__float')).not.toBeNull();
+        expect(auto.closest('.reader__bar')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
+        area.scrollTop = 900;
+        fireEvent.scroll(area);
+        const top = await screen.findByRole('button', { name: 'Back to the top' });
+        expect(top.parentElement).toBe(auto.parentElement);
+        expect(auto.parentElement).toHaveClass('reader__float');
+        area.remove();
+    });
+
+    it('is not there while the pages load', () => {
+        open({ status: 'loading', pages: [] });
+        render(<MangaReader />);
+        expect(screen.queryByRole('button', { name: 'AUTO SCROLL' })).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaReader the size of the pages by default', () => {
+    it('fits the pages to the width until the user chooses another size', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaReader />);
+        expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--width');
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        expect(screen.getByLabelText('Page size')).toHaveValue('width');
     });
 });

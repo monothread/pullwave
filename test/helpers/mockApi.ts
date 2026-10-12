@@ -133,7 +133,7 @@ export function createMockApi(): MockApiHandle {
         pause: vi.fn(async () => {return undefined}),
         resume: vi.fn(async () => {return undefined}),
         clearFinished: vi.fn(async () => {return undefined}),
-        removeChapter: vi.fn(async () => {return undefined}),
+        removeDownload: vi.fn(async () => {return undefined}),
         removeManga: vi.fn(async () => {return undefined}),
         openFolder: vi.fn(async () => {return undefined}),
         openSite: vi.fn(async () => {return undefined}),

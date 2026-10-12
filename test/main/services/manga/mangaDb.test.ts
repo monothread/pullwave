@@ -624,19 +624,21 @@ describe('MangaDb moving a manga to another source', () => {
 });
 
 describe('MangaDb removal', () => {
-    it('removes a chapter and gives the file it had', () => {
+    it('removes the download of a chapter: gives the file it had and keeps the chapter as one that is not downloaded', () => {
         const { db, manga } = setup();
         const saved = db.ensureChapter(manga.id, chapter(1));
         db.markDone(saved.id, '/m/Chapter 1.cbz', 1, 1);
-        expect(db.removeChapter(saved.id)).toBe('/m/Chapter 1.cbz');
-        expect(db.getChapter(saved.id)).toBeNull();
+        expect(db.removeDownload(saved.id)).toBe('/m/Chapter 1.cbz');
+        expect(db.getChapter(saved.id)).toMatchObject({ id: saved.id, remoteId: 1, name: 'Chapter 1', status: 'idle', filePath: null, sizeBytes: null, downloadedAt: null, error: null });
     });
 
-    it('gives nothing for a chapter without a file or one that is not there', () => {
+    it('gives nothing, and changes nothing, for a chapter that is not downloaded or not there', () => {
         const { db, manga } = setup();
         const saved = db.ensureChapter(manga.id, chapter(1));
-        expect(db.removeChapter(saved.id)).toBeNull();
-        expect(db.removeChapter(99)).toBeNull();
+        db.markFailed(saved.id, 'error', { code: 'IMAGE', message: 'x' });
+        expect(db.removeDownload(saved.id)).toBeNull();
+        expect(db.getChapter(saved.id)).toMatchObject({ status: 'error', error: { code: 'IMAGE', message: 'x' } });
+        expect(db.removeDownload(99)).toBeNull();
     });
 
     it('removes a manga with all its chapters and gives the files they had', () => {

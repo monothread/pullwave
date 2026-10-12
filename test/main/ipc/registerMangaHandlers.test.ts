@@ -57,7 +57,7 @@ const MANGA_CHANNELS = [
     IPC.mangaList,
     IPC.mangaOpenFolder,
     IPC.mangaPause,
-    IPC.mangaRemoveChapter,
+    IPC.mangaRemoveDownload,
     IPC.mangaRemoveManga,
     IPC.mangaResume,
     IPC.mangaRetry,
@@ -233,7 +233,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaDownload)).toBeNull();
         expect(ipc.call(IPC.mangaLibrary)).toEqual([]);
         expect(ipc.call(IPC.mangaJobs)).toEqual([]);
-        [IPC.mangaDownloadMissing, IPC.mangaCancel, IPC.mangaRetry, IPC.mangaPause, IPC.mangaResume, IPC.mangaClearFinished, IPC.mangaRemoveChapter, IPC.mangaRemoveManga, IPC.mangaOpenFolder].forEach((channel) => {
+        [IPC.mangaDownloadMissing, IPC.mangaCancel, IPC.mangaRetry, IPC.mangaPause, IPC.mangaResume, IPC.mangaClearFinished, IPC.mangaRemoveDownload, IPC.mangaRemoveManga, IPC.mangaOpenFolder].forEach((channel) => {
             expect(ipc.call(channel)).toBeUndefined();
         });
     });
@@ -507,31 +507,34 @@ describe('the library channels', () => {
         expect(spy).toHaveBeenCalledTimes(1);
     });
 
-    it('removes a chapter: stops it, deletes its file and tells the library changed', () => {
+    it('removes the download of a chapter: stops it, deletes its file, keeps the chapter as not downloaded and tells the library changed', () => {
         const { call, db, queue, removedFiles, libraryChanges } = setup();
         call(IPC.mangaAddToLibrary, REQUEST);
         const chapterId = db.chaptersOf(1)[0]!.id;
         db.markDone(chapterId, '/m/One Piece/Chapter 2.cbz', 10, 2);
         const forget = vi.spyOn(queue, 'forget');
         const before = libraryChanges.count;
-        call(IPC.mangaRemoveChapter, chapterId);
+        call(IPC.mangaRemoveDownload, chapterId);
         expect(forget).toHaveBeenCalledWith([chapterId]);
         expect(removedFiles).toEqual([['/m/One Piece/Chapter 2.cbz']]);
-        expect(db.getChapter(chapterId)).toBeNull();
+        expect(db.getChapter(chapterId)).toMatchObject({ status: 'idle', filePath: null });
         expect(libraryChanges.count).toBe(before + 1);
     });
 
-    it('removes a chapter that has no file without deleting anything', () => {
-        const { call, db, removedFiles } = setup();
+    it('does nothing for a chapter that is not downloaded', () => {
+        const { call, db, removedFiles, libraryChanges } = setup();
         call(IPC.mangaAddToLibrary, REQUEST);
-        call(IPC.mangaRemoveChapter, db.chaptersOf(1)[0]!.id);
-        expect(removedFiles).toEqual([[]]);
+        const before = libraryChanges.count;
+        call(IPC.mangaRemoveDownload, db.chaptersOf(1)[0]!.id);
+        expect(removedFiles).toEqual([]);
+        expect(libraryChanges.count).toBe(before);
+        expect(db.chaptersOf(1)).toHaveLength(2);
     });
 
     it('ignores the removal of a chapter or a manga that is not there', () => {
         const { call, removedFiles, libraryChanges } = setup();
-        call(IPC.mangaRemoveChapter, 999);
-        call(IPC.mangaRemoveChapter, 'x');
+        call(IPC.mangaRemoveDownload, 999);
+        call(IPC.mangaRemoveDownload, 'x');
         call(IPC.mangaRemoveManga, 999);
         call(IPC.mangaRemoveManga, null);
         expect(removedFiles).toEqual([]);
@@ -618,7 +621,7 @@ describe('the site and the folder of the mangas', () => {
         call(IPC.mangaDownloadMissing, [1]);
         call(IPC.mangaRetry, 1);
         call(IPC.mangaResume, 1);
-        call(IPC.mangaRemoveChapter, 1);
+        call(IPC.mangaRemoveDownload, 1);
         call(IPC.mangaRemoveManga, 1);
         expect(downloads).toEqual([]);
         expect(queue.list()).toEqual([]);

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaPanel } from '@renderer/components/MangaPanel';
@@ -167,5 +167,67 @@ describe('MangaPanel', () => {
         useMangaStore.setState({ status: makeMangaStatus({ server: 'stopped' }) });
         rerender(<MangaPanel />);
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaPanel starting each page at the top', () => {
+    let area: HTMLElement;
+
+    beforeEach(() => {
+        area = document.createElement('div');
+        area.className = 'app__main';
+        document.body.appendChild(area);
+    });
+
+    afterEach(() => {
+        area.remove();
+    });
+
+    it('scrolls the page of the app to the top when the screen changes', async () => {
+        const user = userEvent.setup();
+        render(<MangaPanel />, { container: area.appendChild(document.createElement('div')) });
+        area.scrollTop = 700;
+        await user.click(screen.getByRole('button', { name: 'LIBRARY' }));
+        expect(area.scrollTop).toBe(0);
+        area.scrollTop = 700;
+        await user.click(screen.getByRole('button', { name: 'EXTENSIONS' }));
+        expect(area.scrollTop).toBe(0);
+    });
+
+    it('scrolls to the top when a manga is opened, when a series is opened and when the reader opens or closes', () => {
+        render(<MangaPanel />, { container: area.appendChild(document.createElement('div')) });
+        const changes: Array<() => void> = [
+            () => {
+                useMangaStore.setState({ selection: { manga: { remoteId: 7, sourceId: '5', title: 'One Piece', thumbnailUrl: null }, status: 'loading', details: null, chapters: [], selected: [], error: null } });
+            },
+            () => {
+                useMangaStore.setState({ librarySeries: 'series-frieren' });
+            },
+            () => {
+                useMangaStore.setState({ libraryGroup: 2 });
+            },
+            () => {
+                useMangaStore.setState({ reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+            },
+            () => {
+                useMangaStore.setState({ reader: { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null } });
+            }
+        ];
+        changes.forEach((change) => {
+            area.scrollTop = 700;
+            act(() => {
+                change();
+            });
+            expect(area.scrollTop).toBe(0);
+        });
+    });
+
+    it('does not scroll the page when something else changes', () => {
+        render(<MangaPanel />, { container: area.appendChild(document.createElement('div')) });
+        area.scrollTop = 700;
+        act(() => {
+            useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 9, status: 'running' })] });
+        });
+        expect(area.scrollTop).toBe(700);
     });
 });

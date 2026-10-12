@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 import {
     DEFAULT_READER_PREFS,
+    LAST_CHAPTER_KEY,
+    loadAllProgress,
+    loadLastChapter,
     loadProgress,
+    loadReadKeys,
+    MAX_READ_CHAPTERS,
+    MAX_REMEMBERED_MANGAS,
+    READ_KEY,
+    saveLastChapter,
+    saveReadKeys,
     loadReaderPrefs,
     MAX_REMEMBERED_CHAPTERS,
     PREFS_KEY,
@@ -17,19 +26,19 @@ beforeEach(() => {
 
 describe('reader preferences', () => {
     it('start from the defaults', () => {
-        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark', autoScrollSpeed: 80 });
-        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'screen', background: 'dark', autoScrollSpeed: 80 });
+        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8 });
+        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8 });
     });
 
     it('are kept and read back', () => {
-        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150 });
-        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black","autoScrollSpeed":150}');
-        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150 });
+        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0 });
+        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black","autoScrollSpeed":150,"pageGap":0}');
+        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0 });
     });
 
     it('fall back to the default for each value that is not valid', () => {
-        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'vertical', direction: 'up', scale: 5, background: null, autoScrollSpeed: 'fast' }));
-        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'screen', background: 'dark', autoScrollSpeed: 80 });
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'vertical', direction: 'up', scale: 5, background: null, autoScrollSpeed: 'fast', pageGap: 'wide' }));
+        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8 });
     });
 
     it.each([
@@ -42,6 +51,22 @@ describe('reader preferences', () => {
     ])('keep the speed of the auto scroll %j inside its limits: %j', (stored, expected) => {
         window.localStorage.setItem(PREFS_KEY, JSON.stringify({ autoScrollSpeed: stored }));
         expect(loadReaderPrefs().autoScrollSpeed).toBe(expected);
+    });
+
+    it.each([
+        [-5, 0],
+        [0, 0],
+        [12.4, 12],
+        [100, 100],
+        [900, 100]
+    ])('keep the space between the pages %j inside its limits: %j', (stored, expected) => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ pageGap: stored }));
+        expect(loadReaderPrefs().pageGap).toBe(expected);
+    });
+
+    it.each([[null], ['8'], [Number.NaN], [undefined]])('fall back to the default space between the pages for %j', (stored) => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ pageGap: stored }));
+        expect(loadReaderPrefs().pageGap).toBe(8);
     });
 
     it.each([[null], ['80'], [Number.NaN], [undefined]])('fall back to the default speed for %j', (stored) => {
@@ -110,6 +135,110 @@ describe('reader progress', () => {
         });
         expect(() => {
             saveProgress('a|1', 2);
+        }).not.toThrow();
+        write.mockRestore();
+    });
+});
+
+describe('every page left on', () => {
+    it('reads all of them at once', () => {
+        saveProgress('a|1', 4);
+        saveProgress('b|2', 9);
+        expect(loadAllProgress()).toEqual({ 'a|1': 4, 'b|2': 9 });
+    });
+
+    it('is empty when nothing was kept', () => {
+        expect(loadAllProgress()).toEqual({});
+    });
+});
+
+describe('chapters read', () => {
+    it('are none at first', () => {
+        expect(loadReadKeys()).toEqual([]);
+    });
+
+    it('are kept and read back', () => {
+        saveReadKeys(['a|1', 'a|2']);
+        expect(window.localStorage.getItem(READ_KEY)).toBe('["a|1","a|2"]');
+        expect(loadReadKeys()).toEqual(['a|1', 'a|2']);
+    });
+
+    it('keep only the latest ones when there are too many', () => {
+        const keys = Array.from({ length: MAX_READ_CHAPTERS + 3 }, (_unused, index) => {
+            return `m|${String(index)}`;
+        });
+        saveReadKeys(keys);
+        const kept = loadReadKeys();
+        expect(kept).toHaveLength(MAX_READ_CHAPTERS);
+        expect(kept[0]).toBe('m|3');
+        expect(kept.at(-1)).toBe(`m|${String(MAX_READ_CHAPTERS + 2)}`);
+    });
+
+    it('leave out what is not a text, and are none when what is stored is not a list or not JSON', () => {
+        window.localStorage.setItem(READ_KEY, JSON.stringify(['a|1', 5, null, 'a|2']));
+        expect(loadReadKeys()).toEqual(['a|1', 'a|2']);
+        window.localStorage.setItem(READ_KEY, JSON.stringify({ a: 1 }));
+        expect(loadReadKeys()).toEqual([]);
+        window.localStorage.setItem(READ_KEY, '{oops');
+        expect(loadReadKeys()).toEqual([]);
+    });
+
+    it('are none when the storage refuses to be read, and are not kept when it refuses to be written', () => {
+        const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+            throw new Error('blocked');
+        });
+        expect(loadReadKeys()).toEqual([]);
+        read.mockRestore();
+        const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('blocked');
+        });
+        expect(() => {
+            saveReadKeys(['a|1']);
+        }).not.toThrow();
+        write.mockRestore();
+    });
+});
+
+describe('the chapter each manga was left on', () => {
+    it('is none for a manga that was not read', () => {
+        expect(loadLastChapter('One Piece')).toBeNull();
+    });
+
+    it('is kept by the title of the manga and read back, the latest one replacing the one before', () => {
+        saveLastChapter('One Piece', 11);
+        saveLastChapter('Bleach', 5);
+        saveLastChapter('One Piece', 12);
+        expect(loadLastChapter('One Piece')).toBe(12);
+        expect(loadLastChapter('Bleach')).toBe(5);
+    });
+
+    it('forgets the mangas read longest ago when there are too many', () => {
+        for (let index = 0; index < MAX_REMEMBERED_MANGAS + 2; index += 1) {
+            saveLastChapter(`Manga ${String(index)}`, index);
+        }
+        expect(loadLastChapter('Manga 0')).toBeNull();
+        expect(loadLastChapter('Manga 1')).toBeNull();
+        expect(loadLastChapter('Manga 2')).toBe(2);
+        expect(loadLastChapter(`Manga ${String(MAX_REMEMBERED_MANGAS + 1)}`)).toBe(MAX_REMEMBERED_MANGAS + 1);
+    });
+
+    it('ignores what is stored when it is not valid', () => {
+        window.localStorage.setItem(LAST_CHAPTER_KEY, JSON.stringify({ a: 1, b: 'x', c: 1.5, d: null }));
+        expect(loadLastChapter('a')).toBe(1);
+        expect(loadLastChapter('b')).toBeNull();
+        expect(loadLastChapter('c')).toBeNull();
+        window.localStorage.setItem(LAST_CHAPTER_KEY, '[1]');
+        expect(loadLastChapter('a')).toBeNull();
+        window.localStorage.setItem(LAST_CHAPTER_KEY, '{oops');
+        expect(loadLastChapter('a')).toBeNull();
+    });
+
+    it('is not kept, without an error, when the storage refuses to be written', () => {
+        const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('blocked');
+        });
+        expect(() => {
+            saveLastChapter('One Piece', 1);
         }).not.toThrow();
         write.mockRestore();
     });

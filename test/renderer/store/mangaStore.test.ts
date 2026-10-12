@@ -723,8 +723,8 @@ describe('mangaStore library and jobs', () => {
         mock.api.manga.library.mockClear();
         await state().removeManga(4);
         expect(mock.api.manga.removeManga).toHaveBeenCalledWith(4);
-        await state().removeChapter(9);
-        expect(mock.api.manga.removeChapter).toHaveBeenCalledWith(9);
+        await state().removeDownload(9);
+        expect(mock.api.manga.removeDownload).toHaveBeenCalledWith(9);
         expect(mock.api.manga.library).toHaveBeenCalledTimes(2);
     });
 
@@ -1256,5 +1256,32 @@ describe('mangaStore series, groups and the move to another source', () => {
             expect(state().selection?.manga.remoteId).toBe(7);
             expect(toasts()).toEqual([]);
         });
+    });
+});
+
+describe('mangaStore chapters read', () => {
+    beforeEach(() => {
+        useMangaStore.setState({ readKeys: [] });
+    });
+
+    it('marks chapters as read, once each, and keeps them', () => {
+        state().markRead(['One Piece|11', 'One Piece|12'], true);
+        state().markRead(['One Piece|12', 'Bleach|1'], true);
+        expect(state().readKeys).toEqual(['One Piece|11', 'One Piece|12', 'Bleach|1']);
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]')).toEqual(['One Piece|11', 'One Piece|12', 'Bleach|1']);
+    });
+
+    it('marks chapters as not read, leaving the others', () => {
+        state().markRead(['a|1', 'a|2', 'a|3'], true);
+        state().markRead(['a|2', 'a|9'], false);
+        expect(state().readKeys).toEqual(['a|1', 'a|3']);
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]')).toEqual(['a|1', 'a|3']);
+    });
+
+    it('starts from what was kept', async () => {
+        window.localStorage.setItem('pullwave.manga.read', JSON.stringify(['a|1']));
+        vi.resetModules();
+        const fresh = (await import('@renderer/store/mangaStore')).useMangaStore.getState();
+        expect(fresh.readKeys).toEqual(['a|1']);
     });
 });

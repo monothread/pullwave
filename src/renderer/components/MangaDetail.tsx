@@ -1,12 +1,14 @@
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MangaCover } from './MangaCover';
 import { MangaGroupChips } from './MangaGroupChips';
 import { MangaMigrateSource } from './MangaMigrateSource';
 import { MangaSeriesSettings } from './MangaSeriesSettings';
+import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
-import { chapterState, chapterStatusKey, downloadedCount, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
+import { SETTINGS_ICON } from './TabButton';
+import { chapterState, chapterStatusKey, continueIndex, downloadedCount, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
 
 function chapterLabel(name: string, number: number | null): string {
     if (name.length > 0) {
@@ -69,8 +71,8 @@ export function MangaDetail() {
     const openReader = useMangaStore((state) => {
         return state.openReader;
     });
-    const removeChapter = useMangaStore((state) => {
-        return state.removeChapter;
+    const removeDownload = useMangaStore((state) => {
+        return state.removeDownload;
     });
     const selectionFrom = useMangaStore((state) => {
         return state.selectionFrom;
@@ -99,7 +101,22 @@ export function MangaDetail() {
         });
     });
 
+    const readKeys = useMangaStore((state) => {
+        return state.readKeys;
+    });
+    const markRead = useMangaStore((state) => {
+        return state.markRead;
+    });
+    const readerOpen = useMangaStore((state) => {
+        return state.reader.status !== 'closed';
+    });
+
     const [migrating, setMigrating] = useState(false);
+    const [organizing, setOrganizing] = useState(false);
+    // The page each chapter was left on: read again when the reader closes (it is what the reader writes).
+    const progress = useMemo(() => {
+        return readerOpen ? {} : loadAllProgress();
+    }, [readerOpen]);
 
     if (selection === null) {
         return null;
@@ -122,6 +139,18 @@ export function MangaDetail() {
             return { remoteId: chapter.remoteId, libraryChapterId: chapterState(saved, chapter.remoteId)?.id ?? null, name: chapter.name, number: chapter.number };
         });
 
+    const readSet = new Set(readKeys);
+    const isRead = (remoteId: number): boolean => {
+        return readSet.has(progressKey(shown.title, remoteId));
+    };
+    const allRead = readable.length > 0 && readable.every((chapter) => {
+        return isRead(chapter.remoteId);
+    });
+    const hasStarted = readable.some((chapter) => {
+        return isRead(chapter.remoteId) || (progress[progressKey(shown.title, chapter.remoteId)] ?? 0) > 0;
+    });
+    const nextIndex = continueIndex(readable, isRead, loadLastChapter(shown.title));
+
     return (
         <section className="manga__detail" aria-label={shown.title}>
             <div className="queue__toolbar">
@@ -130,6 +159,20 @@ export function MangaDetail() {
                 </button>
             </div>
             <header className="history__item manga__head">
+                {inLibraryPage && saved && (
+                    <button
+                        type="button"
+                        className="btn btn--ghost manga__gear manga__head-gear"
+                        aria-label={t('manga.detail.organize')}
+                        title={t('manga.detail.organize')}
+                        aria-expanded={organizing}
+                        onClick={() => {
+                            setOrganizing(!organizing);
+                        }}
+                    >
+                        <span aria-hidden="true">{SETTINGS_ICON}</span>
+                    </button>
+                )}
                 <MangaCover url={shown.thumbnailUrl} />
                 <div className="history__main">
                     <h2 className="history__title">{shown.title}</h2>
@@ -174,8 +217,8 @@ export function MangaDetail() {
                     )}
                 </div>
             </header>
-            {inLibraryPage && saved && (
-                <>
+            {inLibraryPage && saved && organizing && (
+                <div className="manga__organize">
                     <section className="panel" aria-label={t('manga.library.groups')}>
                         <span className="section-label">{t('manga.library.groups')}</span>
                         <MangaGroupChips mangaIds={[saved.id]} title={saved.title} />
@@ -201,7 +244,7 @@ export function MangaDetail() {
                             </button>
                         </div>
                     )}
-                </>
+                </div>
             )}
             {selection.status === 'loading' && <p className="empty">{t('manga.detail.loading')}</p>}
             {selection.status === 'error' && selection.error && (
@@ -213,6 +256,31 @@ export function MangaDetail() {
             {selection.status === 'ready' && chapters.length === 0 && <p className="empty">{t('manga.detail.noChapters')}</p>}
             {selection.status === 'ready' && chapters.length > 0 && (
                 <>
+                    <div className="job__actions">
+                        <button
+                            type="button"
+                            className="btn btn--primary"
+                            onClick={() => {
+                                void openReader(shown.title, readable, nextIndex);
+                            }}
+                        >
+                            {hasStarted ? t('manga.detail.continue') : t('manga.detail.start')}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn"
+                            onClick={() => {
+                                markRead(
+                                    readable.map((chapter) => {
+                                        return progressKey(shown.title, chapter.remoteId);
+                                    }),
+                                    !allRead
+                                );
+                            }}
+                        >
+                            {allRead ? t('manga.detail.markAllUnread') : t('manga.detail.markAllRead')}
+                        </button>
+                    </div>
                     <div className="queue__toolbar">
                         <span className="section-label">{t('manga.detail.chapters', { count: chapters.length })}</span>
                         {inLibraryPage && (
@@ -320,6 +388,8 @@ export function MangaDetail() {
                         {chapters.map((chapter) => {
                             const state = chapterState(saved, chapter.remoteId);
                             const label = chapterLabel(chapter.name, chapter.number);
+                            const read = isRead(chapter.remoteId);
+                            const pageLeftOn = progress[progressKey(shown.title, chapter.remoteId)] ?? 0;
                             const open = (): void => {
                                 void openReader(
                                     shown.title,
@@ -349,9 +419,22 @@ export function MangaDetail() {
                                                 {label}
                                             </RowLink>
                                         </span>
-                                        <span className="history__meta">{[chapter.scanlator, formatDate(chapter.dateUploaded)].filter(Boolean).join(' · ')}</span>
+                                        <span className="history__meta">
+                                            {[chapter.scanlator, formatDate(chapter.dateUploaded), pageLeftOn > 0 && !read ? t('manga.detail.leftOn', { page: pageLeftOn + 1 }) : null].filter(Boolean).join(' · ')}
+                                        </span>
                                     </div>
+                                    {read && <span className="badge badge--done">{t('manga.detail.read')}</span>}
                                     {state && <span className={`badge badge--${state.status}`}>{t(chapterStatusKey(state.status))}</span>}
+                                    <button
+                                        type="button"
+                                        className="btn btn--small btn--ghost"
+                                        aria-label={`${read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}: ${label}`}
+                                        onClick={() => {
+                                            markRead([progressKey(shown.title, chapter.remoteId)], !read);
+                                        }}
+                                    >
+                                        {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}
+                                    </button>
                                     {inLibraryPage && state && (state.status === 'error' || state.status === 'cancelled') && (
                                         <button
                                             type="button"
@@ -364,16 +447,16 @@ export function MangaDetail() {
                                             {t('manga.jobs.retry')}
                                         </button>
                                     )}
-                                    {inLibraryPage && state && state.status !== 'queued' && state.status !== 'downloading' && (
+                                    {inLibraryPage && state && state.status === 'done' && (
                                         <button
                                             type="button"
                                             className="btn btn--small btn--ghost"
-                                            aria-label={`${t('manga.library.removeChapter')}: ${label}`}
+                                            aria-label={`${t('manga.library.removeDownload')}: ${label}`}
                                             onClick={() => {
-                                                void removeChapter(state.id);
+                                                void removeDownload(state.id);
                                             }}
                                         >
-                                            {t('manga.library.removeChapter')}
+                                            {t('manga.library.removeDownload')}
                                         </button>
                                     )}
                                 </li>

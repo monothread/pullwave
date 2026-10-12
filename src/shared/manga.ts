@@ -418,7 +418,7 @@ export interface MangaApi {
     pause: (chapterId: number) => Promise<void>;
     resume: (chapterId: number) => Promise<void>;
     clearFinished: () => Promise<void>;
-    removeChapter: (chapterId: number) => Promise<void>;
+    removeDownload: (chapterId: number) => Promise<void>;
     removeManga: (mangaId: number) => Promise<void>;
     openFolder: (mangaId: number) => Promise<void>;
     // Opens the page of a manga on the site of its source, in the browser of the system (only an http or https address is opened).

@@ -1112,7 +1112,7 @@ test.describe('manga section', () => {
         expect(readdirSync(join(mangaFolder(), 'One Piece'))).toEqual(['Chapter 1.cbz']);
     });
 
-    test('removes a chapter with its file, and a manga with its folder', async () => {
+    test('removes the download of a chapter, which stays as not downloaded, and a manga with its folder', async () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
@@ -1123,10 +1123,14 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: '← BACK' }).click();
         await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible({ timeout: 30000 });
         await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
-        await session.page.getByRole('button', { name: 'Remove chapter: Romance Dawn' }).click();
+        await session.page.getByRole('button', { name: 'Remove download: Romance Dawn' }).click();
         await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(false);
+        // The chapter is still in the list, as one that is not downloaded, with nothing left to remove.
+        const first = session.page.getByTestId('manga-chapter').filter({ hasText: 'Romance Dawn' });
+        await expect(first.getByText('Not downloaded')).toBeVisible();
+        await expect(first.getByRole('button', { name: /^Remove download/ })).toHaveCount(0);
         await session.page.getByRole('button', { name: '← BACK' }).click();
-        await expect(session.page.getByText('1 of 1 downloaded')).toBeVisible();
+        await expect(session.page.getByText('1 of 2 downloaded')).toBeVisible();
         await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(false);
         expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 2.cbz'))).toBe(true);
 
@@ -1134,6 +1138,79 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'REMOVE WITH FILES?' }).click();
         await expect(session.page.getByText('Your library is empty.')).toBeVisible();
         await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece'))}).toBe(false);
+    });
+
+    test('remembers the chapter and the page where the reading stopped, marks chapters as read, and starts every page at the top', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await expect(session.page.getByRole('button', { name: 'START READING' })).toBeVisible();
+        await session.page.getByRole('button', { name: 'READ: The Great Race' }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('2 / 3')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+
+        // The page of the manga starts at the top, says where the chapter was left, and continues from there.
+        await expect.poll(() => {return session.page.locator('.app__main').evaluate((element) => {return element.scrollTop})}).toBe(0);
+        await expect(session.page.getByTestId('manga-chapter').filter({ hasText: 'The Great Race' })).toContainText('left on page 2');
+        await session.page.getByRole('button', { name: 'CONTINUE READING' }).click();
+        await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
+        await expect(reader.getByText('2 / 3')).toBeVisible();
+        // Reading to the last page marks the chapter as read.
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('3 / 3')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+        await expect(session.page.getByTestId('manga-chapter').filter({ hasText: 'The Great Race' }).locator('.badge--done', { hasText: 'Read' })).toBeVisible();
+
+        // By hand, one chapter or the whole manga.
+        await session.page.getByRole('button', { name: 'Mark as read: Romance Dawn' }).click();
+        await expect(session.page.getByRole('button', { name: 'MARK ALL AS NOT READ' })).toBeVisible();
+        await session.page.getByRole('button', { name: 'MARK ALL AS NOT READ' }).click();
+        await expect(session.page.locator('.badge--done', { hasText: 'Read' })).toHaveCount(0);
+
+        // What was read is remembered after the app is closed.
+        await session.page.getByRole('button', { name: 'MARK ALL AS READ' }).click();
+        await session.app.close();
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await expect(session.page.locator('.badge--done', { hasText: 'Read' })).toHaveCount(2);
+    });
+
+    test('keeps the groups, the series and the source of a manga of the library behind a gear in its head', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await expect(session.page.getByLabel('Series')).toHaveCount(0);
+        const gear = session.page.getByRole('button', { name: 'Groups, series and source' });
+        await gear.click();
+        await expect(session.page.getByLabel('Series')).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeVisible();
+        await gear.click();
+        await expect(session.page.getByLabel('Series')).toHaveCount(0);
+    });
+
+    test('lets the space between the pages be made zero in the vertical scroll, and fits the pages to the width at first', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByLabel('Page size')).toHaveValue('width');
+        await reader.getByLabel('Reading mode').selectOption('vertical');
+        await expect(reader.getByTestId('reader-scroll')).toHaveCSS('row-gap', '8px');
+        await reader.getByLabel('Space between pages (pixels)').fill('0');
+        await expect(reader.getByTestId('reader-scroll')).toHaveCSS('row-gap', '0px');
+        await expect(reader.locator('.reader__float')).toContainText('AUTO SCROLL');
     });
 
     test('keeps the library, with its covers, after the app is closed and opened again', async () => {

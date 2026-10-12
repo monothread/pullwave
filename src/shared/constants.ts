@@ -102,7 +102,7 @@ export const IPC = {
     mangaPause: 'manga:pause',
     mangaResume: 'manga:resume',
     mangaClearFinished: 'manga:clear-finished',
-    mangaRemoveChapter: 'manga:remove-chapter',
+    mangaRemoveDownload: 'manga:remove-download',
     mangaRemoveManga: 'manga:remove-manga',
     mangaOpenFolder: 'manga:open-folder',
     mangaOpenSite: 'manga:open-site',

@@ -586,11 +586,15 @@ export class MangaDb {
             });
     }
 
-    // The chapter is no longer in the library; the file it had (if any) is for the caller to delete.
-    removeChapter(chapterId: number): string | null {
+    // The chapter stays in the library, as one that is not downloaded; the file it had is for the caller to delete. Gives nothing (and
+    // changes nothing) for a chapter that is not downloaded.
+    removeDownload(chapterId: number): string | null {
         const chapter = this.getChapter(chapterId);
-        this.run('DELETE FROM chapter WHERE id = ?', chapterId);
-        return chapter?.filePath ?? null;
+        if (chapter === null || chapter.status !== 'done') {
+            return null;
+        }
+        this.run(`UPDATE chapter SET status = 'idle', file_path = NULL, size_bytes = NULL, downloaded_at = NULL, error_code = NULL, error_raw = NULL WHERE id = ?`, chapterId);
+        return chapter.filePath;
     }
 
     // The manga and its chapters are no longer in the library; the files they had are for the caller to delete.
