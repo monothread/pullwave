@@ -850,6 +850,7 @@ export const ja: Messages = {
     'manga.series.error.renameTaken': '「{manga}」の順番 {order} は「{series}」で既に使われています。次の {suggested} に変更してください。',
     'manga.series.open': 'シリーズを開く',
     'manga.detail.downloadSeason': 'シーズンをダウンロード',
+    'manga.detail.downloadChapter': 'ダウンロード',
     'manga.series.downloadAll': 'すべてダウンロード',
     'manga.migrateSource.title': '別のソースへ移行',
     'manga.migrateSource.hint': 'このマンガを別のソースで探して選びます。ダウンロード済みの章は残り、番号で新しいソースの章に対応付けられます。タイトル、シリーズ、グループはそのままです。',

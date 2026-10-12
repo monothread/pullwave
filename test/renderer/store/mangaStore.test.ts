@@ -618,6 +618,58 @@ describe('mangaStore opening a manga', () => {
             expect(state().selection?.selected).toEqual([11, 12, 13]);
         });
 
+        describe('downloading one chapter', () => {
+            it('sends only that chapter with the manga it belongs to, tells so and reads the library', async () => {
+                mock.api.manga.download.mockResolvedValue(makeLibraryManga([]));
+                await state().downloadChapter(12);
+                expect(mock.api.manga.download).toHaveBeenCalledTimes(1);
+                expect(mock.api.manga.download).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: [chapters[1]] });
+                expect(toasts()).toEqual(['1 chapter(s) queued.']);
+                expect(mock.api.manga.library).toHaveBeenCalled();
+            });
+
+            it('does not touch the chapters that were picked', async () => {
+                mock.api.manga.download.mockResolvedValue(makeLibraryManga([]));
+                state().toggleChapter(11);
+                await state().downloadChapter(13);
+                expect(state().selection?.selected).toEqual([11]);
+                expect(mock.api.manga.download).toHaveBeenCalledWith(expect.objectContaining({ chapters: [chapters[2]] }));
+            });
+
+            it('says nothing when the source gave nothing back', async () => {
+                mock.api.manga.download.mockResolvedValue(null);
+                await state().downloadChapter(11);
+                expect(toasts()).toEqual([]);
+                expect(mock.api.manga.library).toHaveBeenCalled();
+            });
+
+            it.each(['done', 'queued', 'downloading', 'paused'] as const)('does nothing for a chapter that is %s', async (status) => {
+                useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ remoteId: 11, status })])] });
+                await state().downloadChapter(11);
+                expect(mock.api.manga.download).not.toHaveBeenCalled();
+            });
+
+            it.each(['idle', 'error', 'cancelled'] as const)('sends a chapter that is %s', async (status) => {
+                mock.api.manga.download.mockResolvedValue(makeLibraryManga([]));
+                useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ remoteId: 11, status })])] });
+                await state().downloadChapter(11);
+                expect(mock.api.manga.download).toHaveBeenCalledWith(expect.objectContaining({ chapters: [chapters[0]] }));
+            });
+
+            it('does nothing for a chapter the manga does not have', async () => {
+                await state().downloadChapter(999);
+                expect(mock.api.manga.download).not.toHaveBeenCalled();
+            });
+
+            it('does nothing without an open manga, or while it is not ready', async () => {
+                useMangaStore.setState({ selection: { manga: makeSummary(), status: 'loading', details: null, chapters: [], selected: [], error: null } });
+                await state().downloadChapter(11);
+                state().closeManga();
+                await state().downloadChapter(11);
+                expect(mock.api.manga.download).not.toHaveBeenCalled();
+            });
+        });
+
         it('does nothing without an open manga', () => {
             state().closeManga();
             state().toggleChapter(11);

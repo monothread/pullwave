@@ -872,6 +872,7 @@ export const en = {
     'manga.series.error.renameTaken': 'Order {order} of "{manga}" is already used in "{series}". Change its order to {suggested}, the next one.',
     'manga.series.open': 'Open series',
     'manga.detail.downloadSeason': 'DOWNLOAD SEASON',
+    'manga.detail.downloadChapter': 'DOWNLOAD',
     'manga.series.downloadAll': 'DOWNLOAD ALL',
     'manga.migrateSource.title': 'MIGRATE TO ANOTHER SOURCE',
     'manga.migrateSource.hint': 'Look for this manga in another source and pick it. The chapters you downloaded stay and are matched to the chapters of the new source by their number; the title, the series and the groups stay as they are.',

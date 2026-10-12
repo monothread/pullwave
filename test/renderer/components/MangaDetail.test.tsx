@@ -191,6 +191,88 @@ describe('MangaDetail downloading the season', () => {
     });
 });
 
+describe('MangaDetail downloading one chapter', () => {
+    const SAVED = (statuses: Array<'done' | 'queued' | 'downloading' | 'idle' | 'error' | 'cancelled' | 'paused'>) => {
+        return makeLibraryManga(
+            statuses.map((status, index) => {
+                return makeChapterRecord({ id: index + 1, remoteId: 11 + index, status });
+            }),
+            { id: 9 }
+        );
+    };
+
+    it('has a small DOWNLOAD button in the row of a chapter that is not downloaded, which sends only that chapter', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.download.mockResolvedValue(makeLibraryManga([]));
+        useMangaStore.setState({ library: [SAVED(['done', 'idle', 'idle'])] });
+        open();
+        render(<MangaDetail />);
+        const rows = screen.getAllByTestId('manga-chapter');
+        expect(within(rows[0]!).queryByRole('button', { name: /^DOWNLOAD:/ })).not.toBeInTheDocument();
+        const button = within(rows[1]!).getByRole('button', { name: 'DOWNLOAD: #2' });
+        expect(button).toHaveTextContent('DOWNLOAD');
+        expect(button).toHaveClass('btn', 'btn--small');
+        expect(button).not.toHaveClass('btn--primary');
+        expect(button).not.toHaveClass('btn--ghost');
+        await user.click(button);
+        expect(mock.api.manga.download).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.download).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: [CHAPTERS[1]] });
+        expect(mock.api.manga.downloadMissing).not.toHaveBeenCalled();
+    });
+
+    it('is after the mark as read and before the removal, in the row', () => {
+        useMangaStore.setState({ library: [SAVED(['idle', 'idle', 'idle'])] });
+        open();
+        render(<MangaDetail />);
+        const labels = within(screen.getAllByTestId('manga-chapter')[0]!)
+            .getAllByRole('button')
+            .map((button) => {
+                return button.getAttribute('aria-label') ?? button.textContent;
+            });
+        expect(labels.indexOf('DOWNLOAD: Romance Dawn')).toBeGreaterThan(labels.indexOf('Mark as read: Romance Dawn'));
+    });
+
+    it.each([['done'], ['queued'], ['downloading'], ['paused']] as const)('has no button for a chapter that is %s', (status) => {
+        useMangaStore.setState({ library: [SAVED([status])] });
+        open();
+        render(<MangaDetail />);
+        expect(within(screen.getAllByTestId('manga-chapter')[0]!).queryByRole('button', { name: /^DOWNLOAD:/ })).not.toBeInTheDocument();
+    });
+
+    it.each([['error'], ['cancelled']] as const)('leaves a chapter that is %s to its RETRY, with no second button', (status) => {
+        useMangaStore.setState({ library: [SAVED([status])] });
+        open();
+        render(<MangaDetail />);
+        const row = screen.getAllByTestId('manga-chapter')[0]!;
+        expect(within(row).queryByRole('button', { name: /^DOWNLOAD:/ })).not.toBeInTheDocument();
+        expect(within(row).getByRole('button', { name: 'RETRY: Romance Dawn' })).toBeInTheDocument();
+    });
+
+    it('has the button for a chapter the library does not have yet', () => {
+        useMangaStore.setState({ library: [SAVED(['done'])] });
+        open();
+        render(<MangaDetail />);
+        const rows = screen.getAllByTestId('manga-chapter');
+        expect(within(rows[1]!).getByRole('button', { name: 'DOWNLOAD: #2' })).toBeInTheDocument();
+        expect(within(rows[2]!).getByRole('button', { name: /^DOWNLOAD:/ })).toBeInTheDocument();
+    });
+
+    it('is not on the page of the browse, which only reads and adds', () => {
+        useMangaStore.setState({ library: [SAVED(['idle'])], selectionFrom: 'browse' });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: /^DOWNLOAD:/ })).not.toBeInTheDocument();
+    });
+
+    it('speaks the language of the app', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt' } });
+        useMangaStore.setState({ library: [SAVED(['idle'])] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'BAIXAR: Romance Dawn' })).toBeInTheDocument();
+    });
+});
+
 describe('MangaDetail reading', () => {
     const NEWEST_FIRST = [
         makeChapter({ remoteId: 13, name: 'Third', number: 3, sourceOrder: 3 }),
@@ -345,8 +427,14 @@ describe('MangaDetail in the library page', () => {
         render(<MangaDetail />);
         const row = screen.getAllByTestId('manga-chapter')[0]!;
         expect(row).toHaveClass('row--link');
-        // Only the link that reads and the button that marks the chapter as read.
-        expect(within(row).getAllByRole('button')).toHaveLength(2);
+        // Only the link that reads, the button that marks the chapter as read and the one that downloads it (the chapter is not downloaded).
+        expect(
+            within(row)
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.getAttribute('aria-label');
+                })
+        ).toEqual(['READ: Romance Dawn', 'Mark as read: Romance Dawn', 'DOWNLOAD: Romance Dawn']);
         expect(within(row).queryByText('READ')).not.toBeInTheDocument();
         await user.click(within(row).getByRole('button', { name: 'READ: Romance Dawn' }));
         expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 11, libraryChapterId: null });

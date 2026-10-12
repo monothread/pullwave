@@ -988,6 +988,36 @@ test.describe('manga section', () => {
         ]);
     });
 
+    test('downloads one chapter from its own row in the library, and the rest with the button of the season', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const first = session.page.getByTestId('manga-chapter').filter({ hasText: 'Romance Dawn' });
+        const second = session.page.getByTestId('manga-chapter').filter({ hasText: 'The Great Race' });
+        await expect(first.getByRole('button', { name: 'DOWNLOAD: Romance Dawn' })).toBeVisible();
+        await expect(second.getByRole('button', { name: 'DOWNLOAD: The Great Race' })).toHaveClass(/btn--small/);
+
+        // Only the chapter of the row is downloaded.
+        await second.getByRole('button', { name: 'DOWNLOAD: The Great Race' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: '1 chapter(s) queued.' })).toBeVisible();
+        await expect(second.getByText('Downloaded')).toBeVisible({ timeout: 20000 });
+        await expect(second.getByRole('button', { name: /^DOWNLOAD:/ })).toHaveCount(0);
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 2.cbz']);
+        expect(
+            fake.graphqlRequests('fetchChapterPages').map((item) => {
+                return item.variables?.['chapterId'];
+            })
+        ).toEqual([102]);
+        await expect(first.getByText('Not downloaded')).toBeVisible();
+        await expect(first.getByRole('button', { name: 'DOWNLOAD: Romance Dawn' })).toBeVisible();
+
+        // The season still downloads what is missing.
+        await downloadSeason(session.page);
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+        await expect(session.page.getByRole('button', { name: /^DOWNLOAD:/ })).toHaveCount(0);
+    });
+
     test('keeps the downloaded chapter in the library, with its state in the manga', async () => {
         session = await launch();
         await openManga(session.page);

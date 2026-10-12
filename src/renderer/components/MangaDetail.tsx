@@ -9,7 +9,7 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntry, mangaStatusKey } from './mangaText';
+import { canDownload, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntry, mangaStatusKey } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 
 function chapterLabel(name: string, number: number | null): string {
@@ -67,6 +67,9 @@ export function MangaDetail() {
     });
     const downloadMissing = useMangaStore((state) => {
         return state.downloadMissing;
+    });
+    const downloadChapter = useMangaStore((state) => {
+        return state.downloadChapter;
     });
     const addToLibrary = useMangaStore((state) => {
         return state.addToLibrary;
@@ -440,6 +443,18 @@ export function MangaDetail() {
                                             }}
                                         >
                                             {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}
+                                        </button>
+                                    )}
+                                    {inLibraryPage && canDownload(state) && state?.status !== 'error' && state?.status !== 'cancelled' && (
+                                        <button
+                                            type="button"
+                                            className="btn btn--small"
+                                            aria-label={`${t('manga.detail.downloadChapter')}: ${label}`}
+                                            onClick={() => {
+                                                void downloadChapter(chapter.remoteId);
+                                            }}
+                                        >
+                                            {t('manga.detail.downloadChapter')}
                                         </button>
                                     )}
                                     {inLibraryPage && state && (state.status === 'error' || state.status === 'cancelled') && (

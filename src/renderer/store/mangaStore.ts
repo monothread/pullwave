@@ -268,6 +268,8 @@ interface MangaState {
     toggleChapter: (remoteId: number) => void;
     selectChapters: (kind: ChapterSelectionKind) => void;
     downloadSelected: () => Promise<void>;
+    // Downloads one chapter of the open manga (when a download does something for it).
+    downloadChapter: (remoteId: number) => Promise<void>;
     addToLibrary: () => Promise<boolean>;
     // Goes to the library, on the page of the manga that is open.
     showInLibrary: () => Promise<void>;
@@ -997,6 +999,25 @@ export const useMangaStore = create<MangaState>((set, get) => {
             set((state) => {
                 return state.selection === null ? {} : { selection: { ...state.selection, selected: [] } };
             });
+        },
+
+        downloadChapter: async (remoteId) => {
+            const { selection } = get();
+            if (selection === null || selection.status !== 'ready') {
+                return;
+            }
+            const entry = libraryEntry(get().library, selection.manga.sourceId, selection.manga.remoteId);
+            const chapter = selection.chapters.find((item) => {
+                return item.remoteId === remoteId;
+            });
+            if (chapter === undefined || downloadablePicks(entry, [remoteId]).length === 0) {
+                return;
+            }
+            const library = await window.api.manga.download({ manga: summaryOf(selection), details: selection.details, chapters: [chapter] });
+            if (library !== null) {
+                toast('manga.notice.queued', { count: 1 });
+            }
+            await get().refreshLibrary();
         },
 
         addToLibrary: async () => {

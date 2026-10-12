@@ -581,3 +581,7 @@ New setting `jsRuntime` → `--js-runtimes <value>` (YouTube needs a JS runtime 
 ## D-083 · 2026-10-12 — The helper of Cloudflare does not remove the container of another copy of the app
 - **What happened:** starting the helper removed every container with the label of the helper, so a second copy of the app (a test run, a development run) killed the container of the one the user was using, which then showed "not working" with a stale address.
 - **Now:** the containers are listed with their names (`pullwave-flaresolverr-<process id>`) and only the ones whose process is gone are removed (and the one under its own process id, or with no id in the name). CHECK NOW, when the helper says it runs but does not answer, stops what is left and starts it again.
+
+## D-084 · 2026-10-12 — A DOWNLOAD button in the row of each chapter of the library
+- **Why:** with the pick of chapters gone (D-082) there was no way to download just one chapter.
+- **What:** on the page of a manga opened from the library, every chapter that a download does something for (not downloaded, or not in the library yet) has a small DOWNLOAD button after MARK AS READ. It sends only that chapter (`downloadChapter` in the store, the same call as DOWNLOAD SEASON, which keeps downloading all that is missing). A chapter that failed or was cancelled keeps its RETRY, a downloaded one its removal, and waiting, going on and paused ones have no button. The page opened from the browse has none.

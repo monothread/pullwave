@@ -856,6 +856,7 @@ export const pt: Messages = {
     'manga.series.error.renameTaken': 'A ordem {order} de "{manga}" já é usada em "{series}". Mude a ordem dele para {suggested}, a próxima.',
     'manga.series.open': 'Abrir série',
     'manga.detail.downloadSeason': 'BAIXAR TEMPORADA',
+    'manga.detail.downloadChapter': 'BAIXAR',
     'manga.series.downloadAll': 'BAIXAR TODOS',
     'manga.migrateSource.title': 'MIGRAR PARA OUTRA FONTE',
     'manga.migrateSource.hint': 'Procure este mangá em outra fonte e escolha-o. Os capítulos baixados ficam e são associados aos capítulos da nova fonte pelo número; o título, a série e os grupos continuam como estão.',

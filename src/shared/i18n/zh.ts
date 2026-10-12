@@ -849,6 +849,7 @@ export const zh: Messages = {
     'manga.series.error.renameTaken': '“{manga}”的顺序 {order} 已在“{series}”中使用。请把它改为下一个：{suggested}。',
     'manga.series.open': '打开系列',
     'manga.detail.downloadSeason': '下载本季',
+    'manga.detail.downloadChapter': '下载',
     'manga.series.downloadAll': '全部下载',
     'manga.migrateSource.title': '迁移到其他来源',
     'manga.migrateSource.hint': '在其他来源中查找这部漫画并选择它。已下载的章节会保留，并按编号与新来源的章节对应；标题、系列和分组保持不变。',
