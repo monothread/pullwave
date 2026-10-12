@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { AUTOSAVE_DELAY_MS } from '@renderer/hooks/useAutoSaveSettings';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SettingsPanel } from '@renderer/components/SettingsPanel';
@@ -1489,6 +1489,69 @@ describe('SettingsPanel manga section', () => {
         await flushPromises();
         expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaCheckNewChapters: false });
+    });
+
+    it('has a switch to download the new chapters, off by default, with its hint, and saves it right away', async () => {
+        render(<SettingsPanel scope="manga" />);
+        const toggle = screen.getByRole('switch', { name: 'Download the new chapters found' });
+        expect(toggle).not.toBeChecked();
+        expect(screen.getByText('The new chapters that the check (every hour, or the button that looks for them) finds are downloaded at once. Off: they are only added to the library.')).toBeInTheDocument();
+        fireEvent.click(toggle);
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaAutoDownloadNew: true });
+    });
+
+    describe('the browser for OPEN ON SITE', () => {
+        const CHROME = { label: 'Google Chrome', engine: 'chrome' as const, dataDir: '/home/a/.config/google-chrome', profiles: [] };
+        const CHROME_WORK = { label: 'Google Chrome (work)', engine: 'chrome' as const, dataDir: '/home/a/.config/google-chrome-work', profiles: [] };
+        const FIREFOX_FOUND = { label: 'Firefox', engine: 'firefox' as const, dataDir: '/home/a/.mozilla/firefox', profiles: [] };
+
+        function optionsOf(field: HTMLElement): string[] {
+            return within(field)
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.textContent ?? '';
+                });
+        }
+
+        it('looks for the browsers in the manga settings, and offers the one of the system and one entry for each kind found', async () => {
+            mock.api.listBrowsers.mockResolvedValue([CHROME, CHROME_WORK, FIREFOX_FOUND]);
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            expect(mock.api.listBrowsers).toHaveBeenCalledTimes(1);
+            expect(mock.api.listBrowsers).toHaveBeenCalledWith(false);
+            const field = screen.getByLabelText('Browser for OPEN ON SITE');
+            expect(field).toHaveValue('default');
+            expect(optionsOf(field)).toEqual(['The browser of the system', 'Google Chrome', 'Firefox']);
+            expect(screen.getByText('Where the page of a manga on its site is opened. If the browser is not found, the one of the system is used.')).toBeInTheDocument();
+        });
+
+        it('offers only the one of the system when no browser was found', async () => {
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            expect(optionsOf(screen.getByLabelText('Browser for OPEN ON SITE'))).toEqual(['The browser of the system']);
+        });
+
+        it('saves the browser right away', async () => {
+            mock.api.listBrowsers.mockResolvedValue([CHROME, FIREFOX_FOUND]);
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            fireEvent.change(screen.getByLabelText('Browser for OPEN ON SITE'), { target: { value: 'firefox' } });
+            await flushPromises();
+            expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+            expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaSiteBrowser: 'firefox' });
+        });
+
+        it('keeps showing the browser that is saved when it is no longer found', async () => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaSiteBrowser: 'vivaldi' } });
+            mock.api.listBrowsers.mockResolvedValue([CHROME]);
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            const field = screen.getByLabelText('Browser for OPEN ON SITE');
+            expect(field).toHaveValue('vivaldi');
+            expect(optionsOf(field)).toEqual(['The browser of the system', 'Google Chrome', 'vivaldi']);
+        });
     });
 
     it('migrates the folder of the mangas from the settings, and shows the new folder when it worked', async () => {

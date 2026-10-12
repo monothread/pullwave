@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { cleanSeriesName } from '@shared/series';
+import { cleanSeriesName, sameSeries } from '@shared/series';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { AnimeRemove } from './AnimeRemove';
 import { TextField } from './fields';
 import { MangaGroupChips } from './MangaGroupChips';
 import { NewChaptersBadge } from './MangaLibrary';
+import { MangaRemove } from './MangaRemove';
 import { downloadedCount, downloadedTotals, newChapterCount, seasonLabel, type MangaLibraryGroup } from './mangaText';
 import { RowLink } from './RowLink';
 import { SeriesMenu } from './SeriesMenu';
@@ -136,7 +136,17 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                                     await removeManga(manga.id);
                                 }, Promise.resolve());
                             }}
-                        />
+                            confirmation={{
+                                title: t('manga.remove.series.title', { name }),
+                                message: t('manga.remove.series.message'),
+                                confirmLabel: t('manga.remove.confirm'),
+                                cancelLabel: t('manga.remove.cancel')
+                            }}
+                        >
+                            <section className="series-menu__section" aria-label={t('manga.library.groups')}>
+                                <span className="section-label">{t('manga.library.groups')}</span>
+                                            </section>
+                        </SeriesMenu>
                     </span>
                 </header>
                 {renaming && (
@@ -173,9 +183,13 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                                 <span className="season__meta">{t('manga.library.progress', { done: downloadedCount(manga), total: manga.chapters.length })}</span>
                                 <NewChaptersBadge count={newChapterCount([manga])} />
                                 <span className="season__actions">
-                                    <AnimeRemove
+                                    <MangaRemove
                                         label={t('manga.library.remove')}
                                         ariaLabel={`${t('manga.library.remove')}: ${manga.title}`}
+                                        title={t('manga.remove.manga.title', { name: manga.title })}
+                                        message={t('manga.remove.manga.message')}
+                                        blocked={sameSeries(manga.title, name) ? t('manga.remove.blocked') : undefined}
+                                        quiet
                                         onRemove={() => {
                                             void removeManga(manga.id);
                                         }}

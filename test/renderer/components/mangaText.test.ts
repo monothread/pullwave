@@ -13,6 +13,8 @@ import {
     groupLibrary,
     inGroup,
     isNewChapter,
+    canDownload,
+    downloadablePicks,
     localDetails,
     newChapterCount,
     matchesSearch,
@@ -385,5 +387,39 @@ describe('localDetails', () => {
 
     it('gives a manga with no chapters an empty list', () => {
         expect(localDetails(makeLibraryManga([])).chapters).toEqual([]);
+    });
+});
+
+describe('what a download does something for', () => {
+    it.each([
+        ['idle', true],
+        ['error', true],
+        ['cancelled', true],
+        ['done', false],
+        ['queued', false],
+        ['downloading', false],
+        ['paused', false]
+    ] as const)('says a chapter that is %s can be downloaded: %s', (status, expected) => {
+        expect(canDownload({ status })).toBe(expected);
+    });
+
+    it('says a chapter the library does not have can be downloaded', () => {
+        expect(canDownload(null)).toBe(true);
+    });
+
+    it('keeps of the chapters picked only the ones that can be downloaded, in the order they were picked', () => {
+        const manga = makeLibraryManga([
+            makeChapterRecord({ id: 1, remoteId: 11, status: 'done' }),
+            makeChapterRecord({ id: 2, remoteId: 12, status: 'queued' }),
+            makeChapterRecord({ id: 3, remoteId: 13, status: 'error' }),
+            makeChapterRecord({ id: 4, remoteId: 14, status: 'idle' })
+        ]);
+        expect(downloadablePicks(manga, [14, 11, 12, 13, 99])).toEqual([14, 13, 99]);
+        expect(downloadablePicks(manga, [])).toEqual([]);
+        expect(downloadablePicks(manga, [11, 12])).toEqual([]);
+    });
+
+    it('keeps every chapter picked when the manga is not in the library', () => {
+        expect(downloadablePicks(null, [11, 12])).toEqual([11, 12]);
     });
 });

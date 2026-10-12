@@ -1,6 +1,7 @@
 import {
     AUDIO_FORMATS,
     BROWSERS,
+    SITE_BROWSERS,
     DEFAULT_SETTINGS,
     LANGUAGE_SETTINGS,
     CONCURRENT_DOWNLOADS,
@@ -108,6 +109,8 @@ export function sanitizeSettings(input: unknown): Settings {
         mangaFlaresolverrEnabled: pickBoolean(raw.mangaFlaresolverrEnabled, defaults.mangaFlaresolverrEnabled),
         mangaShowAdult: pickBoolean(raw.mangaShowAdult, defaults.mangaShowAdult),
         mangaCheckNewChapters: pickBoolean(raw.mangaCheckNewChapters, defaults.mangaCheckNewChapters),
+        mangaAutoDownloadNew: pickBoolean(raw.mangaAutoDownloadNew, defaults.mangaAutoDownloadNew),
+        mangaSiteBrowser: pickEnum(raw.mangaSiteBrowser, SITE_BROWSERS, defaults.mangaSiteBrowser),
         translateProvider: pickEnum(raw.translateProvider, LLM_PROVIDER_IDS, defaults.translateProvider),
         translateModel: pickString(raw.translateModel, defaults.translateModel),
         translateBaseUrl: pickString(raw.translateBaseUrl, defaults.translateBaseUrl),

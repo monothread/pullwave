@@ -8,7 +8,7 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { chapterState, chapterStatusKey, continueIndex, downloadedCount, isNewChapter, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
+import { chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
 
 function chapterLabel(name: string, number: number | null): string {
     if (name.length > 0) {
@@ -86,9 +86,6 @@ export function MangaDetail() {
     const searchByTerm = useMangaStore((state) => {
         return state.searchByTerm;
     });
-    const downloadMissing = useMangaStore((state) => {
-        return state.downloadMissing;
-    });
     const openSite = useMangaStore((state) => {
         return state.openSite;
     });
@@ -131,7 +128,8 @@ export function MangaDetail() {
     const missingFromLibrary = chapters.filter((chapter) => {
         return chapterState(saved, chapter.remoteId) === null;
     }).length;
-    const complete = saved !== null && saved.chapters.length > 0 && downloadedCount(saved) === saved.chapters.length;
+    // Of the chapters picked, only the ones that a download does something for are counted.
+    const toDownload = downloadablePicks(saved, selected).length;
     const shown = details ?? manga;
     // The chapters in reading order (the list shows the newest first), each with its place in the library when it is there.
     const readable = [...chapters]
@@ -266,6 +264,7 @@ export function MangaDetail() {
             {selection.status === 'ready' && chapters.length === 0 && <p className="empty">{t('manga.detail.noChapters')}</p>}
             {selection.status === 'ready' && chapters.length > 0 && (
                 <>
+                    {inLibraryPage && (
                     <div className="job__actions">
                         <button
                             type="button"
@@ -291,6 +290,7 @@ export function MangaDetail() {
                             {allRead ? t('manga.detail.markAllUnread') : t('manga.detail.markAllRead')}
                         </button>
                     </div>
+                    )}
                     <div className="queue__toolbar">
                         <span className="section-label">{t('manga.detail.chapters', { count: chapters.length })}</span>
                         {inLibraryPage && (
@@ -331,25 +331,13 @@ export function MangaDetail() {
                                 <button
                                     type="button"
                                     className="btn btn--primary"
-                                    disabled={selected.length === 0}
+                                    disabled={toDownload === 0}
                                     onClick={() => {
                                         void downloadSelected();
                                     }}
                                 >
-                                    {t('manga.detail.download', { count: selected.length })}
+                                    {t('manga.detail.download', { count: toDownload })}
                                 </button>
-                                {saved && (
-                                    <button
-                                        type="button"
-                                        className="btn"
-                                        disabled={complete}
-                                        onClick={() => {
-                                            void downloadMissing(saved.id);
-                                        }}
-                                    >
-                                        {t('manga.library.downloadMissing')}
-                                    </button>
-                                )}
                                 <button type="button" className="btn" disabled={!sourceInstalled} title={sourceInstalled ? undefined : t('manga.detail.sourceMissing')} onClick={() => {
                                     void showInSource();
                                 }}>
@@ -436,16 +424,18 @@ export function MangaDetail() {
                                     {state && isNewChapter(state) && <span className="badge badge--new">{t('manga.detail.new')}</span>}
                                     {read && <span className="badge badge--done">{t('manga.detail.read')}</span>}
                                     {state && <span className={`badge badge--${state.status}`}>{t(chapterStatusKey(state.status))}</span>}
-                                    <button
-                                        type="button"
-                                        className="btn btn--small btn--ghost"
-                                        aria-label={`${read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}: ${label}`}
-                                        onClick={() => {
-                                            markRead([progressKey(shown.title, chapter.remoteId)], !read);
-                                        }}
-                                    >
-                                        {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}
-                                    </button>
+                                    {inLibraryPage && (
+                                        <button
+                                            type="button"
+                                            className="btn btn--small btn--ghost"
+                                            aria-label={`${read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}: ${label}`}
+                                            onClick={() => {
+                                                markRead([progressKey(shown.title, chapter.remoteId)], !read);
+                                            }}
+                                        >
+                                            {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}
+                                        </button>
+                                    )}
                                     {inLibraryPage && state && (state.status === 'error' || state.status === 'cancelled') && (
                                         <button
                                             type="button"

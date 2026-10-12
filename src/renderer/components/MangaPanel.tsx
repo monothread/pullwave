@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore, type MangaBrowseView } from '../store/mangaStore';
 import { MangaBrowse } from './MangaBrowse';
@@ -99,21 +99,24 @@ export function MangaPanel() {
                 <nav className="tabs" aria-label={t('manga.aria')}>
                     {VIEWS.map((item) => {
                         return (
-                            <TabButton
-                                key={item.id}
-                                label={t(item.label)}
-                                icon={item.icon}
-                                active={view === item.id}
-                                onClick={() => {
-                                    setView(item.id);
-                                }}
-                            />
+                            <Fragment key={item.id}>
+                                {item.icon !== undefined && (
+                                    <button type="button" className={`btn btn--small${active > 0 ? ' btn--primary' : ''}`} onClick={openDownloads}>
+                                        {t('manga.jobs.label', { count: active })}
+                                    </button>
+                                )}
+                                <TabButton
+                                    label={t(item.label)}
+                                    icon={item.icon}
+                                    active={view === item.id}
+                                    onClick={() => {
+                                        setView(item.id);
+                                    }}
+                                />
+                            </Fragment>
                         );
                     })}
                 </nav>
-                <button type="button" className={`btn btn--small${active > 0 ? ' btn--primary' : ''}`} onClick={openDownloads}>
-                    {t('manga.jobs.label', { count: active })}
-                </button>
             </div>
             {status.server === 'error' && (
                 <div className="panel">

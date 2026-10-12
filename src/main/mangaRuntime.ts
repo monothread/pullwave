@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, statSync } from 
 import { dirname, join } from 'node:path';
 import { IPC } from '@shared/constants';
 import { isMangaSupported } from '@shared/manga';
-import type { Settings } from '@shared/types';
+import type { Settings, SiteBrowser } from '@shared/types';
 import type { MangaHandlerDependencies } from './ipc/registerMangaHandlers';
 import { MangaChapterDownloader } from './services/manga/mangaChapterDownloader';
 import { MangaDb } from './services/manga/mangaDb';
@@ -41,7 +41,7 @@ export interface MangaRuntimeOptions {
     // Closes the app and opens it again (the tests replace it).
     restartApp?: () => void;
     // Opens an address in the browser of the system (the tests replace it).
-    openSite?: (url: string) => void;
+    openSite?: (url: string, browser: SiteBrowser) => void;
     // Asks the user for the folder the mangas are migrated to, starting at the given folder; null when they gave up (the tests replace it).
     chooseMigrationFolder?: (startAt: string) => Promise<string | null>;
     // Saves the folder the mangas are in now in the settings (once a migration has moved them).
@@ -305,7 +305,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         openFolder: options.openFolder,
         openSite: (url) => {
-            options.openSite?.(url);
+            options.openSite?.(url, options.getSettings().mangaSiteBrowser);
         },
         migrateFolder: async () => {
             const currentDirectory = baseDirectory();

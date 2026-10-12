@@ -87,26 +87,36 @@ describe('MangaLibrary', () => {
         expect(screen.getByRole('button', { name: 'Open: One Piece' })).toBeInTheDocument();
     });
 
-    it('asks before removing a manga, and removes it only when confirmed', async () => {
+    it('asks in a window before removing a manga, and removes it only when confirmed', async () => {
         const user = userEvent.setup();
         useMangaStore.setState({ library: [ONE_PIECE] });
         render(<MangaLibrary />);
-        await user.click(screen.getByRole('button', { name: 'REMOVE' }));
+        await user.click(screen.getByRole('button', { name: 'REMOVE: One Piece' }));
         expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
-        expect(screen.queryByRole('button', { name: 'REMOVE' })).not.toBeInTheDocument();
-        await user.click(screen.getByRole('button', { name: 'REMOVE WITH FILES?' }));
+        const dialog = screen.getByRole('dialog', { name: 'Remove "One Piece"?' });
+        expect(dialog).toHaveAttribute('aria-modal', 'true');
+        expect(dialog).toHaveTextContent('The manga leaves the library and its downloaded chapters are deleted from the disk too.');
+        await user.click(within(dialog).getByRole('button', { name: 'REMOVE' }));
+        expect(mock.api.manga.removeManga).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.removeManga).toHaveBeenCalledWith(9);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
-    it('keeps the manga when the removal is called off', async () => {
+    it('keeps the manga when the removal is called off, with the button, Escape or a click outside the window', async () => {
         const user = userEvent.setup();
         useMangaStore.setState({ library: [ONE_PIECE] });
         render(<MangaLibrary />);
-        await user.click(screen.getByRole('button', { name: 'REMOVE' }));
-        await user.click(screen.getByRole('button', { name: 'KEEP' }));
+        await user.click(screen.getByRole('button', { name: 'REMOVE: One Piece' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'KEEP' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'REMOVE: One Piece' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'REMOVE: One Piece' }));
+        await user.click(document.querySelector('.modal-backdrop')!);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
-        expect(screen.getByRole('button', { name: 'REMOVE' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'KEEP' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'REMOVE: One Piece' })).toBeInTheDocument();
     });
 });
 

@@ -147,6 +147,32 @@ describe('MangaDetail', () => {
         expect(useMangaStore.getState().selection?.selected).toEqual([12, 13]);
     });
 
+    it('does not count the chapters that are downloaded, waiting or going on, and does not send them', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.download.mockResolvedValue(makeLibraryManga([]));
+        useMangaStore.setState({
+            library: [
+                makeLibraryManga([
+                    makeChapterRecord({ id: 1, remoteId: 11, status: 'done' }),
+                    makeChapterRecord({ id: 2, remoteId: 12, status: 'queued' }),
+                    makeChapterRecord({ id: 3, remoteId: 13, status: 'error' })
+                ])
+            ]
+        });
+        open({ selected: [11, 12, 13] });
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' })).toBeEnabled();
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }));
+        expect(mock.api.manga.download).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: [CHAPTERS[2]] });
+    });
+
+    it('cannot download when everything picked is downloaded already', () => {
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'downloading' })])] });
+        open({ selected: [11, 12] });
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'DOWNLOAD SELECTED (0)' })).toBeDisabled();
+    });
+
     it('cannot download with no chapter picked', () => {
         open();
         render(<MangaDetail />);
@@ -249,21 +275,16 @@ describe('MangaDetail removing the download of a chapter of the library', () => 
 describe('MangaDetail in the library page', () => {
     const SAVED = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'idle' })], { id: 9 });
 
-    it('downloads what is missing from the page of the manga, and not from the list', async () => {
-        const user = userEvent.setup();
-        mock.api.manga.library.mockResolvedValue([SAVED]);
+    it('has no button that downloads what is missing, whatever is downloaded', () => {
         useMangaStore.setState({ library: [SAVED] });
         open();
-        render(<MangaDetail />);
-        await user.click(screen.getByRole('button', { name: 'DOWNLOAD MISSING' }));
-        expect(mock.api.manga.downloadMissing).toHaveBeenCalledWith([9]);
-    });
-
-    it('cannot download what is missing when everything is downloaded', () => {
+        const { unmount } = render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
+        unmount();
         useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ remoteId: 11, status: 'done' })])] });
-        open();
         render(<MangaDetail />);
-        expect(screen.getByRole('button', { name: 'DOWNLOAD MISSING' })).toBeDisabled();
+        expect(screen.queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
+        expect(mock.api.manga.downloadMissing).not.toHaveBeenCalled();
     });
 
     it('goes to the source, on the page of the manga there, when the extension is installed', async () => {
@@ -685,13 +706,20 @@ describe('MangaDetail what was read', () => {
         expect(screen.queryByText(/left on page/)).not.toBeInTheDocument();
     });
 
-    it('is the same on the page of the browse', async () => {
+    it('has no way to start reading, continue or mark as read on the page of the browse, which only adds and reads one chapter', async () => {
         const user = userEvent.setup();
-        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse' });
+        saveLastChapter('One Piece', 12);
+        saveProgress(progressKey('One Piece', 12), 4);
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse', readKeys: [progressKey('One Piece', 11)] });
         open({ chapters: ORDERED });
         render(<MangaDetail />);
-        await user.click(screen.getByRole('button', { name: 'MARK ALL AS READ' }));
-        expect(useMangaStore.getState().readKeys).toHaveLength(3);
+        expect(screen.queryByRole('button', { name: 'START READING' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CONTINUE READING' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^MARK ALL AS/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Mark as/ })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Read: Second' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 12, libraryChapterId: null });
     });
 });
 

@@ -105,29 +105,26 @@ describe('MangaGroupsPanel', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
-    it('asks before deleting a group, and says the mangas stay', async () => {
+    it('asks in a window before deleting a group, and says the mangas stay', async () => {
         const user = userEvent.setup();
         render(<MangaGroupsPanel />);
         await user.click(screen.getByRole('button', { name: 'DELETE: Manhwas' }));
         expect(mock.api.manga.deleteGroup).not.toHaveBeenCalled();
-        await user.click(screen.getByRole('button', { name: 'DELETE THE GROUP? (THE MANGAS STAY): Manhwas' }));
+        const dialog = screen.getByRole('dialog', { name: 'Delete the group "Manhwas"?' });
+        expect(dialog).toHaveTextContent('Only the group goes. The mangas in it stay in the library.');
+        await user.click(within(dialog).getByRole('button', { name: 'DELETE' }));
+        expect(mock.api.manga.deleteGroup).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.deleteGroup).toHaveBeenCalledWith(2);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     it('keeps the group when the deletion is called off', async () => {
         const user = userEvent.setup();
         render(<MangaGroupsPanel />);
         await user.click(screen.getByRole('button', { name: 'DELETE: Manhwas' }));
-        await user.click(screen.getByRole('button', { name: 'KEEP' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'KEEP' }));
         expect(mock.api.manga.deleteGroup).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'DELETE: Manhwas' })).toBeInTheDocument();
-    });
-
-    it('closes the question of a deletion when another group is renamed', async () => {
-        const user = userEvent.setup();
-        render(<MangaGroupsPanel />);
-        await user.click(screen.getByRole('button', { name: 'DELETE: Manhwas' }));
-        await user.click(screen.getByRole('button', { name: 'RENAME: Mangas' }));
-        expect(screen.queryByRole('button', { name: 'KEEP' })).not.toBeInTheDocument();
     });
 });

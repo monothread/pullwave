@@ -93,30 +93,62 @@ describe('MangaSeriesView', () => {
     it('puts every season in a group, or takes them all out, with the chips', async () => {
         const user = userEvent.setup();
         renderView();
+        await user.click(screen.getByRole('button', { name: 'Series options: Sousou no Frieren' }));
         const chip = screen.getByRole('button', { name: 'Mangas' });
         expect(chip).toHaveAttribute('aria-pressed', 'mixed');
         await user.click(chip);
         expect(mock.api.manga.setGroupMembers).toHaveBeenCalledWith(1, [1, 2], true);
     });
 
-    it('removes one season, asking first', async () => {
+    it('removes one season, asking in a window first', async () => {
         const user = userEvent.setup();
         renderView();
         await user.click(screen.getByRole('button', { name: 'REMOVE: Frieren 2' }));
         expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        const dialog = screen.getByRole('dialog', { name: 'Remove "Frieren 2"?' });
+        await user.click(within(dialog).getByRole('button', { name: 'REMOVE' }));
         expect(mock.api.manga.removeManga).toHaveBeenCalledWith(2);
     });
 
-    it('removes the whole series from its menu, one season after the other', async () => {
+    it('does not let the manga that gives its name to the series be removed alone', () => {
+        renderView();
+        const blocked = screen.getByRole('button', { name: 'REMOVE: Sousou no Frieren' });
+        expect(blocked).toBeDisabled();
+        expect(blocked).toHaveAttribute('title', 'This manga gives its name to the series. To remove it, remove the whole series.');
+        expect(screen.getByRole('button', { name: 'REMOVE: Frieren 2' })).toBeEnabled();
+    });
+
+    it('removes the whole series from its menu, asking in a window, one season after the other', async () => {
         const user = userEvent.setup();
         renderView();
         await user.click(screen.getByRole('button', { name: 'Series options: Sousou no Frieren' }));
         await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Sousou no Frieren' }));
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        expect(screen.queryByRole('group', { name: 'Series options: Sousou no Frieren' })).not.toBeInTheDocument();
+        const dialog = screen.getByRole('dialog', { name: 'Remove the series "Sousou no Frieren"?' });
+        expect(dialog).toHaveTextContent('Every manga of the series leaves the library and their downloaded chapters are deleted from the disk too.');
+        await user.click(within(dialog).getByRole('button', { name: 'REMOVE' }));
         await vi.waitFor(() => {
             expect(mock.api.manga.removeManga.mock.calls).toEqual([[1], [2]]);
         });
+    });
+
+    it('keeps the series when the window is called off', async () => {
+        const user = userEvent.setup();
+        renderView();
+        await user.click(screen.getByRole('button', { name: 'Series options: Sousou no Frieren' }));
+        await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Sousou no Frieren' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'KEEP' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
+    });
+
+    it('keeps the groups of the series inside the gear, not on the screen', async () => {
+        const user = userEvent.setup();
+        renderView();
+        expect(screen.queryByRole('button', { name: 'Mangas' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Series options: Sousou no Frieren' }));
+        const panel = screen.getByRole('group', { name: 'Series options: Sousou no Frieren' });
+        expect(within(panel).getByRole('button', { name: 'Mangas' })).toHaveAttribute('aria-pressed', 'mixed');
     });
 
     describe('renaming the series', () => {

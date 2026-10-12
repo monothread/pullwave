@@ -97,6 +97,8 @@ export interface DetectedBrowser {
     dataDir: string;
     profiles: BrowserProfile[];
 }
+// Where the pages of the sites of the mangas are opened: the browser of the system, or one of the browsers the app knows.
+export type SiteBrowser = 'default' | BrowserName;
 export type MaxResolution = 'best' | '2160' | '1440' | '1080' | '720' | '480';
 
 // The tab the app opens on when it starts.
@@ -155,6 +157,10 @@ export interface Settings {
     mangaShowAdult: boolean;
     // Whether, once an hour, the mangas of the library are checked for new chapters (which are added to the library, not downloaded).
     mangaCheckNewChapters: boolean;
+    // Whether the new chapters found by the check are downloaded too (off: they are only added to the library).
+    mangaAutoDownloadNew: boolean;
+    // The browser OPEN ON SITE opens the page of a manga in: the one of the system, or one of the browsers found on this computer.
+    mangaSiteBrowser: SiteBrowser;
     // Translating subtitles with a language model: which provider, which model, an address instead of the one of the provider (empty
     // for the one of the provider) and the language it translates into. The token is not here: it is kept apart, encrypted.
     translateProvider: LlmProviderId;

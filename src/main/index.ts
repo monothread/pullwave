@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
@@ -36,6 +36,7 @@ import { salvageRecording } from './services/recordingSalvage';
 import { QueueManager } from './services/queueManager';
 import { isAutostartLaunch, shouldStartHidden } from './services/startupLaunch';
 import { SettingsStore } from './services/settingsStore';
+import { launchProgram, openSiteIn } from './services/siteOpener';
 import { defaultFetchPage, scanPage } from './services/pageScanner';
 import { defaultFetchPlaylist, dropVariantPlaylists } from './services/playlistFilter';
 import { StreamFinder } from './services/streamFinder';
@@ -413,12 +414,20 @@ function bootstrap(): BootstrapResult {
         restartApp: () => {
             void requestRestart?.();
         },
-        openSite: (url) => {
+        openSite: (url, browser) => {
             if (process.env.PULLWAVE_MANGA_OPEN_LOG) {
-                appendFileSync(process.env.PULLWAVE_MANGA_OPEN_LOG, `${url}\n`);
+                appendFileSync(process.env.PULLWAVE_MANGA_OPEN_LOG, `${browser} ${url}\n`);
                 return;
             }
-            void shell.openExternal(url);
+            void openSiteIn(url, browser, {
+                platform: process.platform,
+                env: process.env,
+                exists: existsSync,
+                launch: launchProgram,
+                openDefault: (address) => {
+                    void shell.openExternal(address);
+                }
+            });
         },
         // PULLWAVE_MANGA_MIGRATE_DIR answers the question of which folder to migrate the mangas to (used by the end-to-end tests).
         chooseMigrationFolder: async (startAt) => {

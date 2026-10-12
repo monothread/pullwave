@@ -63,10 +63,15 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
         }
     }, [sourcesStatus, loadSources]);
 
-    // The sources the manga can move to: not the one it is in, and not the ones for adults unless they are asked for.
-    const sources = listedSources(allSources, showAdult).filter((source) => {
-        return source.id !== manga.sourceId;
-    });
+    // The sources the manga can move to: not the one it is in, and not the ones for adults unless they are asked for. In alphabetical order,
+    // which is also the order they are searched in.
+    const sources = listedSources(allSources, showAdult)
+        .filter((source) => {
+            return source.id !== manga.sourceId;
+        })
+        .sort((first, second) => {
+            return first.name.localeCompare(second.name, undefined, { sensitivity: 'base' }) || first.lang.localeCompare(second.lang);
+        });
 
     async function search(): Promise<void> {
         const wanted = choice === ALL_SOURCES ? sources : sources.filter((source) => {

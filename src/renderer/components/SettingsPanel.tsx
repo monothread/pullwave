@@ -16,7 +16,7 @@ import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import { chosenBrowserWarning, findChosenBrowser, NO_BROWSER_CHOSEN } from '@shared/browserChoice';
 import { LANGUAGE_NAMES, type Translator } from '@shared/i18n';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
-import type { DetectedBrowser, LanguageSetting, ThemeName } from '@shared/types';
+import type { DetectedBrowser, LanguageSetting, SiteBrowser, ThemeName } from '@shared/types';
 import { useAutoSaveSettings, type SaveStatus } from '../hooks/useAutoSaveSettings';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
@@ -65,6 +65,30 @@ function findBrowserByDir(browsers: readonly DetectedBrowser[], dataDir: string)
     return browsers.find((browser) => {
         return browser.dataDir === dataDir;
     });
+}
+
+// The browsers the pages of the mangas can be opened in: the one of the system and the kinds of browser found (one entry for each, even if it
+// has several profiles), with the one that is saved even when it is no longer found, so the field never shows something that is not saved.
+function siteBrowserOptions(browsers: readonly DetectedBrowser[], saved: SiteBrowser): SiteBrowser[] {
+    const found = browsers
+        .map((browser) => {
+            return browser.engine;
+        })
+        .filter((engine, index, all) => {
+            return all.indexOf(engine) === index;
+        });
+    return ['default', ...found, ...(saved !== 'default' && !found.includes(saved) ? [saved] : [])];
+}
+
+function formatSiteBrowser(browsers: readonly DetectedBrowser[], browser: SiteBrowser, t: Translator): string {
+    if (browser === 'default') {
+        return t('settings.mangaSiteBrowser.default');
+    }
+    return (
+        browsers.find((item) => {
+            return item.engine === browser;
+        })?.label ?? browser
+    );
 }
 
 const AUTOMATIC_PROFILE = '';
@@ -184,9 +208,9 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const unboundedAutoSubtitles = hasUnboundedAutoSubtitles(draft);
     const trayWarning = draft.closeToTray && traySupport !== null && !traySupport.available ? traySupport.reason : null;
 
-    // The browsers are for the cookies of the video downloader; the tray is a setting of the whole app.
+    // The browsers are for the cookies of the video downloader and for the pages of the mangas; the tray is a setting of the whole app.
     useEffect(() => {
-        if (scope === 'downloads') {
+        if (scope === 'downloads' || scope === 'manga') {
             void loadBrowsers();
         }
     }, [scope, loadBrowsers]);
@@ -737,6 +761,26 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         hint={t('settings.mangaCheckNewChapters.hint')}
                         onChange={(value) => {
                             change('mangaCheckNewChapters', value);
+                        }}
+                    />
+                    <ToggleField
+                        label={t('settings.mangaAutoDownloadNew')}
+                        checked={draft.mangaAutoDownloadNew}
+                        hint={t('settings.mangaAutoDownloadNew.hint')}
+                        onChange={(value) => {
+                            change('mangaAutoDownloadNew', value);
+                        }}
+                    />
+                    <SelectField
+                        label={t('settings.mangaSiteBrowser')}
+                        value={draft.mangaSiteBrowser}
+                        options={siteBrowserOptions(detectedBrowsers, draft.mangaSiteBrowser)}
+                        formatOption={(browser) => {
+                            return formatSiteBrowser(detectedBrowsers, browser, t);
+                        }}
+                        hint={t('settings.mangaSiteBrowser.hint')}
+                        onChange={(browser) => {
+                            change('mangaSiteBrowser', browser);
                         }}
                     />
                 </fieldset>

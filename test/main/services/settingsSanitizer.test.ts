@@ -58,6 +58,8 @@ describe('sanitizeSettings', () => {
             mangaFlaresolverrEnabled: true,
             mangaShowAdult: true,
             mangaCheckNewChapters: false,
+            mangaAutoDownloadNew: true,
+            mangaSiteBrowser: 'firefox',
             translateProvider: 'anthropic',
             translateModel: 'my-model',
             translateBaseUrl: 'https://llm.example/v1',
@@ -98,6 +100,32 @@ describe('sanitizeSettings', () => {
 
     it.each(['yes', 0, null, []])('falls back to looking for new chapters for the invalid value %j', (mangaCheckNewChapters) => {
         expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(true);
+    });
+
+    it('does not download the new chapters by default', () => {
+        expect(DEFAULT_SETTINGS.mangaAutoDownloadNew).toBe(false);
+        expect(sanitizeSettings({}).mangaAutoDownloadNew).toBe(false);
+    });
+
+    it.each([true, false])('keeps the choice of downloading the new chapters (%j)', (mangaAutoDownloadNew) => {
+        expect(sanitizeSettings({ mangaAutoDownloadNew }).mangaAutoDownloadNew).toBe(mangaAutoDownloadNew);
+    });
+
+    it.each(['yes', 1, null, []])('falls back to not downloading the new chapters for the invalid value %j', (mangaAutoDownloadNew) => {
+        expect(sanitizeSettings({ mangaAutoDownloadNew }).mangaAutoDownloadNew).toBe(false);
+    });
+
+    it('opens the sites of the mangas in the browser of the system by default', () => {
+        expect(DEFAULT_SETTINGS.mangaSiteBrowser).toBe('default');
+        expect(sanitizeSettings({}).mangaSiteBrowser).toBe('default');
+    });
+
+    it.each(['default', 'chrome', 'firefox', 'brave', 'chromium', 'edge', 'opera', 'vivaldi'])('keeps the browser for the sites of the mangas (%s)', (mangaSiteBrowser) => {
+        expect(sanitizeSettings({ mangaSiteBrowser }).mangaSiteBrowser).toBe(mangaSiteBrowser);
+    });
+
+    it.each(['safari', '', 5, null, [], 'firefox --new-window'])('falls back to the browser of the system for the invalid value %j', (mangaSiteBrowser) => {
+        expect(sanitizeSettings({ mangaSiteBrowser }).mangaSiteBrowser).toBe('default');
     });
 
     it('hides the sources for adults by default', () => {

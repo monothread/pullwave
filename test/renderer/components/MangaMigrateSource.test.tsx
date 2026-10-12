@@ -63,6 +63,40 @@ describe('MangaMigrateSource', () => {
         expect(screen.getByRole('button', { name: 'MIGRATE' })).toBeDisabled();
     });
 
+    it('lists the sources in alphabetical order, whatever order the server gave them in, and searches them in that order', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({
+            browse: {
+                ...initialManga.browse,
+                sourcesStatus: 'ready',
+                sources: [
+                    makeSource({ id: '300', name: 'Zeta Scans', lang: 'pt' }),
+                    makeSource({ id: '123', name: 'Fake Dex', lang: 'en' }),
+                    makeSource({ id: '210', name: 'alpha reader', lang: 'es' }),
+                    makeSource({ id: '200', name: 'Other Dex', lang: 'pt' }),
+                    makeSource({ id: '201', name: 'Other Dex', lang: 'en' })
+                ]
+            }
+        });
+        renderPanel();
+        expect(
+            within(screen.getByLabelText('Search in'))
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.textContent;
+                })
+        ).toEqual(['All sources', 'alpha reader (es)', 'Other Dex (en)', 'Other Dex (pt)', 'Zeta Scans (pt)']);
+        await user.click(screen.getByRole('button', { name: 'SEARCH' }));
+        await vi.waitFor(() => {
+            expect(mock.api.manga.list).toHaveBeenCalledTimes(4);
+        });
+        expect(
+            mock.api.manga.list.mock.calls.map((call) => {
+                return (call[0] as { sourceId: string }).sourceId;
+            })
+        ).toEqual(['210', '201', '200', '300']);
+    });
+
     it('offers the sources for adults when the user asked for them', () => {
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
         renderPanel();

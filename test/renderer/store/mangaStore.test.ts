@@ -640,6 +640,31 @@ describe('mangaStore opening a manga', () => {
             expect(state().selection?.selected).toEqual([]);
         });
 
+        it('sends and counts only the chapters picked that a download does something for', async () => {
+            mock.api.manga.download.mockResolvedValue(makeLibraryManga([]));
+            useMangaStore.setState({
+                library: [
+                    makeLibraryManga([
+                        makeChapterRecord({ id: 1, remoteId: 11, status: 'done' }),
+                        makeChapterRecord({ id: 2, remoteId: 12, status: 'downloading' }),
+                        makeChapterRecord({ id: 3, remoteId: 13, status: 'error' })
+                    ])
+                ]
+            });
+            state().selectChapters('all');
+            await state().downloadSelected();
+            expect(mock.api.manga.download).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: [chapters[2]] });
+            expect(toasts()).toEqual(['1 chapter(s) queued.']);
+        });
+
+        it('downloads nothing when every chapter picked is downloaded already', async () => {
+            useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' })])] });
+            state().toggleChapter(11);
+            await state().downloadSelected();
+            expect(mock.api.manga.download).not.toHaveBeenCalled();
+            expect(toasts()).toEqual([]);
+        });
+
         it('does not download with no chapter picked, or while the manga is still loading', async () => {
             await state().downloadSelected();
             useMangaStore.setState({ selection: { ...state().selection!, status: 'loading', selected: [11] } });

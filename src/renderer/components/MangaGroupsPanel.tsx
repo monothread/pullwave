@@ -3,6 +3,7 @@ import { MAX_GROUP_NAME_LENGTH } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
+import { MangaRemove } from './MangaRemove';
 
 // Where the groups of the library are made, renamed and deleted (the mangas in a deleted group stay in the library).
 export function MangaGroupsPanel() {
@@ -23,7 +24,6 @@ export function MangaGroupsPanel() {
     const [problem, setProblem] = useState<string | null>(null);
     const [editing, setEditing] = useState<number | null>(null);
     const [editedName, setEditedName] = useState('');
-    const [confirming, setConfirming] = useState<number | null>(null);
 
     function problemOf(reason: 'invalid' | 'taken' | 'not-found'): string {
         return reason === 'taken' ? t('manga.groups.error.taken') : t('manga.groups.error.invalid');
@@ -102,47 +102,21 @@ export function MangaGroupsPanel() {
                                             onClick={() => {
                                                 setEditing(group.id);
                                                 setEditedName(group.name);
-                                                setConfirming(null);
                                                 setProblem(null);
                                             }}
                                         >
                                             {t('manga.groups.rename')}
                                         </button>
-                                        {confirming === group.id ? (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn--small btn--hot"
-                                                    aria-label={`${t('manga.groups.confirmDelete')}: ${group.name}`}
-                                                    onClick={() => {
-                                                        setConfirming(null);
-                                                        void deleteGroup(group.id);
-                                                    }}
-                                                >
-                                                    {t('manga.groups.confirmDelete')}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn--small btn--ghost"
-                                                    onClick={() => {
-                                                        setConfirming(null);
-                                                    }}
-                                                >
-                                                    {t('manga.groups.keep')}
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                className="btn btn--small btn--hot"
-                                                aria-label={`${t('manga.groups.delete')}: ${group.name}`}
-                                                onClick={() => {
-                                                    setConfirming(group.id);
-                                                }}
-                                            >
-                                                {t('manga.groups.delete')}
-                                            </button>
-                                        )}
+                                        <MangaRemove
+                                            label={t('manga.groups.delete')}
+                                            ariaLabel={`${t('manga.groups.delete')}: ${group.name}`}
+                                            title={t('manga.remove.group.title', { name: group.name })}
+                                            message={t('manga.remove.group.message')}
+                                            confirmLabel={t('manga.remove.group.confirm')}
+                                            onRemove={() => {
+                                                void deleteGroup(group.id);
+                                            }}
+                                        />
                                     </span>
                                 </>
                             )}

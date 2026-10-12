@@ -838,7 +838,8 @@ test.describe('manga section', () => {
         expect(existsSync(join(mangaFolder(), 'One Piece'))).toBe(false);
 
         await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
-        await session.page.getByRole('button', { name: 'DOWNLOAD MISSING' }).click();
+        await session.page.getByRole('button', { name: 'NOT DOWNLOADED' }).click();
+        await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (2)' }).click();
         await expect(session.page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 30000 });
         await session.page.getByRole('button', { name: '← BACK' }).click();
         await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible({ timeout: 30000 });
@@ -857,7 +858,7 @@ test.describe('manga section', () => {
         const button = session.page.getByRole('button', { name: 'OPEN SITE' });
         await expect(button).toHaveAttribute('title', 'https://dex.example/manga/7');
         await button.click();
-        await expect.poll(() => {return existsSync(log) ? readFileSync(log, 'utf-8') : ''}).toBe('https://dex.example/manga/7\n');
+        await expect.poll(() => {return existsSync(log) ? readFileSync(log, 'utf-8') : ''}).toBe('default https://dex.example/manga/7\n');
     });
 
     test('moves the downloaded chapters to another folder, checks them and points the library to them', async () => {
@@ -982,7 +983,8 @@ test.describe('manga section', () => {
         // Deleting a group leaves the mangas.
         await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
         await session.page.getByRole('button', { name: 'DELETE: Favorites' }).click();
-        await session.page.getByRole('button', { name: /^DELETE THE GROUP/ }).click();
+        await expect(session.page.getByRole('dialog', { name: 'Delete the group "Favorites"?' })).toBeVisible();
+        await session.page.getByRole('dialog').getByRole('button', { name: 'DELETE', exact: true }).click();
         await expect(session.page.getByTestId('manga-group')).toHaveCount(1);
         await expect(session.page.getByTestId('manga-series')).toHaveCount(1);
     });
@@ -1166,8 +1168,9 @@ test.describe('manga section', () => {
         await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(false);
         expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 2.cbz'))).toBe(true);
 
-        await session.page.getByRole('button', { name: 'REMOVE', exact: true }).click();
-        await session.page.getByRole('button', { name: 'REMOVE WITH FILES?' }).click();
+        await session.page.getByRole('button', { name: 'REMOVE: One Piece' }).click();
+        await expect(session.page.getByRole('dialog', { name: 'Remove "One Piece"?' })).toBeVisible();
+        await session.page.getByRole('dialog').getByRole('button', { name: 'REMOVE', exact: true }).click();
         await expect(session.page.getByText('Your library is empty.')).toBeVisible();
         await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece'))}).toBe(false);
     });

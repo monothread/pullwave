@@ -1,4 +1,4 @@
-import type { AudioFormat, BrowserName, LanguageCode, LanguageSetting, MaxResolution, Settings, StartTab, ThemeName, ThemeStyle, VideoContainer } from './types';
+import type { AudioFormat, BrowserName, LanguageCode, LanguageSetting, MaxResolution, Settings, SiteBrowser, StartTab, ThemeName, ThemeStyle, VideoContainer } from './types';
 
 export const IPC = {
     settingsGet: 'settings:get',
@@ -144,6 +144,7 @@ export const IPC = {
 } as const;
 
 export const BROWSERS: readonly BrowserName[] = ['chrome', 'firefox', 'brave', 'chromium', 'edge', 'opera', 'vivaldi'];
+export const SITE_BROWSERS: readonly SiteBrowser[] = ['default', ...BROWSERS];
 export const RESOLUTIONS: readonly MaxResolution[] = ['best', '2160', '1440', '1080', '720', '480'];
 export const VIDEO_CONTAINERS: readonly VideoContainer[] = ['mp4', 'mkv', 'webm'];
 export const AUDIO_FORMATS: readonly AudioFormat[] = ['mp3', 'm4a', 'opus'];
@@ -235,6 +236,8 @@ export const DEFAULT_SETTINGS: Settings = {
     mangaFlaresolverrEnabled: false,
     mangaShowAdult: false,
     mangaCheckNewChapters: true,
+    mangaAutoDownloadNew: false,
+    mangaSiteBrowser: 'default',
     translateProvider: 'openai',
     translateModel: '',
     translateBaseUrl: '',

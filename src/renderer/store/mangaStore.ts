@@ -32,7 +32,7 @@ import type {
     MangaSummary
 } from '@shared/manga';
 import { resolveAppLanguage } from '../i18n/language';
-import { ALL_LANGUAGES, chapterState, libraryEntry, localDetails, type ExtensionFilter } from '../components/mangaText';
+import { ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, localDetails, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter } from '../components/mangaFilterSearch';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
@@ -352,8 +352,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
         });
     }
 
+    // The chapters picked that a download does something for (not the ones downloaded already, or waiting or going on).
     function chaptersToSend(selection: MangaSelection): MangaChapter[] {
-        const picked = new Set(selection.selected);
+        const picked = new Set(downloadablePicks(libraryEntry(get().library, selection.manga.sourceId, selection.manga.remoteId), selection.selected));
         return selection.chapters.filter((chapter) => {
             return picked.has(chapter.remoteId);
         });

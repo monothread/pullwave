@@ -416,15 +416,20 @@ describe('createMangaRuntime files', () => {
         expect(opened).toEqual(['/some/folder']);
     });
 
-    it('opens the page of a manga on its site through the app', () => {
-        const sites: string[] = [];
-        const { runtime } = setup({
-            openSite: (url) => {
-                sites.push(url);
+    it('opens the page of a manga on its site through the app, in the browser of the settings', () => {
+        const sites: Array<[string, string]> = [];
+        const { runtime, settings } = setup({
+            openSite: (url, browser) => {
+                sites.push([url, browser]);
             }
         });
         runtime!.handlers.openSite('https://dex.example/one-piece');
-        expect(sites).toEqual(['https://dex.example/one-piece']);
+        settings.mangaSiteBrowser = 'firefox';
+        runtime!.handlers.openSite('https://dex.example/bleach');
+        expect(sites).toEqual([
+            ['https://dex.example/one-piece', 'default'],
+            ['https://dex.example/bleach', 'firefox']
+        ]);
     });
 
     it('does nothing when the system gives no way to open a site', () => {

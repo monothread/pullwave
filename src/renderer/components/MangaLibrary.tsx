@@ -5,6 +5,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
 import { MangaCover } from './MangaCover';
+import { MangaRemove } from './MangaRemove';
 import { MangaDetail } from './MangaDetail';
 import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
@@ -42,7 +43,6 @@ function MangaRow({ manga }: MangaRowProps) {
     const openManga = useMangaStore((state) => {
         return state.openManga;
     });
-    const [confirming, setConfirming] = useState(false);
     const done = downloadedCount(manga);
     const inside = groups.filter((group) => {
         return manga.groupIds.includes(group.id);
@@ -86,38 +86,15 @@ function MangaRow({ manga }: MangaRowProps) {
                     >
                         {t('manga.library.openFolder')}
                     </button>
-                    {confirming ? (
-                        <>
-                            <button
-                                type="button"
-                                className="btn btn--small btn--hot"
-                                onClick={() => {
-                                    void removeManga(manga.id);
-                                }}
-                            >
-                                {t('manga.library.confirmRemove')}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn btn--small btn--ghost"
-                                onClick={() => {
-                                    setConfirming(false);
-                                }}
-                            >
-                                {t('manga.library.cancelRemove')}
-                            </button>
-                        </>
-                    ) : (
-                        <button
-                            type="button"
-                            className="btn btn--small btn--hot"
-                            onClick={() => {
-                                setConfirming(true);
-                            }}
-                        >
-                            {t('manga.library.remove')}
-                        </button>
-                    )}
+                    <MangaRemove
+                        label={t('manga.library.remove')}
+                        ariaLabel={`${t('manga.library.remove')}: ${manga.title}`}
+                        title={t('manga.remove.manga.title', { name: manga.title })}
+                        message={t('manga.remove.manga.message')}
+                        onRemove={() => {
+                            void removeManga(manga.id);
+                        }}
+                    />
                 </span>
             </div>
         </li>

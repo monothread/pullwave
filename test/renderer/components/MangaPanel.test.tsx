@@ -36,6 +36,15 @@ describe('MangaPanel', () => {
         expect(mock.api.manga.sources).not.toHaveBeenCalled();
     });
 
+    it('puts the button of the downloads to the left of the gear of the settings, which stays at the right end', () => {
+        render(<MangaPanel />);
+        const nav = screen.getByRole('navigation', { name: 'Manga' });
+        const buttons = within(nav).getAllByRole('button');
+        expect(buttons.at(-1)).toBe(within(nav).getByRole('button', { name: 'SETTINGS' }));
+        expect(buttons.at(-2)).toBe(within(nav).getByRole('button', { name: 'DOWNLOADS (0)' }));
+        expect(buttons.at(-2)).toHaveClass('btn', 'btn--small');
+    });
+
     it('opens on the browse once the program is there', async () => {
         render(<MangaPanel />);
         const nav = screen.getByRole('navigation', { name: 'Manga' });
@@ -45,7 +54,7 @@ describe('MangaPanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['BROWSE', 'LIBRARY', 'EXTENSIONS', 'SETTINGS']);
+        ).toEqual(['BROWSE', 'LIBRARY', 'EXTENSIONS', 'DOWNLOADS (0)', 'SETTINGS']);
         expect(within(nav).getByRole('button', { name: 'BROWSE' })).toHaveAttribute('aria-current', 'page');
         expect(within(nav).getByRole('button', { name: 'SETTINGS' })).toHaveClass('tab--icon');
         expect(await screen.findByTestId('manga-source')).toBeInTheDocument();

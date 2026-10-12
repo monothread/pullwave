@@ -129,6 +129,18 @@ export function chapterState(manga: LibraryManga | null, remoteId: number): Mang
     );
 }
 
+// Whether picking a chapter of the library for a download makes sense: not when it is downloaded already, or waiting or going on.
+export function canDownload(chapter: Pick<MangaChapterRecord, 'status'> | null): boolean {
+    return chapter === null || (chapter.status !== 'done' && chapter.status !== 'queued' && chapter.status !== 'downloading' && chapter.status !== 'paused');
+}
+
+// Of the chapters picked, the ones that a download would do something for.
+export function downloadablePicks(manga: LibraryManga | null, picked: readonly number[]): number[] {
+    return picked.filter((remoteId) => {
+        return canDownload(chapterState(manga, remoteId));
+    });
+}
+
 // The downloads that are waiting or going on.
 export function activeJobCount(jobs: readonly MangaJob[]): number {
     return jobs.filter((job) => {

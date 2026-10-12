@@ -97,7 +97,7 @@ describe('AnimePanel', () => {
         expect(screen.getByLabelText('Anime name')).toBeInTheDocument();
     });
 
-    it('has a history and settings between the library and the downloads button, and shows the history in place of the search', async () => {
+    it('has a history, then the downloads button and the gear of the settings at the right end, and shows the history in place of the search', async () => {
         const user = userEvent.setup();
         useAnimeStore.setState({ history: [{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: '3', openedAt: 1700000000000 }] });
         render(<AnimePanel />);
@@ -107,7 +107,7 @@ describe('AnimePanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY', 'SETTINGS']);
+        ).toEqual(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY', 'DOWNLOADS (0)', 'SETTINGS']);
         // The settings are a gear at the right end of the bar, not a word.
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');

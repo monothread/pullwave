@@ -150,3 +150,51 @@ describe('SeriesMenu', () => {
         expect(screen.getByRole('button', { name: 'REMOVER SÉRIE: Frieren' })).toHaveTextContent('REMOVER SÉRIE');
     });
 });
+
+describe('SeriesMenu asking in a window', () => {
+    const CONFIRMATION = { title: 'Remove the series "Frieren"?', message: 'Every manga goes.', confirmLabel: 'REMOVE', cancelLabel: 'KEEP' };
+
+    function setupWindow() {
+        const onRemove = vi.fn();
+        render(
+            <SeriesMenu name="Frieren" onRename={vi.fn()} onRemove={onRemove} confirmation={CONFIRMATION}>
+                <button type="button">Extra</button>
+            </SeriesMenu>
+        );
+        return { onRemove, user: userEvent.setup() };
+    }
+
+    it('shows what is given inside the panel, after the buttons', async () => {
+        const { user } = setupWindow();
+        await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
+        expect(
+            within(screen.getByRole('group', { name: 'Series options: Frieren' }))
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.textContent;
+                })
+        ).toEqual(['RENAME SERIES', 'REMOVE SERIES', 'Extra']);
+    });
+
+    it('closes the panel and opens the window when REMOVE SERIES is used, and removes only when confirmed', async () => {
+        const { user, onRemove } = setupWindow();
+        await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
+        await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
+        expect(screen.queryByRole('group', { name: 'Series options: Frieren' })).not.toBeInTheDocument();
+        const dialog = screen.getByRole('dialog', { name: 'Remove the series "Frieren"?' });
+        expect(dialog).toHaveTextContent('Every manga goes.');
+        expect(onRemove).not.toHaveBeenCalled();
+        await user.click(within(dialog).getByRole('button', { name: 'REMOVE' }));
+        expect(onRemove).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('does not remove when the window is called off', async () => {
+        const { user, onRemove } = setupWindow();
+        await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
+        await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'KEEP' }));
+        expect(onRemove).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+});

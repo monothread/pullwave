@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore, type AnimeBrowseView } from '../store/animeStore';
 import { activeJobCount } from './animeText';
@@ -70,21 +71,24 @@ export function AnimePanel() {
                 <nav className="tabs" aria-label={t('anime.aria')}>
                     {VIEWS.map((item) => {
                         return (
-                            <TabButton
-                                key={item.id}
-                                label={t(item.label)}
-                                icon={item.icon}
-                                active={view === item.id}
-                                onClick={() => {
-                                    setView(item.id);
-                                }}
-                            />
+                            <Fragment key={item.id}>
+                                {item.icon !== undefined && (
+                                    <button type="button" className={`btn btn--small${active > 0 ? ' btn--primary' : ''}`} onClick={openDownloads}>
+                                        {t('anime.jobs.label', { count: active })}
+                                    </button>
+                                )}
+                                <TabButton
+                                    label={t(item.label)}
+                                    icon={item.icon}
+                                    active={view === item.id}
+                                    onClick={() => {
+                                        setView(item.id);
+                                    }}
+                                />
+                            </Fragment>
                         );
                     })}
                 </nav>
-                <button type="button" className={`btn btn--small${active > 0 ? ' btn--primary' : ''}`} onClick={openDownloads}>
-                    {t('anime.jobs.label', { count: active })}
-                </button>
             </div>
             {view === 'schedule' && <AnimeSchedule />}
             {view === 'search' && <AnimeSearch />}
