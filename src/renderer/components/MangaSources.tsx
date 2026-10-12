@@ -3,7 +3,7 @@ import type { MangaExtensionStore, MangaSource } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
-import { SelectField } from './fields';
+import { SelectField, TextField } from './fields';
 import { ALL_LANGUAGES, listedSources } from './mangaText';
 import { RowLink } from './RowLink';
 
@@ -21,6 +21,18 @@ export function sourceLanguages(sources: readonly MangaSource[]): string[] {
     ].sort((first, second) => {
         return Number(first === SEVERAL_LANGUAGES) - Number(second === SEVERAL_LANGUAGES) || first.localeCompare(second);
     });
+}
+
+// The sources whose name has the text in it (no text lists them all), by name.
+export function searchedSources(sources: readonly MangaSource[], text: string): MangaSource[] {
+    const query = text.trim().toLowerCase();
+    return sources
+        .filter((source) => {
+            return query.length === 0 || source.name.toLowerCase().includes(query);
+        })
+        .sort((first, second) => {
+            return first.name.localeCompare(second.name, undefined, { sensitivity: 'base' });
+        });
 }
 
 // The name of the store an address belongs to (the address itself when the store is not known).
@@ -75,14 +87,18 @@ export function MangaSources() {
     const stores = useMangaStore((state) => {
         return state.extensions.stores;
     });
+    const [search, setSearch] = useState('');
     const sources = listedSources(browse.sources, showAdult);
 
     const languages = sourceLanguages(sources);
     // A language that was remembered but is not there any more (its sources are gone or hidden) lists everything.
     const sourceLanguage = languages.includes(browse.sourceLanguage) ? browse.sourceLanguage : ALL_LANGUAGES;
-    const shown = sources.filter((source) => {
-        return sourceLanguage === ALL_LANGUAGES || source.lang === sourceLanguage;
-    });
+    const shown = searchedSources(
+        sources.filter((source) => {
+            return sourceLanguage === ALL_LANGUAGES || source.lang === sourceLanguage;
+        }),
+        search
+    );
     const groups = languages
         .map((language) => {
             return {
@@ -112,8 +128,10 @@ export function MangaSources() {
                     }}
                     onChange={setSourceLanguage}
                 />
+                <TextField label={t('manga.sources.search')} value={search} placeholder={t('manga.sources.searchPlaceholder')} onChange={setSearch} />
             </div>
             <span className="section-label">{t('manga.sources.count', { count: shown.length })}</span>
+            {shown.length === 0 && <p className="empty">{t('manga.sources.noMatch')}</p>}
             {groups.map((group) => {
                 return (
                     <div key={group.language} className="manga__source-group" data-testid="manga-source-group">

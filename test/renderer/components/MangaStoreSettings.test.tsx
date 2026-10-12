@@ -81,7 +81,7 @@ describe('MangaStoreSettings', () => {
         await user.click(screen.getByRole('button', { name: 'ADD' }));
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(alert).toHaveAttribute('title', 'bad index');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
         expect(field).toHaveValue('https://bad.example/i.json');
     });
 

@@ -4,7 +4,8 @@ import { useAppStore } from '../store/appStore';
 import { UPDATE_ALL_KEY, useMangaStore } from '../store/mangaStore';
 import { MangaExtensionsAbout } from './MangaExtensionsAbout';
 import { SelectField, TextField, ToggleField } from './fields';
-import { ALL_LANGUAGES, extensionLanguages, filterExtensions, isListed, mangaErrorKey } from './mangaText';
+import { ALL_LANGUAGES, extensionLanguages, filterExtensions, isListed } from './mangaText';
+import { MangaErrorNotice } from './MangaErrorNotice';
 
 // The stores the extensions come from, and the extensions to install, update or remove.
 export function MangaExtensions() {
@@ -76,9 +77,7 @@ export function MangaExtensions() {
                 </div>
             )}
             {error && (
-                <p className="field__warning" role="alert" title={error.message}>
-                    {t(mangaErrorKey(error.code))}
-                </p>
+                <MangaErrorNotice error={error} />
             )}
             {status === 'loading' && <p className="empty">{t('manga.ext.loading')}</p>}
             {stores.length > 0 && (

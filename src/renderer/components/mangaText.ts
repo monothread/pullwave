@@ -1,6 +1,6 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
-import type { LibraryManga, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
+import type { LibraryManga, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
 
 // The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
@@ -59,6 +59,20 @@ const MANGA_STATUS_KEYS: Record<MangaStatus, MessageKey> = {
 
 export function mangaErrorKey(code: MangaErrorCode): MessageKey {
     return ERROR_KEYS[code];
+}
+
+// The text of an error for the user: the one of its code, except where the source is known to hand over no pages (the extension could not
+// find the list of pages of the chapter).
+export function mangaErrorTextKey(error: MangaError): MessageKey {
+    if (error.code === 'API_ERROR' && /Failed to find page list/i.test(error.message)) {
+        return 'manga.error.noPageList';
+    }
+    return ERROR_KEYS[error.code];
+}
+
+// Everything the backend said about the error, to be pasted where it is debugged.
+export function technicalErrorText(error: MangaError): string {
+    return `${error.code}\n${error.message}`;
 }
 
 export function toolErrorKey(code: ToolErrorCode): MessageKey {

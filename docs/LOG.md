@@ -87,3 +87,6 @@
 - Removed the Find stream feature (service, panel, IPC, store state, texts, tests, README/DISCLAIMER/ARCHITECTURE entries) before the 0.21.0 release: D-080.
 - Hardened `writeCbz`: on a failed page it now waits for the temporary file to be closed before removing it (a flaky test showed the file could be created again after the removal).
 - Released 0.21.0 (tag `v0.21.0` = `5f4f7d9`): unit 223 files OK, e2e 356 passed / 13 skipped, Release Linux and Release Windows run one after the other, draft with 8 assets published.
+
+## 2026-10-12 · third round of the manga section
+- Reader progress by scroll, search and alphabetical order of the sources, click-to-copy technical errors, clearer text for the HentaiRead "page list" error: D-081. HentaiRead cause found with an isolated app and a throwaway FlareSolverr container (both removed).

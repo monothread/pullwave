@@ -151,7 +151,7 @@ describe('MangaExtensions', () => {
         expect(screen.getByRole('button', { name: 'UPDATING…' })).toBeDisabled();
         finish({ ok: false, error: { code: 'API_ERROR', message: 'boom' } });
         const alert = await screen.findByRole('alert');
-        expect(alert).toHaveAttribute('title', 'boom');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
         expect(mock.api.manga.extensions).toHaveBeenCalledTimes(1);
     });
 
@@ -249,7 +249,7 @@ describe('MangaExtensions', () => {
         answer({ ok: false, error: { code: 'REQUEST_FAILED', message: 'offline' } });
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The request to the manga server failed.');
-        expect(alert).toHaveAttribute('title', 'offline');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
     });
 
     describe('with the choices the app starts from', () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaSourcePreference } from '@shared/manga';
@@ -79,7 +79,7 @@ describe('MangaSourceSettings', () => {
         render(<MangaSourceSettings />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(alert).toHaveAttribute('title', 'Source not found');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
     });
 
     it('saves a text setting when the user leaves the field, not at every key', async () => {

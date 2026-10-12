@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { CLOUDFLARE_SHOW_AFTER_MS } from '@renderer/components/MangaCloudflareNotice';
@@ -82,7 +82,7 @@ describe('MangaReader the bar', () => {
         open({ status: 'error', pages: [], error: { code: 'API_ERROR', message: 'Cloudflare bypass currently disabled' } });
         rerender(<MangaReader />);
         expect(screen.getByRole('alert')).toHaveTextContent('The site or the extension reported an error.');
-        expect(screen.getByRole('alert')).toHaveAttribute('title', 'Cloudflare bypass currently disabled');
+        expect(within(screen.getByRole('alert')).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
         open({ pages: [] });
         rerender(<MangaReader />);
         expect(screen.getByText('This chapter has no pages.')).toBeInTheDocument();
@@ -367,6 +367,77 @@ describe('MangaReader the progress of the chapter', () => {
         expect(await screen.findByText('3 / 3')).toBeInTheDocument();
         expect(screen.getByRole('progressbar', { name: 'Reading progress' })).toHaveAttribute('aria-valuenow', '100');
         expect(screen.getByRole('progressbar', { name: 'Reading progress' }).querySelector('.progress__bar')).toHaveStyle({ width: '100%' });
+    });
+
+    describe('in the scroll', () => {
+        let main: HTMLElement;
+        let contentTop: number;
+
+        beforeEach(() => {
+            main = document.createElement('div');
+            main.className = 'app__main';
+            document.body.appendChild(main);
+            contentTop = 0;
+            vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+                const rect = (top: number, height: number): DOMRect => {
+                    return { top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => { return {}; } } as DOMRect;
+                };
+                if (this === main) {
+                    return rect(0, 500);
+                }
+                if (this.getAttribute('data-testid') === 'reader-scroll') {
+                    return rect(contentTop, 3000);
+                }
+                return rect(0, 0);
+            });
+        });
+
+        afterEach(() => {
+            vi.restoreAllMocks();
+            main.remove();
+        });
+
+        async function openScrollMode(mode: 'vertical' | 'webtoon'): Promise<void> {
+            const user = userEvent.setup();
+            open();
+            render(<MangaReader />, { container: main.appendChild(document.createElement('div')) });
+            await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            await user.selectOptions(screen.getByLabelText('Reading mode'), mode);
+        }
+
+        function bar(): HTMLElement {
+            return screen.getByRole('progressbar', { name: 'Reading progress' });
+        }
+
+        it.each(['vertical', 'webtoon'] as const)('follows the scroll in the %s mode, not the number of pages', async (mode) => {
+            await openScrollMode(mode);
+            expect(bar()).toHaveAttribute('aria-valuenow', '0');
+            expect(bar().querySelector('.progress__bar')).toHaveStyle({ width: '0%' });
+            contentTop = -1250;
+            act(() => {
+                main.dispatchEvent(new Event('scroll'));
+            });
+            expect(bar()).toHaveAttribute('aria-valuenow', '50');
+            expect(bar().querySelector('.progress__bar')).toHaveStyle({ width: '50%' });
+            expect(screen.getByText('1 / 3')).toBeInTheDocument();
+            contentTop = -2500;
+            act(() => {
+                main.dispatchEvent(new Event('scroll'));
+            });
+            expect(bar()).toHaveAttribute('aria-valuenow', '100');
+            expect(bar().querySelector('.progress__bar')).toHaveStyle({ width: '100%' });
+        });
+
+        it('goes back to following the page in the single page mode', async () => {
+            await openScrollMode('vertical');
+            contentTop = -1250;
+            act(() => {
+                main.dispatchEvent(new Event('scroll'));
+            });
+            expect(bar()).toHaveAttribute('aria-valuenow', '50');
+            await userEvent.setup().selectOptions(screen.getByLabelText('Reading mode'), 'single');
+            expect(bar()).toHaveAttribute('aria-valuenow', '33');
+        });
     });
 
     it('is not there while the pages load or when there are none', () => {

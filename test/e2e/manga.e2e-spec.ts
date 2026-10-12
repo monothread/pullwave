@@ -47,6 +47,8 @@ class FakeSuwayomi {
     hasUpdate = false;
     // A second source (of the same extension) that has the same manga under another number, with these chapters (by their number).
     otherSource = false;
+    // The server lists the second source before the first one.
+    otherSourceFirst = false;
     otherChapters = [1, 2, 3];
     // Chapters the source has published after the first two (their numbers on the server).
     laterChapters: number[] = [];
@@ -142,7 +144,7 @@ class FakeSuwayomi {
             const local = { id: '0', name: 'Local source', displayName: 'Local source', lang: 'localsourcelang', iconUrl: '', supportsLatest: false, contentWarning: 'SAFE', extension: { pkgName: 'local' } };
             const site = { id: SOURCE_ID, name: 'Fake Dex', displayName: 'Fake Dex', lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: this.adult ? 'NSFW' : 'SAFE', extension: { pkgName: EXTENSION_PKG, storeIndexUrl: STORE_URL } };
             const other = { ...site, id: OTHER_SOURCE_ID, name: 'Other Dex', displayName: 'Other Dex' };
-            return { sources: { nodes: this.installed ? [local, site, ...(this.otherSource ? [other] : [])] : [local] } };
+            return { sources: { nodes: this.installed ? (this.otherSource && this.otherSourceFirst ? [local, other, site] : [local, site, ...(this.otherSource ? [other] : [])]) : [local] } };
         }
         if (query.includes('{ filters {')) {
             return {
@@ -487,6 +489,33 @@ test.describe('manga section', () => {
         await expect(session.page.getByTestId('manga-source')).toContainText('Store: Fake Store');
     });
 
+    test('lists the sources by name and has a search to find one', async () => {
+        fake.otherSource = true;
+        fake.otherSourceFirst = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await goTo(session.page, 'BROWSE');
+        const names = session.page.getByTestId('manga-source').locator('.row-link__text');
+        await expect(names).toHaveText(['Fake Dex', 'Other Dex']);
+        await expect(session.page.getByText('Sources: 2')).toBeVisible();
+
+        const search = session.page.getByLabel('Search sources');
+        await search.fill('other');
+        await expect(names).toHaveText(['Other Dex']);
+        await expect(session.page.getByText('Sources: 1')).toBeVisible();
+        await search.fill('zzz');
+        await expect(session.page.getByTestId('manga-source')).toHaveCount(0);
+        await expect(session.page.getByText('No source matches that name.')).toBeVisible();
+        await expect(session.page.getByText('Sources: 0')).toBeVisible();
+
+        // The one found opens like any other.
+        await search.fill('  FAKE ');
+        await expect(names).toHaveText(['Fake Dex']);
+        await session.page.getByRole('button', { name: 'Open: Fake Dex' }).click();
+        await expect(session.page.getByRole('button', { name: '← SOURCES' })).toBeVisible();
+    });
+
     test('installs the helper for Cloudflare from the settings, with the warning that Docker is needed', async () => {
         session = await launch();
         await openManga(session.page);
@@ -668,6 +697,49 @@ test.describe('manga section', () => {
         await chapters.selectOption('1');
         await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
         await expect(chapters).toHaveValue('1');
+    });
+
+    test('follows the scroll in the progress bar of the scroll modes, and the page in the single page mode', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const bar = reader.getByRole('progressbar', { name: 'Reading progress' });
+        await expect(bar).toHaveAttribute('aria-valuenow', '33');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        const area = session.page.locator('.app__main');
+        await expect(reader.getByRole('img')).toHaveCount(3);
+        await expect.poll(() => {return area.evaluate((element) => {return element.scrollHeight - element.clientHeight})}).toBeGreaterThan(1500);
+        await expect(bar).toHaveAttribute('aria-valuenow', '0');
+
+        // Half way down the pages the bar is half full, however many pages that is.
+        const half = await reader.getByTestId('reader-scroll').evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const areaBox = (element.closest('.app__main') as HTMLElement).getBoundingClientRect();
+            return Math.round((box.height - areaBox.height) / 2);
+        });
+        await area.evaluate((element, top) => {
+            element.scrollTop = element.scrollTop + top;
+        }, half);
+        await expect.poll(async () => {return Number(await bar.getAttribute('aria-valuenow'))}).toBeGreaterThanOrEqual(45);
+        expect(Number(await bar.getAttribute('aria-valuenow'))).toBeLessThanOrEqual(55);
+
+        // At the end of the pages it is full.
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+        });
+        await expect(bar).toHaveAttribute('aria-valuenow', '100');
+        await expect(bar.locator('.progress__bar')).toHaveAttribute('style', /width: 100%/);
+
+        // One page at a time it follows the page again.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('single');
+        await expect(bar).toHaveAttribute('aria-valuenow', /^(33|67|100)$/);
     });
 
     test('keeps the settings in view wherever the chapter is, goes back to the top, and scrolls by itself', async () => {
@@ -1155,7 +1227,16 @@ test.describe('manga section', () => {
         const job = session.page.getByTestId('manga-job');
         await expect(job.getByText('Failed', { exact: true })).toBeVisible({ timeout: 20000 });
         await expect(job.getByRole('alert')).toHaveText('The site or the extension reported an error.');
-        await expect(job.getByRole('alert')).toHaveAttribute('title', 'The source could not give the pages');
+        const failure = job.getByRole('alert').getByRole('button', { name: 'The site or the extension reported an error.' });
+        await expect(failure).toHaveAttribute('title', 'Click to copy the technical error');
+        // Clicking the error copies what the backend said about it, to be pasted where it is debugged.
+        await failure.click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Technical error copied.' })).toBeVisible();
+        const copied = await session.app.evaluate(({ clipboard }) => {
+            return clipboard.readText();
+        });
+        expect(copied).toContain('API_ERROR\n');
+        expect(copied).toContain('The source could not give the pages');
         expect(fake.graphqlRequests('fetchChapterPages')).toHaveLength(3);
         expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))).toBe(false);
 

@@ -37,7 +37,9 @@ import {
     STORE_PLACEHOLDER,
     libraryEntry,
     mangaErrorKey,
+    mangaErrorTextKey,
     mangaStatusKey,
+    technicalErrorText,
     toolErrorKey
 } from '@renderer/components/mangaText';
 import { makeChapterRecord, makeExtension, makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
@@ -51,6 +53,27 @@ describe('the keys of the texts', () => {
     it.each(ERROR_CODES)('has a text for the error %s', (code) => {
         expect(mangaErrorKey(code)).toBe(`manga.error.${code}`);
         expect(t(mangaErrorKey(code))).not.toMatch(/^manga\./);
+    });
+
+    it.each(ERROR_CODES)('uses the text of the code for the error %s when nothing more is known', (code) => {
+        expect(mangaErrorTextKey({ code, message: 'something else' })).toBe(`manga.error.${code}`);
+    });
+
+    it('explains that a source handed over no pages when the extension could not find the list of pages', () => {
+        const message = 'Exception while fetching data (/fetchChapterPages) : Failed to find page list. Non-English entries are not supported.';
+        expect(mangaErrorTextKey({ code: 'API_ERROR', message })).toBe('manga.error.noPageList');
+        expect(mangaErrorTextKey({ code: 'API_ERROR', message: message.toLowerCase() })).toBe('manga.error.noPageList');
+        expect(t(mangaErrorTextKey({ code: 'API_ERROR', message }))).toBe(
+            'This source did not hand over the pages of this chapter. The site may have changed how it shows them; updating the extensions may fix it.'
+        );
+    });
+
+    it('does not take that text for the other codes', () => {
+        expect(mangaErrorTextKey({ code: 'REQUEST_FAILED', message: 'Failed to find page list.' })).toBe('manga.error.REQUEST_FAILED');
+    });
+
+    it('puts the code and the whole message of the backend in the technical text', () => {
+        expect(technicalErrorText({ code: 'API_ERROR', message: 'line one\n\tat line two' })).toBe('API_ERROR\nline one\n\tat line two');
     });
 
     it.each(TOOL_CODES)('has a text for the setup error %s', (code) => {

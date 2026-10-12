@@ -1430,3 +1430,7 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .manga__chip-state { gap: 4px; text-align: left; overflow-wrap: anywhere; }
 .manga__chip-remove { justify-content: center; min-width: 28px; padding: 0 8px; border-left: 1px solid currentColor; font-size: 15px; }
 .manga__chip-state:hover, .manga__chip-remove:hover, .manga__chip-state:focus-visible, .manga__chip-remove:focus-visible { background: color-mix(in srgb, currentColor 22%, transparent); outline: none; }
+
+.manga__error { margin: 0; }
+.manga__error-text { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.manga__error-text:hover, .manga__error-text:focus-visible { text-decoration-style: solid; }

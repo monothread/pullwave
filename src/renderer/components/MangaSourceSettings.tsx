@@ -3,7 +3,7 @@ import type { MangaSourcePreference } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { FieldShell, SelectField, ToggleField } from './fields';
-import { mangaErrorKey } from './mangaText';
+import { MangaErrorNotice } from './MangaErrorNotice';
 
 interface PreferenceFieldProps {
     preference: MangaSourcePreference;
@@ -130,9 +130,7 @@ export function MangaSourceSettings() {
             {settings.status === 'loading' && <p className="empty">{t('manga.source.settings.loading')}</p>}
             {settings.status === 'ready' && settings.preferences.length === 0 && <p className="empty">{t('manga.source.settings.none')}</p>}
             {settings.error && (
-                <p className="field__warning" role="alert" title={settings.error.message}>
-                    {t(mangaErrorKey(settings.error.code))}
-                </p>
+                <MangaErrorNotice error={settings.error} />
             )}
             {settings.preferences.map((preference) => {
                 return (

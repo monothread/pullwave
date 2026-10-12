@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
-import { mangaErrorKey, STORE_PLACEHOLDER } from './mangaText';
+import { STORE_PLACEHOLDER } from './mangaText';
+import { MangaErrorNotice } from './MangaErrorNotice';
 
 // The stores the extensions come from: adding and removing them is a setting of the manga section.
 export function MangaStoreSettings() {
@@ -75,9 +76,7 @@ export function MangaStoreSettings() {
                 </button>
             </form>
             {error && (
-                <p className="field__warning" role="alert" title={error.message}>
-                    {t(mangaErrorKey(error.code))}
-                </p>
+                <MangaErrorNotice error={error} />
             )}
         </fieldset>
     );

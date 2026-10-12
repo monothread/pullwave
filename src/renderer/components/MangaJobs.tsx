@@ -2,7 +2,8 @@ import type { MangaJob } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { formatPercent } from './jobStatus';
-import { jobStatusKey, mangaErrorKey } from './mangaText';
+import { jobStatusKey } from './mangaText';
+import { MangaErrorNotice } from './MangaErrorNotice';
 
 const ORDER: Record<MangaJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
@@ -94,9 +95,7 @@ export function MangaJobs() {
                             {job.pageCount > 0 && <span>{t('manga.jobs.pages', { done: job.pagesDone, total: job.pageCount })}</span>}
                         </div>
                         {job.error && (
-                            <p className="field__warning" role="alert" title={job.error.message}>
-                                {t(mangaErrorKey(job.error.code))}
-                            </p>
+                            <MangaErrorNotice error={job.error} />
                         )}
                         <div className="job__actions">
                             {job.status === 'running' && (

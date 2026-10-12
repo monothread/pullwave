@@ -58,7 +58,7 @@ describe('MangaBrowse the list of sources', () => {
         render(<MangaBrowse />);
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The manga server is not ready.');
-        expect(alert).toHaveAttribute('title', 'not installed');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
     });
 });
 
@@ -162,7 +162,7 @@ describe('MangaBrowse a source', () => {
         await openSourceNamed(user, 'Site A');
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The request to the manga server failed.');
-        expect(alert).toHaveAttribute('title', 'timeout');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
     });
 
     it('marks the mangas that are in the library', async () => {
@@ -360,7 +360,7 @@ describe('MangaBrowse source settings', () => {
         await openSourceNamed(user, 'Site A');
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(alert).toHaveAttribute('title', "Empty list doesn't contain element at index 0.");
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
         expect(screen.getByText('This source may need to be set up first: open SOURCE SETTINGS.')).toBeInTheDocument();
     });
 
@@ -371,7 +371,7 @@ describe('MangaBrowse source settings', () => {
         render(<MangaBrowse />);
         await openSourceNamed(user, 'Site A');
         const alert = await screen.findByRole('alert');
-        expect(alert).toHaveAttribute('title', 'java.io.IOException: Cloudflare bypass currently disabled');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
         expect(screen.getByText(/This site is protected by Cloudflare\./)).toBeInTheDocument();
         expect(screen.queryByText(/may need to be set up first/)).not.toBeInTheDocument();
     });

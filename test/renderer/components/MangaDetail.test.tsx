@@ -77,13 +77,13 @@ describe('MangaDetail', () => {
         render(<MangaDetail />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(alert).toHaveAttribute('title', 'Source not found');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
     });
 
     it('hints at Cloudflare when the manga could not be opened because of it', () => {
         open({ status: 'error', details: null, chapters: [], error: { code: 'API_ERROR', message: 'Cloudflare bypass currently disabled' } });
         render(<MangaDetail />);
-        expect(screen.getByRole('alert')).toHaveAttribute('title', 'Cloudflare bypass currently disabled');
+        expect(within(screen.getByRole('alert')).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
         expect(screen.getByText(/This site is protected by Cloudflare\./)).toBeInTheDocument();
     });
 

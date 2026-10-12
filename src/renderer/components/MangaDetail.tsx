@@ -9,7 +9,8 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
+import { chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntry, mangaStatusKey } from './mangaText';
+import { MangaErrorNotice } from './MangaErrorNotice';
 
 function chapterLabel(name: string, number: number | null): string {
     if (name.length > 0) {
@@ -281,9 +282,7 @@ export function MangaDetail() {
             )}
             {selection.status === 'loading' && <p className="empty">{t('manga.detail.loading')}</p>}
             {selection.status === 'error' && selection.error && (
-                <p className="field__warning" role="alert" title={selection.error.message}>
-                    {t(mangaErrorKey(selection.error.code))}
-                </p>
+                <MangaErrorNotice error={selection.error} />
             )}
             {selection.status === 'error' && selection.error && isCloudflareError(selection.error) && <p className="field__hint">{t('manga.source.cloudflareHint')}</p>}
             {selection.status === 'ready' && refresh.loading && <p className="field__hint">{t('manga.detail.refreshing')}</p>}

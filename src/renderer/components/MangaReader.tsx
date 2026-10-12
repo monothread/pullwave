@@ -26,7 +26,8 @@ import {
     type ReaderPrefs
 } from './readerPrefs';
 import { SETTINGS_ICON } from './TabButton';
-import { mangaErrorKey } from './mangaText';
+import { MangaErrorNotice } from './MangaErrorNotice';
+import { useScrollFraction } from '../hooks/useScrollFraction';
 
 const PRELOAD_AHEAD = 2;
 // The longest the place of a chapter is corrected while its pictures arrive, if the user has not taken over before.
@@ -259,6 +260,9 @@ export function MangaReader() {
     }, [reader.status, reader.pages, page, continuous]);
 
     const scrolledDown = useScrolledDown(scroller, TOP_BUTTON_THRESHOLD);
+    // In the scroll the bar follows how far down the pages the scroll is; one page at a time it follows the page.
+    const scrolled = useScrollFraction(scroller, scrollRef, continuous && reader.status === 'ready');
+    const progress = continuous ? scrolled : (page + 1) / total;
     // Auto scroll only makes sense where the pages are in a scroll; it stops at the end of the chapter.
     const scrolling = autoScrolling && continuous && reader.status === 'ready';
     const stopAutoScroll = useCallback(() => {
@@ -461,9 +465,9 @@ export function MangaReader() {
                         aria-label={t('manga.reader.progress')}
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-valuenow={Math.round(((page + 1) / total) * 100)}
+                        aria-valuenow={Math.round(progress * 100)}
                     >
-                        <div className="progress__bar" style={{ width: `${String(((page + 1) / total) * 100)}%` }} />
+                        <div className="progress__bar" style={{ width: `${String(progress * 100)}%` }} />
                     </div>
                 )}
             {settingsOpen && (
@@ -542,9 +546,7 @@ export function MangaReader() {
             {reader.status === 'loading' && <MangaCloudflareNotice />}
             {reader.status === 'loading' && <p className="empty">{t('manga.reader.loading')}</p>}
             {reader.status === 'error' && reader.error && (
-                <p className="field__warning" role="alert" title={reader.error.message}>
-                    {t(mangaErrorKey(reader.error.code))}
-                </p>
+                <MangaErrorNotice error={reader.error} />
             )}
             {reader.status === 'ready' && total === 0 && <p className="empty">{t('manga.reader.empty')}</p>}
             {reader.status === 'ready' && total > 0 && !continuous && (

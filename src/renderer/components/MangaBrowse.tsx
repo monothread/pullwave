@@ -9,7 +9,8 @@ import { MangaDetail } from './MangaDetail';
 import { MangaFilters } from './MangaFilters';
 import { MangaSources } from './MangaSources';
 import { MangaSourceSettings } from './MangaSourceSettings';
-import { isCloudflareError, libraryEntry, mangaErrorKey } from './mangaText';
+import { isCloudflareError, libraryEntry } from './mangaText';
+import { MangaErrorNotice } from './MangaErrorNotice';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
 
@@ -112,9 +113,7 @@ export function MangaBrowse() {
             <section className="manga__browse" aria-label={t('manga.nav.browse')}>
                 {sourcesStatus === 'loading' && <p className="empty">{t('manga.browse.loading')}</p>}
                 {sourcesStatus === 'error' && browse.sourcesError && (
-                    <p className="field__warning" role="alert" title={browse.sourcesError.message}>
-                        {t(mangaErrorKey(browse.sourcesError.code))}
-                    </p>
+                    <MangaErrorNotice error={browse.sourcesError} />
                 )}
                 {sourcesStatus === 'ready' && sources.length === 0 && <p className="empty">{t('manga.browse.noSources')}</p>}
                 {sources.length > 0 && <MangaSources />}
@@ -199,9 +198,7 @@ export function MangaBrowse() {
             )}
             {loading && <p className="empty">{t('manga.browse.loading')}</p>}
             {status === 'error' && error && (
-                <p className="field__warning" role="alert" title={error.message}>
-                    {t(mangaErrorKey(error.code))}
-                </p>
+                <MangaErrorNotice error={error} />
             )}
             {status === 'error' && error !== null && isCloudflareError(error) && <p className="field__hint">{t('manga.source.cloudflareHint')}</p>}
             {status === 'error' && error?.code === 'API_ERROR' && current.isConfigurable && !isCloudflareError(error) && <p className="field__hint">{t('manga.source.configureHint')}</p>}

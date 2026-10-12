@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import { MangaSources, sourceLanguages } from '@renderer/components/MangaSources';
+import { MangaSources, searchedSources, sourceLanguages } from '@renderer/components/MangaSources';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeSource } from '../../helpers/mangaFixtures';
@@ -32,6 +32,33 @@ describe('sourceLanguages', () => {
     });
 });
 
+describe('searchedSources', () => {
+    const LIST = [makeSource({ id: '1', name: 'Zeta Scans' }), makeSource({ id: '2', name: 'alpha scans' }), makeSource({ id: '3', name: 'Beta Reader' })];
+
+    it('lists the sources by name, whatever the case', () => {
+        expect(
+            searchedSources(LIST, '').map((source) => {
+                return source.name;
+            })
+        ).toEqual(['alpha scans', 'Beta Reader', 'Zeta Scans']);
+    });
+
+    it('keeps the sources that have the text in the name, ignoring case and the spaces around it', () => {
+        expect(
+            searchedSources(LIST, '  SCANS ').map((source) => {
+                return source.name;
+            })
+        ).toEqual(['alpha scans', 'Zeta Scans']);
+        expect(searchedSources(LIST, 'nothing')).toEqual([]);
+    });
+
+    it('does not change the list it was given', () => {
+        const copy = [...LIST];
+        searchedSources(LIST, '');
+        expect(LIST).toEqual(copy);
+    });
+});
+
 describe('MangaSources', () => {
     function groupNames(): Array<string | null | undefined> {
         return screen.getAllByTestId('manga-source-group').map((group) => {
@@ -43,6 +70,61 @@ describe('MangaSources', () => {
         render(<MangaSources />);
         expect(groupNames()).toEqual(['EN', 'PT', 'Several languages']);
         expect(screen.getByText('Sources: 4')).toBeInTheDocument();
+    });
+
+    it('lists the sources of a group by name, whatever order they come in', () => {
+        useMangaStore.setState({
+            browse: {
+                ...useMangaStore.getState().browse,
+                sources: [makeSource({ id: '1', name: 'Zeta Scans', lang: 'en' }), makeSource({ id: '2', name: 'beta site', lang: 'en' }), makeSource({ id: '3', name: 'Alpha Scans', lang: 'en' })]
+            }
+        });
+        render(<MangaSources />);
+        expect(
+            screen.getAllByTestId('manga-source').map((row) => {
+                return row.querySelector('.row-link__text')?.textContent;
+            })
+        ).toEqual(['Alpha Scans', 'beta site', 'Zeta Scans']);
+    });
+
+    it('filters the sources by what is typed in the search, and counts what is left', async () => {
+        const user = userEvent.setup();
+        render(<MangaSources />);
+        await user.type(screen.getByLabelText('Search sources'), 'scans');
+        expect(screen.getByText('Sources: 3')).toBeInTheDocument();
+        expect(
+            screen.getAllByTestId('manga-source').map((row) => {
+                return row.querySelector('.row-link__text')?.textContent;
+            })
+        ).toEqual(['Alpha Scans', 'Beta Scans', 'Zeta Scans']);
+        expect(groupNames()).toEqual(['EN', 'PT']);
+        await user.clear(screen.getByLabelText('Search sources'));
+        expect(screen.getByText('Sources: 4')).toBeInTheDocument();
+    });
+
+    it('says when no source has the name, and lists them again when the search is cleared', async () => {
+        const user = userEvent.setup();
+        render(<MangaSources />);
+        expect(screen.queryByText('No source matches that name.')).not.toBeInTheDocument();
+        await user.type(screen.getByLabelText('Search sources'), 'zzz');
+        expect(screen.getByText('No source matches that name.')).toBeInTheDocument();
+        expect(screen.getByText('Sources: 0')).toBeInTheDocument();
+        expect(screen.queryAllByTestId('manga-source')).toHaveLength(0);
+        await user.clear(screen.getByLabelText('Search sources'));
+        expect(screen.queryByText('No source matches that name.')).not.toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-source')).toHaveLength(4);
+    });
+
+    it('searches inside the language that is chosen', async () => {
+        const user = userEvent.setup();
+        render(<MangaSources />);
+        await user.selectOptions(screen.getByLabelText('Language'), 'pt');
+        await user.type(screen.getByLabelText('Search sources'), 'scans');
+        expect(
+            screen.getAllByTestId('manga-source').map((row) => {
+                return row.querySelector('.row-link__text')?.textContent;
+            })
+        ).toEqual(['Zeta Scans']);
     });
 
     it('lists the sources of a group in the order they come', () => {
