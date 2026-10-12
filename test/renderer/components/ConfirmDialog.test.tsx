@@ -33,6 +33,17 @@ describe('ConfirmDialog', () => {
         expect(screen.getByRole('button', { name: 'REMOVE' })).toHaveClass('btn--hot');
     });
 
+    it('is in the body of the page, not inside what opened it, so it does not take the style of a row', () => {
+        const { container } = render(
+            <div className="history__item" style={{ whiteSpace: 'nowrap' }}>
+                <ConfirmDialog title="Remove it?" message="This cannot be undone." confirmLabel="REMOVE" cancelLabel="KEEP" onConfirm={vi.fn()} onCancel={vi.fn()} />
+            </div>
+        );
+        const dialog = screen.getAllByRole('dialog').at(-1)!;
+        expect(container.contains(dialog)).toBe(false);
+        expect(dialog.parentElement?.parentElement).toBe(document.body);
+    });
+
     it('puts the focus on the safe answer', () => {
         setup();
         expect(screen.getByRole('button', { name: 'KEEP' })).toHaveFocus();

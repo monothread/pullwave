@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { createPortal } from 'react-dom';
 import { useModalDialog } from '../hooks/useModalDialog';
 
 interface ConfirmDialogProps {
@@ -11,11 +12,12 @@ interface ConfirmDialogProps {
 }
 
 // A window over the screen that asks before something that cannot be undone. The focus starts on the safe answer (keep), Esc and a click
-// outside the window also keep.
+// outside the window also keep. It is put in the body of the page, not where the button is: inside a row it took the text style of the row
+// (no line breaks, as the buttons of a row have) and its text came out of the window.
 export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onConfirm, onCancel }: ConfirmDialogProps) {
     const titleId = useId();
     const { dialogRef, handleKeyDown } = useModalDialog(onCancel, true);
-    return (
+    return createPortal(
         <div
             className="modal-backdrop"
             onMouseDown={(event) => {
@@ -38,6 +40,7 @@ export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onCon
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
