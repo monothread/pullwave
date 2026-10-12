@@ -103,3 +103,4 @@
 
 ## 2026-10-12 · chapters that switch while scrolling
 - Zones between chapters in the scroll modes, with the setting to turn the switch off: D-087.
+- Released 0.21.2 (tag `v0.21.2` = `90b47a7`): unit 225 files OK, e2e 368 passed / 13 skipped in a virtual screen (3 tests of the maximized window passed with a window manager), Release Linux then Release Windows, no Test Windows (the owner asked), draft with 8 assets published.
