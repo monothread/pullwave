@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import type { MangaChapter, MangaDetails, MangaSummary } from '@shared/manga';
-import { INTERRUPTED_MESSAGE, MangaDb } from '@main/services/manga/mangaDb';
+import { INTERRUPTED_MESSAGE, MAX_READING_KEPT, MAX_UPDATES_KEPT, MangaDb } from '@main/services/manga/mangaDb';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
 
 const MANGA: MangaSummary = { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: 'http://127.0.0.1:1/t.jpg' };
@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('MangaDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(6);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(7);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -34,7 +34,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(6);
+        expect(second.schemaVersion).toBe(7);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -278,7 +278,7 @@ describe('MangaDb the page of the manga on its site', () => {
             PRAGMA user_version = 2;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(6);
+        expect(db.schemaVersion).toBe(7);
         expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, series: null, season: null, seasonName: null, groupIds: [], chapters: [] }]);
         db.close();
     });
@@ -673,7 +673,7 @@ describe('MangaDb when a chapter was put in the library', () => {
             PRAGMA user_version = 4;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(6);
+        expect(db.schemaVersion).toBe(7);
         expect(db.chaptersOf(1)[0]).toMatchObject({ remoteId: 5, addedAt: null });
         db.close();
     });
@@ -769,11 +769,270 @@ describe('MangaDb the cover that is kept', () => {
             PRAGMA user_version = 5;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(6);
+        expect(db.schemaVersion).toBe(7);
         expect(db.coverHash(1)).toBeNull();
         expect(db.coverless().map((item) => {
             return item.title;
         })).toEqual(['Old']);
+        db.close();
+    });
+});
+
+describe('MangaDb the history of new chapters', () => {
+    function updatesSetup() {
+        let clock = 1000;
+        const db = new MangaDb(':memory:', () => {
+            clock += 10;
+            return clock;
+        });
+        return { db, manga: db.upsertManga(MANGA) };
+    }
+
+    it('writes nothing for the chapters a manga comes with', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1), chapter(2)]);
+        expect(db.updates()).toEqual([]);
+    });
+
+    it('writes the chapters that arrive later, each with how it came, and not the ones it had', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1), chapter(2)]);
+        db.registerChapters(manga.id, [chapter(1), chapter(2), chapter(3)], 'auto');
+        db.registerChapters(manga.id, [chapter(4)], true);
+        db.registerChapters(manga.id, [chapter(5)], 'move');
+        expect(
+            db.updates().map((entry) => {
+                return [entry.chapterRemoteId, entry.origin];
+            })
+        ).toEqual([
+            [5, 'move'],
+            [4, 'manual'],
+            [3, 'auto']
+        ]);
+    });
+
+    it('does not write again a chapter that was written already, even if it arrives again with another origin', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1)]);
+        db.registerChapters(manga.id, [chapter(2)], 'auto');
+        db.registerChapters(manga.id, [chapter(2)], 'manual');
+        expect(db.updates()).toHaveLength(1);
+        expect(db.updates()[0]?.origin).toBe('auto');
+    });
+
+    it('gives the manga, the chapter and the times of each entry, the newest first', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1)]);
+        db.registerChapters(manga.id, [chapter(2, { name: 'Second', number: 2, dateUploaded: 1700000000000, sourceOrder: 2 })], 'auto');
+        const saved = db.findChapter(manga.id, 2)!;
+        db.markDone(saved.id, '/m/2.cbz', 1, 1);
+        expect(db.updates()).toEqual([
+            {
+                id: expect.any(Number),
+                mangaId: manga.id,
+                mangaTitle: 'One Piece',
+                thumbnailUrl: 'http://127.0.0.1:1/t.jpg',
+                chapterId: saved.id,
+                chapterRemoteId: 2,
+                chapterName: 'Second',
+                chapterNumber: 2,
+                dateUploaded: 1700000000000,
+                foundAt: saved.addedAt! + 10,
+                origin: 'auto',
+                status: 'done'
+            }
+        ]);
+    });
+
+    it('lists the newest of several mangas first, and only as many as asked', () => {
+        const { db, manga } = updatesSetup();
+        const other = db.upsertManga({ remoteId: 8, sourceId: '123', title: 'Bleach', thumbnailUrl: null });
+        db.registerChapters(manga.id, [chapter(1)]);
+        db.registerChapters(other.id, [chapter(1)]);
+        db.registerChapters(manga.id, [chapter(2)], 'auto');
+        db.registerChapters(other.id, [chapter(2)], 'auto');
+        db.registerChapters(manga.id, [chapter(3)], 'auto');
+        expect(
+            db.updates().map((entry) => {
+                return `${entry.mangaTitle} ${entry.chapterRemoteId}`;
+            })
+        ).toEqual(['One Piece 3', 'Bleach 2', 'One Piece 2']);
+        expect(db.updates(2)).toHaveLength(2);
+    });
+
+    it('keeps only the latest ones', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1)]);
+        const many = Array.from({ length: MAX_UPDATES_KEPT + 20 }, (_item, index) => {
+            return chapter(100 + index);
+        });
+        db.registerChapters(manga.id, many, 'auto');
+        expect(db.updates(MAX_UPDATES_KEPT + 50)).toHaveLength(MAX_UPDATES_KEPT);
+    });
+
+    it('forgets the entries of a manga that leaves the library, and of a chapter that goes in a move to another source', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1)]);
+        db.registerChapters(manga.id, [chapter(2)], 'auto');
+        db.moveToSource(manga.id, { manga: { remoteId: 70, sourceId: '999', title: 'One Piece', thumbnailUrl: null }, details: null, chapters: [chapter(1)] });
+        expect(db.updates()).toEqual([]);
+        db.registerChapters(manga.id, [chapter(9)], 'auto');
+        db.removeManga(manga.id);
+        expect(db.updates()).toEqual([]);
+    });
+
+    it('writes the chapters a move to another source brings as having come with the move', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1)]);
+        db.moveToSource(manga.id, { manga: { remoteId: 70, sourceId: '999', title: 'One Piece', thumbnailUrl: null }, details: null, chapters: [chapter(1), chapter(2)] });
+        expect(
+            db.updates().map((entry) => {
+                return [entry.chapterRemoteId, entry.origin];
+            })
+        ).toEqual([[2, 'move']]);
+    });
+
+    it('clears the list', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1)]);
+        db.registerChapters(manga.id, [chapter(2)], 'auto');
+        db.clearUpdates();
+        expect(db.updates()).toEqual([]);
+        expect(db.chaptersOf(manga.id)).toHaveLength(2);
+    });
+
+    it('reads an origin it does not know as manual', () => {
+        const { db, manga } = updatesSetup();
+        db.registerChapters(manga.id, [chapter(1)]);
+        db.registerChapters(manga.id, [chapter(2)], 'auto');
+        const raw = (db as unknown as { db: { exec: (sql: string) => void } }).db;
+        raw.exec(`UPDATE chapter_update SET origin = 'weird'`);
+        expect(db.updates()[0]?.origin).toBe('manual');
+    });
+});
+
+describe('MangaDb the history of reading', () => {
+    const RECORD = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail', chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+
+    function readingSetup() {
+        let clock = 5000;
+        const db = new MangaDb(':memory:', () => {
+            clock += 10;
+            return clock;
+        });
+        return db;
+    }
+
+    it('keeps where the user is in a manga, for a manga that is not in the library too', () => {
+        const db = readingSetup();
+        db.recordReading(RECORD);
+        expect(db.readingHistory()).toEqual([{ ...RECORD, id: expect.any(Number), readAt: 5010, libraryMangaId: null }]);
+    });
+
+    it('says the manga is in the library when it is, by its source and number', () => {
+        const db = readingSetup();
+        const manga = db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        db.recordReading(RECORD);
+        db.recordReading({ ...RECORD, mangaRemoteId: 8, title: 'Bleach' });
+        expect(
+            db.readingHistory().map((entry) => {
+                return [entry.title, entry.libraryMangaId];
+            })
+        ).toEqual([
+            ['Bleach', null],
+            ['One Piece', manga.id]
+        ]);
+    });
+
+    it('has one line for each manga, which follows the chapter and the page, and goes to the top', () => {
+        const db = readingSetup();
+        db.recordReading(RECORD);
+        db.recordReading({ ...RECORD, mangaRemoteId: 8, title: 'Bleach', chapterRemoteId: 1 });
+        db.recordReading({ ...RECORD, chapterRemoteId: 12, chapterName: 'Second', chapterNumber: 2, page: 0, pageCount: 18, title: 'One Piece (new title)', thumbnailUrl: null });
+        expect(db.readingHistory()).toEqual([
+            { id: expect.any(Number), sourceId: '123', mangaRemoteId: 7, title: 'One Piece (new title)', thumbnailUrl: null, chapterRemoteId: 12, chapterName: 'Second', chapterNumber: 2, page: 0, pageCount: 18, readAt: 5030, libraryMangaId: null },
+            expect.objectContaining({ title: 'Bleach', readAt: 5020 })
+        ]);
+    });
+
+    it('keeps the same manga of two sources apart', () => {
+        const db = readingSetup();
+        db.recordReading(RECORD);
+        db.recordReading({ ...RECORD, sourceId: '999' });
+        expect(db.readingHistory()).toHaveLength(2);
+    });
+
+    it('lists only as many as asked, and keeps only the latest', () => {
+        const db = readingSetup();
+        for (let index = 1; index <= MAX_READING_KEPT + 10; index += 1) {
+            db.recordReading({ ...RECORD, mangaRemoteId: index, title: `Manga ${String(index)}` });
+        }
+        expect(db.readingHistory(MAX_READING_KEPT + 50)).toHaveLength(MAX_READING_KEPT);
+        expect(db.readingHistory(3)).toHaveLength(3);
+        expect(db.readingHistory()[0]?.title).toBe(`Manga ${String(MAX_READING_KEPT + 10)}`);
+    });
+
+    it('removes a line, or all of them', () => {
+        const db = readingSetup();
+        db.recordReading(RECORD);
+        db.recordReading({ ...RECORD, mangaRemoteId: 8, title: 'Bleach' });
+        db.removeReading(db.readingHistory()[0]!.id);
+        expect(
+            db.readingHistory().map((entry) => {
+                return entry.title;
+            })
+        ).toEqual(['One Piece']);
+        db.removeReading(9999);
+        expect(db.readingHistory()).toHaveLength(1);
+        db.clearReading();
+        expect(db.readingHistory()).toEqual([]);
+    });
+
+    it('keeps the lines of a manga that leaves the library', () => {
+        const db = readingSetup();
+        const manga = db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        db.recordReading(RECORD);
+        db.removeManga(manga.id);
+        expect(db.readingHistory()[0]?.libraryMangaId).toBeNull();
+        expect(db.readingHistory()).toHaveLength(1);
+    });
+
+    it('forgets the line of a manga when it moves to another source, whose chapters are numbered differently', () => {
+        const db = readingSetup();
+        const manga = db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        db.registerChapters(manga.id, [chapter(11)]);
+        db.recordReading(RECORD);
+        db.recordReading({ ...RECORD, mangaRemoteId: 8, title: 'Bleach' });
+        db.moveToSource(manga.id, { manga: { remoteId: 70, sourceId: '999', title: 'One Piece', thumbnailUrl: null }, details: null, chapters: [chapter(11)] });
+        expect(
+            db.readingHistory().map((entry) => {
+                return entry.title;
+            })
+        ).toEqual(['Bleach']);
+    });
+});
+
+describe('MangaDb the tables of the histories in a library made before them', () => {
+    it('adds them, empty, to a library of the version before', () => {
+        const path = join(makeTempDir(), 'before.db');
+        const old = new DatabaseSync(path);
+        old.exec(`CREATE TABLE manga (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, remote_id INTEGER NOT NULL, title TEXT NOT NULL, thumbnail_url TEXT, created_at INTEGER NOT NULL, UNIQUE (source_id, remote_id));
+            CREATE TABLE chapter (id INTEGER PRIMARY KEY AUTOINCREMENT, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, remote_id INTEGER NOT NULL, name TEXT NOT NULL, number REAL, date_uploaded INTEGER, scanlator TEXT, source_order INTEGER NOT NULL, status TEXT NOT NULL, page_count INTEGER NOT NULL DEFAULT 0, file_path TEXT, size_bytes INTEGER, error_code TEXT, error_raw TEXT, downloaded_at INTEGER, UNIQUE (manga_id, remote_id));
+            ALTER TABLE manga ADD COLUMN author TEXT; ALTER TABLE manga ADD COLUMN artist TEXT; ALTER TABLE manga ADD COLUMN description TEXT; ALTER TABLE manga ADD COLUMN genres TEXT; ALTER TABLE manga ADD COLUMN status TEXT; ALTER TABLE manga ADD COLUMN url TEXT;
+            ALTER TABLE manga ADD COLUMN series TEXT; ALTER TABLE manga ADD COLUMN season INTEGER; ALTER TABLE manga ADD COLUMN season_name TEXT;
+            CREATE TABLE manga_group (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+            CREATE TABLE manga_group_member (group_id INTEGER NOT NULL REFERENCES manga_group (id) ON DELETE CASCADE, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, PRIMARY KEY (group_id, manga_id));
+            ALTER TABLE chapter ADD COLUMN added_at INTEGER;
+            ALTER TABLE manga ADD COLUMN cover_hash TEXT;
+            INSERT INTO manga (source_id, remote_id, title, created_at) VALUES ('s', 1, 'Old', 3);
+            PRAGMA user_version = 6;`);
+        old.close();
+        const db = new MangaDb(path);
+        expect(db.schemaVersion).toBe(7);
+        expect(db.updates()).toEqual([]);
+        expect(db.readingHistory()).toEqual([]);
+        db.recordReading({ sourceId: 's', mangaRemoteId: 1, title: 'Old', thumbnailUrl: null, chapterRemoteId: 2, chapterName: '', chapterNumber: null, page: 0, pageCount: 1 });
+        expect(db.readingHistory()[0]?.libraryMangaId).toBe(1);
         db.close();
     });
 });

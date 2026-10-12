@@ -42,6 +42,24 @@ describe('AnimePanel', () => {
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
     });
 
+    it('also has the tabs gathered in one list, without the gear, which the theme shows on a very narrow window', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ view: initialAnime.view });
+        render(<AnimePanel />);
+        const menu = screen.getByRole('combobox', { name: 'Anime' });
+        expect(
+            within(menu)
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.textContent;
+                })
+        ).toEqual(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY']);
+        expect(menu).toHaveValue('schedule');
+        await user.selectOptions(menu, 'library');
+        expect(useAnimeStore.getState().view).toBe('library');
+        expect(screen.getByRole('combobox', { name: 'Anime' })).toHaveValue('library');
+    });
+
     it('opens on the schedule, the first tab, to the left of the search', () => {
         useAnimeStore.setState({ view: initialAnime.view });
         render(<AnimePanel />);

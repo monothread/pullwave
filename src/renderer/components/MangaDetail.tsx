@@ -1,7 +1,8 @@
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MangaCover } from './MangaCover';
+import { activateFilter, type TermKind } from './mangaFilterSearch';
 import { MangaGroupChips } from './MangaGroupChips';
 import { MangaMigrateSource } from './MangaMigrateSource';
 import { MangaSeriesSettings } from './MangaSeriesSettings';
@@ -20,11 +21,18 @@ function chapterLabel(name: string, number: number | null): string {
 interface TermButtonProps {
     term: string;
     label: string;
-    onSearch: (term: string) => Promise<void>;
+    kind: TermKind;
+    // Whether the source has a filter that stands for the term: only then does a click search it.
+    searchable: boolean;
+    onSearch: (term: string, kind: TermKind) => Promise<void>;
 }
 
-// A genre, an author or an artist: a click opens the search of the source with it.
-function TermButton({ term, label, onSearch }: TermButtonProps) {
+// A genre, an author or an artist: a click opens the search of the source with the filter that stands for it turned on. When the source
+// has no such filter the term is only shown.
+function TermButton({ term, label, kind, searchable, onSearch }: TermButtonProps) {
+    if (!searchable) {
+        return <span className="manga__tag manga__tag--plain">{term}</span>;
+    }
     return (
         <button
             type="button"
@@ -32,7 +40,7 @@ function TermButton({ term, label, onSearch }: TermButtonProps) {
             aria-label={label}
             title={label}
             onClick={() => {
-                void onSearch(term);
+                void onSearch(term, kind);
             }}
         >
             {term}
@@ -95,6 +103,25 @@ export function MangaDetail() {
     const refresh = useMangaStore((state) => {
         return state.selectionRefresh;
     });
+    const checkNewChapters = useMangaStore((state) => {
+        return state.checkNewChapters;
+    });
+    const checkingNew = useMangaStore((state) => {
+        return state.checkingNew;
+    });
+    const termFilters = useMangaStore((state) => {
+        return state.termFilters;
+    });
+    const loadTermFilters = useMangaStore((state) => {
+        return state.loadTermFilters;
+    });
+    const sourceId = selection?.manga.sourceId ?? null;
+    const hasDetails = selection?.details != null;
+    useEffect(() => {
+        if (sourceId !== null && hasDetails) {
+            void loadTermFilters(sourceId);
+        }
+    }, [sourceId, hasDetails, loadTermFilters]);
     const sourceInstalled = useMangaStore((state) => {
         return state.browse.sources.some((source) => {
             return source.id === state.selection?.manga.sourceId;
@@ -140,6 +167,11 @@ export function MangaDetail() {
             return { remoteId: chapter.remoteId, libraryChapterId: chapterState(saved, chapter.remoteId)?.id ?? null, name: chapter.name, number: chapter.number };
         });
 
+    // Which of the genres, the author and the artist the source can search with its filters.
+    const searchable = (term: string, kind: TermKind): boolean => {
+        return termFilters.sourceId === manga.sourceId && termFilters.status === 'ready' && activateFilter(termFilters.filters, term, kind) !== null;
+    };
+
     const readSet = new Set(readKeys);
     const isRead = (remoteId: number): boolean => {
         return readSet.has(progressKey(shown.title, remoteId));
@@ -180,13 +212,13 @@ export function MangaDetail() {
                     {details?.author && (
                         <span className="history__meta">
                             {`${t('manga.detail.author')}: `}
-                            <TermButton term={details.author} label={t('manga.detail.searchBy', { term: details.author })} onSearch={searchByTerm} />
+                            <TermButton term={details.author} kind="author" searchable={searchable(details.author, 'author')} label={t('manga.detail.searchBy', { term: details.author })} onSearch={searchByTerm} />
                         </span>
                     )}
                     {details?.artist && (
                         <span className="history__meta">
                             {`${t('manga.detail.artist')}: `}
-                            <TermButton term={details.artist} label={t('manga.detail.searchBy', { term: details.artist })} onSearch={searchByTerm} />
+                            <TermButton term={details.artist} kind="artist" searchable={searchable(details.artist, 'artist')} label={t('manga.detail.searchBy', { term: details.artist })} onSearch={searchByTerm} />
                         </span>
                     )}
                     {details && <span className="history__meta">{t(mangaStatusKey(details.status))}</span>}
@@ -195,7 +227,7 @@ export function MangaDetail() {
                             {details.genres.map((genre) => {
                                 return (
                                     <li key={genre}>
-                                        <TermButton term={genre} label={t('manga.detail.searchBy', { term: genre })} onSearch={searchByTerm} />
+                                        <TermButton term={genre} kind="tag" searchable={searchable(genre, 'tag')} label={t('manga.detail.searchBy', { term: genre })} onSearch={searchByTerm} />
                                     </li>
                                 );
                             })}
@@ -343,6 +375,18 @@ export function MangaDetail() {
                                 }}>
                                     {t('manga.detail.goToSource')}
                                 </button>
+                                {saved && (
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        disabled={checkingNew !== null}
+                                        onClick={() => {
+                                            void checkNewChapters(saved.id);
+                                        }}
+                                    >
+                                        {checkingNew === saved.id ? t('manga.detail.refreshWorking') : t('manga.detail.refresh')}
+                                    </button>
+                                )}
                             </>
                         ) : (
                             <>

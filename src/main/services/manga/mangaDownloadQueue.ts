@@ -107,6 +107,27 @@ export class MangaDownloadQueue {
         this.pump();
     }
 
+    // Queues these chapters of a manga of the library (the ones that are not downloaded and not waiting or going on already), the oldest first.
+    downloadChapters(mangaId: number, chapterRemoteIds: readonly number[]): void {
+        const manga = this.deps.db.getManga(mangaId);
+        if (manga === null) {
+            return;
+        }
+        chapterRemoteIds
+            .flatMap((remoteId) => {
+                const chapter = this.deps.db.findChapter(mangaId, remoteId);
+                return chapter === null ? [] : [chapter];
+            })
+            .sort((first, second) => {
+                return first.sourceOrder - second.sourceOrder;
+            })
+            .forEach((chapter) => {
+                this.queueChapter(manga, chapter);
+            });
+        this.deps.onLibraryChanged();
+        this.pump();
+    }
+
     // Queues a chapter again (after an error or a cancellation, also after the app was restarted, and a paused one).
     retry(chapterId: number): void {
         const chapter = this.deps.db.getChapter(chapterId);

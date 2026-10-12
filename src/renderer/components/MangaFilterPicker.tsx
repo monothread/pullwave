@@ -145,7 +145,7 @@ export function MangaFilterPicker({ name, filters, onChange }: { name: string; f
                                         <span aria-hidden="true">{excluded ? '−' : '+'}</span> {entry.filter.name}
                                     </button>
                                 ) : (
-                                    <span>{entry.filter.name}</span>
+                                    <span className="manga__chip-label">{entry.filter.name}</span>
                                 )}
                                 <button
                                     type="button"

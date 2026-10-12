@@ -583,7 +583,7 @@ describe('createMangaRuntime looking for new chapters', () => {
         const { runtime, sent } = setup({ fetchImpl: fetchWithChapters([1, 2, 3]) });
         const id = addManga(runtime!);
 
-        await expect(runtime!.checker.checkNow()).resolves.toEqual({ count: 2, titles: ['One Piece'] });
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 2, titles: ['One Piece'], failed: 0 });
 
         expect(runtime!.db.chaptersOf(id).map((chapter) => {return [chapter.remoteId, chapter.status]}).sort()).toEqual([[1, 'idle'], [2, 'idle'], [3, 'idle']]);
         expect(runtime!.db.getManga(id)).toMatchObject({ url: 'https://dex.example/one-piece', author: 'Oda', genres: ['Action'], status: 'ongoing' });
@@ -597,9 +597,43 @@ describe('createMangaRuntime looking for new chapters', () => {
         const fetchImpl = fetchWithChapters([1, 2, 3]);
         const { runtime, sent } = setup({ fetchImpl, settings: { mangaCheckNewChapters: false } });
         addManga(runtime!);
-        await expect(runtime!.checker.checkNow()).resolves.toEqual({ count: 0, titles: [] });
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
         expect(fetchImpl).not.toHaveBeenCalled();
         expect(sent).toEqual([]);
+    });
+
+    it('looks anyway when the user asks for it, with the setting off, through the handlers', async () => {
+        const fetchImpl = fetchWithChapters([1, 2]);
+        const { runtime } = setup({ fetchImpl, settings: { mangaCheckNewChapters: false } });
+        const id = addManga(runtime!);
+        await expect(runtime!.handlers.checkNewChapters(id)).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        await expect(runtime!.handlers.checkNewChapters(null)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        expect(runtime!.db.updates().map((entry) => {
+            return [entry.chapterRemoteId, entry.origin];
+        })).toEqual([[2, 'manual']]);
+    });
+
+    it('says why a manga could not be checked', async () => {
+        const { runtime } = setup();
+        const id = addManga(runtime!);
+        await expect(runtime!.handlers.checkNewChapters(id)).resolves.toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'not faked' } });
+        await expect(runtime!.handlers.checkNewChapters(999)).resolves.toEqual({ ok: false, error: { code: 'NOT_FOUND', message: 'The manga is not in the library.' } });
+    });
+
+    it('queues the new chapters it finds when the setting says so, and only adds them when it does not', async () => {
+        const on = setup({ fetchImpl: fetchWithChapters([1, 2, 3]), settings: { mangaAutoDownloadNew: true } });
+        const onId = addManga(on.runtime!);
+        await on.runtime!.checker.checkNow();
+        expect(on.runtime!.queue.list().map((job) => {
+            return [job.mangaId, job.chapterName];
+        })).toEqual([
+            [onId, 'Chapter 2'],
+            [onId, 'Chapter 3']
+        ]);
+        const off = setup({ fetchImpl: fetchWithChapters([1, 2, 3]), settings: { mangaAutoDownloadNew: false } });
+        addManga(off.runtime!);
+        await off.runtime!.checker.checkNow();
+        expect(off.runtime!.queue.list()).toEqual([]);
     });
 
     it('leaves the library alone when the server cannot answer', async () => {
@@ -979,5 +1013,27 @@ describe('createMangaRuntime covers', () => {
         await runtime!.handlers.covers.refresh(id);
         expect(runtime!.db.coverHash(id)).toMatch(/^[0-9a-f]{64}$/);
         expect(runtime!.handlers.covers.pending(true)).toBe(false);
+    });
+});
+
+describe('createMangaRuntime icons of the sources', () => {
+    it('keeps an icon in the data folder and serves it through the scheme', async () => {
+        const { runtime, dir } = setup();
+        const address = `${EXTERNAL}/api/v1/extension/icon/fake`;
+        expect(runtime!.handlers.icons.present(address)).toBe(address);
+        await vi.waitFor(() => {
+            expect(runtime!.handlers.icons.present(address)).toMatch(/^pullwave-manga:\/\/icon\/[0-9a-f]{24}$/);
+        });
+        const url = runtime!.handlers.icons.present(address)!;
+        const response = await runtime!.pageHandler(new Request(url));
+        expect(response.status).toBe(200);
+        expect(response.headers.get('Content-Type')).toBe('image/png');
+        expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from(PNG));
+        expect(readFileSync(join(dir, 'userData', 'manga', 'icons', url.split('/').at(-1)!))).toEqual(Buffer.from(PNG));
+    });
+
+    it('says there is no icon for a key that is not kept', async () => {
+        const { runtime } = setup();
+        expect((await runtime!.pageHandler(new Request(`pullwave-manga://icon/${'0'.repeat(24)}`))).status).toBe(404);
     });
 });

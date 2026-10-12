@@ -80,9 +80,43 @@ describe('MangaSeriesSettings', () => {
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
-    it('does not save an empty series name, or a name shown that is too long', async () => {
+    it('names the series after the manga when the name is left empty', async () => {
         const user = userEvent.setup();
         render(<MangaSeriesSettings manga={ALONE} />);
+        await user.click(screen.getByRole('button', { name: 'SAVE SERIES' }));
+        expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 3, series: 'Sousou no Frieren Season 2', season: 1, seasonName: null });
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('treats a name that is only spaces as empty', async () => {
+        const user = userEvent.setup();
+        render(<MangaSeriesSettings manga={ALONE} />);
+        await user.type(screen.getByLabelText('Series'), '   ');
+        await user.click(screen.getByRole('button', { name: 'SAVE SERIES' }));
+        expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 3, series: 'Sousou no Frieren Season 2', season: 1, seasonName: null });
+    });
+
+    it('says in the field that an empty name is the name of the manga', () => {
+        render(<MangaSeriesSettings manga={ALONE} />);
+        expect(screen.getByLabelText('Series')).toHaveAttribute('placeholder', 'Empty: "Sousou no Frieren Season 2", the name of the manga');
+    });
+
+    it('joins the series that the title of the manga names when the name is empty and that series exists', async () => {
+        const user = userEvent.setup();
+        const library = [ALONE, makeLibraryManga([], { id: 8, title: 'Other', series: 'Sousou no Frieren Season 2', season: 1 })];
+        useMangaStore.setState({ library });
+        render(<MangaSeriesSettings manga={ALONE} />);
+        await user.click(screen.getByRole('button', { name: 'SAVE SERIES' }));
+        expect(screen.getByRole('alert')).toHaveTextContent('Order 1 is already used by another manga of the series. The next free one is 2.');
+        expect(mock.api.manga.setSeries).not.toHaveBeenCalled();
+    });
+
+    it('does not save an order that is not valid, or a name shown that is too long', async () => {
+        const user = userEvent.setup();
+        render(<MangaSeriesSettings manga={ALONE} />);
+        const order = screen.getByLabelText('Order');
+        await user.clear(order);
+        await user.type(order, '100');
         await user.click(screen.getByRole('button', { name: 'SAVE SERIES' }));
         expect(screen.getByRole('alert')).toHaveTextContent('Give a series name (up to 100 characters), an order from 1 to 99 and a name of up to 60 characters.');
         expect(mock.api.manga.setSeries).not.toHaveBeenCalled();
@@ -117,5 +151,69 @@ describe('MangaSeriesSettings', () => {
         });
         expect(screen.getByLabelText('Order')).toHaveValue(1);
         expect(screen.getByLabelText('Name shown')).toHaveValue('');
+    });
+});
+
+describe('MangaSeriesSettings the orders that are taken', () => {
+    const FIRST = makeLibraryManga([], { id: 5, title: 'Frieren', series: 'Frieren', season: 1 });
+
+    beforeEach(() => {
+        useMangaStore.setState({ library: [ALONE, FIRST, JOINED] });
+    });
+
+    it('offers the next order when the series that is picked has the one that was in the field', async () => {
+        const user = userEvent.setup();
+        render(<MangaSeriesSettings manga={ALONE} />);
+        await user.click(screen.getByLabelText('Series'));
+        await user.keyboard('fri');
+        await user.pointer({ keys: '[MouseLeft]', target: await screen.findByRole('option', { name: 'Frieren' }) });
+        expect(screen.getByLabelText('Series')).toHaveValue('Frieren');
+        expect(screen.getByLabelText('Order')).toHaveValue(3);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'SAVE SERIES' })).toBeEnabled();
+    });
+
+    it('keeps the order when the series that is typed does not have it', async () => {
+        const user = userEvent.setup();
+        render(<MangaSeriesSettings manga={ALONE} />);
+        const order = screen.getByLabelText('Order');
+        await user.clear(order);
+        await user.type(order, '5');
+        await user.type(screen.getByLabelText('Series'), 'Frieren');
+        expect(order).toHaveValue(5);
+    });
+
+    it('says the order is used and which is the next free one, and does not let it be saved', async () => {
+        const user = userEvent.setup();
+        render(<MangaSeriesSettings manga={ALONE} />);
+        await user.type(screen.getByLabelText('Series'), 'FRIEREN');
+        const order = screen.getByLabelText('Order');
+        await user.clear(order);
+        await user.type(order, '2');
+        expect(screen.getByRole('alert')).toHaveTextContent('Order 2 is already used by another manga of the series. The next free one is 3.');
+        expect(screen.getByRole('button', { name: 'SAVE SERIES' })).toBeDisabled();
+        await user.click(screen.getByRole('button', { name: 'SAVE SERIES' }));
+        expect(mock.api.manga.setSeries).not.toHaveBeenCalled();
+        await user.clear(order);
+        await user.type(order, '3');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'SAVE SERIES' })).toBeEnabled();
+    });
+
+    it('does not count the order the manga has itself', () => {
+        render(<MangaSeriesSettings manga={JOINED} />);
+        expect(screen.getByLabelText('Order')).toHaveValue(2);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'SAVE SERIES' })).toBeEnabled();
+    });
+
+    it('suggests the next free order when the suggestion from the title is taken', async () => {
+        const user = userEvent.setup();
+        const library = [makeLibraryManga([], { id: 3, title: 'Frieren Season 2' }), FIRST, JOINED];
+        useMangaStore.setState({ library });
+        render(<MangaSeriesSettings manga={library[0]!} />);
+        await user.click(screen.getByRole('button', { name: 'SUGGEST FROM THE TITLE' }));
+        expect(screen.getByLabelText('Series')).toHaveValue('Frieren');
+        expect(screen.getByLabelText('Order')).toHaveValue(3);
     });
 });

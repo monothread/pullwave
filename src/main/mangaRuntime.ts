@@ -13,6 +13,7 @@ import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, mangaDirectory } from './service
 import { createImageFetcher } from './services/manga/mangaImages';
 import { LocalPages } from './services/manga/localPages';
 import { MangaCovers } from './services/manga/mangaCovers';
+import { MangaIcons } from './services/manga/mangaIcons';
 import { createMangaProtocolHandler } from './services/manga/mangaPageProtocol';
 import { MangaReader } from './services/manga/mangaReader';
 import { MangaService } from './services/manga/mangaService';
@@ -244,6 +245,13 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         return configured.length > 0 ? configured : join(options.defaultDownloadDir, DEFAULT_MANGA_FOLDER);
     };
     const localPages = new LocalPages();
+    const icons = new MangaIcons({
+        directory: join(root, 'icons'),
+        baseUrl: () => {
+            return service.baseUrl;
+        },
+        fetchImpl: options.fetchImpl
+    });
     const covers = new MangaCovers({
         directory: join(root, 'covers'),
         db,
@@ -284,6 +292,10 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         service,
         updates,
         covers,
+        icons,
+        checkNewChapters: (mangaId) => {
+            return mangaId === null ? checker.checkNow('manual') : checker.checkManga(mangaId);
+        },
         restartApp: () => {
             options.restartApp?.();
         },
@@ -347,6 +359,12 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         firstDelayMs: options.checkTimes?.firstMs,
         intervalMs: options.checkTimes?.everyMs,
+        autoDownload: () => {
+            return options.getSettings().mangaAutoDownloadNew;
+        },
+        download: (mangaId, chapterRemoteIds) => {
+            queue.downloadChapters(mangaId, chapterRemoteIds);
+        },
         onNewChapters: (news) => {
             send(IPC.eventMangaNewChapters, news);
         },
@@ -374,6 +392,14 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
                 },
                 read: (path) => {
                     return covers.read(path);
+                }
+            },
+            {
+                fileOf: (key) => {
+                    return icons.fileOf(key);
+                },
+                read: (path) => {
+                    return icons.read(path);
                 }
             }
         ),

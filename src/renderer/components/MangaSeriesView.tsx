@@ -145,7 +145,8 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                         >
                             <section className="series-menu__section" aria-label={t('manga.library.groups')}>
                                 <span className="section-label">{t('manga.library.groups')}</span>
-                                            </section>
+                                <MangaGroupChips mangaIds={ids} title={name} />
+                            </section>
                         </SeriesMenu>
                     </span>
                 </header>
@@ -161,7 +162,6 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                         }}
                     />
                 )}
-                <MangaGroupChips mangaIds={ids} title={name} />
                 {group.entries.map((manga) => {
                     return (
                         <section key={manga.id} className="series__season" data-testid="manga-season">

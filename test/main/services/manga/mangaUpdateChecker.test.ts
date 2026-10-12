@@ -84,7 +84,7 @@ describe('MangaUpdateChecker', () => {
         context.answers.set(8, { details: details(8), chapters: [chapter(1), chapter(2), chapter(3)] });
         context.answers.set(9, { details: details(9), chapters: [chapter(1)] });
 
-        await expect(context.checker.checkNow()).resolves.toEqual({ count: 3, titles: ['Bleach', 'One Piece'] });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 3, titles: ['Bleach', 'One Piece'], failed: 0 });
 
         expect(context.db.chaptersOf(one).map((item) => {return [item.remoteId, item.status]}).sort()).toEqual([[1, 'idle'], [2, 'idle'], [3, 'idle']]);
         expect(context.db.chaptersOf(bleach)).toHaveLength(3);
@@ -133,7 +133,7 @@ describe('MangaUpdateChecker', () => {
         const context = setup();
         addManga(context, 7, 'One Piece', [1, 2]);
         context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
-        await expect(context.checker.checkNow()).resolves.toEqual({ count: 0, titles: [] });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
         expect(context.news).toEqual([]);
     });
 
@@ -143,16 +143,27 @@ describe('MangaUpdateChecker', () => {
         const bleach = addManga(context, 8, 'Bleach', [1]);
         context.answers.set(7, new Error('offline'));
         context.answers.set(8, { details: details(8), chapters: [chapter(1), chapter(2)] });
-        await expect(context.checker.checkNow()).resolves.toEqual({ count: 1, titles: ['Bleach'] });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 1, titles: ['Bleach'], failed: 1 });
         expect(context.db.chaptersOf(bleach)).toHaveLength(2);
     });
 
-    it('checks nothing while it is turned off', async () => {
+    it('checks nothing by itself while it is turned off', async () => {
         const context = setup();
         addManga(context, 7, 'One Piece', [1]);
         context.enabled.value = false;
-        await expect(context.checker.checkNow()).resolves.toEqual({ count: 0, titles: [] });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
         expect(context.fetched).toEqual([]);
+    });
+
+    it('checks when the user asks for it, whatever the setting says', async () => {
+        const context = setup();
+        const id = addManga(context, 7, 'One Piece', [1]);
+        context.enabled.value = false;
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        await expect(context.checker.checkNow('manual')).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        expect(context.fetched).toEqual([7]);
+        expect(context.db.chaptersOf(id)).toHaveLength(2);
     });
 
     it('does not start a check while one is going on', async () => {
@@ -283,5 +294,169 @@ describe('MangaUpdateChecker', () => {
                 context.checker.stop();
             }).not.toThrow();
         });
+    });
+});
+
+describe('MangaUpdateChecker the history of new chapters', () => {
+    it('writes what the check every hour finds as automatic, and what the user asks for as manual', async () => {
+        const context = setup();
+        addManga(context, 7, 'One Piece', [1]);
+        addManga(context, 8, 'Bleach', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        context.answers.set(8, { details: details(8), chapters: [chapter(1), chapter(2)] });
+        await context.checker.checkNow();
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2), chapter(3)] });
+        await context.checker.checkNow('manual');
+        expect(
+            context.db.updates().map((entry) => {
+                return [entry.mangaTitle, entry.chapterRemoteId, entry.origin];
+            })
+        ).toEqual([
+            ['One Piece', 3, 'manual'],
+            ['One Piece', 2, 'auto'],
+            ['Bleach', 2, 'auto']
+        ]);
+    });
+
+    it('writes nothing when nothing is new', async () => {
+        const context = setup();
+        addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1)] });
+        await context.checker.checkNow();
+        expect(context.db.updates()).toEqual([]);
+    });
+});
+
+describe('MangaUpdateChecker one manga', () => {
+    it('checks only that manga, says what it found, and writes it as manual', async () => {
+        const context = setup();
+        const one = addManga(context, 7, 'One Piece', [1]);
+        addManga(context, 8, 'Bleach', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2), chapter(3)] });
+        await expect(context.checker.checkManga(one)).resolves.toEqual({ ok: true, count: 2, titles: ['One Piece'], failed: 0 });
+        expect(context.fetched).toEqual([7]);
+        expect(context.news).toEqual([{ count: 2, titles: ['One Piece'] }]);
+        expect(context.changes.count).toBe(1);
+        expect(
+            context.db.updates().map((entry) => {
+                return [entry.chapterRemoteId, entry.origin];
+            })
+        ).toEqual([
+            [3, 'manual'],
+            [2, 'manual']
+        ]);
+    });
+
+    it('says nothing when the manga has nothing new, and keeps what the source says about it', async () => {
+        const context = setup();
+        const one = addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7, { author: 'Eiichiro Oda' }), chapters: [chapter(1)] });
+        await expect(context.checker.checkManga(one)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        expect(context.news).toEqual([]);
+        expect(context.changes.count).toBe(0);
+        expect(context.db.getManga(one)).toMatchObject({ author: 'Eiichiro Oda' });
+    });
+
+    it('says why when the source cannot be reached, and when the manga is not in the library', async () => {
+        const context = setup();
+        const one = addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, new Error('Cloudflare protection is on'));
+        await expect(context.checker.checkManga(one)).resolves.toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'Cloudflare protection is on' } });
+        await expect(context.checker.checkManga(999)).resolves.toEqual({ ok: false, error: { code: 'NOT_FOUND', message: 'The manga is not in the library.' } });
+        expect(context.news).toEqual([]);
+    });
+
+    it('checks it even when the check every hour is turned off', async () => {
+        const context = setup();
+        const one = addManga(context, 7, 'One Piece', [1]);
+        context.enabled.value = false;
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        await expect(context.checker.checkManga(one)).resolves.toMatchObject({ ok: true, count: 1 });
+    });
+});
+
+describe('MangaUpdateChecker downloading what it finds', () => {
+    function withDownloads(autoDownload: boolean) {
+        const context = setup();
+        const downloads: Array<[number, number[]]> = [];
+        const checker = new MangaUpdateChecker({
+            db: context.db,
+            fetchManga: (remoteId) => {
+                context.fetched.push(remoteId);
+                const answer = context.answers.get(remoteId);
+                return answer === undefined || answer instanceof Error ? Promise.reject(new Error('offline')) : Promise.resolve(answer);
+            },
+            isEnabled: () => {
+                return true;
+            },
+            autoDownload: () => {
+                return autoDownload;
+            },
+            download: (mangaId, chapterRemoteIds) => {
+                downloads.push([mangaId, chapterRemoteIds]);
+            },
+            onNewChapters: () => {
+                return undefined;
+            },
+            onLibraryChanged: () => {
+                return undefined;
+            }
+        });
+        return { context, checker, downloads };
+    }
+
+    it('queues the new chapters of each manga when the user wants them downloaded', async () => {
+        const { context, checker, downloads } = withDownloads(true);
+        const one = addManga(context, 7, 'One Piece', [1]);
+        const bleach = addManga(context, 8, 'Bleach', [1]);
+        addManga(context, 9, 'Naruto', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2), chapter(3)] });
+        context.answers.set(8, { details: details(8), chapters: [chapter(1), chapter(2)] });
+        context.answers.set(9, { details: details(9), chapters: [chapter(1)] });
+        await checker.checkNow();
+        expect(downloads).toEqual([
+            [bleach, [2]],
+            [one, [2, 3]]
+        ]);
+    });
+
+    it('does the same for the check the user asks for, of all the mangas or of one', async () => {
+        const { context, checker, downloads } = withDownloads(true);
+        const one = addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        await checker.checkManga(one);
+        expect(downloads).toEqual([[one, [2]]]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2), chapter(3)] });
+        await checker.checkNow('manual');
+        expect(downloads).toEqual([
+            [one, [2]],
+            [one, [3]]
+        ]);
+    });
+
+    it('only adds them to the library when the user does not want them downloaded', async () => {
+        const { context, checker, downloads } = withDownloads(false);
+        const one = addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        await checker.checkNow();
+        expect(downloads).toEqual([]);
+        expect(context.db.chaptersOf(one)).toHaveLength(2);
+    });
+
+    it('does not queue anything when nothing is new, or the manga cannot be reached', async () => {
+        const { context, checker, downloads } = withDownloads(true);
+        addManga(context, 7, 'One Piece', [1]);
+        addManga(context, 8, 'Bleach', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1)] });
+        await checker.checkNow();
+        expect(downloads).toEqual([]);
+    });
+
+    it('works with no way to queue, which is what the check has when it is only given the database', async () => {
+        const context = setup();
+        const one = addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        await expect(context.checker.checkNow()).resolves.toMatchObject({ ok: true, count: 1 });
+        expect(context.db.chaptersOf(one)).toHaveLength(2);
     });
 });

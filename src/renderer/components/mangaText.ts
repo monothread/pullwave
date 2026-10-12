@@ -120,6 +120,31 @@ export function downloadedCount(manga: Pick<LibraryManga, 'chapters'>): number {
     }).length;
 }
 
+// What a chapter is called in a list: its name, or its number when it has none.
+export function chapterLabel(name: string, number: number | null): string {
+    if (name.length > 0) {
+        return name;
+    }
+    return number === null ? '' : `#${String(number)}`;
+}
+
+// The entries of a list in the order they come, split by the day (of the computer) of the time each one has: `day` is the start of that
+// day, in milliseconds.
+export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number): Array<{ day: number; entries: T[] }> {
+    const groups: Array<{ day: number; entries: T[] }> = [];
+    entries.forEach((entry) => {
+        const date = new Date(timeOf(entry));
+        const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+        const last = groups.at(-1);
+        if (last !== undefined && last.day === day) {
+            last.entries.push(entry);
+        } else {
+            groups.push({ day, entries: [entry] });
+        }
+    });
+    return groups;
+}
+
 // The state of a chapter of the source in the library (idle when the library does not have it).
 export function chapterState(manga: LibraryManga | null, remoteId: number): MangaChapterRecord | null {
     return (
@@ -252,13 +277,20 @@ export function matchesSearch(text: string, search: string): boolean {
     return wanted.length === 0 || foldText(text).includes(wanted);
 }
 
-// The mangas of the library that are in the group (every manga when no group is chosen).
+// The mangas of the library that are in the group; with no group chosen (the tab of all), the ones that are in no group: a manga that is
+// put in a group leaves that tab.
 export function inGroup(library: readonly LibraryManga[], groupId: number | null): LibraryManga[] {
-    return groupId === null
-        ? [...library]
-        : library.filter((manga) => {
-              return manga.groupIds.includes(groupId);
-          });
+    return library.filter((manga) => {
+        return groupId === null ? manga.groupIds.length === 0 : manga.groupIds.includes(groupId);
+    });
+}
+
+// The group the library is limited to: the one chosen, and when the tab of all is not there (every manga is in a group) the first group.
+export function activeGroup(library: readonly LibraryManga[], groups: ReadonlyArray<{ id: number }>, chosen: number | null): number | null {
+    if (chosen !== null || inGroup(library, null).length > 0) {
+        return chosen;
+    }
+    return groups[0]?.id ?? null;
 }
 
 // How many chapters of the mangas are downloaded, and how many there are.
@@ -280,6 +312,19 @@ export function seriesNames(library: readonly LibraryManga[]): string[] {
         }
     });
     return [...seen.values()].sort(compareNames);
+}
+
+// The orders the other mangas of a series have (the manga being edited is left out).
+export function takenSeasons(library: readonly LibraryManga[], series: string, exceptMangaId: number): number[] {
+    const wanted = foldSeries(series);
+    return library.flatMap((manga) => {
+        return manga.id !== exceptMangaId && manga.series !== null && manga.season !== null && wanted.length > 0 && foldSeries(manga.series) === wanted ? [manga.season] : [];
+    });
+}
+
+// The order after the last one the series has (the one the library offers when the order wanted is taken).
+export function nextSeason(taken: readonly number[]): number {
+    return Math.max(0, ...taken) + 1;
 }
 
 // Which chapter "continue reading" opens, among the chapters in reading order: the one the manga was left on when it is not read yet,

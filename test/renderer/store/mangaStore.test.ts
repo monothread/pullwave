@@ -1562,3 +1562,322 @@ describe('mangaStore opening a manga of the library', () => {
         expect(state().selection).toMatchObject({ status: 'error', error: FAILURE });
     });
 });
+
+describe('mangaStore the list of new chapters', () => {
+    const ENTRY = { id: 1, mangaId: 9, mangaTitle: 'One Piece', thumbnailUrl: null, chapterId: 3, chapterRemoteId: 13, chapterName: 'Third', chapterNumber: 3, dateUploaded: null, foundAt: 1700000000000, origin: 'auto' as const, status: 'idle' as const };
+
+    it('starts empty', () => {
+        expect(state().updates).toEqual([]);
+        expect(state().checkingNew).toBeNull();
+    });
+
+    it('reads the chapters that arrived', async () => {
+        mock.api.manga.updates.mockResolvedValue([ENTRY]);
+        await state().loadUpdates();
+        expect(state().updates).toEqual([ENTRY]);
+        expect(mock.api.manga.updates).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears the list', async () => {
+        useMangaStore.setState({ updates: [ENTRY] });
+        await state().clearUpdates();
+        expect(mock.api.manga.clearUpdates).toHaveBeenCalledTimes(1);
+        expect(state().updates).toEqual([]);
+    });
+
+    it('opens the manga of an entry on its page in the library', async () => {
+        const manga = makeLibraryManga([], { id: 9, title: 'One Piece', thumbnailUrl: 'pullwave-manga://cover/9?v=abc' });
+        useMangaStore.setState({ library: [manga], view: 'updates', librarySeries: 'series-x' });
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().openFromUpdate(ENTRY);
+        expect(state().view).toBe('library');
+        expect(state().librarySeries).toBeNull();
+        expect(state().selectionFrom).toBe('library');
+        expect(state().selection).toMatchObject({ manga: { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: 'pullwave-manga://cover/9?v=abc' }, status: 'ready' });
+        expect(mock.api.manga.details).toHaveBeenCalledWith(7);
+    });
+
+    it('does nothing for an entry whose manga is no longer in the library', async () => {
+        useMangaStore.setState({ library: [], view: 'updates' });
+        await state().openFromUpdate(ENTRY);
+        expect(state().view).toBe('updates');
+        expect(state().selection).toBeNull();
+        expect(mock.api.manga.details).not.toHaveBeenCalled();
+    });
+
+    it('reads the list again when the library changes and the screen is the list', async () => {
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
+        await state().init();
+        mock.api.manga.updates.mockClear();
+        mock.emitMangaLibraryChanged();
+        await Promise.resolve();
+        expect(mock.api.manga.updates).not.toHaveBeenCalled();
+        useMangaStore.setState({ view: 'updates' });
+        mock.emitMangaLibraryChanged();
+        await vi.waitFor(() => {
+            expect(mock.api.manga.updates).toHaveBeenCalledTimes(1);
+        });
+    });
+});
+
+describe('mangaStore looking for new chapters', () => {
+    it('asks for all the mangas, says it is looking meanwhile, and reads the library after', async () => {
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.checkNewChapters.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const pending = state().checkNewChapters(null);
+        expect(state().checkingNew).toBe('all');
+        answer({ ok: true, count: 2, titles: ['One Piece'], failed: 0 });
+        await pending;
+        expect(state().checkingNew).toBeNull();
+        expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(null);
+        expect(mock.api.manga.library).toHaveBeenCalled();
+        expect(toasts()).toEqual([]);
+    });
+
+    it('asks for one manga, and says it is that one that is being looked at', async () => {
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.checkNewChapters.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const pending = state().checkNewChapters(9);
+        expect(state().checkingNew).toBe(9);
+        answer({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        await pending;
+        expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(9);
+    });
+
+    it('says there is nothing new, or that some mangas could not be reached', async () => {
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 0 });
+        await state().checkNewChapters(null);
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 3 });
+        await state().checkNewChapters(null);
+        expect(toasts()).toEqual(['No new chapters.', 'No new chapters. 3 manga(s) could not be reached.']);
+    });
+
+    it('says why a check failed', async () => {
+        mock.api.manga.checkNewChapters.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().checkNewChapters(9);
+        expect(toasts()).toEqual(['Could not look for new chapters: site down']);
+        expect(state().checkingNew).toBeNull();
+    });
+
+    it('stops saying it is looking when the check throws', async () => {
+        mock.api.manga.checkNewChapters.mockRejectedValue(new Error('ipc'));
+        await expect(state().checkNewChapters(null)).rejects.toThrow('ipc');
+        expect(state().checkingNew).toBeNull();
+    });
+
+    it('reads the list again when it is the screen that is shown', async () => {
+        useMangaStore.setState({ view: 'updates' });
+        mock.api.manga.checkNewChapters.mockResolvedValue({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        await state().checkNewChapters(null);
+        expect(mock.api.manga.updates).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('mangaStore the history of reading', () => {
+    const ENTRY = { id: 4, sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: '/t', chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20, readAt: 1700000000000, libraryMangaId: null };
+
+    it('starts empty, and reads the history', async () => {
+        expect(state().history).toEqual([]);
+        mock.api.manga.readingHistory.mockResolvedValue([ENTRY]);
+        await state().loadHistory();
+        expect(state().history).toEqual([ENTRY]);
+    });
+
+    it('removes a line, or all of them', async () => {
+        useMangaStore.setState({ history: [ENTRY, { ...ENTRY, id: 5, title: 'Bleach' }] });
+        await state().removeReading(4);
+        expect(mock.api.manga.removeReading).toHaveBeenCalledWith(4);
+        expect(state().history.map((entry) => {
+            return entry.id;
+        })).toEqual([5]);
+        await state().clearReading();
+        expect(mock.api.manga.clearReading).toHaveBeenCalledTimes(1);
+        expect(state().history).toEqual([]);
+    });
+
+    it('opens a manga that is in the library on its page there, with the title and the cover of the library', async () => {
+        const manga = makeLibraryManga([], { id: 9, title: 'One Piece (library)', thumbnailUrl: 'pullwave-manga://cover/9?v=abc' });
+        useMangaStore.setState({ library: [manga], view: 'history' });
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().openFromHistory({ ...ENTRY, libraryMangaId: 9 });
+        expect(state().view).toBe('library');
+        expect(state().selectionFrom).toBe('library');
+        expect(state().selection?.manga).toEqual({ remoteId: 7, sourceId: '123', title: 'One Piece (library)', thumbnailUrl: 'pullwave-manga://cover/9?v=abc' });
+        expect(state().selection?.status).toBe('ready');
+    });
+
+    it('opens a manga that is not in the library on its source, like one of the browse', async () => {
+        useMangaStore.setState({ library: [], view: 'history' });
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().openFromHistory(ENTRY);
+        expect(state().view).toBe('browse');
+        expect(state().selectionFrom).toBe('browse');
+        expect(state().selection).toMatchObject({ manga: { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: '/t' }, status: 'error', error: FAILURE });
+    });
+
+    it('opens as a manga of the browse when the line says it is in the library but the library does not have it any more', async () => {
+        useMangaStore.setState({ library: [], view: 'history' });
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().openFromHistory({ ...ENTRY, libraryMangaId: 9 });
+        expect(state().view).toBe('browse');
+    });
+
+    it('writes where the user is', async () => {
+        const record = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: null, chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+        await state().recordReading(record);
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.recordReading).toHaveBeenCalledWith(record);
+    });
+
+    it('remembers the manga that is open when the reader opens, and keeps it when it goes to another chapter', async () => {
+        const open = makeSummary();
+        useMangaStore.setState({ selection: { manga: open, status: 'ready', details: makeDetails(), chapters: [], selected: [], error: null } });
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['a'], local: false } });
+        const chapters = [
+            { remoteId: 11, libraryChapterId: null, name: 'One', number: 1 },
+            { remoteId: 12, libraryChapterId: null, name: 'Two', number: 2 }
+        ];
+        await state().openReader('One Piece', chapters, 0);
+        expect(state().reader.manga).toEqual(open);
+        useMangaStore.setState({ selection: null });
+        await state().goToChapter(1);
+        expect(state().reader).toMatchObject({ index: 1, manga: open });
+    });
+
+    it('does not know the manga when the reader opens with none open', async () => {
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['a'], local: false } });
+        await state().openReader('One Piece', [{ remoteId: 11, libraryChapterId: null, name: 'One', number: 1 }], 0);
+        expect(state().reader.manga).toBeNull();
+    });
+});
+
+describe('mangaStore the filters that stand for the terms of a manga', () => {
+    const FILTERS: MangaFilter[] = [
+        { type: 'text', name: 'Author', value: '' },
+        { type: 'group', name: 'Genre', filters: [{ type: 'tristate', name: 'Action', value: 'ignore' }] }
+    ];
+
+    it('starts with none', () => {
+        expect(state().termFilters).toEqual({ sourceId: null, status: 'idle', filters: [] });
+    });
+
+    it('reads the filters of the source of the manga, once for each source', async () => {
+        mock.api.manga.sourceFilters.mockResolvedValue({ ok: true, value: FILTERS });
+        const loading = state().loadTermFilters('123');
+        expect(state().termFilters).toEqual({ sourceId: '123', status: 'loading', filters: [] });
+        await loading;
+        expect(state().termFilters).toEqual({ sourceId: '123', status: 'ready', filters: FILTERS });
+        await state().loadTermFilters('123');
+        expect(mock.api.manga.sourceFilters).toHaveBeenCalledTimes(1);
+        await state().loadTermFilters('456');
+        expect(mock.api.manga.sourceFilters).toHaveBeenCalledTimes(2);
+        expect(state().termFilters.sourceId).toBe('456');
+    });
+
+    it('says it could not read them, and reads again the next time', async () => {
+        mock.api.manga.sourceFilters.mockResolvedValueOnce({ ok: false, error: FAILURE });
+        await state().loadTermFilters('123');
+        expect(state().termFilters).toEqual({ sourceId: '123', status: 'error', filters: [] });
+        mock.api.manga.sourceFilters.mockResolvedValueOnce({ ok: true, value: FILTERS });
+        await state().loadTermFilters('123');
+        expect(state().termFilters.status).toBe('ready');
+    });
+
+    it('drops the answer of a source that is no longer the one asked about', async () => {
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.sourceFilters.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        mock.api.manga.sourceFilters.mockResolvedValueOnce({ ok: true, value: [] });
+        const first = state().loadTermFilters('123');
+        await state().loadTermFilters('456');
+        answer({ ok: true, value: FILTERS });
+        await first;
+        expect(state().termFilters).toEqual({ sourceId: '456', status: 'ready', filters: [] });
+    });
+});
+
+describe('mangaStore searching by a term', () => {
+    const FILTERS: MangaFilter[] = [
+        { type: 'text', name: 'Author', value: '' },
+        { type: 'group', name: 'Genre', filters: [{ type: 'tristate', name: 'Action', value: 'ignore' }, { type: 'tristate', name: 'Drama', value: 'ignore' }] }
+    ];
+
+    beforeEach(() => {
+        mock.api.manga.sourceFilters.mockResolvedValue({ ok: true, value: FILTERS });
+        mock.api.manga.list.mockResolvedValue({ ok: true, value: { items: [], hasNextPage: false } });
+        useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: makeDetails(), chapters: [], selected: [], error: null } });
+    });
+
+    it('turns on the filter of a genre, and not the text of the search', async () => {
+        await state().searchByTerm('Action');
+        expect(state().view).toBe('browse');
+        expect(state().browse).toMatchObject({ sourceId: '123', mode: 'search', query: '', filtersOpen: true });
+        expect(state().browse.filters).toEqual([FILTERS[0], { type: 'group', name: 'Genre', filters: [{ type: 'tristate', name: 'Action', value: 'include' }, FILTERS[1] && (FILTERS[1] as { filters: MangaFilter[] }).filters[1]] }]);
+        expect(mock.api.manga.list).toHaveBeenLastCalledWith(expect.objectContaining({ sourceId: '123', kind: 'search', query: '' }));
+    });
+
+    it('gives the name of the author to the filter of authors', async () => {
+        await state().searchByTerm('Eiichiro Oda', 'author');
+        expect(state().browse.filters[0]).toEqual({ type: 'text', name: 'Author', value: 'Eiichiro Oda' });
+        expect(state().browse.query).toBe('');
+    });
+
+    it('never puts a term that has no filter in the text of the search', async () => {
+        await state().searchByTerm('Content rating: Suggestive');
+        expect(state().browse.query).toBe('');
+        expect(state().browse.filters).toEqual(FILTERS);
+        await state().searchByTerm('Someone', 'artist');
+        expect(state().browse.query).toBe('');
+    });
+
+    it('waits for the filters to be read even when something else already asked for them', async () => {
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.sourceFilters.mockReset();
+        mock.api.manga.sourceFilters.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        useMangaStore.getState().openSource('123', 'search');
+        const early = useMangaStore.getState().loadFilters();
+        const searching = state().searchByTerm('Drama');
+        answer({ ok: true, value: FILTERS });
+        await early;
+        await searching;
+        expect(mock.api.manga.sourceFilters).toHaveBeenCalledTimes(1);
+        const group = state().browse.filters[1] as { filters: Array<{ name: string; value: string }> };
+        expect(group.filters.map((filter) => {
+            return [filter.name, filter.value];
+        })).toEqual([
+            ['Action', 'ignore'],
+            ['Drama', 'include']
+        ]);
+    });
+
+    it('does nothing with no manga open, or with an empty term', async () => {
+        await state().searchByTerm('   ');
+        useMangaStore.setState({ selection: null });
+        await state().searchByTerm('Action');
+        expect(mock.api.manga.list).not.toHaveBeenCalled();
+        expect(state().view).toBe('browse');
+    });
+});

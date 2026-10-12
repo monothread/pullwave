@@ -1,4 +1,4 @@
-import type { LibraryManga, MangaChapter, MangaDetails, MangaDetailsWithChapters, MangaJob, MangaMigrationResponse, MangaResult, MangaStatusInfo } from '@shared/manga';
+import type { LibraryManga, MangaChapter, MangaCheckResponse, MangaSource, MangaUpdateEntry, ReadingEntry, MangaDetails, MangaDetailsWithChapters, MangaJob, MangaMigrationResponse, MangaResult, MangaStatusInfo } from '@shared/manga';
 import { IPC } from '@shared/constants';
 import { registerMangaHandlers, type MangaHandlerDependencies } from '@main/ipc/registerMangaHandlers';
 import type { IpcMainLike } from '@main/ipc/registerHandlers';
@@ -79,7 +79,14 @@ const MANGA_CHANNELS = [
     IPC.mangaServerReset,
     IPC.mangaHelperUpdate,
     IPC.mangaRestart,
-    IPC.mangaHealth
+    IPC.mangaHealth,
+    IPC.mangaUpdates,
+    IPC.mangaClearUpdates,
+    IPC.mangaCheckNew,
+    IPC.mangaRecordReading,
+    IPC.mangaReadingHistory,
+    IPC.mangaRemoveReading,
+    IPC.mangaClearReading
 ].sort();
 
 const BASE = 'http://127.0.0.1:4321';
@@ -95,7 +102,7 @@ const REQUEST = {
     chapters: [chapter(1), chapter(2)]
 };
 
-function setup(options: { baseUrl?: string | null; folder?: string | null; migrate?: () => Promise<MangaMigrationResponse>; coverFetch?: (url: string) => Promise<Response> } = {}) {
+function setup(options: { baseUrl?: string | null; folder?: string | null; migrate?: () => Promise<MangaMigrationResponse>; coverFetch?: (url: string) => Promise<Response>; checkResponse?: MangaCheckResponse } = {}) {
     const db = new MangaDb(':memory:', () => {
         return 1000;
     });
@@ -156,8 +163,8 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         removeHelper: vi.fn(() => {
             return Promise.resolve();
         }),
-        sources: vi.fn(() => {
-            return Promise.resolve({ ok: true as const, value: [] });
+        sources: vi.fn((): Promise<MangaResult<MangaSource[]>> => {
+            return Promise.resolve({ ok: true, value: [] });
         }),
         sourcePreferences: vi.fn(() => {
             return Promise.resolve({ ok: true as const, value: [] });
@@ -199,6 +206,14 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const restarts = { count: 0 };
     const coverRequests: string[] = [];
+    const checks: Array<number | null> = [];
+    const presented: Array<string | null> = [];
+    const icons = {
+        present: (address: string | null): string | null => {
+            presented.push(address);
+            return address === null ? null : `kept:${address}`;
+        }
+    };
     const covers = new MangaCovers({
         directory: join(makeTempDir(), 'covers'),
         db,
@@ -214,6 +229,11 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         service,
         updates,
         covers,
+        icons,
+        checkNewChapters: (mangaId) => {
+            checks.push(mangaId);
+            return Promise.resolve(options.checkResponse ?? { ok: true as const, count: 0, titles: [], failed: 0 });
+        },
         restartApp: () => {
             restarts.count += 1;
         },
@@ -241,7 +261,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const ipc = makeIpc();
     registerMangaHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, queue, service, reader, downloads, removedFiles, opened, sites, libraryChanges, updates, restarts, covers, coverRequests };
+    return { ...ipc, db, queue, service, reader, downloads, removedFiles, opened, sites, libraryChanges, updates, restarts, covers, coverRequests, checks, presented };
 }
 
 afterEach(() => {
@@ -271,6 +291,12 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaServerReset)).toBeUndefined();
         expect(ipc.call(IPC.mangaRestart)).toBeUndefined();
         expect(ipc.call(IPC.mangaHealth)).toEqual({ server: { state: 'not-installed', version: null, message: null, external: false }, helper: null });
+        expect(ipc.call(IPC.mangaUpdates)).toEqual([]);
+        expect(ipc.call(IPC.mangaReadingHistory)).toEqual([]);
+        expect(ipc.call(IPC.mangaCheckNew)).toEqual(unsupported);
+        [IPC.mangaClearUpdates, IPC.mangaRecordReading, IPC.mangaRemoveReading, IPC.mangaClearReading].forEach((channel) => {
+            expect(ipc.call(channel)).toBeUndefined();
+        });
         expect(ipc.call(IPC.mangaSetSeries)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaRenameSeries)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaGroups)).toEqual([]);
@@ -1105,5 +1131,148 @@ describe('the covers that the app keeps', () => {
         await vi.waitFor(() => {
             expect(context.coverRequests).toEqual([`${BASE}/api/v1/manga/70/thumbnail`]);
         });
+    });
+});
+
+const respondJpeg = (): Promise<Response> => {
+    return Promise.resolve(new Response(JPEG));
+};
+
+const CHAPTERS_OF_SOURCE = [chapter(1), chapter(2)];
+
+describe('the channels of the new chapters', () => {
+    it('lists the chapters that arrived, with the cover the app keeps or else the one of the server', async () => {
+        const context = setup({ coverFetch: respondJpeg });
+        const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
+        context.db.registerChapters(added.id, [...CHAPTERS_OF_SOURCE, chapter(3)], 'auto');
+        const before = context.call(IPC.mangaUpdates) as MangaUpdateEntry[];
+        expect(before).toEqual([
+            {
+                id: expect.any(Number),
+                mangaId: added.id,
+                mangaTitle: 'One Piece',
+                thumbnailUrl: `${BASE}/api/v1/manga/7/thumbnail`,
+                chapterId: context.db.findChapter(added.id, 3)!.id,
+                chapterRemoteId: 3,
+                chapterName: 'Chapter 3',
+                chapterNumber: 3,
+                dateUploaded: null,
+                foundAt: expect.any(Number),
+                origin: 'auto',
+                status: 'idle'
+            }
+        ]);
+        await untilCoverKept(context, added.id);
+        const after = context.call(IPC.mangaUpdates) as MangaUpdateEntry[];
+        expect(after[0]?.thumbnailUrl).toMatch(new RegExp(`^pullwave-manga://cover/${String(added.id)}\\?v=[0-9a-f]{12}$`));
+    });
+
+    it('clears the list and nothing else', () => {
+        const context = setup();
+        const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
+        context.db.registerChapters(added.id, [chapter(3)], 'manual');
+        expect(context.call(IPC.mangaClearUpdates)).toBeUndefined();
+        expect(context.call(IPC.mangaUpdates)).toEqual([]);
+        expect(context.db.chaptersOf(added.id)).toHaveLength(3);
+    });
+
+    it('looks for new chapters in all the mangas, or in one of them, and gives what was found', async () => {
+        const found: MangaCheckResponse = { ok: true, count: 2, titles: ['One Piece'], failed: 0 };
+        const context = setup({ checkResponse: found });
+        await expect(context.call(IPC.mangaCheckNew, null)).resolves.toEqual(found);
+        await expect(context.call(IPC.mangaCheckNew, 5)).resolves.toEqual(found);
+        expect(context.checks).toEqual([null, 5]);
+    });
+
+    it('refuses the check of a manga that is not a valid one', () => {
+        const context = setup();
+        [0, -1, 1.5, 'x', undefined, {}].forEach((value) => {
+            expect(context.call(IPC.mangaCheckNew, value)).toEqual({ ok: false, error: { code: 'INVALID_REQUEST', message: 'The manga is not valid.' } });
+        });
+        expect(context.checks).toEqual([]);
+    });
+});
+
+describe('the channels of the history of reading', () => {
+    const RECORD = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: `${BASE}/api/v1/manga/7/thumbnail`, chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+
+    it('keeps where the user is, with the cover as a path of the server', () => {
+        const context = setup();
+        context.call(IPC.mangaRecordReading, RECORD);
+        expect(context.db.readingHistory()).toEqual([{ ...RECORD, thumbnailUrl: '/api/v1/manga/7/thumbnail', id: expect.any(Number), readAt: expect.any(Number), libraryMangaId: null }]);
+    });
+
+    it('does not keep the address of a cover the app keeps, which is not where the source has it', async () => {
+        const context = setup({ coverFetch: respondJpeg });
+        const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
+        await untilCoverKept(context, added.id);
+        const shown = (context.call(IPC.mangaLibrary) as LibraryManga[])[0]!.thumbnailUrl!;
+        context.call(IPC.mangaRecordReading, { ...RECORD, thumbnailUrl: shown });
+        expect(context.db.readingHistory()[0]?.thumbnailUrl).toBe('/api/v1/manga/7/thumbnail');
+    });
+
+    it('ignores what is not where a user is', () => {
+        const context = setup();
+        [undefined, null, 'x', { ...RECORD, page: 20 }, { ...RECORD, mangaRemoteId: 0 }, { ...RECORD, title: '' }].forEach((value) => {
+            context.call(IPC.mangaRecordReading, value);
+        });
+        expect(context.db.readingHistory()).toEqual([]);
+    });
+
+    it('lists the history with the cover of the library when the manga is in it, else the one of the server, and says which are in the library', async () => {
+        const context = setup({ coverFetch: respondJpeg });
+        const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
+        await untilCoverKept(context, added.id);
+        context.call(IPC.mangaRecordReading, RECORD);
+        context.call(IPC.mangaRecordReading, { ...RECORD, mangaRemoteId: 8, title: 'Bleach', thumbnailUrl: `${BASE}/api/v1/manga/8/thumbnail` });
+        const history = context.call(IPC.mangaReadingHistory) as ReadingEntry[];
+        expect(
+            history.map((entry) => {
+                return [entry.title, entry.libraryMangaId, entry.thumbnailUrl];
+            })
+        ).toEqual([
+            ['Bleach', null, `${BASE}/api/v1/manga/8/thumbnail`],
+            ['One Piece', added.id, expect.stringMatching(/^pullwave-manga:\/\/cover\//)]
+        ]);
+    });
+
+    it('removes a line, or all of them', () => {
+        const context = setup();
+        context.call(IPC.mangaRecordReading, RECORD);
+        context.call(IPC.mangaRecordReading, { ...RECORD, mangaRemoteId: 8, title: 'Bleach' });
+        context.call(IPC.mangaRemoveReading, context.db.readingHistory()[0]!.id);
+        expect(context.db.readingHistory()).toHaveLength(1);
+        context.call(IPC.mangaRemoveReading, 'x');
+        context.call(IPC.mangaRemoveReading, null);
+        expect(context.db.readingHistory()).toHaveLength(1);
+        context.call(IPC.mangaClearReading);
+        expect(context.db.readingHistory()).toEqual([]);
+    });
+});
+
+describe('the icons of the sources', () => {
+    it('gives the sources with the icons the app keeps, and asks for each icon', async () => {
+        const context = setup();
+        context.service.sources.mockResolvedValue({
+            ok: true,
+            value: [
+                { id: '1', name: 'Fake Dex', lang: 'en', iconUrl: `${BASE}/api/v1/extension/icon/a`, supportsLatest: true, isConfigurable: false, contentWarning: 'SAFE', extensionPkg: 'a', storeIndexUrl: null },
+                { id: '2', name: 'No Icon', lang: 'en', iconUrl: null, supportsLatest: true, isConfigurable: false, contentWarning: 'SAFE', extensionPkg: 'b', storeIndexUrl: null }
+            ]
+        });
+        const result = (await context.call(IPC.mangaSources)) as { ok: true; value: Array<{ iconUrl: string | null }> };
+        expect(
+            result.value.map((source) => {
+                return source.iconUrl;
+            })
+        ).toEqual([`kept:${BASE}/api/v1/extension/icon/a`, null]);
+        expect(context.presented).toEqual([`${BASE}/api/v1/extension/icon/a`, null]);
+    });
+
+    it('gives the error of the server as it is, without asking for any icon', async () => {
+        const context = setup();
+        context.service.sources.mockResolvedValue({ ok: false as const, error: { code: 'SERVER_UNAVAILABLE' as const, message: 'down' } });
+        await expect(context.call(IPC.mangaSources)).resolves.toEqual({ ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'down' } });
+        expect(context.presented).toEqual([]);
     });
 });

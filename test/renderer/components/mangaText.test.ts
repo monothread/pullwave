@@ -13,6 +13,11 @@ import {
     groupLibrary,
     inGroup,
     isNewChapter,
+    activeGroup,
+    chapterLabel,
+    groupByDay,
+    nextSeason,
+    takenSeasons,
     canDownload,
     downloadablePicks,
     localDetails,
@@ -270,11 +275,11 @@ describe('grouping the library by series', () => {
         expect(matchesSearch('Bleach', '   ')).toBe(true);
     });
 
-    it('limits the library to a group, or gives all of it', () => {
+    it('limits the library to a group, or to the mangas that are in no group', () => {
         const inside = makeLibraryManga([], { id: 1, groupIds: [1, 2] });
         const other = makeLibraryManga([], { id: 2, groupIds: [2] });
         const none = makeLibraryManga([], { id: 3, groupIds: [] });
-        expect(inGroup([inside, other, none], null)).toEqual([inside, other, none]);
+        expect(inGroup([inside, other, none], null)).toEqual([none]);
         expect(inGroup([inside, other, none], 1)).toEqual([inside]);
         expect(inGroup([inside, other, none], 2)).toEqual([inside, other]);
         expect(inGroup([inside, other, none], 9)).toEqual([]);
@@ -421,5 +426,106 @@ describe('what a download does something for', () => {
 
     it('keeps every chapter picked when the manga is not in the library', () => {
         expect(downloadablePicks(null, [11, 12])).toEqual([11, 12]);
+    });
+});
+
+describe('the group the library shows', () => {
+    const GROUPS = [{ id: 4, name: 'Mangas' }, { id: 5, name: 'Manhwas' }];
+    const grouped = makeLibraryManga([], { id: 1, groupIds: [5] });
+    const alone = makeLibraryManga([], { id: 2, groupIds: [] });
+
+    it('is the one chosen', () => {
+        expect(activeGroup([grouped, alone], GROUPS, 5)).toBe(5);
+        expect(activeGroup([grouped], GROUPS, 4)).toBe(4);
+    });
+
+    it('is the tab of all (no group) while a manga is in no group', () => {
+        expect(activeGroup([grouped, alone], GROUPS, null)).toBeNull();
+    });
+
+    it('is the first group when every manga is in a group, since the tab of all is not there', () => {
+        expect(activeGroup([grouped], GROUPS, null)).toBe(4);
+    });
+
+    it('is the tab of all when there are no groups at all, or no mangas', () => {
+        expect(activeGroup([alone], [], null)).toBeNull();
+        expect(activeGroup([grouped], [], null)).toBeNull();
+        expect(activeGroup([], GROUPS, null)).toBe(4);
+    });
+});
+
+describe('the orders of a series', () => {
+    const SERIES = [
+        makeLibraryManga([], { id: 1, series: 'Sousou no Frieren', season: 1 }),
+        makeLibraryManga([], { id: 2, series: 'sousou no frieren', season: 3 }),
+        makeLibraryManga([], { id: 3, series: 'Bleach', season: 2 }),
+        makeLibraryManga([], { id: 4, series: null, season: null })
+    ];
+
+    it('gives the orders the other mangas of the series have, whatever the case or the accents of its name', () => {
+        expect(takenSeasons(SERIES, 'SOUSOU NO FRIEREN', 99)).toEqual([1, 3]);
+        expect(takenSeasons(SERIES, 'Bleach', 99)).toEqual([2]);
+    });
+
+    it('leaves out the manga that is being edited', () => {
+        expect(takenSeasons(SERIES, 'Sousou no Frieren', 1)).toEqual([3]);
+    });
+
+    it('gives none for a series that is new, an empty name, or mangas with no series', () => {
+        expect(takenSeasons(SERIES, 'Naruto', 99)).toEqual([]);
+        expect(takenSeasons(SERIES, '   ', 99)).toEqual([]);
+        expect(takenSeasons([makeLibraryManga([], { id: 5, series: 'X', season: null })], 'X', 99)).toEqual([]);
+    });
+
+    it('gives the order after the last one, as the library does when the order wanted is taken', () => {
+        expect(nextSeason([])).toBe(1);
+        expect(nextSeason([1])).toBe(2);
+        expect(nextSeason([1, 3])).toBe(4);
+        expect(nextSeason([2])).toBe(3);
+    });
+});
+
+describe('chapterLabel', () => {
+    it('is the name, or the number when there is none, or nothing', () => {
+        expect(chapterLabel('Romance Dawn', 1)).toBe('Romance Dawn');
+        expect(chapterLabel('', 7)).toBe('#7');
+        expect(chapterLabel('', 7.5)).toBe('#7.5');
+        expect(chapterLabel('', null)).toBe('');
+    });
+});
+
+describe('groupByDay', () => {
+    const at = (day: number, hour: number): number => {
+        return new Date(2026, 9, day, hour, 30).getTime();
+    };
+
+    it('splits a list in the order it comes by the day of each time, with the start of the day', () => {
+        const entries = [{ id: 'a', time: at(11, 22) }, { id: 'b', time: at(11, 9) }, { id: 'c', time: at(10, 23) }, { id: 'd', time: at(8, 1) }];
+        expect(
+            groupByDay(entries, (entry) => {
+                return entry.time;
+            })
+        ).toEqual([
+            { day: new Date(2026, 9, 11).getTime(), entries: [entries[0], entries[1]] },
+            { day: new Date(2026, 9, 10).getTime(), entries: [entries[2]] },
+            { day: new Date(2026, 9, 8).getTime(), entries: [entries[3]] }
+        ]);
+    });
+
+    it('does not join the same day when it comes apart in the list', () => {
+        const entries = [{ time: at(11, 22) }, { time: at(10, 9) }, { time: at(11, 1) }];
+        expect(
+            groupByDay(entries, (entry) => {
+                return entry.time;
+            }).map((group) => {
+                return group.entries.length;
+            })
+        ).toEqual([1, 1, 1]);
+    });
+
+    it('gives nothing for an empty list', () => {
+        expect(groupByDay([], () => {
+            return 0;
+        })).toEqual([]);
     });
 });

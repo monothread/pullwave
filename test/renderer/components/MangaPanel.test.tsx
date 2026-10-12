@@ -45,6 +45,24 @@ describe('MangaPanel', () => {
         expect(buttons.at(-2)).toHaveClass('btn', 'btn--small');
     });
 
+    it('also has the tabs gathered in one list, without the gear, which the theme shows on a very narrow window', async () => {
+        const user = userEvent.setup();
+        render(<MangaPanel />);
+        const menu = screen.getByRole('combobox', { name: 'Manga' });
+        expect(
+            within(menu)
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.textContent;
+                })
+        ).toEqual(['BROWSE', 'UPDATES', 'LIBRARY', 'HISTORY', 'EXTENSIONS']);
+        expect(menu).toHaveValue('browse');
+        await user.selectOptions(menu, 'history');
+        expect(useMangaStore.getState().view).toBe('history');
+        expect(screen.getByRole('combobox', { name: 'Manga' })).toHaveValue('history');
+        expect(screen.getByRole('region', { name: 'HISTORY' })).toBeInTheDocument();
+    });
+
     it('opens on the browse once the program is there', async () => {
         render(<MangaPanel />);
         const nav = screen.getByRole('navigation', { name: 'Manga' });
@@ -54,7 +72,7 @@ describe('MangaPanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['BROWSE', 'LIBRARY', 'EXTENSIONS', 'DOWNLOADS (0)', 'SETTINGS']);
+        ).toEqual(['BROWSE', 'UPDATES', 'LIBRARY', 'HISTORY', 'EXTENSIONS', 'DOWNLOADS (0)', 'SETTINGS']);
         expect(within(nav).getByRole('button', { name: 'BROWSE' })).toHaveAttribute('aria-current', 'page');
         expect(within(nav).getByRole('button', { name: 'SETTINGS' })).toHaveClass('tab--icon');
         expect(await screen.findByTestId('manga-source')).toBeInTheDocument();

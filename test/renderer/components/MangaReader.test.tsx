@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaReader } from '@renderer/components/MangaReader';
-import { loadLastChapter, loadProgress, PREFS_KEY, progressKey, saveProgress } from '@renderer/components/readerPrefs';
+import { loadLastChapter, loadProgress, loadReaderPrefs, PREFS_KEY, progressKey, saveProgress, saveReaderPrefs } from '@renderer/components/readerPrefs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaReaderState, type ReaderChapter } from '@renderer/store/mangaStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -704,5 +704,293 @@ describe('MangaReader the size of the pages by default', () => {
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--width');
         await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
         expect(screen.getByLabelText('Page size')).toHaveValue('width');
+    });
+});
+
+describe('MangaReader coming back to a page in the scroll', () => {
+    const MANY = ['p/0', 'p/1', 'p/2', 'p/3', 'p/4'].map((path) => {
+        return `http://127.0.0.1:4321/${path}`;
+    });
+    let observed: Element[];
+    let callback: IntersectionObserverCallback;
+    let broughtIntoView: string[];
+
+    function entry(index: number, ratio: number): IntersectionObserverEntry {
+        return { target: observed[index], intersectionRatio: ratio, isIntersecting: ratio > 0 } as unknown as IntersectionObserverEntry;
+    }
+
+    function image(index: number): HTMLElement {
+        return screen.getAllByRole('img')[index]!;
+    }
+
+    function renderScroll(savedPage: number, mode: 'vertical' | 'webtoon' | 'single' = 'vertical'): void {
+        saveReaderPrefs({ ...loadReaderPrefs(), mode });
+        if (savedPage > 0) {
+            saveProgress('One Piece|2', savedPage);
+        }
+        open({ pages: MANY });
+        render(<MangaReader />);
+    }
+
+    beforeEach(() => {
+        observed = [];
+        broughtIntoView = [];
+        callback = () => {
+            return undefined;
+        };
+        class FakeObserver {
+            constructor(handler: IntersectionObserverCallback) {
+                callback = handler;
+            }
+            observe(element: Element) {
+                observed.push(element);
+            }
+            disconnect() {
+                return undefined;
+            }
+        }
+        vi.stubGlobal('IntersectionObserver', FakeObserver);
+        Element.prototype.scrollIntoView = function scrollIntoView(this: HTMLElement) {
+            broughtIntoView.push(this.dataset['page'] ?? '');
+        };
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+        delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+
+    it('brings the chapter to the page it was left on, and says that page', () => {
+        renderScroll(2);
+        expect(broughtIntoView).toEqual(['2']);
+        expect(screen.getByText('3 / 5')).toBeInTheDocument();
+    });
+
+    it('loads at once the pictures above that page and the next one, and the others when they come in view', () => {
+        renderScroll(2);
+        expect(
+            screen.getAllByRole('img').map((item) => {
+                return item.getAttribute('loading');
+            })
+        ).toEqual([null, null, null, null, 'lazy']);
+    });
+
+    it('does not let the pages that come in view change the place while the pictures above it arrive', () => {
+        renderScroll(2);
+        act(() => {
+            callback([entry(0, 0.9), entry(1, 0.1)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('3 / 5')).toBeInTheDocument();
+        expect(loadProgress('One Piece|2')).toBe(2);
+    });
+
+    it('brings the chapter back to the page every time a picture above it arrives', () => {
+        renderScroll(2);
+        broughtIntoView.length = 0;
+        fireEvent.load(image(0));
+        fireEvent.load(image(1));
+        expect(broughtIntoView).toEqual(['2', '2']);
+    });
+
+    it('goes back to following the page in view once every picture up to the page has arrived', () => {
+        renderScroll(2);
+        fireEvent.load(image(0));
+        fireEvent.load(image(1));
+        act(() => {
+            callback([entry(0, 0.9)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('3 / 5')).toBeInTheDocument();
+        fireEvent.load(image(2));
+        act(() => {
+            callback([entry(0, 0.9), entry(3, 0.1)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('1 / 5')).toBeInTheDocument();
+        expect(loadProgress('One Piece|2')).toBe(0);
+    });
+
+    it('counts a picture that failed as one that is no longer being waited for', () => {
+        renderScroll(1);
+        fireEvent.error(image(0));
+        fireEvent.load(image(1));
+        act(() => {
+            callback([entry(0, 0.2), entry(1, 0.7)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('2 / 5')).toBeInTheDocument();
+        expect(screen.getByText('Page 1 could not be loaded.')).toBeInTheDocument();
+    });
+
+    it('does not count the pictures after the page, which are not waited for', () => {
+        renderScroll(1);
+        fireEvent.load(image(3));
+        fireEvent.load(image(4));
+        broughtIntoView.length = 0;
+        fireEvent.load(image(0));
+        expect(broughtIntoView).toEqual(['1']);
+    });
+
+    it.each([['wheel'], ['touchstart'], ['mousedown'], ['keydown']] as const)('lets the user take over with %s', (name) => {
+        renderScroll(2);
+        fireEvent[name === 'keydown' ? 'keyDown' : name === 'mousedown' ? 'mouseDown' : name === 'touchstart' ? 'touchStart' : 'wheel'](window, name === 'keydown' ? { key: 'Shift' } : {});
+        act(() => {
+            callback([entry(0, 0.9)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('1 / 5')).toBeInTheDocument();
+    });
+
+    it('stops correcting the place after a few seconds even if a picture never arrives', () => {
+        vi.useFakeTimers();
+        renderScroll(2);
+        act(() => {
+            vi.advanceTimersByTime(7999);
+        });
+        act(() => {
+            callback([entry(0, 0.9)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('3 / 5')).toBeInTheDocument();
+        act(() => {
+            vi.advanceTimersByTime(1);
+        });
+        act(() => {
+            callback([entry(0, 0.9)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('1 / 5')).toBeInTheDocument();
+    });
+
+    it('does nothing about the place when the chapter starts at the first page, which follows the page in view at once', () => {
+        renderScroll(0);
+        expect(broughtIntoView).toEqual([]);
+        expect(
+            screen.getAllByRole('img').map((item) => {
+                return item.getAttribute('loading');
+            })
+        ).toEqual(['lazy', 'lazy', 'lazy', 'lazy', 'lazy']);
+        act(() => {
+            callback([entry(0, 0.2), entry(1, 0.8)], {} as IntersectionObserver);
+        });
+        expect(screen.getByText('2 / 5')).toBeInTheDocument();
+    });
+
+    it('starts on the page it was left on in the page by page mode, with nothing to bring into view', () => {
+        renderScroll(2, 'single');
+        expect(broughtIntoView).toEqual([]);
+        expect(shownPage()).toBe(MANY[2]);
+    });
+
+    it('brings the next chapter to its own page when the reader goes to it', () => {
+        saveProgress('One Piece|3', 3);
+        renderScroll(2);
+        broughtIntoView.length = 0;
+        act(() => {
+            useMangaStore.setState({ reader: { ...useMangaStore.getState().reader, index: 2 } });
+        });
+        expect(broughtIntoView).toEqual(['3']);
+        expect(screen.getByText('4 / 5')).toBeInTheDocument();
+    });
+});
+
+describe('MangaReader the history of reading', () => {
+    const MANGA = { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail' };
+    const RECORD = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail', chapterRemoteId: 2, chapterName: 'Chapter 2', chapterNumber: 2, pageCount: 3 };
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('writes where the user is a moment after the page stops changing', () => {
+        open({ manga: MANGA });
+        render(<MangaReader />);
+        act(() => {
+            vi.advanceTimersByTime(799);
+        });
+        expect(mock.api.manga.recordReading).not.toHaveBeenCalled();
+        act(() => {
+            vi.advanceTimersByTime(1);
+        });
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.recordReading).toHaveBeenCalledWith({ ...RECORD, page: 0 });
+    });
+
+    it('writes only the page the user stopped on when they turn the pages quickly', () => {
+        open({ manga: MANGA });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        act(() => {
+            vi.advanceTimersByTime(500);
+        });
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        act(() => {
+            vi.advanceTimersByTime(799);
+        });
+        expect(mock.api.manga.recordReading).not.toHaveBeenCalled();
+        act(() => {
+            vi.advanceTimersByTime(1);
+        });
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.recordReading).toHaveBeenCalledWith({ ...RECORD, page: 2 });
+    });
+
+    it('writes what is waiting when the reader closes, so a chapter left at once is not lost', () => {
+        open({ manga: MANGA });
+        const { unmount } = render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        unmount();
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.recordReading).toHaveBeenCalledWith({ ...RECORD, page: 1 });
+        act(() => {
+            vi.advanceTimersByTime(5000);
+        });
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not write twice what was written already when the reader closes', () => {
+        open({ manga: MANGA });
+        const { unmount } = render(<MangaReader />);
+        act(() => {
+            vi.advanceTimersByTime(800);
+        });
+        unmount();
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes what is waiting when the reader goes to another chapter, and then the new one', () => {
+        open({ manga: MANGA, index: 0 });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        act(() => {
+            useMangaStore.setState({ reader: { ...useMangaStore.getState().reader, index: 1, pages: PAGES.slice(0, 2) } });
+        });
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.recordReading).toHaveBeenLastCalledWith({ ...RECORD, chapterRemoteId: 1, chapterName: 'Chapter 1', chapterNumber: 1, page: 1 });
+        act(() => {
+            vi.advanceTimersByTime(800);
+        });
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(2);
+        expect(mock.api.manga.recordReading).toHaveBeenLastCalledWith({ ...RECORD, chapterRemoteId: 2, chapterName: 'Chapter 2', chapterNumber: 2, pageCount: 2, page: 0 });
+    });
+
+    it('writes nothing when the manga is not known, while the pages are loading, or when there are none', () => {
+        open({ manga: null });
+        const { unmount } = render(<MangaReader />);
+        unmount();
+        open({ manga: MANGA, status: 'loading', pages: [] });
+        const second = render(<MangaReader />);
+        second.unmount();
+        open({ manga: MANGA, pages: [] });
+        const third = render(<MangaReader />);
+        act(() => {
+            vi.advanceTimersByTime(5000);
+        });
+        third.unmount();
+        open({ manga: undefined });
+        render(<MangaReader />);
+        act(() => {
+            vi.advanceTimersByTime(5000);
+        });
+        expect(mock.api.manga.recordReading).not.toHaveBeenCalled();
     });
 });

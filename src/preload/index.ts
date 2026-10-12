@@ -109,6 +109,27 @@ const manga: CyberApi['manga'] = {
     openSite: (url) => {
         return ipcRenderer.invoke(IPC.mangaOpenSite, url);
     },
+    updates: () => {
+        return ipcRenderer.invoke(IPC.mangaUpdates);
+    },
+    clearUpdates: () => {
+        return ipcRenderer.invoke(IPC.mangaClearUpdates);
+    },
+    checkNewChapters: (mangaId) => {
+        return ipcRenderer.invoke(IPC.mangaCheckNew, mangaId);
+    },
+    recordReading: (record) => {
+        return ipcRenderer.invoke(IPC.mangaRecordReading, record);
+    },
+    readingHistory: () => {
+        return ipcRenderer.invoke(IPC.mangaReadingHistory);
+    },
+    removeReading: (id) => {
+        return ipcRenderer.invoke(IPC.mangaRemoveReading, id);
+    },
+    clearReading: () => {
+        return ipcRenderer.invoke(IPC.mangaClearReading);
+    },
     migrateFolder: () => {
         return ipcRenderer.invoke(IPC.mangaMigrateFolder);
     },

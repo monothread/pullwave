@@ -273,3 +273,21 @@
         min-width: 0;
     }
 }
+
+/* In the series of the manga section the title of a season is what opens the manga, so it stays on a narrow window too (it is the way in). */
+@media (max-width: 760px) {
+    .manga__series-view .season__title {
+        position: static;
+        flex: 1 1 140px;
+        width: auto;
+        height: auto;
+        overflow: hidden;
+        clip-path: none;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .manga__series-view .season__actions {
+        flex: 0 0 auto;
+    }
+}

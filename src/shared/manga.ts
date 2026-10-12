@@ -438,6 +438,55 @@ export interface MangaNewChapters {
     titles: string[];
 }
 
+// How a chapter got into the library after the manga was in it: found by the check every hour, by a button the user pressed (the check of
+// a manga, of all of them, ADD MISSING CHAPTERS), or brought by the move to another source.
+export const ARRIVAL_ORIGINS = ['auto', 'manual', 'move'] as const;
+export type ArrivalOrigin = (typeof ARRIVAL_ORIGINS)[number];
+
+// A line of the history of new chapters (the "updates" of the library): a chapter that arrived, newest first.
+export interface MangaUpdateEntry {
+    id: number;
+    mangaId: number;
+    mangaTitle: string;
+    // The cover as the screen shows it (the one the app keeps when it has it).
+    thumbnailUrl: string | null;
+    chapterId: number;
+    chapterRemoteId: number;
+    chapterName: string;
+    chapterNumber: number | null;
+    // When the source published it, when it says.
+    dateUploaded: number | null;
+    // When it arrived in the library.
+    foundAt: number;
+    origin: ArrivalOrigin;
+    status: MangaChapterStatus;
+}
+
+// What a check for new chapters found: how many chapters, in which mangas, and in how many mangas the source could not be reached.
+export type MangaCheckResponse = { ok: true; count: number; titles: string[]; failed: number } | { ok: false; error: MangaError };
+
+// Where a manga was left: the chapter and the page. It is kept for the mangas of the library and for the ones that are only read.
+export interface ReadingRecord {
+    sourceId: string;
+    mangaRemoteId: number;
+    title: string;
+    thumbnailUrl: string | null;
+    chapterRemoteId: number;
+    chapterName: string;
+    chapterNumber: number | null;
+    // The page it was left on (from 0) and how many pages the chapter has.
+    page: number;
+    pageCount: number;
+}
+
+// A line of the history of reading: the last chapter read of a manga. `libraryMangaId` says the manga is in the library (the screen then
+// goes to its page there).
+export interface ReadingEntry extends ReadingRecord {
+    id: number;
+    readAt: number;
+    libraryMangaId: number | null;
+}
+
 export interface MangaApi {
     status: () => Promise<MangaStatusInfo>;
     // Downloads the program again after it failed.
@@ -479,6 +528,16 @@ export interface MangaApi {
     openFolder: (mangaId: number) => Promise<void>;
     // Opens the page of a manga on the site of its source, in the browser of the system (only an http or https address is opened).
     openSite: (url: string) => Promise<void>;
+    // The chapters that arrived in the library, newest first.
+    updates: () => Promise<MangaUpdateEntry[]>;
+    clearUpdates: () => Promise<void>;
+    // Asks the source for new chapters: of one manga of the library, or of all of them (null).
+    checkNewChapters: (mangaId: number | null) => Promise<MangaCheckResponse>;
+    // Where the user is in a chapter, for the history of reading.
+    recordReading: (record: ReadingRecord) => Promise<void>;
+    readingHistory: () => Promise<ReadingEntry[]>;
+    removeReading: (id: number) => Promise<void>;
+    clearReading: () => Promise<void>;
     // Asks for a folder and moves the downloaded chapters there, then says how it went.
     migrateFolder: () => Promise<MangaMigrationResponse>;
     // Joins a manga to a series with its place in it, or takes it out of one.

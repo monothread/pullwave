@@ -2,6 +2,7 @@ import {
     MAX_CHAPTERS_PER_REQUEST,
     MAX_GENRES,
     MAX_IDS,
+    MAX_PAGES,
     MAX_PREFERENCE_CHOICES,
     MAX_PREFERENCE_TEXT,
     MAX_TEXT,
@@ -16,6 +17,7 @@ import {
     asPackageName,
     asPreferenceChange,
     asReadRequest,
+    asReadingRecord,
     asSourceId,
     asStoreUrl
 } from '@main/services/manga/mangaRequests';
@@ -385,5 +387,49 @@ describe('asSourceMigrationRequest', () => {
         [null]
     ])('refuses %j', (value) => {
         expect(asSourceMigrationRequest(value)).toBeNull();
+    });
+});
+
+describe('asReadingRecord', () => {
+    const RECORD = { sourceId: '123', mangaRemoteId: 7, title: ' One Piece ', thumbnailUrl: '/api/v1/manga/7/thumbnail', chapterRemoteId: 11, chapterName: ' Romance Dawn ', chapterNumber: 1, page: 3, pageCount: 20 };
+
+    it('accepts where the user is, with the texts trimmed', () => {
+        expect(asReadingRecord(RECORD)).toEqual({ sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail', chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 });
+    });
+
+    it('accepts the first page, the last page, and a chapter with no name, number or cover', () => {
+        expect(asReadingRecord({ ...RECORD, page: 0 })?.page).toBe(0);
+        expect(asReadingRecord({ ...RECORD, page: 19 })?.page).toBe(19);
+        expect(asReadingRecord({ ...RECORD, chapterName: undefined, chapterNumber: null, thumbnailUrl: null })).toMatchObject({ chapterName: '', chapterNumber: null, thumbnailUrl: null });
+        expect(asReadingRecord({ ...RECORD, chapterNumber: 'x' })?.chapterNumber).toBeNull();
+        expect(asReadingRecord({ ...RECORD, chapterNumber: Number.NaN })?.chapterNumber).toBeNull();
+    });
+
+    it('cuts the texts that are too long', () => {
+        const record = asReadingRecord({ ...RECORD, title: 'x'.repeat(MAX_TEXT + 10), chapterName: 'y'.repeat(MAX_TEXT + 10) });
+        expect(record?.title).toHaveLength(MAX_TEXT);
+        expect(record?.chapterName).toHaveLength(MAX_TEXT);
+    });
+
+    it.each([
+        ['nothing', undefined],
+        ['a list', []],
+        ['text', 'x'],
+        ['no source', { ...RECORD, sourceId: ' ' }],
+        ['a source that is not text', { ...RECORD, sourceId: 5 }],
+        ['no manga', { ...RECORD, mangaRemoteId: 0 }],
+        ['a manga that is not a whole number', { ...RECORD, mangaRemoteId: 1.5 }],
+        ['no title', { ...RECORD, title: '' }],
+        ['no chapter', { ...RECORD, chapterRemoteId: -1 }],
+        ['a page that is not a number', { ...RECORD, page: '3' }],
+        ['a page that is not whole', { ...RECORD, page: 1.5 }],
+        ['a negative page', { ...RECORD, page: -1 }],
+        ['a page past the pages', { ...RECORD, page: 20 }],
+        ['no pages', { ...RECORD, pageCount: 0, page: 0 }],
+        ['too many pages', { ...RECORD, pageCount: MAX_PAGES + 1 }],
+        ['pages that are not whole', { ...RECORD, pageCount: 2.5, page: 0 }],
+        ['pages that are not a number', { ...RECORD, pageCount: '20' }]
+    ])('refuses %s', (_label, value) => {
+        expect(asReadingRecord(value)).toBeNull();
     });
 });

@@ -12,7 +12,8 @@ import type {
     MangaSourceMigrationRequest,
     MangaPreferenceType,
     MangaStatus,
-    MangaSummary
+    MangaSummary,
+    ReadingRecord
 } from '@shared/manga';
 import { MANGA_LIST_KINDS, MANGA_STATUSES, MANGA_TRI_STATES, MAX_GROUP_NAME_LENGTH } from '@shared/manga';
 import { cleanSeasonName, cleanSeriesName, isValidSeason } from '@shared/series';
@@ -285,6 +286,49 @@ export function asSourceMigrationRequest(value: unknown): MangaSourceMigrationRe
     const mangaId = asId(value['mangaId']);
     const target = asDownloadRequest(value['target']);
     return mangaId === null || target === null ? null : { mangaId, target };
+}
+
+export const MAX_PAGES = 5000;
+
+// Where the user is in a chapter. The page is from 0 and cannot be past the number of pages; the chapter has at least one page.
+export function asReadingRecord(value: unknown): ReadingRecord | null {
+    if (!isRecord(value)) {
+        return null;
+    }
+    const sourceId = text(value['sourceId'], MAX_TEXT);
+    const mangaRemoteId = asId(value['mangaRemoteId']);
+    const title = text(value['title'], MAX_TEXT);
+    const chapterRemoteId = asId(value['chapterRemoteId']);
+    const page = value['page'];
+    const pageCount = value['pageCount'];
+    if (
+        sourceId === null ||
+        mangaRemoteId === null ||
+        title === null ||
+        chapterRemoteId === null ||
+        typeof page !== 'number' ||
+        typeof pageCount !== 'number' ||
+        !Number.isInteger(page) ||
+        !Number.isInteger(pageCount) ||
+        pageCount < 1 ||
+        pageCount > MAX_PAGES ||
+        page < 0 ||
+        page >= pageCount
+    ) {
+        return null;
+    }
+    const chapterNumber = value['chapterNumber'];
+    return {
+        sourceId,
+        mangaRemoteId,
+        title,
+        thumbnailUrl: optionalText(value['thumbnailUrl'], MAX_URL),
+        chapterRemoteId,
+        chapterName: typeof value['chapterName'] === 'string' ? value['chapterName'].trim().slice(0, MAX_TEXT) : '',
+        chapterNumber: finiteNumber(chapterNumber),
+        page,
+        pageCount
+    };
 }
 
 const PREFERENCE_TYPES: readonly MangaPreferenceType[] = ['text', 'list', 'switch', 'checkbox', 'multiselect'];

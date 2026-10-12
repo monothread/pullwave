@@ -1,6 +1,7 @@
 import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { MAX_LOCAL_PAGES } from './localPages';
 import { detectImageType } from './imageType';
+import { parseIconUrl } from './mangaIcons';
 
 export { MANGA_PAGE_SCHEME };
 
@@ -104,11 +105,48 @@ export function createCoverHandler(source: CoverSource): (request: Request) => P
     };
 }
 
-// The one handler of the scheme: the covers go to one place and the pages of the chapters to the other.
-export function createMangaProtocolHandler(pages: PageSource, covers: CoverSource): (request: Request) => Promise<Response> {
+export interface IconSource {
+    // The file with the icon of a source (null: none is kept).
+    fileOf: (key: string) => string | null;
+    read: (path: string) => Promise<Buffer>;
+}
+
+// Serves the icon of a source. The address carries a key, never a path.
+export function createIconHandler(source: IconSource): (request: Request) => Promise<Response> {
+    return async (request) => {
+        const icon = parseIconUrl(request.url);
+        if (icon === null) {
+            return plain(400);
+        }
+        const path = source.fileOf(icon.key);
+        if (path === null) {
+            return plain(404);
+        }
+        try {
+            const bytes = await source.read(path);
+            const type = detectImageType(bytes);
+            if (type === null) {
+                return plain(404);
+            }
+            return new Response(new Uint8Array(bytes), {
+                status: 200,
+                headers: { 'Content-Type': type.mime, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' }
+            });
+        } catch {
+            return plain(404);
+        }
+    };
+}
+
+// The one handler of the scheme: the covers, the icons of the sources and the pages of the chapters each go to their own place.
+export function createMangaProtocolHandler(pages: PageSource, covers: CoverSource, icons: IconSource): (request: Request) => Promise<Response> {
     const pageHandler = createPageHandler(pages);
     const coverHandler = createCoverHandler(covers);
+    const iconHandler = createIconHandler(icons);
     return (request) => {
-        return parseCoverUrl(request.url) === null ? pageHandler(request) : coverHandler(request);
+        if (parseCoverUrl(request.url) !== null) {
+            return coverHandler(request);
+        }
+        return parseIconUrl(request.url) !== null ? iconHandler(request) : pageHandler(request);
     };
 }

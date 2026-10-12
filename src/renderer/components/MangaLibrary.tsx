@@ -10,7 +10,7 @@ import { MangaDetail } from './MangaDetail';
 import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
 import { RowLink } from './RowLink';
-import { downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesSearch, newChapterCount, type MangaLibraryGroup } from './mangaText';
+import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesSearch, newChapterCount, type MangaLibraryGroup } from './mangaText';
 
 interface MangaRowProps {
     manga: LibraryManga;
@@ -189,7 +189,10 @@ export function MangaLibrary() {
             />
         );
     }
-    const shown = inGroup(library, libraryGroup).filter((manga) => {
+    // The tab of all holds the mangas that are in no group; it is not there when every manga is in a group.
+    const hasAllTab = inGroup(library, null).length > 0;
+    const currentGroup = activeGroup(library, groups, libraryGroup);
+    const shown = inGroup(library, currentGroup).filter((manga) => {
         return matchesSearch(manga.title, search) || (manga.series !== null && matchesSearch(manga.series, search));
     });
     const cards = groupLibrary(shown);
@@ -211,23 +214,25 @@ export function MangaLibrary() {
             {managing && <MangaGroupsPanel />}
             {groups.length > 0 && (
                 <nav className="tabs" aria-label={t('manga.library.groups')}>
-                    <button
-                        type="button"
-                        className={`tab${libraryGroup === null ? ' tab--active' : ''}`}
-                        aria-current={libraryGroup === null ? 'page' : undefined}
-                        onClick={() => {
-                            setLibraryGroup(null);
-                        }}
-                    >
-                        {t('manga.library.allGroups')}
-                    </button>
+                    {hasAllTab && (
+                        <button
+                            type="button"
+                            className={`tab${currentGroup === null ? ' tab--active' : ''}`}
+                            aria-current={currentGroup === null ? 'page' : undefined}
+                            onClick={() => {
+                                setLibraryGroup(null);
+                            }}
+                        >
+                            {t('manga.library.allGroups')}
+                        </button>
+                    )}
                     {groups.map((group) => {
                         return (
                             <button
                                 key={group.id}
                                 type="button"
-                                className={`tab${libraryGroup === group.id ? ' tab--active' : ''}`}
-                                aria-current={libraryGroup === group.id ? 'page' : undefined}
+                                className={`tab${currentGroup === group.id ? ' tab--active' : ''}`}
+                                aria-current={currentGroup === group.id ? 'page' : undefined}
                                 onClick={() => {
                                     setLibraryGroup(group.id);
                                 }}
@@ -239,7 +244,7 @@ export function MangaLibrary() {
                 </nav>
             )}
             <span className="section-label">{t('manga.library.label', { count: cards.length })}</span>
-            {shown.length === 0 && <p className="empty">{libraryGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}
+            {shown.length === 0 && <p className="empty">{currentGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}
             <ul className="history__list">
                 {cards.map((card) => {
                     const single = card.entries[0];

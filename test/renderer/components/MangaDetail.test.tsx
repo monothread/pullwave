@@ -46,9 +46,9 @@ describe('MangaDetail', () => {
         expect(screen.getByText('Ongoing')).toBeInTheDocument();
         expect(
             within(screen.getByRole('list', { name: 'Genres and tags' }))
-                .getAllByRole('button')
-                .map((button) => {
-                    return button.textContent;
+                .getAllByRole('listitem')
+                .map((item) => {
+                    return item.textContent;
                 })
         ).toEqual(['Action', 'Adventure']);
         expect(screen.getByText('Pirates search for a treasure.')).toBeInTheDocument();
@@ -287,6 +287,45 @@ describe('MangaDetail in the library page', () => {
         expect(mock.api.manga.downloadMissing).not.toHaveBeenCalled();
     });
 
+    it('has a button that looks for new chapters of this manga, which says it is looking meanwhile', async () => {
+        const user = userEvent.setup();
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.checkNewChapters.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' }));
+        expect(mock.api.manga.checkNewChapters).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(9);
+        expect(screen.getByRole('button', { name: 'LOOKING…' })).toBeDisabled();
+        answer({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        expect(await screen.findByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeEnabled();
+    });
+
+    it('disables the button while another manga is being looked at', () => {
+        useMangaStore.setState({ library: [SAVED], checkingNew: 'all' });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeDisabled();
+    });
+
+    it('does not have the button on the page of the browse, or for a manga that is not in the library', () => {
+        useMangaStore.setState({ library: [SAVED], selectionFrom: 'browse', view: 'browse' });
+        open();
+        const { unmount } = render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).not.toBeInTheDocument();
+        unmount();
+        useMangaStore.setState({ library: [], selectionFrom: 'library', view: 'library' });
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).not.toBeInTheDocument();
+    });
+
     it('goes to the source, on the page of the manga there, when the extension is installed', async () => {
         const user = userEvent.setup();
         useMangaStore.setState({ library: [SAVED], browse: { ...initialManga.browse, sources: [makeSource({ id: '123' })], sourcesStatus: 'ready' } });
@@ -427,7 +466,7 @@ describe('MangaDetail searching by what the source says', () => {
         const user = userEvent.setup();
         open();
         render(<MangaDetail />);
-        await user.click(screen.getByRole('button', { name: 'Search by: Adventure' }));
+        await user.click(await screen.findByRole('button', { name: 'Search by: Adventure' }));
         await vi.waitFor(() => {
             expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
         });
@@ -447,11 +486,11 @@ describe('MangaDetail searching by what the source says', () => {
         expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'search', filtersOpen: true });
     });
 
-    it('does the same for the author when the source has a filter for them', async () => {
+    it('does the same for the author when the source lists the authors as filters', async () => {
         const user = userEvent.setup();
         open();
         render(<MangaDetail />);
-        await user.click(screen.getByRole('button', { name: 'Search by: Oda' }));
+        await user.click(await screen.findByRole('button', { name: 'Search by: Oda' }));
         await vi.waitFor(() => {
             expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
         });
@@ -460,24 +499,65 @@ describe('MangaDetail searching by what the source says', () => {
         expect(sent.filters?.[2]).toEqual({ type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: true }] });
     });
 
-    it('searches by the text when the source has no filter for it', async () => {
+    it('gives the name of the author to the text filter of the source that is about authors', async () => {
         const user = userEvent.setup();
-        open({ details: makeDetails({ artist: 'Someone Else' }) });
+        mock.api.manga.sourceFilters.mockResolvedValue({ ok: true, value: [{ type: 'text', name: 'Author', value: '' }, { type: 'text', name: 'Artist', value: '' }] });
+        open({ details: makeDetails({ author: 'Eiichiro Oda', artist: 'Oda E.', genres: [] }) });
         render(<MangaDetail />);
-        await user.click(screen.getByRole('button', { name: 'Search by: Someone Else' }));
+        await user.click(await screen.findByRole('button', { name: 'Search by: Eiichiro Oda' }));
         await vi.waitFor(() => {
             expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
         });
-        expect(mock.api.manga.list).toHaveBeenCalledWith({
+        expect(mock.api.manga.list.mock.calls[0]![0]).toEqual({
             sourceId: '123',
             kind: 'search',
             page: 1,
-            query: 'Someone Else',
-            filters: [
-                { type: 'text', name: 'Title', value: '' },
-                { type: 'group', name: 'Genres', filters: [{ type: 'tristate', name: 'Action', value: 'ignore' }, { type: 'tristate', name: 'Adventure', value: 'ignore' }] },
-                { type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: false }] }
-            ]
+            query: '',
+            filters: [{ type: 'text', name: 'Author', value: 'Eiichiro Oda' }, { type: 'text', name: 'Artist', value: '' }]
+        });
+    });
+
+    it('shows only as text what the source has no filter for, and never searches it by the text', async () => {
+        open({ details: makeDetails({ artist: 'Someone Else', genres: ['Adventure', 'Content rating: Suggestive'] }) });
+        render(<MangaDetail />);
+        await screen.findByRole('button', { name: 'Search by: Adventure' });
+        expect(screen.queryByRole('button', { name: 'Search by: Someone Else' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Search by: Content rating: Suggestive' })).not.toBeInTheDocument();
+        expect(screen.getByText('Someone Else')).toHaveClass('manga__tag', 'manga__tag--plain');
+        expect(screen.getByText('Content rating: Suggestive')).toHaveClass('manga__tag--plain');
+        expect(mock.api.manga.list).not.toHaveBeenCalled();
+    });
+
+    it('shows everything as text until the filters of the source are known, and when they cannot be read', async () => {
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.sourceFilters.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        open();
+        const { unmount } = render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: /^Search by:/ })).not.toBeInTheDocument();
+        expect(screen.getByText('Action')).toHaveClass('manga__tag--plain');
+        answer({ ok: false, error: { code: 'REQUEST_FAILED', message: 'x' } });
+        await vi.waitFor(() => {
+            expect(useMangaStore.getState().termFilters.status).toBe('error');
+        });
+        expect(screen.queryByRole('button', { name: /^Search by:/ })).not.toBeInTheDocument();
+        unmount();
+    });
+
+    it('reads the filters of the source once the details are there, not before', async () => {
+        open({ status: 'loading', details: null, chapters: [] });
+        const { unmount } = render(<MangaDetail />);
+        expect(mock.api.manga.sourceFilters).not.toHaveBeenCalled();
+        unmount();
+        open();
+        render(<MangaDetail />);
+        await vi.waitFor(() => {
+            expect(mock.api.manga.sourceFilters).toHaveBeenCalledWith('123');
         });
     });
 });

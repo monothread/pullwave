@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import type { ReadingRecord } from '@shared/manga';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useScrolledDown } from '../hooks/useScrolledDown';
 import { useTranslator } from '../i18n/useTranslator';
@@ -27,6 +28,10 @@ import { SETTINGS_ICON } from './TabButton';
 import { mangaErrorKey } from './mangaText';
 
 const PRELOAD_AHEAD = 2;
+// The longest the place of a chapter is corrected while its pictures arrive, if the user has not taken over before.
+const RESTORE_LIMIT_MS = 8000;
+// How long the page has to stay the same before the history of reading is written.
+const READING_RECORD_DELAY_MS = 800;
 const FIELD_TAGS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
 // How far down the page is scrolled before the button to go back to the top shows.
 const TOP_BUTTON_THRESHOLD = 400;
@@ -57,6 +62,9 @@ export function MangaReader() {
     const markRead = useMangaStore((state) => {
         return state.markRead;
     });
+    const recordReading = useMangaStore((state) => {
+        return state.recordReading;
+    });
     const [prefs, setPrefs] = useState<ReaderPrefs>(loadReaderPrefs);
     const [page, setPage] = useState(0);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -65,6 +73,11 @@ export function MangaReader() {
     // How many times each page was tried again: a page that is tried again is loaded again, and only that one.
     const [retries, setRetries] = useState<Record<number, number>>({});
     const [autoScrolling, setAutoScrolling] = useState(false);
+    // The page a chapter in the scroll is being brought to (null when it is not). The pages above it have no height until their pictures
+    // arrive, so the place moves while they do: the chapter is brought back to the page until they are all there, or the user takes over.
+    const [restoreTo, setRestoreTo] = useState<number | null>(null);
+    const restoringRef = useRef(false);
+    const settledRef = useRef(new Set<number>());
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const sectionRef = useRef<HTMLElement | null>(null);
 
@@ -88,7 +101,9 @@ export function MangaReader() {
     if (seenStart !== startKey) {
         setSeenStart(startKey);
         const saved = reader.status === 'ready' ? loadProgress(key) : 0;
-        setPage(saved >= total ? 0 : saved);
+        const start = saved >= total ? 0 : saved;
+        setPage(start);
+        setRestoreTo(continuous && start > 0 ? start : null);
         setFailed([]);
         setRetries({});
     }
@@ -98,6 +113,43 @@ export function MangaReader() {
             saveProgress(key, page >= total - 1 ? 0 : page);
         }
     }, [reader.status, key, page, total]);
+
+    // The history of reading keeps where the user is: written a moment after the page stops changing, and when the chapter or the reader
+    // closes, so turning the pages does not write at every page.
+    const manga = reader.manga;
+    const pendingReading = useRef<ReadingRecord | null>(null);
+    const flushReading = useCallback(() => {
+        if (pendingReading.current !== null) {
+            void recordReading(pendingReading.current);
+            pendingReading.current = null;
+        }
+    }, [recordReading]);
+    useEffect(() => {
+        if (reader.status !== 'ready' || total === 0 || chapter === undefined || manga === undefined || manga === null) {
+            return undefined;
+        }
+        const record: ReadingRecord = {
+            sourceId: manga.sourceId,
+            mangaRemoteId: manga.remoteId,
+            title: manga.title,
+            thumbnailUrl: manga.thumbnailUrl,
+            chapterRemoteId: chapter.remoteId,
+            chapterName: chapter.name,
+            chapterNumber: chapter.number,
+            page: Math.min(page, total - 1),
+            pageCount: total
+        };
+        pendingReading.current = record;
+        const timer = window.setTimeout(flushReading, READING_RECORD_DELAY_MS);
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [reader.status, total, chapter, manga, page, flushReading]);
+
+    // What is waiting to be written goes out when the chapter changes and when the reader closes.
+    useEffect(() => {
+        return flushReading;
+    }, [chapter, flushReading]);
 
     // The manga remembers the chapter it was left on, and a chapter read to the last page is read.
     useEffect(() => {
@@ -111,14 +163,54 @@ export function MangaReader() {
         }
     }, [reader.status, total, page, key, markRead]);
 
+    const bringToPage = useCallback((target: number) => {
+        scrollRef.current?.querySelector<HTMLElement>(`[data-page="${String(target)}"]`)?.scrollIntoView?.();
+    }, []);
+
     // In the scroll the chapter is brought to the page it starts on.
     useEffect(() => {
-        if (reader.status === 'ready' && continuous && page > 0) {
-            scrollRef.current?.querySelector<HTMLElement>(`[data-page="${String(page)}"]`)?.scrollIntoView?.();
+        restoringRef.current = restoreTo !== null;
+        settledRef.current = new Set();
+        if (reader.status === 'ready' && continuous && restoreTo !== null) {
+            bringToPage(restoreTo);
         }
-        // Only when the chapter or the mode changes: the page changes as the user scrolls.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [reader.status, key, continuous]);
+    }, [reader.status, key, continuous, restoreTo, bringToPage]);
+
+    // Until the pages above it are there the place keeps being corrected; the user scrolling (or a few seconds) ends it.
+    useEffect(() => {
+        if (restoreTo === null) {
+            return undefined;
+        }
+        const finish = (): void => {
+            setRestoreTo(null);
+        };
+        const events = ['wheel', 'touchstart', 'mousedown', 'keydown'] as const;
+        events.forEach((name) => {
+            window.addEventListener(name, finish, { once: true, passive: true });
+        });
+        const timer = window.setTimeout(finish, RESTORE_LIMIT_MS);
+        return () => {
+            events.forEach((name) => {
+                window.removeEventListener(name, finish);
+            });
+            window.clearTimeout(timer);
+        };
+    }, [restoreTo]);
+
+    // A picture above the page being brought to arrived (or failed): the place is corrected, and when they are all there it is done.
+    const pageSettled = useCallback(
+        (index: number) => {
+            if (restoreTo === null || index > restoreTo) {
+                return;
+            }
+            settledRef.current.add(index);
+            bringToPage(restoreTo);
+            if (settledRef.current.size > restoreTo) {
+                setRestoreTo(null);
+            }
+        },
+        [restoreTo, bringToPage]
+    );
 
     // In the scroll the page is the one the user has most of in view.
     useEffect(() => {
@@ -129,6 +221,9 @@ export function MangaReader() {
         const visible = new Map<number, number>();
         const observer = new IntersectionObserver(
             (entries) => {
+                if (restoringRef.current) {
+                    return;
+                }
                 entries.forEach((entry) => {
                     visible.set(Number((entry.target as HTMLElement).dataset['page']), entry.isIntersecting ? entry.intersectionRatio : 0);
                 });
@@ -296,11 +391,15 @@ export function MangaReader() {
                 src={address}
                 alt={t('manga.reader.pageAlt', { page: index + 1 })}
                 data-page={index}
-                loading={continuous ? 'lazy' : undefined}
+                loading={continuous && !(restoreTo !== null && index <= restoreTo + 1) ? 'lazy' : undefined}
+                onLoad={() => {
+                    pageSettled(index);
+                }}
                 onError={() => {
                     setFailed((current) => {
                         return current.includes(index) ? current : [...current, index];
                     });
+                    pageSettled(index);
                 }}
             />
         );

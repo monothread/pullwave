@@ -883,6 +883,10 @@ body::after {
 /* Manga section: in a row (the library, the head of a manga) the cover has a size of its own; as wide as the row it would push the rest out. */
 .manga__entry .cover, .manga__head .cover { width: 72px; }
 .manga__head { align-items: flex-start; }
+/* The updates and the history are lists of rows with a small cover, split by day. */
+.manga__updates, .manga__history { display: flex; flex-direction: column; gap: 12px; }
+.manga__updates-day, .manga__history-day { display: flex; flex-direction: column; gap: 8px; }
+.manga__updates .cover, .manga__history .cover { width: 56px; }
 .manga__description { margin: 4px 0 0; white-space: pre-line; }
 .manga__chapters { margin-top: 6px; }
 .anime__search, .anime__detail { display: flex; flex-direction: column; gap: 12px; }
@@ -1235,7 +1239,14 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 /* Buttons that sit beside a text field are as tall as the field, so the row lines up. */
 .field-row .btn, .link-row__line > .btn, .anime__bar .tabs > .btn { min-height: var(--control-height); }
 /* DOWNLOADS sits at the right end of the bar, beside the gear, which keeps its place after it. */
-.anime__bar .tabs > .btn { margin-left: auto; align-self: center; margin-bottom: 2px; }
+.anime__bar .tabs > .btn { margin-left: auto; align-self: center; margin-bottom: 2px; white-space: nowrap; }
+.anime__bar .tabs { flex-wrap: wrap; }
+/* On a very narrow window the tabs are gathered in one list; DOWNLOADS and the gear stay where they are. */
+.tabs__menu { display: none; flex: 1 1 140px; min-width: 0; width: auto; align-self: center; margin-bottom: 2px; }
+@media (max-width: 520px) {
+    .anime__bar .tabs > .tab:not(.tab--icon) { display: none; }
+    .anime__bar .tabs > .tabs__menu { display: block; }
+}
 .anime__bar .tab--icon { margin-left: 0; }
 
 /* Window that makes the subtitle of an episode from its audio: the languages, what leaves the computer and the steps while it goes on. */
@@ -1322,7 +1333,8 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .manga__chapters { margin-top: 0; }
 .manga__tags { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 4px 0 0; padding: 0; }
 .manga__tag { padding: 2px 10px; background: transparent; color: var(--cyan); border: 1px solid var(--line); border-radius: 12px; font: inherit; font-size: 12px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
-.manga__tag:hover, .manga__tag:focus-visible { border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); outline: none; }
+.manga__tag--plain { color: var(--muted); cursor: default; }
+.manga__tag:is(button):hover, .manga__tag:is(button):focus-visible { border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); outline: none; }
 .badge--new { color: var(--yellow); border-color: var(--yellow); text-shadow: 0 0 6px var(--yellow); align-self: flex-start; }
 .manga__tag--on { background: var(--cyan); color: var(--bg); border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
 .manga__tag--some { border-style: dashed; border-color: var(--cyan); }
@@ -1416,8 +1428,13 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .manga__sort { display: flex; align-items: flex-end; gap: 8px; }
 .manga__sort > .field { flex: 1; }
 .manga__picker-empty { padding: 6px 12px; color: var(--muted); font-size: 12px; }
+/* What was picked: a pill with the name, the state (+ or −) where there is one, and a button that takes it out. */
 .manga__chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 8px 0 0; padding: 0; }
-.manga__chip { display: inline-flex; align-items: center; border: 1px solid var(--green); color: var(--green); font-size: 12px; }
-.manga__chip--exclude { border-color: var(--red); color: var(--red); }
-.manga__chip-state, .manga__chip-remove { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 3px 8px; }
-.manga__chip-remove { border-left: 1px solid currentColor; padding: 3px 7px; }
+.manga__chip { display: inline-flex; align-items: stretch; max-width: 100%; border: 1px solid var(--green); border-radius: 14px; overflow: hidden; color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); font-size: 12px; line-height: 1.2; }
+.manga__chip--exclude { border-color: var(--red); color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
+.manga__chip-label, .manga__chip-state, .manga__chip-remove { display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; }
+.manga__chip-label { overflow-wrap: anywhere; }
+.manga__chip-state, .manga__chip-remove { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; }
+.manga__chip-state { gap: 4px; text-align: left; overflow-wrap: anywhere; }
+.manga__chip-remove { justify-content: center; min-width: 28px; padding: 0 8px; border-left: 1px solid currentColor; font-size: 15px; }
+.manga__chip-state:hover, .manga__chip-remove:hover, .manga__chip-state:focus-visible, .manga__chip-remove:focus-visible { background: color-mix(in srgb, currentColor 22%, transparent); outline: none; }

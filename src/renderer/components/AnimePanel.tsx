@@ -11,6 +11,7 @@ import { AnimeSearch } from './AnimeSearch';
 import { AnimeStreamPlayer } from './AnimeStreamPlayer';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
+import { TabMenu } from './TabMenu';
 
 const VIEWS: ReadonlyArray<{ id: AnimeBrowseView; label: 'anime.nav.schedule' | 'anime.nav.search' | 'anime.nav.library' | 'anime.nav.history' | 'anime.nav.settings'; icon?: string }> = [
     { id: 'schedule', label: 'anime.nav.schedule' },
@@ -69,6 +70,18 @@ export function AnimePanel() {
         <section className="anime" aria-label={t('anime.aria')}>
             <div className="anime__bar">
                 <nav className="tabs" aria-label={t('anime.aria')}>
+                    <TabMenu
+                        label={t('anime.aria')}
+                        tabs={VIEWS.filter((item) => {
+                            return item.icon === undefined;
+                        }).map((item) => {
+                            return { id: item.id, label: t(item.label) };
+                        })}
+                        active={view}
+                        onSelect={(id) => {
+                            setView(id as AnimeBrowseView);
+                        }}
+                    />
                     {VIEWS.map((item) => {
                         return (
                             <Fragment key={item.id}>

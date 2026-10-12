@@ -434,6 +434,37 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
         })).toEqual([1, 3]);
     });
 
+    it('queues the chapters that are named, the oldest first, and tells the screen', async () => {
+        const { queue, downloads, db, state } = setup({ maxConcurrent: 5 });
+        const manga = db.upsertManga({ remoteId: 7, sourceId: 'src-a', title: 'One Piece', thumbnailUrl: null });
+        db.registerChapters(manga.id, [chapter(1), chapter(2), chapter(3), chapter(4)]);
+        const before = state.libraryChanges;
+        queue.downloadChapters(manga.id, [4, 2, 99]);
+        expect(downloads.map((item) => {
+            return item.options.chapterRemoteId;
+        })).toEqual([2, 4]);
+        expect(queue.list().map((job) => {
+            return [job.chapterName, job.status];
+        })).toEqual([
+            ['Chapter 2', 'running'],
+            ['Chapter 4', 'running']
+        ]);
+        expect(state.libraryChanges).toBe(before + 1);
+    });
+
+    it('does not queue again a chapter of the ones named that is downloaded or already waiting, and ignores a manga that is not there', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 5 });
+        const manga = db.upsertManga({ remoteId: 7, sourceId: 'src-a', title: 'One Piece', thumbnailUrl: null });
+        db.registerChapters(manga.id, [chapter(1), chapter(2)]);
+        db.markDone(db.findChapter(manga.id, 1)!.id, '/m/1.cbz', 1, 1);
+        queue.downloadChapters(manga.id, [1, 2]);
+        queue.downloadChapters(manga.id, [2]);
+        queue.downloadChapters(999, [1]);
+        expect(downloads.map((item) => {
+            return item.options.chapterRemoteId;
+        })).toEqual([2]);
+    });
+
     it('clears what is over and keeps what is going on', async () => {
         const { queue, downloads, db } = setup({ maxConcurrent: 1 });
         queue.enqueue(request([chapter(1), chapter(2), chapter(3)]));

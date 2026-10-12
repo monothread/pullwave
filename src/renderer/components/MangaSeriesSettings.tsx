@@ -3,7 +3,7 @@ import type { LibraryManga } from '@shared/manga';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, suggestSeries } from '@shared/series';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { seriesNames } from './mangaText';
+import { nextSeason, seriesNames, takenSeasons } from './mangaText';
 import { SeriesFields } from './SeriesFields';
 
 interface MangaSeriesSettingsProps {
@@ -24,8 +24,23 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
     const [seasonName, setSeasonName] = useState(manga.seasonName ?? '');
     const [problem, setProblem] = useState<string | null>(null);
 
+    // With no name the series is named after the manga.
+    const effectiveSeries = series.trim().length === 0 ? manga.title : series;
+    const taken = takenSeasons(library, effectiveSeries, manga.id);
+    const seasonTaken = taken.includes(season);
+    const suggestedSeason = nextSeason(taken);
+
+    // Choosing a series that has the order wanted already offers the next one.
+    function changeSeries(value: string): void {
+        setSeriesName(value);
+        const takenThere = takenSeasons(library, value.trim().length === 0 ? manga.title : value, manga.id);
+        if (takenThere.includes(season)) {
+            setSeason(nextSeason(takenThere));
+        }
+    }
+
     async function save(): Promise<void> {
-        const name = cleanSeriesName(series);
+        const name = cleanSeriesName(effectiveSeries);
         const label = cleanSeasonName(seasonName);
         if (name === null || !isValidSeason(season) || label === undefined) {
             setProblem(t('anime.series.error.invalid'));
@@ -39,6 +54,14 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
         setProblem(response.reason === 'season-taken' ? t('manga.series.error.taken', { order: season, suggested: response.suggested }) : t('anime.series.error.invalid'));
     }
 
+    // The name of the series is made from the title: with it the order starts at the next free one.
+    function suggest(): void {
+        const suggestion = suggestSeries(manga.title);
+        const takenThere = takenSeasons(library, suggestion.series, manga.id);
+        setSeriesName(suggestion.series);
+        setSeason(takenThere.includes(suggestion.season) ? nextSeason(takenThere) : suggestion.season);
+    }
+
     async function leave(): Promise<void> {
         const response = await setSeries({ mangaId: manga.id, series: null, season: null, seasonName: null });
         if (response.ok) {
@@ -49,11 +72,6 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
         }
     }
 
-    function suggest(): void {
-        const suggestion = suggestSeries(manga.title);
-        setSeriesName(suggestion.series);
-        setSeason(suggestion.season);
-    }
 
     return (
         <section className="panel manga__series">
@@ -66,7 +84,9 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
                 suggestions={seriesNames(library)}
                 hint={t('manga.series.hint')}
                 nameHint={t('manga.series.nameHint')}
-                onSeriesChange={setSeriesName}
+                onSeriesChange={changeSeries}
+                seriesPlaceholder={t('manga.series.placeholder', { title: manga.title })}
+                seasonProblem={seasonTaken ? t('manga.series.error.takenNow', { order: season, suggested: suggestedSeason }) : undefined}
                 onSeasonChange={setSeason}
                 onSeasonNameChange={setSeasonName}
             />
@@ -76,7 +96,7 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
                 </p>
             )}
             <div className="job__actions">
-                <button type="button" className="btn btn--small btn--primary" onClick={() => {
+                <button type="button" className="btn btn--small btn--primary" disabled={seasonTaken} onClick={() => {
                     void save();
                 }}>
                     {t('manga.series.save')}

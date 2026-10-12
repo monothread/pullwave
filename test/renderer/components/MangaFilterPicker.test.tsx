@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -187,5 +187,15 @@ describe('MangaFilterPicker', () => {
         expect(screen.getByRole('listbox')).toBeInTheDocument();
         fireEvent.blur(screen.getByRole('combobox', { name: 'Genre' }));
         expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaFilterPicker the chips of what was picked', () => {
+    it('gives a name with no state its own label, like the ones with a state', () => {
+        render(<MangaFilterPicker name="Format" filters={[{ type: 'checkbox', name: 'Full Color', value: true }, { type: 'tristate', name: 'Long Strip', value: 'include' }]} onChange={vi.fn()} />);
+        const chips = screen.getAllByRole('listitem');
+        expect(chips[0]!.querySelector('.manga__chip-label')).toHaveTextContent('Full Color');
+        expect(chips[1]!.querySelector('.manga__chip-state')).toHaveTextContent('Long Strip');
+        expect(within(chips[0]!).getByRole('button', { name: 'Remove: Full Color' })).toHaveClass('manga__chip-remove');
     });
 });

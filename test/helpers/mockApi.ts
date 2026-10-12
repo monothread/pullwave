@@ -139,6 +139,19 @@ export function createMockApi(): MockApiHandle {
         removeManga: vi.fn(async () => {return undefined}),
         openFolder: vi.fn(async () => {return undefined}),
         openSite: vi.fn(async () => {return undefined}),
+        updates: vi.fn(async () => {
+            return [];
+        }),
+        clearUpdates: vi.fn(async () => {return undefined}),
+        checkNewChapters: vi.fn(async () => {
+            return { ok: true, count: 0, titles: [], failed: 0 };
+        }),
+        recordReading: vi.fn(async () => {return undefined}),
+        readingHistory: vi.fn(async () => {
+            return [];
+        }),
+        removeReading: vi.fn(async () => {return undefined}),
+        clearReading: vi.fn(async () => {return undefined}),
         checkToolUpdates: vi.fn(async () => {
             return { suwayomi: { current: 'v1.0.0', latest: 'v1.0.0', error: null, updatable: false, chosen: false, bundled: 'v1.0.0', restartNeeded: false }, flaresolverr: null };
         }),

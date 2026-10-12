@@ -6,16 +6,21 @@ import { MangaCloudflareNotice } from './MangaCloudflareNotice';
 import { MangaExtensions } from './MangaExtensions';
 import { MangaHelperNotice } from './MangaHelperNotice';
 import { MangaJobs } from './MangaJobs';
+import { MangaHistory } from './MangaHistory';
 import { MangaLibrary } from './MangaLibrary';
 import { MangaReader } from './MangaReader';
 import { activeJobCount } from './mangaText';
 import { MangaSetup } from './MangaSetup';
+import { MangaUpdates } from './MangaUpdates';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
+import { TabMenu } from './TabMenu';
 
-const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'manga.nav.library' | 'manga.nav.extensions' | 'manga.nav.settings'; icon?: string }> = [
+const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'manga.nav.updates' | 'manga.nav.library' | 'manga.nav.history' | 'manga.nav.extensions' | 'manga.nav.settings'; icon?: string }> = [
     { id: 'browse', label: 'manga.nav.browse' },
+    { id: 'updates', label: 'manga.nav.updates' },
     { id: 'library', label: 'manga.nav.library' },
+    { id: 'history', label: 'manga.nav.history' },
     { id: 'extensions', label: 'manga.nav.extensions' },
     { id: 'settings', label: 'manga.nav.settings', icon: SETTINGS_ICON }
 ];
@@ -97,6 +102,18 @@ export function MangaPanel() {
         <section className="manga" aria-label={t('manga.aria')}>
             <div className="anime__bar">
                 <nav className="tabs" aria-label={t('manga.aria')}>
+                    <TabMenu
+                        label={t('manga.aria')}
+                        tabs={VIEWS.filter((item) => {
+                            return item.icon === undefined;
+                        }).map((item) => {
+                            return { id: item.id, label: t(item.label) };
+                        })}
+                        active={view}
+                        onSelect={(id) => {
+                            setView(id as MangaBrowseView);
+                        }}
+                    />
                     {VIEWS.map((item) => {
                         return (
                             <Fragment key={item.id}>
@@ -141,7 +158,9 @@ export function MangaPanel() {
             <MangaCloudflareNotice />
             {status.server === 'starting' && <p className="empty">{t('manga.server.starting')}</p>}
             {view === 'browse' && <MangaBrowse />}
+            {view === 'updates' && <MangaUpdates />}
             {view === 'library' && <MangaLibrary />}
+            {view === 'history' && <MangaHistory />}
             {view === 'extensions' && <MangaExtensions />}
             {view === 'settings' && <SettingsPanel scope="manga" />}
         </section>

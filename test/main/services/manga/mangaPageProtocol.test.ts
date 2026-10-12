@@ -1,4 +1,4 @@
-import { createCoverHandler, createMangaProtocolHandler, createPageHandler, parseCoverUrl, parsePageUrl } from '@main/services/manga/mangaPageProtocol';
+import { createCoverHandler, createIconHandler, createMangaProtocolHandler, createPageHandler, parseCoverUrl, parsePageUrl } from '@main/services/manga/mangaPageProtocol';
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8]);
 
@@ -200,7 +200,12 @@ describe('createMangaProtocolHandler', () => {
         }), read: vi.fn(() => {
             return Promise.resolve(PNG);
         }) };
-        const handle = createMangaProtocolHandler(pages, covers);
+        const icons = { fileOf: vi.fn(() => {
+            return '/data/icons/abc';
+        }), read: vi.fn(() => {
+            return Promise.resolve(PNG);
+        }) };
+        const handle = createMangaProtocolHandler(pages, covers, icons);
         expect((await handle(new Request('pullwave-manga://cover/3?v=x'))).status).toBe(200);
         expect(covers.fileOf).toHaveBeenCalledWith(3);
         expect(pages.fileOf).not.toHaveBeenCalled();
@@ -209,5 +214,84 @@ describe('createMangaProtocolHandler', () => {
         expect(pages.read).toHaveBeenCalledWith('/m/Chapter 1.cbz', 1);
         expect(covers.fileOf).toHaveBeenCalledTimes(1);
         expect((await handle(new Request('pullwave-manga://other/1'))).status).toBe(400);
+    });
+});
+
+describe('createIconHandler', () => {
+    const KEY = '0123456789abcdef01234567';
+
+    function setup(fileOf: (key: string) => string | null, read: (path: string) => Promise<Buffer>) {
+        const source = { fileOf: vi.fn(fileOf), read: vi.fn(read) };
+        return { source, handle: createIconHandler(source) };
+    }
+
+    it('serves the icon with its type taken from the bytes, for a day', async () => {
+        const { handle, source } = setup(
+            () => {
+                return `/data/icons/${KEY}`;
+            },
+            () => {
+                return Promise.resolve(PNG);
+            }
+        );
+        const response = await handle(new Request(`pullwave-manga://icon/${KEY}`));
+        expect(response.status).toBe(200);
+        expect(response.headers.get('Content-Type')).toBe('image/png');
+        expect(response.headers.get('Cache-Control')).toBe('private, max-age=86400');
+        expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+        expect(Buffer.from(await response.arrayBuffer())).toEqual(PNG);
+        expect(source.fileOf).toHaveBeenCalledWith(KEY);
+        expect(source.read).toHaveBeenCalledWith(`/data/icons/${KEY}`);
+    });
+
+    it('refuses an address that is not an icon, says there is none when none is kept or it is not an image, and when it cannot be read', async () => {
+        const none = setup(
+            () => {
+                return null;
+            },
+            () => {
+                return Promise.resolve(PNG);
+            }
+        );
+        expect((await none.handle(new Request('pullwave-manga://icon/..'))).status).toBe(400);
+        expect((await none.handle(new Request(`pullwave-manga://icon/${KEY}`))).status).toBe(404);
+        expect(none.source.read).not.toHaveBeenCalled();
+        const text = setup(
+            () => {
+                return '/x';
+            },
+            () => {
+                return Promise.resolve(Buffer.from('<html>'));
+            }
+        );
+        expect((await text.handle(new Request(`pullwave-manga://icon/${KEY}`))).status).toBe(404);
+        const broken = setup(
+            () => {
+                return '/x';
+            },
+            () => {
+                return Promise.reject(new Error('gone'));
+            }
+        );
+        expect((await broken.handle(new Request(`pullwave-manga://icon/${KEY}`))).status).toBe(404);
+    });
+
+    it('is where the handler of the scheme sends the icons', async () => {
+        const pages = { fileOf: vi.fn(() => {
+            return null;
+        }), read: vi.fn() };
+        const covers = { fileOf: vi.fn(() => {
+            return null;
+        }), read: vi.fn() };
+        const icons = { fileOf: vi.fn(() => {
+            return '/data/icons/k';
+        }), read: vi.fn(() => {
+            return Promise.resolve(PNG);
+        }) };
+        const handle = createMangaProtocolHandler(pages, covers, icons);
+        expect((await handle(new Request(`pullwave-manga://icon/${KEY}`))).status).toBe(200);
+        expect(icons.fileOf).toHaveBeenCalledWith(KEY);
+        expect(pages.fileOf).not.toHaveBeenCalled();
+        expect(covers.fileOf).not.toHaveBeenCalled();
     });
 });
