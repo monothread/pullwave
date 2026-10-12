@@ -1372,9 +1372,15 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .reader__page { color: var(--muted); letter-spacing: 1px; min-width: 64px; text-align: center; }
 .reader__progress { flex: 1 1 100%; order: 10; margin-top: 2px; }
 .reader__chapters { max-width: 200px; padding: 4px 8px; }
+/* Everything in the bar has the height of a field and is centered on the same line. */
+.reader__bar .job__actions { margin-top: 0; align-items: center; }
+.reader__bar .btn, .reader__bar .input { min-height: var(--control-height); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
+.reader__bar .input { width: auto; }
+.reader__bar .manga__gear { min-width: var(--control-height); padding: 0; }
 /* The settings open under the bar, which stays on top of the page: they show wherever in the chapter the user is. */
 .reader__settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 16px; position: absolute; top: 100%; left: 0; right: 0; z-index: 3; background: var(--panel, var(--bg)); border: 1px solid var(--cyan); box-shadow: var(--glow); }
 .reader__float { position: fixed; right: 24px; bottom: 24px; z-index: 5; display: flex; align-items: center; gap: 10px; }
+.reader__auto { height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .reader__top { width: 44px; height: 44px; padding: 0; font-size: 22px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
 .reader__stage, .reader__scroll { display: flex; flex-direction: column; align-items: center; min-height: 40vh; padding: 8px; border: 1px solid var(--line); }
 .reader__stage { cursor: pointer; justify-content: center; }

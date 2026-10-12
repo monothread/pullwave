@@ -266,9 +266,11 @@ export function continueIndex(chapters: ReadonlyArray<{ remoteId: number }>, isR
     return firstUnread === -1 ? 0 : firstUnread;
 }
 
-// Whether a chapter arrived in the library today (the chapters a manga comes with are not new).
-export function isNewChapter(chapter: Pick<MangaChapterRecord, 'addedAt'>, now: number = Date.now()): boolean {
-    return chapter.addedAt !== null && new Date(chapter.addedAt).toDateString() === new Date(now).toDateString();
+// Whether a chapter is new today: the day the source published it when the source says so, else the day it arrived in the library (the
+// chapters a manga comes with have no day of arrival, so they are not new then).
+export function isNewChapter(chapter: Pick<MangaChapterRecord, 'addedAt' | 'dateUploaded'>, now: number = Date.now()): boolean {
+    const day = chapter.dateUploaded ?? chapter.addedAt;
+    return day !== null && new Date(day).toDateString() === new Date(now).toDateString();
 }
 
 // How many chapters of the mangas are new today.

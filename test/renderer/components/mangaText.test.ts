@@ -326,29 +326,39 @@ describe('new chapters', () => {
     const HOUR = 3_600_000;
     const DAY = 24 * HOUR;
 
-    it('is a chapter that arrived in the library today', () => {
-        expect(isNewChapter({ addedAt: NOW - HOUR }, NOW)).toBe(true);
-        expect(isNewChapter({ addedAt: new Date(2026, 9, 11, 0, 0, 1).getTime() }, NOW)).toBe(true);
-        expect(isNewChapter({ addedAt: NOW }, NOW)).toBe(true);
+    it('is a chapter the source published today', () => {
+        expect(isNewChapter({ addedAt: null, dateUploaded: NOW - HOUR }, NOW)).toBe(true);
+        expect(isNewChapter({ addedAt: null, dateUploaded: new Date(2026, 9, 11, 0, 0, 1).getTime() }, NOW)).toBe(true);
+        expect(isNewChapter({ addedAt: NOW, dateUploaded: NOW }, NOW)).toBe(true);
     });
 
-    it('is not a chapter that arrived on another day, not even a second before midnight', () => {
-        expect(isNewChapter({ addedAt: new Date(2026, 9, 10, 23, 59, 59).getTime() }, NOW)).toBe(false);
-        expect(isNewChapter({ addedAt: NOW - 3 * DAY }, NOW)).toBe(false);
-        expect(isNewChapter({ addedAt: NOW + DAY }, NOW)).toBe(false);
+    it('is not a chapter the source published on another day, even if it arrived in the library today', () => {
+        expect(isNewChapter({ addedAt: NOW - HOUR, dateUploaded: new Date(2025, 8, 20).getTime() }, NOW)).toBe(false);
+        expect(isNewChapter({ addedAt: NOW, dateUploaded: new Date(2026, 9, 10, 23, 59, 59).getTime() }, NOW)).toBe(false);
+        expect(isNewChapter({ addedAt: null, dateUploaded: NOW - 3 * DAY }, NOW)).toBe(false);
+        expect(isNewChapter({ addedAt: null, dateUploaded: NOW + DAY }, NOW)).toBe(false);
     });
 
-    it('is not a chapter the manga came with, which has no time of arrival', () => {
-        expect(isNewChapter({ addedAt: null }, NOW)).toBe(false);
+    it('goes by the day it arrived in the library when the source gives no date', () => {
+        expect(isNewChapter({ addedAt: NOW - HOUR, dateUploaded: null }, NOW)).toBe(true);
+        expect(isNewChapter({ addedAt: new Date(2026, 9, 11, 0, 0, 1).getTime(), dateUploaded: null }, NOW)).toBe(true);
+        expect(isNewChapter({ addedAt: new Date(2026, 9, 10, 23, 59, 59).getTime(), dateUploaded: null }, NOW)).toBe(false);
+        expect(isNewChapter({ addedAt: NOW - 3 * DAY, dateUploaded: null }, NOW)).toBe(false);
+        expect(isNewChapter({ addedAt: NOW + DAY, dateUploaded: null }, NOW)).toBe(false);
+    });
+
+    it('is not a chapter with neither a date of the source nor a time of arrival', () => {
+        expect(isNewChapter({ addedAt: null, dateUploaded: null }, NOW)).toBe(false);
     });
 
     it('uses the time of now when it is not given', () => {
-        expect(isNewChapter({ addedAt: Date.now() })).toBe(true);
-        expect(isNewChapter({ addedAt: Date.now() - 3 * DAY })).toBe(false);
+        expect(isNewChapter({ addedAt: null, dateUploaded: Date.now() })).toBe(true);
+        expect(isNewChapter({ addedAt: null, dateUploaded: Date.now() - 3 * DAY })).toBe(false);
+        expect(isNewChapter({ addedAt: Date.now(), dateUploaded: null })).toBe(true);
     });
 
     it('counts the new chapters of several mangas', () => {
-        const one = makeLibraryManga([makeChapterRecord({ id: 1, addedAt: NOW - HOUR }), makeChapterRecord({ id: 2, addedAt: NOW - 2 * DAY }), makeChapterRecord({ id: 3, addedAt: NOW - HOUR })]);
+        const one = makeLibraryManga([makeChapterRecord({ id: 1, addedAt: NOW - HOUR, dateUploaded: null }), makeChapterRecord({ id: 2, addedAt: NOW - 2 * DAY }), makeChapterRecord({ id: 3, addedAt: NOW - HOUR })]);
         const two = makeLibraryManga([makeChapterRecord({ id: 4, addedAt: NOW - HOUR }), makeChapterRecord({ id: 5, addedAt: null })], { id: 2 });
         expect(newChapterCount([one, two], NOW)).toBe(3);
         expect(newChapterCount([one], NOW)).toBe(2);
