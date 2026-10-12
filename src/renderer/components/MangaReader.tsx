@@ -5,6 +5,7 @@ import { useScrolledDown } from '../hooks/useScrolledDown';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { NumberField, SelectField } from './fields';
+import { MangaCloudflareNotice } from './MangaCloudflareNotice';
 import {
     AUTO_SCROLL_STEP,
     loadProgress,
@@ -538,6 +539,7 @@ export function MangaReader() {
                 </div>
             )}
             </header>
+            {reader.status === 'loading' && <MangaCloudflareNotice />}
             {reader.status === 'loading' && <p className="empty">{t('manga.reader.loading')}</p>}
             {reader.status === 'error' && reader.error && (
                 <p className="field__warning" role="alert" title={reader.error.message}>

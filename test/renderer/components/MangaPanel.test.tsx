@@ -2,6 +2,7 @@
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
+import { CLOUDFLARE_SHOW_AFTER_MS } from '@renderer/components/MangaCloudflareNotice';
 import { MangaPanel } from '@renderer/components/MangaPanel';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
@@ -154,13 +155,26 @@ describe('MangaPanel', () => {
         expect(screen.queryByRole('region', { name: 'Helper for sites protected by Cloudflare' })).not.toBeInTheDocument();
     });
 
-    it('says a check of Cloudflare is going on, on the browse and on the downloads', async () => {
-        const user = userEvent.setup();
-        useMangaStore.setState({ cloudflare: [{ id: 1, host: 'manganato.com', startedAt: 1 }] });
-        render(<MangaPanel />);
-        expect(screen.getByTestId('manga-cloudflare')).toHaveTextContent('Passing the Cloudflare check of manganato.com');
-        await user.click(screen.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }));
-        expect(screen.getByTestId('manga-cloudflare')).toBeInTheDocument();
+    it('says a check of Cloudflare is going on for the source that is being browsed, and not on the downloads', async () => {
+        vi.useFakeTimers();
+        try {
+            useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sourceId: '5', status: 'loading' }, cloudflare: [{ id: 1, host: 'manganato.com', startedAt: 1 }] });
+            render(<MangaPanel />);
+            expect(screen.queryByTestId('manga-cloudflare')).not.toBeInTheDocument();
+            act(() => {
+                vi.advanceTimersByTime(CLOUDFLARE_SHOW_AFTER_MS);
+            });
+            expect(screen.getByTestId('manga-cloudflare')).toHaveTextContent('Passing the Cloudflare check of manganato.com');
+            act(() => {
+                useMangaStore.getState().openDownloads();
+            });
+            act(() => {
+                vi.advanceTimersByTime(CLOUDFLARE_SHOW_AFTER_MS * 2);
+            });
+            expect(screen.queryByTestId('manga-cloudflare')).not.toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('does not say it when no check is going on', () => {

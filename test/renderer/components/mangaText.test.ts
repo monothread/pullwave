@@ -14,6 +14,9 @@ import {
     inGroup,
     isNewChapter,
     activeGroup,
+    checksForSource,
+    sourceScope,
+    type SourceScopeState,
     chapterLabel,
     groupByDay,
     nextSeason,
@@ -527,5 +530,84 @@ describe('groupByDay', () => {
         expect(groupByDay([], () => {
             return 0;
         })).toEqual([]);
+    });
+});
+
+describe('sourceScope', () => {
+    const STATE: SourceScopeState = {
+        view: 'library',
+        browse: { sourceId: null, status: 'idle', filtersStatus: 'idle', loadingMore: false },
+        sourceSettings: { status: 'idle' },
+        selection: null,
+        selectionRefresh: { loading: false },
+        reader: { status: 'closed' }
+    };
+
+    it('is no source in the screens that are not about one', () => {
+        for (const view of ['library', 'updates', 'history', 'settings', 'extensions', 'downloads']) {
+            expect(sourceScope({ ...STATE, view })).toEqual({ sourceId: null, loading: false });
+        }
+        expect(sourceScope({ ...STATE, view: 'browse' })).toEqual({ sourceId: null, loading: false });
+    });
+
+    it('is the source being browsed, and whether its list, its filters, more of its list or its settings are being read', () => {
+        const browsing = { ...STATE, view: 'browse', browse: { ...STATE.browse, sourceId: '7' } };
+        expect(sourceScope(browsing)).toEqual({ sourceId: '7', loading: false });
+        expect(sourceScope({ ...browsing, browse: { ...browsing.browse, status: 'loading' } })).toEqual({ sourceId: '7', loading: true });
+        expect(sourceScope({ ...browsing, browse: { ...browsing.browse, filtersStatus: 'loading' } })).toEqual({ sourceId: '7', loading: true });
+        expect(sourceScope({ ...browsing, browse: { ...browsing.browse, loadingMore: true } })).toEqual({ sourceId: '7', loading: true });
+        expect(sourceScope({ ...browsing, sourceSettings: { status: 'loading' } })).toEqual({ sourceId: '7', loading: true });
+    });
+
+    it('is the source of the manga that is open, whatever screen it was opened from, and not the one that was browsed', () => {
+        const open = { ...STATE, view: 'browse', browse: { ...STATE.browse, sourceId: '7' }, selection: { manga: { sourceId: '9' }, status: 'ready' } };
+        expect(sourceScope(open)).toEqual({ sourceId: '9', loading: false });
+        expect(sourceScope({ ...open, selection: { manga: { sourceId: '9' }, status: 'loading' } })).toEqual({ sourceId: '9', loading: true });
+        expect(sourceScope({ ...open, selectionRefresh: { loading: true } })).toEqual({ sourceId: '9', loading: true });
+        expect(sourceScope({ ...open, view: 'library' })).toEqual({ sourceId: '9', loading: false });
+    });
+
+    it('is the source of the manga being read, before the one that is open, and loading while its pages are asked for', () => {
+        const reading = { ...STATE, selection: { manga: { sourceId: '9' }, status: 'ready' }, reader: { status: 'ready', manga: { sourceId: '4' } } };
+        expect(sourceScope(reading)).toEqual({ sourceId: '4', loading: false });
+        expect(sourceScope({ ...reading, reader: { status: 'loading', manga: { sourceId: '4' } } })).toEqual({ sourceId: '4', loading: true });
+        expect(sourceScope({ ...reading, reader: { status: 'loading', manga: null } })).toEqual({ sourceId: '9', loading: true });
+        expect(sourceScope({ ...STATE, reader: { status: 'loading' } })).toEqual({ sourceId: null, loading: true });
+    });
+});
+
+describe('checksForSource', () => {
+    const CHECK = { id: 1, host: 'manganato.com', startedAt: 1 };
+    const OTHER = { id: 2, host: 'manhwaread.com', startedAt: 2 };
+    const LIBRARY = [makeLibraryManga([], { id: 1, sourceId: '7', url: 'https://www.manganato.com/manga/a' }), makeLibraryManga([], { id: 2, sourceId: '9', url: 'https://manhwaread.com/manhwa/b' }), makeLibraryManga([], { id: 3, sourceId: '9', url: null }), makeLibraryManga([], { id: 4, sourceId: '9', url: 'not an address' })];
+
+    it('gives none when the user is in no source', () => {
+        expect(checksForSource([CHECK, OTHER], { sourceId: null, loading: true }, LIBRARY, null)).toEqual([]);
+    });
+
+    it('gives the checks of the sites of the source, which the library knows by the page of its mangas on the site, with or without www', () => {
+        expect(checksForSource([CHECK, OTHER], { sourceId: '7', loading: false }, LIBRARY, null)).toEqual([CHECK]);
+        expect(checksForSource([CHECK, OTHER], { sourceId: '9', loading: true }, LIBRARY, null)).toEqual([OTHER]);
+        expect(checksForSource([{ ...CHECK, host: 'WWW.Manganato.com' }], { sourceId: '7', loading: false }, LIBRARY, null)).toHaveLength(1);
+    });
+
+    it('takes a site that is not known for the source when it is being asked for something, and not otherwise', () => {
+        const unknown = { id: 3, host: 'new.example', startedAt: 3 };
+        expect(checksForSource([unknown], { sourceId: '7', loading: true }, LIBRARY, null)).toEqual([unknown]);
+        expect(checksForSource([unknown], { sourceId: '7', loading: false }, LIBRARY, null)).toEqual([]);
+        expect(checksForSource([{ id: 4, host: '', startedAt: 4 }], { sourceId: '7', loading: true }, [], null)).toHaveLength(1);
+    });
+
+    it('learns the site of the manga that is open from its page, which beats what the library says', () => {
+        expect(checksForSource([OTHER], { sourceId: '7', loading: false }, LIBRARY, 'https://manhwaread.com/manhwa/c')).toEqual([OTHER]);
+        expect(checksForSource([CHECK], { sourceId: '7', loading: false }, [], 'https://manganato.com/manga/z')).toEqual([CHECK]);
+        expect(checksForSource([CHECK], { sourceId: '7', loading: false }, [], 'nonsense')).toEqual([]);
+    });
+
+    it('does not take a site of the library for another source when a manga of both sources is on the same site', () => {
+        const shared = [makeLibraryManga([], { id: 1, sourceId: '7', url: 'https://same.example/a' }), makeLibraryManga([], { id: 2, sourceId: '9', url: 'https://same.example/b' })];
+        const check = { id: 1, host: 'same.example', startedAt: 1 };
+        expect(checksForSource([check], { sourceId: '9', loading: false }, shared, null)).toEqual([check]);
+        expect(checksForSource([check], { sourceId: '7', loading: false }, shared, null)).toEqual([]);
     });
 });

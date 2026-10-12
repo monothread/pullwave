@@ -2,10 +2,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
+import { CLOUDFLARE_SHOW_AFTER_MS } from '@renderer/components/MangaCloudflareNotice';
 import { MangaReader } from '@renderer/components/MangaReader';
 import { loadLastChapter, loadProgress, loadReaderPrefs, PREFS_KEY, progressKey, saveProgress, saveReaderPrefs } from '@renderer/components/readerPrefs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaReaderState, type ReaderChapter } from '@renderer/store/mangaStore';
+import { makeLibraryManga } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -992,5 +994,47 @@ describe('MangaReader the history of reading', () => {
             vi.advanceTimersByTime(5000);
         });
         expect(mock.api.manga.recordReading).not.toHaveBeenCalled();
+    });
+});
+
+describe('MangaReader the check of Cloudflare while the pages are asked for', () => {
+    const MANGA = { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null };
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('says a check of the source of the manga is going on while the pages load, after a moment', () => {
+        useMangaStore.setState({ cloudflare: [{ id: 1, host: 'dex.example', startedAt: 1 }] });
+        open({ status: 'loading', pages: [], manga: MANGA });
+        render(<MangaReader />);
+        expect(screen.getByText('Loading the pages…')).toBeInTheDocument();
+        expect(screen.queryByTestId('manga-cloudflare')).not.toBeInTheDocument();
+        act(() => {
+            vi.advanceTimersByTime(CLOUDFLARE_SHOW_AFTER_MS);
+        });
+        expect(screen.getByTestId('manga-cloudflare')).toHaveTextContent('Passing the Cloudflare check of dex.example');
+    });
+
+    it('does not say it for the check of another source, nor once the pages are there', () => {
+        useMangaStore.setState({ cloudflare: [{ id: 1, host: 'dex.example', startedAt: 1 }], library: [makeLibraryManga([], { id: 1, sourceId: '999', url: 'https://dex.example/m' })] });
+        open({ status: 'loading', pages: [], manga: MANGA });
+        const { unmount } = render(<MangaReader />);
+        act(() => {
+            vi.advanceTimersByTime(CLOUDFLARE_SHOW_AFTER_MS * 2);
+        });
+        expect(screen.queryByTestId('manga-cloudflare')).not.toBeInTheDocument();
+        unmount();
+        useMangaStore.setState({ library: [] });
+        open({ status: 'ready', manga: MANGA });
+        render(<MangaReader />);
+        act(() => {
+            vi.advanceTimersByTime(CLOUDFLARE_SHOW_AFTER_MS * 2);
+        });
+        expect(screen.queryByTestId('manga-cloudflare')).not.toBeInTheDocument();
     });
 });

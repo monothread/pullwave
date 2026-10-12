@@ -1,6 +1,6 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
-import type { LibraryManga, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
+import type { LibraryManga, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
 
 // The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
@@ -362,4 +362,75 @@ export function newChapterCount(mangas: readonly LibraryManga[], now: number = D
             }).length
         );
     }, 0);
+}
+
+// ---- The check of Cloudflare, for the source the user is in ----
+
+// A site name as it is compared: without the "www." in front.
+function siteOf(host: string): string {
+    return host.toLowerCase().replace(/^www\./, '');
+}
+
+function hostOfAddress(address: string | null): string | null {
+    if (address === null) {
+        return null;
+    }
+    try {
+        return siteOf(new URL(address).hostname);
+    } catch {
+        return null;
+    }
+}
+
+// Where the user is, as far as the sources go: the source of the manga being read or open, or else the one being browsed; and whether
+// something of it is being asked for now. Nothing in the other screens (the library, the history, the settings...).
+export interface SourceScope {
+    sourceId: string | null;
+    loading: boolean;
+}
+
+export interface SourceScopeState {
+    view: string;
+    browse: { sourceId: string | null; status: string; filtersStatus: string; loadingMore: boolean };
+    sourceSettings: { status: string };
+    selection: { manga: { sourceId: string }; status: string } | null;
+    selectionRefresh: { loading: boolean };
+    reader: { status: string; manga?: { sourceId: string } | null };
+}
+
+export function sourceScope(state: SourceScopeState): SourceScope {
+    if (state.reader.status !== 'closed') {
+        return { sourceId: state.reader.manga?.sourceId ?? state.selection?.manga.sourceId ?? null, loading: state.reader.status === 'loading' };
+    }
+    if (state.selection !== null) {
+        return { sourceId: state.selection.manga.sourceId, loading: state.selection.status === 'loading' || state.selectionRefresh.loading };
+    }
+    if (state.view === 'browse' && state.browse.sourceId !== null) {
+        return { sourceId: state.browse.sourceId, loading: state.browse.status === 'loading' || state.browse.filtersStatus === 'loading' || state.browse.loadingMore || state.sourceSettings.status === 'loading' };
+    }
+    return { sourceId: null, loading: false };
+}
+
+// The checks of Cloudflare that are about the source the user is in. The site of a check says which source it is for when the library has a
+// manga of that site (its page on the site is kept); when the site is not known, the check is taken for the one of the source that is being
+// asked for (nothing else asks the sources for what is not in the library). Never a check that is about another source.
+export function checksForSource(checks: readonly MangaCloudflareActivity[], scope: SourceScope, library: readonly LibraryManga[], openPage: string | null): MangaCloudflareActivity[] {
+    if (scope.sourceId === null) {
+        return [];
+    }
+    const sources = new Map<string, string>();
+    library.forEach((manga) => {
+        const site = hostOfAddress(manga.url);
+        if (site !== null) {
+            sources.set(site, manga.sourceId);
+        }
+    });
+    const open = hostOfAddress(openPage);
+    if (open !== null) {
+        sources.set(open, scope.sourceId);
+    }
+    return checks.filter((check) => {
+        const known = sources.get(siteOf(check.host));
+        return known === undefined ? scope.loading : known === scope.sourceId;
+    });
 }
