@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReadingRecord } from '@shared/manga';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useScrolledDown } from '../hooks/useScrolledDown';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { NumberField, SelectField } from './fields';
+import { NumberField, SelectField, ToggleField } from './fields';
 import { MangaCloudflareNotice } from './MangaCloudflareNotice';
 import {
     AUTO_SCROLL_STEP,
@@ -30,6 +30,9 @@ import {
 import { SETTINGS_ICON } from './TabButton';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { useScrollFraction } from '../hooks/useScrollFraction';
+import { useChapterZones } from '../hooks/useChapterZones';
+import { ReaderChapterZone } from './ReaderChapterZone';
+import { chapterStartScrollTop, zoneHeight } from './chapterZones';
 import { noop, scrollToTopSmoothly } from '../hooks/smoothScroll';
 
 const PRELOAD_AHEAD = 2;
@@ -85,11 +88,36 @@ export function MangaReader() {
     const settledRef = useRef(new Set<number>());
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const sectionRef = useRef<HTMLElement | null>(null);
+    // The zones between chapters, above the first page and below the last, and how tall they are.
+    const startZoneRef = useRef<HTMLDivElement | null>(null);
+    const endZoneRef = useRef<HTMLDivElement | null>(null);
+    const [zoneHeightPx, setZoneHeightPx] = useState(() => {
+        return zoneHeight(window.innerHeight);
+    });
+    // Where the page is scrolled to when a chapter starts (the first page under the bar, the zone above it out of view); 0 where there are no zones.
+    const startTopRef = useRef(0);
+    const enteredRef = useRef('');
 
     // The page scrolls inside the main area of the app (or the document, where there is none).
     const scroller = useCallback((): HTMLElement => {
         return (sectionRef.current?.closest('.app__main') as HTMLElement | null) ?? (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
     }, []);
+
+    const bar = useCallback((): HTMLElement | null => {
+        return sectionRef.current?.querySelector<HTMLElement>('.reader__bar') ?? null;
+    }, []);
+
+    // The scroll position that puts the first page just under the bar (the same wherever the page is scrolled to now).
+    const chapterStartTop = useCallback((): number => {
+        const area = scroller();
+        const pages = scrollRef.current;
+        if (pages === null) {
+            return 0;
+        }
+        // The bar stays where it is while the page scrolls (it is stuck to the top of it), and the page has a gap of 8 pixels under it.
+        const wanted = (bar()?.getBoundingClientRect().bottom ?? area.getBoundingClientRect().top) + 8;
+        return chapterStartScrollTop(area.scrollTop, pages.getBoundingClientRect().top, wanted);
+    }, [scroller, bar]);
 
     const chapter = reader.chapters[reader.index];
     const key = chapter === undefined ? '' : progressKey(reader.mangaTitle, chapter.remoteId);
@@ -108,7 +136,14 @@ export function MangaReader() {
         const position = reader.resume === true && chapter !== undefined ? loadLastPosition(reader.mangaTitle) : null;
         const resumeAt = position !== null && chapter !== undefined && position.chapterRemoteId === chapter.remoteId ? position.page : null;
         const saved = reader.status === 'ready' ? (resumeAt ?? loadProgress(key)) : 0;
-        const start = saved >= total ? 0 : saved;
+        let start = saved >= total ? 0 : saved;
+        // A chapter reached by scrolling through the zone between chapters starts at its first page from the one before it, and at its last
+        // from the one after it, whatever it was left on.
+        if (reader.status === 'ready' && reader.entry === 'start') {
+            start = 0;
+        } else if (reader.status === 'ready' && reader.entry === 'end' && total > 0) {
+            start = total - 1;
+        }
         setPage(start);
         setRestoreTo(continuous && start > 0 ? start : null);
         setFailed([]);
@@ -175,9 +210,14 @@ export function MangaReader() {
         }
     }, [reader.status, total, page, key, markRead]);
 
-    const bringToPage = useCallback((target: number) => {
-        scrollRef.current?.querySelector<HTMLElement>(`[data-page="${String(target)}"]`)?.scrollIntoView?.();
-    }, []);
+    // A chapter reached from the one after it is brought to the end of its last page (the user goes on upwards), the others to the top of theirs.
+    const toTheEnd = reader.entry === 'end';
+    const bringToPage = useCallback(
+        (target: number) => {
+            scrollRef.current?.querySelector<HTMLElement>(`[data-page="${String(target)}"]`)?.scrollIntoView?.(toTheEnd && target === total - 1 ? { block: 'end' } : undefined);
+        },
+        [toTheEnd, total]
+    );
 
     // In the scroll the chapter is brought to the page it starts on.
     useEffect(() => {
@@ -269,7 +309,11 @@ export function MangaReader() {
         }
     }, [reader.status, reader.pages, page, continuous]);
 
-    const scrolledDown = useScrolledDown(scroller, TOP_BUTTON_THRESHOLD);
+    // The zones are only there in the scroll modes, with the chapter on the screen.
+    const zonesOn = continuous && reader.status === 'ready' && total > 0;
+    const scrolledDown = useScrolledDown(scroller, () => {
+        return TOP_BUTTON_THRESHOLD + startTopRef.current;
+    });
     // The scroll to the top that is going on, to be stopped before another starts and when the reader closes.
     const stopTopScroll = useRef<() => void>(noop);
     useEffect(() => {
@@ -285,7 +329,71 @@ export function MangaReader() {
     const stopAutoScroll = useCallback(() => {
         setAutoScrolling(false);
     }, []);
-    useAutoScroll(scroller, scrolling, prefs.autoScrollSpeed, stopAutoScroll);
+    // At the end of the chapter the auto scroll waits for the next one when it opens by itself, and stops where there is no next one.
+    const handleAutoScrollEnd = useCallback((): boolean => {
+        if (hasNext && prefs.chapterSwitch) {
+            return true;
+        }
+        setAutoScrolling(false);
+        return false;
+    }, [hasNext, prefs.chapterSwitch]);
+    useAutoScroll(scroller, scrolling, prefs.autoScrollSpeed, handleAutoScrollEnd);
+
+    // The zones between chapters: how much of each is in view, and the switch when the user goes through one.
+    const zones = useChapterZones({
+        area: scroller,
+        bar,
+        startZone: startZoneRef,
+        endZone: endZoneRef,
+        enabled: zonesOn,
+        automatic: prefs.chapterSwitch,
+        hasPrevious,
+        hasNext,
+        onPrevious: () => {
+            void goToChapter(-1, true);
+        },
+        onNext: () => {
+            void goToChapter(1, true);
+        }
+    });
+    const previousChapter = reader.chapters[reader.index - 1];
+    const nextChapter = reader.chapters[reader.index + 1];
+
+    // A chapter starts with its first page under the bar, the zone above it out of view.
+    useLayoutEffect(() => {
+        if (!zonesOn) {
+            startTopRef.current = 0;
+            return;
+        }
+        const entry = `${key}|${String(total)}`;
+        if (enteredRef.current !== entry) {
+            enteredRef.current = entry;
+            if (restoreTo === null) {
+                scroller().scrollTop = chapterStartTop();
+            }
+        }
+        startTopRef.current = chapterStartTop();
+    }, [zonesOn, key, total, restoreTo, zoneHeightPx, scroller, chapterStartTop]);
+
+    // When the window changes size the zones do too, and the pages move with the zone above them: the place of the user is moved along.
+    useEffect(() => {
+        if (!zonesOn) {
+            return undefined;
+        }
+        const resize = (): void => {
+            const wanted = zoneHeight(window.innerHeight);
+            setZoneHeightPx((current) => {
+                if (current !== wanted) {
+                    scroller().scrollTop += wanted - current;
+                }
+                return wanted;
+            });
+        };
+        window.addEventListener('resize', resize);
+        return () => {
+            window.removeEventListener('resize', resize);
+        };
+    }, [zonesOn, scroller]);
 
     const changePrefs = useCallback((patch: Partial<ReaderPrefs>) => {
         setPrefs((current) => {
@@ -547,6 +655,14 @@ export function MangaReader() {
                             changePrefs({ pageGap: Math.min(MAX_PAGE_GAP, Math.max(MIN_PAGE_GAP, Math.round(pageGap))) });
                         }}
                     />
+                    <ToggleField
+                        label={t('manga.reader.chapterSwitch')}
+                        checked={prefs.chapterSwitch}
+                        hint={t('manga.reader.chapterSwitchHint')}
+                        onChange={(chapterSwitch) => {
+                            changePrefs({ chapterSwitch });
+                        }}
+                    />
                     <NumberField
                         label={t('manga.reader.autoScrollSpeed')}
                         value={prefs.autoScrollSpeed}
@@ -576,10 +692,34 @@ export function MangaReader() {
                 </div>
             )}
             {reader.status === 'ready' && total > 0 && continuous && (
-                <div ref={scrollRef} className={`reader__scroll reader__scroll--${prefs.mode} reader__stage--${scale}`} style={prefs.mode === 'vertical' ? { gap: `${String(prefs.pageGap)}px` } : undefined} data-testid="reader-scroll">
-                    {reader.pages.map((_address, index) => {
-                        return renderPage(index);
-                    })}
+                <div className="reader__flow">
+                    <ReaderChapterZone
+                        edge="start"
+                        zoneRef={startZoneRef}
+                        title={previousChapter === undefined ? null : chapterTitle(previousChapter.name, previousChapter.number)}
+                        progress={zones.start}
+                        automatic={prefs.chapterSwitch}
+                        height={zoneHeightPx}
+                        onGo={() => {
+                            void goToChapter(-1, true);
+                        }}
+                    />
+                    <div ref={scrollRef} className={`reader__scroll reader__scroll--${prefs.mode} reader__stage--${scale}`} style={prefs.mode === 'vertical' ? { gap: `${String(prefs.pageGap)}px` } : undefined} data-testid="reader-scroll">
+                        {reader.pages.map((_address, index) => {
+                            return renderPage(index);
+                        })}
+                    </div>
+                    <ReaderChapterZone
+                        edge="end"
+                        zoneRef={endZoneRef}
+                        title={nextChapter === undefined ? null : chapterTitle(nextChapter.name, nextChapter.number)}
+                        progress={zones.end}
+                        automatic={prefs.chapterSwitch}
+                        height={zoneHeightPx}
+                        onGo={() => {
+                            void goToChapter(1, true);
+                        }}
+                    />
                 </div>
             )}
             {reader.status === 'ready' && total > 0 && (
@@ -605,7 +745,7 @@ export function MangaReader() {
                             onClick={() => {
                                 stopAutoScroll();
                                 stopTopScroll.current();
-                                stopTopScroll.current = scrollToTopSmoothly(scroller());
+                                stopTopScroll.current = scrollToTopSmoothly(scroller(), startTopRef.current);
                             }}
                         >
                             <span aria-hidden="true">↑</span>

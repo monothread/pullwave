@@ -682,7 +682,7 @@ test.describe('manga section', () => {
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await expect(reader.getByRole('img')).toHaveCount(3);
         // The next chapter.
-        await reader.getByRole('button', { name: 'NEXT CHAPTER' }).click();
+        await reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true }).click();
         await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
         await expect(reader.getByRole('img')).toHaveCount(3);
         await expect(reader.getByRole('button', { name: 'NEXT CHAPTER' })).toBeDisabled();
@@ -788,11 +788,15 @@ test.describe('manga section', () => {
         const area = session.page.locator('.app__main');
         await expect(reader.getByRole('img')).toHaveCount(3);
         await expect.poll(() => {return area.evaluate((element) => {return element.scrollHeight - element.clientHeight})}).toBeGreaterThan(1500);
+        // A chapter starts with the zone of the previous chapter above its first page, out of view: that is the top the button goes back to.
+        await expect.poll(() => {return area.evaluate((element) => {return element.scrollTop})}).toBeGreaterThan(100);
+        const chapterTop = await area.evaluate((element) => {return element.scrollTop});
         await area.evaluate((element) => {
             element.scrollTop = 1500;
         });
         const start = await area.evaluate((element) => {return element.scrollTop});
         expect(start).toBeGreaterThan(1000);
+        await expect(session.page.getByRole('button', { name: 'Back to the top' })).toBeVisible();
 
         // Every frame of the way up is recorded: it is a long run of small steps, never a jump, and it ends at the top.
         const samples = await session.page.evaluate(async () => {
@@ -814,7 +818,7 @@ test.describe('manga section', () => {
             });
             return seen;
         });
-        expect(samples.at(-1)).toBe(0);
+        expect(Math.abs(samples.at(-1)! - chapterTop)).toBeLessThanOrEqual(1);
         expect(samples.length).toBeGreaterThan(15);
         for (let index = 1; index < samples.length; index += 1) {
             expect(samples[index]!).toBeLessThanOrEqual(samples[index - 1]!);
@@ -824,7 +828,7 @@ test.describe('manga section', () => {
                 return samples[index]! - value;
             })
         );
-        expect(biggestStep).toBeLessThan(start / 3);
+        expect(biggestStep).toBeLessThan((start - chapterTop) / 3);
 
         // The user taking over (the wheel) stops it where it is. (The first run is allowed to finish its last frames first.)
         await session.page.waitForTimeout(1000);
@@ -839,7 +843,7 @@ test.describe('manga section', () => {
         const stopped = await area.evaluate((element) => {return element.scrollTop});
         await session.page.waitForTimeout(500);
         expect(await area.evaluate((element) => {return element.scrollTop})).toBe(stopped);
-        expect(stopped).toBeGreaterThan(0);
+        expect(stopped).toBeGreaterThan(chapterTop);
     });
 
     test('grows the bar of a download smoothly, with the neon of the app', async () => {
@@ -903,6 +907,8 @@ test.describe('manga section', () => {
         const area = session.page.locator('.app__main');
         await expect(reader.getByRole('img')).toHaveCount(3);
         await expect.poll(() => {return area.evaluate((element) => {return element.scrollHeight - element.clientHeight})}).toBeGreaterThan(1500);
+        await expect.poll(() => {return area.evaluate((element) => {return element.scrollTop})}).toBeGreaterThan(100);
+        const chapterTop = await area.evaluate((element) => {return element.scrollTop});
         await expect(session.page.getByRole('button', { name: 'Back to the top' })).toHaveCount(0);
 
         // Far into the chapter, the settings still open where the user is looking.
@@ -925,9 +931,9 @@ test.describe('manga section', () => {
         await session.page.waitForTimeout(400);
         expect(await area.evaluate((element) => {return element.scrollTop})).toBe(stopped);
 
-        // The button at the corner takes it back to the top.
+        // The button at the corner takes it back to where the chapter starts (the first page under the bar).
         await session.page.getByRole('button', { name: 'Back to the top' }).click();
-        await expect.poll(() => {return area.evaluate((element) => {return element.scrollTop})}).toBe(0);
+        await expect.poll(() => {return area.evaluate((element) => {return Math.round(element.scrollTop)})}).toBe(chapterTop);
         await expect(session.page.getByRole('button', { name: 'Back to the top' })).toHaveCount(0);
     });
 
@@ -1618,6 +1624,213 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'CONTINUE READING' }).click();
         await expect(openedChapter).toHaveText('One Piece · The Great Race');
         await expect(reader.getByText('2 / 10')).toBeVisible();
+    });
+
+    test('switches the chapter by itself when the user scrolls through the zone between chapters, in both directions', async () => {
+        fake.pagesArePicture = true;
+        fake.pageTotal = 4;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const area = session.page.locator('.app__main');
+        const title = reader.locator('.reader__title');
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByRole('img')).toHaveCount(4);
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+
+        // The chapter starts with its first page under the bar, the zone of the previous chapter above it, out of view.
+        const bar = session.page.locator('.reader__bar');
+        const firstPage = reader.getByRole('img').first();
+        await expect.poll(async () => {
+            const top = (await firstPage.boundingBox())!.y;
+            const barBottom = (await bar.boundingBox())!.y + (await bar.boundingBox())!.height;
+            return top >= barBottom - 1 && top <= barBottom + 24;
+        }).toBe(true);
+        const startZone = reader.getByTestId('reader-zone-start');
+        // The zone above the first page is out of view: all of it is above the bar.
+        const zoneAboveBar = async (): Promise<boolean> => {
+            const zone = (await startZone.boundingBox())!;
+            const barBox = (await bar.boundingBox())!;
+            return zone.y + zone.height <= barBox.y + barBox.height + 1;
+        };
+        expect(await zoneAboveBar()).toBe(true);
+
+        // Going down through the zone at the end switches to the next chapter.
+        await area.evaluate((element) => {element.scrollTop = element.scrollHeight});
+        await expect(reader.getByTestId('reader-zone-end')).toBeInViewport();
+        await expect(reader.getByTestId('reader-zone-end').getByText('The Great Race', { exact: true })).toBeVisible();
+        await expect(title).toHaveText('One Piece · The Great Race', { timeout: 10000 });
+        // Only the current chapter is on the screen.
+        await expect(reader.getByRole('img')).toHaveCount(4);
+        expect(fake.graphqlRequests('fetchChapterPages').map((item) => {return item.variables?.['chapterId']})).toEqual([101, 102]);
+        await expect.poll(zoneAboveBar).toBe(true);
+
+        // Going up through the zone at the start goes back to the previous chapter, on its last page.
+        await area.evaluate((element) => {element.scrollTop = 0});
+        await expect(title).toHaveText('One Piece · Romance Dawn', { timeout: 10000 });
+        await expect(reader.getByText('4 / 4')).toBeVisible();
+        await expect(reader.getByTestId('reader-zone-end')).not.toBeInViewport();
+    });
+
+    // Opens the first chapter of the manga in the webtoon mode, with four pages in each chapter.
+    async function openWebtoon(): Promise<{ reader: Locator; area: Locator; title: Locator }> {
+        fake.pagesArePicture = true;
+        fake.pageTotal = 4;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByRole('img')).toHaveCount(4);
+        return { reader, area: session.page.locator('.app__main'), title: reader.locator('.reader__title') };
+    }
+
+    test('does not switch the chapter when the user scrolls back before the moment of the zone is over, nor while the zone is only crossed', async () => {
+        const { reader, area, title } = await openWebtoon();
+        // Down to the end of the zone and back at once: nothing happens.
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+            window.setTimeout(() => {
+                element.scrollTop = element.scrollTop - 600;
+            }, 150);
+        });
+        await session.page.waitForTimeout(1500);
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+        await expect(reader.getByRole('img')).toHaveCount(4);
+        // The bar of the zone shows how far the user went through it.
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollHeight - element.clientHeight - 150;
+        });
+        const bar = reader.getByTestId('reader-zone-end').getByRole('progressbar');
+        await expect.poll(async () => {return Number(await bar.getAttribute('aria-valuenow'))}).toBeGreaterThan(30);
+        expect(Number(await bar.getAttribute('aria-valuenow'))).toBeLessThan(100);
+        await session.page.waitForTimeout(1000);
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+    });
+
+    test('switches the chapter with the button of the zone, and only that way when the setting is off', async () => {
+        const { reader, area, title } = await openWebtoon();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        const toggle = reader.getByRole('switch', { name: 'Switch chapter while scrolling' });
+        await expect(toggle).toBeChecked();
+        await toggle.uncheck();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+        });
+        await expect(reader.getByTestId('reader-zone-end')).toBeInViewport();
+        await expect(reader.getByTestId('reader-zone-end').getByRole('progressbar')).toHaveCount(0);
+        await session.page.waitForTimeout(1500);
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+        await reader.getByRole('button', { name: 'GO TO THE NEXT CHAPTER' }).click();
+        await expect(title).toHaveText('One Piece · The Great Race');
+        await expect(reader.getByText('1 / 4')).toBeVisible();
+        // Going up through the zone at the start does not switch either, and its button does.
+        await area.evaluate((element) => {
+            element.scrollTop = 0;
+        });
+        await session.page.waitForTimeout(1500);
+        await expect(title).toHaveText('One Piece · The Great Race');
+        await reader.getByRole('button', { name: 'GO TO THE PREVIOUS CHAPTER' }).click();
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+        await expect(reader.getByText('4 / 4')).toBeVisible();
+        // The choice is kept after the app is closed and opened again.
+        await session.app.close();
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const again = session.page.getByRole('region', { name: 'Reader' });
+        await again.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(again.getByRole('switch', { name: 'Switch chapter while scrolling' })).not.toBeChecked();
+    });
+
+    test('says there is no chapter before the first one nor after the last one, and does not switch there', async () => {
+        const { reader, area, title } = await openWebtoon();
+        await expect(reader.getByTestId('reader-zone-start')).toContainText('This is the first chapter.');
+        await expect(reader.getByTestId('reader-zone-start').getByRole('button')).toHaveCount(0);
+        await area.evaluate((element) => {
+            element.scrollTop = 0;
+        });
+        await session.page.waitForTimeout(1500);
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+        // To the last chapter, and to the end of it.
+        await reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true }).click();
+        await expect(title).toHaveText('One Piece · The Great Race');
+        await expect(reader.getByTestId('reader-zone-end')).toContainText('This is the last chapter.');
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+        });
+        await session.page.waitForTimeout(1500);
+        await expect(title).toHaveText('One Piece · The Great Race');
+        await expect(reader.getByRole('img')).toHaveCount(4);
+    });
+
+    test('has no zones one page at a time, and does not switch the chapter when the mode changes in the middle of it', async () => {
+        const { reader, area, title } = await openWebtoon();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('single');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByTestId('reader-zone-start')).toHaveCount(0);
+        await expect(reader.getByTestId('reader-zone-end')).toHaveCount(0);
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('2 / 4')).toBeVisible();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('vertical');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await session.page.waitForTimeout(1500);
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+        await expect(reader.getByTestId('reader-zone-start')).toHaveCount(1);
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollTop + 10;
+        });
+        await expect(title).toHaveText('One Piece · Romance Dawn');
+    });
+
+    test('goes back to where the chapter starts, not to the zone above it, and does not take the user to the previous chapter by doing so', async () => {
+        const { reader, area, title } = await openWebtoon();
+        await reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true }).click();
+        await expect(title).toHaveText('One Piece · The Great Race');
+        const bar = session.page.locator('.reader__bar');
+        const firstPage = reader.getByRole('img').first();
+        const underTheBar = async (): Promise<boolean> => {
+            const top = (await firstPage.boundingBox())!.y;
+            const barBox = (await bar.boundingBox())!;
+            return Math.abs(top - (barBox.y + barBox.height)) <= 12;
+        };
+        await expect.poll(underTheBar).toBe(true);
+        await expect(session.page.getByRole('button', { name: 'Back to the top' })).toHaveCount(0);
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollTop + 1200;
+        });
+        await session.page.getByRole('button', { name: 'Back to the top' }).click();
+        await expect.poll(underTheBar).toBe(true);
+        await session.page.waitForTimeout(1200);
+        await expect(title).toHaveText('One Piece · The Great Race');
+        await expect(session.page.getByRole('button', { name: 'Back to the top' })).toHaveCount(0);
+    });
+
+    test('goes on with the auto scroll into the next chapter, and stops at the end of the last one', async () => {
+        const { reader, title } = await openWebtoon();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Auto scroll speed (pixels per second)').fill('600');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await session.page.getByRole('button', { name: 'AUTO SCROLL' }).click();
+        await expect(title).toHaveText('One Piece · The Great Race', { timeout: 40000 });
+        await expect(session.page.getByRole('button', { name: 'STOP SCROLL' })).toBeVisible();
+        await expect(reader.getByTestId('reader-zone-end')).toContainText('This is the last chapter.', { timeout: 20000 });
+        await expect(session.page.getByRole('button', { name: 'AUTO SCROLL' })).toBeVisible({ timeout: 40000 });
+        await expect(title).toHaveText('One Piece · The Great Race');
     });
 
     test('keeps the groups, the series and the source of a manga of the library behind a gear in its head', async () => {

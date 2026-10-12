@@ -123,4 +123,37 @@ describe('scrollToTopSmoothly', () => {
         expect(element.scrollTop).toBe(0);
         expect(remove).toHaveBeenCalledTimes(4);
     });
+
+    it('goes up to a place that is not the top, and stops there', () => {
+        const element = area(2400);
+        scrollToTopSmoothly(element, 600);
+        run(0);
+        run(scrollDuration(1800, 800) / 2);
+        expect(element.scrollTop).toBe(1500);
+        run(10_000);
+        expect(element.scrollTop).toBe(600);
+        expect(
+            frames.every((frame) => {
+                return frame === noop;
+            })
+        ).toBe(true);
+    });
+
+    it('does nothing when it is at that place already, or above it', () => {
+        const element = area(600);
+        expect(scrollToTopSmoothly(element, 600)).toBe(noop);
+        expect(scrollToTopSmoothly(element, 900)).toBe(noop);
+        expect(frames).toHaveLength(0);
+        expect(element.scrollTop).toBe(600);
+    });
+
+    it('takes the time by the way to the place, not by the way to the top', () => {
+        const element = area(1000);
+        scrollToTopSmoothly(element, 800);
+        run(0);
+        expect(scrollDuration(200, 800)).toBeLessThan(scrollDuration(1000, 800));
+        run(scrollDuration(200, 800));
+        expect(element.scrollTop).toBe(800);
+    });
 });
+

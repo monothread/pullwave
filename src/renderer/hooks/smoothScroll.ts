@@ -20,14 +20,14 @@ export function noop(): void {
 
 const INTERRUPTIONS = ['wheel', 'touchstart', 'mousedown', 'keydown'] as const;
 
-// Scrolls the element to the top with a gliding motion of its own (the one of the browser is cut short on a long way). It stops where it is
-// when the user takes over (wheel, touch, click or key). Gives the function that stops it.
-export function scrollToTopSmoothly(element: HTMLElement): () => void {
+// Scrolls the element up to `target` (the top, when none is given) with a gliding motion of its own (the one of the browser is cut short on a
+// long way). It stops where it is when the user takes over (wheel, touch, click or key). Gives the function that stops it.
+export function scrollToTopSmoothly(element: HTMLElement, target = 0): () => void {
     const from = element.scrollTop;
-    if (from <= 0) {
+    if (from <= target) {
         return noop;
     }
-    const duration = scrollDuration(from, element.clientHeight);
+    const duration = scrollDuration(from - target, element.clientHeight);
     let frame = 0;
     let started: number | null = null;
     const stop = (): void => {
@@ -39,7 +39,7 @@ export function scrollToTopSmoothly(element: HTMLElement): () => void {
     const step = (now: number): void => {
         started ??= now;
         const progress = Math.min(1, (now - started) / duration);
-        element.scrollTop = from * (1 - easeInOut(progress));
+        element.scrollTop = target + (from - target) * (1 - easeInOut(progress));
         if (progress < 1) {
             frame = requestAnimationFrame(step);
         } else {

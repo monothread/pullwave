@@ -344,7 +344,7 @@ describe('MangaReader settings', () => {
         await user.selectOptions(screen.getByLabelText('Background'), 'white');
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
         expect(screen.getByRole('region', { name: 'Reader' })).toHaveClass('reader--white');
-        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white', autoScrollSpeed: 80, pageGap: 8 });
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
         unmount();
         render(<MangaReader />);
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
@@ -599,13 +599,16 @@ describe('MangaReader back to the top', () => {
 
         it('stops the auto scroll that was going on', async () => {
             const user = userEvent.setup();
-            const { button } = await openScrolledDown(900);
+            const { area } = await openScrolledDown(900);
             await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
             await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
             await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
             await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
             expect(screen.getByRole('button', { name: 'STOP SCROLL' })).toHaveAttribute('aria-pressed', 'true');
-            await user.click(button);
+            // The chapter starts again at its first page when the mode changes: the page is scrolled down again.
+            area.scrollTop = 3000;
+            fireEvent.scroll(area);
+            await user.click(await screen.findByRole('button', { name: 'Back to the top' }));
             expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toHaveAttribute('aria-pressed', 'false');
         });
     });
@@ -647,8 +650,8 @@ describe('MangaReader auto scroll', () => {
         });
     }
 
-    async function openScroll(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-        open();
+    async function openScroll(user: ReturnType<typeof userEvent.setup>, patch: Partial<MangaReaderState> = {}): Promise<void> {
+        open(patch);
         render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
         await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
         await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
@@ -711,8 +714,30 @@ describe('MangaReader auto scroll', () => {
         expect(speed).toHaveValue(10);
     });
 
-    it('stops by itself at the end of the chapter', async () => {
+    it('stops by itself at the end of the last chapter', async () => {
         const user = userEvent.setup();
+        await openScroll(user, { index: 2 });
+        area.scrollTop = 4600;
+        await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
+        tick(1000);
+        tick(2000);
+        expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('waits at the end of the chapter for the next one when it opens by itself', async () => {
+        const user = userEvent.setup();
+        await openScroll(user);
+        area.scrollTop = 4600;
+        await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
+        tick(1000);
+        tick(2000);
+        tick(3000);
+        expect(screen.getByRole('button', { name: 'STOP SCROLL' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('stops at the end of the chapter when the next one does not open by itself', async () => {
+        const user = userEvent.setup();
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ chapterSwitch: false }));
         await openScroll(user);
         area.scrollTop = 4600;
         await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
@@ -1291,3 +1316,228 @@ describe('MangaReader the check of Cloudflare while the pages are asked for', ()
         expect(screen.queryByTestId('manga-cloudflare')).not.toBeInTheDocument();
     });
 });
+
+describe('MangaReader the zones between chapters', () => {
+    let area: HTMLElement;
+    let frames: Array<(time: number) => void>;
+
+    function box(top: number, height: number): DOMRect {
+        return { top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => { return {}; } } as DOMRect;
+    }
+
+    beforeEach(() => {
+        area = document.createElement('div');
+        area.className = 'app__main';
+        area.scrollTo = vi.fn() as unknown as typeof area.scrollTo;
+        document.body.appendChild(area);
+        frames = [];
+        vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => {
+            frames.push(callback);
+            return frames.length;
+        });
+        vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+            frames[id - 1] = () => {
+                return undefined;
+            };
+        });
+        // An area 652 tall under a bar of 90, with the pages 3000 tall after a zone of 468 (the pages start at 678 when it is not scrolled).
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+            if (this === area) {
+                return box(112, 652);
+            }
+            if (this.classList.contains('reader__bar')) {
+                return box(112, 90);
+            }
+            if (this.getAttribute('data-testid') === 'reader-scroll') {
+                return box(678 - area.scrollTop, 3000);
+            }
+            return box(0, 0);
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+        area.remove();
+    });
+
+    function show(patch: Partial<MangaReaderState> = {}, mode: 'vertical' | 'webtoon' | 'single' = 'webtoon') {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode }));
+        open(patch);
+        return render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
+    }
+
+    function runFrames(time: number): void {
+        const run = frames.splice(0);
+        act(() => {
+            run.forEach((frame) => {
+                frame(time);
+            });
+        });
+    }
+
+    it.each(['vertical', 'webtoon'] as const)('has a zone above the first page and one below the last in the %s mode', (mode) => {
+        show({}, mode);
+        const start = screen.getByTestId('reader-zone-start');
+        const end = screen.getByTestId('reader-zone-end');
+        const pages = screen.getByTestId('reader-scroll');
+        expect(start.nextElementSibling).toBe(pages);
+        expect(pages.nextElementSibling).toBe(end);
+        expect(pages.parentElement).toHaveClass('reader__flow');
+        expect(within(start).getByText('Chapter 1')).toBeInTheDocument();
+        expect(within(end).getByText('#3')).toBeInTheDocument();
+        expect(pages.querySelectorAll('img')).toHaveLength(3);
+    });
+
+    it('has no zone one page at a time', () => {
+        show({}, 'single');
+        expect(screen.queryByTestId('reader-zone-start')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('reader-zone-end')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('reader-scroll')).not.toBeInTheDocument();
+    });
+
+    it('has no zone while the chapter loads, or when it has no pages', () => {
+        show({ status: 'loading', pages: [] });
+        expect(screen.queryByTestId('reader-zone-end')).not.toBeInTheDocument();
+    });
+
+    it('says there is no previous chapter at the first one and no next chapter at the last one', () => {
+        const { unmount } = show({ index: 0 });
+        expect(within(screen.getByTestId('reader-zone-start')).getByText('This is the first chapter.')).toBeInTheDocument();
+        expect(within(screen.getByTestId('reader-zone-end')).getByText('Chapter 2')).toBeInTheDocument();
+        unmount();
+        show({ index: 2 });
+        expect(within(screen.getByTestId('reader-zone-end')).getByText('This is the last chapter.')).toBeInTheDocument();
+        expect(within(screen.getByTestId('reader-zone-start')).getByText('Chapter 2')).toBeInTheDocument();
+    });
+
+    it('shows how the zone is made: as tall as most of the window', () => {
+        show();
+        expect(screen.getByTestId('reader-zone-end')).toHaveStyle({ height: `${String(Math.max(240, Math.round(window.innerHeight * 0.6)))}px` });
+    });
+
+    it('goes to the next chapter with the button of its zone, and reads it from its start', async () => {
+        const user = userEvent.setup();
+        saveProgress('One Piece|3', 1);
+        show();
+        await user.click(within(screen.getByTestId('reader-zone-end')).getByRole('button', { name: 'GO TO THE NEXT CHAPTER' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+        expect(await screen.findByText('1 / 3')).toBeInTheDocument();
+        expect(useMangaStore.getState().reader).toMatchObject({ index: 2, entry: 'start', status: 'ready' });
+        expect(screen.getByText('One Piece · #3')).toBeInTheDocument();
+    });
+
+    it('goes to the previous chapter with the button of its zone, and reads it from its end', async () => {
+        const user = userEvent.setup();
+        saveProgress('One Piece|1', 1);
+        show();
+        await user.click(within(screen.getByTestId('reader-zone-start')).getByRole('button', { name: 'GO TO THE PREVIOUS CHAPTER' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 1, libraryChapterId: null });
+        expect(await screen.findByText('3 / 3')).toBeInTheDocument();
+        expect(useMangaStore.getState().reader).toMatchObject({ index: 0, entry: 'end', status: 'ready' });
+        expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 1, page: 2 });
+    });
+
+    it('shows only the chapter that is on, not the one it came from', async () => {
+        const user = userEvent.setup();
+        show();
+        await user.click(within(screen.getByTestId('reader-zone-end')).getByRole('button', { name: 'GO TO THE NEXT CHAPTER' }));
+        await screen.findByText('1 / 3');
+        expect(screen.getAllByTestId('reader-scroll')).toHaveLength(1);
+        expect(screen.getByTestId('reader-scroll').querySelectorAll('img')).toHaveLength(3);
+        expect(screen.getAllByTestId('reader-zone-end')).toHaveLength(1);
+        expect(screen.getAllByTestId('reader-zone-start')).toHaveLength(1);
+        expect(screen.queryByText('One Piece · Chapter 2')).not.toBeInTheDocument();
+    });
+
+    it('starts a chapter reached by scrolling on its first page, whatever it was left on', () => {
+        saveProgress('One Piece|2', 1);
+        show({ entry: 'start' });
+        expect(screen.getByText('1 / 3')).toBeInTheDocument();
+    });
+
+    it('starts a chapter reached from the one after it on its last page, whatever it was left on', () => {
+        saveProgress('One Piece|2', 1);
+        show({ entry: 'end' });
+        expect(screen.getByText('3 / 3')).toBeInTheDocument();
+    });
+
+    it('starts where the chapter was left when it was not reached by scrolling', () => {
+        saveProgress('One Piece|2', 1);
+        show();
+        expect(screen.getByText('2 / 3')).toBeInTheDocument();
+    });
+
+    it('brings a chapter reached from the one after it to the end of its last page, not to the top of it', () => {
+        const bring = vi.fn();
+        Element.prototype.scrollIntoView = bring;
+        show({ entry: 'end' });
+        expect(bring).toHaveBeenCalledWith({ block: 'end' });
+        bring.mockClear();
+        act(() => {
+            useMangaStore.setState({ reader: { ...useMangaStore.getState().reader, entry: undefined, resume: true } });
+        });
+        delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+
+    it('puts the first page just under the bar when a chapter starts, the zone above it out of view', () => {
+        show();
+        expect(area.scrollTop).toBe(678 - (112 + 90 + 8));
+    });
+
+    it('does not move the page of a chapter that is brought to a page it was left on', () => {
+        const bring = vi.fn();
+        Element.prototype.scrollIntoView = bring;
+        saveProgress('One Piece|2', 2);
+        show();
+        expect(area.scrollTop).toBe(0);
+        expect(bring).toHaveBeenCalledWith(undefined);
+        delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+
+    it('has the switch in the settings, on, and keeps it when it is turned off, which takes the bar and the hint out of the zones', async () => {
+        const user = userEvent.setup();
+        show();
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        const toggle = screen.getByRole('switch', { name: 'Switch chapter while scrolling' });
+        expect(toggle).toBeChecked();
+        expect(screen.getByText(/going through the zone at the end \(or the start\)/)).toBeInTheDocument();
+        expect(within(screen.getByTestId('reader-zone-end')).getByRole('progressbar')).toBeInTheDocument();
+        await user.click(toggle);
+        expect(toggle).not.toBeChecked();
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toMatchObject({ chapterSwitch: false });
+        expect(within(screen.getByTestId('reader-zone-end')).queryByRole('progressbar')).not.toBeInTheDocument();
+        expect(within(screen.getByTestId('reader-zone-end')).getByRole('button', { name: 'GO TO THE NEXT CHAPTER' })).toBeInTheDocument();
+    });
+
+    it('goes back to where the chapter starts, not to the zone above it, with the button at the corner', async () => {
+        const user = userEvent.setup();
+        show();
+        const start = area.scrollTop;
+        expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+        area.scrollTop = start + 900;
+        fireEvent.scroll(area);
+        await user.click(await screen.findByRole('button', { name: 'Back to the top' }));
+        runFrames(0);
+        runFrames(10_000);
+        expect(area.scrollTop).toBe(start);
+    });
+
+    it('shows the button at the corner only after the chapter was scrolled, not at its start', async () => {
+        show();
+        expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+        area.scrollTop = area.scrollTop + 300;
+        fireEvent.scroll(area);
+        expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+        area.scrollTop = area.scrollTop + 200;
+        fireEvent.scroll(area);
+        expect(await screen.findByRole('button', { name: 'Back to the top' })).toBeInTheDocument();
+    });
+
+    it('keeps the progress bar to the pages, not to the zones', () => {
+        show();
+        const bar = screen.getByRole('progressbar', { name: 'Reading progress' });
+        expect(bar).toHaveAttribute('aria-valuenow', '0');
+    });
+});
+

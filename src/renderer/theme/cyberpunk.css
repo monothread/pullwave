@@ -1439,3 +1439,11 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 
 /* The width of this bar is moved frame by frame by the screen itself, so the transition of the others would only make it lag behind. */
 .progress__bar--smooth { transition: none; }
+
+/* The zones between chapters in the scroll: the one above the first page (the previous chapter) and the one below the last (the next one). */
+.reader__flow { display: flex; flex-direction: column; gap: 8px; }
+.reader__zone { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 16px; text-align: center; border: 1px dashed var(--line); color: var(--muted); }
+.reader__zone-label { color: var(--cyan); font-size: 12px; letter-spacing: 2px; }
+.reader__zone-title { color: var(--text); font-size: 18px; overflow-wrap: anywhere; }
+.reader__zone-hint, .reader__zone-none { margin: 0; font-size: 12px; line-height: 1.45; max-width: 420px; }
+.reader__zone-bar { width: min(420px, 80%); }

@@ -85,6 +85,50 @@ describe('useAutoScroll', () => {
         expect(frames).toHaveLength(0);
     });
 
+    it('goes on asking for frames at the bottom while the end function says to wait, and stops when it says not to', () => {
+        const element = makeElement(1000, 500);
+        element.scrollTop = 495;
+        let wait = true;
+        const onEnd = vi.fn(() => {
+            return wait;
+        });
+        renderHook(() => {
+            useAutoScroll(() => {
+                return element;
+            }, true, 100, onEnd);
+        });
+        tick(0);
+        tick(1000);
+        expect(onEnd).toHaveBeenCalledTimes(1);
+        expect(frames).toHaveLength(1);
+        tick(2000);
+        tick(3000);
+        expect(onEnd).toHaveBeenCalledTimes(3);
+        expect(frames).toHaveLength(1);
+        wait = false;
+        tick(4000);
+        expect(onEnd).toHaveBeenCalledTimes(4);
+        expect(frames).toHaveLength(0);
+    });
+
+    it('goes on from where it is when the content grows while it waits at the bottom', () => {
+        const element = makeElement(1000, 500);
+        element.scrollTop = 500;
+        renderHook(() => {
+            useAutoScroll(() => {
+                return element;
+            }, true, 100, () => {
+                return true;
+            });
+        });
+        tick(0);
+        tick(1000);
+        Object.defineProperty(element, 'scrollHeight', { value: 3000, configurable: true });
+        tick(2000);
+        expect(element.scrollTop).toBe(700);
+        expect(frames).toHaveLength(1);
+    });
+
     it('asks the container again every frame, and waits when there is none yet', () => {
         let element: HTMLElement | null = null;
         renderHook(() => {

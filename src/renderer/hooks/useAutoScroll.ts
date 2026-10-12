@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 
-// Scrolls `container` down by itself at `speed` pixels per second while `active`, and calls `onEnd` when it reaches the bottom.
-export function useAutoScroll(container: () => HTMLElement | null, active: boolean, speed: number, onEnd: () => void): void {
+// Scrolls `container` down by itself at `speed` pixels per second while `active`, and calls `onEnd` when it reaches the bottom. When `onEnd`
+// answers true the scroll goes on waiting at the bottom (the content may grow, or be replaced), otherwise it stops.
+export function useAutoScroll(container: () => HTMLElement | null, active: boolean, speed: number, onEnd: () => boolean | void): void {
     const containerRef = useRef(container);
     const endRef = useRef(onEnd);
 
@@ -27,8 +28,7 @@ export function useAutoScroll(container: () => HTMLElement | null, active: boole
                     carried -= whole;
                     element.scrollTop += whole;
                 }
-                if (element.scrollTop + element.clientHeight >= element.scrollHeight - 1) {
-                    endRef.current();
+                if (element.scrollTop + element.clientHeight >= element.scrollHeight - 1 && endRef.current() !== true) {
                     return;
                 }
             }

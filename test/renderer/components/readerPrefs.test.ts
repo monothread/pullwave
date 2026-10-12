@@ -29,19 +29,19 @@ beforeEach(() => {
 
 describe('reader preferences', () => {
     it('start from the defaults', () => {
-        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8 });
-        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8 });
+        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
     });
 
     it('are kept and read back', () => {
-        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0 });
-        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black","autoScrollSpeed":150,"pageGap":0}');
-        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0 });
+        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0, chapterSwitch: false });
+        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black","autoScrollSpeed":150,"pageGap":0,"chapterSwitch":false}');
+        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0, chapterSwitch: false });
     });
 
     it('fall back to the default for each value that is not valid', () => {
         window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'vertical', direction: 'up', scale: 5, background: null, autoScrollSpeed: 'fast', pageGap: 'wide' }));
-        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8 });
+        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
     });
 
     it.each([
@@ -199,6 +199,30 @@ describe('chapters read', () => {
             saveReadKeys(['a|1']);
         }).not.toThrow();
         write.mockRestore();
+    });
+});
+
+describe('the setting that switches the chapter while scrolling', () => {
+    it('is on until the user turns it off', () => {
+        expect(loadReaderPrefs().chapterSwitch).toBe(true);
+        expect(DEFAULT_READER_PREFS.chapterSwitch).toBe(true);
+    });
+
+    it('is kept when it is off, and read back', () => {
+        saveReaderPrefs({ ...DEFAULT_READER_PREFS, chapterSwitch: false });
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toMatchObject({ chapterSwitch: false });
+        expect(loadReaderPrefs().chapterSwitch).toBe(false);
+        saveReaderPrefs({ ...DEFAULT_READER_PREFS, chapterSwitch: true });
+        expect(loadReaderPrefs().chapterSwitch).toBe(true);
+    });
+
+    it('is on for preferences kept before it existed, and for a value that is not true or false', () => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'vertical' }));
+        expect(loadReaderPrefs()).toMatchObject({ mode: 'vertical', chapterSwitch: true });
+        ['no', 0, null, 'false'].forEach((value) => {
+            window.localStorage.setItem(PREFS_KEY, JSON.stringify({ chapterSwitch: value }));
+            expect(loadReaderPrefs().chapterSwitch).toBe(true);
+        });
     });
 });
 

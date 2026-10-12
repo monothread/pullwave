@@ -1159,6 +1159,57 @@ describe('mangaStore reader', () => {
         expect(state().reader).toMatchObject({ status: 'ready', index: 0, resume: false });
     });
 
+    describe('chapters reached by scrolling through the zone between chapters', () => {
+        beforeEach(async () => {
+            mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true } });
+            await state().openReader('One Piece', CHAPTERS, 1);
+        });
+
+        it('opens the next one at its start, while it loads and when it is ready', async () => {
+            const going = state().goToChapter(1, true);
+            expect(state().reader).toMatchObject({ status: 'loading', index: 2, entry: 'start', resume: false });
+            await expect(going).resolves.toBe(true);
+            expect(state().reader).toMatchObject({ status: 'ready', index: 2, entry: 'start', resume: false });
+        });
+
+        it('opens the previous one at its end', async () => {
+            await expect(state().goToChapter(-1, true)).resolves.toBe(true);
+            expect(state().reader).toMatchObject({ status: 'ready', index: 0, entry: 'end', resume: false });
+        });
+
+        it('says nothing about where a chapter starts when it is not reached by scrolling', async () => {
+            await state().goToChapter(1);
+            expect(state().reader.entry).toBeUndefined();
+            await state().goToChapter(-1, false);
+            expect(state().reader.entry).toBeUndefined();
+            await state().goToChapterIndex(0);
+            expect(state().reader.entry).toBeUndefined();
+        });
+
+        it('forgets the way it came in when a chapter is opened from the list', async () => {
+            await state().goToChapter(1, true);
+            expect(state().reader.entry).toBe('start');
+            await state().openReader('One Piece', CHAPTERS, 0);
+            expect(state().reader.entry).toBeUndefined();
+        });
+
+        it('does not go past the first or the last chapter', async () => {
+            await state().goToChapter(1, true);
+            await expect(state().goToChapter(1, true)).resolves.toBe(false);
+            expect(state().reader).toMatchObject({ index: 2, entry: 'start' });
+            await state().openReader('One Piece', CHAPTERS, 0);
+            await expect(state().goToChapter(-1, true)).resolves.toBe(false);
+            expect(state().reader.index).toBe(0);
+        });
+
+        it('asks the source for the chapter it goes to', async () => {
+            mock.api.manga.readPages.mockClear();
+            await state().goToChapter(1, true);
+            expect(mock.api.manga.readPages).toHaveBeenCalledTimes(1);
+            expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+        });
+    });
+
     it('says why a chapter could not be read', async () => {
         mock.api.manga.readPages.mockResolvedValue({ ok: false, error: FAILURE });
         await state().openReader('One Piece', CHAPTERS, 0);

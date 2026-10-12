@@ -100,3 +100,6 @@
 
 ## 2026-10-12 · continue reading
 - CONTINUE READING opens the last chapter read on the last page read, whether or not the chapter is marked as read: D-086.
+
+## 2026-10-12 · chapters that switch while scrolling
+- Zones between chapters in the scroll modes, with the setting to turn the switch off: D-087.

@@ -27,9 +27,11 @@ export interface ReaderPrefs {
     background: ReaderBackground;
     autoScrollSpeed: number;
     pageGap: number;
+    // In the scroll modes the next (or previous) chapter opens by itself when the user scrolls through the zone between chapters.
+    chapterSwitch: boolean;
 }
 
-export const DEFAULT_READER_PREFS: ReaderPrefs = { mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8 };
+export const DEFAULT_READER_PREFS: ReaderPrefs = { mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true };
 
 export const PREFS_KEY = 'pullwave.manga.reader';
 export const PROGRESS_KEY = 'pullwave.manga.progress';
@@ -56,7 +58,8 @@ export function loadReaderPrefs(): ReaderPrefs {
             scale: pick(raw['scale'], READER_SCALES, DEFAULT_READER_PREFS.scale),
             background: pick(raw['background'], READER_BACKGROUNDS, DEFAULT_READER_PREFS.background),
             autoScrollSpeed: pickSpeed(raw['autoScrollSpeed'], DEFAULT_READER_PREFS.autoScrollSpeed),
-            pageGap: pickGap(raw['pageGap'], DEFAULT_READER_PREFS.pageGap)
+            pageGap: pickGap(raw['pageGap'], DEFAULT_READER_PREFS.pageGap),
+            chapterSwitch: typeof raw['chapterSwitch'] === 'boolean' ? raw['chapterSwitch'] : DEFAULT_READER_PREFS.chapterSwitch
         };
     } catch {
         return DEFAULT_READER_PREFS;
