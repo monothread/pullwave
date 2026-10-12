@@ -93,3 +93,4 @@
 
 ## 2026-10-12 · fourth round of the manga section
 - Hidden groups (only while the app is open), DOWNLOAD SEASON / DOWNLOAD ALL instead of picking chapters, read marks as in the anime library, gliding download bar, gliding back to the top: D-082.
+- Released 0.21.1 (tag `v0.21.1` = `beb8cde`): unit 222 files OK, e2e 362 passed / 13 skipped (on a copy, while the real data instance was open), Test Windows OK after giving the slow migration test of the anime database 30 s, Release Linux then Release Windows, draft with 8 assets published.
