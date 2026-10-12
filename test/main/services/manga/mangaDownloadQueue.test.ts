@@ -92,6 +92,23 @@ const DONE = (filePath: string): Result => {
     return { status: 'done', value: { filePath, sizeBytes: 4096, pageCount: 20 } };
 };
 
+describe('MangaDownloadQueue the order of what is queued', () => {
+    it('starts with the oldest chapter and goes on to the next ones, whatever order they were sent in', async () => {
+        const { queue, downloads } = setup({ maxConcurrent: 5 });
+        queue.enqueue(request([chapter(3), chapter(1), chapter(2)]));
+        expect(downloads.map((item) => {
+            return item.options.chapterRemoteId;
+        })).toEqual([1]);
+        downloads[0]?.finish(DONE('/m/1.cbz'));
+        await flush();
+        downloads[1]?.finish(DONE('/m/2.cbz'));
+        await flush();
+        expect(downloads.map((item) => {
+            return item.options.chapterRemoteId;
+        })).toEqual([1, 2, 3]);
+    });
+});
+
 describe('MangaDownloadQueue enqueue', () => {
     it('puts the manga and the chapters in the library, starts the first one and tells how it goes', () => {
         const { queue, db, downloads, updates, state } = setup();

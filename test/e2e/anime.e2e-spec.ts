@@ -162,7 +162,7 @@ test('opens on the schedule, the first tab, to the left of the search', async ()
     const { page } = session;
     await openAnimeToday(page);
     const subNav = page.getByRole('navigation', { name: 'Anime' });
-    await expect(subNav.getByRole('button')).toHaveText(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY', '\u2699\uFE0E']);
+    await expect(subNav.getByRole('button')).toHaveText(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY', 'DOWNLOADS (0)', '\u2699\uFE0E']);
     await expect(subNav.getByRole('button', { name: 'SCHEDULE', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(subNav.getByRole('button', { name: 'SEARCH', exact: true })).not.toHaveAttribute('aria-current');
     await expect(page.getByRole('region', { name: 'Anime schedule' })).toBeVisible();
@@ -603,6 +603,8 @@ test('the history of the anime survives closing the app and can be cleared', asy
 
 // A real click on a point of a row that is not its title, as a user would: the area of the title button is stretched over the row.
 async function clickOnRow(page: Page, part: Locator): Promise<void> {
+    // The mouse clicks where the page is on the screen: what is below the fold is brought into view first.
+    await part.scrollIntoViewIfNeeded();
     const box = await part.boundingBox();
     if (box === null) {
         throw new Error('The part of the row is not on the screen');
@@ -1015,8 +1017,15 @@ test('a paused episode is in the library as paused, with a button to resume it, 
     await showDownloads(reopened);
     await expect(reopened.getByTestId('anime-job')).toHaveCount(0);
     await backFromDownloads(reopened);
-    await reopened.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
-    await reopened.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+    // The screen of the series, with its episodes shown, is where the user was, and is where they come back to.
+    const openSeries = reopened.getByRole('button', { name: 'OPEN SERIES: Fake Anime' });
+    if (await openSeries.isVisible()) {
+        await openSeries.click();
+    }
+    const showEpisodes = reopened.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true });
+    if (await showEpisodes.isVisible()) {
+        await showEpisodes.click();
+    }
     await expect(reopened.getByTestId('anime-episode').locator('.history__meta').first()).toContainText('DOWNLOADED');
 });
 

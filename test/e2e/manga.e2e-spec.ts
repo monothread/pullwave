@@ -181,7 +181,7 @@ class FakeSuwayomi {
                         { id: 101, name: 'Romance Dawn', chapterNumber: 1, uploadDate: '1700000000000', scanlator: 'Group A', sourceOrder: 1 },
                         { id: 102, name: 'The Great Race', chapterNumber: 2, uploadDate: '1700100000000', scanlator: null, sourceOrder: 2 },
                         ...this.laterChapters.map((chapterId, index) => {
-                            return { id: chapterId, name: `Chapter ${index + 3}`, chapterNumber: index + 3, uploadDate: '1700200000000', scanlator: null, sourceOrder: index + 3 };
+                            return { id: chapterId, name: `Chapter ${index + 3}`, chapterNumber: index + 3, uploadDate: String(Date.now()), scanlator: null, sourceOrder: index + 3 };
                         })
                     ]
                 }
@@ -309,7 +309,7 @@ async function openSource(page: Page): Promise<void> {
 async function openOnePiece(page: Page): Promise<void> {
     await openSource(page);
     await page.getByRole('button', { name: 'Open: One Piece' }).click();
-    await expect(page.getByRole('button', { name: 'READ: Romance Dawn' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
 }
 
 // Adds One Piece to the library from the browse and opens it there: the chapters are picked, downloaded and removed in the library.
@@ -449,7 +449,7 @@ test.describe('manga section', () => {
         await installExtension(session.page);
         await openOnePiece(session.page);
         await expect(session.page.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeVisible();
-        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
         await expect(session.page.getByRole('button', { name: 'START READING' })).toHaveCount(0);
         await expect(session.page.getByRole('button', { name: 'CONTINUE READING' })).toHaveCount(0);
         await expect(session.page.getByRole('button', { name: /^MARK ALL AS/ })).toHaveCount(0);
@@ -610,7 +610,7 @@ test.describe('manga section', () => {
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePiece(session.page);
-        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
         await expect(reader).toBeVisible();
         await expect(reader.getByText('One Piece · Romance Dawn')).toBeVisible();
@@ -633,10 +633,10 @@ test.describe('manga section', () => {
         await expect(reader.getByRole('button', { name: 'NEXT CHAPTER' })).toBeDisabled();
         await session.page.keyboard.press('Escape');
         await expect(reader).toHaveCount(0);
-        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
         await expect(session.page.getByRole('checkbox')).toHaveCount(0);
         // Opened again, it comes back in the mode that was chosen.
-        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         await expect(session.page.getByRole('region', { name: 'Reader' }).getByRole('img')).toHaveCount(3);
     });
 
@@ -647,7 +647,7 @@ test.describe('manga section', () => {
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePiece(session.page);
-        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
         const bar = reader.getByRole('progressbar', { name: 'Reading progress' });
         await expect(bar).toHaveAttribute('aria-valuenow', '33');
@@ -676,7 +676,7 @@ test.describe('manga section', () => {
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePiece(session.page);
-        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
         await expect(reader.getByRole('button', { name: 'AUTO SCROLL' })).toBeDisabled();
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
@@ -723,7 +723,7 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (1)' }).click();
         await waitForDownloaded(session.page);
         const before = fake.requests.filter((item) => {return item.path.startsWith('/api/v1/chapter/101/page/')}).length;
-        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
         await expect(reader.getByText('1 / 3')).toBeVisible();
         const image = reader.getByRole('img');
@@ -812,7 +812,7 @@ test.describe('manga section', () => {
         await expect(session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' })).toBeVisible();
         await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');
         await session.page.getByRole('button', { name: 'GO TO SOURCE' }).click();
-        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
         await expect(session.page.getByRole('checkbox')).toHaveCount(0);
         await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'BROWSE', exact: true })).toHaveAttribute('aria-current', 'page');
     });
@@ -978,7 +978,7 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'Mangas', exact: true }).click();
         await session.page.getByRole('button', { name: 'Favorites', exact: true }).click();
         await expect(session.page.getByRole('button', { name: 'Mangas', exact: true })).toHaveAttribute('aria-pressed', 'true');
-        await session.page.getByLabel('Series').fill('Pirates');
+        await session.page.getByLabel('Series', { exact: true }).fill('Pirates');
         await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
         await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
         await session.page.getByRole('button', { name: '← BACK' }).click();
@@ -986,7 +986,7 @@ test.describe('manga section', () => {
         await expect(session.page.getByTestId('manga-entry')).toHaveCount(1);
         await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: Bleach' }).click();
         await openOrganize(session.page);
-        await session.page.getByLabel('Series').fill('pirates');
+        await session.page.getByLabel('Series', { exact: true }).fill('pirates');
         await session.page.getByLabel('Order').fill('2');
         await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
         await expect(session.page.getByText('In the series "Pirates", order 2.')).toBeVisible();
@@ -1030,7 +1030,7 @@ test.describe('manga section', () => {
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
         await openOrganize(session.page);
-        await session.page.getByLabel('Series').fill('Pirates');
+        await session.page.getByLabel('Series', { exact: true }).fill('Pirates');
         await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
         await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
         await session.page.getByRole('button', { name: '← BACK' }).click();
@@ -1053,7 +1053,7 @@ test.describe('manga section', () => {
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
         await openOrganize(session.page);
-        await session.page.getByLabel('Series').fill('Pirates');
+        await session.page.getByLabel('Series', { exact: true }).fill('Pirates');
         await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
         await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
         await session.page.getByRole('button', { name: '← BACK' }).click();
@@ -1189,7 +1189,7 @@ test.describe('manga section', () => {
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
-        await session.page.getByRole('button', { name: 'ALL' }).click();
+        await session.page.getByRole('button', { name: 'ALL', exact: true }).click();
         await session.page.getByRole('button', { name: 'DOWNLOAD SELECTED (2)' }).click();
         await expect(session.page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 30000 });
         await session.page.getByRole('button', { name: '← BACK' }).click();
@@ -1220,7 +1220,7 @@ test.describe('manga section', () => {
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
         await expect(session.page.getByRole('button', { name: 'START READING' })).toBeVisible();
-        await session.page.getByRole('button', { name: 'READ: The Great Race' }).click();
+        await session.page.getByRole('button', { name: 'READ: The Great Race', exact: true }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
         await session.page.keyboard.press('ArrowRight');
         await expect(reader.getByText('2 / 3')).toBeVisible();
@@ -1260,13 +1260,13 @@ test.describe('manga section', () => {
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
-        await expect(session.page.getByLabel('Series')).toHaveCount(0);
+        await expect(session.page.getByLabel('Series', { exact: true })).toHaveCount(0);
         const gear = session.page.getByRole('button', { name: 'Groups, series and source' });
         await gear.click();
-        await expect(session.page.getByLabel('Series')).toBeVisible();
+        await expect(session.page.getByLabel('Series', { exact: true })).toBeVisible();
         await expect(session.page.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeVisible();
         await gear.click();
-        await expect(session.page.getByLabel('Series')).toHaveCount(0);
+        await expect(session.page.getByLabel('Series', { exact: true })).toHaveCount(0);
     });
 
     test('lets the space between the pages be made zero in the vertical scroll, and fits the pages to the width at first', async () => {
@@ -1275,7 +1275,7 @@ test.describe('manga section', () => {
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePiece(session.page);
-        await session.page.getByRole('button', { name: 'READ: Romance Dawn' }).click();
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await expect(reader.getByLabel('Page size')).toHaveValue('width');
@@ -1376,6 +1376,7 @@ test.describe('manga section', () => {
         await session.page.getByRole('dialog').getByRole('button', { name: 'REMOVE', exact: true }).click();
         await expect(session.page.getByTestId('manga-update')).toHaveCount(0);
         await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: '← BACK' }).click();
         await expect(session.page.getByText('0 of 4 downloaded')).toBeVisible();
     });
 
@@ -1439,7 +1440,7 @@ test.describe('manga section', () => {
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
         await openOrganize(session.page);
-        await expect(session.page.getByLabel('Series')).toHaveAttribute('placeholder', 'Empty: "One Piece", the name of the manga');
+        await expect(session.page.getByLabel('Series', { exact: true })).toHaveAttribute('placeholder', 'Empty: "One Piece", the name of the manga');
         await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
         await expect(session.page.getByText('In the series "One Piece", order 1.')).toBeVisible();
         await session.page.getByRole('button', { name: '← BACK' }).click();
@@ -1461,13 +1462,19 @@ test.describe('manga section', () => {
         await goTo(session.page, 'LIBRARY');
         await session.page.getByTestId('manga-entry').filter({ hasText: 'One Piece' }).getByRole('button', { name: 'Open: One Piece' }).click();
         await openOrganize(session.page);
-        await session.page.getByLabel('Series').fill('Pirates');
+        await session.page.getByLabel('Series', { exact: true }).fill('Pirates');
         await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
         await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
         await session.page.getByRole('button', { name: '← BACK' }).click();
         await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: Bleach' }).click();
         await openOrganize(session.page);
-        await session.page.getByLabel('Series').fill('pirates');
+        await session.page.getByLabel('Series', { exact: true }).fill('pirates');
+        // The series has order 1: the field goes to the next one by itself.
+        await expect(session.page.getByLabel('Order')).toHaveValue('2');
+        await expect(session.page.getByRole('alert')).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'SAVE SERIES' })).toBeEnabled();
+        // And an order that is taken by hand is not let through.
+        await session.page.getByLabel('Order').fill('1');
         await expect(session.page.getByRole('alert')).toContainText('Order 1 is already used by another manga of the series. The next free one is 2.');
         await expect(session.page.getByRole('button', { name: 'SAVE SERIES' })).toBeDisabled();
         await session.page.getByLabel('Order').fill('2');

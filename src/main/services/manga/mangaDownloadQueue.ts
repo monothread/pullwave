@@ -68,9 +68,14 @@ export class MangaDownloadQueue {
         if (request.details !== null) {
             this.deps.db.saveDetails(manga.id, request.details);
         }
-        request.chapters.forEach((chapter) => {
-            this.queueChapter(manga, this.deps.db.ensureChapter(manga.id, chapter, known));
-        });
+        // The oldest chapter goes first, whatever order the screen sent them in (the list shows the newest first).
+        [...request.chapters]
+            .sort((first, second) => {
+                return first.sourceOrder - second.sourceOrder;
+            })
+            .forEach((chapter) => {
+                this.queueChapter(manga, this.deps.db.ensureChapter(manga.id, chapter, known));
+            });
         this.deps.onLibraryChanged();
         this.pump();
         return this.deps.db.getLibraryManga(manga.id);

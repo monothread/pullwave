@@ -1242,7 +1242,7 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 /* Buttons that sit beside a text field are as tall as the field, so the row lines up. */
 .field-row .btn, .link-row__line > .btn, .anime__bar .tabs > .btn { min-height: var(--control-height); }
 /* DOWNLOADS sits at the right end of the bar, beside the gear, which keeps its place after it. */
-.anime__bar .tabs > .btn { margin-left: auto; align-self: center; margin-bottom: 2px; white-space: nowrap; }
+.anime__bar .tabs > .btn { margin-left: auto; align-self: center; white-space: nowrap; }
 .anime__bar .tabs { flex-wrap: wrap; }
 /* On a very narrow window the tabs are gathered in one list; DOWNLOADS and the gear stay where they are. */
 .tabs__menu { display: none; flex: 1 1 140px; min-width: 0; width: auto; align-self: center; margin-bottom: 2px; }

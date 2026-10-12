@@ -1350,12 +1350,12 @@ test.describe('themes', () => {
 });
 
 test.describe('the tab the app opens on', () => {
-    test('is the video downloader by default, and the setting offers the two tabs', async () => {
+    test('is the video downloader by default, and the setting offers the three tabs', async () => {
         const { page } = session;
         await expect(page.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
         await openGlobalSettings(page);
         await expect(page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
-        expect(await page.getByLabel('Open on', { exact: true }).locator('option').allTextContents()).toEqual(['VIDEO DOWNLOADER', 'ANIME']);
+        expect(await page.getByLabel('Open on', { exact: true }).locator('option').allTextContents()).toEqual(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
         await expect(page.getByText('The tab the app shows when it starts. If the anime or the manga section is not available, the video downloader opens.')).toBeVisible();
     });
 
