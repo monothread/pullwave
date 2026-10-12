@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { MangaCloudflareActivity } from '@shared/manga';
-import { CloudflareMonitor } from '@main/services/tools/cloudflareMonitor';
+import { CloudflareMonitor, COMPATIBLE_USER_AGENT, withCompatibleUserAgent } from '@main/services/tools/cloudflareMonitor';
 
 interface Received {
     method: string;
@@ -224,3 +224,84 @@ describe('CloudflareMonitor', () => {
         expect((await fetch(`${address}/`)).status).toBe(200);
     });
 });
+
+describe('the User-Agent of the solution of a check', () => {
+    const LINUX = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+    const SOLVED = JSON.stringify({
+        status: 'ok',
+        message: 'Challenge solved!',
+        solution: { url: 'https://site.test/', status: 200, response: '<html>page</html>', userAgent: LINUX, cookies: [{ name: 'cf_clearance', value: 'abc', domain: '.site.test' }] },
+        version: '3.5.2'
+    });
+
+    function monitorWith(userAgent?: string | null): CloudflareMonitor {
+        return new CloudflareMonitor({
+            target: () => {
+                return Promise.resolve(flare.url);
+            },
+            onChange: () => {
+                return undefined;
+            },
+            ...(userAgent === undefined ? {} : { userAgent })
+        });
+    }
+
+    it('is a Chrome for Windows, the one the content networks of the sites let through', () => {
+        expect(COMPATIBLE_USER_AGENT).toBe('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36');
+    });
+
+    it('is changed in the answer of a check, and nothing else in it', async () => {
+        flare.reply = SOLVED;
+        const address = await monitor.start();
+        const response = await post(address, '/v1', { cmd: 'request.get', url: 'https://site.test/' });
+        const answer = JSON.parse(await response.text()) as Record<string, unknown>;
+        expect(answer).toEqual({
+            status: 'ok',
+            message: 'Challenge solved!',
+            solution: { url: 'https://site.test/', status: 200, response: '<html>page</html>', userAgent: COMPATIBLE_USER_AGENT, cookies: [{ name: 'cf_clearance', value: 'abc', domain: '.site.test' }] },
+            version: '3.5.2'
+        });
+    });
+
+    it('is the one that was given, when one is', async () => {
+        const own = monitorWith('MyAgent/1.0');
+        flare.reply = SOLVED;
+        const address = await own.start();
+        const response = await post(address, '/v1', { cmd: 'request.get', url: 'https://site.test/' });
+        expect((JSON.parse(await response.text()) as { solution: { userAgent: string } }).solution.userAgent).toBe('MyAgent/1.0');
+        await own.stop();
+    });
+
+    it('is left as FlareSolverr gave it when none is to be used', async () => {
+        const plain = monitorWith(null);
+        flare.reply = SOLVED;
+        const address = await plain.start();
+        const response = await post(address, '/v1', { cmd: 'request.get', url: 'https://site.test/' });
+        expect(await response.text()).toBe(SOLVED);
+        await plain.stop();
+    });
+
+    it('is not changed in what is not a check', async () => {
+        flare.reply = SOLVED;
+        const address = await monitor.start();
+        const response = await fetch(`${address}/`, { method: 'GET' });
+        expect(await response.text()).toBe(SOLVED);
+    });
+
+    it('is not changed in an answer that has no solution or no User-Agent, or is not JSON', async () => {
+        const address = await monitor.start();
+        for (const reply of ['{"status":"error","message":"timeout"}', '{"status":"ok","solution":{"status":200}}', '{"solution":{"userAgent":5}}', 'not json']) {
+            flare.reply = reply;
+            const response = await post(address, '/v1', { cmd: 'request.get', url: 'https://site.test/' });
+            expect(await response.text()).toBe(reply);
+        }
+    });
+
+    it('is changed by withCompatibleUserAgent alone, the same way', () => {
+        expect(JSON.parse(withCompatibleUserAgent(SOLVED, 'X/1')) as unknown).toMatchObject({ solution: { userAgent: 'X/1', response: '<html>page</html>' } });
+        expect(withCompatibleUserAgent('[]', 'X/1')).toBe('[]');
+        expect(withCompatibleUserAgent('{"solution":{}}', 'X/1')).toBe('{"solution":{}}');
+        expect(withCompatibleUserAgent('', 'X/1')).toBe('');
+    });
+});
+
