@@ -624,7 +624,7 @@ New setting `jsRuntime` → `--js-runtimes <value>` (YouTube needs a JS runtime 
 
 ## D-091 · 2026-10-12 — SEARCH tab in the manga section
 - **What:** a tab that looks for a name in every source of the language chosen (the same language choice as the browse), two sources at a time (`runLimited`, `SEARCH_CONCURRENCY`), up to 12 results each (`RESULTS_PER_SOURCE`), the sources for adults only when the setting asks for them. Each source shows waiting, searching, found N, not found or failed (with why). A result opens the page of the manga and goes back to the results. The search stays in the store, so it is kept when the user goes to another tab. A newer search drops the answers of an older one.
-- **Where:** `mangaSearch.ts` (the pure parts), `runSearch` in `mangaStore.ts`, `MangaSearch.tsx`; `selectionFrom` has a value `search` so a manga opened there is not shown in the other tabs.
+- **Where:** `mangaSearchSources.ts` (the pure parts; not `mangaSearch.ts`, which would differ from `MangaSearch.tsx` only in casing and break on Windows), `runSearch` in `mangaStore.ts`, `MangaSearch.tsx`; `selectionFrom` has a value `search` so a manga opened there is not shown in the other tabs.
 
 ## D-092 · 2026-10-12 — Smaller changes of the manga section
 - **Filters of a search by a genre or an author** (a click on one in the page of a manga) start closed: the filter is on and the search runs, and the user opens FILTERS to see which ones are on.

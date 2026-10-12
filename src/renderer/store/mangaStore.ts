@@ -37,7 +37,7 @@ import type {
 import { resolveAppLanguage } from '../i18n/language';
 import { ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, localDetails, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter, type TermKind } from '../components/mangaFilterSearch';
-import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources } from '../components/mangaSearch';
+import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources } from '../components/mangaSearchSources';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
 import { useAppStore } from './appStore';

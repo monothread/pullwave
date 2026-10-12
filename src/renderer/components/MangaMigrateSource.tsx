@@ -5,7 +5,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
-import { RESULTS_PER_SOURCE } from './mangaSearch';
+import { RESULTS_PER_SOURCE } from './mangaSearchSources';
 import { listedSources, mangaErrorKey } from './mangaText';
 import { RowLink } from './RowLink';
 

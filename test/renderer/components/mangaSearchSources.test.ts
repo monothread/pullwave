@@ -1,4 +1,4 @@
-import { RESULTS_PER_SOURCE, SEARCH_CONCURRENCY, runLimited, searchableSources } from '@renderer/components/mangaSearch';
+import { RESULTS_PER_SOURCE, SEARCH_CONCURRENCY, runLimited, searchableSources } from '@renderer/components/mangaSearchSources';
 import { makeSource } from '../../helpers/mangaFixtures';
 
 const SOURCES = [

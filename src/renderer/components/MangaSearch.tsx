@@ -7,7 +7,7 @@ import { SelectField, TextField } from './fields';
 import { MangaDetail } from './MangaDetail';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { MangaResultCard } from './MangaResultCard';
-import { searchableSources } from './mangaSearch';
+import { searchableSources } from './mangaSearchSources';
 import { ALL_LANGUAGES, listedSources } from './mangaText';
 import { sourceLanguageLabel, sourceLanguages } from './MangaSources';
 
