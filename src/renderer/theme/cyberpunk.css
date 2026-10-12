@@ -447,6 +447,8 @@ body::after {
 
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-row .field { flex: 1; }
+/* A switch has no label above it: its row is as tall as the controls beside it and the switch is in the middle, level with them. */
+.field-row .field--toggle { flex: 0 0 auto; justify-content: center; min-height: var(--control-height); }
 .field__label { color: var(--cyan); font-size: 12px; letter-spacing: 1px; }
 .field__hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .field-row { display: flex; align-items: flex-end; gap: 8px; }

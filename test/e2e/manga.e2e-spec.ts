@@ -1,4 +1,4 @@
-import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -379,6 +379,25 @@ test.describe('manga section', () => {
         await goTo(session.page, 'EXTENSIONS');
         await expect(session.page.getByRole('switch', { name: 'Installed only' })).not.toBeChecked();
         await expect(session.page.getByTestId('manga-extension')).toContainText('Tachiyomi: Fake Dex');
+    });
+
+    test('keeps the switch "Installed only" level with the fields beside it', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await addStore(session.page);
+        await goTo(session.page, 'EXTENSIONS');
+        const centre = async (locator: Locator): Promise<number> => {
+            const box = (await locator.boundingBox())!;
+            return box.y + box.height / 2;
+        };
+        const row = session.page.locator('.manga__extensions .field-row').first();
+        const filter = await centre(row.getByLabel('Filter extensions', { exact: true }));
+        const language = await centre(row.getByLabel('Language', { exact: true }));
+        const switchCentre = await centre(row.getByRole('switch', { name: 'Installed only' }));
+        expect(Math.abs(switchCentre - filter)).toBeLessThanOrEqual(1.5);
+        expect(Math.abs(switchCentre - language)).toBeLessThanOrEqual(1.5);
+        const refresh = await centre(row.getByRole('button').first());
+        expect(Math.abs(switchCentre - refresh)).toBeLessThanOrEqual(1.5);
     });
 
     test('hides the extensions and the sources for adults until the setting is turned on', async () => {
