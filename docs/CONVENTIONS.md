@@ -6,6 +6,7 @@
 - Conditionals always use `{}` (avoid `if (x) return y;`).
 - Small, focused functions; extract when one takes on too many responsibilities; no duplication.
 - Modify only what the task requires; out-of-scope observations go in notes, untouched.
+- No two files in a folder may differ only in casing (`MangaSearch.tsx` and `mangaSearch.ts`): it is fine on Linux and breaks the build on Windows (found in 0.21.3).
 
 ## Tests
 - Every module has a complete test: definition, every if/else, loops, calls with exact parameters, success, failure and edge cases.

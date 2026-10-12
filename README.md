@@ -19,6 +19,7 @@ There is nothing else to install: everything the app needs comes with it.
 - An **anime library** of your own, with series and seasons, where you stopped watching and subtitles in every language the source offers.
 - A **player** inside the app, or watch an episode **without downloading** it.
 - **Subtitles made for you:** translate a subtitle into another language, or create one from the audio of an episode that has none, with your own account at OpenAI, Claude, Gemini and others.
+- **Manga** from the sources of the Mihon/Tachiyomi extensions: search them all at once, keep a library of cards, read in the app and download as CBZ.
 - The whole app in **English, Português, Español, 中文 and 日本語**.
 - Updates itself, and updates its video and anime tools from inside the app.
 
@@ -186,7 +187,16 @@ Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](http
 - **EXTENSIONS:** add a *store* (the address of an `index.min.json`, for instance the [keiyoushi](https://github.com/keiyoushi/extensions) one, which has a button) and install the extensions you want. An extension brings one or more *sources*, the sites that have the manga. Extensions are made by other people: install only the ones you trust.
 - **BROWSE:** the sources of the installed extensions, by language (as in the Suwayomi WebUI). Open one on its **popular** or **latest** manga, search it, open a manga and pick chapters. Some sources need to be set up first (a server address, a mirror, a language): the ⚙ on the page of the source.
 - **Downloads:** one chapter at a time for each site, three tries, pause and resume, and a chapter that is cut short goes on from the pages it has. Each chapter is a **CBZ** (or a folder of images, in the settings) with a `ComicInfo.xml`, in `Pullwave Manga/<manga>/` inside your downloads folder (or the folder you choose).
-- **LIBRARY:** your mangas with how many chapters are downloaded, download what is missing, open the folder, remove a chapter or a manga with its files.
+- **SEARCH:** look for a name in **all the sources of a language at once** (two at a time). Each source says whether it found it, did not, or failed, and a result opens the manga. A title that you already have from another source is marked *in library (other source)*, and adding it again asks first. The last search is kept when you change tabs.
+
+  ![The search in all the sources](docs/screenshots/manga-search.png)
+- **LIBRARY:** your mangas as cards, like the anime ones, with how many chapters are downloaded and badges for the seasons of a series and for new chapters. Inside a manga you download what is missing, read, **open the folder**, look for new chapters, and remove a chapter or the manga with its files. They can be put in groups, which show as tabs.
+
+  ![The library of the manga](docs/screenshots/manga-library.png)
+  ![The page of a manga](docs/screenshots/manga-page.png)
+- **The folder:** as with the anime, once there are mangas in the library the folder is fixed and only **MIGRATE FOLDER** changes it (it moves the files, checks them and then removes the old ones).
+
+  ![The settings of the manga, with the folder fixed](docs/screenshots/manga-settings.png)
 
 Use it only for content you have the right to download; see [DISCLAIMER.md](DISCLAIMER.md).
 
