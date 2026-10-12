@@ -367,7 +367,7 @@ describe('App anime section', () => {
     });
 
     it('opens on the manga tab when it is the one saved and the section exists', async () => {
-        mock.api.manga.status.mockResolvedValue(supported);
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' });
         render(<App />);
         expect(await screen.findByRole('navigation', { name: 'Manga' })).toBeInTheDocument();
@@ -467,7 +467,7 @@ describe('App manga section', () => {
         await screen.findByRole('button', { name: 'MANGA' });
         const before = mock.unsubscribers.length;
         unmount();
-        expect(before).toBe(12);
+        expect(before).toBe(13);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

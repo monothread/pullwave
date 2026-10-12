@@ -136,8 +136,10 @@ describe('activateFilter for the author and the artist', () => {
         expect(activateFilter([{ type: 'text', name: 'Circles', value: '' }, { type: 'text', name: 'Title', value: '' }], 'Oltlo', 'author')).toBeNull();
     });
 
-    it('turns on the box named like the person when the source lists people that way', () => {
-        expect(activateFilter(PEOPLE, 'Oda', 'artist')?.[3]).toEqual({ type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: true }] });
+    it('turns on the box named like the person when the source lists people that way and has no text filter for them', () => {
+        const listed: MangaFilter[] = [{ type: 'text', name: 'Title', value: '' }, PEOPLE[3]!];
+        expect(activateFilter(listed, 'Oda', 'artist')?.[1]).toEqual({ type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: true }] });
+        expect(activateFilter(listed, 'Oda', 'author')?.[1]).toEqual({ type: 'group', name: 'Authors', filters: [{ type: 'checkbox', name: 'Oda', value: true }] });
     });
 
     it('prefers the text filter to a box named like the person', () => {

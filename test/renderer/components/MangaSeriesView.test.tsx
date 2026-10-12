@@ -111,8 +111,9 @@ describe('MangaSeriesView', () => {
     });
 
     it('does not let the manga that gives its name to the series be removed alone', () => {
-        renderView();
-        const blocked = screen.getByRole('button', { name: 'REMOVE: Sousou no Frieren' });
+        const named = makeLibraryManga([], { id: 7, title: 'sousou NO frieren', series: 'Sousou no Frieren', season: 1 });
+        render(<MangaSeriesView group={groupLibrary([named, SECOND])[0]!} onBack={vi.fn()} onRenamed={vi.fn()} />);
+        const blocked = screen.getByRole('button', { name: 'REMOVE: sousou NO frieren' });
         expect(blocked).toBeDisabled();
         expect(blocked).toHaveAttribute('title', 'This manga gives its name to the series. To remove it, remove the whole series.');
         expect(screen.getByRole('button', { name: 'REMOVE: Frieren 2' })).toBeEnabled();

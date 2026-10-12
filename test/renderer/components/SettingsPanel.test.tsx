@@ -1390,11 +1390,10 @@ describe('SettingsPanel manga section', () => {
         const status = screen.getByRole('group', { name: 'Status of the programs' });
         expect(stores.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
+        await flushPromises();
         expect(screen.getByRole('button', { name: 'CHECK NOW' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeInTheDocument();
-        await vi.waitFor(() => {
-            expect(mock.api.manga.health).toHaveBeenCalledWith(false);
-        });
+        expect(mock.api.manga.health).toHaveBeenCalledWith(false);
     });
 
     it('does not show the manga settings in the other scopes', () => {

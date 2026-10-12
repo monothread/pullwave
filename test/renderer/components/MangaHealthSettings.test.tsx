@@ -192,6 +192,7 @@ describe('MangaHealthSettings updates of the programs', () => {
 
     it('updates the server and the helper with their buttons', async () => {
         const user = userEvent.setup();
+        mock.api.manga.checkToolUpdates.mockResolvedValue(versions());
         show(versions());
         render(<MangaHealthSettings />);
         await user.click(within(server()).getByRole('button', { name: 'UPDATE TO v2.0.0' }));

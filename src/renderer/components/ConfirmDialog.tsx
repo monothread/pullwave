@@ -32,10 +32,22 @@ export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onCon
                 </h2>
                 <p className="modal__hint">{message}</p>
                 <div className="modal__actions">
-                    <button type="button" className="btn btn--small" onClick={onCancel}>
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            onCancel();
+                        }}
+                    >
                         {cancelLabel}
                     </button>
-                    <button type="button" className="btn btn--small btn--hot" onClick={onConfirm}>
+                    <button
+                        type="button"
+                        className="btn btn--small btn--hot"
+                        onClick={() => {
+                            onConfirm();
+                        }}
+                    >
                         {confirmLabel}
                     </button>
                 </div>

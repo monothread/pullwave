@@ -639,7 +639,9 @@ describe('MangaReader what was read', () => {
         open();
         render(<MangaReader />);
         expect(loadLastChapter('One Piece')).toBe(2);
-        open({ index: 0 });
+        act(() => {
+            open({ index: 0 });
+        });
         expect(loadLastChapter('One Piece')).toBe(1);
     });
 

@@ -1089,10 +1089,10 @@ describe('mangaStore reader', () => {
     it('opens a chapter: it loads, then has the pages the main process gave', async () => {
         mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true } });
         const opening = state().openReader('One Piece', CHAPTERS, 1);
-        expect(state().reader).toEqual({ status: 'loading', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: [], local: false, error: null });
+        expect(state().reader).toEqual({ status: 'loading', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: [], local: false, error: null, manga: null });
         await opening;
         expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 2, libraryChapterId: 8 });
-        expect(state().reader).toEqual({ status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: ['pullwave-manga://page/8/0'], local: true, error: null });
+        expect(state().reader).toEqual({ status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: ['pullwave-manga://page/8/0'], local: true, error: null, manga: null });
     });
 
     it('says why a chapter could not be read', async () => {
@@ -1858,6 +1858,8 @@ describe('mangaStore searching by a term', () => {
             })
         );
         useMangaStore.getState().openSource('123', 'search');
+        // Opening a source closes the manga that was open: the one the term is of is open again.
+        useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: makeDetails(), chapters: [], selected: [], error: null } });
         const early = useMangaStore.getState().loadFilters();
         const searching = state().searchByTerm('Drama');
         answer({ ok: true, value: FILTERS });

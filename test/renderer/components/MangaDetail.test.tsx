@@ -297,6 +297,7 @@ describe('MangaDetail in the library page', () => {
                 answer = resolve;
             })
         );
+        mock.api.manga.library.mockResolvedValue([SAVED]);
         useMangaStore.setState({ library: [SAVED] });
         open();
         render(<MangaDetail />);
@@ -798,7 +799,7 @@ describe('MangaDetail what was read', () => {
         expect(screen.queryByRole('button', { name: /^MARK ALL AS/ })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /^Mark as/ })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeInTheDocument();
-        await user.click(screen.getByRole('button', { name: 'Read: Second' }));
+        await user.click(screen.getByRole('button', { name: 'READ: Second' }));
         expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 12, libraryChapterId: null });
     });
 });

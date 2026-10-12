@@ -440,16 +440,23 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
         db.registerChapters(manga.id, [chapter(1), chapter(2), chapter(3), chapter(4)]);
         const before = state.libraryChanges;
         queue.downloadChapters(manga.id, [4, 2, 99]);
+        // One chapter at a time for a source, the oldest first.
         expect(downloads.map((item) => {
             return item.options.chapterRemoteId;
-        })).toEqual([2, 4]);
+        })).toEqual([2]);
         expect(queue.list().map((job) => {
             return [job.chapterName, job.status];
         })).toEqual([
             ['Chapter 2', 'running'],
-            ['Chapter 4', 'running']
+            ['Chapter 4', 'queued']
         ]);
-        expect(state.libraryChanges).toBe(before + 1);
+        // Once for the chapters that were queued, once for the download that started.
+        expect(state.libraryChanges).toBe(before + 2);
+        downloads[0]?.finish(DONE('/m/2.cbz'));
+        await flush();
+        expect(downloads.map((item) => {
+            return item.options.chapterRemoteId;
+        })).toEqual([2, 4]);
     });
 
     it('does not queue again a chapter of the ones named that is downloaded or already waiting, and ignores a manga that is not there', async () => {

@@ -475,8 +475,8 @@ describe('the browsing channels', () => {
         const { call, service } = setup();
         await expect(call(IPC.mangaDetails, 7)).resolves.toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
         expect(service.details).toHaveBeenCalledWith(7);
-        expect(call(IPC.mangaDetails, 'x')).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST', message: 'The manga is not valid.' } });
-        expect(call(IPC.mangaDetails, 0)).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+        await expect(call(IPC.mangaDetails, 'x')).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST', message: 'The manga is not valid.' } });
+        await expect(call(IPC.mangaDetails, 0)).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
     });
 });
 
@@ -997,11 +997,13 @@ describe('the covers that the app keeps', () => {
     it('leaves the library as it was when the cover does not come', async () => {
         const context = setup();
         const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
+        // Adding to the library tells the screen once, by itself; the cover that does not come adds nothing.
+        const afterAdding = context.libraryChanges.count;
         await vi.waitFor(() => {
             expect(context.coverRequests).toHaveLength(1);
         });
         expect(context.db.coverHash(added.id)).toBeNull();
-        expect(context.libraryChanges.count).toBe(0);
+        expect(context.libraryChanges.count).toBe(afterAdding);
         expect((context.call(IPC.mangaLibrary) as LibraryManga[])[0]?.thumbnailUrl).toBe(`${BASE}/api/v1/manga/7/thumbnail`);
     });
 
@@ -1082,15 +1084,16 @@ describe('the covers that the app keeps', () => {
             });
             const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
             await untilCoverKept(context, added.id);
+            // Once for the manga that was added, once for its cover.
             await vi.waitFor(() => {
-                expect(context.libraryChanges.count).toBe(1);
+                expect(context.libraryChanges.count).toBe(2);
             });
             const before = context.covers.urlOf(added.id);
             image = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]);
             context.service.details.mockResolvedValueOnce({ ok: true as const, value: { details: FRESH, chapters: [] } });
             await context.call(IPC.mangaDetails, 7);
             await vi.waitFor(() => {
-                expect(context.libraryChanges.count).toBe(2);
+                expect(context.libraryChanges.count).toBe(3);
             });
             expect(context.covers.urlOf(added.id)).not.toBe(before);
         });

@@ -143,7 +143,8 @@ describe('MangaDb chapters', () => {
             filePath: null,
             sizeBytes: null,
             error: null,
-            downloadedAt: null
+            downloadedAt: null,
+            addedAt: null
         });
     });
 

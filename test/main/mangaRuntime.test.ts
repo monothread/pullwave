@@ -630,16 +630,19 @@ describe('createMangaRuntime looking for new chapters', () => {
             [onId, 'Chapter 2'],
             [onId, 'Chapter 3']
         ]);
+        // What was started is stopped before the test ends, so nothing is left writing to the library that is deleted.
+        await on.runtime!.shutdown();
         const off = setup({ fetchImpl: fetchWithChapters([1, 2, 3]), settings: { mangaAutoDownloadNew: false } });
         addManga(off.runtime!);
         await off.runtime!.checker.checkNow();
         expect(off.runtime!.queue.list()).toEqual([]);
+        await off.runtime!.shutdown();
     });
 
     it('leaves the library alone when the server cannot answer', async () => {
         const { runtime, sent } = setup();
         const id = addManga(runtime!);
-        await expect(runtime!.checker.checkNow()).resolves.toEqual({ count: 0, titles: [] });
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 1 });
         expect(runtime!.db.chaptersOf(id)).toHaveLength(1);
         expect(sent).toEqual([]);
     });

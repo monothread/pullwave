@@ -12,10 +12,6 @@ function setup() {
     return { onConfirm, onCancel, outside, user: userEvent.setup(), ...view };
 }
 
-afterEach(() => {
-    document.body.innerHTML = '';
-});
-
 describe('ConfirmDialog', () => {
     it('is a window over the screen, named by its title, with the message and the two answers', () => {
         setup();
