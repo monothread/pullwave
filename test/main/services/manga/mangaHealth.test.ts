@@ -212,6 +212,47 @@ describe('MangaService health of the helper', () => {
         expect((await service.health(true)).helper).toEqual({ state: 'unhealthy', version: 'v3.5.2', message: 'Docker is not installed', external: false });
     });
 
+    it('looks again at the problem when the user asks to check, and does not when it only looks', async () => {
+        const failure: MangaHelperProblem = { code: 'no-docker', message: 'Docker is not installed' };
+        const helper = makeHelper({ failure });
+        const { service } = setup({ helper });
+        await service.health(false);
+        expect(helper.prepare).not.toHaveBeenCalled();
+        await service.health(true);
+        expect(helper.prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the helper after the problem is gone when the user asks to check', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(() => {
+                return Promise.resolve(answer({ version: '3.5.2' }));
+            })
+        );
+        let broken = true;
+        const helper = makeHelper({ failure: { code: 'start-failed', message: 'port in use' } });
+        Object.defineProperty(helper, 'failure', {
+            get: () => {
+                return broken ? { code: 'start-failed', message: 'port in use' } : null;
+            }
+        });
+        (helper.prepare as ReturnType<typeof vi.fn>).mockImplementation(() => {
+            broken = false;
+            return Promise.resolve(helperState('ready'));
+        });
+        const { service } = setup({ helper });
+        expect((await service.health(true)).helper).toEqual({ state: 'healthy', version: '3.5.2', message: null, external: false });
+        expect(helper.prepare).toHaveBeenCalledTimes(1);
+        expect(helper.ensureRunning).toHaveBeenCalledTimes(1);
+    });
+
+    it('looks again when the install had failed, and says what is wrong if it still is', async () => {
+        const helper = makeHelper({ state: helperState('error', 'manifest unknown') });
+        const { service } = setup({ helper });
+        expect((await service.health(true)).helper).toEqual({ state: 'unhealthy', version: 'v3.5.2', message: 'manifest unknown', external: false });
+        expect(helper.prepare).toHaveBeenCalledTimes(1);
+    });
+
     it('is starting while the image is being had', async () => {
         for (const status of ['downloading', 'verifying', 'extracting'] as const) {
             const { service } = setup({ helper: makeHelper({ state: helperState(status) }) });

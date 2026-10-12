@@ -172,6 +172,10 @@ export class MangaService {
             return null;
         }
         const base = { version: helper.version, message: null, external: false };
+        // CHECK NOW is a new try: what went wrong before (Docker was not running, the container did not start) is looked at again, not repeated.
+        if (start && (helper.failure !== null || helper.state.status === 'error')) {
+            await helper.prepare();
+        }
         if (helper.failure !== null) {
             return { ...base, state: 'unhealthy', message: helper.failure.message };
         }

@@ -312,6 +312,32 @@ describe('FlareSolverrDocker container', () => {
         ).toEqual([]);
     });
 
+    it('clears the problem of a start that failed when the next start works', async () => {
+        const broken = fakeDocker({ imagePresent: true, runFails: true });
+        const working = fakeDocker({ imagePresent: true, containerId: 'good01' });
+        let runner = broken.runner;
+        const helper = new FlareSolverrDocker({
+            docker: (args, onLine) => {
+                return runner(args, onLine);
+            },
+            fetchImpl: okFetch(),
+            findFreePort: () => {
+                return Promise.resolve(45900);
+            },
+            containerName: 'pullwave-test',
+            startTimeoutMs: 60,
+            pollIntervalMs: 5
+        });
+        await helper.prepare();
+        await expect(helper.ensureRunning()).rejects.toMatchObject({ code: 'START_FAILED' });
+        expect(helper.failure).toEqual({ code: 'start-failed', message: 'docker: port is already allocated' });
+        runner = working.runner;
+        await expect(helper.ensureRunning()).resolves.toBe(ADDRESS);
+        expect(helper.status).toBe('running');
+        expect(helper.failure).toBeNull();
+        expect(helper.error).toBeNull();
+    });
+
     it('stops the container and keeps its log when it never answers', async () => {
         const fetchImpl = vi.fn(() => {
             return Promise.reject(new Error('ECONNREFUSED'));

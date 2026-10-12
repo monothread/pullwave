@@ -286,6 +286,7 @@ export class FlareSolverrDocker {
     private async start(): Promise<string> {
         this.currentStatus = 'starting';
         this.lastError = null;
+        this.problem = null;
         try {
             if (!this.isReady) {
                 const state = await this.prepare();
