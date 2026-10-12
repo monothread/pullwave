@@ -1,5 +1,5 @@
 import type { MangaFilter, MangaPreferenceValue } from '@shared/manga';
-import { filterChanges, QUERIES, REQUEST_TIMEOUT_MS, SOURCE_TIMEOUT_MS, SuwayomiApiError, SuwayomiClient } from '@main/services/manga/suwayomiClient';
+import { CHALLENGE_RETRIES, CHALLENGE_RETRY_DELAY_MS, filterChanges, QUERIES, REQUEST_TIMEOUT_MS, SOURCE_TIMEOUT_MS, SuwayomiApiError, SuwayomiClient } from '@main/services/manga/suwayomiClient';
 
 const BASE = 'http://127.0.0.1:4321';
 
@@ -19,7 +19,7 @@ function setup(answers: Array<Response | Error>, baseUrl: () => Promise<string> 
         const next = queue.length > 1 ? queue.shift()! : queue[0]!;
         return next instanceof Error ? Promise.reject(next) : Promise.resolve(next.clone());
     }) as unknown as typeof fetch;
-    return { client: new SuwayomiClient({ baseUrl, fetchImpl }), calls };
+    return { client: new SuwayomiClient({ baseUrl, fetchImpl, retryDelayMs: 0 }), calls };
 }
 
 function data(payload: unknown): Response {
@@ -346,5 +346,84 @@ describe('SuwayomiClient mangas', () => {
         const { client, calls } = setup([data({ fetchChapterPages: { pages: ['/api/v1/manga/7/chapter/1/page/0', '/api/v1/manga/7/chapter/1/page/1'] } })]);
         await expect(client.chapterPages(11)).resolves.toEqual([`${BASE}/api/v1/manga/7/chapter/1/page/0`, `${BASE}/api/v1/manga/7/chapter/1/page/1`]);
         expect(calls[0]?.body).toEqual({ query: QUERIES.chapterPages, variables: { chapterId: 11 } });
+    });
+});
+
+describe('SuwayomiClient a site that refused the request', () => {
+    function refused(message = 'Exception while fetching data (/fetchSourceManga) : HTTP error 403\n\neu.kanade.tachiyomi.network.HttpException: HTTP error 403'): Response {
+        return new Response(JSON.stringify({ errors: [{ message }] }), { status: 200 });
+    }
+
+    it('asks again, with the same request, and gives the answer of the one that works', async () => {
+        const { client, calls } = setup([refused(), data({ extensions: { nodes: [] } })]);
+        await expect(client.extensions()).resolves.toEqual([]);
+        expect(calls).toHaveLength(2);
+        expect(calls[1]?.body).toEqual(calls[0]?.body);
+    });
+
+    it('asks a second time again when the second is refused too', async () => {
+        const { client, calls } = setup([refused(), refused(), data({ extensions: { nodes: [] } })]);
+        await expect(client.extensions()).resolves.toEqual([]);
+        expect(calls).toHaveLength(3);
+    });
+
+    it('tells the user after the tries it has, with the error of the last one', async () => {
+        const { client, calls } = setup([refused()]);
+        await expect(client.extensions()).rejects.toMatchObject({ code: 'API_ERROR', message: expect.stringContaining('HTTP error 403') });
+        expect(calls).toHaveLength(CHALLENGE_RETRIES + 1);
+    });
+
+    it('does not ask again for any other error, nor for a server that cannot be reached', async () => {
+        const other = setup([refused('Exception while fetching data : HTTP error 500')]);
+        await expect(other.client.extensions()).rejects.toMatchObject({ code: 'API_ERROR' });
+        expect(other.calls).toHaveLength(1);
+        const forbidden = setup([refused('Cloudflare bypass currently disabled')]);
+        await expect(forbidden.client.extensions()).rejects.toMatchObject({ message: 'Cloudflare bypass currently disabled' });
+        expect(forbidden.calls).toHaveLength(1);
+        const network = setup([new Error('connect ECONNREFUSED')]);
+        await expect(network.client.extensions()).rejects.toMatchObject({ code: 'REQUEST_FAILED' });
+        expect(network.calls).toHaveLength(1);
+        const status = setup([new Response('no', { status: 403 })]);
+        await expect(status.client.extensions()).rejects.toMatchObject({ code: 'REQUEST_FAILED', message: 'The server answered 403' });
+        expect(status.calls).toHaveLength(1);
+        const higher = setup([refused('HTTP error 4031 is not it')]);
+        await expect(higher.client.extensions()).rejects.toMatchObject({ code: 'API_ERROR' });
+        expect(higher.calls).toHaveLength(1);
+    });
+
+    it('waits a moment before asking again, one second unless told otherwise', async () => {
+        vi.useFakeTimers();
+        try {
+            const calls: number[] = [];
+            const answers = [refused(), data({ extensions: { nodes: [] } })];
+            const client = new SuwayomiClient({
+                baseUrl: () => {
+                    return Promise.resolve(BASE);
+                },
+                fetchImpl: (() => {
+                    calls.push(Date.now());
+                    return Promise.resolve(answers.shift()!.clone());
+                }) as unknown as typeof fetch
+            });
+            const pending = client.extensions();
+            await vi.advanceTimersByTimeAsync(CHALLENGE_RETRY_DELAY_MS - 1);
+            expect(calls).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(pending).resolves.toEqual([]);
+            expect(calls).toHaveLength(2);
+            expect(CHALLENGE_RETRY_DELAY_MS).toBe(1000);
+            expect(CHALLENGE_RETRIES).toBe(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does it for the calls that go to a site too: the list, the details and the pages of a chapter', async () => {
+        const list = setup([refused(), data({ fetchSourceManga: { hasNextPage: false, mangas: [] } })]);
+        await expect(list.client.list({ sourceId: '1', kind: 'popular', page: 1, query: '' })).resolves.toEqual({ items: [], hasNextPage: false });
+        expect(list.calls).toHaveLength(2);
+        const pages = setup([refused(), data({ fetchChapterPages: { pages: ['/api/v1/manga/7/chapter/1/page/0'] } })]);
+        await expect(pages.client.chapterPages(5)).resolves.toEqual([`${BASE}/api/v1/manga/7/chapter/1/page/0`]);
+        expect(pages.calls).toHaveLength(2);
     });
 });

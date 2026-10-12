@@ -44,7 +44,16 @@ export interface SuwayomiClientDependencies {
     // The address of the server, starting it if it does not run.
     baseUrl: () => Promise<string>;
     fetchImpl?: typeof fetch;
+    // How long to wait before asking again when a site refused the request (see `CHALLENGE_RETRIES`).
+    retryDelayMs?: number;
 }
+
+// A site behind Cloudflare is read through FlareSolverr, which needs a while to solve the challenge the first time: the request that waited
+// for it is refused (HTTP 403) and the ones after it are answered, since the solved check is kept for a while. So a refused request is
+// asked again, a couple of times, before the user is told.
+export const CHALLENGE_RETRIES = 2;
+export const CHALLENGE_RETRY_DELAY_MS = 1000;
+const REFUSED = /HTTP error 403\b/;
 
 const EXTENSION_FIELDS = 'pkgName name lang versionName isInstalled hasUpdate isObsolete iconUrl contentWarning storeIndexUrl extensionLib';
 const SOURCE_FIELDS = 'id name displayName lang iconUrl supportsLatest isConfigurable contentWarning extension { pkgName storeIndexUrl }';
@@ -290,6 +299,21 @@ export class SuwayomiClient {
     }
 
     private async request(query: string, variables: Record<string, unknown>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
+        for (let attempt = 0; ; attempt += 1) {
+            try {
+                return await this.requestOnce(query, variables, timeoutMs);
+            } catch (error) {
+                if (attempt >= CHALLENGE_RETRIES || !(error instanceof SuwayomiApiError) || error.code !== 'API_ERROR' || !REFUSED.test(error.message)) {
+                    throw error;
+                }
+                await new Promise((resolve) => {
+                    setTimeout(resolve, this.deps.retryDelayMs ?? CHALLENGE_RETRY_DELAY_MS);
+                });
+            }
+        }
+    }
+
+    private async requestOnce(query: string, variables: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
         let baseUrl: string;
         try {
             baseUrl = await this.deps.baseUrl();
