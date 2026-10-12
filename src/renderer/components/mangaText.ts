@@ -341,8 +341,9 @@ export function nextSeason(taken: readonly number[]): number {
     return Math.max(0, ...taken) + 1;
 }
 
-// Which chapter "continue reading" opens, among the chapters in reading order: the one the manga was left on when it is not read yet,
-// otherwise the first that is not read, otherwise the first (everything is read: it starts again). Gives -1 for no chapters.
+// Which chapter "continue reading" opens, among the chapters in reading order: always the one the manga was last read in, read or not. When
+// there is none (or it is not in the list any more), the first that is not read, otherwise the first (everything is read: it starts again).
+// Gives -1 for no chapters.
 export function continueIndex(chapters: ReadonlyArray<{ remoteId: number }>, isRead: (remoteId: number) => boolean, lastRemoteId: number | null): number {
     if (chapters.length === 0) {
         return -1;
@@ -350,7 +351,7 @@ export function continueIndex(chapters: ReadonlyArray<{ remoteId: number }>, isR
     const last = lastRemoteId === null ? -1 : chapters.findIndex((chapter) => {
         return chapter.remoteId === lastRemoteId;
     });
-    if (last !== -1 && !isRead(lastRemoteId ?? 0)) {
+    if (last !== -1) {
         return last;
     }
     const firstUnread = chapters.findIndex((chapter) => {

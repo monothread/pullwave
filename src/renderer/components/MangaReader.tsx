@@ -8,6 +8,7 @@ import { NumberField, SelectField } from './fields';
 import { MangaCloudflareNotice } from './MangaCloudflareNotice';
 import {
     AUTO_SCROLL_STEP,
+    loadLastPosition,
     loadProgress,
     loadReaderPrefs,
     MAX_AUTO_SCROLL_SPEED,
@@ -21,6 +22,7 @@ import {
     READER_MODES,
     READER_SCALES,
     saveLastChapter,
+    saveLastPosition,
     saveProgress,
     saveReaderPrefs,
     type ReaderPrefs
@@ -103,7 +105,9 @@ export function MangaReader() {
     const [seenStart, setSeenStart] = useState('');
     if (seenStart !== startKey) {
         setSeenStart(startKey);
-        const saved = reader.status === 'ready' ? loadProgress(key) : 0;
+        const position = reader.resume === true && chapter !== undefined ? loadLastPosition(reader.mangaTitle) : null;
+        const resumeAt = position !== null && chapter !== undefined && position.chapterRemoteId === chapter.remoteId ? position.page : null;
+        const saved = reader.status === 'ready' ? (resumeAt ?? loadProgress(key)) : 0;
         const start = saved >= total ? 0 : saved;
         setPage(start);
         setRestoreTo(continuous && start > 0 ? start : null);
@@ -154,12 +158,17 @@ export function MangaReader() {
         return flushReading;
     }, [chapter, flushReading]);
 
-    // The manga remembers the chapter it was left on, and a chapter read to the last page is read.
+    // The manga remembers the chapter it was left on and the page, and a chapter read to the last page is read.
     useEffect(() => {
         if (reader.status === 'ready' && chapter !== undefined) {
             saveLastChapter(reader.mangaTitle, chapter.remoteId);
         }
     }, [reader.status, reader.mangaTitle, chapter]);
+    useEffect(() => {
+        if (reader.status === 'ready' && chapter !== undefined && total > 0) {
+            saveLastPosition(reader.mangaTitle, chapter.remoteId, Math.min(page, total - 1));
+        }
+    }, [reader.status, reader.mangaTitle, chapter, page, total]);
     useEffect(() => {
         if (reader.status === 'ready' && total > 0 && page >= total - 1) {
             markRead([key], true);

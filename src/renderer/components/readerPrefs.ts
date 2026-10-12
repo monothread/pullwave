@@ -112,6 +112,7 @@ export function progressKey(mangaTitle: string, chapterRemoteId: number): string
 
 export const READ_KEY = 'pullwave.manga.read';
 export const LAST_CHAPTER_KEY = 'pullwave.manga.last';
+export const LAST_PAGE_KEY = 'pullwave.manga.lastPage';
 export const MAX_READ_CHAPTERS = 50000;
 export const MAX_REMEMBERED_MANGAS = 500;
 
@@ -173,3 +174,48 @@ export function saveLastChapter(mangaTitle: string, chapterRemoteId: number): vo
         // Not kept.
     }
 }
+
+export interface LastPosition {
+    chapterRemoteId: number;
+    // The page (from 0) the user was last on in that chapter, the last page of it included.
+    page: number;
+}
+
+function readLastPositions(): Record<string, LastPosition> {
+    try {
+        const raw = JSON.parse(window.localStorage.getItem(LAST_PAGE_KEY) ?? '{}') as unknown;
+        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+            return {};
+        }
+        return Object.fromEntries(
+            Object.entries(raw).filter((entry): entry is [string, LastPosition] => {
+                const value = entry[1] as Partial<LastPosition> | null;
+                return typeof value === 'object' && value !== null && Number.isInteger(value.chapterRemoteId) && Number.isInteger(value.page) && (value.page ?? -1) >= 0;
+            })
+        );
+    } catch {
+        return {};
+    }
+}
+
+// Where a manga (by its title) was last read: the chapter and the page, kept as they were even when the chapter was read to its last page
+// (the page kept for a chapter, see `saveProgress`, goes back to the first one then, so the chapter starts over when it is opened).
+export function loadLastPosition(mangaTitle: string): LastPosition | null {
+    return readLastPositions()[mangaTitle] ?? null;
+}
+
+export function saveLastPosition(mangaTitle: string, chapterRemoteId: number, page: number): void {
+    try {
+        const all = readLastPositions();
+        const current = all[mangaTitle];
+        if (current !== undefined && current.chapterRemoteId === chapterRemoteId && current.page === page) {
+            return;
+        }
+        delete all[mangaTitle];
+        const entries = [...Object.entries(all), [mangaTitle, { chapterRemoteId, page }] as [string, LastPosition]].slice(-MAX_REMEMBERED_MANGAS);
+        window.localStorage.setItem(LAST_PAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+    } catch {
+        // Not kept.
+    }
+}
+

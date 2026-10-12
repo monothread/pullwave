@@ -97,3 +97,6 @@
 
 ## 2026-10-12 · download of one chapter
 - DOWNLOAD button in the row of each chapter of the library: D-084.
+
+## 2026-10-12 · continue reading
+- CONTINUE READING opens the last chapter read on the last page read, whether or not the chapter is marked as read: D-086.

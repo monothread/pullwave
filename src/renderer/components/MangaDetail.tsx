@@ -182,10 +182,11 @@ export function MangaDetail() {
     const allRead = readable.length > 0 && readable.every((chapter) => {
         return isRead(chapter.remoteId);
     });
+    const lastRemoteId = loadLastChapter(shown.title);
     const hasStarted = readable.some((chapter) => {
-        return isRead(chapter.remoteId) || (progress[progressKey(shown.title, chapter.remoteId)] ?? 0) > 0;
+        return isRead(chapter.remoteId) || (progress[progressKey(shown.title, chapter.remoteId)] ?? 0) > 0 || chapter.remoteId === lastRemoteId;
     });
-    const nextIndex = continueIndex(readable, isRead, loadLastChapter(shown.title));
+    const nextIndex = continueIndex(readable, isRead, lastRemoteId);
 
     return (
         <section className="manga__detail" aria-label={shown.title}>
@@ -303,7 +304,7 @@ export function MangaDetail() {
                             type="button"
                             className="btn btn--primary"
                             onClick={() => {
-                                void openReader(shown.title, readable, nextIndex);
+                                void openReader(shown.title, readable, nextIndex, true);
                             }}
                         >
                             {hasStarted ? t('manga.detail.continue') : t('manga.detail.start')}

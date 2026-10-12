@@ -39,6 +39,8 @@ class FakeSuwayomi {
     imageDelayMs = 0;
     // The pages are real pictures a page can show (the reader needs them; the downloads only look at the bytes).
     pagesArePicture = false;
+    // How many pages the chapters have.
+    pageTotal = 3;
     // Addresses that answer with an error, and how many times they do before they answer well (the next pages are asked for ahead of time too).
     failTimes = new Map<string, number>();
     // The extension and its source are for adults.
@@ -194,7 +196,7 @@ class FakeSuwayomi {
             if (this.failingChapters.has(chapterId)) {
                 throw new Error('The source could not give the pages');
             }
-            return { fetchChapterPages: { pages: [0, 1, 2].map((page) => {return `/api/v1/chapter/${chapterId}/page/${page}`}) } };
+            return { fetchChapterPages: { pages: Array.from({ length: this.pageTotal }, (_unused, page) => {return `/api/v1/chapter/${chapterId}/page/${page}`}) } };
         }
         throw new Error(`Unexpected query: ${query.slice(0, 60)}`);
     }
@@ -710,9 +712,15 @@ test.describe('manga section', () => {
         await expect(bar).toHaveAttribute('aria-valuenow', '67');
         // The second page answered with an error: only it is asked for again.
         await expect(reader.getByRole('alert')).toHaveText('Page 2 could not be loaded.');
-        await reader.getByRole('button', { name: 'TRY AGAIN' }).click();
+        // The page failed twice in all: how many of those were spent before the button depends on how soon the next page was preloaded, so the
+        // button is pressed again while the message is still there.
         const image = reader.getByRole('img');
-        await expect.poll(() => {return image.evaluate((element: HTMLImageElement) => {return element.complete && element.naturalWidth > 0})}).toBe(true);
+        await expect.poll(async () => {
+            if (await reader.getByRole('button', { name: 'TRY AGAIN' }).isVisible()) {
+                await reader.getByRole('button', { name: 'TRY AGAIN' }).click();
+            }
+            return image.evaluate((element: HTMLImageElement) => {return element.complete && element.naturalWidth > 0}).catch(() => {return false});
+        }, { timeout: 15000 }).toBe(true);
         expect(fake.requests.filter((item) => {return item.path === '/api/v1/chapter/101/page/1'}).length).toBeGreaterThanOrEqual(3);
         expect(fake.requests.filter((item) => {return item.path === '/api/v1/chapter/101/page/0'})).toHaveLength(1);
         // Between the buttons of the chapters there is a list to jump to one.
@@ -1559,6 +1567,57 @@ test.describe('manga section', () => {
         await goTo(session.page, 'LIBRARY');
         await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
         await expect(session.page.getByRole('img', { name: 'Read' })).toHaveCount(2);
+    });
+
+    test('continues in the chapter the manga was last read in, on the page it was left on, even when the chapter is marked as read', async () => {
+        fake.pagesArePicture = true;
+        fake.pageTotal = 10;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const row = session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true });
+        const openedChapter = reader.getByText(/One Piece · /);
+
+        // The chapter is marked as read, and read again up to page 3.
+        await session.page.getByRole('button', { name: 'Mark as read: Romance Dawn' }).click();
+        await row.click();
+        await expect(reader.getByText('1 / 10')).toBeVisible();
+        await session.page.keyboard.press('ArrowRight');
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('3 / 10')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+
+        // The row and CONTINUE READING both go to page 3 of that chapter, not to the next one.
+        await row.click();
+        await expect(reader.getByText('3 / 10')).toBeVisible();
+        await expect(openedChapter).toHaveText('One Piece · Romance Dawn');
+        await session.page.keyboard.press('Escape');
+        await session.page.getByRole('button', { name: 'CONTINUE READING' }).click();
+        await expect(openedChapter).toHaveText('One Piece · Romance Dawn');
+        await expect(reader.getByText('3 / 10')).toBeVisible();
+
+        // Left on the last page, it continues on the last page of that chapter; the row starts the chapter over, as it always did.
+        await session.page.keyboard.press('End');
+        await expect(reader.getByText('10 / 10')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+        await session.page.getByRole('button', { name: 'CONTINUE READING' }).click();
+        await expect(openedChapter).toHaveText('One Piece · Romance Dawn');
+        await expect(reader.getByText('10 / 10')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+        await row.click();
+        await expect(reader.getByText('1 / 10')).toBeVisible();
+
+        // Another chapter read after it becomes the one that is continued.
+        await session.page.keyboard.press('Escape');
+        await session.page.getByRole('button', { name: 'READ: The Great Race', exact: true }).click();
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('2 / 10')).toBeVisible();
+        await session.page.keyboard.press('Escape');
+        await session.page.getByRole('button', { name: 'CONTINUE READING' }).click();
+        await expect(openedChapter).toHaveText('One Piece · The Great Race');
+        await expect(reader.getByText('2 / 10')).toBeVisible();
     });
 
     test('keeps the groups, the series and the source of a manga of the library behind a gear in its head', async () => {

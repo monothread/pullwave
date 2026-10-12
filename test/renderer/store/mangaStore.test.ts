@@ -1141,10 +1141,22 @@ describe('mangaStore reader', () => {
     it('opens a chapter: it loads, then has the pages the main process gave', async () => {
         mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true } });
         const opening = state().openReader('One Piece', CHAPTERS, 1);
-        expect(state().reader).toEqual({ status: 'loading', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: [], local: false, error: null, manga: null });
+        expect(state().reader).toEqual({ status: 'loading', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: [], local: false, error: null, manga: null, resume: false });
         await opening;
         expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 2, libraryChapterId: 8 });
-        expect(state().reader).toEqual({ status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: ['pullwave-manga://page/8/0'], local: true, error: null, manga: null });
+        expect(state().reader).toEqual({ status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: ['pullwave-manga://page/8/0'], local: true, error: null, manga: null, resume: false });
+    });
+
+    it('says that a chapter was opened to be continued, while it loads and when it is ready, and not for the ones that follow', async () => {
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true } });
+        const opening = state().openReader('One Piece', CHAPTERS, 1, true);
+        expect(state().reader).toMatchObject({ status: 'loading', index: 1, resume: true });
+        await opening;
+        expect(state().reader).toMatchObject({ status: 'ready', index: 1, resume: true });
+        await state().goToChapter(1);
+        expect(state().reader).toMatchObject({ status: 'ready', index: 2, resume: false });
+        await state().goToChapterIndex(0);
+        expect(state().reader).toMatchObject({ status: 'ready', index: 0, resume: false });
     });
 
     it('says why a chapter could not be read', async () => {

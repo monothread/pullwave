@@ -779,6 +779,21 @@ describe('MangaDetail what was read', () => {
         useMangaStore.setState({ readKeys: [] });
     });
 
+    it('offers to continue, not to start, as soon as the manga has a chapter it was last read in', () => {
+        saveLastChapter('One Piece', 12);
+        open({ chapters: ORDERED });
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'CONTINUE READING' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'START READING' })).not.toBeInTheDocument();
+    });
+
+    it('offers to start when the chapter the manga was last read in is not in its list', () => {
+        saveLastChapter('One Piece', 99);
+        open({ chapters: ORDERED });
+        render(<MangaDetail />);
+        expect(screen.getByRole('button', { name: 'START READING' })).toBeInTheDocument();
+    });
+
     it('offers to start reading when nothing was read, from the first chapter', async () => {
         const user = userEvent.setup();
         open({ chapters: ORDERED });
@@ -801,14 +816,36 @@ describe('MangaDetail what was read', () => {
         expect(useMangaStore.getState().reader.index).toBe(1);
     });
 
-    it('continues in the first chapter that is not read when the one it was left on is read', async () => {
+    it('continues in the chapter the manga was last read in even when it is read, which is the case of the first one that is not read only when there is none', async () => {
         const user = userEvent.setup();
         saveLastChapter('One Piece', 11);
         useMangaStore.setState({ readKeys: [progressKey('One Piece', 11), progressKey('One Piece', 12)] });
         open({ chapters: ORDERED });
         render(<MangaDetail />);
         await user.click(screen.getByRole('button', { name: 'CONTINUE READING' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 11, libraryChapterId: null });
+        expect(useMangaStore.getState().reader.index).toBe(0);
+    });
+
+    it('continues in the first chapter that is not read when the manga has no last chapter', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ readKeys: [progressKey('One Piece', 11), progressKey('One Piece', 12)] });
+        open({ chapters: ORDERED });
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'CONTINUE READING' }));
         expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 13, libraryChapterId: null });
+    });
+
+    it('opens the chapter to be continued where the manga was last read, and a chapter from its row where that chapter was left', async () => {
+        const user = userEvent.setup();
+        saveLastChapter('One Piece', 12);
+        open({ chapters: ORDERED });
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'CONTINUE READING' }));
+        expect(useMangaStore.getState().reader.resume).toBe(true);
+        useMangaStore.getState().closeReader();
+        await user.click(within(screen.getAllByTestId('manga-chapter')[1]!).getByRole('button', { name: 'READ: Second' }));
+        expect(useMangaStore.getState().reader.resume).toBe(false);
     });
 
     it('starts again from the first chapter when everything is read', async () => {

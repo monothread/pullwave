@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { CLOUDFLARE_SHOW_AFTER_MS } from '@renderer/components/MangaCloudflareNotice';
 import { MangaReader } from '@renderer/components/MangaReader';
-import { loadLastChapter, loadProgress, loadReaderPrefs, PREFS_KEY, progressKey, saveProgress, saveReaderPrefs } from '@renderer/components/readerPrefs';
+import { loadLastChapter, loadLastPosition, loadProgress, loadReaderPrefs, saveLastPosition, PREFS_KEY, progressKey, saveProgress, saveReaderPrefs } from '@renderer/components/readerPrefs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaReaderState, type ReaderChapter } from '@renderer/store/mangaStore';
 import { makeLibraryManga } from '../../helpers/mangaFixtures';
@@ -781,6 +781,103 @@ describe('MangaReader the space between the pages', () => {
         await user.selectOptions(screen.getByLabelText('Reading mode'), 'webtoon');
         expect(screen.getByLabelText('Space between pages (pixels)')).toBeDisabled();
         expect(screen.getByTestId('reader-scroll')).not.toHaveAttribute('style');
+    });
+});
+
+describe('MangaReader continuing where the manga was last read', () => {
+    it('keeps the chapter and the page as the pages are turned, the last page included', () => {
+        open();
+        render(<MangaReader />);
+        expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 2, page: 0 });
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 2, page: 1 });
+        fireEvent.keyDown(window, { key: 'End' });
+        expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 2, page: 2 });
+        // The page kept for the chapter goes back to the first one when it is read to its end, the last position does not.
+        expect(loadProgress('One Piece|2')).toBe(0);
+    });
+
+    it('keeps the new chapter with the page it starts on when the reader goes to another chapter', async () => {
+        saveProgress('One Piece|3', 1);
+        open();
+        render(<MangaReader />);
+        act(() => {
+            open({ index: 2 });
+        });
+        expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 3, page: 1 });
+    });
+
+    it('keeps nothing while the pages load, when there are none, or when the chapter did not load', () => {
+        open({ status: 'loading', pages: [] });
+        const { rerender } = render(<MangaReader />);
+        expect(loadLastPosition('One Piece')).toBeNull();
+        open({ status: 'ready', pages: [] });
+        rerender(<MangaReader />);
+        expect(loadLastPosition('One Piece')).toBeNull();
+        open({ status: 'error', pages: [], error: { code: 'API_ERROR', message: 'x' } });
+        rerender(<MangaReader />);
+        expect(loadLastPosition('One Piece')).toBeNull();
+    });
+
+    it('starts on the last page when the manga was last read there, though the chapter starts over when it is opened from its row', () => {
+        saveLastPosition('One Piece', 2, 2);
+        open({ resume: true });
+        const { unmount } = render(<MangaReader />);
+        expect(shownPage()).toBe(PAGES[2]);
+        expect(screen.getByText('3 / 3')).toBeInTheDocument();
+        unmount();
+        saveProgress('One Piece|2', 0);
+        open({ resume: false });
+        render(<MangaReader />);
+        expect(shownPage()).toBe(PAGES[0]);
+    });
+
+    it('starts on the page the manga was last read on, not on the one the chapter was left on, when it is continued', () => {
+        saveProgress('One Piece|2', 1);
+        saveLastPosition('One Piece', 2, 2);
+        open({ resume: true });
+        render(<MangaReader />);
+        expect(shownPage()).toBe(PAGES[2]);
+    });
+
+    it('starts on the page the chapter was left on when it is not continued, whatever the last position', () => {
+        saveProgress('One Piece|2', 1);
+        saveLastPosition('One Piece', 2, 2);
+        open();
+        render(<MangaReader />);
+        expect(shownPage()).toBe(PAGES[1]);
+    });
+
+    it('starts where the chapter was left when the last position is of another chapter, or there is none', () => {
+        saveProgress('One Piece|2', 1);
+        saveLastPosition('One Piece', 1, 2);
+        open({ resume: true });
+        const { unmount } = render(<MangaReader />);
+        expect(shownPage()).toBe(PAGES[1]);
+        unmount();
+        window.localStorage.clear();
+        saveProgress('One Piece|2', 1);
+        open({ resume: true });
+        render(<MangaReader />);
+        expect(shownPage()).toBe(PAGES[1]);
+    });
+
+    it('starts on the first page when the page kept is past the end of the chapter', () => {
+        saveLastPosition('One Piece', 2, 9);
+        open({ resume: true });
+        render(<MangaReader />);
+        expect(shownPage()).toBe(PAGES[0]);
+    });
+
+    it('keeps the last position of each manga on its own', () => {
+        open();
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        act(() => {
+            open({ mangaTitle: 'Bleach', index: 0 });
+        });
+        expect(loadLastPosition('Bleach')).toEqual({ chapterRemoteId: 1, page: 0 });
+        expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 2, page: 1 });
     });
 });
 

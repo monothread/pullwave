@@ -334,20 +334,24 @@ describe('continueIndex', () => {
         };
     };
 
-    it('is the chapter the manga was left on, when it is not read', () => {
+    it('is the chapter the manga was last read in, read or not', () => {
         expect(continueIndex(chapters, none, 12)).toBe(1);
         expect(continueIndex(chapters, reading(11), 13)).toBe(2);
+        expect(continueIndex(chapters, reading(11, 12), 12)).toBe(1);
+        expect(continueIndex(chapters, reading(11, 12, 13), 13)).toBe(2);
+        expect(continueIndex(chapters, reading(11, 12, 13), 11)).toBe(0);
     });
 
-    it('is the first chapter that is not read when the one it was left on is read, or is not there, or there is none', () => {
-        expect(continueIndex(chapters, reading(11, 12), 12)).toBe(2);
+    it('is the first chapter that is not read when there is no last chapter, or it is not in the list', () => {
         expect(continueIndex(chapters, reading(11), 99)).toBe(1);
         expect(continueIndex(chapters, reading(11), null)).toBe(1);
         expect(continueIndex(chapters, none, null)).toBe(0);
+        expect(continueIndex(chapters, none, 99)).toBe(0);
     });
 
-    it('is the first chapter when everything is read', () => {
-        expect(continueIndex(chapters, reading(11, 12, 13), 13)).toBe(0);
+    it('is the first chapter when there is no last chapter and everything is read', () => {
+        expect(continueIndex(chapters, reading(11, 12, 13), null)).toBe(0);
+        expect(continueIndex(chapters, reading(11, 12, 13), 99)).toBe(0);
     });
 
     it('is -1 when there are no chapters', () => {

@@ -158,6 +158,8 @@ export interface MangaReaderState {
     error: MangaError | null;
     // The manga being read, to write where the user is in the history of reading (null when it is not known).
     manga?: MangaSummary | null;
+    // The chapter was opened by CONTINUE READING: it starts on the page the manga was last read on (the last page too), not where the chapter was left.
+    resume?: boolean;
 }
 
 const CLOSED_READER: MangaReaderState = { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null };
@@ -251,7 +253,7 @@ interface MangaState {
     setQuery: (query: string) => void;
     // Lists the mangas of the source, from the first page.
     // Opens the reader on a chapter of the list (in reading order).
-    openReader: (mangaTitle: string, chapters: ReaderChapter[], index: number) => Promise<void>;
+    openReader: (mangaTitle: string, chapters: ReaderChapter[], index: number, resume?: boolean) => Promise<void>;
     // Goes to the next chapter (1) or the previous one (-1); false when there is none.
     goToChapter: (step: 1 | -1) => Promise<boolean>;
     // Goes to the chapter at this place of the list; false when there is none.
@@ -903,13 +905,13 @@ export const useMangaStore = create<MangaState>((set, get) => {
             set({ selection: { ...current, status: 'ready', details: result.value.details, chapters: result.value.chapters }, selectionRefresh: { loading: false, error: null } });
         },
 
-        openReader: async (mangaTitle, chapters, index) => {
+        openReader: async (mangaTitle, chapters, index, resume = false) => {
             const chapter = chapters[index];
             if (chapter === undefined) {
                 return;
             }
             const manga = get().selection?.manga ?? get().reader.manga ?? null;
-            set({ reader: { status: 'loading', mangaTitle, chapters, index, pages: [], local: false, error: null, manga } });
+            set({ reader: { status: 'loading', mangaTitle, chapters, index, pages: [], local: false, error: null, manga, resume } });
             const result = await window.api.manga.readPages({ chapterRemoteId: chapter.remoteId, libraryChapterId: chapter.libraryChapterId });
             // The answer for a chapter that is no longer the one on the screen is dropped.
             const now = get().reader;
