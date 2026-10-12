@@ -23,12 +23,6 @@ src/
       trayManager.ts            # creates/destroys the tray according to the closeToTray setting
       windowClose.ts            # close action (allow / hide / ask-quit) and the quit confirmation flow
       electronTray.ts           # thin adapter around Electron's Tray + Menu
-      mediaKinds.ts             # media type from URL / Content-Type, segment and private-host detection
-      pageScanner.ts            # static scan of a page's HTML (and iframes) for video addresses
-      sniffRules.ts             # which network requests/responses count as media (pure)
-      browserSniffer.ts         # hidden, sandboxed BrowserWindow that watches the page's network
-      playlistFilter.ts         # drops HLS quality variants covered by a master playlist
-      streamGrouping.ts         # folds near-identical addresses of one video (mirrors/redirects) into one candidate
       # Anime section (Linux and Windows, D-036 to D-041)
       aniCliLocator.ts          # which ani-cli/busybox/curl, tool links, isolated env, patched copy of the script
       aniCliRunner.ts           # spawn `busybox sh ani-cli ...`, menu choices, progress, cancel

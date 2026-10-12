@@ -311,7 +311,6 @@ export interface TraySupport {
     reason: string | null;
 }
 
-export type StreamKind = 'hls' | 'dash' | 'mp4' | 'webm' | 'other';
 export interface CyberApi {
     // The manga section.
     manga: MangaApi;
