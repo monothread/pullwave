@@ -22,8 +22,15 @@ describe('managedSettings', () => {
             systemTrayEnabled: false,
             debugLogsEnabled: false,
             flareSolverrEnabled: true,
-            flareSolverrUrl: 'http://127.0.0.1:8191'
+            flareSolverrUrl: 'http://127.0.0.1:8191',
+            flareSolverrAsResponseFallback: true
         });
+    });
+
+    it('uses the page FlareSolverr got as the answer when the request made again with its cookies is refused, only with a FlareSolverr', () => {
+        expect(managedSettings(4321, 'http://127.0.0.1:8191')).toHaveProperty('flareSolverrAsResponseFallback', true);
+        expect(managedSettings(4321, null)).not.toHaveProperty('flareSolverrAsResponseFallback');
+        expect(managedSettings(4321)).not.toHaveProperty('flareSolverrAsResponseFallback');
     });
 
     it('leaves the address of FlareSolverr out when there is none', () => {

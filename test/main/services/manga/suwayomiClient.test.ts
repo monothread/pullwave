@@ -102,7 +102,7 @@ describe('SuwayomiClient settings of the server', () => {
     it('points the server at a FlareSolverr and turns the bypass on', async () => {
         const { client, calls } = setup([data({ setSettings: { settings: { flareSolverrEnabled: true, flareSolverrUrl: 'http://127.0.0.1:8191' } } })]);
         await expect(client.setFlareSolverr('http://127.0.0.1:8191')).resolves.toBeUndefined();
-        expect(calls[0]?.body).toEqual({ query: QUERIES.setFlareSolverr, variables: { settings: { flareSolverrEnabled: true, flareSolverrUrl: 'http://127.0.0.1:8191' } } });
+        expect(calls[0]?.body).toEqual({ query: QUERIES.setFlareSolverr, variables: { settings: { flareSolverrEnabled: true, flareSolverrUrl: 'http://127.0.0.1:8191', flareSolverrAsResponseFallback: true } } });
     });
 
     it('turns the bypass off when there is no FlareSolverr, without touching the address', async () => {

@@ -142,6 +142,7 @@ describe('SuwayomiServer', () => {
         const conf = readFileSync(join(dataDirectory, 'server.conf'), 'utf-8');
         expect(conf).toContain('server.flareSolverrEnabled = true');
         expect(conf).toContain('server.flareSolverrUrl = "http://127.0.0.1:8191"');
+        expect(conf).toContain('server.flareSolverrAsResponseFallback = true');
     });
 
     it('starts the server with the bypass off when there is no FlareSolverr, or it could not be started', async () => {
@@ -153,6 +154,7 @@ describe('SuwayomiServer', () => {
         const conf = readFileSync(join(failing.dataDirectory, 'server.conf'), 'utf-8');
         expect(conf).toContain('server.flareSolverrEnabled = false');
         expect(conf).not.toContain('flareSolverrUrl');
+        expect(conf).not.toContain('flareSolverrAsResponseFallback');
         expect(failing.server.status).toBe('running');
     });
 

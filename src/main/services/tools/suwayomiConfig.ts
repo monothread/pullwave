@@ -3,7 +3,9 @@ export type ConfigValue = string | number | boolean;
 // What the app decides about the server: it listens on this machine only, on a port of its own, and opens no window, no tray
 // icon and no web page (it is driven by the app alone, so it does not even fetch its web interface).
 // The sites that are behind Cloudflare are read through a FlareSolverr (a program of the app too) when there is one: its address is
-// given, or the bypass is left off.
+// given, or the bypass is left off. With one, the page it gets is also used as the answer when the server's own request, made again with
+// the cookies it got, is refused: some sites (HentaiRead) tie the clearance to the way the connection is made and give a 403 to anything but
+// a browser.
 export function managedSettings(port: number, flareSolverrUrl: string | null = null): Record<string, ConfigValue> {
     return {
         ip: '127.0.0.1',
@@ -13,7 +15,7 @@ export function managedSettings(port: number, flareSolverrUrl: string | null = n
         systemTrayEnabled: false,
         debugLogsEnabled: false,
         flareSolverrEnabled: flareSolverrUrl !== null,
-        ...(flareSolverrUrl === null ? {} : { flareSolverrUrl })
+        ...(flareSolverrUrl === null ? {} : { flareSolverrUrl, flareSolverrAsResponseFallback: true })
     };
 }
 

@@ -147,7 +147,7 @@ export class SuwayomiClient {
     // Points the server at a FlareSolverr (or turns the bypass off when there is none), on a server that is running already: a server
     // started before the helper was ready would otherwise keep answering that the bypass is disabled.
     async setFlareSolverr(address: string | null): Promise<void> {
-        await this.request(QUERIES.setFlareSolverr, { settings: address === null ? { flareSolverrEnabled: false } : { flareSolverrEnabled: true, flareSolverrUrl: address } });
+        await this.request(QUERIES.setFlareSolverr, { settings: address === null ? { flareSolverrEnabled: false } : { flareSolverrEnabled: true, flareSolverrUrl: address, flareSolverrAsResponseFallback: true } });
     }
 
     // Asks the server who it is: it answers, and with which version (the server is started if it does not run).
