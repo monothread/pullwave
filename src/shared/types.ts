@@ -312,31 +312,6 @@ export interface TraySupport {
 }
 
 export type StreamKind = 'hls' | 'dash' | 'mp4' | 'webm' | 'other';
-export type StreamSource = 'page' | 'network';
-export type StreamFindStage = 'scanning' | 'watching';
-
-export interface StreamCandidate {
-    id: string;
-    url: string;
-    kind: StreamKind;
-    source: StreamSource;
-    host: string;
-    title: string | null;
-    duplicates: number;
-}
-
-export interface StreamFindResult {
-    ok: boolean;
-    candidates: StreamCandidate[];
-    message: string | null;
-    usedBrowser: boolean;
-}
-
-export interface StreamFindProgress {
-    jobId: string;
-    stage: StreamFindStage;
-}
-
 export interface CyberApi {
     // The manga section.
     manga: MangaApi;
@@ -365,9 +340,6 @@ export interface CyberApi {
     installAppUpdate: () => Promise<void>;
     getTraySupport: () => Promise<TraySupport>;
     listBrowsers: (refresh?: boolean) => Promise<DetectedBrowser[]>;
-    findStreams: (jobId: string, deep: boolean) => Promise<StreamFindResult>;
-    cancelStreamFind: (jobId: string) => Promise<void>;
-    downloadStream: (candidateId: string) => Promise<AddJobResult>;
     chooseDirectory: () => Promise<string | null>;
     showItemInFolder: (path: string) => Promise<void>;
     getAnimeStatus: () => Promise<AnimeStatus>;
@@ -449,5 +421,4 @@ export interface CyberApi {
     onJobRemoved: (listener: (id: string) => void) => () => void;
     onHistoryChanged: (listener: () => void) => () => void;
     onAppUpdateState: (listener: (state: AppUpdateState) => void) => () => void;
-    onStreamFindProgress: (listener: (progress: StreamFindProgress) => void) => () => void;
 }

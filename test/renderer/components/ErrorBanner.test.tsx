@@ -32,12 +32,12 @@ describe('ErrorBanner', () => {
         expect(onRetry).toHaveBeenCalledTimes(1);
     });
 
-    it('offers FIND STREAM only when a handler is given and calls it', async () => {
-        const onFindStream = vi.fn();
-        const { rerender } = render(<ErrorBanner error={ERROR} onRetry={vi.fn()} />);
-        expect(screen.queryByRole('button', { name: 'FIND STREAM' })).not.toBeInTheDocument();
-        rerender(<ErrorBanner error={ERROR} onRetry={vi.fn()} onFindStream={onFindStream} />);
-        await userEvent.setup().click(screen.getByRole('button', { name: 'FIND STREAM' }));
-        expect(onFindStream).toHaveBeenCalledTimes(1);
+    it('has only the details and retry buttons', () => {
+        render(<ErrorBanner error={ERROR} onRetry={vi.fn()} />);
+        expect(
+            screen.getAllByRole('button').map((button) => {
+                return button.textContent;
+            })
+        ).toEqual(['SHOW DETAILS', 'RETRY']);
     });
 });

@@ -26,7 +26,7 @@ export const en = {
     'error.OUTDATED.hint': 'Use the update button to get the latest yt-dlp.',
     'error.FORBIDDEN.title': 'Access refused by the server',
     'error.FORBIDDEN.hint':
-        'The server refused the request (HTTP 401/403/410). The link may have expired or may only work for the original session, network or browser, which is common for temporary addresses. Try again from the page, enable browser cookies in the settings, or search for the stream again.',
+        'The server refused the request (HTTP 401/403/410). The link may have expired or may only work for the original session, network or browser, which is common for temporary addresses. Try again from the page, or enable browser cookies in the settings.',
     'error.NETWORK.title': 'Network failure',
     'error.NETWORK.hint': 'Check your connection and try again.',
     'error.UNKNOWN.title': 'Download failed',
@@ -39,7 +39,6 @@ export const en = {
     'errorBanner.hideDetails': 'HIDE DETAILS',
     'errorBanner.showDetails': 'SHOW DETAILS',
     'errorBanner.retry': 'RETRY',
-    'errorBanner.findStream': 'FIND STREAM',
 
     // Jobs and queue
     'job.status.queued': 'QUEUED',
@@ -78,7 +77,6 @@ export const en = {
     'job.progressLabel': 'Download progress',
     'job.live': '● LIVE',
     'job.eta': 'ETA {eta}',
-    'job.findFresh': 'FIND A FRESH LINK',
     'job.stopSave': 'STOP & SAVE',
     'job.cancel': 'CANCEL',
     'job.pause': 'PAUSE',
@@ -150,29 +148,6 @@ export const en = {
     'url.empty': 'Paste at least one video URL.',
     'url.addFailed': 'Could not add the download.',
     'url.invalid': 'Invalid URL. Use an http(s) link.',
-
-    // Stream finder
-    'stream.title': 'STREAM FINDER',
-    'stream.aria': 'Stream finder',
-    'stream.close': 'Close stream finder',
-    'stream.scanning': 'Scanning the page for video links…',
-    'stream.watching': 'Watching the page’s network activity (up to 25 s)…',
-    'stream.cancel': 'CANCEL',
-    'stream.pick': 'Pick the stream to download ({count} found):',
-    'stream.sourcePage': 'found in the page',
-    'stream.sourceNetwork': 'seen on the network',
-    'stream.alternateOne': '+{count} alternate address',
-    'stream.alternateMany': '+{count} alternate addresses',
-    'stream.downloadN': 'Download stream {n}',
-    'stream.download': 'DOWNLOAD',
-    'stream.searchDeeper': 'NOT THE ONE? SEARCH DEEPER',
-    'stream.note': 'Protected (DRM) streams cannot be downloaded. Downloads are at your own risk: you are responsible for what you download.',
-    'stream.nothingFound':
-        'No video stream was found. The video may be protected by DRM, need a login, or start only after an action that the app cannot do.',
-    'stream.searchCancelled': 'Search cancelled.',
-    'stream.searchFailed': 'The search failed.',
-    'stream.noDownload': 'That download no longer exists.',
-    'stream.noLongerAvailable': 'That stream is no longer available. Search again.',
 
     // Settings: general
     'settings.aria': 'Settings',

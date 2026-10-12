@@ -9,7 +9,7 @@ const initial = useAppStore.getState();
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], updating: false, appUpdate: INITIAL_APP_UPDATE, traySupport: null, streamSearches: {}, tab: 'downloads', downloadsView: 'queue' });
+    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], updating: false, appUpdate: INITIAL_APP_UPDATE, traySupport: null, tab: 'downloads', downloadsView: 'queue' });
 });
 
 const HISTORY_ENTRY: HistoryEntry = { id: 'h1', url: 'https://x.com', title: 'T', filePath: '/d/T.mp4', status: 'done', errorTitle: null, finishedAt: 5 };
@@ -253,7 +253,7 @@ describe('useAppStore.init', () => {
 
     it('returns a cleanup that unsubscribes every listener', async () => {
         const cleanup = await useAppStore.getState().init();
-        expect(mock.unsubscribers).toHaveLength(5);
+        expect(mock.unsubscribers).toHaveLength(4);
         cleanup();
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -533,110 +533,6 @@ describe('useAppStore detected browsers', () => {
         await useAppStore.getState().loadBrowsers(true);
         expect(mock.api.listBrowsers).toHaveBeenCalledWith(true);
         expect(useAppStore.getState().browsers).toEqual([]);
-    });
-});
-
-describe('useAppStore stream search', () => {
-    const FOUND = { id: 'c1', url: 'https://cdn.test/a.m3u8', kind: 'hls' as const, source: 'page' as const, host: 'cdn.test', title: 'Ep', duplicates: 0 };
-
-    it('starts empty', () => {
-        expect(initial.streamSearches).toEqual({});
-    });
-
-    it('marks the job as searching and stores the result when it ends', async () => {
-        mock.api.findStreams.mockResolvedValueOnce({ ok: true, candidates: [FOUND], message: null, usedBrowser: false });
-        const search = useAppStore.getState().findStreams('job-1', false);
-        expect(useAppStore.getState().streamSearches['job-1']).toEqual({ status: 'searching', stage: 'scanning', candidates: [], message: null, usedBrowser: false });
-        await search;
-        expect(mock.api.findStreams).toHaveBeenCalledWith('job-1', false);
-        expect(useAppStore.getState().streamSearches['job-1']).toEqual({ status: 'done', stage: 'scanning', candidates: [FOUND], message: null, usedBrowser: false });
-    });
-
-    it('passes the deep flag and keeps the message of an empty result', async () => {
-        mock.api.findStreams.mockResolvedValueOnce({ ok: false, candidates: [], message: 'Nothing here.', usedBrowser: true });
-        await useAppStore.getState().findStreams('job-1', true);
-        expect(mock.api.findStreams).toHaveBeenCalledWith('job-1', true);
-        expect(useAppStore.getState().streamSearches['job-1']).toMatchObject({ status: 'done', candidates: [], message: 'Nothing here.', usedBrowser: true });
-    });
-
-    it('follows the stage pushed by the main process while searching', async () => {
-        await useAppStore.getState().init();
-        let finish: (value: { ok: boolean; candidates: never[]; message: string; usedBrowser: boolean }) => void = () => {
-            return undefined;
-        };
-        mock.api.findStreams.mockReturnValueOnce(
-            new Promise((resolve) => {
-                finish = resolve;
-            })
-        );
-        const search = useAppStore.getState().findStreams('job-1', false);
-        mock.emitStreamProgress({ jobId: 'job-1', stage: 'watching' });
-        expect(useAppStore.getState().streamSearches['job-1']?.stage).toBe('watching');
-        finish({ ok: false, candidates: [], message: 'none', usedBrowser: true });
-        await search;
-        expect(useAppStore.getState().streamSearches['job-1']).toMatchObject({ status: 'done', stage: 'watching' });
-    });
-
-    it('ignores progress for jobs that are not searching', async () => {
-        await useAppStore.getState().init();
-        mock.emitStreamProgress({ jobId: 'other', stage: 'watching' });
-        expect(useAppStore.getState().streamSearches).toEqual({});
-    });
-
-    it('does not bring a closed panel back when a late result arrives', async () => {
-        let finish: (value: { ok: boolean; candidates: never[]; message: string; usedBrowser: boolean }) => void = () => {
-            return undefined;
-        };
-        mock.api.findStreams.mockReturnValueOnce(
-            new Promise((resolve) => {
-                finish = resolve;
-            })
-        );
-        const search = useAppStore.getState().findStreams('job-1', false);
-        useAppStore.getState().closeStreamSearch('job-1');
-        finish({ ok: false, candidates: [], message: 'late', usedBrowser: false });
-        await search;
-        expect(useAppStore.getState().streamSearches).toEqual({});
-    });
-
-    it('cancels a search through the API', async () => {
-        await useAppStore.getState().cancelStreamSearch('job-1');
-        expect(mock.api.cancelStreamFind).toHaveBeenCalledWith('job-1');
-    });
-
-    it('adds the chosen stream as a download and closes the panel', async () => {
-        useAppStore.setState({ streamSearches: { 'job-1': { status: 'done', stage: 'scanning', candidates: [FOUND], message: null, usedBrowser: false } } });
-        await useAppStore.getState().downloadStream('job-1', 'c1');
-        expect(mock.api.downloadStream).toHaveBeenCalledWith('c1');
-        expect(useAppStore.getState().streamSearches).toEqual({});
-        expect(useAppStore.getState().notice).toBeNull();
-    });
-
-    it('keeps the panel and raises a notice when the stream could not be added', async () => {
-        mock.api.downloadStream.mockResolvedValueOnce({ ok: false, job: null, message: null });
-        useAppStore.setState({ streamSearches: { 'job-1': { status: 'done', stage: 'scanning', candidates: [FOUND], message: null, usedBrowser: false } } });
-        await useAppStore.getState().downloadStream('job-1', 'c1');
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Could not add the download.' });
-        expect(useAppStore.getState().streamSearches['job-1']).toBeDefined();
-    });
-
-    it('closing a panel cancels the search and removes only that job', () => {
-        useAppStore.setState({
-            streamSearches: {
-                'job-1': { status: 'searching', stage: 'scanning', candidates: [], message: null, usedBrowser: false },
-                'job-2': { status: 'done', stage: 'scanning', candidates: [], message: 'x', usedBrowser: false }
-            }
-        });
-        useAppStore.getState().closeStreamSearch('job-1');
-        expect(mock.api.cancelStreamFind).toHaveBeenCalledWith('job-1');
-        expect(Object.keys(useAppStore.getState().streamSearches)).toEqual(['job-2']);
-    });
-
-    it('drops the search of a job that was removed', async () => {
-        await useAppStore.getState().init();
-        useAppStore.setState({ streamSearches: { 'job-1': { status: 'done', stage: 'scanning', candidates: [], message: null, usedBrowser: false } } });
-        mock.emitJobRemoved('job-1');
-        expect(useAppStore.getState().streamSearches).toEqual({});
     });
 });
 

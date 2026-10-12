@@ -52,7 +52,15 @@ export async function writeCbz(
         await Promise.race([pipeline(zip.outputStream, file), unreadable]);
         dependencies.rename(temporaryPath, outputPath);
     } catch (error) {
-        file.destroy();
+        // The file is removed once the stream is closed: a stream that was still opening would create it again after it was removed.
+        if (!file.closed) {
+            await new Promise<void>((resolve) => {
+                file.once('close', () => {
+                    resolve();
+                });
+                file.destroy();
+            });
+        }
         dependencies.remove(temporaryPath);
         throw error;
     }

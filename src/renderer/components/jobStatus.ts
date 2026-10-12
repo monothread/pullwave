@@ -1,5 +1,5 @@
 import type { MessageKey, Translator } from '@shared/i18n';
-import type { DownloadError, DownloadJob, ErrorCode, JobStatus } from '@shared/types';
+import type { DownloadJob, JobStatus } from '@shared/types';
 
 export type LivePhase = 'verifying' | 'waiting' | 'merging' | 'saving' | 'processing';
 
@@ -75,17 +75,6 @@ export function sortForDisplay(jobs: DownloadJob[]): DownloadJob[] {
 
 export function formatPercent(percent: number): string {
     return `${percent.toFixed(1)}%`;
-}
-
-// Only failures that mean "yt-dlp did not understand this page" are worth a look at the page itself.
-const STREAM_SEARCH_CODES: ReadonlyArray<ErrorCode> = ['UNKNOWN', 'OUTDATED'];
-
-// A stream that was refused (expired or tied to another session) can be replaced by a fresh one from its page.
-export function canFindStream(error: DownloadError | null, pageUrl: string | null = null): boolean {
-    if (error === null) {
-        return false;
-    }
-    return STREAM_SEARCH_CODES.includes(error.code) || (error.code === 'FORBIDDEN' && pageUrl !== null);
 }
 
 export function formatDuration(totalSeconds: number): string {

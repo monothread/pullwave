@@ -630,18 +630,6 @@ body::after {
 
 .field__warning { margin: 0; color: var(--yellow); font-size: 12px; }
 
-.stream-finder { border: 1px solid var(--cyan); background: var(--tint-cyan); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-.stream-finder__head { display: flex; align-items: center; justify-content: space-between; color: var(--cyan); letter-spacing: 2px; }
-.stream-finder__status { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--yellow); }
-.stream-finder__empty { margin: 0; color: var(--text); }
-.stream-finder__hint { margin: 0; color: var(--muted); font-size: 12px; }
-.stream-finder__note { margin: 0; color: var(--muted); font-size: 11px; }
-.stream-finder__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.stream-candidate { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--line); background: var(--panel); min-width: 0; }
-.stream-candidate__info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.stream-candidate__url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stream-candidate__meta { color: var(--muted); font-size: 11px; }
-.stream-candidate__kind { color: var(--magenta); flex-shrink: 0; }
 
 .progress--live .progress__bar {
     width: 100%;

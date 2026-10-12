@@ -11,8 +11,6 @@ import type {
     HistoryEntry,
     LinkRequest,
     Settings,
-    StreamCandidate,
-    StreamFindStage,
     TraySupport
 } from '@shared/types';
 
@@ -30,14 +28,6 @@ export interface Notice {
 export interface ToastItem {
     id: number;
     message: string;
-}
-
-export interface StreamSearchState {
-    status: 'searching' | 'done';
-    stage: StreamFindStage;
-    candidates: StreamCandidate[];
-    message: string | null;
-    usedBrowser: boolean;
 }
 
 export const INITIAL_APP_UPDATE: AppUpdateState = { status: 'idle', currentVersion: '', version: null, percent: 0, message: null };
@@ -58,7 +48,6 @@ export interface AppState {
     appUpdate: AppUpdateState;
     traySupport: TraySupport | null;
     browsers: DetectedBrowser[] | null;
-    streamSearches: Record<string, StreamSearchState>;
     setTab: (tab: Tab) => void;
     setDownloadsView: (view: DownloadsView) => void;
     // Shows a notice (it takes the place of the one on the screen); null takes it away.
@@ -89,10 +78,6 @@ export interface AppState {
     installAppUpdate: () => Promise<void>;
     refreshTraySupport: () => Promise<void>;
     loadBrowsers: (refresh?: boolean) => Promise<void>;
-    findStreams: (jobId: string, deep: boolean) => Promise<void>;
-    cancelStreamSearch: (jobId: string) => Promise<void>;
-    downloadStream: (jobId: string, candidateId: string) => Promise<void>;
-    closeStreamSearch: (jobId: string) => void;
 }
 
 // Messages the store creates itself (not reactive): they use the language that is saved when they are created.
@@ -106,14 +91,6 @@ function addRequest(link: LinkRequest): Promise<AddJobResult> {
         return window.api.addDownload(link.url, link.downloadDir ?? '', link.options);
     }
     return link.downloadDir ? window.api.addDownload(link.url, link.downloadDir) : window.api.addDownload(link.url);
-}
-
-function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-    return Object.fromEntries(
-        Object.entries(record).filter(([entryKey]) => {
-            return entryKey !== key;
-        })
-    );
 }
 
 export function upsertJob(jobs: DownloadJob[], job: DownloadJob): DownloadJob[] {
@@ -146,7 +123,6 @@ export const useAppStore = create<AppState>((set, get) => {
         appUpdate: INITIAL_APP_UPDATE,
         traySupport: null,
         browsers: null,
-        streamSearches: {},
 
         setTab: (tab) => {
             set({ tab });
@@ -209,18 +185,8 @@ export const useAppStore = create<AppState>((set, get) => {
                         return {
                             jobs: state.jobs.filter((job) => {
                                 return job.id !== id;
-                            }),
-                            streamSearches: withoutKey(state.streamSearches, id)
+                            })
                         };
-                    });
-                }),
-                api.onStreamFindProgress((progress) => {
-                    set((state) => {
-                        const search = state.streamSearches[progress.jobId];
-                        if (search?.status !== 'searching') {
-                            return state;
-                        }
-                        return { streamSearches: { ...state.streamSearches, [progress.jobId]: { ...search, stage: progress.stage } } };
                     });
                 }),
                 api.onHistoryChanged(() => {
@@ -342,55 +308,6 @@ export const useAppStore = create<AppState>((set, get) => {
 
         loadBrowsers: async (refresh = false) => {
             set({ browsers: await window.api.listBrowsers(refresh) });
-        },
-
-        findStreams: async (jobId, deep) => {
-            set((state) => {
-                return {
-                    streamSearches: {
-                        ...state.streamSearches,
-                        [jobId]: { status: 'searching', stage: 'scanning', candidates: [], message: null, usedBrowser: false }
-                    }
-                };
-            });
-            const result = await window.api.findStreams(jobId, deep);
-            set((state) => {
-                if (!state.streamSearches[jobId]) {
-                    return state;
-                }
-                return {
-                    streamSearches: {
-                        ...state.streamSearches,
-                        [jobId]: {
-                            status: 'done',
-                            stage: state.streamSearches[jobId]?.stage ?? 'scanning',
-                            candidates: result.candidates,
-                            message: result.message,
-                            usedBrowser: result.usedBrowser
-                        }
-                    }
-                };
-            });
-        },
-
-        cancelStreamSearch: async (jobId) => {
-            await window.api.cancelStreamFind(jobId);
-        },
-
-        downloadStream: async (jobId, candidateId) => {
-            const result = await window.api.downloadStream(candidateId);
-            if (!result.ok) {
-                set({ notice: { kind: 'error', message: result.message ?? translateNow(get().settings, 'url.addFailed') } });
-                return;
-            }
-            get().closeStreamSearch(jobId);
-        },
-
-        closeStreamSearch: (jobId) => {
-            void window.api.cancelStreamFind(jobId);
-            set((state) => {
-                return { streamSearches: withoutKey(state.streamSearches, jobId) };
-            });
         }
     };
 });

@@ -2,7 +2,6 @@ import { join } from 'node:path';
 import { DEFAULT_SETTINGS, IPC } from '@shared/constants';
 import type { DownloadJob, HistoryEntry } from '@shared/types';
 import { registerHandlers, type IpcMainLike } from '@main/ipc/registerHandlers';
-import { applyLanguage } from '@main/services/language';
 import { checkBinaries } from '@main/services/binaryLocator';
 import { BinaryResolver } from '@main/services/binaryResolver';
 import { discardOutdatedUpdate, resetYtdlp, updateYtdlp } from '@main/services/updater';
@@ -10,7 +9,6 @@ import { HistoryStore } from '@main/services/historyStore';
 import type { AppUpdateService } from '@main/services/appUpdateService';
 import type { QueueManager } from '@main/services/queueManager';
 import type { BrowserCatalog } from '@main/services/browserCatalog';
-import type { StreamFinder } from '@main/services/streamFinder';
 import { SettingsStore } from '@main/services/settingsStore';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
@@ -98,16 +96,8 @@ function setup(animeFolderLocked?: () => boolean) {
             return [{ label: 'Brave Origin', engine: 'brave', dataDir: '/home/a/.config/BraveSoftware/Brave-Origin', profiles: [{ id: 'Default', name: 'Personal' }] }];
         })
     };
-    const sendStreamProgress = vi.fn();
-    const streamFinder = {
-        find: vi.fn<StreamFinder['find']>(async () => {
-            return { ok: true, candidates: [], message: null, usedBrowser: false };
-        }),
-        cancel: vi.fn(),
-        getCandidate: vi.fn()
-    };
     const resolver = new BinaryResolver({ bundledDir: '/b', userBinDir: '/u' });
-    registerHandlers({ ipcMain, settingsStore, historyStore, queue: queue as unknown as QueueManager, resolver, appUpdates: appUpdates as unknown as AppUpdateService, refreshTraySupport, browserCatalog: browserCatalog as unknown as BrowserCatalog, onSettingsSaved, streamFinder: streamFinder as unknown as StreamFinder, sendStreamProgress, chooseDirectory, showItemInFolder, animeFolderLocked });
+    registerHandlers({ ipcMain, settingsStore, historyStore, queue: queue as unknown as QueueManager, resolver, appUpdates: appUpdates as unknown as AppUpdateService, refreshTraySupport, browserCatalog: browserCatalog as unknown as BrowserCatalog, onSettingsSaved, chooseDirectory, showItemInFolder, animeFolderLocked });
     const call = (channel: string, ...args: unknown[]): unknown => {
         const handler = handlers.get(channel);
         if (!handler) {
@@ -115,7 +105,7 @@ function setup(animeFolderLocked?: () => boolean) {
         }
         return handler({}, ...args);
     };
-    return { handlers, call, browserCatalog, streamFinder, sendStreamProgress, refreshTraySupport, onSettingsSaved, appUpdates, resolver, settingsStore, historyStore, queue, chooseDirectory, showItemInFolder };
+    return { handlers, call, browserCatalog, refreshTraySupport, onSettingsSaved, appUpdates, resolver, settingsStore, historyStore, queue, chooseDirectory, showItemInFolder };
 }
 
 describe('registerHandlers', () => {
@@ -124,7 +114,7 @@ describe('registerHandlers', () => {
         expect([...handlers.keys()].sort()).toEqual(
             [
                 IPC.settingsGet, IPC.settingsSave, IPC.queueAdd, IPC.queueList, IPC.queueCancel, IPC.queuePause, IPC.queueResume, IPC.queueStop, IPC.queueRetry, IPC.queueClearPartials, IPC.queueRemove,
-                IPC.queueClearFinished, IPC.historyList, IPC.historyClear, IPC.binariesCheck, IPC.ytdlpUpdate, IPC.ytdlpReset, IPC.appUpdateGet, IPC.appUpdateCheck, IPC.appUpdateDownload, IPC.appUpdateInstall, IPC.traySupport, IPC.browsersList, IPC.streamFind, IPC.streamCancel, IPC.streamDownload, IPC.dialogChooseDir,
+                IPC.queueClearFinished, IPC.historyList, IPC.historyClear, IPC.binariesCheck, IPC.ytdlpUpdate, IPC.ytdlpReset, IPC.appUpdateGet, IPC.appUpdateCheck, IPC.appUpdateDownload, IPC.appUpdateInstall, IPC.traySupport, IPC.browsersList, IPC.dialogChooseDir,
                 IPC.shellShowItem
             ].sort()
         );
@@ -225,90 +215,6 @@ describe('registerHandlers', () => {
         const { call, refreshTraySupport } = setup();
         await expect(call(IPC.traySupport)).resolves.toEqual({ available: false, reason: 'no tray here' });
         expect(refreshTraySupport).toHaveBeenCalledTimes(1);
-    });
-
-    describe('stream finder', () => {
-        const TARGET = { id: 'j1', url: 'https://site.test/ep-1' };
-
-        it('searches the page of an existing job and reports the stage to the screen', async () => {
-            const { call, queue, streamFinder, sendStreamProgress } = setup();
-            queue.getJob.mockReturnValue(TARGET);
-            streamFinder.find.mockImplementationOnce(async (_jobId, _url, _deep, onStage) => {
-                onStage('scanning');
-                onStage('watching');
-                return { ok: true, candidates: [], message: null, usedBrowser: true };
-            });
-            await expect(call(IPC.streamFind, 'j1', true)).resolves.toEqual({ ok: true, candidates: [], message: null, usedBrowser: true });
-            expect(queue.getJob).toHaveBeenCalledWith('j1');
-            expect(streamFinder.find).toHaveBeenCalledWith('j1', 'https://site.test/ep-1', true, expect.any(Function));
-            expect(sendStreamProgress.mock.calls).toEqual([[{ jobId: 'j1', stage: 'scanning' }], [{ jobId: 'j1', stage: 'watching' }]]);
-        });
-
-        it('only searches deeper when asked with exactly true', async () => {
-            const { call, queue, streamFinder } = setup();
-            queue.getJob.mockReturnValue(TARGET);
-            await call(IPC.streamFind, 'j1', 'yes');
-            expect(streamFinder.find).toHaveBeenCalledWith('j1', TARGET.url, false, expect.any(Function));
-        });
-
-        it('searches again on the page a stream came from when the job has one', async () => {
-            const { call, queue, streamFinder } = setup();
-            queue.getJob.mockReturnValue({ id: 'j9', url: 'https://cdn.test/videoplayback?sig=old', pageUrl: 'https://site.test/ep-1' });
-            await call(IPC.streamFind, 'j9', false);
-            expect(streamFinder.find).toHaveBeenCalledWith('j9', 'https://site.test/ep-1', false, expect.any(Function));
-        });
-
-        it('refuses in the saved language to search for a job that does not exist', () => {
-            applyLanguage('es', 'en-US');
-            const { call, queue } = setup();
-            queue.getJob.mockReturnValue(undefined);
-            expect(call(IPC.streamFind, 'gone', false)).toEqual({ ok: false, candidates: [], message: 'Esa descarga ya no existe.', usedBrowser: false });
-            applyLanguage('en', 'en-US');
-        });
-
-        it('refuses to search for a job that does not exist', () => {
-            const { call, queue, streamFinder } = setup();
-            queue.getJob.mockReturnValue(undefined);
-            expect(call(IPC.streamFind, 'gone', false)).toEqual({ ok: false, candidates: [], message: 'That download no longer exists.', usedBrowser: false });
-            expect(streamFinder.find).not.toHaveBeenCalled();
-        });
-
-        it('cancels a search by job id', () => {
-            const { call, streamFinder } = setup();
-            call(IPC.streamCancel, 'j1');
-            call(IPC.streamCancel, 7);
-            expect(streamFinder.cancel.mock.calls).toEqual([['j1'], ['']]);
-        });
-
-        it('downloads the chosen stream with the referer, user agent, cookie and title the finder kept', () => {
-            const { call, queue, streamFinder } = setup();
-            streamFinder.getCandidate.mockReturnValue({ url: 'https://cdn.test/a.m3u8', referer: 'https://site.test/ep-1', userAgent: 'UA', cookie: 'sid=1', title: 'Episode 1', ipFamily: null, pageUrl: 'https://site.test/ep-1' });
-            expect(call(IPC.streamDownload, 'c1')).toEqual({ ok: true, job: JOB, message: null });
-            expect(streamFinder.getCandidate).toHaveBeenCalledWith('c1');
-            expect(queue.add).toHaveBeenCalledWith('https://cdn.test/a.m3u8', { referer: 'https://site.test/ep-1', userAgent: 'UA', cookie: 'sid=1', title: 'Episode 1', ipFamily: undefined, pageUrl: 'https://site.test/ep-1' });
-        });
-
-        it('leaves the cookie and title out when the stream has none', () => {
-            const { call, queue, streamFinder } = setup();
-            streamFinder.getCandidate.mockReturnValue({ url: 'https://cdn.test/a.mp4', referer: 'https://site.test/ep-1', userAgent: 'UA', cookie: null, title: null, ipFamily: 6, pageUrl: 'https://origin.test/p' });
-            call(IPC.streamDownload, 'c2');
-            expect(queue.add).toHaveBeenCalledWith('https://cdn.test/a.mp4', { referer: 'https://site.test/ep-1', userAgent: 'UA', cookie: undefined, title: undefined, ipFamily: 6, pageUrl: 'https://origin.test/p' });
-        });
-
-        it('explains in the saved language when the stream is no longer known', () => {
-            applyLanguage('pt', 'en-US');
-            const { call, streamFinder } = setup();
-            streamFinder.getCandidate.mockReturnValue(undefined);
-            expect(call(IPC.streamDownload, 'old')).toEqual({ ok: false, job: null, message: 'Esse stream não está mais disponível. Busque novamente.' });
-            applyLanguage('en', 'en-US');
-        });
-
-        it('explains when the stream is no longer known', () => {
-            const { call, queue, streamFinder } = setup();
-            streamFinder.getCandidate.mockReturnValue(undefined);
-            expect(call(IPC.streamDownload, 'old')).toEqual({ ok: false, job: null, message: 'That stream is no longer available. Search again.' });
-            expect(queue.add).not.toHaveBeenCalled();
-        });
     });
 
     it('adds a download with the URL string', () => {

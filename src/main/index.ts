@@ -17,7 +17,6 @@ import { createDiagnosticLog, type DiagnosticLog } from './services/diagnosticLo
 import { attachWindowDiagnostics } from './services/windowDiagnostics';
 import { AppUpdateService } from './services/appUpdateService';
 import { BinaryResolver } from './services/binaryResolver';
-import { sniffStreams } from './services/browserSniffer';
 import { BrowserCatalog } from './services/browserCatalog';
 import { defaultFileProbe, detectBrowsers, type DetectionEnvironment } from './services/browserDetector';
 import { listRegisteredBrowsers } from './services/browserRegistry';
@@ -37,9 +36,6 @@ import { QueueManager } from './services/queueManager';
 import { isAutostartLaunch, shouldStartHidden } from './services/startupLaunch';
 import { SettingsStore } from './services/settingsStore';
 import { launchProgram, openSiteIn } from './services/siteOpener';
-import { defaultFetchPage, scanPage } from './services/pageScanner';
-import { defaultFetchPlaylist, dropVariantPlaylists } from './services/playlistFilter';
-import { StreamFinder } from './services/streamFinder';
 import { ignoreStdioErrors } from './services/stdioGuard';
 import { checkTraySupport } from './services/trayAvailability';
 import { TrayManager } from './services/trayManager';
@@ -521,15 +517,6 @@ function bootstrap(): BootstrapResult {
             });
         }
     });
-    const streamFinder = new StreamFinder({
-        scan: (url, signal) => {
-            return scanPage(url, { fetchPage: defaultFetchPage }, signal);
-        },
-        sniff: sniffStreams,
-        refine: (streams) => {
-            return dropVariantPlaylists(streams, defaultFetchPlaylist);
-        }
-    });
     const browserCatalog = new BrowserCatalog(async () => {
         const environment: DetectionEnvironment = { platform: process.platform, homeDir: app.getPath('home'), env: process.env };
         // PULLWAVE_APPLICATION_DIRS replaces the folders holding the .desktop entries (used by the end-to-end tests).
@@ -592,10 +579,6 @@ function bootstrap(): BootstrapResult {
             return manager.refreshSupport();
         },
         browserCatalog,
-        streamFinder,
-        sendStreamProgress: (progress) => {
-            sendToRenderer(IPC.eventStreamProgress, progress);
-        },
         onSettingsSaved: (settings) => {
             applyLanguage(settings.language, app.getLocale());
             autostart.sync(settings.launchAtLogin);

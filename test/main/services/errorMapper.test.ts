@@ -92,7 +92,7 @@ describe('mapDownloadError for refused requests', () => {
         expect(mapDownloadError(FORBIDDEN_STDERR, 1)).toEqual({
             code: 'FORBIDDEN',
             title: 'Access refused by the server',
-            hint: 'The server refused the request (HTTP 401/403/410). The link may have expired or may only work for the original session, network or browser, which is common for temporary addresses. Try again from the page, enable browser cookies in the settings, or search for the stream again.',
+            hint: 'The server refused the request (HTTP 401/403/410). The link may have expired or may only work for the original session, network or browser, which is common for temporary addresses. Try again from the page, or enable browser cookies in the settings.',
             raw: FORBIDDEN_STDERR
         });
     });

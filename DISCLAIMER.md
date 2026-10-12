@@ -1,8 +1,7 @@
 # Disclaimer
 
 Pullwave is a general-purpose tool that downloads videos by handing the addresses you give it to
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) and [FFmpeg](https://ffmpeg.org). Its "Find stream" feature looks for the
-video address that a web page uses.
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) and [FFmpeg](https://ffmpeg.org).
 
 **Everything you download with this program is done at your own risk and on your own responsibility.**
 
@@ -19,8 +18,6 @@ video address that a web page uses.
 - **No affiliation or endorsement.** This project is not affiliated with, authorized by or endorsed by any website,
   streaming service, content owner, or by the yt-dlp and FFmpeg projects. Names of third parties belong to their
   owners.
-- **Privacy.** The hidden browser window used by "Find stream" contacts the site like any browser would, so the site
-  sees a visit from you. The search keeps nothing after it ends.
 - **No warranty.** As stated in the [MIT license](LICENSE), the software is provided "as is", without warranty of any
   kind. It may fail, stop working when a site changes, or download something other than what you expected.
 

@@ -1,10 +1,8 @@
 import type { DownloadJob } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
-import { useAppStore } from '../store/appStore';
 import { ErrorBanner } from './ErrorBanner';
-import { canFindStream, livePhase, statusLabel } from './jobStatus';
+import { livePhase, statusLabel } from './jobStatus';
 import { JobMeta, JobProgress } from './JobProgress';
-import { StreamFinder } from './StreamFinder';
 
 interface JobCardProps {
     job: DownloadJob;
@@ -30,12 +28,6 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
     const confirmDeletion = (): boolean => {
         return !(job.live && job.hasPartial) || window.confirm(t('job.confirmLivePartial'));
     };
-    const searchOpen = useAppStore((state) => {
-        return state.streamSearches[job.id] !== undefined;
-    });
-    const findStreams = useAppStore((state) => {
-        return state.findStreams;
-    });
     return (
         <article className={`job job--${job.status}${phase === null ? '' : ` job--${phase}`}`} data-testid="job-card">
             <header className="job__head">
@@ -56,17 +48,8 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
                     onRetry={() => {
                         onRetry(job.id);
                     }}
-                    onFindStream={
-                        canFindStream(job.error, job.pageUrl) && !searchOpen
-                            ? () => {
-                                  void findStreams(job.id, false);
-                              }
-                            : undefined
-                    }
-                    findStreamLabel={job.pageUrl !== null ? t('job.findFresh') : t('errorBanner.findStream')}
                 />
             )}
-            <StreamFinder jobId={job.id} />
             <div className="job__actions">
                 {isRecording && (
                     <button

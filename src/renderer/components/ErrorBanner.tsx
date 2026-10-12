@@ -5,11 +5,9 @@ import { useTranslator } from '../i18n/useTranslator';
 interface ErrorBannerProps {
     error: DownloadError;
     onRetry: () => void;
-    onFindStream?: () => void;
-    findStreamLabel?: string;
 }
 
-export function ErrorBanner({ error, onRetry, onFindStream, findStreamLabel }: ErrorBannerProps) {
+export function ErrorBanner({ error, onRetry }: ErrorBannerProps) {
     const t = useTranslator();
     const [showDetails, setShowDetails] = useState(false);
     return (
@@ -34,11 +32,6 @@ export function ErrorBanner({ error, onRetry, onFindStream, findStreamLabel }: E
                 <button type="button" className="btn btn--small btn--hot" onClick={onRetry}>
                     {t('errorBanner.retry')}
                 </button>
-                {onFindStream && (
-                    <button type="button" className="btn btn--small btn--primary" onClick={onFindStream}>
-                        {findStreamLabel ?? t('errorBanner.findStream')}
-                    </button>
-                )}
             </div>
             {showDetails && <pre className="error-banner__raw">{error.raw}</pre>}
         </div>

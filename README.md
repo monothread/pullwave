@@ -16,7 +16,6 @@ There is nothing else to install: everything the app needs comes with it.
 ## Highlights
 - Choose the quality, the format and the subtitles of each download, or download only the audio.
 - Record **live streams**, wait for scheduled ones and keep the file even if the stream drops.
-- **Find stream:** when a page is not supported, the app looks for the video in it and lets you pick one.
 - An **anime library** of your own, with series and seasons, where you stopped watching and subtitles in every language the source offers.
 - A **player** inside the app, or watch an episode **without downloading** it.
 - **Subtitles made for you:** translate a subtitle into another language, or create one from the audio of an episode that has none, with your own account at OpenAI, Claude, Gemini and others.
@@ -68,7 +67,7 @@ The back and forward buttons of the mouse take you through the screens you have 
 ### Queue
 - Paste a link, or several: **+ ADD LINK** gives you one field per link. **FOLDER** sends that download to another folder, and **OPTIONS** changes the quality, the format and the live-stream behavior for that download only.
 - Every download shows its progress, speed and time left, and can be paused, resumed, cancelled or retried. Up to two downloads run at the same time, the others wait their turn. When one finishes you get a notice, and it moves to the history.
-- **PAUSE** stops a download and keeps what was already downloaded; **RESUME** goes on from there, and a paused download leaves its place in the queue to the next one. A live recording cannot be paused (STOP & SAVE ends it). A paused download is still there, paused, when you open the app again, and RESUME goes on from its partial files (a download that needed the cookie of a page may have to be found again with FIND STREAM). Closing the app while downloads are running cancels them and deletes their unfinished files (paused downloads are kept, with theirs); the app asks before it does.
+- **PAUSE** stops a download and keeps what was already downloaded; **RESUME** goes on from there, and a paused download leaves its place in the queue to the next one. A live recording cannot be paused (STOP & SAVE ends it). A paused download is still there, paused, when you open the app again, and RESUME goes on from its partial files. Closing the app while downloads are running cancels them and deletes their unfinished files (paused downloads are kept, with theirs); the app asks before it does.
 - If something goes wrong, a clear message explains what happened, with the details one click away.
 
   ![An error explained in the queue](docs/screenshots/cyberpunk-error.png)
@@ -93,13 +92,6 @@ Use the cookies of your browser for age-restricted, private or members-only vide
 - Record a live from the start (when the broadcaster allows it), or wait for a scheduled live to begin.
 - **STOP & SAVE** ends the recording and keeps the file. The card shows how long it has been recording and how big the file is.
 - If the stream drops, the app keeps looking for it for a few seconds. If it comes back, the recording goes on in a new file of the same download.
-
-### Find stream
-When a link does not work because the page is not supported (for example "Unsupported URL"), the card offers **FIND STREAM**. The app looks for the video in the page, and, if it finds nothing, opens the page in a hidden window for a short while to see what it loads. Then you pick one of the videos found, and it is downloaded like any other link.
-
-- Videos protected by DRM cannot be downloaded, and pages that need a login may show nothing.
-- The site sees a visit to the page, as with any browser.
-- Use it only for content you have the right to download; see [DISCLAIMER.md](DISCLAIMER.md).
 
 ### Settings of the video downloader (⚙)
 ![Settings of the video downloader](docs/screenshots/cyberpunk-settings.png)

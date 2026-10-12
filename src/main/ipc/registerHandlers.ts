@@ -1,14 +1,11 @@
 import { isAbsolute } from 'node:path';
 import { IPC } from '@shared/constants';
 import type {
-    AddJobResult,
     AppUpdateState,
     BinariesStatus,
     DetectedBrowser,
     HistoryEntry,
     Settings,
-    StreamFindProgress,
-    StreamFindResult,
     TraySupport,
     UpdateResult
 } from '@shared/types';
@@ -16,14 +13,12 @@ import { checkBinaries } from '../services/binaryLocator';
 import type { BinaryResolver } from '../services/binaryResolver';
 import { sanitizeDownloadOptions } from '../services/settingsSanitizer';
 import type { RequestExtras } from '../services/ytdlpArgsBuilder';
-import { translateMain } from '../services/language';
 import { discardOutdatedUpdate, resetYtdlp, updateYtdlp } from '../services/updater';
 import type { BrowserCatalog } from '../services/browserCatalog';
 import type { AppUpdateService } from '../services/appUpdateService';
 import type { HistoryStore } from '../services/historyStore';
 import type { QueueManager } from '../services/queueManager';
 import type { SettingsStore } from '../services/settingsStore';
-import type { StreamFinder } from '../services/streamFinder';
 
 export interface IpcMainLike {
     handle: (channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => void;
@@ -38,8 +33,6 @@ export interface HandlerDependencies {
     appUpdates: AppUpdateService;
     refreshTraySupport: () => Promise<TraySupport>;
     browserCatalog: BrowserCatalog;
-    streamFinder: StreamFinder;
-    sendStreamProgress: (progress: StreamFindProgress) => void;
     onSettingsSaved: (settings: Settings) => void;
     chooseDirectory: () => Promise<string | null>;
     // Whether the folder of the anime is fixed in the settings: with anime in the library it only changes by a migration, which
@@ -146,33 +139,6 @@ export function registerHandlers(deps: HandlerDependencies): void {
     });
     ipcMain.handle(IPC.browsersList, (_event, refresh): Promise<DetectedBrowser[]> => {
         return deps.browserCatalog.list(refresh === true);
-    });
-    ipcMain.handle(IPC.streamFind, (_event, jobId, deep): Promise<StreamFindResult> | StreamFindResult => {
-        const job = queue.getJob(asString(jobId));
-        if (!job) {
-            return { ok: false, candidates: [], message: translateMain('stream.noDownload'), usedBrowser: false };
-        }
-        // A download that came from a stream search is searched again on the page it came from, for a fresh address.
-        return deps.streamFinder.find(job.id, job.pageUrl ?? job.url, deep === true, (stage) => {
-            deps.sendStreamProgress({ jobId: job.id, stage });
-        });
-    });
-    ipcMain.handle(IPC.streamCancel, (_event, jobId): void => {
-        deps.streamFinder.cancel(asString(jobId));
-    });
-    ipcMain.handle(IPC.streamDownload, (_event, candidateId): AddJobResult => {
-        const candidate = deps.streamFinder.getCandidate(asString(candidateId));
-        if (!candidate) {
-            return { ok: false, job: null, message: translateMain('stream.noLongerAvailable') };
-        }
-        return queue.add(candidate.url, {
-            referer: candidate.referer,
-            userAgent: candidate.userAgent,
-            cookie: candidate.cookie ?? undefined,
-            title: candidate.title ?? undefined,
-            ipFamily: candidate.ipFamily ?? undefined,
-            pageUrl: candidate.pageUrl
-        });
     });
     ipcMain.handle(IPC.dialogChooseDir, (): Promise<string | null> => {
         return deps.chooseDirectory();

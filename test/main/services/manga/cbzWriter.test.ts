@@ -61,6 +61,15 @@ describe('writeCbz', () => {
         expect(existsSync(`${output}.tmp`)).toBe(false);
     });
 
+    it('leaves nothing behind however many times a page cannot be read', async () => {
+        const dir = makeTempDir();
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+            const output = join(dir, `broken-${String(attempt)}.cbz`);
+            await expect(writeCbz(output, [{ name: '001.jpg', path: join(dir, 'missing.jpg') }])).rejects.toThrow();
+            expect(existsSync(`${output}.tmp`)).toBe(false);
+        }
+    });
+
     it('removes the temporary file when the final rename fails', async () => {
         const dir = makeTempDir();
         writeFileSync(join(dir, 'a.jpg'), Buffer.from([1]));

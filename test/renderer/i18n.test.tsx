@@ -8,7 +8,6 @@ import { ErrorBanner } from '@renderer/components/ErrorBanner';
 import { HistoryList } from '@renderer/components/HistoryList';
 import { JobCard } from '@renderer/components/JobCard';
 import { QueueList } from '@renderer/components/QueueList';
-import { StreamFinder } from '@renderer/components/StreamFinder';
 import { Toast } from '@renderer/components/Toast';
 import { UpdateBanner } from '@renderer/components/UpdateBanner';
 import { UrlInput } from '@renderer/components/UrlInput';
@@ -35,8 +34,7 @@ beforeEach(() => {
         binaries: null,
         notice: null,
         updating: false,
-        appUpdate: INITIAL_APP_UPDATE,
-        streamSearches: {}
+        appUpdate: INITIAL_APP_UPDATE
     });
 });
 
@@ -270,9 +268,9 @@ describe('components in another language', () => {
         useLanguage('ja');
         const user = userEvent.setup();
         const error: DownloadError = { code: 'NETWORK', title: 'ネットワークエラー', hint: '接続を確認して、もう一度お試しください。', raw: 'raw output' };
-        render(<ErrorBanner error={error} onRetry={vi.fn()} onFindStream={vi.fn()} />);
+        render(<ErrorBanner error={error} onRetry={vi.fn()} />);
         expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'ストリームを探す' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'ストリームを探す' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: '詳細を表示' }));
         expect(screen.getByText('raw output')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: '詳細を隠す' })).toBeInTheDocument();
@@ -339,45 +337,6 @@ describe('components in another language', () => {
         expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo añadir la descarga.');
     });
 
-    it('translates the stream finder while searching and with candidates', () => {
-        useLanguage('es');
-        useAppStore.setState({
-            streamSearches: {
-                a: { status: 'searching', stage: 'scanning', candidates: [], message: null, usedBrowser: false },
-                b: { status: 'searching', stage: 'watching', candidates: [], message: null, usedBrowser: false },
-                c: {
-                    status: 'done',
-                    stage: 'scanning',
-                    candidates: [
-                        { id: 'c1', url: 'https://cdn.test/a.m3u8', kind: 'hls', source: 'page', host: 'cdn.test', title: null, duplicates: 1 },
-                        { id: 'c2', url: 'https://cdn.test/b.mp4', kind: 'mp4', source: 'network', host: 'cdn.test', title: null, duplicates: 3 },
-                        { id: 'c3', url: 'https://cdn.test/c.mp4', kind: 'mp4', source: 'network', host: 'cdn.test', title: null, duplicates: 0 }
-                    ],
-                    message: null,
-                    usedBrowser: false
-                }
-            }
-        });
-        render(
-            <>
-                <StreamFinder jobId="a" />
-                <StreamFinder jobId="b" />
-                <StreamFinder jobId="c" />
-            </>
-        );
-        expect(screen.getByText('Buscando enlaces de vídeo en la página…')).toBeInTheDocument();
-        expect(screen.getByText('Observando la actividad de red de la página (hasta 25 s)…')).toBeInTheDocument();
-        expect(screen.getByText('Elige el stream que quieres descargar (3 encontrados):')).toBeInTheDocument();
-        expect(screen.getByText('cdn.test · encontrado en la página · +1 dirección alternativa')).toBeInTheDocument();
-        expect(screen.getByText('cdn.test · visto en la red · +3 direcciones alternativas')).toBeInTheDocument();
-        expect(screen.getByText('cdn.test · visto en la red')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Descargar el stream 1' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: '¿NO ES ESTE? BUSCAR MÁS A FONDO' })).toBeInTheDocument();
-        expect(screen.getAllByRole('button', { name: 'Cerrar el buscador de streams' })).toHaveLength(3);
-        expect(screen.getAllByText(/Los streams protegidos \(DRM\)/)).toHaveLength(3);
-        expect(within(screen.getAllByRole('region', { name: 'Buscador de streams' })[0] as HTMLElement).getByText('BUSCADOR DE STREAMS')).toBeInTheDocument();
-    });
-
     it('translates the toast dismiss button', () => {
         useLanguage('zh');
         useAppStore.setState({ notice: { kind: 'info', message: 'ok' } });
@@ -408,13 +367,6 @@ describe('store messages in another language', () => {
         mock.api.updateYtdlp.mockResolvedValueOnce({ ok: false, output: '' });
         await useAppStore.getState().updateYtdlp();
         expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'A atualização falhou.' });
-    });
-
-    it('uses the saved language when a stream cannot be added without a message', async () => {
-        useLanguage('ja');
-        mock.api.downloadStream.mockResolvedValueOnce({ ok: false, job: null, message: null });
-        await useAppStore.getState().downloadStream('job-1', 'candidate-1');
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'ダウンロードを追加できませんでした。' });
     });
 
     it('keeps the message that the main process wrote', async () => {

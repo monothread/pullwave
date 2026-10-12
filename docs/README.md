@@ -4,7 +4,7 @@ Linux desktop app (Electron + React + TypeScript) that wraps `yt-dlp`, with a cy
 
 > Every download made with the program is at the user's own risk and responsibility; the authors are not responsible
 > for it. The project-level statement is in [`../DISCLAIMER.md`](../DISCLAIMER.md) and must stay linked from the README
-> and from the in-app "Find stream" panel.
+> and from the app's settings screens.
 
 ## Start here (new sessions/agents)
 1. Read `PROGRESS.md` — current state and next task.

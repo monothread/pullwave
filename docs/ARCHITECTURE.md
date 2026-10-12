@@ -29,7 +29,6 @@ src/
       browserSniffer.ts         # hidden, sandboxed BrowserWindow that watches the page's network
       playlistFilter.ts         # drops HLS quality variants covered by a master playlist
       streamGrouping.ts         # folds near-identical addresses of one video (mirrors/redirects) into one candidate
-      streamFinder.ts           # static scan -> hidden browser; keeps candidates' request details in the main process
       # Anime section (Linux and Windows, D-036 to D-041)
       aniCliLocator.ts          # which ani-cli/busybox/curl, tool links, isolated env, patched copy of the script
       aniCliRunner.ts           # spawn `busybox sh ani-cli ...`, menu choices, progress, cancel
@@ -54,7 +53,7 @@ src/
     App.tsx, theme/cyberpunk.css, theme/themes.css, theme/responsive.css (scale, width and columns by size of window, D-042)
     i18n/ language (system locale), useTranslator (React hook)
     components/ DownloadsPanel (QUEUE / HISTORY / SETTINGS of the video downloader), UrlInput, QueueList, JobCard, SettingsPanel (scope: global / downloads / anime), HistoryList, ErrorBanner, BinaryStatus,
-                Toast, UpdateBanner, UpdateActions, StreamFinder, fields,
+                Toast, UpdateBanner, UpdateActions, fields,
                 AnimePanel, AnimeSearch, AnimeDetail, AnimeJobs, AnimeLibrary, AnimeHistory, AnimePlayer, AnimeStreamPlayer, AnimeRemove,
                 VideoControls (the player's own control bar), subtitleChoice / subtitleScale (what the viewer chose), SeriesFields (series name and season)
     hooks/ useAutoSaveSettings (debounced settings auto-save), useMouseNavigation + navigationHistory (back/forward buttons of the mouse), useFullscreenIdle (controls hide in fullscreen)
@@ -73,9 +72,6 @@ Renderer (React) → `window.api` (preload, typed) → IPC → `registerHandlers
 Closing the window: `decideCloseAction` → `hide` (tray available and `closeToTray` on), `ask-quit` (ask when downloads are pending, then `app.quit()`) or `allow` (already quitting). The app is single-instance; a second launch shows the window.
 
 On `before-quit` the main process calls `queue.shutdown()`: every running yt-dlp is sent SIGTERM and no queued job is started, so no download (or ffmpeg merge) is left running in the background after the app closes.
-
-## Stream finder
-Failed job (`UNKNOWN`/`OUTDATED`) → **FIND STREAM** → `stream:find` (main: `StreamFinder.find`) → stage events (`event:stream-progress`: scanning → watching) → candidate list in the job card → **DOWNLOAD** → `stream:download` → `QueueManager.add(url, { referer, userAgent, cookie, title })` → the usual `ytdlpRunner` flow. Request details (referer, cookies) never reach the renderer. See D-019.
 
 ## Anime section (Linux and Windows)
 Same shape as the rest: renderer (`animeStore`, `Anime*` components) → `window.api` → `anime:*` IPC (`registerAnimeHandlers`) → `AniCliService` → `aniCliRunner` → `busybox sh pullwave-run.sh ani-cli …` with an isolated environment: on Linux a `PATH` of links to the busybox applets, curl, yt-dlp and ffmpeg made in `userData/anime/tools`; on Windows no links (BusyBox for Windows runs its applets itself) and a `Path` of the bundled folders plus the folders of the chosen yt-dlp and ffmpeg, with only the system variables Windows programs need passed on (`SystemRoot`, `TEMP`, `USERPROFILE`...), and the paths given to the shell with forward slashes. ani-cli has no structured output, so searching and listing work by handing it `pullwave_menu` as its menu program (a function defined by `pullwave-run.sh`, like the stand-in player and `tput`), which reports every choice on stderr; a choice is later picked with `-S <position>` and `-e <episode>`. See D-036.

@@ -3,7 +3,7 @@ import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, An
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
-import type { AppUpdateState, CyberApi, DownloadJob, StreamFindProgress } from '@shared/types';
+import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
 
 export type MockMangaApi = { [K in keyof MangaApi]: ReturnType<typeof vi.fn> };
 
@@ -21,7 +21,6 @@ export interface MockApiHandle {
     emitJobRemoved: (id: string) => void;
     emitHistoryChanged: () => void;
     emitAppUpdateState: (state: AppUpdateState) => void;
-    emitStreamProgress: (progress: StreamFindProgress) => void;
     emitAnimeJob: (job: AnimeJob) => void;
     emitAnimeLibraryChanged: () => void;
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
@@ -39,7 +38,6 @@ export function createMockApi(): MockApiHandle {
     const removedListeners: Array<(id: string) => void> = [];
     const historyListeners: Array<() => void> = [];
     const appUpdateListeners: Array<(state: AppUpdateState) => void> = [];
-    const streamProgressListeners: Array<(progress: StreamFindProgress) => void> = [];
     const animeJobListeners: Array<(job: AnimeJob) => void> = [];
     const animeLibraryListeners: Array<() => void> = [];
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
@@ -283,15 +281,6 @@ export function createMockApi(): MockApiHandle {
         installAppUpdate: vi.fn(async () => {
             return undefined;
         }),
-        findStreams: vi.fn(async () => {
-            return { ok: false, candidates: [], message: 'No video stream was found.', usedBrowser: true };
-        }),
-        cancelStreamFind: vi.fn(async () => {
-            return undefined;
-        }),
-        downloadStream: vi.fn(async () => {
-            return { ok: true, job: null, message: null };
-        }),
         getTraySupport: vi.fn(async () => {
             return { available: true, reason: null };
         }),
@@ -472,9 +461,6 @@ export function createMockApi(): MockApiHandle {
         onAppUpdateState: vi.fn((listener: (state: AppUpdateState) => void) => {
             return subscribe(appUpdateListeners, listener);
         }),
-        onStreamFindProgress: vi.fn((listener: (progress: StreamFindProgress) => void) => {
-            return subscribe(streamProgressListeners, listener);
-        }),
         onHistoryChanged: vi.fn((listener: () => void) => {
             return subscribe(historyListeners, listener);
         })
@@ -531,11 +517,6 @@ export function createMockApi(): MockApiHandle {
         emitJobRemoved: (id) => {
             removedListeners.forEach((listener) => {
                 listener(id);
-            });
-        },
-        emitStreamProgress: (progress) => {
-            streamProgressListeners.forEach((listener) => {
-                listener(progress);
             });
         },
         emitAnimeJob: (job) => {
