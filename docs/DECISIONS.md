@@ -520,3 +520,5 @@ New setting `jsRuntime` → `--js-runtimes <value>` (YouTube needs a JS runtime 
 - **Gear:** in the library page of a manga, groups, series and the move to another source are behind a gear at the top right of its head.
 - **Reader:** AUTO SCROLL is beside the button that goes back to the top (bottom right); the space between pages in the vertical scroll is a setting (0 to 100 px, 8 by default); the page size starts at "Fit to width"; every page of the manga section starts at the top.
 - The tests of this round were written and not run: the owner asked to try the app first.
+- **New chapters (same day):** a chapter that arrives in a manga that is in the library already (the hourly check, ADD MISSING CHAPTERS, the move to another source) keeps the time it arrived (migration 5, `added_at`); the chapters a manga comes with have none. The card of the manga (and of a series, and each season) shows NEW CHAPTER / n NEW CHAPTERS while that time is today, and the chapter shows NEW in the page of the manga.
+- **Start tab:** the manga tab can be the one the app opens on (it falls back to the video downloader where the section does not exist).

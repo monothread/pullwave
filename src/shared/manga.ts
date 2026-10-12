@@ -235,6 +235,8 @@ export interface MangaChapterRecord {
     sizeBytes: number | null;
     error: MangaError | null;
     downloadedAt: number | null;
+    // When the chapter was put in the library (milliseconds since 1970); null for the ones that were there before this was kept.
+    addedAt: number | null;
 }
 
 export interface LibraryManga extends MangaRecord {

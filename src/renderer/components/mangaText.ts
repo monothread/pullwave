@@ -265,3 +265,20 @@ export function continueIndex(chapters: ReadonlyArray<{ remoteId: number }>, isR
     });
     return firstUnread === -1 ? 0 : firstUnread;
 }
+
+// Whether a chapter arrived in the library today (the chapters a manga comes with are not new).
+export function isNewChapter(chapter: Pick<MangaChapterRecord, 'addedAt'>, now: number = Date.now()): boolean {
+    return chapter.addedAt !== null && new Date(chapter.addedAt).toDateString() === new Date(now).toDateString();
+}
+
+// How many chapters of the mangas are new today.
+export function newChapterCount(mangas: readonly LibraryManga[], now: number = Date.now()): number {
+    return mangas.reduce((total, manga) => {
+        return (
+            total +
+            manga.chapters.filter((chapter) => {
+                return isNewChapter(chapter, now);
+            }).length
+        );
+    }, 0);
+}

@@ -8,7 +8,7 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { chapterState, chapterStatusKey, continueIndex, downloadedCount, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
+import { chapterState, chapterStatusKey, continueIndex, downloadedCount, isNewChapter, isCloudflareError, libraryEntry, mangaErrorKey, mangaStatusKey } from './mangaText';
 
 function chapterLabel(name: string, number: number | null): string {
     if (name.length > 0) {
@@ -423,6 +423,7 @@ export function MangaDetail() {
                                             {[chapter.scanlator, formatDate(chapter.dateUploaded), pageLeftOn > 0 && !read ? t('manga.detail.leftOn', { page: pageLeftOn + 1 }) : null].filter(Boolean).join(' · ')}
                                         </span>
                                     </div>
+                                    {state && isNewChapter(state) && <span className="badge badge--new">{t('manga.detail.new')}</span>}
                                     {read && <span className="badge badge--done">{t('manga.detail.read')}</span>}
                                     {state && <span className={`badge badge--${state.status}`}>{t(chapterStatusKey(state.status))}</span>}
                                     <button

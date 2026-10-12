@@ -1356,7 +1356,7 @@ test.describe('the tab the app opens on', () => {
         await openGlobalSettings(page);
         await expect(page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
         expect(await page.getByLabel('Open on', { exact: true }).locator('option').allTextContents()).toEqual(['VIDEO DOWNLOADER', 'ANIME']);
-        await expect(page.getByText('The tab the app shows when it starts. If the anime section is not available, the video downloader opens.')).toBeVisible();
+        await expect(page.getByText('The tab the app shows when it starts. If the anime or the manga section is not available, the video downloader opens.')).toBeVisible();
     });
 
     test('choosing the anime saves it right away, without changing the tab that is open', async () => {

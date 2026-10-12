@@ -279,3 +279,46 @@ describe('MangaLibrary series, groups and search', () => {
         expect(screen.queryByTestId('manga-group')).not.toBeInTheDocument();
     });
 });
+
+describe('MangaLibrary the chapters that are new today', () => {
+    const now = Date.now();
+    const fresh = (id: number) => {
+        return makeChapterRecord({ id, remoteId: 100 + id, status: 'idle', addedAt: now - 1000 });
+    };
+    const OLD = now - 30 * 24 * 3_600_000;
+
+    it('says on the card of a manga that it has a new chapter, or how many', () => {
+        useMangaStore.setState({
+            library: [
+                makeLibraryManga([fresh(1)], { id: 1, title: 'Bleach', createdAt: OLD }),
+                makeLibraryManga([fresh(2), fresh(3)], { id: 2, title: 'Naruto', createdAt: OLD }),
+                makeLibraryManga([makeChapterRecord({ id: 4, addedAt: OLD })], { id: 3, title: 'One Piece', createdAt: OLD })
+            ]
+        });
+        render(<MangaLibrary />);
+        const entries = screen.getAllByTestId('manga-entry');
+        expect(within(entries[0]!).getByTestId('manga-new-chapters')).toHaveTextContent('NEW CHAPTER');
+        expect(within(entries[0]!).getByTestId('manga-new-chapters')).toHaveClass('badge--new');
+        expect(within(entries[1]!).getByTestId('manga-new-chapters')).toHaveTextContent('2 NEW CHAPTERS');
+        expect(within(entries[2]!).queryByTestId('manga-new-chapters')).not.toBeInTheDocument();
+    });
+
+    it('does not say it of the chapters a manga came with, which have no time of arrival', () => {
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, status: 'idle', addedAt: null }), makeChapterRecord({ id: 2, status: 'idle', addedAt: null })], { id: 1, title: 'Bleach' })] });
+        render(<MangaLibrary />);
+        expect(screen.queryByTestId('manga-new-chapters')).not.toBeInTheDocument();
+    });
+
+    it('counts the new chapters of all the seasons on the card of a series, and on each season', async () => {
+        const user = userEvent.setup();
+        const first = makeLibraryManga([fresh(1)], { id: 1, remoteId: 21, title: 'Frieren', series: 'Frieren', season: 1, createdAt: OLD });
+        const second = makeLibraryManga([fresh(2), fresh(3)], { id: 2, remoteId: 22, title: 'Frieren 2', series: 'Frieren', season: 2, createdAt: OLD });
+        useMangaStore.setState({ library: [first, second] });
+        render(<MangaLibrary />);
+        expect(within(screen.getByTestId('manga-series')).getByTestId('manga-new-chapters')).toHaveTextContent('3 NEW CHAPTERS');
+        await user.click(screen.getByRole('button', { name: 'Open series: Frieren' }));
+        const seasons = screen.getAllByTestId('manga-season');
+        expect(within(seasons[0]!).getByTestId('manga-new-chapters')).toHaveTextContent('NEW CHAPTER');
+        expect(within(seasons[1]!).getByTestId('manga-new-chapters')).toHaveTextContent('2 NEW CHAPTERS');
+    });
+});

@@ -72,7 +72,9 @@ const MIGRATIONS: readonly string[] = [
         group_id INTEGER NOT NULL REFERENCES manga_group (id) ON DELETE CASCADE,
         manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE,
         PRIMARY KEY (group_id, manga_id)
-    );`
+    );`,
+    // When a chapter that was not one of those the manga came with arrived in the library (to say which ones are new).
+    `ALTER TABLE chapter ADD COLUMN added_at INTEGER;`
 ];
 
 type Row = Record<string, unknown>;
@@ -162,7 +164,8 @@ function toChapter(row: Row): MangaChapterRecord {
         filePath: nullableText(row, 'file_path'),
         sizeBytes: nullableNumeric(row, 'size_bytes'),
         error: toError(row),
-        downloadedAt: nullableNumeric(row, 'downloaded_at')
+        downloadedAt: nullableNumeric(row, 'downloaded_at'),
+        addedAt: nullableNumeric(row, 'added_at')
     };
 }
 
@@ -293,14 +296,15 @@ export class MangaDb {
     }
 
     // Puts the chapters of the source in the library: the new ones are `idle`, the ones it has already keep their state and get the
-    // data the source gives now (a title or a number can be corrected).
-    registerChapters(mangaId: number, chapters: readonly MangaChapter[]): void {
+    // data the source gives now (a title or a number can be corrected). The chapters a manga comes with are not new; the ones that come
+    // later (`arrived`) are, and keep the time they came.
+    registerChapters(mangaId: number, chapters: readonly MangaChapter[], arrived = false): void {
         this.db.exec('BEGIN');
         try {
             chapters.forEach((chapter) => {
                 this.run(
-                    `INSERT INTO chapter (manga_id, remote_id, name, number, date_uploaded, scanlator, source_order, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 'idle')
+                    `INSERT INTO chapter (manga_id, remote_id, name, number, date_uploaded, scanlator, source_order, status, added_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 'idle', ?)
                      ON CONFLICT (manga_id, remote_id) DO UPDATE SET
                         name = excluded.name, number = excluded.number, date_uploaded = excluded.date_uploaded,
                         scanlator = excluded.scanlator, source_order = excluded.source_order`,
@@ -310,7 +314,8 @@ export class MangaDb {
                     chapter.number,
                     chapter.dateUploaded,
                     chapter.scanlator,
-                    chapter.sourceOrder
+                    chapter.sourceOrder,
+                    arrived ? this.now() : null
                 );
             });
             this.db.exec('COMMIT');
@@ -321,8 +326,8 @@ export class MangaDb {
     }
 
     // The chapter in the library, put there as `idle` first if it was not.
-    ensureChapter(mangaId: number, chapter: MangaChapter): MangaChapterRecord {
-        this.registerChapters(mangaId, [chapter]);
+    ensureChapter(mangaId: number, chapter: MangaChapter, arrived = false): MangaChapterRecord {
+        this.registerChapters(mangaId, [chapter], arrived);
         return toChapter(this.one('SELECT * FROM chapter WHERE manga_id = ? AND remote_id = ?', mangaId, chapter.remoteId) ?? {});
     }
 
@@ -422,7 +427,7 @@ export class MangaDb {
             this.db.exec('ROLLBACK');
             throw error;
         }
-        this.registerChapters(mangaId, matching.added);
+        this.registerChapters(mangaId, matching.added, true);
         return { ok: true, matched: matching.matched.length, added: matching.added.length, dropped: dropped.length };
     }
 

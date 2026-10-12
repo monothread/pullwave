@@ -63,12 +63,13 @@ export class MangaDownloadQueue {
     // Puts the manga and the chapters in the library and queues them (the ones already downloaded or already waiting are left as
     // they are). Returns the manga as the library has it.
     enqueue(request: MangaDownloadRequest): LibraryManga | null {
+        const known = this.deps.db.findManga(request.manga.sourceId, request.manga.remoteId) !== null;
         const manga = this.deps.db.upsertManga(request.manga);
         if (request.details !== null) {
             this.deps.db.saveDetails(manga.id, request.details);
         }
         request.chapters.forEach((chapter) => {
-            this.queueChapter(manga, this.deps.db.ensureChapter(manga.id, chapter));
+            this.queueChapter(manga, this.deps.db.ensureChapter(manga.id, chapter, known));
         });
         this.deps.onLibraryChanged();
         this.pump();
@@ -77,11 +78,13 @@ export class MangaDownloadQueue {
 
     // Puts the manga in the library with the chapters given, none of them downloaded (the ones it has already keep their state).
     addToLibrary(request: MangaDownloadRequest): LibraryManga | null {
+        // The chapters a manga comes with are not new; the ones added to a manga that was there already are.
+        const known = this.deps.db.findManga(request.manga.sourceId, request.manga.remoteId) !== null;
         const manga = this.deps.db.upsertManga(request.manga);
         if (request.details !== null) {
             this.deps.db.saveDetails(manga.id, request.details);
         }
-        this.deps.db.registerChapters(manga.id, request.chapters);
+        this.deps.db.registerChapters(manga.id, request.chapters, known);
         this.deps.onLibraryChanged();
         return this.deps.db.getLibraryManga(manga.id);
     }

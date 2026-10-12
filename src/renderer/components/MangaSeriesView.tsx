@@ -5,7 +5,8 @@ import { useMangaStore } from '../store/mangaStore';
 import { AnimeRemove } from './AnimeRemove';
 import { TextField } from './fields';
 import { MangaGroupChips } from './MangaGroupChips';
-import { downloadedCount, downloadedTotals, seasonLabel, type MangaLibraryGroup } from './mangaText';
+import { NewChaptersBadge } from './MangaLibrary';
+import { downloadedCount, downloadedTotals, newChapterCount, seasonLabel, type MangaLibraryGroup } from './mangaText';
 import { RowLink } from './RowLink';
 import { SeriesMenu } from './SeriesMenu';
 
@@ -170,6 +171,7 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                                     </RowLink>
                                 </h4>
                                 <span className="season__meta">{t('manga.library.progress', { done: downloadedCount(manga), total: manga.chapters.length })}</span>
+                                <NewChaptersBadge count={newChapterCount([manga])} />
                                 <span className="season__actions">
                                     <AnimeRemove
                                         label={t('manga.library.remove')}

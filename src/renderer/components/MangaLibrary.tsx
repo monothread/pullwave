@@ -9,10 +9,23 @@ import { MangaDetail } from './MangaDetail';
 import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
 import { RowLink } from './RowLink';
-import { downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesSearch, type MangaLibraryGroup } from './mangaText';
+import { downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesSearch, newChapterCount, type MangaLibraryGroup } from './mangaText';
 
 interface MangaRowProps {
     manga: LibraryManga;
+}
+
+// The badge of the chapters that were put in the library today, when there are some.
+export function NewChaptersBadge({ count }: { count: number }) {
+    const t = useTranslator();
+    if (count === 0) {
+        return null;
+    }
+    return (
+        <span className="badge badge--new" data-testid="manga-new-chapters">
+            {count === 1 ? t('manga.library.newChapter') : t('manga.library.newChapters', { count })}
+        </span>
+    );
 }
 
 function MangaRow({ manga }: MangaRowProps) {
@@ -52,6 +65,7 @@ function MangaRow({ manga }: MangaRowProps) {
                         </RowLink>
                     </h3>
                     <span className="history__meta">{t('manga.library.progress', { done, total: manga.chapters.length })}</span>
+                    <NewChaptersBadge count={newChapterCount([manga])} />
                     {inside.length > 0 && (
                         <span className="history__meta" data-testid="manga-entry-groups">
                             {inside
@@ -130,6 +144,7 @@ function SeriesRow({ group, onOpen }: SeriesRowProps) {
                         </RowLink>
                     </h3>
                     <span className="history__meta">{t('manga.library.progress', { done: totals.done, total: totals.total })}</span>
+                    <NewChaptersBadge count={newChapterCount(group.entries)} />
                 </div>
                 <span className="badge">{group.entries.length === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: group.entries.length })}</span>
             </div>

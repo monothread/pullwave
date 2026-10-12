@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('MangaDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(4);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(5);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -34,7 +34,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(4);
+        expect(second.schemaVersion).toBe(5);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -278,7 +278,7 @@ describe('MangaDb the page of the manga on its site', () => {
             PRAGMA user_version = 2;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(4);
+        expect(db.schemaVersion).toBe(5);
         expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, series: null, season: null, seasonName: null, groupIds: [], chapters: [] }]);
         db.close();
     });
@@ -586,6 +586,13 @@ describe('MangaDb moving a manga to another source', () => {
         expect(db.getChapter(two.id)).toMatchObject({ remoteId: 702, status: 'idle', filePath: null });
     });
 
+    it('marks the chapters that are new in the other source as arrived now, and not the ones that matched', () => {
+        const { db, manga, one } = inLibrary();
+        db.moveToSource(manga.id, { manga: TARGET, details: null, chapters: [chapter(1, { remoteId: 701 }), chapter(9, { remoteId: 709 })] });
+        expect(db.getChapter(one.id)?.addedAt).toBeNull();
+        expect(db.findChapter(manga.id, 709)?.addedAt).toBe(5000);
+    });
+
     it('keeps a downloaded chapter the other source lacks, removes the others, and adds the new ones as not downloaded', () => {
         const { db, manga, three, four } = inLibrary();
         db.moveToSource(manga.id, { manga: TARGET, details: null, chapters: [chapter(1, { remoteId: 701 }), chapter(9, { remoteId: 709 })] });
@@ -620,6 +627,55 @@ describe('MangaDb moving a manga to another source', () => {
         }).toThrow();
         expect(db.getManga(manga.id)).toMatchObject({ sourceId: '123', remoteId: 7 });
         expect(db.getChapter(one.id)?.remoteId).toBe(1);
+    });
+});
+
+describe('MangaDb when a chapter was put in the library', () => {
+    it('has no time for the chapters a manga comes with', () => {
+        const { db, manga } = setup();
+        expect(db.ensureChapter(manga.id, chapter(1)).addedAt).toBeNull();
+        db.registerChapters(manga.id, [chapter(2), chapter(3)]);
+        expect(db.chaptersOf(manga.id).map((item) => {return item.addedAt})).toEqual([null, null, null]);
+    });
+
+    it('keeps the time a chapter arrived later, and does not change it when the source gives it again', () => {
+        let clock = 1000;
+        const db = new MangaDb(':memory:', () => {
+            return clock;
+        });
+        const manga = db.upsertManga(MANGA);
+        db.registerChapters(manga.id, [chapter(1)]);
+        clock = 9000;
+        db.registerChapters(manga.id, [chapter(1, { name: 'Renamed' }), chapter(2)], true);
+        expect(db.findChapter(manga.id, 1)).toMatchObject({ name: 'Renamed', addedAt: null });
+        expect(db.findChapter(manga.id, 2)?.addedAt).toBe(9000);
+        clock = 20000;
+        db.registerChapters(manga.id, [chapter(2, { name: 'Again' })], true);
+        expect(db.findChapter(manga.id, 2)).toMatchObject({ name: 'Again', addedAt: 9000 });
+    });
+
+    it('gives a chapter that arrived later when it is ensured', () => {
+        const { db, manga } = setup();
+        expect(db.ensureChapter(manga.id, chapter(1), true).addedAt).toBe(5000);
+    });
+
+    it('is not known for the chapters of a library made before it was kept', () => {
+        const path = join(makeTempDir(), 'old.db');
+        const old = new DatabaseSync(path);
+        old.exec(`CREATE TABLE manga (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, remote_id INTEGER NOT NULL, title TEXT NOT NULL, thumbnail_url TEXT, created_at INTEGER NOT NULL, UNIQUE (source_id, remote_id));
+            CREATE TABLE chapter (id INTEGER PRIMARY KEY AUTOINCREMENT, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, remote_id INTEGER NOT NULL, name TEXT NOT NULL, number REAL, date_uploaded INTEGER, scanlator TEXT, source_order INTEGER NOT NULL, status TEXT NOT NULL, page_count INTEGER NOT NULL DEFAULT 0, file_path TEXT, size_bytes INTEGER, error_code TEXT, error_raw TEXT, downloaded_at INTEGER, UNIQUE (manga_id, remote_id));
+            ALTER TABLE manga ADD COLUMN author TEXT; ALTER TABLE manga ADD COLUMN artist TEXT; ALTER TABLE manga ADD COLUMN description TEXT; ALTER TABLE manga ADD COLUMN genres TEXT; ALTER TABLE manga ADD COLUMN status TEXT; ALTER TABLE manga ADD COLUMN url TEXT;
+            ALTER TABLE manga ADD COLUMN series TEXT; ALTER TABLE manga ADD COLUMN season INTEGER; ALTER TABLE manga ADD COLUMN season_name TEXT;
+            CREATE TABLE manga_group (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+            CREATE TABLE manga_group_member (group_id INTEGER NOT NULL REFERENCES manga_group (id) ON DELETE CASCADE, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, PRIMARY KEY (group_id, manga_id));
+            INSERT INTO manga (source_id, remote_id, title, created_at) VALUES ('s', 1, 'Old', 3);
+            INSERT INTO chapter (manga_id, remote_id, name, source_order, status) VALUES (1, 5, 'Chapter 5', 5, 'idle');
+            PRAGMA user_version = 4;`);
+        old.close();
+        const db = new MangaDb(path);
+        expect(db.schemaVersion).toBe(5);
+        expect(db.chaptersOf(1)[0]).toMatchObject({ remoteId: 5, addedAt: null });
+        db.close();
     });
 });
 

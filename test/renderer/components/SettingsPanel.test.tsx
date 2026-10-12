@@ -120,9 +120,10 @@ describe('SettingsPanel start tab', () => {
         });
         expect(options).toEqual([
             ['downloads', 'VIDEO DOWNLOADER'],
-            ['anime', 'ANIME']
+            ['anime', 'ANIME'],
+            ['manga', 'MANGA']
         ]);
-        expect(screen.getByText('The tab the app shows when it starts. If the anime section is not available, the video downloader opens.')).toBeInTheDocument();
+        expect(screen.getByText('The tab the app shows when it starts. If the anime or the manga section is not available, the video downloader opens.')).toBeInTheDocument();
     });
 
     it('shows the one that is saved', () => {
@@ -131,7 +132,13 @@ describe('SettingsPanel start tab', () => {
         expect(screen.getByLabelText('Open on')).toHaveValue('anime');
     });
 
-    it.each(['downloads', 'anime'] as const)('saves right away when the start tab changes to "%s"', async (startTab) => {
+    it('shows the manga tab when it is the one that is saved', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: 'manga' } });
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText('Open on')).toHaveValue('manga');
+    });
+
+    it.each(['downloads', 'anime', 'manga'] as const)('saves right away when the start tab changes to "%s"', async (startTab) => {
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: startTab === 'anime' ? 'downloads' : 'anime' } });
         render(<SettingsPanel scope="global" />);
         fireEvent.change(screen.getByLabelText('Open on'), { target: { value: startTab } });

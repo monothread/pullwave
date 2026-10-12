@@ -875,6 +875,8 @@ test.describe('manga section', () => {
 
         fake.laterChapters = [103, 104];
         await expect(session.page.getByText('0 of 4 downloaded')).toBeVisible({ timeout: 20000 });
+        // The chapters that came today say so on the card of the manga; the two it came with do not count.
+        await expect(session.page.getByTestId('manga-entry').getByTestId('manga-new-chapters')).toHaveText('2 NEW CHAPTERS');
         await expect(session.page.locator('.toast').filter({ hasText: '2 new chapter(s) added to the library: One Piece' }).first()).toBeVisible();
         expect(existsSync(join(mangaFolder(), 'One Piece'))).toBe(false);
         expect(fake.graphqlRequests('fetchChapterPages')).toHaveLength(0);

@@ -366,6 +366,14 @@ describe('App anime section', () => {
         expect(mock.api.listAnimeJobs).toHaveBeenCalledTimes(1);
     });
 
+    it('opens on the manga tab when it is the one saved and the section exists', async () => {
+        mock.api.manga.status.mockResolvedValue(supported);
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' });
+        render(<App />);
+        expect(await screen.findByRole('navigation', { name: 'Manga' })).toBeInTheDocument();
+        expect(useAppStore.getState().tab).toBe('manga');
+    });
+
     it('unsubscribes from the events of the section too on unmount', async () => {
         mock.api.getAnimeStatus.mockResolvedValue(supported);
         const { unmount } = render(<App />);
@@ -447,7 +455,7 @@ describe('App manga section', () => {
     });
 
     it('falls back to the video downloader when the manga tab was the one saved and the section does not exist', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' as never });
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' });
         render(<App />);
         expect(await screen.findByLabelText('Link 1')).toBeInTheDocument();
         expect(useAppStore.getState().tab).toBe('downloads');

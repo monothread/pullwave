@@ -149,6 +149,8 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({})).toMatchObject({ startTab: 'downloads' });
         expect(sanitizeSettings({ startTab: 'anime' })).toMatchObject({ startTab: 'anime' });
         expect(sanitizeSettings({ startTab: 'downloads' })).toMatchObject({ startTab: 'downloads' });
+        expect(sanitizeSettings({ startTab: 'manga' })).toMatchObject({ startTab: 'manga' });
+        expect(sanitizeSettings({ startTab: 'books' })).toMatchObject({ startTab: 'downloads' });
     });
 
     it.each(['settings', 'ANIME', 7, null, true])('falls back to the video downloader when the start tab is %s', (startTab) => {

@@ -91,7 +91,7 @@ export class MangaUpdateChecker {
                 const added = newChaptersOf(manga, found.chapters);
                 this.deps.db.saveDetails(manga.id, found.details);
                 if (added.length > 0) {
-                    this.deps.db.registerChapters(manga.id, found.chapters);
+                    this.deps.db.registerChapters(manga.id, found.chapters, true);
                     news.count += added.length;
                     news.titles.push(manga.title);
                 }

@@ -172,7 +172,7 @@ export const THEME_STYLES: Readonly<Record<Exclude<ThemeName, 'device'>, ThemeSt
     sakura: 'flat'
 };
 export const LANGUAGE_CODES: readonly LanguageCode[] = ['en', 'pt', 'es', 'zh', 'ja'];
-export const START_TABS: readonly StartTab[] = ['downloads', 'anime'];
+export const START_TABS: readonly StartTab[] = ['downloads', 'anime', 'manga'];
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['device', ...LANGUAGE_CODES];
 export const FALLBACK_LANGUAGE: LanguageCode = 'en';
 

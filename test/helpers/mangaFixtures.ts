@@ -58,6 +58,7 @@ export function makeChapterRecord(overrides: Partial<MangaChapterRecord> = {}): 
         sizeBytes: 4096,
         error: null,
         downloadedAt: 1,
+        addedAt: null,
         ...overrides
     };
 }

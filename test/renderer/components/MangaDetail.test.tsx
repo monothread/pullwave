@@ -694,3 +694,27 @@ describe('MangaDetail what was read', () => {
         expect(useMangaStore.getState().readKeys).toHaveLength(3);
     });
 });
+
+describe('MangaDetail the chapters that are new today', () => {
+    it('marks the chapters that arrived in the library today, and no other', () => {
+        const now = Date.now();
+        const old = now - 30 * 24 * 3_600_000;
+        useMangaStore.setState({
+            library: [
+                makeLibraryManga(
+                    [
+                        makeChapterRecord({ id: 1, remoteId: 11, status: 'idle', addedAt: now - 1000 }),
+                        makeChapterRecord({ id: 2, remoteId: 12, status: 'idle', addedAt: old }),
+                        makeChapterRecord({ id: 3, remoteId: 13, status: 'idle', addedAt: null })
+                    ]
+                )
+            ]
+        });
+        open();
+        render(<MangaDetail />);
+        const rows = screen.getAllByTestId('manga-chapter');
+        expect(within(rows[0]!).getByText('NEW')).toHaveClass('badge--new');
+        expect(within(rows[1]!).queryByText('NEW')).not.toBeInTheDocument();
+        expect(within(rows[2]!).queryByText('NEW')).not.toBeInTheDocument();
+    });
+});

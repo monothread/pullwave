@@ -516,3 +516,35 @@ describe('MangaDownloadQueue shutdown', () => {
         expect(removed).toEqual([]);
     });
 });
+
+describe('MangaDownloadQueue which chapters are new', () => {
+    it('gives no time of arrival to the chapters a manga comes with, whether it is added or downloaded', () => {
+        const { queue, db } = setup();
+        const added = queue.addToLibrary(request([chapter(1), chapter(2)]));
+        expect(added?.chapters.map((item) => {return item.addedAt})).toEqual([null, null]);
+        const other = queue.enqueue(request([chapter(5)], { manga: { remoteId: 8, sourceId: 'src-a', title: 'Bleach', thumbnailUrl: null } }));
+        expect(other?.chapters.map((item) => {return item.addedAt})).toEqual([null]);
+        expect(db.list().flatMap((manga) => {return manga.chapters.map((item) => {return item.addedAt})})).toEqual([null, null, null]);
+    });
+
+    it('gives a time of arrival to the chapters added to a manga that was in the library already', () => {
+        const { queue } = setup();
+        queue.addToLibrary(request([chapter(1)]));
+        const later = queue.addToLibrary(request([chapter(1), chapter(2), chapter(3)]));
+        const byRemote = new Map(
+            (later?.chapters ?? []).map((item) => {
+                return [item.remoteId, item.addedAt];
+            })
+        );
+        expect(byRemote.get(1)).toBeNull();
+        expect(byRemote.get(2)).toBe(1000);
+        expect(byRemote.get(3)).toBe(1000);
+    });
+
+    it('does the same when the chapters are added by downloading them', () => {
+        const { queue } = setup();
+        queue.addToLibrary(request([chapter(1)]));
+        const later = queue.enqueue(request([chapter(4)]));
+        expect(later?.chapters.find((item) => {return item.remoteId === 4})?.addedAt).toBe(1000);
+    });
+});

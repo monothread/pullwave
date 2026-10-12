@@ -100,7 +100,7 @@ export interface DetectedBrowser {
 export type MaxResolution = 'best' | '2160' | '1440' | '1080' | '720' | '480';
 
 // The tab the app opens on when it starts.
-export type StartTab = 'downloads' | 'anime';
+export type StartTab = 'downloads' | 'anime' | 'manga';
 
 export interface Settings {
     downloadDir: string;

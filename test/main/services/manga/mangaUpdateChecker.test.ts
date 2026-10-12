@@ -93,6 +93,21 @@ describe('MangaUpdateChecker', () => {
         expect(context.fetched).toEqual([8, 9, 7]);
     });
 
+    it('gives the chapters it adds a time of arrival, and the ones the manga came with none', async () => {
+        const context = setup();
+        const id = addManga(context, 7, 'One Piece', [1, 2]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2), chapter(3)] });
+        await context.checker.checkNow();
+        const byRemote = new Map(
+            context.db.chaptersOf(id).map((item) => {
+                return [item.remoteId, item.addedAt];
+            })
+        );
+        expect(byRemote.get(1)).toBeNull();
+        expect(byRemote.get(2)).toBeNull();
+        expect(byRemote.get(3)).toBe(1);
+    });
+
     it('keeps the state of the chapters it already has', async () => {
         const context = setup();
         const id = addManga(context, 7, 'One Piece', [1]);

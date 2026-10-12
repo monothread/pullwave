@@ -277,7 +277,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             value={draft.startTab}
                             options={START_TABS}
                             formatOption={(startTab) => {
-                                return t(startTab === 'anime' ? 'tab.anime' : 'tab.downloads');
+                                return t(startTab === 'anime' ? 'tab.anime' : startTab === 'manga' ? 'tab.manga' : 'tab.downloads');
                             }}
                             hint={t('settings.startTab.hint')}
                             onChange={(value) => {
