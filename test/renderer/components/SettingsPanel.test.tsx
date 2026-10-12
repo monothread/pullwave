@@ -1384,9 +1384,23 @@ describe('SettingsPanel manga section', () => {
         expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
     });
 
+    it('shows the status and the updates of the programs in the manga scope, before the stores', async () => {
+        render(<SettingsPanel scope="manga" />);
+        const status = screen.getByRole('group', { name: 'Status of the programs' });
+        const updates = screen.getByRole('group', { name: 'Updates of the programs' });
+        expect(status.compareDocumentPosition(updates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'CHECK NOW' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeInTheDocument();
+        await vi.waitFor(() => {
+            expect(mock.api.manga.health).toHaveBeenCalledWith(false);
+        });
+    });
+
     it('does not show the manga settings in the other scopes', () => {
         (['global', 'downloads', 'anime'] as const).forEach((scope) => {
             const { unmount } = render(<SettingsPanel scope={scope} />);
+            expect(screen.queryByRole('group', { name: 'Status of the programs' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
             expect(screen.queryByLabelText('Manga folder')).not.toBeInTheDocument();
             expect(screen.queryByLabelText('Format of each chapter')).not.toBeInTheDocument();
             unmount();

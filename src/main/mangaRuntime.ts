@@ -19,6 +19,9 @@ import { SuwayomiClient } from './services/manga/suwayomiClient';
 import { CloudflareMonitor } from './services/tools/cloudflareMonitor';
 import { FlareSolverrDocker, type FlareSolverrDockerDependencies } from './services/tools/flaresolverrDocker';
 import { suwayomiSpec } from './services/tools/suwayomiRelease';
+import { MangaToolUpdates } from './services/manga/mangaToolUpdates';
+import { readSelectedFlareSolverr } from './services/tools/flaresolverrUpdate';
+import { chosenSuwayomiSpec } from './services/tools/suwayomiUpdate';
 import { SuwayomiServer, type SuwayomiServerDependencies } from './services/tools/suwayomiServer';
 import { ToolInstaller, type ToolInstallerDependencies } from './services/tools/toolInstaller';
 
@@ -34,6 +37,8 @@ export interface MangaRuntimeOptions {
     openFolder: (path: string) => void;
     // When the first look for new chapters is made after the app opens, and how often after that, when not the usual (the end-to-end tests).
     checkTimes?: { firstMs: number; everyMs: number };
+    // Closes the app and opens it again (the tests replace it).
+    restartApp?: () => void;
     // Opens an address in the browser of the system (the tests replace it).
     openSite?: (url: string) => void;
     // Asks the user for the folder the mangas are migrated to, starting at the given folder; null when they gave up (the tests replace it).
@@ -58,6 +63,8 @@ export interface MangaRuntime {
     handlers: MangaHandlerDependencies;
     // Looks for new chapters in the mangas of the library, once an hour.
     checker: MangaUpdateChecker;
+    // Looks for newer versions of the server and of the helper and moves to them.
+    updates: MangaToolUpdates;
     // Serves the pages of the chapters of the library to the screen (registered for the scheme of the pages).
     pageHandler: (request: Request) => Promise<Response>;
     // Downloads the program in the background when it is not there (done when the app opens).
@@ -93,12 +100,15 @@ function removeChapterPath(path: string): void {
 
 // Wires the manga section, or null where it does not exist.
 export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime | null {
-    const spec = suwayomiSpec(options.platform, options.arch);
     const external = options.externalBaseUrl ?? null;
     if (!isMangaSupported(options.platform, options.arch) && external === null) {
         return null;
     }
     const root = join(options.dataDir, 'manga');
+    // The release the user updated to when there is one, otherwise the one the app ships with.
+    const suwayomiFile = join(root, 'tools', 'suwayomi-selected.json');
+    const flaresolverrFile = join(root, 'tools', 'flaresolverr-selected.json');
+    const spec = chosenSuwayomiSpec(suwayomiFile, options.platform, options.arch);
     const db = new MangaDb(join(root, 'manga.db'));
     // What was going on when the app last closed did not finish.
     db.failInterrupted();
@@ -106,6 +116,14 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         rootDirectory: join(root, 'tools'),
         onState: (state) => {
             options.send(IPC.eventMangaTool, state);
+        },
+        ...options.toolDependencies
+    });
+    // A newer server is downloaded beside the one that runs, with its own events (it must not make the section look as if the server was missing).
+    const updateInstaller = new ToolInstaller({
+        rootDirectory: join(root, 'tools'),
+        onState: (state) => {
+            options.send(IPC.eventMangaServerUpdate, state);
         },
         ...options.toolDependencies
     });
@@ -118,6 +136,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
                   onState: (state) => {
                       options.send(IPC.eventMangaTool, state);
                   },
+                  version: readSelectedFlareSolverr(flaresolverrFile) ?? undefined,
                   ...options.helperDependencies
               })
             : null;
@@ -235,8 +254,29 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             return service.pagesOf(chapterRemoteId);
         }
     });
+    const updates = new MangaToolUpdates({
+        platform: options.platform,
+        arch: options.arch,
+        currentSpec: spec,
+        suwayomiFile,
+        flaresolverrFile,
+        install: (release) => {
+            return updateInstaller.install(release, undefined, true);
+        },
+        helper: () => {
+            return helper !== null && externalHelper().length === 0 && options.getSettings().mangaFlaresolverrEnabled ? helper : null;
+        },
+        helperChanged: () => {
+            return service.applyHelper();
+        },
+        fetchImpl: options.fetchImpl
+    });
     const handlers: MangaHandlerDependencies = {
         service,
+        updates,
+        restartApp: () => {
+            options.restartApp?.();
+        },
         queue,
         db,
         reader,
@@ -310,6 +350,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         db,
         handlers,
         checker,
+        updates,
         pageHandler: createPageHandler({
             fileOf,
             read: (path, index) => {
@@ -320,7 +361,12 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             return service.hasProcessesToEnd;
         },
         prepare: () => {
-            void service.install();
+            // Once the program that runs is there, the versions that were left from before an update go.
+            void service.install().then(() => {
+                if (spec !== null && installer.isReady(spec)) {
+                    installer.removeOthers(spec);
+                }
+            });
             checker.start();
         },
         shutdown: async () => {

@@ -1,4 +1,4 @@
-import { SUWAYOMI_VERSION, suwayomiSpec } from '@main/services/tools/suwayomiRelease';
+import { SUWAYOMI_VERSION, suwayomiAssetName, suwayomiReleaseSpec, suwayomiSpec } from '@main/services/tools/suwayomiRelease';
 
 describe('suwayomiSpec', () => {
     it('is the tar.gz of the Linux x64 release', () => {
@@ -45,5 +45,46 @@ describe('suwayomiSpec', () => {
             expect(spec?.url.startsWith('https://github.com/Suwayomi/Suwayomi-Server/releases/download/')).toBe(true);
             expect(spec?.sha256).toMatch(/^[0-9a-f]{64}$/);
         });
+    });
+});
+
+describe('suwayomiAssetName', () => {
+    it('is the file a release publishes for each system', () => {
+        expect(suwayomiAssetName('linux', 'x64', 'v2.5.1')).toBe('Suwayomi-Server-v2.5.1-linux-x64.tar.gz');
+        expect(suwayomiAssetName('win32', 'x64', 'v2.5.1')).toBe('Suwayomi-Server-v2.5.1-windows-x64.zip');
+    });
+
+    it('is null where there is none', () => {
+        expect(suwayomiAssetName('darwin', 'x64', 'v2.5.1')).toBeNull();
+        expect(suwayomiAssetName('linux', 'arm64', 'v2.5.1')).toBeNull();
+    });
+});
+
+describe('suwayomiReleaseSpec', () => {
+    const release = { version: 'v2.5.1', sha256: 'b'.repeat(64), sizeBytes: 400_000_000 };
+
+    it('is the program of any release, with the address built from the version', () => {
+        expect(suwayomiReleaseSpec('linux', 'x64', release)).toEqual({
+            id: 'suwayomi',
+            version: 'v2.5.1',
+            url: 'https://github.com/Suwayomi/Suwayomi-Server/releases/download/v2.5.1/Suwayomi-Server-v2.5.1-linux-x64.tar.gz',
+            sha256: 'b'.repeat(64),
+            sizeBytes: 400_000_000,
+            format: 'tar.gz',
+            stripComponents: 1,
+            exclude: ['electron'],
+            executables: ['jre/bin/java'],
+            entry: 'bin/Suwayomi-Server.jar'
+        });
+        expect(suwayomiReleaseSpec('win32', 'x64', release)).toMatchObject({
+            url: 'https://github.com/Suwayomi/Suwayomi-Server/releases/download/v2.5.1/Suwayomi-Server-v2.5.1-windows-x64.zip',
+            format: 'zip',
+            executables: ['jre/bin/java.exe']
+        });
+    });
+
+    it('is null where there is no release for the system', () => {
+        expect(suwayomiReleaseSpec('darwin', 'arm64', release)).toBeNull();
+        expect(suwayomiReleaseSpec('linux', 'ia32', release)).toBeNull();
     });
 });

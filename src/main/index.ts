@@ -410,6 +410,9 @@ function bootstrap(): BootstrapResult {
             void shell.openPath(path);
         },
         // PULLWAVE_MANGA_OPEN_LOG is a file the addresses are written to instead of being opened (used by the end-to-end tests).
+        restartApp: () => {
+            void requestRestart?.();
+        },
         openSite: (url) => {
             if (process.env.PULLWAVE_MANGA_OPEN_LOG) {
                 appendFileSync(process.env.PULLWAVE_MANGA_OPEN_LOG, `${url}\n`);

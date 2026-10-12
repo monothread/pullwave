@@ -23,7 +23,9 @@ import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
+import { MangaHealthSettings } from './MangaHealthSettings';
 import { MangaHelperSettings } from './MangaHelperSettings';
+import { MangaToolsSettings } from './MangaToolsSettings';
 import { MangaStoreSettings } from './MangaStoreSettings';
 import { formatResolution } from './settingsFormat';
 import { TranslationSettings } from './TranslationSettings';
@@ -739,6 +741,8 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         }}
                     />
                 </fieldset>
+                <MangaHealthSettings />
+                <MangaToolsSettings />
                 <MangaStoreSettings />
                 <MangaHelperSettings
                     enabled={draft.mangaFlaresolverrEnabled}

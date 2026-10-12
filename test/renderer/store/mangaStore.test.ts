@@ -61,7 +61,7 @@ describe('mangaStore init', () => {
         expect(state().library).toEqual(library);
         expect(state().jobs).toEqual(jobs);
         unsubscribe();
-        expect(mock.unsubscribers).toHaveLength(7);
+        expect(mock.unsubscribers).toHaveLength(8);
         mock.unsubscribers.forEach((fn) => {
             expect(fn).toHaveBeenCalledTimes(1);
         });
@@ -87,6 +87,14 @@ describe('mangaStore init', () => {
             await vi.waitFor(() => {
                 expect(mock.api.manga.status).toHaveBeenCalledTimes(2);
             });
+        });
+
+        it('keeps the download of a newer server apart from the status of the section', () => {
+            const download = makeTool({ status: 'downloading', percent: 33, version: 'v9.0.0' });
+            mock.emitMangaServerUpdate(download);
+            expect(state().serverUpdate).toEqual(download);
+            expect(state().status.tool).toMatchObject({ status: 'ready' });
+            expect(mock.api.manga.status).not.toHaveBeenCalled();
         });
 
         it('keeps the state of the download of the helper apart from the one of the program', async () => {
@@ -1283,5 +1291,131 @@ describe('mangaStore chapters read', () => {
         vi.resetModules();
         const fresh = (await import('@renderer/store/mangaStore')).useMangaStore.getState();
         expect(fresh.readKeys).toEqual(['a|1']);
+    });
+});
+
+
+const VERSIONS = {
+    suwayomi: { current: 'v1.0.0', latest: 'v2.0.0', error: null, updatable: true, chosen: false, bundled: 'v1.0.0', restartNeeded: false },
+    flaresolverr: { current: 'v3.5.2', latest: 'v3.6.0', error: null, updatable: true }
+};
+
+describe('mangaStore updates of the programs', () => {
+    it('starts with nothing looked for', () => {
+        expect(state().toolVersions).toBeNull();
+        expect(state().toolsChecking).toBe(false);
+        expect(state().serverUpdate).toBeNull();
+        expect(state().updateResults).toEqual({ server: null, helper: null });
+        expect(state().updating).toEqual({ server: false, helper: false });
+    });
+
+    it('looks for the latest versions and keeps them, saying it is looking meanwhile', async () => {
+        let answer: (versions: typeof VERSIONS) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.checkToolUpdates.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const pending = state().checkToolUpdates();
+        expect(state().toolsChecking).toBe(true);
+        answer(VERSIONS);
+        await pending;
+        expect(state().toolsChecking).toBe(false);
+        expect(state().toolVersions).toEqual(VERSIONS);
+        expect(mock.api.manga.checkToolUpdates).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops saying it is looking when the lookup throws', async () => {
+        mock.api.manga.checkToolUpdates.mockRejectedValue(new Error('ipc'));
+        await expect(state().checkToolUpdates()).rejects.toThrow('ipc');
+        expect(state().toolsChecking).toBe(false);
+        expect(state().toolVersions).toBeNull();
+    });
+
+    it('updates the server, keeps the answer, forgets the old download and looks at the versions again', async () => {
+        useMangaStore.setState({ serverUpdate: makeTool({ status: 'ready' }), updateResults: { server: { ok: false, reason: 'failed', message: 'old' }, helper: null } });
+        let answer: (result: { ok: true; version: string }) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.updateServer.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        mock.api.manga.checkToolUpdates.mockResolvedValue({ ...VERSIONS, suwayomi: { ...VERSIONS.suwayomi, updatable: false, restartNeeded: true } });
+        const pending = state().updateServer();
+        expect(state().updating).toEqual({ server: true, helper: false });
+        expect(state().updateResults.server).toBeNull();
+        expect(state().serverUpdate).toBeNull();
+        answer({ ok: true, version: 'v2.0.0' });
+        await pending;
+        expect(state().updating).toEqual({ server: false, helper: false });
+        expect(state().updateResults.server).toEqual({ ok: true, version: 'v2.0.0' });
+        expect(mock.api.manga.checkToolUpdates).toHaveBeenCalledTimes(1);
+        expect(state().toolVersions?.suwayomi.restartNeeded).toBe(true);
+    });
+
+    it('keeps why an update of the server failed', async () => {
+        mock.api.manga.updateServer.mockResolvedValue({ ok: false, reason: 'failed', message: 'hash' });
+        await state().updateServer();
+        expect(state().updateResults.server).toEqual({ ok: false, reason: 'failed', message: 'hash' });
+    });
+
+    it('goes back to the version of the app, forgets the answer and looks at the versions again', async () => {
+        useMangaStore.setState({ updateResults: { server: { ok: true, version: 'v2.0.0' }, helper: null } });
+        await state().resetServerVersion();
+        expect(mock.api.manga.resetServerVersion).toHaveBeenCalledTimes(1);
+        expect(state().updateResults.server).toBeNull();
+        expect(mock.api.manga.checkToolUpdates).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates the helper, keeps the answer, looks at the versions and reads the status again', async () => {
+        mock.api.manga.updateHelper.mockResolvedValue({ ok: true, version: 'v3.6.0' });
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
+        const pending = state().updateHelper();
+        expect(state().updating).toEqual({ server: false, helper: true });
+        await pending;
+        expect(state().updating).toEqual({ server: false, helper: false });
+        expect(state().updateResults.helper).toEqual({ ok: true, version: 'v3.6.0' });
+        expect(mock.api.manga.checkToolUpdates).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.status).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks the main process to restart the app', async () => {
+        await state().restartApp();
+        expect(mock.api.manga.restartApp).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('mangaStore health of the programs', () => {
+    it('starts with nothing known', () => {
+        expect(state().health).toBeNull();
+        expect(state().healthChecking).toBe(false);
+    });
+
+    it('looks without starting anything, and keeps what it finds', async () => {
+        const health = { server: { state: 'stopped' as const, version: null, message: null, external: false }, helper: null };
+        mock.api.manga.health.mockResolvedValue(health);
+        const pending = state().checkHealth(false);
+        expect(state().healthChecking).toBe(true);
+        await pending;
+        expect(state().healthChecking).toBe(false);
+        expect(state().health).toEqual(health);
+        expect(mock.api.manga.health).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.health).toHaveBeenCalledWith(false);
+    });
+
+    it('asks to start what is stopped when the user checks', async () => {
+        await state().checkHealth(true);
+        expect(mock.api.manga.health).toHaveBeenCalledWith(true);
+        expect(state().health).toEqual({ server: { state: 'healthy', version: 'v1.0.0', message: null, external: false }, helper: null });
+    });
+
+    it('stops saying it is checking when the check throws', async () => {
+        mock.api.manga.health.mockRejectedValue(new Error('ipc'));
+        await expect(state().checkHealth(true)).rejects.toThrow('ipc');
+        expect(state().healthChecking).toBe(false);
     });
 });

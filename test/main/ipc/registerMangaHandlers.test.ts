@@ -69,7 +69,13 @@ const MANGA_CHANNELS = [
     IPC.mangaStatus,
     IPC.mangaStoreAdd,
     IPC.mangaStoreRemove,
-    IPC.mangaStores
+    IPC.mangaStores,
+    IPC.mangaToolsCheck,
+    IPC.mangaServerUpdate,
+    IPC.mangaServerReset,
+    IPC.mangaHelperUpdate,
+    IPC.mangaRestart,
+    IPC.mangaHealth
 ].sort();
 
 const BASE = 'http://127.0.0.1:4321';
@@ -164,6 +170,9 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         details: vi.fn(() => {
             return Promise.resolve({ ok: false as const, error: { code: 'NOT_FOUND' as const, message: 'none' } });
         }),
+        health: vi.fn(() => {
+            return Promise.resolve({ server: { state: 'healthy' as const, version: 'v1', message: null, external: false }, helper: null });
+        }),
         warmUp: vi.fn(),
         baseUrl: options.baseUrl === undefined ? BASE : options.baseUrl
     };
@@ -172,8 +181,25 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
             return Promise.resolve({ ok: true as const, value: { pages: ['pullwave-manga://page/3/0'], local: true } });
         })
     };
+    const updates = {
+        check: vi.fn(() => {
+            return Promise.resolve({ suwayomi: { current: 'v1', latest: 'v2', error: null, updatable: true, chosen: false, bundled: 'v1', restartNeeded: false }, flaresolverr: null });
+        }),
+        updateServer: vi.fn(() => {
+            return Promise.resolve({ ok: true as const, version: 'v2' });
+        }),
+        resetServer: vi.fn(),
+        updateHelper: vi.fn(() => {
+            return Promise.resolve({ ok: false as const, reason: 'not-installed' as const, message: null });
+        })
+    };
+    const restarts = { count: 0 };
     const deps: MangaHandlerDependencies = {
         service,
+        updates,
+        restartApp: () => {
+            restarts.count += 1;
+        },
         queue,
         db,
         reader,
@@ -198,7 +224,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const ipc = makeIpc();
     registerMangaHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, queue, service, reader, downloads, removedFiles, opened, sites, libraryChanges };
+    return { ...ipc, db, queue, service, reader, downloads, removedFiles, opened, sites, libraryChanges, updates, restarts };
 }
 
 describe('registerMangaHandlers', () => {
@@ -218,6 +244,12 @@ describe('registerMangaHandlers', () => {
         });
         expect(ipc.call(IPC.mangaExtensionsUpdateAll)).toEqual(unsupported);
         expect(ipc.call(IPC.mangaOpenSite)).toBeUndefined();
+        expect(ipc.call(IPC.mangaToolsCheck)).toEqual({ suwayomi: { current: '', latest: null, error: null, updatable: false, chosen: false, bundled: '', restartNeeded: false }, flaresolverr: null });
+        expect(ipc.call(IPC.mangaServerUpdate)).toEqual({ ok: false, reason: 'unsupported', message: null });
+        expect(ipc.call(IPC.mangaHelperUpdate)).toEqual({ ok: false, reason: 'unsupported', message: null });
+        expect(ipc.call(IPC.mangaServerReset)).toBeUndefined();
+        expect(ipc.call(IPC.mangaRestart)).toBeUndefined();
+        expect(ipc.call(IPC.mangaHealth)).toEqual({ server: { state: 'not-installed', version: null, message: null, external: false }, helper: null });
         expect(ipc.call(IPC.mangaSetSeries)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaRenameSeries)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaGroups)).toEqual([]);
@@ -579,6 +611,39 @@ describe('the site and the folder of the mangas', () => {
         call(IPC.mangaOpenSite, 5);
         call(IPC.mangaOpenSite, null);
         expect(sites).toEqual(['https://dex.example/manga/one-piece', 'http://dex.example/a']);
+    });
+
+    it('looks for the latest versions of the server and of the helper', async () => {
+        const { call, updates } = setup();
+        await expect(call(IPC.mangaToolsCheck)).resolves.toEqual({ suwayomi: { current: 'v1', latest: 'v2', error: null, updatable: true, chosen: false, bundled: 'v1', restartNeeded: false }, flaresolverr: null });
+        expect(updates.check).toHaveBeenCalledTimes(1);
+        expect(updates.check).toHaveBeenCalledWith();
+    });
+
+    it('updates the server, goes back to the version the app ships with, and updates the helper', async () => {
+        const { call, updates } = setup();
+        await expect(call(IPC.mangaServerUpdate)).resolves.toEqual({ ok: true, version: 'v2' });
+        expect(updates.updateServer).toHaveBeenCalledTimes(1);
+        expect(call(IPC.mangaServerReset)).toBeUndefined();
+        expect(updates.resetServer).toHaveBeenCalledTimes(1);
+        await expect(call(IPC.mangaHelperUpdate)).resolves.toEqual({ ok: false, reason: 'not-installed', message: null });
+        expect(updates.updateHelper).toHaveBeenCalledTimes(1);
+    });
+
+    it('restarts the app when the screen asks for it', () => {
+        const { call, restarts } = setup();
+        expect(call(IPC.mangaRestart)).toBeUndefined();
+        expect(restarts.count).toBe(1);
+    });
+
+    it('asks the service for the health, starting what is stopped only when the screen says so', async () => {
+        const { call, service } = setup();
+        const healthy = { server: { state: 'healthy', version: 'v1', message: null, external: false }, helper: null };
+        await expect(call(IPC.mangaHealth, true)).resolves.toEqual(healthy);
+        await expect(call(IPC.mangaHealth, false)).resolves.toEqual(healthy);
+        await expect(call(IPC.mangaHealth, 'yes')).resolves.toEqual(healthy);
+        await expect(call(IPC.mangaHealth)).resolves.toEqual(healthy);
+        expect(service.health.mock.calls).toEqual([[true], [false], [false], [false]]);
     });
 
     it('migrates the folder and tells the screen the library changed', async () => {

@@ -265,3 +265,48 @@ describe('ToolInstaller', () => {
         expect(installer.stateOf(SPEC).status).toBe('ready');
     });
 });
+
+describe('ToolInstaller keeping the other versions', () => {
+    const NEXT: ToolSpec = { ...SPEC, version: 'v2' };
+
+    function installed(root: string): ToolInstaller {
+        return new ToolInstaller({ rootDirectory: root, download: goodDownload().download, extract: goodExtract().extract });
+    }
+
+    it('takes the other versions away after an install, unless it is told to keep them', async () => {
+        const root = makeTempDir();
+        const installer = installed(root);
+        await installer.install(SPEC);
+        await installer.install(NEXT);
+        expect(readdirSync(join(root, 'suwayomi'))).toEqual(['v2']);
+    });
+
+    it('keeps the version that runs when it is told to, so a newer one can be put beside it', async () => {
+        const root = makeTempDir();
+        const installer = installed(root);
+        await installer.install(SPEC);
+        const state = await installer.install(NEXT, undefined, true);
+        expect(state.status).toBe('ready');
+        expect(readdirSync(join(root, 'suwayomi')).sort()).toEqual(['v1', 'v2']);
+        expect(installer.isReady(SPEC)).toBe(true);
+        expect(installer.isReady(NEXT)).toBe(true);
+    });
+
+    it('takes the other versions away later, leaving the folders of an install that is going on', async () => {
+        const root = makeTempDir();
+        const installer = installed(root);
+        await installer.install(SPEC);
+        await installer.install(NEXT, undefined, true);
+        mkdirSync(join(root, 'suwayomi', 'staging-v3'), { recursive: true });
+        writeFileSync(join(root, 'suwayomi', 'download-v3.part'), 'x');
+        installer.removeOthers(NEXT);
+        expect(readdirSync(join(root, 'suwayomi')).sort()).toEqual(['download-v3.part', 'staging-v3', 'v2']);
+    });
+
+    it('does nothing when the program has no folder yet', () => {
+        const installer = installed(makeTempDir());
+        expect(() => {
+            installer.removeOthers(SPEC);
+        }).not.toThrow();
+    });
+});

@@ -6,7 +6,8 @@ import { findFreePort } from './suwayomiServer';
 // FlareSolverr (MIT) runs in Docker, so nothing it needs (a browser, a virtual screen) is installed on the machine of the user. The version
 // is pinned: a new one is a change of this constant.
 export const FLARESOLVERR_VERSION = 'v3.5.2';
-export const FLARESOLVERR_IMAGE = `ghcr.io/flaresolverr/flaresolverr:${FLARESOLVERR_VERSION}`;
+export const FLARESOLVERR_IMAGE_NAME = 'ghcr.io/flaresolverr/flaresolverr';
+export const FLARESOLVERR_IMAGE = `${FLARESOLVERR_IMAGE_NAME}:${FLARESOLVERR_VERSION}`;
 export const FLARESOLVERR_CONTAINER_LABEL = 'pullwave.helper=flaresolverr';
 export const FLARESOLVERR_CONTAINER_PORT = 8191;
 export const FLARESOLVERR_START_TIMEOUT_MS = 90_000;
@@ -81,6 +82,8 @@ export interface FlareSolverrDockerDependencies {
     onState?: (state: ToolState) => void;
     // A name that tells this app's container from another one (the process id is enough).
     containerName?: string;
+    // The version of the image to run, when it is not the one the app ships with (an update the user made).
+    version?: string;
     startTimeoutMs?: number;
     pollIntervalMs?: number;
 }
@@ -105,6 +108,7 @@ function lastLines(text: string): string {
 // is pulled when the app opens, and the container listens on a port of its own on this machine only and is removed when it stops.
 export class FlareSolverrDocker {
     private readonly docker: DockerRunner;
+    private versionTag: string;
     private current: ToolState = {
         id: 'flaresolverr',
         status: 'missing',
@@ -124,6 +128,37 @@ export class FlareSolverrDocker {
 
     constructor(private readonly deps: FlareSolverrDockerDependencies = {}) {
         this.docker = deps.docker ?? createDockerRunner();
+        this.versionTag = deps.version ?? FLARESOLVERR_VERSION;
+        this.current = { ...this.current, version: this.versionTag };
+    }
+
+    // The version of the image that is run, and the image.
+    get version(): string {
+        return this.versionTag;
+    }
+
+    private get image(): string {
+        return `${FLARESOLVERR_IMAGE_NAME}:${this.versionTag}`;
+    }
+
+    // Runs another version of FlareSolverr: its image is pulled, the container that runs (it uses the old image) is stopped, so the next use
+    // starts the new one, and the old image is removed. When the new one cannot be pulled the old one stays in use.
+    async switchTo(version: string): Promise<ToolState> {
+        const previousVersion = this.versionTag;
+        const previousImage = this.image;
+        const wasReady = this.current.status === 'ready';
+        this.versionTag = version;
+        this.update({ status: 'missing', version, percent: 0, bytesDone: 0, bytesTotal: 0, error: null });
+        const state = await this.prepare();
+        if (state.status !== 'ready') {
+            this.versionTag = previousVersion;
+            this.problem = null;
+            this.update({ status: wasReady ? 'ready' : 'missing', version: previousVersion, percent: wasReady ? 100 : 0, error: state.error });
+            return this.current;
+        }
+        await this.stop();
+        await this.docker(['rmi', previousImage]);
+        return this.current;
     }
 
     get state(): ToolState {
@@ -174,7 +209,7 @@ export class FlareSolverrDocker {
             this.update({ status: 'error', error: { code: 'DOCKER_MISSING', message: this.lastError } });
             return this.current;
         }
-        const present = await this.docker(['image', 'inspect', '--format', '{{.Id}}', FLARESOLVERR_IMAGE]);
+        const present = await this.docker(['image', 'inspect', '--format', '{{.Id}}', this.image]);
         if (present.code === 0) {
             this.update({ status: 'ready', percent: 100, error: null });
             return this.current;
@@ -182,7 +217,7 @@ export class FlareSolverrDocker {
         this.update({ status: 'downloading', percent: 0, bytesDone: 0, bytesTotal: 0, error: null });
         const layers = new Set<string>();
         const finished = new Set<string>();
-        const pulled = await this.docker(['pull', FLARESOLVERR_IMAGE], (line) => {
+        const pulled = await this.docker(['pull', this.image], (line) => {
             const match = /^([0-9a-f]{12}): (.+)$/.exec(line);
             if (match === null) {
                 return;
@@ -206,7 +241,7 @@ export class FlareSolverrDocker {
     // Stops the container and removes the image; the helper is then as if it was never installed.
     async remove(): Promise<void> {
         await this.stop();
-        await this.docker(['rmi', FLARESOLVERR_IMAGE]);
+        await this.docker(['rmi', this.image]);
         this.problem = null;
         this.lastError = null;
         this.currentStatus = 'stopped';
@@ -272,7 +307,7 @@ export class FlareSolverrDocker {
                 `127.0.0.1:${port}:${FLARESOLVERR_CONTAINER_PORT}`,
                 '--env',
                 'LOG_LEVEL=info',
-                FLARESOLVERR_IMAGE
+                this.image
             ]);
             if (run.code !== 0) {
                 throw new FlareSolverrDockerError('START_FAILED', lastLines(run.stderr) || 'The container of FlareSolverr did not start');

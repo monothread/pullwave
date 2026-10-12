@@ -851,3 +851,97 @@ describe('createMangaRuntime Cloudflare helper', () => {
         await runtime.shutdown();
     });
 });
+
+describe('createMangaRuntime updates and health', () => {
+    const HASH = 'd'.repeat(64);
+
+    function fromDisk(selected: { suwayomi?: object; flaresolverr?: object } = {}) {
+        const dir = makeTempDir();
+        const tools = join(dir, 'manga', 'tools');
+        mkdirSync(tools, { recursive: true });
+        if (selected.suwayomi !== undefined) {
+            writeFileSync(join(tools, 'suwayomi-selected.json'), JSON.stringify(selected.suwayomi));
+        }
+        if (selected.flaresolverr !== undefined) {
+            writeFileSync(join(tools, 'flaresolverr-selected.json'), JSON.stringify(selected.flaresolverr));
+        }
+        const sent: Sent[] = [];
+        const restarts = { count: 0 };
+        const docker = fakeDocker({ imagePresent: true });
+        const runtime = createMangaRuntime({
+            platform: 'linux',
+            arch: 'x64',
+            dataDir: dir,
+            defaultDownloadDir: dir,
+            getSettings: () => {
+                return { ...DEFAULT_SETTINGS, mangaFlaresolverrEnabled: true };
+            },
+            send: (channel, payload) => {
+                sent.push({ channel, payload });
+            },
+            openFolder: () => {
+                return undefined;
+            },
+            restartApp: () => {
+                restarts.count += 1;
+            },
+            toolDependencies: {
+                download: () => {
+                    return Promise.reject(new Error('offline'));
+                }
+            },
+            helperDependencies: { docker: docker.runner }
+        })!;
+        return { runtime, dir, tools, sent, restarts, docker };
+    }
+
+    it('runs the program the app ships with when no update was chosen', () => {
+        const { runtime } = fromDisk();
+        expect(runtime.service.status().tool).toMatchObject({ id: 'suwayomi', version: suwayomiSpec('linux', 'x64')!.version });
+    });
+
+    it('runs the release the user updated to, from the next time the app opens', () => {
+        const { runtime } = fromDisk({ suwayomi: { version: 'v9.0.0', sha256: HASH, sizeBytes: 1000 } });
+        expect(runtime.service.status().tool).toMatchObject({ id: 'suwayomi', version: 'v9.0.0' });
+    });
+
+    it('runs the program the app ships with when what was kept is not valid', () => {
+        const { runtime } = fromDisk({ suwayomi: { version: '../../x', sha256: 'zz', sizeBytes: -1 } });
+        expect(runtime.service.status().tool).toMatchObject({ version: suwayomiSpec('linux', 'x64')!.version });
+    });
+
+    it('runs the image of the helper the user updated to', () => {
+        const { runtime } = fromDisk({ flaresolverr: { version: 'v9.9.9' } });
+        expect(runtime.service.status().helper).toMatchObject({ id: 'flaresolverr', version: 'v9.9.9' });
+    });
+
+    it('runs the image the app ships with when what was kept is not valid', () => {
+        const { runtime } = fromDisk({ flaresolverr: { version: 'latest; rm -rf /' } });
+        expect(runtime.service.status().helper).toMatchObject({ version: FLARESOLVERR_VERSION });
+    });
+
+    it('gives the handlers the updates and a way to restart the app', () => {
+        const { runtime, restarts } = fromDisk();
+        expect(runtime.handlers.updates).toBe(runtime.updates);
+        runtime.handlers.restartApp();
+        expect(restarts.count).toBe(1);
+    });
+
+    it('does not fail when the app is not given a way to restart', () => {
+        const { runtime } = setup();
+        expect(() => {
+            runtime!.handlers.restartApp();
+        }).not.toThrow();
+    });
+
+    it('asks for no helper to update where the user runs a server of their own', async () => {
+        const { runtime } = setup();
+        await expect(runtime!.updates.updateHelper()).resolves.toEqual({ ok: false, reason: 'not-installed', message: null });
+    });
+
+    it('asks the server that is given about its version when the health is asked', async () => {
+        const { runtime, requests } = setup();
+        await expect(runtime!.service.health(false)).resolves.toMatchObject({ server: { state: 'unhealthy', message: 'not faked', external: false } });
+        expect(requests).toEqual([`${EXTERNAL}/api/graphql`]);
+    });
+});

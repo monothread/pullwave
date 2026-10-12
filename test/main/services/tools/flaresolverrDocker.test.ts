@@ -6,6 +6,7 @@ import {
     createDockerRunner,
     FLARESOLVERR_CONTAINER_LABEL,
     FLARESOLVERR_IMAGE,
+    FLARESOLVERR_IMAGE_NAME,
     FLARESOLVERR_VERSION,
     FlareSolverrDocker,
     FlareSolverrDockerError
@@ -376,5 +377,73 @@ describe('createDockerRunner', () => {
         const result = createDockerRunner(spawn)(['image', 'inspect', 'x']);
         child.emit('close', 1);
         await expect(result).resolves.toMatchObject({ code: 1 });
+    });
+});
+
+describe('FlareSolverrDocker another version', () => {
+    it('runs the version it is told to, pulling and starting that image', async () => {
+        const docker = fakeDocker({ imagePresent: false });
+        const helper = new FlareSolverrDocker({
+            docker: docker.runner,
+            fetchImpl: okFetch(),
+            findFreePort: () => {
+                return Promise.resolve(45900);
+            },
+            containerName: 'pullwave-test',
+            version: 'v3.9.9',
+            pollIntervalMs: 5
+        });
+        expect(helper.version).toBe('v3.9.9');
+        expect(helper.state.version).toBe('v3.9.9');
+        await helper.prepare();
+        expect(docker.calls).toContainEqual(['pull', `${FLARESOLVERR_IMAGE_NAME}:v3.9.9`]);
+        await helper.ensureRunning();
+        expect(docker.calls.find((call) => {return call[0] === 'run'})?.at(-1)).toBe(`${FLARESOLVERR_IMAGE_NAME}:v3.9.9`);
+    });
+
+    it('is the version the app ships with when none is given', () => {
+        expect(setup().helper.version).toBe(FLARESOLVERR_VERSION);
+    });
+
+    it('switches: pulls the new image, stops the container that runs, removes the old image and uses the new one from then on', async () => {
+        const { helper, docker } = setup({ imagePresent: true, containerId: 'abc123' });
+        await helper.prepare();
+        await helper.ensureRunning();
+        const state = await helper.switchTo('v3.9.9');
+        expect(state).toMatchObject({ status: 'ready', version: 'v3.9.9' });
+        expect(helper.version).toBe('v3.9.9');
+        expect(helper.status).toBe('stopped');
+        expect(helper.baseUrl).toBeNull();
+        expect(docker.calls).toContainEqual(['stop', '--time', '3', 'abc123']);
+        expect(docker.calls.at(-1)).toEqual(['rmi', FLARESOLVERR_IMAGE]);
+        await helper.ensureRunning();
+        expect(docker.calls.filter((call) => {return call[0] === 'run'}).at(-1)?.at(-1)).toBe(`${FLARESOLVERR_IMAGE_NAME}:v3.9.9`);
+    });
+
+    it('goes back to the old version, and keeps its image, when the new image cannot be pulled', async () => {
+        const docker = fakeDocker({ imagePresent: true });
+        const failing: typeof docker.runner = (args, onLine) => {
+            if (args[0] === 'image' && args[4] !== FLARESOLVERR_IMAGE) {
+                return Promise.resolve({ code: 1, stdout: '', stderr: 'No such image' });
+            }
+            if (args[0] === 'pull') {
+                return Promise.resolve({ code: 1, stdout: '', stderr: 'manifest unknown' });
+            }
+            return docker.runner(args, onLine);
+        };
+        const helper = new FlareSolverrDocker({ docker: failing, fetchImpl: okFetch(), pollIntervalMs: 5 });
+        await helper.prepare();
+        const state = await helper.switchTo('v9.9.9');
+        expect(helper.version).toBe(FLARESOLVERR_VERSION);
+        expect(state).toMatchObject({ status: 'ready', version: FLARESOLVERR_VERSION, error: { code: 'DOWNLOAD_FAILED' } });
+        expect(helper.failure).toBeNull();
+        expect(docker.calls.some((call) => {return call[0] === 'rmi'})).toBe(false);
+    });
+
+    it('goes back to not installed when it was not installed and the new image cannot be pulled', async () => {
+        const { helper } = setup({ dockerMissing: true });
+        const state = await helper.switchTo('v9.9.9');
+        expect(helper.version).toBe(FLARESOLVERR_VERSION);
+        expect(state.status).toBe('missing');
     });
 });

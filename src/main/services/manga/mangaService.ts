@@ -5,7 +5,9 @@ import type {
     MangaError,
     MangaExtension,
     MangaExtensionStore,
+    ComponentHealth,
     MangaFilter,
+    MangaHealth,
     MangaListing,
     MangaListRequest,
     MangaPreferenceChange,
@@ -42,6 +44,11 @@ export interface HelperControl {
     readonly state: ToolState;
     readonly status: MangaServerStatus;
     readonly failure: MangaHelperProblem | null;
+    // The address it answers on while it runs, and the version of its image.
+    readonly baseUrl: string | null;
+    readonly version: string;
+    // Starts it (when it is ready) and gives its address.
+    ensureRunning: () => Promise<string>;
 }
 
 export interface MangaServiceDependencies {
@@ -60,6 +67,23 @@ export interface MangaServiceDependencies {
     client: () => SuwayomiClient;
     // A server that is already running (the end-to-end tests): nothing is downloaded and nothing is started.
     externalBaseUrl?: string | null;
+}
+
+export const PROBE_TIMEOUT_MS = 4000;
+
+// Asks a FlareSolverr whether it is up: it answers with a page that says so and which version it is.
+export async function probeHelper(address: string, external: boolean, version: string | null = null): Promise<ComponentHealth> {
+    try {
+        const response = await fetch(`${address}/`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+        if (!response.ok) {
+            return { state: 'unhealthy', version, message: `It answered ${String(response.status)}`, external };
+        }
+        const body = (await response.json().catch(() => {return null})) as { version?: unknown } | null;
+        const reported = typeof body?.version === 'string' && body.version.length > 0 ? body.version.slice(0, 40) : null;
+        return { state: 'healthy', version: reported ?? version, message: null, external };
+    } catch (error) {
+        return { state: 'unhealthy', version, message: error instanceof Error ? error.message : String(error), external };
+    }
 }
 
 const NOT_INSTALLED = 'The manga server is not installed yet';
@@ -105,6 +129,73 @@ export class MangaService {
 
     private helperEnabled(): boolean {
         return this.deps.helperEnabled?.() ?? true;
+    }
+
+    // How the server and the helper are doing. With `start`, one that is stopped is started first (it is what "check" means for the user);
+    // without it, a stopped one is only said to be stopped.
+    async health(start: boolean): Promise<MangaHealth> {
+        const [server, helper] = await Promise.all([this.serverHealth(start), this.helperHealth(start)]);
+        return { server, helper };
+    }
+
+    private async serverHealth(start: boolean): Promise<ComponentHealth> {
+        const { spec, tool, server, externalBaseUrl } = this.deps;
+        const base = { version: null, message: null, external: false };
+        if (externalBaseUrl == null) {
+            if (spec === null || !tool.isReady(spec)) {
+                return { ...base, state: 'not-installed' };
+            }
+            if (server.status === 'starting') {
+                return { ...base, state: 'starting' };
+            }
+            if (server.status === 'error' && !start) {
+                return { ...base, state: 'unhealthy', message: server.error };
+            }
+            if (server.status === 'stopped' && !start) {
+                return { ...base, state: 'stopped' };
+            }
+        }
+        try {
+            return { ...base, state: 'healthy', version: await this.deps.client().serverVersion() };
+        } catch (error) {
+            return { ...base, state: 'unhealthy', message: toMangaError(error).message };
+        }
+    }
+
+    private async helperHealth(start: boolean): Promise<ComponentHealth | null> {
+        const { helper } = this.deps;
+        const own = this.externalHelper();
+        if (own !== null) {
+            return probeHelper(own, true);
+        }
+        if (helper == null || !this.helperEnabled()) {
+            return null;
+        }
+        const base = { version: helper.version, message: null, external: false };
+        if (helper.failure !== null) {
+            return { ...base, state: 'unhealthy', message: helper.failure.message };
+        }
+        const { status } = helper.state;
+        if (status === 'downloading' || status === 'verifying' || status === 'extracting') {
+            return { ...base, state: 'starting' };
+        }
+        if (status !== 'ready') {
+            return { ...base, state: status === 'error' ? 'unhealthy' : 'not-installed', message: helper.state.error?.message ?? null };
+        }
+        if (helper.status === 'starting') {
+            return { ...base, state: 'starting' };
+        }
+        if (helper.status === 'running' && helper.baseUrl !== null) {
+            return probeHelper(helper.baseUrl, false, helper.version);
+        }
+        if (!start) {
+            return { ...base, state: 'stopped' };
+        }
+        try {
+            return await probeHelper(await helper.ensureRunning(), false, helper.version);
+        } catch (error) {
+            return { ...base, state: 'unhealthy', message: error instanceof Error ? error.message : String(error) };
+        }
     }
 
     private externalHelper(): string | null {

@@ -1,7 +1,8 @@
 import { IPC } from '@shared/constants';
-import type { LibraryManga, MangaGroup, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
+import type { ComponentHealth, LibraryManga, MangaGroup, MangaHealth, MangaToolUpdateResult, MangaToolVersions, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
 import type { MangaDb } from '../services/manga/mangaDb';
 import type { MangaReader } from '../services/manga/mangaReader';
+import type { MangaToolUpdates } from '../services/manga/mangaToolUpdates';
 import type { MangaDownloadQueue } from '../services/manga/mangaDownloadQueue';
 import { asDownloadRequest, asExtensionAction, asGroupName, asId, asIds, asListRequest, asPackageName, asPreferenceChange, asReadRequest, asSeriesRequest, asSourceId, asSourceMigrationRequest, asStoreUrl } from '../services/manga/mangaRequests';
 import { cleanSeriesName } from '@shared/series';
@@ -10,10 +11,14 @@ import { fromStoredAddress, toStoredAddress } from '../services/manga/serverAddr
 import type { IpcMainLike } from './registerHandlers';
 
 export interface MangaHandlerDependencies {
-    service: Pick<MangaService, 'status' | 'install' | 'installHelper' | 'removeHelper' | 'updateAllExtensions' | 'stores' | 'addStore' | 'removeStore' | 'extensions' | 'changeExtension' | 'sources' | 'list' | 'details' | 'warmUp' | 'sourcePreferences' | 'sourceFilters' | 'setSourcePreference'> & {
+    service: Pick<MangaService, 'status' | 'health' | 'install' | 'installHelper' | 'removeHelper' | 'updateAllExtensions' | 'stores' | 'addStore' | 'removeStore' | 'extensions' | 'changeExtension' | 'sources' | 'list' | 'details' | 'warmUp' | 'sourcePreferences' | 'sourceFilters' | 'setSourcePreference'> & {
         readonly baseUrl: string | null;
     };
     queue: MangaDownloadQueue;
+    // Looks for newer versions of the server and of the helper, and moves to them.
+    updates: Pick<MangaToolUpdates, 'check' | 'updateServer' | 'resetServer' | 'updateHelper'>;
+    // Closes the app and opens it again.
+    restartApp: () => void;
     db: MangaDb;
     reader: Pick<MangaReader, 'pages'>;
     // Deletes the files (CBZ files and folders of images) of chapters; only what the app made is deleted.
@@ -76,6 +81,23 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     });
     ipcMain.handle(IPC.mangaMigrateSource, (): MangaSourceMigrationResponse => {
         return { ok: false, reason: 'invalid' };
+    });
+    ipcMain.handle(IPC.mangaToolsCheck, (): MangaToolVersions => {
+        return { suwayomi: { current: '', latest: null, error: null, updatable: false, chosen: false, bundled: '', restartNeeded: false }, flaresolverr: null };
+    });
+    [IPC.mangaServerUpdate, IPC.mangaHelperUpdate].forEach((channel) => {
+        ipcMain.handle(channel, (): MangaToolUpdateResult => {
+            return { ok: false, reason: 'unsupported', message: null };
+        });
+    });
+    [IPC.mangaServerReset, IPC.mangaRestart].forEach((channel) => {
+        ipcMain.handle(channel, () => {
+            return undefined;
+        });
+    });
+    ipcMain.handle(IPC.mangaHealth, (): MangaHealth => {
+        const none: ComponentHealth = { state: 'not-installed', version: null, message: null, external: false };
+        return { server: none, helper: null };
     });
     ipcMain.handle(IPC.mangaExtensionsUpdateAll, () => {
         return unsupported;
@@ -379,6 +401,25 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         deps.onLibraryChanged();
         const manga = db.getLibraryManga(checked.mangaId);
         return manga === null ? { ok: false, reason: 'not-found' } : { ok: true, manga: present(manga), matched: outcome.matched, added: outcome.added, dropped: outcome.dropped };
+    });
+    ipcMain.handle(IPC.mangaToolsCheck, () => {
+        return deps.updates.check();
+    });
+    ipcMain.handle(IPC.mangaServerUpdate, () => {
+        return deps.updates.updateServer();
+    });
+    ipcMain.handle(IPC.mangaServerReset, () => {
+        deps.updates.resetServer();
+    });
+    ipcMain.handle(IPC.mangaHelperUpdate, async () => {
+        const result = await deps.updates.updateHelper();
+        return result;
+    });
+    ipcMain.handle(IPC.mangaRestart, () => {
+        deps.restartApp();
+    });
+    ipcMain.handle(IPC.mangaHealth, (_event, start) => {
+        return service.health(start === true);
     });
     ipcMain.handle(IPC.mangaOpenSite, (_event, url) => {
         const address = asStoreUrl(url);

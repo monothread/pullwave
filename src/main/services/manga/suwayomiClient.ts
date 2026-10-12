@@ -71,6 +71,7 @@ const FILTER_FIELDS = `${FILTER_LEAF}
 const CHAPTER_FIELDS = 'id name chapterNumber uploadDate scanlator sourceOrder';
 
 export const QUERIES = {
+    about: '{ aboutServer { version } }',
     stores: '{ extensionStores { nodes { name indexUrl } } }',
     addStore: 'mutation ($indexUrl: String!) { addExtensionStore(input: { indexUrl: $indexUrl }) { extensionStore { name indexUrl } } }',
     removeStore: 'mutation ($indexUrl: String!) { removeExtensionStore(input: { indexUrl: $indexUrl }) { extensionStore { name indexUrl } } }',
@@ -147,6 +148,15 @@ export class SuwayomiClient {
     // started before the helper was ready would otherwise keep answering that the bypass is disabled.
     async setFlareSolverr(address: string | null): Promise<void> {
         await this.request(QUERIES.setFlareSolverr, { settings: address === null ? { flareSolverrEnabled: false } : { flareSolverrEnabled: true, flareSolverrUrl: address } });
+    }
+
+    // Asks the server who it is: it answers, and with which version (the server is started if it does not run).
+    async serverVersion(): Promise<string | null> {
+        const data = await this.request(QUERIES.about, {});
+        return this.parsed(() => {
+            const version = record(record(data, 'The answer')['aboutServer'], 'The server')['version'];
+            return typeof version === 'string' && version.length > 0 ? version.slice(0, 40) : null;
+        });
     }
 
     async stores(): Promise<MangaExtensionStore[]> {

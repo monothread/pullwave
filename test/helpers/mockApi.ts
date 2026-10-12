@@ -15,6 +15,7 @@ export interface MockApiHandle {
     emitMangaJob: (job: MangaJob) => void;
     emitMangaLibraryChanged: () => void;
     emitMangaMigration: (progress: MangaMigrationProgress) => void;
+    emitMangaServerUpdate: (state: ToolState) => void;
     emitMangaNewChapters: (news: MangaNewChapters) => void;
     emitJobUpdate: (job: DownloadJob) => void;
     emitJobRemoved: (id: string) => void;
@@ -47,6 +48,7 @@ export function createMockApi(): MockApiHandle {
     const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
     const mangaToolListeners: Array<(state: ToolState) => void> = [];
+    const mangaServerUpdateListeners: Array<(state: ToolState) => void> = [];
     const mangaServerListeners: Array<(status: MangaServerStatus) => void> = [];
     const mangaCloudflareListeners: Array<(active: MangaCloudflareActivity[]) => void> = [];
     const mangaJobListeners: Array<(job: MangaJob) => void> = [];
@@ -137,6 +139,23 @@ export function createMockApi(): MockApiHandle {
         removeManga: vi.fn(async () => {return undefined}),
         openFolder: vi.fn(async () => {return undefined}),
         openSite: vi.fn(async () => {return undefined}),
+        checkToolUpdates: vi.fn(async () => {
+            return { suwayomi: { current: 'v1.0.0', latest: 'v1.0.0', error: null, updatable: false, chosen: false, bundled: 'v1.0.0', restartNeeded: false }, flaresolverr: null };
+        }),
+        updateServer: vi.fn(async () => {
+            return { ok: false, reason: 'current', message: null };
+        }),
+        resetServerVersion: vi.fn(async () => {return undefined}),
+        updateHelper: vi.fn(async () => {
+            return { ok: false, reason: 'not-installed', message: null };
+        }),
+        restartApp: vi.fn(async () => {return undefined}),
+        health: vi.fn(async () => {
+            return { server: { state: 'healthy', version: 'v1.0.0', message: null, external: false }, helper: null };
+        }),
+        onServerUpdate: vi.fn((listener: (state: ToolState) => void) => {
+            return subscribe(mangaServerUpdateListeners, listener);
+        }),
         setSeries: vi.fn(async () => {
             return { ok: true };
         }),
@@ -474,6 +493,11 @@ export function createMockApi(): MockApiHandle {
         emitMangaLibraryChanged: () => {
             mangaLibraryListeners.forEach((listener) => {
                 listener();
+            });
+        },
+        emitMangaServerUpdate: (state) => {
+            mangaServerUpdateListeners.forEach((listener) => {
+                listener(state);
             });
         },
         emitMangaMigration: (progress) => {

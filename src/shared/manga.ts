@@ -364,6 +364,54 @@ export interface MangaReadPages {
 export type ExtensionAction = 'install' | 'uninstall' | 'update';
 
 // ---------------------------------------------------------------------------------------------------------------------
+// The programs of the section: their versions, their updates and their health
+// ---------------------------------------------------------------------------------------------------------------------
+
+export interface ToolVersionInfo {
+    // The version the app runs (empty when the program is not installed).
+    current: string;
+    // The latest version found, or null when it could not be looked up (see `error`).
+    latest: string | null;
+    error: string | null;
+    // Whether `latest` is newer than `current` (a different version).
+    updatable: boolean;
+}
+
+export interface MangaToolVersions {
+    suwayomi: ToolVersionInfo & {
+        // The version the app runs was chosen by an update (not the one the app ships with), and the version it ships with.
+        chosen: boolean;
+        bundled: string;
+        // An update was downloaded: it runs after the app restarts.
+        restartNeeded: boolean;
+    };
+    // null where the helper is not in use (not installed, or the user runs one of their own).
+    flaresolverr: ToolVersionInfo | null;
+}
+
+export type MangaToolUpdateFailure = 'current' | 'failed' | 'busy' | 'not-installed' | 'unsupported';
+
+export type MangaToolUpdateResult = { ok: true; version: string } | { ok: false; reason: MangaToolUpdateFailure; message: string | null };
+
+export const HEALTH_STATES = ['healthy', 'starting', 'stopped', 'unhealthy', 'not-installed'] as const;
+export type HealthState = (typeof HEALTH_STATES)[number];
+
+export interface ComponentHealth {
+    state: HealthState;
+    version: string | null;
+    // Why it is not healthy, when it is not.
+    message: string | null;
+    // For the helper: the user runs one of their own (its address is the one checked).
+    external: boolean;
+}
+
+export interface MangaHealth {
+    server: ComponentHealth;
+    // null where there is no helper in use.
+    helper: ComponentHealth | null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Moving the library to another folder
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -438,6 +486,19 @@ export interface MangaApi {
     setGroupMembers: (groupId: number, mangaIds: number[], member: boolean) => Promise<void>;
     // Moves a manga of the library to the same manga in another source, keeping what was downloaded.
     migrateSource: (request: MangaSourceMigrationRequest) => Promise<MangaSourceMigrationResponse>;
+    // Looks for the latest version of the server and of the helper.
+    checkToolUpdates: () => Promise<MangaToolVersions>;
+    // Downloads the latest server; it runs from the next time the app opens.
+    updateServer: () => Promise<MangaToolUpdateResult>;
+    // Goes back to the server the app ships with (from the next time the app opens).
+    resetServerVersion: () => Promise<void>;
+    // Pulls the latest image of the helper and uses it.
+    updateHelper: () => Promise<MangaToolUpdateResult>;
+    // Closes the app and opens it again (asking first when there are downloads going on).
+    restartApp: () => Promise<void>;
+    // How the server and the helper are doing. `start` also starts them when they are stopped.
+    health: (start: boolean) => Promise<MangaHealth>;
+    onServerUpdate: (listener: (state: ToolState) => void) => () => void;
     onMigrationProgress: (listener: (progress: MangaMigrationProgress) => void) => () => void;
     // The hourly check added chapters to the library.
     onNewChapters: (listener: (news: MangaNewChapters) => void) => () => void;

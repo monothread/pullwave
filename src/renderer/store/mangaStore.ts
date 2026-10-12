@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ToolState } from '@shared/tools';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
 import type {
     ExtensionAction,
@@ -11,6 +12,9 @@ import type {
     MangaExtension,
     MangaGroup,
     MangaGroupResponse,
+    MangaHealth,
+    MangaToolUpdateResult,
+    MangaToolVersions,
     MangaExtensionStore,
     MangaJob,
     MangaListKind,
@@ -178,7 +182,23 @@ interface MangaState {
     migration: MangaMigrationProgress | null;
     // The chapters that were read to the end or marked as read (see `progressKey`).
     readKeys: string[];
+    // The latest versions found of the server and of the helper (null until they are looked for), and how the programs are doing.
+    toolVersions: MangaToolVersions | null;
+    toolsChecking: boolean;
+    // The download of a newer server, and what the last update of each program answered.
+    serverUpdate: ToolState | null;
+    updateResults: { server: MangaToolUpdateResult | null; helper: MangaToolUpdateResult | null };
+    updating: { server: boolean; helper: boolean };
+    health: MangaHealth | null;
+    healthChecking: boolean;
 
+    checkToolUpdates: () => Promise<void>;
+    updateServer: () => Promise<void>;
+    resetServerVersion: () => Promise<void>;
+    updateHelper: () => Promise<void>;
+    restartApp: () => Promise<void>;
+    // Looks at how the server and the helper are doing; with `start`, a stopped one is started.
+    checkHealth: (start: boolean) => Promise<void>;
     // Marks chapters as read, or as not read.
     markRead: (keys: readonly string[], read: boolean) => void;
     init: () => Promise<() => void>;
@@ -354,6 +374,13 @@ export const useMangaStore = create<MangaState>((set, get) => {
         selectionFrom: 'browse',
         migration: null,
         readKeys: loadReadKeys(),
+        toolVersions: null,
+        toolsChecking: false,
+        serverUpdate: null,
+        updateResults: { server: null, helper: null },
+        updating: { server: false, helper: false },
+        health: null,
+        healthChecking: false,
         extensions: { ...EMPTY_EXTENSIONS, filter: { ...EMPTY_EXTENSIONS.filter, lang: initialPrefs.extensionLanguage, onlyInstalled: initialPrefs.onlyInstalled } },
         cloudflare: [],
 
@@ -413,6 +440,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 api.onLibraryChanged(() => {
                     void get().refreshLibrary();
                 }),
+                api.onServerUpdate((serverUpdate) => {
+                    set({ serverUpdate });
+                }),
                 api.onMigrationProgress((migration) => {
                     set({ migration });
                 }),
@@ -425,6 +455,59 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     unsubscribe();
                 });
             };
+        },
+
+        checkToolUpdates: async () => {
+            set({ toolsChecking: true });
+            try {
+                set({ toolVersions: await window.api.manga.checkToolUpdates() });
+            } finally {
+                set({ toolsChecking: false });
+            }
+        },
+
+        updateServer: async () => {
+            set((state) => {
+                return { updating: { ...state.updating, server: true }, updateResults: { ...state.updateResults, server: null }, serverUpdate: null };
+            });
+            const result = await window.api.manga.updateServer();
+            set((state) => {
+                return { updating: { ...state.updating, server: false }, updateResults: { ...state.updateResults, server: result } };
+            });
+            await get().checkToolUpdates();
+        },
+
+        resetServerVersion: async () => {
+            await window.api.manga.resetServerVersion();
+            set((state) => {
+                return { updateResults: { ...state.updateResults, server: null } };
+            });
+            await get().checkToolUpdates();
+        },
+
+        updateHelper: async () => {
+            set((state) => {
+                return { updating: { ...state.updating, helper: true }, updateResults: { ...state.updateResults, helper: null } };
+            });
+            const result = await window.api.manga.updateHelper();
+            set((state) => {
+                return { updating: { ...state.updating, helper: false }, updateResults: { ...state.updateResults, helper: result } };
+            });
+            await get().checkToolUpdates();
+            await get().refreshStatus();
+        },
+
+        restartApp: async () => {
+            await window.api.manga.restartApp();
+        },
+
+        checkHealth: async (start) => {
+            set({ healthChecking: true });
+            try {
+                set({ health: await window.api.manga.health(start) });
+            } finally {
+                set({ healthChecking: false });
+            }
         },
 
         markRead: (keys, read) => {

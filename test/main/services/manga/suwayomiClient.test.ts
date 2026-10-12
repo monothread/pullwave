@@ -117,6 +117,31 @@ describe('SuwayomiClient settings of the server', () => {
     });
 });
 
+describe('SuwayomiClient version of the server', () => {
+    it('asks who the server is and gives its version', async () => {
+        const { client, calls } = setup([data({ aboutServer: { version: 'v2.4.2366' } })]);
+        await expect(client.serverVersion()).resolves.toBe('v2.4.2366');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]?.url).toBe(`${BASE}/api/graphql`);
+        expect(calls[0]?.body).toEqual({ query: QUERIES.about, variables: {} });
+        expect(QUERIES.about).toBe('{ aboutServer { version } }');
+    });
+
+    it('gives nothing for a version that is empty or is not text', async () => {
+        await expect(setup([data({ aboutServer: { version: '' } })]).client.serverVersion()).resolves.toBeNull();
+        await expect(setup([data({ aboutServer: { version: 7 } })]).client.serverVersion()).resolves.toBeNull();
+    });
+
+    it('cuts a version that is far too long', async () => {
+        await expect(setup([data({ aboutServer: { version: 'v'.repeat(100) } })]).client.serverVersion()).resolves.toBe('v'.repeat(40));
+    });
+
+    it('fails when the answer does not have the server in it, or the server gives an error', async () => {
+        await expect(setup([data({})]).client.serverVersion()).rejects.toBeInstanceOf(SuwayomiApiError);
+        await expect(setup([new Response(JSON.stringify({ errors: [{ message: 'nope' }] }), { status: 200 })]).client.serverVersion()).rejects.toMatchObject({ code: 'API_ERROR', message: 'nope' });
+    });
+});
+
 describe('SuwayomiClient stores', () => {
     it('lists the stores', async () => {
         const { client } = setup([data({ extensionStores: { nodes: [{ name: 'Keiyoushi', indexUrl: 'https://a.example/i.json' }] } })]);

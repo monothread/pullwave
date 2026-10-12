@@ -102,6 +102,9 @@ class FakeSuwayomi {
     }
 
     private answer(query: string, variables: Record<string, unknown>): unknown {
+        if (query.includes('aboutServer')) {
+            return { aboutServer: { version: 'v9.9.9-fake' } };
+        }
         if (query.includes('addExtensionStore')) {
             const store = { name: 'Fake Store', indexUrl: String(variables['indexUrl']) };
             this.stores.push(store);
@@ -403,6 +406,29 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'REMOVE: Fake Store' }).click();
         await expect(session.page.getByTestId('manga-store')).toHaveCount(0);
         expect(fake.graphqlRequests('removeExtensionStore')[0]?.variables).toEqual({ indexUrl: STORE_URL });
+    });
+
+    test('says in the settings how the server is doing, and has the section of the updates of the programs', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'SETTINGS');
+        const status = session.page.getByRole('group', { name: 'Status of the programs' });
+        const server = status.getByTestId('manga-health-server');
+        await expect(server).toContainText('Suwayomi-Server');
+        await expect(server).toContainText('v9.9.9-fake');
+        await expect(server).toContainText('HEALTHY');
+        expect(fake.graphqlRequests('aboutServer').length).toBeGreaterThanOrEqual(1);
+        expect(fake.graphqlRequests('aboutServer')[0]?.path).toBe('/api/graphql');
+        await expect(status.getByTestId('manga-health-helper')).toContainText('FlareSolverr');
+        await expect(status.getByTestId('manga-health-helper')).toContainText('Not in use: it is not installed, or you run your own.');
+        const before = fake.graphqlRequests('aboutServer').length;
+        await status.getByRole('button', { name: 'CHECK NOW' }).click();
+        await expect(status.getByRole('button', { name: 'CHECK NOW' })).toBeEnabled();
+        expect(fake.graphqlRequests('aboutServer').length).toBe(before + 1);
+        const updates = session.page.getByRole('group', { name: 'Updates of the programs' });
+        await expect(updates.getByTestId('manga-update-server')).toContainText('Check for updates to see the versions.');
+        await expect(updates.getByTestId('manga-update-helper')).toContainText('Check for updates to see the versions.');
+        await expect(updates.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
     });
 
     test('explains what extensions are, updates all that have an update and marks the ones the server cannot run', async () => {

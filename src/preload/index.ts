@@ -136,6 +136,27 @@ const manga: CyberApi['manga'] = {
     migrateSource: (request) => {
         return ipcRenderer.invoke(IPC.mangaMigrateSource, request);
     },
+    checkToolUpdates: () => {
+        return ipcRenderer.invoke(IPC.mangaToolsCheck);
+    },
+    updateServer: () => {
+        return ipcRenderer.invoke(IPC.mangaServerUpdate);
+    },
+    resetServerVersion: () => {
+        return ipcRenderer.invoke(IPC.mangaServerReset);
+    },
+    updateHelper: () => {
+        return ipcRenderer.invoke(IPC.mangaHelperUpdate);
+    },
+    restartApp: () => {
+        return ipcRenderer.invoke(IPC.mangaRestart);
+    },
+    health: (start) => {
+        return ipcRenderer.invoke(IPC.mangaHealth, start);
+    },
+    onServerUpdate: (listener) => {
+        return subscribe<ToolState>(IPC.eventMangaServerUpdate, listener);
+    },
     onMigrationProgress: (listener) => {
         return subscribe<MangaMigrationProgress>(IPC.eventMangaMigration, listener);
     },

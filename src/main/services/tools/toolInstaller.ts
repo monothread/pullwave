@@ -72,19 +72,20 @@ export class ToolInstaller {
     }
 
     // Installs the program (nothing happens when it is there). Asking again while it goes on waits for the same install.
-    install(spec: ToolSpec, signal?: AbortSignal): Promise<ToolState> {
+    // `keepOthers` leaves the versions that are there (the one that runs is not taken away while it runs; `removeOthers` does it later).
+    install(spec: ToolSpec, signal?: AbortSignal, keepOthers = false): Promise<ToolState> {
         const existing = this.running.get(spec.id);
         if (existing !== undefined) {
             return existing;
         }
-        const job = this.run(spec, signal).finally(() => {
+        const job = this.run(spec, signal, keepOthers).finally(() => {
             this.running.delete(spec.id);
         });
         this.running.set(spec.id, job);
         return job;
     }
 
-    private async run(spec: ToolSpec, signal?: AbortSignal): Promise<ToolState> {
+    private async run(spec: ToolSpec, signal: AbortSignal | undefined, keepOthers: boolean): Promise<ToolState> {
         if (this.isReady(spec)) {
             return this.publish(spec, 'ready', 100);
         }
@@ -94,7 +95,7 @@ export class ToolInstaller {
         try {
             await this.fetchArchive(spec, archive, signal);
             await this.unpack(spec, archive, staging);
-            this.complete(spec, staging, folder);
+            this.complete(spec, staging, folder, keepOthers);
             return this.publish(spec, 'ready', 100);
         } catch (error) {
             rmSync(staging, { recursive: true, force: true });
@@ -147,13 +148,27 @@ export class ToolInstaller {
     }
 
     // The staged folder takes the place of the final one in a single rename, and the other versions go.
-    private complete(spec: ToolSpec, staging: string, folder: string): void {
+    private complete(spec: ToolSpec, staging: string, folder: string, keepOthers: boolean): void {
         const final = this.directoryOf(spec);
         rmSync(final, { recursive: true, force: true });
         renameSync(staging, final);
         rmSync(join(folder, `download-${spec.version}.part`), { force: true });
-        readdirSync(folder, { withFileTypes: true }).forEach((entry) => {
-            if (entry.isDirectory() && entry.name !== spec.version) {
+        if (!keepOthers) {
+            this.removeOthers(spec);
+        }
+    }
+
+    // Takes away the versions of the program that are not this one (the folders of the other versions, nothing else).
+    removeOthers(spec: ToolSpec): void {
+        const folder = join(this.deps.rootDirectory, spec.id);
+        let entries;
+        try {
+            entries = readdirSync(folder, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        entries.forEach((entry) => {
+            if (entry.isDirectory() && entry.name !== spec.version && !entry.name.startsWith('staging-')) {
                 rmSync(join(folder, entry.name), { recursive: true, force: true });
             }
         });
