@@ -26,7 +26,7 @@ const ONE_PIECE = makeLibraryManga(
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
-    useMangaStore.setState({ ...initialManga, library: [] });
+    useMangaStore.setState({ ...initialManga, library: [], hiddenGroupIds: [] });
 });
 
 describe('MangaLibrary', () => {
@@ -43,7 +43,7 @@ describe('MangaLibrary', () => {
         // Alphabetical, whatever the order the library comes in.
         expect(within(entries[0]!).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
         expect(within(entries[0]!).getByText('0 of 0 downloaded')).toBeInTheDocument();
-        expect(within(entries[0]!).queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
+        expect(within(entries[0]!).queryByRole('button', { name: 'DOWNLOAD SEASON' })).not.toBeInTheDocument();
         expect(entries[0]!.querySelector('img')).toBeNull();
         expect(within(entries[1]!).getByRole('heading', { name: 'One Piece' })).toBeInTheDocument();
         expect(within(entries[1]!).getByText('1 of 5 downloaded')).toBeInTheDocument();
@@ -52,7 +52,7 @@ describe('MangaLibrary', () => {
     it('has no button to download what is missing in the list: that is done inside the manga', () => {
         useMangaStore.setState({ library: [ONE_PIECE] });
         render(<MangaLibrary />);
-        expect(screen.queryByRole('button', { name: 'DOWNLOAD MISSING' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'DOWNLOAD SEASON' })).not.toBeInTheDocument();
     });
 
     it('opens the folder', async () => {
@@ -252,6 +252,69 @@ describe('MangaLibrary series, groups and search', () => {
         expect(useMangaStore.getState().libraryGroup).toBeNull();
         expect(screen.getAllByTestId('manga-entry')).toHaveLength(1);
         expect(screen.queryByTestId('manga-series')).not.toBeInTheDocument();
+    });
+
+    describe('hidden groups', () => {
+        const NARUTO = makeLibraryManga([], { id: 30, remoteId: 31, title: 'Naruto', groupIds: [] });
+
+        function tabs(): Array<string | null> {
+            return within(screen.getByRole('navigation', { name: 'Groups' }))
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.textContent;
+                });
+        }
+
+        beforeEach(() => {
+            useMangaStore.setState({ library: [FRIEREN_2_IN_MANGAS, BLEACH_IN_MANHWAS, FRIEREN_IN_MANGAS, NARUTO] });
+        });
+
+        it('has no tab for a hidden group, and says how many are hidden', () => {
+            useMangaStore.setState({ hiddenGroupIds: [2] });
+            render(<MangaLibrary />);
+            expect(tabs()).toEqual(['ALL', 'Mangas']);
+            expect(screen.getByText('1 hidden group(s). Open MANAGE GROUPS to show them again.')).toBeInTheDocument();
+        });
+
+        it('says nothing about hidden groups while none is hidden', () => {
+            render(<MangaLibrary />);
+            expect(screen.queryByText(/hidden group/)).not.toBeInTheDocument();
+            expect(tabs()).toEqual(['ALL', 'Mangas', 'Manhwas']);
+        });
+
+        it('does not show the mangas that are only in a hidden group, not even in the tab of all', () => {
+            useMangaStore.setState({ hiddenGroupIds: [1, 2] });
+            render(<MangaLibrary />);
+            expect(screen.queryByRole('navigation', { name: 'Groups' })).not.toBeInTheDocument();
+            expect(screen.getAllByTestId('manga-entry')).toHaveLength(1);
+            expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Naruto' })).toBeInTheDocument();
+            expect(screen.queryByTestId('manga-series')).not.toBeInTheDocument();
+            expect(screen.getByText('2 hidden group(s). Open MANAGE GROUPS to show them again.')).toBeInTheDocument();
+        });
+
+        it('still shows a manga that is in a hidden group and in a group that is not hidden', () => {
+            const both = { ...BLEACH, groupIds: [1, 2] };
+            useMangaStore.setState({ library: [both, NARUTO], hiddenGroupIds: [2], libraryGroup: 1 });
+            render(<MangaLibrary />);
+            expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
+        });
+
+        it('goes to the first group that is not hidden when no manga is in no group', () => {
+            useMangaStore.setState({ library: [FRIEREN_2_IN_MANGAS, BLEACH_IN_MANHWAS, FRIEREN_IN_MANGAS], hiddenGroupIds: [1] });
+            render(<MangaLibrary />);
+            expect(tabs()).toEqual(['Manhwas']);
+            expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
+        });
+
+        it('shows the group again through the panel that manages the groups', async () => {
+            const user = userEvent.setup();
+            useMangaStore.setState({ hiddenGroupIds: [2] });
+            render(<MangaLibrary />);
+            await user.click(screen.getByRole('button', { name: 'MANAGE GROUPS' }));
+            await user.click(screen.getByRole('button', { name: 'SHOW: Manhwas' }));
+            expect(tabs()).toEqual(['ALL', 'Mangas', 'Manhwas']);
+            expect(screen.queryByText(/hidden group/)).not.toBeInTheDocument();
+        });
     });
 
     it('shows every manga in the tab of all while none is in a group', () => {

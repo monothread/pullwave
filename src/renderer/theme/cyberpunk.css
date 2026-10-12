@@ -1434,3 +1434,6 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .manga__error { margin: 0; }
 .manga__error-text { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .manga__error-text:hover, .manga__error-text:focus-visible { text-decoration-style: solid; }
+
+/* The width of this bar is moved frame by frame by the screen itself, so the transition of the others would only make it lag behind. */
+.progress__bar--smooth { transition: none; }

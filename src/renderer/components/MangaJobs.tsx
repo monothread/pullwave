@@ -3,6 +3,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { formatPercent } from './jobStatus';
 import { jobStatusKey } from './mangaText';
+import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { MangaErrorNotice } from './MangaErrorNotice';
 
 const ORDER: Record<MangaJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
@@ -16,6 +17,21 @@ function isFinished(job: MangaJob): boolean {
 }
 
 // The list on the downloads screen: the running ones first, then the waiting ones, then the ones that are over.
+interface MangaJobBarProps {
+    percent: number;
+    title: string;
+}
+
+// The bar of a chapter being downloaded: it glides to each new value (the pages arrive one at a time) with the neon of the app.
+function MangaJobBar({ percent, title }: MangaJobBarProps) {
+    const shown = useSmoothPercent(percent);
+    return (
+        <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={title}>
+            <div className="progress__bar progress__bar--smooth" style={{ width: `${shown}%` }} />
+        </div>
+    );
+}
+
 export function MangaJobs() {
     const t = useTranslator();
     const jobs = useMangaStore((state) => {
@@ -87,9 +103,7 @@ export function MangaJobs() {
                                 <span className={`badge badge--${job.status}`}>{t(jobStatusKey(job.status))}</span>
                             </span>
                         </header>
-                        <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.percent)} aria-label={title}>
-                            <div className="progress__bar" style={{ width: `${job.percent}%` }} />
-                        </div>
+                        <MangaJobBar percent={job.percent} title={title} />
                         <div className="job__meta">
                             <span>{formatPercent(job.percent)}</span>
                             {job.pageCount > 0 && <span>{t('manga.jobs.pages', { done: job.pagesDone, total: job.pageCount })}</span>}

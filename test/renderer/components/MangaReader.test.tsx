@@ -508,22 +508,105 @@ describe('MangaReader back to the top', () => {
         });
     });
 
-    it('shows a button at the corner once the page is scrolled down, and takes the page back up', async () => {
-        const user = userEvent.setup();
-        const area = scrollArea();
-        open();
-        render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
-        expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
-        area.scrollTop = 900;
-        fireEvent.scroll(area);
-        const button = await screen.findByRole('button', { name: 'Back to the top' });
-        expect(button).toHaveClass('reader__top');
-        await user.click(button);
-        expect(area.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' });
-        area.scrollTop = 100;
-        fireEvent.scroll(area);
-        await vi.waitFor(() => {
+    describe('the scroll to the top', () => {
+        let frames: Array<(time: number) => void>;
+
+        beforeEach(() => {
+            frames = [];
+            vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => {
+                frames.push(callback);
+                return frames.length;
+            });
+            vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+                frames[id - 1] = () => {
+                    return undefined;
+                };
+            });
+        });
+
+        afterEach(() => {
+            vi.unstubAllGlobals();
+        });
+
+        function runFrame(time: number): void {
+            const run = frames.splice(0);
+            act(() => {
+                run.forEach((frame) => {
+                    frame(time);
+                });
+            });
+        }
+
+        async function openScrolledDown(top: number): Promise<{ area: HTMLElement; button: HTMLElement }> {
+            const area = scrollArea();
+            open();
+            render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
+            area.scrollTop = top;
+            fireEvent.scroll(area);
+            return { area, button: await screen.findByRole('button', { name: 'Back to the top' }) };
+        }
+
+        it('shows a button at the corner once the page is scrolled down', async () => {
+            const area = scrollArea();
+            open();
+            render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
             expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+            area.scrollTop = 900;
+            fireEvent.scroll(area);
+            expect(await screen.findByRole('button', { name: 'Back to the top' })).toHaveClass('reader__top');
+            area.scrollTop = 100;
+            fireEvent.scroll(area);
+            await vi.waitFor(() => {
+                expect(screen.queryByRole('button', { name: 'Back to the top' })).not.toBeInTheDocument();
+            });
+        });
+
+        it('glides up frame by frame, slowly at the start and at the end, and lands on the top', async () => {
+            const user = userEvent.setup();
+            const { area, button } = await openScrolledDown(900);
+            await user.click(button);
+            expect(area.scrollTo).not.toHaveBeenCalled();
+            expect(area.scrollTop).toBe(900);
+            runFrame(1000);
+            expect(area.scrollTop).toBe(900);
+            runFrame(1100);
+            const early = area.scrollTop;
+            expect(early).toBeLessThan(900);
+            expect(early).toBeGreaterThan(800);
+            runFrame(1250);
+            const middle = area.scrollTop;
+            expect(middle).toBeLessThan(early);
+            runFrame(1350);
+            expect(area.scrollTop).toBeLessThan(middle);
+            runFrame(5000);
+            expect(area.scrollTop).toBe(0);
+            expect(frames).toHaveLength(0);
+        });
+
+        it('stops where it is when the user takes over', async () => {
+            const user = userEvent.setup();
+            const { area, button } = await openScrolledDown(900);
+            await user.click(button);
+            runFrame(1000);
+            runFrame(1200);
+            const stoppedAt = area.scrollTop;
+            expect(stoppedAt).toBeGreaterThan(0);
+            fireEvent.wheel(area);
+            runFrame(1400);
+            runFrame(5000);
+            expect(area.scrollTop).toBe(stoppedAt);
+        });
+
+        it('stops the auto scroll that was going on', async () => {
+            const user = userEvent.setup();
+            const { button } = await openScrolledDown(900);
+            await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
+            await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
+            expect(screen.getByRole('button', { name: 'STOP SCROLL' })).toHaveAttribute('aria-pressed', 'true');
+            await user.click(button);
+            expect(screen.getByRole('button', { name: 'AUTO SCROLL' })).toHaveAttribute('aria-pressed', 'false');
         });
     });
 });

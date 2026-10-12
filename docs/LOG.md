@@ -90,3 +90,6 @@
 
 ## 2026-10-12 · third round of the manga section
 - Reader progress by scroll, search and alphabetical order of the sources, click-to-copy technical errors, clearer text for the HentaiRead "page list" error: D-081. HentaiRead cause found with an isolated app and a throwaway FlareSolverr container (both removed).
+
+## 2026-10-12 · fourth round of the manga section
+- Hidden groups (only while the app is open), DOWNLOAD SEASON / DOWNLOAD ALL instead of picking chapters, read marks as in the anime library, gliding download bar, gliding back to the top: D-082.

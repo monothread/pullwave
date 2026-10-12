@@ -20,6 +20,15 @@ export function MangaGroupsPanel() {
     const deleteGroup = useMangaStore((state) => {
         return state.deleteGroup;
     });
+    const hiddenGroupIds = useMangaStore((state) => {
+        return state.hiddenGroupIds;
+    });
+    const hideGroup = useMangaStore((state) => {
+        return state.hideGroup;
+    });
+    const showGroup = useMangaStore((state) => {
+        return state.showGroup;
+    });
     const [name, setName] = useState('');
     const [problem, setProblem] = useState<string | null>(null);
     const [editing, setEditing] = useState<number | null>(null);
@@ -95,6 +104,22 @@ export function MangaGroupsPanel() {
                                         <span className="history__title">{group.name}</span>
                                     </div>
                                     <span className="anime__actions">
+                                        {hiddenGroupIds.includes(group.id) && <span className="badge">{t('manga.groups.hidden')}</span>}
+                                        <button
+                                            type="button"
+                                            className="btn btn--small"
+                                            aria-pressed={hiddenGroupIds.includes(group.id)}
+                                            aria-label={`${t(hiddenGroupIds.includes(group.id) ? 'manga.groups.show' : 'manga.groups.hide')}: ${group.name}`}
+                                            onClick={() => {
+                                                if (hiddenGroupIds.includes(group.id)) {
+                                                    showGroup(group.id);
+                                                } else {
+                                                    hideGroup(group.id);
+                                                }
+                                            }}
+                                        >
+                                            {t(hiddenGroupIds.includes(group.id) ? 'manga.groups.show' : 'manga.groups.hide')}
+                                        </button>
                                         <button
                                             type="button"
                                             className="btn btn--small"

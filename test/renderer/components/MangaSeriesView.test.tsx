@@ -80,14 +80,14 @@ describe('MangaSeriesView', () => {
     it('downloads what is missing of every season, only while something is missing', async () => {
         const user = userEvent.setup();
         renderView();
-        await user.click(screen.getByRole('button', { name: 'DOWNLOAD MISSING: Sousou no Frieren' }));
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD ALL: Sousou no Frieren' }));
         expect(mock.api.manga.downloadMissing.mock.calls).toEqual([[[1]], [[2]]]);
     });
 
     it('has no button to download when everything is downloaded', () => {
         const done = [{ ...FIRST }, makeLibraryManga([makeChapterRecord({ id: 9, status: 'done' })], { id: 5, title: 'Frieren 2', series: 'Sousou no Frieren', season: 2 })];
         render(<MangaSeriesView group={groupLibrary(done)[0]!} onBack={vi.fn()} onRenamed={vi.fn()} />);
-        expect(screen.queryByRole('button', { name: /DOWNLOAD MISSING/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /DOWNLOAD ALL/ })).not.toBeInTheDocument();
     });
 
     it('puts every season in a group, or takes them all out, with the chips', async () => {

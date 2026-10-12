@@ -174,6 +174,8 @@ interface MangaState {
     // The groups the user made (Mangas, Manhwas...), and the one the library is limited to (null: every manga).
     groups: MangaGroup[];
     libraryGroup: number | null;
+    // The groups hidden from the library for now (kept only while the app is open, not saved).
+    hiddenGroupIds: number[];
     // The series that is open in the library (its key, see `groupLibrary`), or null for the cards.
     librarySeries: string | null;
     jobs: MangaJob[];
@@ -285,6 +287,9 @@ interface MangaState {
     openSeries: (key: string) => void;
     closeSeries: () => void;
     setLibraryGroup: (groupId: number | null) => void;
+    // Hides a group (its tab, and so the mangas that are only in it) from the library, or shows it again.
+    hideGroup: (groupId: number) => void;
+    showGroup: (groupId: number) => void;
     // Joins a manga to a series with its place in it, or takes it out of one.
     setSeries: (request: MangaSeriesRequest) => Promise<MangaSeriesResponse>;
     renameSeries: (mangaIds: number[], series: string) => Promise<MangaRenameSeriesResponse>;
@@ -398,6 +403,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         library: [],
         groups: [],
         libraryGroup: null,
+        hiddenGroupIds: [],
         librarySeries: null,
         jobs: [],
         browse: { ...EMPTY_BROWSE, sourceLanguage: initialPrefs.sourceLanguage },
@@ -1075,6 +1081,25 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         setLibraryGroup: (groupId) => {
             set({ libraryGroup: groupId, librarySeries: null });
+        },
+
+        hideGroup: (groupId) => {
+            set((state) => {
+                return {
+                    hiddenGroupIds: state.hiddenGroupIds.includes(groupId) ? state.hiddenGroupIds : [...state.hiddenGroupIds, groupId],
+                    libraryGroup: state.libraryGroup === groupId ? null : state.libraryGroup
+                };
+            });
+        },
+
+        showGroup: (groupId) => {
+            set((state) => {
+                return {
+                    hiddenGroupIds: state.hiddenGroupIds.filter((id) => {
+                        return id !== groupId;
+                    })
+                };
+            });
         },
 
         setSeries: async (request) => {

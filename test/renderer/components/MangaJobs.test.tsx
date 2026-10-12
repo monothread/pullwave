@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaErrorCode } from '@shared/manga';
@@ -39,6 +39,74 @@ describe('MangaJobs', () => {
         expect(within(job).getByText('42.5%')).toBeInTheDocument();
         expect(within(job).getByText('17 of 40 pages')).toBeInTheDocument();
         expect(screen.getByText('DOWNLOADS (1)', { selector: '.section-label' })).toBeInTheDocument();
+    });
+
+    describe('the bar of a download', () => {
+        let frames: Array<(time: number) => void>;
+
+        beforeEach(() => {
+            frames = [];
+            vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => {
+                frames.push(callback);
+                return frames.length;
+            });
+            vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+                frames[id - 1] = () => {
+                    return undefined;
+                };
+            });
+            vi.stubGlobal('matchMedia', () => {
+                return { matches: false };
+            });
+        });
+
+        afterEach(() => {
+            vi.unstubAllGlobals();
+        });
+
+        function width(): number {
+            const bar = screen.getByRole('progressbar').firstElementChild as HTMLElement;
+            return parseFloat(bar.style.width);
+        }
+
+        function frame(time: number): void {
+            const pending = frames.splice(0);
+            act(() => {
+                pending.forEach((callback) => {
+                    callback(time);
+                });
+            });
+        }
+
+        it('has the neon bar, which the screen moves itself', () => {
+            useMangaStore.setState({ jobs: [makeMangaJob({ percent: 10 })] });
+            render(<MangaJobs />);
+            const bar = screen.getByRole('progressbar');
+            expect(bar).toHaveClass('progress');
+            expect(bar.firstElementChild).toHaveClass('progress__bar', 'progress__bar--smooth');
+        });
+
+        it('glides to the next page instead of jumping to it, and says the real value to the screen readers', () => {
+            useMangaStore.setState({ jobs: [makeMangaJob({ percent: 10, pagesDone: 4, pageCount: 40 })] });
+            render(<MangaJobs />);
+            expect(width()).toBe(10);
+            act(() => {
+                useMangaStore.setState({ jobs: [makeMangaJob({ percent: 60, pagesDone: 24, pageCount: 40 })] });
+            });
+            expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60');
+            expect(screen.getByText('60.0%')).toBeInTheDocument();
+            expect(width()).toBe(10);
+            frame(0);
+            frame(100);
+            const first = width();
+            expect(first).toBeGreaterThan(10);
+            expect(first).toBeLessThan(60);
+            frame(200);
+            expect(width()).toBeGreaterThan(first);
+            expect(width()).toBeLessThan(60);
+            frame(10_000);
+            expect(width()).toBe(60);
+        });
     });
 
     it('leaves the pages out until the number of pages is known', () => {

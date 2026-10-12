@@ -139,6 +139,9 @@ export function MangaLibrary() {
     const groups = useMangaStore((state) => {
         return state.groups;
     });
+    const hiddenGroupIds = useMangaStore((state) => {
+        return state.hiddenGroupIds;
+    });
     const libraryGroup = useMangaStore((state) => {
         return state.libraryGroup;
     });
@@ -191,7 +194,12 @@ export function MangaLibrary() {
     }
     // The tab of all holds the mangas that are in no group; it is not there when every manga is in a group.
     const hasAllTab = inGroup(library, null).length > 0;
-    const currentGroup = activeGroup(library, groups, libraryGroup);
+    // A hidden group has no tab, and the mangas that are only in it are not shown.
+    const visibleGroups = groups.filter((group) => {
+        return !hiddenGroupIds.includes(group.id);
+    });
+    const hiddenCount = groups.length - visibleGroups.length;
+    const currentGroup = activeGroup(library, visibleGroups, libraryGroup);
     const shown = inGroup(library, currentGroup).filter((manga) => {
         return matchesSearch(manga.title, search) || (manga.series !== null && matchesSearch(manga.series, search));
     });
@@ -212,7 +220,7 @@ export function MangaLibrary() {
                 </button>
             </div>
             {managing && <MangaGroupsPanel />}
-            {groups.length > 0 && (
+            {visibleGroups.length > 0 && (
                 <nav className="tabs" aria-label={t('manga.library.groups')}>
                     {hasAllTab && (
                         <button
@@ -226,7 +234,7 @@ export function MangaLibrary() {
                             {t('manga.library.allGroups')}
                         </button>
                     )}
-                    {groups.map((group) => {
+                    {visibleGroups.map((group) => {
                         return (
                             <button
                                 key={group.id}
@@ -243,6 +251,7 @@ export function MangaLibrary() {
                     })}
                 </nav>
             )}
+            {hiddenCount > 0 && <p className="field__hint">{t('manga.library.hiddenGroups', { count: hiddenCount })}</p>}
             <span className="section-label">{t('manga.library.label', { count: cards.length })}</span>
             {shown.length === 0 && <p className="empty">{currentGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}
             <ul className="history__list">

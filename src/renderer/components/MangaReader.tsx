@@ -28,6 +28,7 @@ import {
 import { SETTINGS_ICON } from './TabButton';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { useScrollFraction } from '../hooks/useScrollFraction';
+import { noop, scrollToTopSmoothly } from '../hooks/smoothScroll';
 
 const PRELOAD_AHEAD = 2;
 // The longest the place of a chapter is corrected while its pictures arrive, if the user has not taken over before.
@@ -260,6 +261,13 @@ export function MangaReader() {
     }, [reader.status, reader.pages, page, continuous]);
 
     const scrolledDown = useScrolledDown(scroller, TOP_BUTTON_THRESHOLD);
+    // The scroll to the top that is going on, to be stopped before another starts and when the reader closes.
+    const stopTopScroll = useRef<() => void>(noop);
+    useEffect(() => {
+        return () => {
+            stopTopScroll.current();
+        };
+    }, []);
     // In the scroll the bar follows how far down the pages the scroll is; one page at a time it follows the page.
     const scrolled = useScrollFraction(scroller, scrollRef, continuous && reader.status === 'ready');
     const progress = continuous ? scrolled : (page + 1) / total;
@@ -586,7 +594,9 @@ export function MangaReader() {
                             aria-label={t('manga.reader.top')}
                             title={t('manga.reader.top')}
                             onClick={() => {
-                                scroller().scrollTo({ top: 0, behavior: 'smooth' });
+                                stopAutoScroll();
+                                stopTopScroll.current();
+                                stopTopScroll.current = scrollToTopSmoothly(scroller());
                             }}
                         >
                             <span aria-hidden="true">↑</span>

@@ -1191,6 +1191,40 @@ describe('mangaStore series, groups and the move to another source', () => {
         expect(state().libraryGroup).toBeNull();
     });
 
+    it('starts with no group hidden', () => {
+        expect(state().hiddenGroupIds).toEqual([]);
+    });
+
+    it('hides a group once, in the order they are hidden, and shows it again', () => {
+        useMangaStore.setState({ hiddenGroupIds: [] });
+        state().hideGroup(2);
+        state().hideGroup(1);
+        state().hideGroup(2);
+        expect(state().hiddenGroupIds).toEqual([2, 1]);
+        state().showGroup(2);
+        expect(state().hiddenGroupIds).toEqual([1]);
+        state().showGroup(2);
+        expect(state().hiddenGroupIds).toEqual([1]);
+        state().showGroup(1);
+        expect(state().hiddenGroupIds).toEqual([]);
+    });
+
+    it('goes back to the tab of all when the group the library is limited to is hidden, and keeps the tab otherwise', () => {
+        useMangaStore.setState({ hiddenGroupIds: [], libraryGroup: 2 });
+        state().hideGroup(1);
+        expect(state().libraryGroup).toBe(2);
+        state().hideGroup(2);
+        expect(state().libraryGroup).toBeNull();
+        expect(state().hiddenGroupIds).toEqual([1, 2]);
+    });
+
+    it('does not save the hidden groups: nothing is written for them', () => {
+        window.localStorage.clear();
+        state().hideGroup(1);
+        expect(window.localStorage.length).toBe(0);
+        expect(mock.api.manga.deleteGroup).not.toHaveBeenCalled();
+    });
+
     it('reads the groups on their own, with the same care', async () => {
         useMangaStore.setState({ libraryGroup: 2 });
         mock.api.manga.groups.mockResolvedValue([GROUPS[0]!]);

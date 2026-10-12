@@ -88,8 +88,7 @@ test('installs the Suwayomi extension from its store, sets its source up and dow
     await expect(page.getByText('Chapters (2)')).toBeVisible({ timeout: 60000 });
     const chapters = page.locator('.manga__chapters label.toggle');
     await expect(chapters).toHaveText(['Chapter 2', 'Chapter 1']);
-    await page.getByRole('button', { name: 'ALL' }).click();
-    await page.getByRole('button', { name: 'DOWNLOAD SELECTED (2)' }).click();
+    await page.getByRole('button', { name: /^DOWNLOAD SEASON/ }).click();
     await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 120000 });
 
     // What was made: a CBZ per chapter with the four pages, byte for byte what the origin gave, and the ComicInfo.
