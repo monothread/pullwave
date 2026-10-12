@@ -572,7 +572,8 @@ describe('AnimeDb series and seasons', () => {
         expect(db.schemaVersion).toBe(6);
         expect(db.getAnime(anime.id)).toMatchObject({ series: 'Series', season: 2, seasonName: null });
         db.close();
-    });
+        // Three files are made and one is backed up before the migration: the disk of a Windows machine can take longer than the 5 s of the default.
+    }, 30_000);
 });
 
 describe('AnimeDb history', () => {
