@@ -32,7 +32,7 @@ import type {
     MangaSummary
 } from '@shared/manga';
 import { resolveAppLanguage } from '../i18n/language';
-import { ALL_LANGUAGES, chapterState, libraryEntry, type ExtensionFilter } from '../components/mangaText';
+import { ALL_LANGUAGES, chapterState, libraryEntry, localDetails, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter } from '../components/mangaFilterSearch';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
@@ -174,6 +174,9 @@ interface MangaState {
     jobs: MangaJob[];
     browse: MangaBrowseState;
     selection: MangaSelection | null;
+    // A manga of the library opens with what the library has while the source is asked in the background: whether it is being asked, and
+    // why it could not be (the page stays as it is then).
+    selectionRefresh: { loading: boolean; error: MangaError | null };
     sourceSettings: MangaSourceSettingsState;
     extensions: MangaExtensionsState;
     // The checks of Cloudflare that are going on (the helper is solving them in a browser, which can take a minute).
@@ -369,6 +372,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         jobs: [],
         browse: { ...EMPTY_BROWSE, sourceLanguage: initialPrefs.sourceLanguage },
         selection: null,
+        selectionRefresh: { loading: false, error: null },
         sourceSettings: EMPTY_SOURCE_SETTINGS,
         reader: CLOSED_READER,
         selectionFrom: 'browse',
@@ -727,17 +731,29 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         openManga: async (manga) => {
-            set({ selection: { manga, status: 'loading', details: null, chapters: [], selected: [], error: null }, selectionFrom: get().view === 'library' ? 'library' : 'browse' });
+            const fromLibrary = get().view === 'library';
+            const saved = fromLibrary ? libraryEntry(get().library, manga.sourceId, manga.remoteId) : null;
+            // The library does not wait for the source: its page opens with what is saved, and the source is looked at in the background.
+            const local = saved === null ? null : localDetails(saved);
+            set({
+                selection: local === null ? { manga, status: 'loading', details: null, chapters: [], selected: [], error: null } : { manga, status: 'ready', details: local.details, chapters: local.chapters, selected: [], error: null },
+                selectionRefresh: { loading: local !== null, error: null },
+                selectionFrom: fromLibrary ? 'library' : 'browse'
+            });
             const result = await window.api.manga.details(manga.remoteId);
             const current = get().selection;
             if (current === null || current.manga.remoteId !== manga.remoteId) {
                 return;
             }
             if (!result.ok) {
-                set({ selection: { ...current, status: 'error', error: result.error } });
+                set(
+                    local === null
+                        ? { selection: { ...current, status: 'error', error: result.error } }
+                        : { selectionRefresh: { loading: false, error: result.error } }
+                );
                 return;
             }
-            set({ selection: { ...current, status: 'ready', details: result.value.details, chapters: result.value.chapters } });
+            set({ selection: { ...current, status: 'ready', details: result.value.details, chapters: result.value.chapters }, selectionRefresh: { loading: false, error: null } });
         },
 
         openReader: async (mangaTitle, chapters, index) => {
@@ -783,7 +799,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         closeManga: () => {
-            set({ selection: null });
+            set({ selection: null, selectionRefresh: { loading: false, error: null } });
         },
 
         toggleChapter: (remoteId) => {

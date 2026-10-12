@@ -1419,3 +1419,121 @@ describe('mangaStore health of the programs', () => {
         expect(state().healthChecking).toBe(false);
     });
 });
+
+describe('mangaStore opening a manga of the library', () => {
+    const saved = makeLibraryManga(
+        [makeChapterRecord({ id: 1, remoteId: 11, name: 'Romance Dawn', number: 1, sourceOrder: 1, dateUploaded: 1700000000000, scanlator: 'Group A' }), makeChapterRecord({ id: 2, remoteId: 12, name: 'Second', number: 2, sourceOrder: 2, dateUploaded: null, scanlator: null })],
+        { author: 'Oda', artist: 'Oda E.', description: 'Saved description', genres: ['Action'], status: 'ongoing', url: 'https://dex.example/m/1', thumbnailUrl: 'pullwave-manga://cover/1?v=abcdef123456' }
+    );
+    const fresh = [makeChapter({ remoteId: 11 }), makeChapter({ remoteId: 12, name: 'Second', number: 2 }), makeChapter({ remoteId: 13, name: 'Third', number: 3 })];
+
+    beforeEach(() => {
+        useMangaStore.setState({ view: 'library', library: [saved] });
+    });
+
+    function pending() {
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.details.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        return (value: unknown) => {
+            answer(value);
+        };
+    }
+
+    it('opens at once with what the library has, and looks at the source in the background', async () => {
+        const answer = pending();
+        const opening = state().openManga(makeSummary());
+        expect(state().selection).toEqual({
+            manga: makeSummary(),
+            status: 'ready',
+            details: {
+                remoteId: 7,
+                sourceId: '123',
+                title: 'One Piece',
+                thumbnailUrl: 'pullwave-manga://cover/1?v=abcdef123456',
+                url: 'https://dex.example/m/1',
+                author: 'Oda',
+                artist: 'Oda E.',
+                description: 'Saved description',
+                genres: ['Action'],
+                status: 'ongoing'
+            },
+            chapters: [
+                { remoteId: 11, name: 'Romance Dawn', number: 1, dateUploaded: 1700000000000, scanlator: 'Group A', sourceOrder: 1 },
+                { remoteId: 12, name: 'Second', number: 2, dateUploaded: null, scanlator: null, sourceOrder: 2 }
+            ],
+            selected: [],
+            error: null
+        });
+        expect(state().selectionFrom).toBe('library');
+        expect(state().selectionRefresh).toEqual({ loading: true, error: null });
+        answer({ ok: true, value: { details: makeDetails(), chapters: fresh } });
+        await opening;
+        expect(mock.api.manga.details).toHaveBeenCalledWith(7);
+    });
+
+    it('takes what the source says when it answers, and stops saying it is looking', async () => {
+        mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails({ description: 'From the source' }), chapters: fresh } });
+        await state().openManga(makeSummary());
+        expect(state().selection).toMatchObject({ status: 'ready', details: makeDetails({ description: 'From the source' }), chapters: fresh, error: null });
+        expect(state().selectionRefresh).toEqual({ loading: false, error: null });
+    });
+
+    it('keeps the page as it is when the source cannot be reached, and says why apart from the page', async () => {
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().openManga(makeSummary());
+        expect(state().selection).toMatchObject({ status: 'ready', error: null, chapters: [expect.objectContaining({ remoteId: 11 }), expect.objectContaining({ remoteId: 12 })] });
+        expect(state().selection?.details?.description).toBe('Saved description');
+        expect(state().selectionRefresh).toEqual({ loading: false, error: FAILURE });
+    });
+
+    it('forgets the failure of the last manga when another is opened, and when the page is closed', async () => {
+        mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+        await state().openManga(makeSummary());
+        const answer = pending();
+        const opening = state().openManga(makeSummary());
+        expect(state().selectionRefresh).toEqual({ loading: true, error: null });
+        answer({ ok: false, error: FAILURE });
+        await opening;
+        state().closeManga();
+        expect(state().selectionRefresh).toEqual({ loading: false, error: null });
+        expect(state().selection).toBeNull();
+    });
+
+    it('drops the answer of the source when another manga was opened or the page was closed meanwhile', async () => {
+        const answer = pending();
+        const opening = state().openManga(makeSummary());
+        state().closeManga();
+        answer({ ok: true, value: { details: makeDetails(), chapters: fresh } });
+        await opening;
+        expect(state().selection).toBeNull();
+        expect(state().selectionRefresh).toEqual({ loading: false, error: null });
+    });
+
+    it('still waits for the source when the manga is not in the library', async () => {
+        useMangaStore.setState({ library: [] });
+        const answer = pending();
+        const opening = state().openManga(makeSummary());
+        expect(state().selection).toMatchObject({ status: 'loading', details: null, chapters: [] });
+        expect(state().selectionRefresh).toEqual({ loading: false, error: null });
+        answer({ ok: false, error: FAILURE });
+        await opening;
+        expect(state().selection).toMatchObject({ status: 'error', error: FAILURE });
+        expect(state().selectionRefresh).toEqual({ loading: false, error: null });
+    });
+
+    it('still waits for the source when the manga is opened from the browse, even if it is in the library', async () => {
+        useMangaStore.setState({ view: 'browse' });
+        const answer = pending();
+        const opening = state().openManga(makeSummary());
+        expect(state().selection).toMatchObject({ status: 'loading', details: null });
+        answer({ ok: false, error: FAILURE });
+        await opening;
+        expect(state().selection).toMatchObject({ status: 'error', error: FAILURE });
+    });
+});

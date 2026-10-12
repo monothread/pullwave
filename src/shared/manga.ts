@@ -348,6 +348,12 @@ export function localPageUrl(chapterId: number, index: number): string {
     return `${MANGA_PAGE_SCHEME}://page/${String(chapterId)}/${String(index)}`;
 }
 
+// The cover of a manga of the library that the app keeps: `pullwave-manga://cover/<manga id>?v=<fingerprint>` (the fingerprint changes
+// with the image, so the window never shows an old one).
+export function localCoverUrl(mangaId: number, version: string): string {
+    return `${MANGA_PAGE_SCHEME}://cover/${String(mangaId)}?v=${version}`;
+}
+
 // A chapter to read: the one on the server and, when it is in the library, the one of the library (its file is read when it is there).
 export interface MangaReadRequest {
     chapterRemoteId: number;

@@ -788,6 +788,8 @@ export const en = {
     'manga.browse.open': 'Open',
     'manga.browse.inLibrary': 'IN LIBRARY',
     'manga.detail.loading': 'LOADING CHAPTERS…',
+    'manga.detail.refreshing': 'Looking at the source for changes…',
+    'manga.detail.refreshFailed': 'Could not reach the source. Showing what is saved.',
     'manga.detail.noChapters': 'This manga has no chapters.',
     'manga.detail.chapters': 'Chapters ({count})',
     'manga.detail.selectAll': 'ALL',

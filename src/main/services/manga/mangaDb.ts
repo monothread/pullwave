@@ -74,7 +74,9 @@ const MIGRATIONS: readonly string[] = [
         PRIMARY KEY (group_id, manga_id)
     );`,
     // When a chapter that was not one of those the manga came with arrived in the library (to say which ones are new).
-    `ALTER TABLE chapter ADD COLUMN added_at INTEGER;`
+    `ALTER TABLE chapter ADD COLUMN added_at INTEGER;`,
+    // The fingerprint (SHA-256) of the cover kept in the data folder; null while there is none (see mangaCovers.ts).
+    `ALTER TABLE manga ADD COLUMN cover_hash TEXT;`
 ];
 
 type Row = Record<string, unknown>;
@@ -257,6 +259,25 @@ export class MangaDb {
             details.status,
             mangaId
         );
+    }
+
+    // The cover kept in the data folder: the fingerprint of the image (null when none is kept).
+    coverHash(mangaId: number): string | null {
+        return nullableText(this.one('SELECT cover_hash FROM manga WHERE id = ?', mangaId) ?? {}, 'cover_hash');
+    }
+
+    setCoverHash(mangaId: number, hash: string | null): void {
+        this.run('UPDATE manga SET cover_hash = ? WHERE id = ?', hash, mangaId);
+    }
+
+    // The mangas that have a cover on the server (or elsewhere) and none kept yet.
+    coverless(): MangaRecord[] {
+        return this.all('SELECT * FROM manga WHERE cover_hash IS NULL AND thumbnail_url IS NOT NULL ORDER BY id').map(toManga);
+    }
+
+    // Where the cover is on the source now (the source can change it).
+    setThumbnail(mangaId: number, thumbnailUrl: string | null): void {
+        this.run('UPDATE manga SET thumbnail_url = ? WHERE id = ?', thumbnailUrl, mangaId);
     }
 
     getManga(id: number): MangaRecord | null {

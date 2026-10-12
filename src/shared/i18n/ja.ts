@@ -765,6 +765,8 @@ export const ja: Messages = {
     'manga.browse.open': '開く',
     'manga.browse.inLibrary': 'ライブラリ内',
     'manga.detail.loading': '章を読み込み中…',
+    'manga.detail.refreshing': 'ソースの変更を確認中…',
+    'manga.detail.refreshFailed': 'ソースに接続できませんでした。保存済みの内容を表示しています。',
     'manga.detail.noChapters': 'このマンガには章がありません。',
     'manga.detail.chapters': '章（{count}）',
     'manga.detail.selectAll': 'すべて',

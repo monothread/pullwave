@@ -12,7 +12,8 @@ import { MangaUpdateChecker } from './services/manga/mangaUpdateChecker';
 import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, mangaDirectory } from './services/manga/mangaFiles';
 import { createImageFetcher } from './services/manga/mangaImages';
 import { LocalPages } from './services/manga/localPages';
-import { createPageHandler } from './services/manga/mangaPageProtocol';
+import { MangaCovers } from './services/manga/mangaCovers';
+import { createMangaProtocolHandler } from './services/manga/mangaPageProtocol';
 import { MangaReader } from './services/manga/mangaReader';
 import { MangaService } from './services/manga/mangaService';
 import { SuwayomiClient } from './services/manga/suwayomiClient';
@@ -243,6 +244,14 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         return configured.length > 0 ? configured : join(options.defaultDownloadDir, DEFAULT_MANGA_FOLDER);
     };
     const localPages = new LocalPages();
+    const covers = new MangaCovers({
+        directory: join(root, 'covers'),
+        db,
+        baseUrl: () => {
+            return service.baseUrl;
+        },
+        fetchImpl: options.fetchImpl
+    });
     const fileOf = (chapterId: number): string | null => {
         const chapter = db.getChapter(chapterId);
         return chapter !== null && chapter.status === 'done' ? chapter.filePath : null;
@@ -274,6 +283,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
     const handlers: MangaHandlerDependencies = {
         service,
         updates,
+        covers,
         restartApp: () => {
             options.restartApp?.();
         },
@@ -351,12 +361,22 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         handlers,
         checker,
         updates,
-        pageHandler: createPageHandler({
-            fileOf,
-            read: (path, index) => {
-                return localPages.read(path, index);
+        pageHandler: createMangaProtocolHandler(
+            {
+                fileOf,
+                read: (path, index) => {
+                    return localPages.read(path, index);
+                }
+            },
+            {
+                fileOf: (mangaId) => {
+                    return covers.fileOf(mangaId);
+                },
+                read: (path) => {
+                    return covers.read(path);
+                }
             }
-        }),
+        ),
         hasProcessesToEnd: () => {
             return service.hasProcessesToEnd;
         },

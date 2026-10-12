@@ -1,6 +1,6 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
-import type { LibraryManga, MangaChapterRecord, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
+import type { LibraryManga, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
 
 // The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
@@ -83,6 +83,28 @@ export function mangaStatusKey(status: MangaStatus): MessageKey {
 }
 
 // The manga of the library that is this one of a source (null when it is not there).
+// What the library knows of a manga, in the shape of what the source answers: the page of a manga of the library opens with it, with no
+// need for the source.
+export function localDetails(manga: LibraryManga): MangaDetailsWithChapters {
+    return {
+        details: {
+            remoteId: manga.remoteId,
+            sourceId: manga.sourceId,
+            title: manga.title,
+            thumbnailUrl: manga.thumbnailUrl,
+            url: manga.url,
+            author: manga.author,
+            artist: manga.artist,
+            description: manga.description,
+            genres: manga.genres,
+            status: manga.status
+        },
+        chapters: manga.chapters.map((chapter) => {
+            return { remoteId: chapter.remoteId, name: chapter.name, number: chapter.number, dateUploaded: chapter.dateUploaded, scanlator: chapter.scanlator, sourceOrder: chapter.sourceOrder };
+        })
+    };
+}
+
 export function libraryEntry(library: readonly LibraryManga[], sourceId: string, remoteId: number): LibraryManga | null {
     return (
         library.find((manga) => {

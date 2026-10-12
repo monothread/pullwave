@@ -1,6 +1,8 @@
 import { IPC } from '@shared/constants';
 import type { ComponentHealth, LibraryManga, MangaGroup, MangaHealth, MangaToolUpdateResult, MangaToolVersions, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
 import type { MangaDb } from '../services/manga/mangaDb';
+import type { MangaCovers } from '../services/manga/mangaCovers';
+import { parseCoverUrl } from '../services/manga/mangaPageProtocol';
 import type { MangaReader } from '../services/manga/mangaReader';
 import type { MangaToolUpdates } from '../services/manga/mangaToolUpdates';
 import type { MangaDownloadQueue } from '../services/manga/mangaDownloadQueue';
@@ -17,6 +19,8 @@ export interface MangaHandlerDependencies {
     queue: MangaDownloadQueue;
     // Looks for newer versions of the server and of the helper, and moves to them.
     updates: Pick<MangaToolUpdates, 'check' | 'updateServer' | 'resetServer' | 'updateHelper'>;
+    // The covers of the library that are kept in the data folder.
+    covers: Pick<MangaCovers, 'urlOf' | 'refresh' | 'backfill' | 'remove' | 'needsServer' | 'pending'>;
     // Closes the app and opens it again.
     restartApp: () => void;
     db: MangaDb;
@@ -139,16 +143,32 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         registerUnsupported(ipcMain);
         return;
     }
-    const { service, queue, db, reader, removeChapterFiles } = deps;
+    const { service, queue, db, reader, removeChapterFiles, covers, onLibraryChanged } = deps;
     let migrating = false;
 
-    // The covers are kept as paths of the server (its port changes), and given with the server of the moment.
+    // The cover the app keeps is shown when there is one. Otherwise it is the one of the source, kept as a path of the server (its port
+    // changes) and given with the server of the moment.
     function present(manga: LibraryManga): LibraryManga {
-        return { ...manga, thumbnailUrl: fromStoredAddress(manga.thumbnailUrl, service.baseUrl) };
+        return { ...manga, thumbnailUrl: covers.urlOf(manga.id) ?? fromStoredAddress(manga.thumbnailUrl, service.baseUrl) };
     }
 
+    // What the window sends back goes to the library: the address of a cover the app keeps is not where the source has it, so the
+    // address the library already has stays.
     function store<T extends { thumbnailUrl: string | null }>(value: T): T {
+        const kept = value.thumbnailUrl === null ? null : parseCoverUrl(value.thumbnailUrl);
+        if (kept !== null) {
+            return { ...value, thumbnailUrl: db.getManga(kept.mangaId)?.thumbnailUrl ?? null };
+        }
         return { ...value, thumbnailUrl: toStoredAddress(value.thumbnailUrl, service.baseUrl) };
+    }
+
+    // Takes the cover from the source in the background; the window is told when what is kept changed.
+    function refreshCover(mangaId: number): void {
+        void covers.refresh(mangaId).then((changed) => {
+            if (changed) {
+                onLibraryChanged();
+            }
+        });
     }
 
     function removeFilesOf(paths: Array<string | null>): void {
@@ -223,9 +243,21 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         }
         return service.list(checked);
     });
-    ipcMain.handle(IPC.mangaDetails, (_event, remoteId) => {
+    ipcMain.handle(IPC.mangaDetails, async (_event, remoteId) => {
         const id = asId(remoteId);
-        return id === null ? invalid('The manga is not valid.') : service.details(id);
+        if (id === null) {
+            return invalid('The manga is not valid.');
+        }
+        const result = await service.details(id);
+        if (result.ok) {
+            // The source was visited: a manga of the library takes the cover the source has now, when it is another one.
+            const saved = db.findManga(result.value.details.sourceId, result.value.details.remoteId);
+            if (saved !== null) {
+                db.setThumbnail(saved.id, toStoredAddress(result.value.details.thumbnailUrl, service.baseUrl));
+                refreshCover(saved.id);
+            }
+        }
+        return result;
     });
     ipcMain.handle(IPC.mangaAddToLibrary, (_event, request) => {
         const checked = asDownloadRequest(request);
@@ -237,6 +269,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             manga: store(checked.manga),
             details: checked.details === null ? null : store(checked.details)
         });
+        if (manga !== null) {
+            refreshCover(manga.id);
+        }
         return manga === null ? null : present(manga);
     });
     ipcMain.handle(IPC.mangaDownload, (_event, request) => {
@@ -249,6 +284,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             manga: store(checked.manga),
             details: checked.details === null ? null : store(checked.details)
         });
+        if (manga !== null) {
+            refreshCover(manga.id);
+        }
         return manga === null ? null : present(manga);
     });
     ipcMain.handle(IPC.mangaDownloadMissing, (_event, mangaIds) => {
@@ -258,11 +296,16 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaLibrary, (): LibraryManga[] => {
         const library = db.list();
-        if (service.baseUrl === null && library.some((manga) => {
-            return manga.thumbnailUrl?.startsWith('/') === true;
-        })) {
-            // The covers need the server: it is started now, and the screen is told when it is ready.
+        if (service.baseUrl === null && covers.needsServer) {
+            // The covers the app does not keep yet need the server: it is started now, and the screen is told when it is ready.
             service.warmUp();
+        }
+        if (covers.pending(service.baseUrl !== null)) {
+            void covers.backfill().then((changed) => {
+                if (changed) {
+                    onLibraryChanged();
+                }
+            });
         }
         return library.map(present);
     });
@@ -308,6 +351,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             })
         );
         removeFilesOf(db.removeManga(id));
+        covers.remove(id);
         deps.onLibraryChanged();
     });
     ipcMain.handle(IPC.mangaOpenFolder, (_event, mangaId) => {
@@ -399,6 +443,8 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             return { ok: false, reason: outcome.reason };
         }
         deps.onLibraryChanged();
+        // The cover is the one of the other source now.
+        refreshCover(checked.mangaId);
         const manga = db.getLibraryManga(checked.mangaId);
         return manga === null ? { ok: false, reason: 'not-found' } : { ok: true, manga: present(manga), matched: outcome.matched, added: outcome.added, dropped: outcome.dropped };
     });

@@ -945,3 +945,34 @@ describe('createMangaRuntime updates and health', () => {
         expect(requests).toEqual([`${EXTERNAL}/api/graphql`]);
     });
 });
+
+describe('createMangaRuntime covers', () => {
+    it('keeps the cover of a manga of the library in the data folder and serves it through the scheme of the pages', async () => {
+        const { runtime, dir, requests } = setup();
+        const id = runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail' }).id;
+        await expect(runtime!.handlers.covers.refresh(id)).resolves.toBe(true);
+        expect(requests).toEqual([`${EXTERNAL}/api/v1/manga/7/thumbnail`]);
+        expect(readFileSync(join(dir, 'userData', 'manga', 'covers', String(id)))).toEqual(Buffer.from(PNG));
+        const url = runtime!.handlers.covers.urlOf(id)!;
+        expect(url).toMatch(new RegExp(`^pullwave-manga://cover/${String(id)}\\?v=[0-9a-f]{12}$`));
+        const response = await runtime!.pageHandler(new Request(url));
+        expect(response.status).toBe(200);
+        expect(response.headers.get('Content-Type')).toBe('image/png');
+        expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from(PNG));
+    });
+
+    it('says there is no cover for a manga that has none kept, and still serves the pages of the chapters', async () => {
+        const { runtime } = setup();
+        const id = runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail' }).id;
+        expect((await runtime!.pageHandler(new Request(`pullwave-manga://cover/${String(id)}`))).status).toBe(404);
+        expect((await runtime!.pageHandler(new Request('pullwave-manga://page/999/0'))).status).toBe(404);
+    });
+
+    it('remembers the fingerprint of the cover and has no more covers to take', async () => {
+        const { runtime } = setup();
+        const id = runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: '/api/v1/manga/7/thumbnail' }).id;
+        await runtime!.handlers.covers.refresh(id);
+        expect(runtime!.db.coverHash(id)).toMatch(/^[0-9a-f]{64}$/);
+        expect(runtime!.handlers.covers.pending(true)).toBe(false);
+    });
+});

@@ -13,6 +13,7 @@ import {
     groupLibrary,
     inGroup,
     isNewChapter,
+    localDetails,
     newChapterCount,
     matchesSearch,
     seasonLabel,
@@ -364,5 +365,25 @@ describe('new chapters', () => {
         expect(newChapterCount([one], NOW)).toBe(2);
         expect(newChapterCount([two], NOW)).toBe(1);
         expect(newChapterCount([], NOW)).toBe(0);
+    });
+});
+
+describe('localDetails', () => {
+    it('gives what the library knows of a manga in the shape of what the source answers', () => {
+        const manga = makeLibraryManga(
+            [makeChapterRecord({ id: 5, remoteId: 11, name: 'One', number: 1, dateUploaded: 1700000000000, scanlator: 'Group', sourceOrder: 3, status: 'done', filePath: '/m/1.cbz' }), makeChapterRecord({ id: 6, remoteId: 12, name: 'Two', number: null, dateUploaded: null, scanlator: null, sourceOrder: 4 })],
+            { author: 'Oda', artist: null, description: 'Text', genres: ['Action', 'Drama'], status: 'completed', url: 'https://dex.example/m', thumbnailUrl: 'pullwave-manga://cover/1?v=abc', series: 'Pirates', season: 2, seasonName: 'Second' }
+        );
+        expect(localDetails(manga)).toEqual({
+            details: { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: 'pullwave-manga://cover/1?v=abc', url: 'https://dex.example/m', author: 'Oda', artist: null, description: 'Text', genres: ['Action', 'Drama'], status: 'completed' },
+            chapters: [
+                { remoteId: 11, name: 'One', number: 1, dateUploaded: 1700000000000, scanlator: 'Group', sourceOrder: 3 },
+                { remoteId: 12, name: 'Two', number: null, dateUploaded: null, scanlator: null, sourceOrder: 4 }
+            ]
+        });
+    });
+
+    it('gives a manga with no chapters an empty list', () => {
+        expect(localDetails(makeLibraryManga([])).chapters).toEqual([]);
     });
 });

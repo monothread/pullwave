@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('MangaDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(5);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(6);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -34,7 +34,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(5);
+        expect(second.schemaVersion).toBe(6);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -278,7 +278,7 @@ describe('MangaDb the page of the manga on its site', () => {
             PRAGMA user_version = 2;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(5);
+        expect(db.schemaVersion).toBe(6);
         expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, series: null, season: null, seasonName: null, groupIds: [], chapters: [] }]);
         db.close();
     });
@@ -673,7 +673,7 @@ describe('MangaDb when a chapter was put in the library', () => {
             PRAGMA user_version = 4;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(5);
+        expect(db.schemaVersion).toBe(6);
         expect(db.chaptersOf(1)[0]).toMatchObject({ remoteId: 5, addedAt: null });
         db.close();
     });
@@ -715,5 +715,65 @@ describe('MangaDb removal', () => {
         db.ensureChapter(other.id, chapter(1));
         db.removeManga(manga.id);
         expect(db.getLibraryManga(other.id)?.chapters).toHaveLength(1);
+    });
+});
+
+describe('MangaDb the cover that is kept', () => {
+    it('has no cover kept at first, and remembers the fingerprint of the one that is', () => {
+        const { db, manga } = setup();
+        expect(db.coverHash(manga.id)).toBeNull();
+        db.setCoverHash(manga.id, 'a'.repeat(64));
+        expect(db.coverHash(manga.id)).toBe('a'.repeat(64));
+        db.setCoverHash(manga.id, null);
+        expect(db.coverHash(manga.id)).toBeNull();
+    });
+
+    it('has no fingerprint for a manga that is not there', () => {
+        expect(new MangaDb(':memory:').coverHash(99)).toBeNull();
+    });
+
+    it('lists the mangas that have a cover on the source and none kept', () => {
+        const { db, manga } = setup();
+        const other = db.upsertManga({ remoteId: 8, sourceId: '123', title: 'Bleach', thumbnailUrl: '/api/v1/manga/8/thumbnail' });
+        db.upsertManga({ remoteId: 9, sourceId: '123', title: 'No cover', thumbnailUrl: null });
+        expect(db.coverless().map((item) => {
+            return item.id;
+        })).toEqual([manga.id, other.id]);
+        db.setCoverHash(manga.id, 'b'.repeat(64));
+        expect(db.coverless().map((item) => {
+            return item.id;
+        })).toEqual([other.id]);
+    });
+
+    it('changes where the cover is on the source, keeping the cover that is kept', () => {
+        const { db, manga } = setup();
+        db.setCoverHash(manga.id, 'c'.repeat(64));
+        db.setThumbnail(manga.id, '/api/v1/manga/7/thumbnail?new');
+        expect(db.getManga(manga.id)?.thumbnailUrl).toBe('/api/v1/manga/7/thumbnail?new');
+        expect(db.coverHash(manga.id)).toBe('c'.repeat(64));
+        db.setThumbnail(manga.id, null);
+        expect(db.getManga(manga.id)?.thumbnailUrl).toBeNull();
+    });
+
+    it('adds the column to a library made before the covers were kept', () => {
+        const path = join(makeTempDir(), 'old.db');
+        const old = new DatabaseSync(path);
+        old.exec(`CREATE TABLE manga (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, remote_id INTEGER NOT NULL, title TEXT NOT NULL, thumbnail_url TEXT, created_at INTEGER NOT NULL, UNIQUE (source_id, remote_id));
+            CREATE TABLE chapter (id INTEGER PRIMARY KEY AUTOINCREMENT, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, remote_id INTEGER NOT NULL, name TEXT NOT NULL, number REAL, date_uploaded INTEGER, scanlator TEXT, source_order INTEGER NOT NULL, status TEXT NOT NULL, page_count INTEGER NOT NULL DEFAULT 0, file_path TEXT, size_bytes INTEGER, error_code TEXT, error_raw TEXT, downloaded_at INTEGER, UNIQUE (manga_id, remote_id));
+            ALTER TABLE manga ADD COLUMN author TEXT; ALTER TABLE manga ADD COLUMN artist TEXT; ALTER TABLE manga ADD COLUMN description TEXT; ALTER TABLE manga ADD COLUMN genres TEXT; ALTER TABLE manga ADD COLUMN status TEXT; ALTER TABLE manga ADD COLUMN url TEXT;
+            ALTER TABLE manga ADD COLUMN series TEXT; ALTER TABLE manga ADD COLUMN season INTEGER; ALTER TABLE manga ADD COLUMN season_name TEXT;
+            CREATE TABLE manga_group (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+            CREATE TABLE manga_group_member (group_id INTEGER NOT NULL REFERENCES manga_group (id) ON DELETE CASCADE, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, PRIMARY KEY (group_id, manga_id));
+            ALTER TABLE chapter ADD COLUMN added_at INTEGER;
+            INSERT INTO manga (source_id, remote_id, title, thumbnail_url, created_at) VALUES ('s', 1, 'Old', '/api/v1/manga/1/thumbnail', 3);
+            PRAGMA user_version = 5;`);
+        old.close();
+        const db = new MangaDb(path);
+        expect(db.schemaVersion).toBe(6);
+        expect(db.coverHash(1)).toBeNull();
+        expect(db.coverless().map((item) => {
+            return item.title;
+        })).toEqual(['Old']);
+        db.close();
     });
 });

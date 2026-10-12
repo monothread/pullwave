@@ -772,6 +772,8 @@ export const es: Messages = {
     'manga.browse.open': 'Abrir',
     'manga.browse.inLibrary': 'EN LA BIBLIOTECA',
     'manga.detail.loading': 'CARGANDO CAPÍTULOS…',
+    'manga.detail.refreshing': 'Buscando cambios en la fuente…',
+    'manga.detail.refreshFailed': 'No se pudo acceder a la fuente. Se muestra lo guardado.',
     'manga.detail.noChapters': 'Este manga no tiene capítulos.',
     'manga.detail.chapters': 'Capítulos ({count})',
     'manga.detail.selectAll': 'TODOS',

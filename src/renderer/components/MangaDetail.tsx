@@ -95,6 +95,9 @@ export function MangaDetail() {
     const retryJob = useMangaStore((state) => {
         return state.retryJob;
     });
+    const refresh = useMangaStore((state) => {
+        return state.selectionRefresh;
+    });
     const sourceInstalled = useMangaStore((state) => {
         return state.browse.sources.some((source) => {
             return source.id === state.selection?.manga.sourceId;
@@ -173,7 +176,7 @@ export function MangaDetail() {
                         <span aria-hidden="true">{SETTINGS_ICON}</span>
                     </button>
                 )}
-                <MangaCover url={shown.thumbnailUrl} />
+                <MangaCover url={saved?.thumbnailUrl ?? shown.thumbnailUrl} />
                 <div className="history__main">
                     <h2 className="history__title">{shown.title}</h2>
                     {details?.author && (
@@ -253,6 +256,13 @@ export function MangaDetail() {
                 </p>
             )}
             {selection.status === 'error' && selection.error && isCloudflareError(selection.error) && <p className="field__hint">{t('manga.source.cloudflareHint')}</p>}
+            {selection.status === 'ready' && refresh.loading && <p className="field__hint">{t('manga.detail.refreshing')}</p>}
+            {selection.status === 'ready' && refresh.error && (
+                <p className="field__warning" role="alert" title={refresh.error.message}>
+                    {t('manga.detail.refreshFailed')}
+                </p>
+            )}
+            {selection.status === 'ready' && refresh.error && isCloudflareError(refresh.error) && <p className="field__hint">{t('manga.source.cloudflareHint')}</p>}
             {selection.status === 'ready' && chapters.length === 0 && <p className="empty">{t('manga.detail.noChapters')}</p>}
             {selection.status === 'ready' && chapters.length > 0 && (
                 <>

@@ -718,3 +718,66 @@ describe('MangaDetail the chapters that are new today', () => {
         expect(within(rows[2]!).queryByText('NEW')).not.toBeInTheDocument();
     });
 });
+
+describe('MangaDetail looking at the source in the background', () => {
+    function setRefresh(refresh: { loading: boolean; error: { code: 'REQUEST_FAILED'; message: string } | null }): void {
+        useMangaStore.setState({ selectionRefresh: refresh });
+    }
+
+    it('says the source is being looked at while the chapters of the library are already there', () => {
+        open();
+        setRefresh({ loading: true, error: null });
+        render(<MangaDetail />);
+        expect(screen.getByText('Looking at the source for changes…')).toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-chapter')).toHaveLength(3);
+    });
+
+    it('says nothing when the source is not being looked at', () => {
+        open();
+        setRefresh({ loading: false, error: null });
+        render(<MangaDetail />);
+        expect(screen.queryByText('Looking at the source for changes…')).not.toBeInTheDocument();
+        expect(screen.queryByText('Could not reach the source. Showing what is saved.')).not.toBeInTheDocument();
+    });
+
+    it('says the source could not be reached and keeps showing the chapters that are saved', () => {
+        open();
+        setRefresh({ loading: false, error: { code: 'REQUEST_FAILED', message: 'site down' } });
+        render(<MangaDetail />);
+        const warning = screen.getByRole('alert');
+        expect(warning).toHaveTextContent('Could not reach the source. Showing what is saved.');
+        expect(warning).toHaveAttribute('title', 'site down');
+        expect(screen.getAllByTestId('manga-chapter')).toHaveLength(3);
+        expect(screen.queryByText(/Cloudflare/)).not.toBeInTheDocument();
+    });
+
+    it('explains Cloudflare when that is why the source could not be reached', () => {
+        open();
+        setRefresh({ loading: false, error: { code: 'REQUEST_FAILED', message: 'Cloudflare protection is on' } });
+        render(<MangaDetail />);
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not reach the source. Showing what is saved.');
+        expect(screen.getByText('This site is protected by Cloudflare. The helper that gets past it is downloaded when the app opens; if it is ready and the error stays, the site may be blocking it.')).toBeInTheDocument();
+    });
+
+    it('does not show the notes while the page is still loading', () => {
+        open({ status: 'loading', details: null, chapters: [] });
+        setRefresh({ loading: true, error: null });
+        render(<MangaDetail />);
+        expect(screen.queryByText('Looking at the source for changes…')).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaDetail the cover of a manga of the library', () => {
+    it('shows the cover the app keeps, not the one the source gave', () => {
+        open();
+        useMangaStore.setState({ library: [makeLibraryManga([], { thumbnailUrl: 'pullwave-manga://cover/1?v=abcdef123456' })] });
+        render(<MangaDetail />);
+        expect(document.querySelector('img.cover')).toHaveAttribute('src', 'pullwave-manga://cover/1?v=abcdef123456');
+    });
+
+    it('shows the cover of the source when the manga is not in the library', () => {
+        open();
+        render(<MangaDetail />);
+        expect(document.querySelector('img.cover')).toHaveAttribute('src', 'http://127.0.0.1:4321/api/v1/manga/7/thumbnail');
+    });
+});

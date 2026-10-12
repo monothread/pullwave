@@ -51,6 +51,8 @@ class FakeSuwayomi {
     // Chapters the source has published after the first two (their numbers on the server).
     laterChapters: number[] = [];
     extensionLib = '1.4';
+    // The server cannot get the manga from its source (a site behind Cloudflare).
+    failDetails = false;
     private server: Server | null = null;
 
     get url(): string {
@@ -102,6 +104,9 @@ class FakeSuwayomi {
     }
 
     private answer(query: string, variables: Record<string, unknown>): unknown {
+        if (this.failDetails && query.includes('fetchMangaAndChapters')) {
+            throw new Error('Cloudflare protection is on');
+        }
         if (query.includes('aboutServer')) {
             return { aboutServer: { version: 'v9.9.9-fake' } };
         }
@@ -1255,7 +1260,46 @@ test.describe('manga section', () => {
         await expect(entry.getByRole('heading', { name: 'One Piece' })).toBeVisible();
         await expect(entry.getByText('0 of 2 downloaded')).toBeVisible();
         await expect(entry.locator('img.cover')).toBeVisible();
-        // The cover is asked of the server of this run.
-        await expect.poll(() => {return fake.requests.filter((item) => {return item.path === '/api/v1/manga/7/thumbnail'}).length}).toBeGreaterThan(0);
+        // The cover is the one kept in the data folder, not one asked of the server.
+        await expect(entry.locator('img.cover')).toHaveAttribute('src', /^pullwave-manga:\/\/cover\/\d+\?v=[0-9a-f]{12}$/);
+    });
+
+    test('keeps the cover of a manga of the library in the data folder and shows it from there', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        const cover = session.page.getByTestId('manga-entry').locator('img.cover');
+        await expect(cover).toHaveAttribute('src', /^pullwave-manga:\/\/cover\/\d+\?v=[0-9a-f]{12}$/);
+        await expect.poll(async () => {
+            return cover.evaluate((image: HTMLImageElement) => {
+                return image.complete && image.naturalWidth > 0;
+            });
+        }).toBe(true);
+        const kept = readdirSync(join(session.userData, 'manga', 'covers'));
+        expect(kept).toHaveLength(1);
+        expect(readFileSync(join(session.userData, 'manga', 'covers', kept[0]!)).subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+        expect(fake.requests.filter((item) => {return item.path === '/api/v1/manga/7/thumbnail'}).length).toBeGreaterThan(0);
+    });
+
+    test('opens a manga of the library with its saved chapters even when the source cannot be reached', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        fake.failDetails = true;
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        await expect(session.page.getByRole('checkbox', { name: 'Select: Romance Dawn' })).toBeVisible();
+        await expect(session.page.getByRole('heading', { name: 'One Piece' })).toBeVisible();
+        await expect(session.page.getByText(/^Author:/)).toHaveText('Author: Oda');
+        await expect(session.page.getByRole('alert').filter({ hasText: 'Could not reach the source. Showing what is saved.' })).toBeVisible();
+        await expect(session.page.getByText(/This site is protected by Cloudflare/)).toBeVisible();
+        await expect(session.page.getByText('LOADING CHAPTERS…')).toHaveCount(0);
+        await expect(session.page.getByTestId('manga-chapter')).toHaveCount(2);
+        fake.failDetails = false;
     });
 });

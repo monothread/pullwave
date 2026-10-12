@@ -763,6 +763,8 @@ export const zh: Messages = {
     'manga.browse.open': '打开',
     'manga.browse.inLibrary': '已在书库',
     'manga.detail.loading': '正在加载章节…',
+    'manga.detail.refreshing': '正在检查来源是否有更新…',
+    'manga.detail.refreshFailed': '无法连接到来源。正在显示已保存的内容。',
     'manga.detail.noChapters': '这部漫画没有章节。',
     'manga.detail.chapters': '章节（{count}）',
     'manga.detail.selectAll': '全选',
