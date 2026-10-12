@@ -121,10 +121,19 @@ describe('activateFilter for the author and the artist', () => {
         expect(activateFilter(nested, 'Oda', 'author')).toEqual([{ type: 'group', name: 'People', filters: [{ type: 'text', name: 'Author', value: 'Oda' }] }]);
     });
 
-    it('does not take a text filter about the author for one about the artist, nor the other way', () => {
-        const onlyAuthor: MangaFilter[] = [{ type: 'text', name: 'Author', value: '' }];
-        expect(activateFilter(onlyAuthor, 'Someone', 'artist')).toBeNull();
-        expect(activateFilter([{ type: 'text', name: 'Artist', value: '' }], 'Someone', 'author')).toBeNull();
+    it('uses the filter about artists for an author when the source has none about authors, and the other way round, since there the author is the artist', () => {
+        expect(activateFilter([{ type: 'text', name: 'Artists', value: '' }], 'Oltlo', 'author')).toEqual([{ type: 'text', name: 'Artists', value: 'Oltlo' }]);
+        expect(activateFilter([{ type: 'text', name: 'Author(s)', value: '' }], 'Someone', 'artist')).toEqual([{ type: 'text', name: 'Author(s)', value: 'Someone' }]);
+    });
+
+    it('prefers the filter about what was asked to the one about the other', () => {
+        const both: MangaFilter[] = [{ type: 'text', name: 'Artist', value: '' }, { type: 'text', name: 'Author', value: '' }];
+        expect(activateFilter(both, 'A', 'author')).toEqual([both[0], { type: 'text', name: 'Author', value: 'A' }]);
+        expect(activateFilter(both, 'B', 'artist')).toEqual([{ type: 'text', name: 'Artist', value: 'B' }, both[1]]);
+    });
+
+    it('does not take a text filter that is about something else, like the circles or the title, for a person', () => {
+        expect(activateFilter([{ type: 'text', name: 'Circles', value: '' }, { type: 'text', name: 'Title', value: '' }], 'Oltlo', 'author')).toBeNull();
     });
 
     it('turns on the box named like the person when the source lists people that way', () => {
@@ -144,5 +153,43 @@ describe('activateFilter for the author and the artist', () => {
 
     it('does not use a text filter for a tag', () => {
         expect(activateFilter([{ type: 'text', name: 'Author', value: '' }], 'Author', 'tag')).toBeNull();
+    });
+});
+
+describe('activateFilter for the sources that take the tags as a text', () => {
+    const TEXTS: MangaFilter[] = [
+        { type: 'group', name: 'Types', filters: [{ type: 'checkbox', name: 'Manga', value: false }] },
+        { type: 'header', name: 'Separate tags with commas (,)' },
+        { type: 'text', name: 'Tags', value: '' },
+        { type: 'text', name: 'Artists', value: '' }
+    ];
+
+    it('writes the tag in the text filter of the tags when no box or list has it', () => {
+        expect(activateFilter(TEXTS, 'Big Breasts')?.[2]).toEqual({ type: 'text', name: 'Tags', value: 'Big Breasts' });
+        expect(activateFilter(TEXTS, 'Big Breasts')?.[3]).toEqual(TEXTS[3]);
+    });
+
+    it('adds the tag to what the text already has, with a comma, and does not repeat it, whatever the case', () => {
+        const withTags: MangaFilter[] = [{ type: 'text', name: 'Tags', value: 'Ahegao, -Anal' }];
+        expect(activateFilter(withTags, 'Blowjob')).toEqual([{ type: 'text', name: 'Tags', value: 'Ahegao, -Anal, Blowjob' }]);
+        expect(activateFilter(withTags, 'ahegao')).toEqual([{ type: 'text', name: 'Tags', value: 'Ahegao, -Anal' }]);
+        expect(activateFilter(withTags, 'anal')).toEqual([{ type: 'text', name: 'Tags', value: 'Ahegao, -Anal' }]);
+    });
+
+    it('prefers a box or an option to the text of the tags', () => {
+        expect(activateFilter(TEXTS, 'Manga')).toEqual([{ type: 'group', name: 'Types', filters: [{ type: 'checkbox', name: 'Manga', value: true }] }, TEXTS[1], TEXTS[2], TEXTS[3]]);
+    });
+
+    it('looks inside the groups for the text of the tags', () => {
+        const nested: MangaFilter[] = [{ type: 'group', name: 'More', filters: [{ type: 'text', name: 'Tag', value: '' }] }];
+        expect(activateFilter(nested, 'Ahegao')).toEqual([{ type: 'group', name: 'More', filters: [{ type: 'text', name: 'Tag', value: 'Ahegao' }] }]);
+    });
+
+    it('does not use the text of the tags for a person', () => {
+        expect(activateFilter([{ type: 'text', name: 'Tags', value: '' }], 'Oltlo', 'author')).toBeNull();
+    });
+
+    it('does not use a text that is not about tags for a tag', () => {
+        expect(activateFilter([{ type: 'text', name: 'Characters', value: '' }, { type: 'text', name: 'Title', value: '' }], 'Ahegao')).toBeNull();
     });
 });
