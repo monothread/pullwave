@@ -55,12 +55,29 @@ describe('MangaLibrary', () => {
         expect(screen.queryByRole('button', { name: 'DOWNLOAD SEASON' })).not.toBeInTheDocument();
     });
 
-    it('opens the folder', async () => {
-        const user = userEvent.setup();
+    it('has no button to open the folder in the card: it is inside the manga', () => {
         useMangaStore.setState({ library: [ONE_PIECE] });
         render(<MangaLibrary />);
-        await user.click(screen.getByRole('button', { name: 'OPEN FOLDER' }));
-        expect(mock.api.manga.openFolder).toHaveBeenCalledWith(9);
+        expect(screen.queryByRole('button', { name: 'OPEN FOLDER' })).not.toBeInTheDocument();
+        expect(mock.api.manga.openFolder).not.toHaveBeenCalled();
+    });
+
+    it('shows each manga as a card of the grid, like the anime: the cover, the name and progress, and the remove button at the bottom', () => {
+        useMangaStore.setState({ library: [ONE_PIECE] });
+        render(<MangaLibrary />);
+        const card = screen.getByTestId('manga-entry');
+        expect(card.tagName).toBe('LI');
+        expect(card.parentElement).toHaveClass('cover-grid');
+        expect(card).toHaveClass('job', 'job--done', 'series', 'cover-card', 'row--link');
+        expect(card.querySelector('img.cover')).toHaveAttribute('src', 'http://127.0.0.1:4321/api/v1/manga/7/thumbnail');
+        const head = card.querySelector('header.job__head')!;
+        expect(within(head as HTMLElement).getByRole('heading', { level: 3, name: 'One Piece' })).toHaveClass('series__title');
+        expect(within(head as HTMLElement).getByText('1 of 5 downloaded')).toHaveClass('history__meta');
+        const footer = card.querySelector('.cover-card__footer')!;
+        expect(footer.lastElementChild).toHaveClass('job__actions', 'library__footer');
+        expect(within(footer as HTMLElement).getByRole('button', { name: 'REMOVE: One Piece' })).toBeInTheDocument();
+        // Nothing to say about seasons or new chapters for a manga on its own with no new chapter: no badges.
+        expect(footer.querySelector('.job__badges')).toBeNull();
     });
 
     it('has no list of chapters in the card: the manga is opened by clicking on it', () => {
@@ -380,16 +397,44 @@ describe('MangaLibrary series, groups and search', () => {
         expect(screen.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.')).toBeInTheDocument();
     });
 
-    it('shows the groups a manga is in, beside its progress', () => {
-        useMangaStore.setState({ library: [BLEACH_IN_MANHWAS], libraryGroup: 2 });
+    it('shows a series as a card with the badge of its seasons at the bottom, and nothing to remove from the card', () => {
+        useMangaStore.setState({ library: [FRIEREN, FRIEREN_2], libraryGroup: null });
         render(<MangaLibrary />);
-        expect(screen.getByTestId('manga-entry-groups')).toHaveTextContent('Manhwas');
+        const card = screen.getByTestId('manga-series');
+        expect(card.tagName).toBe('LI');
+        expect(card.parentElement).toHaveClass('cover-grid');
+        expect(card).toHaveClass('job', 'job--done', 'series', 'cover-card', 'row--link');
+        expect(card.querySelector('.cover')).not.toBeNull();
+        const footer = card.querySelector('.cover-card__footer')!;
+        expect(footer.querySelector('.job__badges .badge')).toHaveTextContent('2 SEASONS');
+        expect(footer.querySelector('.job__actions')).toBeNull();
+        expect(within(card).queryByRole('button', { name: /^REMOVE/ })).not.toBeInTheDocument();
+        expect(within(card).queryByRole('button', { name: 'OPEN FOLDER' })).not.toBeInTheDocument();
     });
 
-    it('shows nothing about groups for a manga that is in none', () => {
-        useMangaStore.setState({ library: [makeLibraryManga([], { id: 30, title: 'Naruto' })] });
+    it('puts the badge of the new chapters in the footer of the card, beside the seasons of a series', () => {
+        const today = new Date().getTime();
+        const fresh = makeLibraryManga([makeChapterRecord({ id: 40, status: 'done', addedAt: today, dateUploaded: null })], { id: 40, remoteId: 41, title: 'Fresh', groupIds: [] });
+        const seasonOne = makeLibraryManga([makeChapterRecord({ id: 41, status: 'done', addedAt: today, dateUploaded: null })], { id: 41, remoteId: 42, title: 'Show 1', series: 'Show', season: 1, groupIds: [] });
+        const seasonTwo = makeLibraryManga([], { id: 42, remoteId: 43, title: 'Show 2', series: 'Show', season: 2, groupIds: [] });
+        useMangaStore.setState({ library: [fresh, seasonOne, seasonTwo], libraryGroup: null });
+        render(<MangaLibrary />);
+        const single = screen.getByTestId('manga-entry');
+        expect(single.querySelector('.cover-card__footer .job__badges [data-testid="manga-new-chapters"]')).toHaveTextContent('NEW CHAPTER');
+        expect(single.querySelector('.job__badges .badge:not(.badge--new)')).toBeNull();
+        const series = screen.getByTestId('manga-series');
+        const badges = Array.from(series.querySelectorAll('.cover-card__footer .job__badges .badge')).map((badge) => {
+            return badge.textContent;
+        });
+        expect(badges).toEqual(['2 SEASONS', 'NEW CHAPTER']);
+    });
+
+    it('does not show the groups in the card: they are the tabs of the library', () => {
+        useMangaStore.setState({ library: [BLEACH_IN_MANHWAS], libraryGroup: 2 });
         render(<MangaLibrary />);
         expect(screen.queryByTestId('manga-entry-groups')).not.toBeInTheDocument();
+        expect(within(screen.getByTestId('manga-entry')).queryByText('Manhwas')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Manhwas' })).toBeInTheDocument();
     });
 
     it('opens and closes the panel to manage the groups', async () => {

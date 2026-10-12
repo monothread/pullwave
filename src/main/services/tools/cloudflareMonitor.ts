@@ -6,9 +6,11 @@ import type { MangaCloudflareActivity } from '@shared/manga';
 export const MONITOR_REQUEST_TIMEOUT_MS = 180_000;
 const MAX_BODY_BYTES = 1024 * 1024;
 
-// The User-Agent the manga server is told to use after a check is solved. FlareSolverr solves it in a Chrome for Linux, and the server then
+// A User-Agent the manga server can be told to use after a check is solved. FlareSolverr solves it in a Chrome for Linux, and the server then
 // sends that User-Agent with the cookie it got, but the connection of the server is not the one of that Chrome, so the content networks
-// (CDN) of some sites challenge it again and refuse the images (HTTP 403) while they let a Chrome for Windows through.
+// (CDN) of some sites challenge it again and refuse the images (HTTP 403) while they let a Chrome for Windows through. It is not used by
+// default (D-089): the clearance cookie is tied to the User-Agent it was issued to, so sites that check it (HentaiRead) refuse a cookie
+// that is sent with another one.
 export const COMPATIBLE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 
 // The answer of FlareSolverr to a check, with the User-Agent of its solution changed. Anything that is not the answer to a check (or that
@@ -33,7 +35,7 @@ export interface CloudflareMonitorDependencies {
     onChange: (active: MangaCloudflareActivity[]) => void;
     fetchImpl?: typeof fetch;
     now?: () => number;
-    // The User-Agent that replaces the one FlareSolverr solved with (see COMPATIBLE_USER_AGENT); none: the answer passes as it is.
+    // The User-Agent that replaces the one FlareSolverr solved with (see COMPATIBLE_USER_AGENT); none, as by default: the answer passes as it is.
     userAgent?: string | null;
 }
 
@@ -59,7 +61,7 @@ async function readBody(request: IncomingMessage): Promise<string | null> {
     return Buffer.concat(chunks).toString('utf-8');
 }
 
-// Stands between the manga server and FlareSolverr: it passes every request on and the answer back (with the User-Agent of the solution of a check changed), and knows which checks of
+// Stands between the manga server and FlareSolverr: it passes every request on and the answer back (with the User-Agent of the solution of a check changed when one is given), and knows which checks of
 // Cloudflare are going on and for which site, so the screen can say so (a check can take a minute, and nothing else shows it).
 export class CloudflareMonitor {
     private server: Server | null = null;
@@ -131,7 +133,7 @@ export class CloudflareMonitor {
                 signal: AbortSignal.timeout(MONITOR_REQUEST_TIMEOUT_MS)
             });
             const original = await answer.text();
-            const userAgent = this.deps.userAgent === undefined ? COMPATIBLE_USER_AGENT : this.deps.userAgent;
+            const userAgent = this.deps.userAgent ?? null;
             const text = isCheck && userAgent !== null ? withCompatibleUserAgent(original, userAgent) : original;
             response.writeHead(answer.status, { 'Content-Type': answer.headers.get('content-type') ?? 'application/json' });
             response.end(text);

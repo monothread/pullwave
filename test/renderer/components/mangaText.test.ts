@@ -35,7 +35,9 @@ import {
     listedSources,
     jobStatusKey,
     STORE_PLACEHOLDER,
+    libraryEntriesByTitle,
     libraryEntry,
+    otherSourceNames,
     mangaErrorKey,
     mangaErrorTextKey,
     mangaStatusKey,
@@ -636,5 +638,49 @@ describe('checksForSource', () => {
         const check = { id: 1, host: 'same.example', startedAt: 1 };
         expect(checksForSource([check], { sourceId: '9', loading: false }, shared, null)).toEqual([check]);
         expect(checksForSource([check], { sourceId: '7', loading: false }, shared, null)).toEqual([]);
+    });
+});
+
+describe('the same title from another source', () => {
+    const library = [
+        makeLibraryManga([], { id: 1, sourceId: '123', remoteId: 7, title: 'One Piece' }),
+        makeLibraryManga([], { id: 2, sourceId: '999', remoteId: 8, title: 'Re:Zero − Começando' }),
+        makeLibraryManga([], { id: 3, sourceId: '555', remoteId: 9, title: 'one  PIECE!' }),
+        makeLibraryManga([], { id: 4, sourceId: '999', remoteId: 10, title: '!!!' })
+    ];
+
+    it('finds the mangas that have the title, whatever the case, the accents or the punctuation', () => {
+        expect(
+            libraryEntriesByTitle(library, 'ONE piece', '777').map((manga) => {
+                return manga.id;
+            })
+        ).toEqual([1, 3]);
+        expect(
+            libraryEntriesByTitle(library, 'Re Zero Comecando', '777').map((manga) => {
+                return manga.id;
+            })
+        ).toEqual([2]);
+    });
+
+    it('leaves out the mangas of the source being asked about', () => {
+        expect(
+            libraryEntriesByTitle(library, 'One Piece', '123').map((manga) => {
+                return manga.id;
+            })
+        ).toEqual([3]);
+    });
+
+    it('finds nothing for another title, an empty one, or one made of punctuation only', () => {
+        expect(libraryEntriesByTitle(library, 'Bleach', '777')).toEqual([]);
+        expect(libraryEntriesByTitle(library, '', '777')).toEqual([]);
+        expect(libraryEntriesByTitle(library, '!!!', '777')).toEqual([]);
+        expect(libraryEntriesByTitle([], 'One Piece', '777')).toEqual([]);
+    });
+
+    it('names the sources once each, and falls back to the id of a source that is not listed', () => {
+        const sources = [makeSource({ id: '123', name: 'MangaDex' }), makeSource({ id: '999', name: 'Site B' })];
+        expect(otherSourceNames([library[0]!, library[1]!, library[3]!], sources)).toEqual(['MangaDex', 'Site B']);
+        expect(otherSourceNames([library[2]!], sources)).toEqual(['555']);
+        expect(otherSourceNames([], sources)).toEqual([]);
     });
 });

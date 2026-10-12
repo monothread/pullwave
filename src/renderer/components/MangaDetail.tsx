@@ -1,6 +1,7 @@
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { useEffect, useMemo, useState } from 'react';
+import { ConfirmDialog } from './ConfirmDialog';
 import { MangaCover } from './MangaCover';
 import { activateFilter, type TermKind } from './mangaFilterSearch';
 import { MangaGroupChips } from './MangaGroupChips';
@@ -9,7 +10,7 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { canDownload, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntry, mangaStatusKey } from './mangaText';
+import { canDownload, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 
 function chapterLabel(name: string, number: number | null): string {
@@ -89,6 +90,9 @@ export function MangaDetail() {
     const showInSource = useMangaStore((state) => {
         return state.showInSource;
     });
+    const openFolder = useMangaStore((state) => {
+        return state.openFolder;
+    });
     const searchByTerm = useMangaStore((state) => {
         return state.searchByTerm;
     });
@@ -136,7 +140,12 @@ export function MangaDetail() {
         return state.reader.status !== 'closed';
     });
 
+    const sources = useMangaStore((state) => {
+        return state.browse.sources;
+    });
+
     const [migrating, setMigrating] = useState(false);
+    const [confirmingDuplicate, setConfirmingDuplicate] = useState(false);
     const [organizing, setOrganizing] = useState(false);
     // The page each chapter was left on: read again when the reader closes (it is what the reader writes).
     const progress = useMemo(() => {
@@ -150,6 +159,8 @@ export function MangaDetail() {
     // Downloading and removing files are done from the library; the page of a manga opened in the browse only reads it and adds it.
     const inLibraryPage = selectionFrom === 'library';
     const saved = libraryEntry(library, manga.sourceId, manga.remoteId);
+    // The same title already in the library from another source (only matters while this one is not in it).
+    const otherSources = saved === null ? otherSourceNames(libraryEntriesByTitle(library, manga.title, manga.sourceId), sources) : [];
     const missingFromLibrary = chapters.filter((chapter) => {
         return chapterState(saved, chapter.remoteId) === null;
     }).length;
@@ -352,6 +363,17 @@ export function MangaDetail() {
                                     <button
                                         type="button"
                                         className="btn"
+                                        onClick={() => {
+                                            void openFolder(saved.id);
+                                        }}
+                                    >
+                                        {t('manga.library.openFolder')}
+                                    </button>
+                                )}
+                                {saved && (
+                                    <button
+                                        type="button"
+                                        className="btn"
                                         disabled={checkingNew !== null}
                                         onClick={() => {
                                             void checkNewChapters(saved.id);
@@ -378,6 +400,10 @@ export function MangaDetail() {
                                         type="button"
                                         className="btn btn--primary"
                                         onClick={() => {
+                                            if (otherSources.length > 0) {
+                                                setConfirmingDuplicate(true);
+                                                return;
+                                            }
                                             void addToLibrary();
                                         }}
                                     >
@@ -399,6 +425,22 @@ export function MangaDetail() {
                             </>
                         )}
                     </div>
+                    {!inLibraryPage && otherSources.length > 0 && <p className="field__hint">{t('manga.detail.inOtherSource', { sources: otherSources.join(', ') })}</p>}
+                    {confirmingDuplicate && (
+                        <ConfirmDialog
+                            title={t('manga.detail.addDuplicate.title')}
+                            message={t('manga.detail.addDuplicate.message', { title: shown.title, sources: otherSources.join(', ') })}
+                            confirmLabel={t('manga.detail.addDuplicate.confirm')}
+                            cancelLabel={t('manga.detail.addDuplicate.cancel')}
+                            onConfirm={() => {
+                                setConfirmingDuplicate(false);
+                                void addToLibrary();
+                            }}
+                            onCancel={() => {
+                                setConfirmingDuplicate(false);
+                            }}
+                        />
+                    )}
                     <ul className="history__list manga__chapters">
                         {chapters.map((chapter) => {
                             const state = chapterState(saved, chapter.remoteId);

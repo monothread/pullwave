@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Translator } from '@shared/i18n';
 import type { MangaExtensionStore, MangaSource } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
@@ -69,6 +70,11 @@ function MangaSourceIcon({ url }: MangaSourceIconProps) {
     );
 }
 
+// How a language is named in a list: its code, or the words for the sources that read sites in several languages.
+export function sourceLanguageLabel(language: string, t: Translator): string {
+    return language === SEVERAL_LANGUAGES ? t('manga.sources.multiLanguage') : language.toUpperCase();
+}
+
 // The sources of the installed extensions, by language: a source is what has the mangas, so it is what is picked here.
 export function MangaSources() {
     const t = useTranslator();
@@ -113,7 +119,7 @@ export function MangaSources() {
         });
 
     function languageLabel(language: string): string {
-        return language === SEVERAL_LANGUAGES ? t('manga.sources.multiLanguage') : language.toUpperCase();
+        return sourceLanguageLabel(language, t);
     }
 
     return (

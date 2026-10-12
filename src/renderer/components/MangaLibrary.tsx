@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LibraryManga } from '@shared/manga';
 import { foldSeries } from '@shared/series';
 import { useTranslator } from '../i18n/useTranslator';
@@ -29,75 +29,84 @@ export function NewChaptersBadge({ count }: { count: number }) {
     );
 }
 
+interface MangaCardProps {
+    testId: 'manga-entry' | 'manga-series';
+    title: string;
+    openLabel: string;
+    thumbnailUrl: string | null;
+    done: number;
+    total: number;
+    newChapters: number;
+    // How many seasons the card stands for, when it is a series (the badge of the seasons).
+    seasons?: number;
+    onOpen: () => void;
+    // What goes at the bottom of the card, under the badges.
+    actions?: ReactNode;
+}
+
+// The card of the library, like the one of the anime: the cover, the name (the way into the manga or the series), how much is downloaded and
+// the badges at the bottom (the seasons of a series, the chapters that are new) with what can be done to it.
+function MangaCard({ testId, title, openLabel, thumbnailUrl, done, total, newChapters, seasons, onOpen, actions }: MangaCardProps) {
+    const t = useTranslator();
+    return (
+        <li className="job job--done series cover-card row--link manga__entry" data-testid={testId}>
+            <MangaCover url={thumbnailUrl} />
+            <div className="cover-card__body">
+                <header className="job__head">
+                    <h3 className="series__title">
+                        <RowLink label={openLabel} title={title} onClick={onOpen}>
+                            {title}
+                        </RowLink>
+                    </h3>
+                    <span className="history__meta">{t('manga.library.progress', { done, total })}</span>
+                </header>
+                <div className="cover-card__footer">
+                    {(seasons !== undefined || newChapters > 0) && (
+                        <span className="job__badges">
+                            {seasons !== undefined && <span className="badge">{seasons === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: seasons })}</span>}
+                            <NewChaptersBadge count={newChapters} />
+                        </span>
+                    )}
+                    {actions !== undefined && <div className="job__actions library__footer">{actions}</div>}
+                </div>
+            </div>
+        </li>
+    );
+}
+
 function MangaRow({ manga }: MangaRowProps) {
     const t = useTranslator();
-    const groups = useMangaStore((state) => {
-        return state.groups;
-    });
-    const openFolder = useMangaStore((state) => {
-        return state.openFolder;
-    });
     const removeManga = useMangaStore((state) => {
         return state.removeManga;
     });
     const openManga = useMangaStore((state) => {
         return state.openManga;
     });
-    const done = downloadedCount(manga);
-    const inside = groups.filter((group) => {
-        return manga.groupIds.includes(group.id);
-    });
 
     return (
-        <li className="manga__entry" data-testid="manga-entry">
-            <div className="history__item row--link">
-                <MangaCover url={manga.thumbnailUrl} />
-                <div className="history__main">
-                    <h3 className="history__title">
-                        <RowLink
-                            label={`${t('manga.browse.open')}: ${manga.title}`}
-                            title={manga.title}
-                            onClick={() => {
-                                void openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
-                            }}
-                        >
-                            {manga.title}
-                        </RowLink>
-                    </h3>
-                    <span className="history__meta">{t('manga.library.progress', { done, total: manga.chapters.length })}</span>
-                    <NewChaptersBadge count={newChapterCount([manga])} />
-                    {inside.length > 0 && (
-                        <span className="history__meta" data-testid="manga-entry-groups">
-                            {inside
-                                .map((group) => {
-                                    return group.name;
-                                })
-                                .join(' · ')}
-                        </span>
-                    )}
-                </div>
-                <span className="anime__actions">
-                    <button
-                        type="button"
-                        className="btn btn--small"
-                        onClick={() => {
-                            void openFolder(manga.id);
-                        }}
-                    >
-                        {t('manga.library.openFolder')}
-                    </button>
-                    <MangaRemove
-                        label={t('manga.library.remove')}
-                        ariaLabel={`${t('manga.library.remove')}: ${manga.title}`}
-                        title={t('manga.remove.manga.title', { name: manga.title })}
-                        message={t('manga.remove.manga.message')}
-                        onRemove={() => {
-                            void removeManga(manga.id);
-                        }}
-                    />
-                </span>
-            </div>
-        </li>
+        <MangaCard
+            testId="manga-entry"
+            title={manga.title}
+            openLabel={`${t('manga.browse.open')}: ${manga.title}`}
+            thumbnailUrl={manga.thumbnailUrl}
+            done={downloadedCount(manga)}
+            total={manga.chapters.length}
+            newChapters={newChapterCount([manga])}
+            onOpen={() => {
+                void openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
+            }}
+            actions={
+                <MangaRemove
+                    label={t('manga.library.remove')}
+                    ariaLabel={`${t('manga.library.remove')}: ${manga.title}`}
+                    title={t('manga.remove.manga.title', { name: manga.title })}
+                    message={t('manga.remove.manga.message')}
+                    onRemove={() => {
+                        void removeManga(manga.id);
+                    }}
+                />
+            }
+        />
     );
 }
 
@@ -111,21 +120,17 @@ function SeriesRow({ group, onOpen }: SeriesRowProps) {
     const t = useTranslator();
     const totals = downloadedTotals(group.entries);
     return (
-        <li className="manga__entry" data-testid="manga-series">
-            <div className="history__item row--link">
-                <MangaCover url={group.entries[0]?.thumbnailUrl ?? null} />
-                <div className="history__main">
-                    <h3 className="history__title">
-                        <RowLink label={`${t('manga.series.open')}: ${group.series}`} title={group.series} onClick={onOpen}>
-                            {group.series}
-                        </RowLink>
-                    </h3>
-                    <span className="history__meta">{t('manga.library.progress', { done: totals.done, total: totals.total })}</span>
-                    <NewChaptersBadge count={newChapterCount(group.entries)} />
-                </div>
-                <span className="badge">{group.entries.length === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: group.entries.length })}</span>
-            </div>
-        </li>
+        <MangaCard
+            testId="manga-series"
+            title={group.series}
+            openLabel={`${t('manga.series.open')}: ${group.series}`}
+            thumbnailUrl={group.entries[0]?.thumbnailUrl ?? null}
+            done={totals.done}
+            total={totals.total}
+            newChapters={newChapterCount(group.entries)}
+            seasons={group.entries.length}
+            onOpen={onOpen}
+        />
     );
 }
 
@@ -254,7 +259,7 @@ export function MangaLibrary() {
             {hiddenCount > 0 && <p className="field__hint">{t('manga.library.hiddenGroups', { count: hiddenCount })}</p>}
             <span className="section-label">{t('manga.library.label', { count: cards.length })}</span>
             {shown.length === 0 && <p className="empty">{currentGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}
-            <ul className="history__list">
+            <ul className="cover-grid">
                 {cards.map((card) => {
                     const single = card.entries[0];
                     return card.key.startsWith('manga-') && single !== undefined ? (

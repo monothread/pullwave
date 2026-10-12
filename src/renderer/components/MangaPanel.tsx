@@ -10,14 +10,16 @@ import { MangaHistory } from './MangaHistory';
 import { MangaLibrary } from './MangaLibrary';
 import { MangaReader } from './MangaReader';
 import { activeJobCount } from './mangaText';
+import { MangaSearch } from './MangaSearch';
 import { MangaSetup } from './MangaSetup';
 import { MangaUpdates } from './MangaUpdates';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
 import { TabMenu } from './TabMenu';
 
-const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'manga.nav.updates' | 'manga.nav.library' | 'manga.nav.history' | 'manga.nav.extensions' | 'manga.nav.settings'; icon?: string }> = [
+const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'manga.nav.search' | 'manga.nav.updates' | 'manga.nav.library' | 'manga.nav.history' | 'manga.nav.extensions' | 'manga.nav.settings'; icon?: string }> = [
     { id: 'browse', label: 'manga.nav.browse' },
+    { id: 'search', label: 'manga.nav.search' },
     { id: 'updates', label: 'manga.nav.updates' },
     { id: 'library', label: 'manga.nav.library' },
     { id: 'history', label: 'manga.nav.history' },
@@ -158,6 +160,7 @@ export function MangaPanel() {
             <MangaCloudflareNotice />
             {status.server === 'starting' && <p className="empty">{t('manga.server.starting')}</p>}
             {view === 'browse' && <MangaBrowse />}
+            {view === 'search' && <MangaSearch />}
             {view === 'updates' && <MangaUpdates />}
             {view === 'library' && <MangaLibrary />}
             {view === 'history' && <MangaHistory />}

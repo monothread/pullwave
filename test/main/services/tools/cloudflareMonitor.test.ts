@@ -250,10 +250,19 @@ describe('the User-Agent of the solution of a check', () => {
         expect(COMPATIBLE_USER_AGENT).toBe('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36');
     });
 
-    it('is changed in the answer of a check, and nothing else in it', async () => {
+    it('is left as FlareSolverr gave it by default, so the clearance cookie goes with the User-Agent it was issued to', async () => {
         flare.reply = SOLVED;
         const address = await monitor.start();
         const response = await post(address, '/v1', { cmd: 'request.get', url: 'https://site.test/' });
+        expect(await response.text()).toBe(SOLVED);
+    });
+
+    it('is changed in the answer of a check, and nothing else in it, when the compatible one is asked for', async () => {
+        const compatible = monitorWith(COMPATIBLE_USER_AGENT);
+        flare.reply = SOLVED;
+        const address = await compatible.start();
+        const response = await post(address, '/v1', { cmd: 'request.get', url: 'https://site.test/' });
+        await compatible.stop();
         const answer = JSON.parse(await response.text()) as Record<string, unknown>;
         expect(answer).toEqual({
             status: 'ok',
@@ -281,20 +290,24 @@ describe('the User-Agent of the solution of a check', () => {
         await plain.stop();
     });
 
-    it('is not changed in what is not a check', async () => {
+    it('is not changed in what is not a check, even when one is given', async () => {
+        const compatible = monitorWith(COMPATIBLE_USER_AGENT);
         flare.reply = SOLVED;
-        const address = await monitor.start();
+        const address = await compatible.start();
         const response = await fetch(`${address}/`, { method: 'GET' });
         expect(await response.text()).toBe(SOLVED);
+        await compatible.stop();
     });
 
-    it('is not changed in an answer that has no solution or no User-Agent, or is not JSON', async () => {
-        const address = await monitor.start();
+    it('is not changed in an answer that has no solution or no User-Agent, or is not JSON, even when one is given', async () => {
+        const compatible = monitorWith(COMPATIBLE_USER_AGENT);
+        const address = await compatible.start();
         for (const reply of ['{"status":"error","message":"timeout"}', '{"status":"ok","solution":{"status":200}}', '{"solution":{"userAgent":5}}', 'not json']) {
             flare.reply = reply;
             const response = await post(address, '/v1', { cmd: 'request.get', url: 'https://site.test/' });
             expect(await response.text()).toBe(reply);
         }
+        await compatible.stop();
     });
 
     it('is changed by withCompatibleUserAgent alone, the same way', () => {

@@ -37,13 +37,33 @@ import type {
 import { resolveAppLanguage } from '../i18n/language';
 import { ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, localDetails, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter, type TermKind } from '../components/mangaFilterSearch';
+import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources } from '../components/mangaSearch';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
 import { useAppStore } from './appStore';
 
-export type MangaView = 'browse' | 'updates' | 'library' | 'history' | 'extensions' | 'settings' | 'downloads';
+export type MangaView = 'browse' | 'search' | 'updates' | 'library' | 'history' | 'extensions' | 'settings' | 'downloads';
 // The views the downloads screen can go back to.
 export type MangaBrowseView = Exclude<MangaView, 'downloads'>;
+
+// How the search of a manga went in one source.
+export type MangaSearchSourceStatus = 'waiting' | 'searching' | 'found' | 'none' | 'error';
+
+export interface MangaSearchSourceResult {
+    source: MangaSource;
+    status: MangaSearchSourceStatus;
+    items: MangaSummary[];
+    error: MangaError | null;
+}
+
+// The search of a manga in all the sources of a language. It stays as it is when the user goes to another tab.
+export interface MangaSearchState {
+    // The name in the field, and the one the results are for.
+    query: string;
+    searchedFor: string;
+    status: 'idle' | 'searching' | 'done';
+    results: MangaSearchSourceResult[];
+}
 
 export interface MangaBrowseState {
     sources: MangaSource[];
@@ -101,6 +121,8 @@ export interface MangaSourceSettingsState {
 
 // What `busy` holds while every extension is being updated.
 export const UPDATE_ALL_KEY = 'update-all';
+// How long a chapter that is complete stays in the list of the downloads, for its bar to glide to the end.
+export const DONE_JOB_LINGER_MS = 1500;
 
 export type ChapterSelectionKind = 'all' | 'none' | 'missing';
 
@@ -165,12 +187,17 @@ export interface MangaReaderState {
     entry?: 'start' | 'end';
 }
 
+const EMPTY_SEARCH: MangaSearchState = { query: '', searchedFor: '', status: 'idle', results: [] };
+
+// Which search is the current one: the answers of an older one are dropped.
+let searchRun = 0;
+
 const CLOSED_READER: MangaReaderState = { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null };
 
 interface MangaState {
     reader: MangaReaderState;
     // The view the manga that is open was opened from: the browse and the library each show only their own.
-    selectionFrom: 'browse' | 'library';
+    selectionFrom: 'browse' | 'search' | 'library';
     status: MangaStatusInfo;
     view: MangaBrowseView | 'downloads';
     // Where the downloads screen goes back to.
@@ -185,6 +212,7 @@ interface MangaState {
     librarySeries: string | null;
     jobs: MangaJob[];
     browse: MangaBrowseState;
+    search: MangaSearchState;
     selection: MangaSelection | null;
     // A manga of the library opens with what the library has while the source is asked in the background: whether it is being asked, and
     // why it could not be (the page stays as it is then).
@@ -244,6 +272,9 @@ interface MangaState {
 
     loadSources: () => Promise<void>;
     setSourceLanguage: (language: string) => void;
+    setSearchQuery: (query: string) => void;
+    // Looks for the name in every source of the language chosen (a few at a time), and shows how each one answered as it does.
+    runSearch: () => Promise<void>;
     // Opens a source, listing its popular (or latest) mangas, and goes back to the list of sources.
     openSource: (sourceId: string, mode?: MangaListKind) => void;
     closeSource: () => void;
@@ -415,6 +446,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         librarySeries: null,
         jobs: [],
         browse: { ...EMPTY_BROWSE, sourceLanguage: initialPrefs.sourceLanguage },
+        search: EMPTY_SEARCH,
         selection: null,
         selectionRefresh: { loading: false, error: null },
         sourceSettings: EMPTY_SOURCE_SETTINGS,
@@ -474,14 +506,20 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 }),
                 api.onJobUpdate((job) => {
                     if (job.status === 'done') {
-                        // A chapter that is complete says so and leaves the screen of the downloads: it is in the library.
+                        // A chapter that is complete says so and leaves the screen of the downloads (it is in the library), but not before
+                        // its bar has glided to the end.
                         set((state) => {
-                            return {
-                                jobs: state.jobs.filter((candidate) => {
-                                    return candidate.chapterId !== job.chapterId;
-                                })
-                            };
+                            return { jobs: upsertMangaJob(state.jobs, job) };
                         });
+                        setTimeout(() => {
+                            set((state) => {
+                                return {
+                                    jobs: state.jobs.filter((candidate) => {
+                                        return candidate.chapterId !== job.chapterId || candidate.status !== 'done';
+                                    })
+                                };
+                            });
+                        }, DONE_JOB_LINGER_MS);
                         toast('notice.downloadDone', { title: `${job.mangaTitle} · ${job.chapterName}` });
                         return;
                     }
@@ -716,6 +754,67 @@ export const useMangaStore = create<MangaState>((set, get) => {
             patchBrowse({ sourceLanguage: language });
         },
 
+        setSearchQuery: (query) => {
+            set((state) => {
+                return { search: { ...state.search, query } };
+            });
+        },
+
+        runSearch: async () => {
+            const query = get().search.query.trim();
+            if (query.length === 0) {
+                return;
+            }
+            searchRun += 1;
+            const run = searchRun;
+            const targets = searchableSources(get().browse.sources, get().browse.sourceLanguage, useAppStore.getState().settings.mangaShowAdult);
+            const patchResult = (sourceId: string, changes: Partial<MangaSearchSourceResult>): void => {
+                if (run !== searchRun) {
+                    return;
+                }
+                set((state) => {
+                    return {
+                        search: {
+                            ...state.search,
+                            results: state.search.results.map((result) => {
+                                return result.source.id === sourceId ? { ...result, ...changes } : result;
+                            })
+                        }
+                    };
+                });
+            };
+            set((state) => {
+                return {
+                    search: {
+                        ...state.search,
+                        searchedFor: query,
+                        status: 'searching',
+                        results: targets.map((source) => {
+                            return { source, status: 'waiting', items: [], error: null };
+                        })
+                    }
+                };
+            });
+            await runLimited(targets, SEARCH_CONCURRENCY, async (source) => {
+                if (run !== searchRun) {
+                    return;
+                }
+                patchResult(source.id, { status: 'searching' });
+                const response = await window.api.manga.list({ sourceId: source.id, kind: 'search', page: 1, query });
+                if (!response.ok) {
+                    patchResult(source.id, { status: 'error', error: response.error });
+                    return;
+                }
+                const items = response.value.items.slice(0, RESULTS_PER_SOURCE);
+                patchResult(source.id, { status: items.length > 0 ? 'found' : 'none', items });
+            });
+            if (run === searchRun) {
+                set((state) => {
+                    return { search: { ...state.search, status: 'done' } };
+                });
+            }
+        },
+
         openSource: (sourceId, mode = 'popular') => {
             patchBrowse({ sourceId, mode, query: '', filters: [], initialFilters: [], filtersStatus: 'idle', filtersOpen: false, status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
             set({ sourceSettings: EMPTY_SOURCE_SETTINGS, selection: null });
@@ -891,7 +990,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             set({
                 selection: local === null ? { manga, status: 'loading', details: null, chapters: [], selected: [], error: null } : { manga, status: 'ready', details: local.details, chapters: local.chapters, selected: [], error: null },
                 selectionRefresh: { loading: local !== null, error: null },
-                selectionFrom: fromLibrary ? 'library' : 'browse'
+                selectionFrom: fromLibrary ? 'library' : get().view === 'search' ? 'search' : 'browse'
             });
             const result = await window.api.manga.details(manga.remoteId);
             const current = get().selection;
@@ -1072,7 +1171,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             const { filters } = get().browse;
             const activated = activateFilter(filters, text, kind);
             if (activated !== null) {
-                patchBrowse({ filters: activated, filtersOpen: true });
+                patchBrowse({ filters: activated });
             }
             await get().runList();
         },

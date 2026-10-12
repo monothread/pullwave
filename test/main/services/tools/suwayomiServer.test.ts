@@ -87,7 +87,7 @@ describe('SuwayomiServer', () => {
         expect(server.baseUrl).toBe(address);
         expect(launches).toHaveLength(1);
         expect(launches[0]?.command).toBe(join(installDirectory, 'jre', 'bin', 'java'));
-        expect(launches[0]?.args).toEqual([`-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`, '-jar', join(installDirectory, 'bin', 'Suwayomi-Server.jar')]);
+        expect(launches[0]?.args).toEqual(['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`, '-jar', join(installDirectory, 'bin', 'Suwayomi-Server.jar')]);
         expect(launches[0]?.options).toMatchObject({ cwd: dataDirectory, windowsHide: true, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
         expect(statuses).toEqual(['starting', 'running']);
         expect(requests[0]?.url).toBe(`${address}/api/graphql`);
@@ -100,6 +100,26 @@ describe('SuwayomiServer', () => {
         expect(launches[0]?.options.env).toEqual({ HOME: '/home/me', LANG: 'en_US.UTF-8', LD_PRELOAD: join(installDirectory, 'bin', 'catch_abort.so') });
     });
 
+    it('keeps the server on IPv4 in every start, with or without the FlareSolverr, so the clearance of Cloudflare holds', async () => {
+        const withHelper = setup({
+            helperUrl: () => {
+                return Promise.resolve('http://127.0.0.1:8191');
+            }
+        });
+        await withHelper.server.ensureRunning();
+        await withHelper.server.stop();
+        await withHelper.server.ensureRunning();
+        const expectedWithHelper = ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${withHelper.dataDirectory}`, '-jar', join(withHelper.installDirectory, 'bin', 'Suwayomi-Server.jar')];
+        expect(
+            withHelper.launches.map((launch) => {
+                return launch.args;
+            })
+        ).toEqual([expectedWithHelper, expectedWithHelper]);
+        const withoutHelper = setup();
+        await withoutHelper.server.ensureRunning();
+        expect(withoutHelper.launches[0]?.args).toEqual(['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${withoutHelper.dataDirectory}`, '-jar', join(withoutHelper.installDirectory, 'bin', 'Suwayomi-Server.jar')]);
+    });
+
     it('uses the Windows names and no process group on Windows', async () => {
         const { server, launches, installDirectory } = setup({
             platform: 'win32',
@@ -107,6 +127,7 @@ describe('SuwayomiServer', () => {
         });
         await server.ensureRunning();
         expect(launches[0]?.command).toBe(join(installDirectory, 'jre', 'bin', 'java.exe'));
+        expect(launches[0]?.args[0]).toBe('-Djava.net.preferIPv4Stack=true');
         expect(launches[0]?.options).toMatchObject({ detached: false });
         expect(launches[0]?.options.env).toEqual({ SystemRoot: 'C:\\Windows', TEMP: 'C:\\Temp' });
     });

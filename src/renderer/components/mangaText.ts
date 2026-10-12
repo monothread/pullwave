@@ -127,6 +127,32 @@ export function libraryEntry(library: readonly LibraryManga[], sourceId: string,
     );
 }
 
+// A title as it is compared between sources: no case, no accents, and nothing but letters and numbers ("Re:Zero" and "Re Zero" are one).
+function foldTitle(title: string): string {
+    return title.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+// The mangas of the library that have this title but come from another source (the same manga, added from somewhere else).
+export function libraryEntriesByTitle(library: readonly LibraryManga[], title: string, sourceId: string): LibraryManga[] {
+    const wanted = foldTitle(title);
+    if (wanted.length === 0) {
+        return [];
+    }
+    return library.filter((manga) => {
+        return manga.sourceId !== sourceId && foldTitle(manga.title) === wanted;
+    });
+}
+
+// The names of the sources of those mangas, once each, in the order they come (the id of a source that is not listed stands for its name).
+export function otherSourceNames(entries: readonly LibraryManga[], sources: readonly MangaSource[]): string[] {
+    const names = entries.map((entry) => {
+        return sources.find((source) => {
+            return source.id === entry.sourceId;
+        })?.name ?? entry.sourceId;
+    });
+    return [...new Set(names)];
+}
+
 // How many chapters of a manga of the library are downloaded.
 export function downloadedCount(manga: Pick<LibraryManga, 'chapters'>): number {
     return manga.chapters.filter((chapter) => {

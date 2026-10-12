@@ -178,7 +178,9 @@ export class SuwayomiServer {
         const platform = this.deps.platform ?? process.platform;
         const java = join(this.deps.installDirectory, 'jre', 'bin', platform === 'win32' ? 'java.exe' : 'java');
         const jar = join(this.deps.installDirectory, 'bin', 'Suwayomi-Server.jar');
-        const args = [`-Dsuwayomi.tachidesk.config.server.rootDir=${this.deps.dataDirectory}`, '-jar', jar];
+        // Only IPv4: the FlareSolverr (a container) solves the Cloudflare check from its IPv4 address, and the clearance is tied to the address.
+        // A server that connected over IPv6 (the default of Java when the machine has it) was refused by the sites (HentaiRead).
+        const args = ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${this.deps.dataDirectory}`, '-jar', jar];
         const spawn = this.deps.spawn ?? nodeSpawn;
         const child = spawn(java, args, {
             cwd: this.deps.dataDirectory,

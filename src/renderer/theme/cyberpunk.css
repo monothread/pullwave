@@ -874,7 +874,7 @@ body::after {
 .cover { flex: none; width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid var(--line); background: var(--line); }
 .cover--none { display: flex; align-items: center; justify-content: center; padding: 4px; box-sizing: border-box; text-align: center; font-size: 10px; line-height: 1.25; letter-spacing: 0.5px; color: var(--muted); overflow: hidden; }
 /* Manga section: in a row (the library, the head of a manga) the cover has a size of its own; as wide as the row it would push the rest out. */
-.manga__entry .cover, .manga__head .cover { width: 72px; }
+.manga__head .cover { width: 72px; }
 .manga__head { align-items: flex-start; }
 /* The updates and the history are lists of rows with a small cover, split by day. */
 .manga__updates, .manga__history { display: flex; flex-direction: column; gap: 12px; }

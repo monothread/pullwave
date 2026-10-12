@@ -403,6 +403,16 @@ describe('MangaDetail in the library page', () => {
         expect(mock.api.manga.details).toHaveBeenCalledWith(7);
     });
 
+    it('opens the folder of the manga from its page in the library', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'OPEN FOLDER' }));
+        expect(mock.api.manga.openFolder).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.openFolder).toHaveBeenCalledWith(9);
+    });
+
     it('cannot go to the source when its extension is not installed, and says why', () => {
         useMangaStore.setState({ library: [SAVED] });
         open();
@@ -477,6 +487,64 @@ describe('MangaDetail in the page of the browse', () => {
         expect(screen.queryByRole('button', { name: /ADD MISSING CHAPTERS/ })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
         expect(mock.api.manga.addToLibrary).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: CHAPTERS });
+    });
+
+    describe('when the title is in the library from another source', () => {
+        const OTHER = makeLibraryManga([], { id: 5, sourceId: '999', remoteId: 70, title: 'one piece' });
+
+        beforeEach(() => {
+            useMangaStore.setState({ library: [OTHER], browse: { ...initialManga.browse, sources: [makeSource({ id: '999', name: 'Site B' })], sourcesStatus: 'ready' } });
+            mock.api.manga.addToLibrary.mockResolvedValue(makeLibraryManga([]));
+        });
+
+        it('says which source has it, and still offers to add', () => {
+            open();
+            render(<MangaDetail />);
+            expect(screen.getByText('Already in your library from: Site B.')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'GO TO LIBRARY' })).not.toBeInTheDocument();
+        });
+
+        it('asks before adding, and adds when confirmed', async () => {
+            const user = userEvent.setup();
+            open();
+            render(<MangaDetail />);
+            await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
+            expect(mock.api.manga.addToLibrary).not.toHaveBeenCalled();
+            const dialog = screen.getByRole('dialog', { name: 'ALREADY IN YOUR LIBRARY' });
+            expect(dialog).toHaveTextContent('"One Piece" is already in your library from Site B. Add it from this source too?');
+            await user.click(within(dialog).getByRole('button', { name: 'ADD ANYWAY' }));
+            expect(mock.api.manga.addToLibrary).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: CHAPTERS });
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+
+        it('adds nothing when the question is cancelled', async () => {
+            const user = userEvent.setup();
+            open();
+            render(<MangaDetail />);
+            await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
+            await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'CANCEL' }));
+            expect(mock.api.manga.addToLibrary).not.toHaveBeenCalled();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+
+        it('says nothing and adds at once when the same source already has it', async () => {
+            const user = userEvent.setup();
+            useMangaStore.setState({ library: [SAVED] });
+            open();
+            render(<MangaDetail />);
+            expect(screen.queryByText(/Already in your library from/)).not.toBeInTheDocument();
+            await user.click(screen.getByRole('button', { name: /ADD MISSING CHAPTERS/ }));
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(mock.api.manga.addToLibrary).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('has no button to open the folder in the page of the browse, even when the manga is in the library', () => {
+        useMangaStore.setState({ library: [SAVED] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: 'OPEN FOLDER' })).not.toBeInTheDocument();
     });
 
     it('goes to the library, on the page of the manga there, when it is in it', async () => {
@@ -554,7 +622,7 @@ describe('MangaDetail searching by what the source says', () => {
             ]
         });
         expect(useMangaStore.getState()).toMatchObject({ view: 'browse', selection: null });
-        expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'search', filtersOpen: true });
+        expect(useMangaStore.getState().browse).toMatchObject({ sourceId: '123', mode: 'search', filtersOpen: false });
     });
 
     it('does the same for the author when the source lists the authors as filters', async () => {

@@ -2,7 +2,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import { MangaSources, searchedSources, sourceLanguages } from '@renderer/components/MangaSources';
+import { createTranslator } from '@shared/i18n';
+import { MangaSources, searchedSources, sourceLanguageLabel, sourceLanguages } from '@renderer/components/MangaSources';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeSource } from '../../helpers/mangaFixtures';
@@ -29,6 +30,15 @@ describe('sourceLanguages', () => {
     it('lists each language once, by code, with the sources of several languages last', () => {
         expect(sourceLanguages(SOURCES)).toEqual(['en', 'pt', 'all']);
         expect(sourceLanguages([])).toEqual([]);
+    });
+});
+
+describe('sourceLanguageLabel', () => {
+    it('writes the code of a language in capitals, and says "several languages" for the sources that read sites in many', () => {
+        const t = createTranslator('en');
+        expect(sourceLanguageLabel('en', t)).toBe('EN');
+        expect(sourceLanguageLabel('pt', t)).toBe('PT');
+        expect(sourceLanguageLabel('all', t)).toBe(t('manga.sources.multiLanguage'));
     });
 });
 

@@ -56,7 +56,7 @@ describe('MangaPanel', () => {
                 .map((option) => {
                     return option.textContent;
                 })
-        ).toEqual(['BROWSE', 'UPDATES', 'LIBRARY', 'HISTORY', 'EXTENSIONS']);
+        ).toEqual(['BROWSE', 'SEARCH', 'UPDATES', 'LIBRARY', 'HISTORY', 'EXTENSIONS']);
         expect(menu).toHaveValue('browse');
         await user.selectOptions(menu, 'history');
         expect(useMangaStore.getState().view).toBe('history');
@@ -73,7 +73,7 @@ describe('MangaPanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['BROWSE', 'UPDATES', 'LIBRARY', 'HISTORY', 'EXTENSIONS', 'DOWNLOADS (0)', 'SETTINGS']);
+        ).toEqual(['BROWSE', 'SEARCH', 'UPDATES', 'LIBRARY', 'HISTORY', 'EXTENSIONS', 'DOWNLOADS (0)', 'SETTINGS']);
         expect(within(nav).getByRole('button', { name: 'BROWSE' })).toHaveAttribute('aria-current', 'page');
         expect(within(nav).getByRole('button', { name: 'SETTINGS' })).toHaveClass('tab--icon');
         expect(await screen.findByTestId('manga-source')).toBeInTheDocument();

@@ -2,7 +2,7 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaError, MangaFilter } from '@shared/manga';
 import { useAppStore } from '@renderer/store/appStore';
-import { UPDATE_ALL_KEY, upsertMangaJob, useMangaStore } from '@renderer/store/mangaStore';
+import { DONE_JOB_LINGER_MS, UPDATE_ALL_KEY, upsertMangaJob, useMangaStore } from '@renderer/store/mangaStore';
 import type { MangaSourcePreference } from '@shared/manga';
 import { makeChapter, makeChapterRecord, makeDetails, makeExtension, makeLibraryManga, makeMangaJob, makeMangaStatus, makeSource, makeSummary, makeTool } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -149,16 +149,45 @@ describe('mangaStore init', () => {
             ).toEqual([[1, 50], [2, 5]]);
         });
 
-        it('takes a finished job off the list and says so', () => {
-            mock.emitMangaJob(makeMangaJob({ chapterId: 1 }));
-            mock.emitMangaJob(makeMangaJob({ chapterId: 2 }));
-            mock.emitMangaJob(makeMangaJob({ chapterId: 1, status: 'done' }));
-            expect(
-                state().jobs.map((job) => {
-                    return job.chapterId;
-                })
-            ).toEqual([2]);
-            expect(toasts()).toEqual(['Download complete: One Piece · Romance Dawn']);
+        it('says a job is complete, keeps it a moment for its bar to reach the end, and then takes it off the list', () => {
+            vi.useFakeTimers();
+            try {
+                mock.emitMangaJob(makeMangaJob({ chapterId: 1 }));
+                mock.emitMangaJob(makeMangaJob({ chapterId: 2 }));
+                mock.emitMangaJob(makeMangaJob({ chapterId: 1, status: 'done', percent: 100 }));
+                expect(
+                    state().jobs.map((job) => {
+                        return [job.chapterId, job.status, job.percent];
+                    })
+                ).toEqual([[1, 'done', 100], [2, 'running', 25]]);
+                expect(toasts()).toEqual(['Download complete: One Piece · Romance Dawn']);
+                vi.advanceTimersByTime(DONE_JOB_LINGER_MS - 1);
+                expect(state().jobs).toHaveLength(2);
+                vi.advanceTimersByTime(1);
+                expect(
+                    state().jobs.map((job) => {
+                        return job.chapterId;
+                    })
+                ).toEqual([2]);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('keeps a chapter that is tried again while its finished job was waiting to leave', () => {
+            vi.useFakeTimers();
+            try {
+                mock.emitMangaJob(makeMangaJob({ chapterId: 1, status: 'done', percent: 100 }));
+                mock.emitMangaJob(makeMangaJob({ chapterId: 1, status: 'running', percent: 20 }));
+                vi.advanceTimersByTime(DONE_JOB_LINGER_MS);
+                expect(
+                    state().jobs.map((job) => {
+                        return [job.chapterId, job.status, job.percent];
+                    })
+                ).toEqual([[1, 'running', 20]]);
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('reads the library again when it changes', async () => {
@@ -1977,7 +2006,7 @@ describe('mangaStore searching by a term', () => {
     it('turns on the filter of a genre, and not the text of the search', async () => {
         await state().searchByTerm('Action');
         expect(state().view).toBe('browse');
-        expect(state().browse).toMatchObject({ sourceId: '123', mode: 'search', query: '', filtersOpen: true });
+        expect(state().browse).toMatchObject({ sourceId: '123', mode: 'search', query: '', filtersOpen: false });
         expect(state().browse.filters).toEqual([FILTERS[0], { type: 'group', name: 'Genre', filters: [{ type: 'tristate', name: 'Action', value: 'include' }, FILTERS[1] && (FILTERS[1] as { filters: MangaFilter[] }).filters[1]] }]);
         expect(mock.api.manga.list).toHaveBeenLastCalledWith(expect.objectContaining({ sourceId: '123', kind: 'search', query: '' }));
     });
@@ -2030,5 +2059,163 @@ describe('mangaStore searching by a term', () => {
         await state().searchByTerm('Action');
         expect(mock.api.manga.list).not.toHaveBeenCalled();
         expect(state().view).toBe('browse');
+    });
+});
+
+describe('mangaStore searching a manga in all the sources', () => {
+    const SOURCES = [
+        makeSource({ id: '5', name: 'Site A', lang: 'en' }),
+        makeSource({ id: '6', name: 'Site B', lang: 'en' }),
+        makeSource({ id: '7', name: 'Site C', lang: 'pt' }),
+        makeSource({ id: '8', name: 'Site D', lang: 'en', contentWarning: 'NSFW' })
+    ];
+
+    beforeEach(() => {
+        useMangaStore.setState({ browse: { ...state().browse, sources: SOURCES, sourcesStatus: 'ready', sourceLanguage: 'en' } });
+        mock.api.manga.list.mockImplementation(async (request) => {
+            return { ok: true, value: { items: request.sourceId === '6' ? [] : [makeSummary({ remoteId: 1, sourceId: request.sourceId })], hasNextPage: false } };
+        });
+    });
+
+    function summary(): Array<[string, string, number]> {
+        return state().search.results.map((result) => {
+            return [result.source.id, result.status, result.items.length];
+        });
+    }
+
+    it('starts without a search', () => {
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
+    });
+
+    it('keeps the name typed', () => {
+        state().setSearchQuery('one piece');
+        expect(state().search.query).toBe('one piece');
+    });
+
+    it('searches the sources of the language, with the name trimmed, and says how each one answered', async () => {
+        state().setSearchQuery('  one piece ');
+        await state().runSearch();
+        expect(mock.api.manga.list).toHaveBeenCalledTimes(2);
+        expect(mock.api.manga.list).toHaveBeenNthCalledWith(1, { sourceId: '5', kind: 'search', page: 1, query: 'one piece' });
+        expect(mock.api.manga.list).toHaveBeenNthCalledWith(2, { sourceId: '6', kind: 'search', page: 1, query: 'one piece' });
+        expect(state().search).toMatchObject({ query: '  one piece ', searchedFor: 'one piece', status: 'done' });
+        expect(summary()).toEqual([['5', 'found', 1], ['6', 'none', 0]]);
+        expect(state().search.results[0]!.items).toEqual([makeSummary({ remoteId: 1, sourceId: '5' })]);
+    });
+
+    it('searches the sources for adults only when they are asked for', async () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        state().setSearchQuery('x');
+        await state().runSearch();
+        expect(summary().map((entry) => {
+            return entry[0];
+        })).toEqual(['5', '6', '8']);
+    });
+
+    it('searches every language when none is chosen', async () => {
+        useMangaStore.setState({ browse: { ...state().browse, sourceLanguage: 'all-languages' } });
+        state().setSearchQuery('x');
+        await state().runSearch();
+        expect(summary().map((entry) => {
+            return entry[0];
+        })).toEqual(['5', '6', '7']);
+    });
+
+    it('shows only twelve results of a source', async () => {
+        mock.api.manga.list.mockResolvedValue({ ok: true, value: { items: Array.from({ length: 20 }, (_unused, index) => {return makeSummary({ remoteId: index + 1 })}), hasNextPage: true } });
+        state().setSearchQuery('x');
+        await state().runSearch();
+        expect(state().search.results[0]!.items).toHaveLength(12);
+        expect(state().search.results[0]!.items.at(-1)!.remoteId).toBe(12);
+    });
+
+    it('keeps a source that failed as an error, with why, and goes on with the others', async () => {
+        mock.api.manga.list.mockImplementation(async (request) => {
+            return request.sourceId === '5' ? { ok: false, error: FAILURE } : { ok: true, value: { items: [makeSummary({ remoteId: 2, sourceId: '6' })], hasNextPage: false } };
+        });
+        state().setSearchQuery('x');
+        await state().runSearch();
+        expect(summary()).toEqual([['5', 'error', 0], ['6', 'found', 1]]);
+        expect(state().search.results[0]!.error).toEqual(FAILURE);
+        expect(state().search.results[1]!.error).toBeNull();
+        expect(state().search.status).toBe('done');
+    });
+
+    it('asks two sources at a time', async () => {
+        useMangaStore.setState({ browse: { ...state().browse, sourceLanguage: 'all-languages' } });
+        const answers: Array<() => void> = [];
+        mock.api.manga.list.mockImplementation(() => {
+            return new Promise((resolve) => {
+                answers.push(() => {
+                    resolve({ ok: true, value: { items: [], hasNextPage: false } });
+                });
+            });
+        });
+        state().setSearchQuery('x');
+        const searching = state().runSearch();
+        expect(state().search.status).toBe('searching');
+        expect(summary()).toEqual([['5', 'searching', 0], ['6', 'searching', 0], ['7', 'waiting', 0]]);
+        expect(answers).toHaveLength(2);
+        answers[0]!();
+        await vi.waitFor(() => {
+            expect(answers).toHaveLength(3);
+        });
+        expect(summary()).toEqual([['5', 'none', 0], ['6', 'searching', 0], ['7', 'searching', 0]]);
+        answers[1]!();
+        answers[2]!();
+        await searching;
+        expect(state().search.status).toBe('done');
+    });
+
+    it('drops the answers of a search that a newer one replaced', async () => {
+        const answers = new Map<string, Array<() => void>>();
+        mock.api.manga.list.mockImplementation((request) => {
+            return new Promise((resolve) => {
+                answers.set(`${request.query}:${request.sourceId}`, [
+                    () => {
+                        resolve({ ok: true, value: { items: [makeSummary({ remoteId: 1, title: request.query, sourceId: request.sourceId })], hasNextPage: false } });
+                    }
+                ]);
+            });
+        });
+        state().setSearchQuery('old');
+        const first = state().runSearch();
+        state().setSearchQuery('new');
+        const second = state().runSearch();
+        answers.get('old:5')![0]!();
+        answers.get('old:6')![0]!();
+        await first;
+        expect(state().search).toMatchObject({ searchedFor: 'new', status: 'searching' });
+        expect(summary()).toEqual([['5', 'searching', 0], ['6', 'searching', 0]]);
+        expect(mock.api.manga.list).toHaveBeenCalledTimes(4);
+        answers.get('new:5')![0]!();
+        answers.get('new:6')![0]!();
+        await second;
+        expect(state().search.status).toBe('done');
+        expect(state().search.results[0]!.items[0]!.title).toBe('new');
+    });
+
+    it('does not search with an empty name', async () => {
+        state().setSearchQuery('   ');
+        await state().runSearch();
+        expect(mock.api.manga.list).not.toHaveBeenCalled();
+        expect(state().search.status).toBe('idle');
+    });
+
+    it('finishes at once when there is no source to search', async () => {
+        useMangaStore.setState({ browse: { ...state().browse, sources: [] } });
+        state().setSearchQuery('x');
+        await state().runSearch();
+        expect(state().search).toMatchObject({ searchedFor: 'x', status: 'done', results: [] });
+    });
+
+    it('opens a manga from the search as one of the search, and a manga from the browse as one of the browse', async () => {
+        mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: [] } });
+        useMangaStore.setState({ view: 'search' });
+        await state().openManga(makeSummary());
+        expect(state().selectionFrom).toBe('search');
+        useMangaStore.setState({ view: 'browse' });
+        await state().openManga(makeSummary());
+        expect(state().selectionFrom).toBe('browse');
     });
 });

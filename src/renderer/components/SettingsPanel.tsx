@@ -191,6 +191,9 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const migrateFolder = useAnimeStore((state) => {
         return state.migrateFolder;
     });
+    const mangaLibraryCount = useMangaStore((state) => {
+        return state.library.length;
+    });
     const mangaMigration = useMangaStore((state) => {
         return state.migration;
     });
@@ -247,6 +250,8 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const animeFolderLocked = library.length > 0;
     const migrating = migration !== null;
 
+    // With manga in the library the folder changes only by a migration, which moves the files too.
+    const mangaFolderLocked = mangaLibraryCount > 0;
     const mangaMigrating = mangaMigration !== null;
 
     async function handleMigrateMangaFolder(): Promise<void> {
@@ -697,6 +702,8 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             label={t('settings.mangaDir')}
                             value={draft.mangaDirectory}
                             placeholder={t('settings.mangaDir.placeholder')}
+                            hint={mangaFolderLocked ? t('settings.mangaDir.locked') : undefined}
+                            disabled={mangaFolderLocked}
                             onChange={(value) => {
                                 edit('mangaDirectory', value);
                             }}
@@ -704,6 +711,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         <button
                             type="button"
                             className="btn btn--small"
+                            disabled={mangaFolderLocked}
                             onClick={() => {
                                 void handleChooseMangaDirectory();
                             }}

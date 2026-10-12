@@ -5,12 +5,11 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
+import { RESULTS_PER_SOURCE } from './mangaSearch';
 import { listedSources, mangaErrorKey } from './mangaText';
 import { RowLink } from './RowLink';
 
 const ALL_SOURCES = 'all';
-// How many results of each source are shown.
-const RESULTS_PER_SOURCE = 12;
 
 interface MangaMigrateSourceProps {
     manga: LibraryManga;

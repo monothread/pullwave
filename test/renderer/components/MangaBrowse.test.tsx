@@ -177,6 +177,19 @@ describe('MangaBrowse a source', () => {
         expect(within(cards[1]!).getByText('IN LIBRARY')).toBeInTheDocument();
     });
 
+    it('marks the mangas that are in the library from another source', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord()], { sourceId: '999', remoteId: 50, title: 'bleach' })] });
+        mock.api.manga.list.mockResolvedValue({ ok: true, value: { items: [makeSummary({ remoteId: 1, title: 'Naruto', sourceId: '123' }), makeSummary({ remoteId: 2, title: 'Bleach', sourceId: '123' })], hasNextPage: false } });
+        render(<MangaBrowse />);
+        await openSourceNamed(user, 'Site A');
+        await screen.findByText('Naruto', { selector: '.row-link__text' });
+        const cards = screen.getAllByRole('listitem');
+        expect(within(cards[0]!).queryByText('IN LIBRARY (OTHER SOURCE)')).not.toBeInTheDocument();
+        expect(within(cards[1]!).getByText('IN LIBRARY (OTHER SOURCE)')).toBeInTheDocument();
+        expect(within(cards[1]!).queryByText('IN LIBRARY')).not.toBeInTheDocument();
+    });
+
     describe('the next page', () => {
         type Observed = { callback: IntersectionObserverCallback; target: Element | null; disconnected: boolean };
         let observers: Observed[] = [];

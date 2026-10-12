@@ -18,7 +18,7 @@ export interface MangaPage {
     mode: MangaListKind;
     settingsOpen: boolean;
     selection: MangaSelection | null;
-    selectionFrom: 'browse' | 'library';
+    selectionFrom: 'browse' | 'search' | 'library';
     // The series open in the library, and the group the library is limited to.
     librarySeries: string | null;
     libraryGroup: number | null;

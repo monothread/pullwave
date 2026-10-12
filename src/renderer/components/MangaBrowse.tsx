@@ -1,17 +1,16 @@
 import { useEffect } from 'react';
-import type { MangaListKind } from '@shared/manga';
+import type { MangaListKind, MangaSummary } from '@shared/manga';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
-import { MangaCover } from './MangaCover';
 import { MangaDetail } from './MangaDetail';
 import { MangaFilters } from './MangaFilters';
 import { MangaSources } from './MangaSources';
 import { MangaSourceSettings } from './MangaSourceSettings';
-import { isCloudflareError, libraryEntry } from './mangaText';
+import { isCloudflareError } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
-import { RowLink } from './RowLink';
+import { MangaResultCard } from './MangaResultCard';
 import { SETTINGS_ICON } from './TabButton';
 
 const MODES: ReadonlyArray<{ id: MangaListKind; label: 'manga.browse.mode.popular' | 'manga.browse.mode.latest' | 'manga.browse.mode.search' }> = [
@@ -99,6 +98,10 @@ export function MangaBrowse() {
         sourceId !== null && hasNextPage && !loadingMore && status === 'done',
         items.length
     );
+
+    const openFound = (found: MangaSummary): void => {
+        void openManga(found);
+    };
 
     if (selection !== null && selectionFrom === 'browse') {
         return <MangaDetail />;
@@ -208,30 +211,7 @@ export function MangaBrowse() {
                     <span className="section-label">{t('manga.browse.results', { count: items.length })}</span>
                     <ul className="cover-grid">
                         {items.map((item) => {
-                            const saved = libraryEntry(library, item.sourceId, item.remoteId);
-                            return (
-                                <li key={item.remoteId} className="history__item cover-card row--link">
-                                    <MangaCover url={item.thumbnailUrl} />
-                                    <div className="history__main">
-                                        <span className="history__title">
-                                            <RowLink
-                                                label={`${t('manga.browse.open')}: ${item.title}`}
-                                                title={item.title}
-                                                onClick={() => {
-                                                    void openManga(item);
-                                                }}
-                                            >
-                                                {item.title}
-                                            </RowLink>
-                                        </span>
-                                        {saved && (
-                                            <div className="cover-card__footer">
-                                                <span className="badge badge--done">{t('manga.browse.inLibrary')}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </li>
-                            );
+                            return <MangaResultCard key={item.remoteId} item={item} library={library} onOpen={openFound} />;
                         })}
                     </ul>
                     {hasNextPage && (

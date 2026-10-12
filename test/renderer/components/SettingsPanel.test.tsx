@@ -7,6 +7,7 @@ import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { INITIAL_APP_UPDATE, useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { ANI_CLI_INFO, makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
+import { makeChapterRecord, makeLibraryManga } from '../../helpers/mangaFixtures';
 import { APP_UPDATE_IDLE, installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -1579,6 +1580,63 @@ describe('SettingsPanel manga section', () => {
         const button = screen.getByRole('button', { name: 'MOVING… 3/10' });
         expect(button).toBeDisabled();
         useMangaStore.setState({ migration: null });
+    });
+
+    it('leaves the manga folder free to edit while the library is empty', () => {
+        render(<SettingsPanel scope="manga" />);
+        expect(screen.getByLabelText('Manga folder')).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'BROWSE' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'MIGRATE FOLDER' })).toBeEnabled();
+        expect(screen.queryByText('With mangas in the library, the folder only changes through MIGRATE FOLDER, which moves the files too.')).not.toBeInTheDocument();
+    });
+
+    describe('with mangas in the library', () => {
+        beforeEach(() => {
+            useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, status: 'done' })])] });
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaDirectory: '/media/manga' } });
+        });
+
+        afterEach(() => {
+            useMangaStore.setState({ library: [] });
+        });
+
+        it('fixes the folder: it cannot be typed nor browsed, and the hint says to use MIGRATE FOLDER', () => {
+            render(<SettingsPanel scope="manga" />);
+            expect(screen.getByLabelText('Manga folder')).toBeDisabled();
+            expect(screen.getByLabelText('Manga folder')).toHaveValue('/media/manga');
+            expect(screen.getByRole('button', { name: 'BROWSE' })).toBeDisabled();
+            expect(screen.getByText('With mangas in the library, the folder only changes through MIGRATE FOLDER, which moves the files too.')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'MIGRATE FOLDER' })).toBeEnabled();
+        });
+
+        it('does not open the dialog to choose a folder nor save anything', () => {
+            render(<SettingsPanel scope="manga" />);
+            fireEvent.click(screen.getByRole('button', { name: 'BROWSE' }));
+            expect(mock.api.chooseDirectory).not.toHaveBeenCalled();
+            expect(mock.api.saveSettings).not.toHaveBeenCalled();
+        });
+
+        it('still migrates, then shows and saves the new folder', async () => {
+            mock.api.manga.migrateFolder.mockResolvedValue({ ok: true, chapters: 1, files: 1, destination: '/mnt/new-manga' });
+            render(<SettingsPanel scope="manga" />);
+            fireEvent.click(screen.getByRole('button', { name: 'MIGRATE FOLDER' }));
+            await flushPromises();
+            expect(mock.api.manga.migrateFolder).toHaveBeenCalledTimes(1);
+            expect(screen.getByLabelText('Manga folder')).toHaveValue('/mnt/new-manga');
+            expect(screen.getByLabelText('Manga folder')).toBeDisabled();
+            expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaDirectory: '/mnt/new-manga' });
+        });
+
+        it('frees the folder again when the library is emptied', () => {
+            const { rerender } = render(<SettingsPanel scope="manga" />);
+            expect(screen.getByLabelText('Manga folder')).toBeDisabled();
+            act(() => {
+                useMangaStore.setState({ library: [] });
+            });
+            rerender(<SettingsPanel scope="manga" />);
+            expect(screen.getByLabelText('Manga folder')).toBeEnabled();
+            expect(screen.getByRole('button', { name: 'BROWSE' })).toBeEnabled();
+        });
     });
 
     it('saves the folder only after the delay', async () => {
