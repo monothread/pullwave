@@ -4,12 +4,14 @@ import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import type { ToolState } from '@shared/tools';
 import {
     createDockerRunner,
+    defaultIsProcessAlive,
     FLARESOLVERR_CONTAINER_LABEL,
     FLARESOLVERR_IMAGE,
     FLARESOLVERR_IMAGE_NAME,
     FLARESOLVERR_VERSION,
     FlareSolverrDocker,
-    FlareSolverrDockerError
+    FlareSolverrDockerError,
+    ownerPid
 } from '@main/services/tools/flaresolverrDocker';
 import { fakeDocker, type FakeDockerOptions } from '../../../helpers/fakeDocker';
 
@@ -157,30 +159,75 @@ describe('FlareSolverrDocker container', () => {
         ]);
     });
 
-    it('removes the containers an earlier run left, before it starts its own', async () => {
+    function withContainers(listing: string, alive: number[]) {
         const docker = fakeDocker({ imagePresent: true });
         const calls = docker.calls;
         const helper = new FlareSolverrDocker({
             docker: (args, onLine) => {
                 if (args[0] === 'ps') {
                     calls.push(args);
-                    return Promise.resolve({ code: 0, stdout: 'old1\nold2\n', stderr: '' });
+                    return Promise.resolve({ code: 0, stdout: listing, stderr: '' });
                 }
                 return docker.runner(args, onLine);
+            },
+            isProcessAlive: (pid) => {
+                return alive.includes(pid);
             },
             fetchImpl: okFetch(),
             findFreePort: () => {
                 return Promise.resolve(45900);
             }
         });
+        return { helper, calls };
+    }
+
+    it('removes the containers of runs that are over, before it starts its own', async () => {
+        const { helper, calls } = withContainers('old1 pullwave-flaresolverr-4001\nold2 pullwave-flaresolverr-4002\n', []);
         await helper.prepare();
         await helper.ensureRunning();
         const names = calls.map((call) => {
             return call[0];
         });
-        expect(calls).toContainEqual(['ps', '--all', '--quiet', '--filter', `label=${FLARESOLVERR_CONTAINER_LABEL}`]);
+        expect(calls).toContainEqual(['ps', '--all', '--filter', `label=${FLARESOLVERR_CONTAINER_LABEL}`, '--format', '{{.ID}} {{.Names}}']);
         expect(calls).toContainEqual(['rm', '--force', 'old1', 'old2']);
         expect(names.indexOf('rm')).toBeLessThan(names.indexOf('run'));
+    });
+
+    it('leaves alone the container of another copy of the app that is still running', async () => {
+        const { helper, calls } = withContainers('mine1 pullwave-flaresolverr-4001\nlive1 pullwave-flaresolverr-4002\n', [4002]);
+        await helper.removeOrphans();
+        expect(calls).toContainEqual(['rm', '--force', 'mine1']);
+        expect(
+            calls.some((call) => {
+                return call.includes('live1');
+            })
+        ).toBe(false);
+    });
+
+    it('removes nothing when every container belongs to a copy that is running', async () => {
+        const { helper, calls } = withContainers('live1 pullwave-flaresolverr-4002\n', [4002]);
+        await helper.removeOrphans();
+        expect(
+            calls.filter((call) => {
+                return call[0] === 'rm';
+            })
+        ).toEqual([]);
+    });
+
+    it('removes a container with no process id in its name, and the one left under its own process id', async () => {
+        const { helper, calls } = withContainers(`odd1 flaresolverr-old\nself1 pullwave-flaresolverr-${String(process.pid)}\n`, [process.pid]);
+        await helper.removeOrphans();
+        expect(calls).toContainEqual(['rm', '--force', 'odd1', 'self1']);
+    });
+
+    it('ignores empty lines of the list', async () => {
+        const { helper, calls } = withContainers('\n  \n', []);
+        await helper.removeOrphans();
+        expect(
+            calls.filter((call) => {
+                return call[0] === 'rm';
+            })
+        ).toEqual([]);
     });
 
     it('leaves the containers alone when it cannot list them', async () => {
@@ -473,3 +520,30 @@ describe('FlareSolverrDocker another version', () => {
         expect(state.status).toBe('missing');
     });
 });
+
+describe('who a container of the helper belongs to', () => {
+    it('reads the process id at the end of the name', () => {
+        expect(ownerPid('pullwave-flaresolverr-1464512')).toBe(1464512);
+        expect(ownerPid(' pullwave-flaresolverr-77 ')).toBe(77);
+    });
+
+    it('has none for a name that does not end with one', () => {
+        expect(ownerPid('flaresolverr')).toBeNull();
+        expect(ownerPid('pullwave-flaresolverr-x1')).toBeNull();
+        expect(ownerPid('')).toBeNull();
+    });
+
+    it('knows whether a process is alive', () => {
+        expect(defaultIsProcessAlive(process.pid)).toBe(true);
+        expect(defaultIsProcessAlive(2 ** 22 + 12345)).toBe(false);
+    });
+
+    it('takes a process it is not allowed to signal for alive', () => {
+        const kill = vi.spyOn(process, 'kill').mockImplementation(() => {
+            throw Object.assign(new Error('not allowed'), { code: 'EPERM' });
+        });
+        expect(defaultIsProcessAlive(1)).toBe(true);
+        kill.mockRestore();
+    });
+});
+

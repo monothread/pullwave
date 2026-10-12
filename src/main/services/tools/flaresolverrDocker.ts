@@ -86,6 +86,24 @@ export interface FlareSolverrDockerDependencies {
     version?: string;
     startTimeoutMs?: number;
     pollIntervalMs?: number;
+    // Whether a process of this machine is alive (the owner of a container is told by the process id in its name).
+    isProcessAlive?: (pid: number) => boolean;
+}
+
+// The process id a container of the app carries in its name (`pullwave-flaresolverr-<pid>`), or null when it has none.
+export function ownerPid(containerName: string): number | null {
+    const match = /-(\d+)$/.exec(containerName.trim());
+    return match === null ? null : Number(match[1]);
+}
+
+export function defaultIsProcessAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        // Not allowed to signal it means it is there, owned by another user.
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
 }
 
 function sleep(milliseconds: number): Promise<void> {
@@ -269,15 +287,29 @@ export class FlareSolverrDocker {
         }
     }
 
-    // Removes containers an earlier run of the app left behind (it was killed before it could stop them).
+    // Removes containers an earlier run of the app left behind (it was killed before it could stop them). The container of another copy of the
+    // app that is running (its process is alive) is not touched, and neither is the one this app runs.
     async removeOrphans(): Promise<void> {
-        const listed = await this.docker(['ps', '--all', '--quiet', '--filter', `label=${FLARESOLVERR_CONTAINER_LABEL}`]);
+        const listed = await this.docker(['ps', '--all', '--filter', `label=${FLARESOLVERR_CONTAINER_LABEL}`, '--format', '{{.ID}} {{.Names}}']);
         if (listed.code !== 0) {
             return;
         }
-        const ids = listed.stdout.split(/\s+/).filter((id) => {
-            return id.length > 0;
-        });
+        const alive = this.deps.isProcessAlive ?? defaultIsProcessAlive;
+        const ids = listed.stdout
+            .split('\n')
+            .map((line) => {
+                return line.trim().split(/\s+/);
+            })
+            .filter(([id, name]) => {
+                if (id === undefined || id.length === 0 || id === this.containerId) {
+                    return false;
+                }
+                const pid = name === undefined ? null : ownerPid(name);
+                return pid === null || pid === process.pid || !alive(pid);
+            })
+            .map(([id]) => {
+                return id as string;
+            });
         if (ids.length > 0) {
             await this.docker(['rm', '--force', ...ids]);
         }

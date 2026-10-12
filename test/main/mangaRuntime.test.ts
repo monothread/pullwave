@@ -774,7 +774,7 @@ describe('createMangaRuntime Cloudflare helper', () => {
         await runtime.service.install();
         await runtime.service.requireServer();
         const port = (flare.address() as AddressInfo).port;
-        expect(docker.calls).toContainEqual(['ps', '--all', '--quiet', '--filter', 'label=pullwave.helper=flaresolverr']);
+        expect(docker.calls).toContainEqual(['ps', '--all', '--filter', 'label=pullwave.helper=flaresolverr', '--format', '{{.ID}} {{.Names}}']);
         expect(docker.calls).toContainEqual([
             'run',
             '--detach',

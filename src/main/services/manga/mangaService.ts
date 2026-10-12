@@ -190,7 +190,12 @@ export class MangaService {
             return { ...base, state: 'starting' };
         }
         if (helper.status === 'running' && helper.baseUrl !== null) {
-            return probeHelper(helper.baseUrl, false, helper.version);
+            const probed = await probeHelper(helper.baseUrl, false, helper.version);
+            if (probed.state === 'healthy' || !start) {
+                return probed;
+            }
+            // It says it runs but does not answer (its container is gone): CHECK NOW stops what is left and starts it again.
+            await helper.stop();
         }
         if (!start) {
             return { ...base, state: 'stopped' };

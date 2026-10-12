@@ -282,6 +282,44 @@ describe('MangaService health of the helper', () => {
         expect(helper.ensureRunning).not.toHaveBeenCalled();
     });
 
+    it('starts the helper again when it says it runs but does not answer, only when the user asks to check', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(() => {
+                return Promise.reject(new Error('ECONNREFUSED'));
+            })
+        );
+        const helper = makeHelper({ status: 'running', baseUrl: HELPER_URL });
+        const { service } = setup({ helper });
+        const looked = (await service.health(false)).helper;
+        expect(looked).toMatchObject({ state: 'unhealthy', message: 'ECONNREFUSED' });
+        expect(helper.stop).not.toHaveBeenCalled();
+        expect(helper.ensureRunning).not.toHaveBeenCalled();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(() => {
+                return Promise.resolve(answer({ version: '3.5.2' }));
+            })
+        );
+        expect((await service.health(true)).helper).toEqual({ state: 'healthy', version: '3.5.2', message: null, external: false });
+        expect(helper.stop).not.toHaveBeenCalled();
+    });
+
+    it('stops what is left of a helper that does not answer and starts it again', async () => {
+        const answers = [Promise.reject(new Error('ECONNREFUSED')), Promise.resolve(answer({ version: '3.5.2' }))];
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(() => {
+                return answers.shift()!;
+            })
+        );
+        const helper = makeHelper({ status: 'running', baseUrl: HELPER_URL });
+        const { service } = setup({ helper });
+        expect((await service.health(true)).helper).toEqual({ state: 'healthy', version: '3.5.2', message: null, external: false });
+        expect(helper.stop).toHaveBeenCalledTimes(1);
+        expect(helper.ensureRunning).toHaveBeenCalledTimes(1);
+    });
+
     it('is stopped when it is, and starts it only when the user asks to check', async () => {
         const fetchMock = vi.fn(() => {
             return Promise.resolve(answer({ version: '3.5.2' }));
