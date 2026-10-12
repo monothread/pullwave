@@ -1384,11 +1384,12 @@ describe('SettingsPanel manga section', () => {
         expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
     });
 
-    it('shows the status and the updates of the programs in the manga scope, before the stores', async () => {
+    it('shows the extension stores above the status of the programs in the manga scope, with no section for updates', async () => {
         render(<SettingsPanel scope="manga" />);
+        const stores = screen.getByText('Extension stores');
         const status = screen.getByRole('group', { name: 'Status of the programs' });
-        const updates = screen.getByRole('group', { name: 'Updates of the programs' });
-        expect(status.compareDocumentPosition(updates) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(stores.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'CHECK NOW' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeInTheDocument();
         await vi.waitFor(() => {

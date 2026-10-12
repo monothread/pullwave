@@ -408,7 +408,7 @@ test.describe('manga section', () => {
         expect(fake.graphqlRequests('removeExtensionStore')[0]?.variables).toEqual({ indexUrl: STORE_URL });
     });
 
-    test('says in the settings how the server is doing, and has the section of the updates of the programs', async () => {
+    test('says in the settings how the server is doing, and has the button that looks for updates', async () => {
         session = await launch();
         await openManga(session.page);
         await goTo(session.page, 'SETTINGS');
@@ -425,10 +425,9 @@ test.describe('manga section', () => {
         await status.getByRole('button', { name: 'CHECK NOW' }).click();
         await expect(status.getByRole('button', { name: 'CHECK NOW' })).toBeEnabled();
         expect(fake.graphqlRequests('aboutServer').length).toBe(before + 1);
-        const updates = session.page.getByRole('group', { name: 'Updates of the programs' });
-        await expect(updates.getByTestId('manga-update-server')).toContainText('Check for updates to see the versions.');
-        await expect(updates.getByTestId('manga-update-helper')).toContainText('Check for updates to see the versions.');
-        await expect(updates.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
+        await expect(session.page.getByRole('group', { name: 'Updates of the programs' })).toHaveCount(0);
+        await expect(status.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
+        await expect(status.getByRole('button', { name: /^UPDATE TO/ })).toHaveCount(0);
     });
 
     test('explains what extensions are, updates all that have an update and marks the ones the server cannot run', async () => {
