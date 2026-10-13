@@ -1702,17 +1702,12 @@ test.describe('manga section', () => {
         expect(saved['mangaDirectory']).toBe(mangaFolder());
     });
 
-    test('has the number of downloads at the same time in the settings of the section, 3 by default, and saves a change', async () => {
+    test('has no setting for the number of downloads at the same time, which is fixed', async () => {
         session = await launch();
         await openManga(session.page);
         await session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'SETTINGS' }).click();
-        const field = session.page.getByLabel('Downloads at the same time');
-        await expect(field).toHaveValue('3');
-        await field.fill('5');
-        await expect(session.page.getByText('All changes saved.')).toBeVisible({ timeout: 6000 });
-        const saved = JSON.parse(readFileSync(join(session.userData, 'settings.json'), 'utf-8')) as Record<string, unknown>;
-        expect(saved['mangaMaxConcurrent']).toBe(5);
-        expect(saved['maxConcurrent']).toBe(3);
+        await expect(session.page.getByLabel('Format of each chapter')).toBeVisible();
+        await expect(session.page.getByLabel('Downloads at the same time')).toHaveCount(0);
     });
 
     test('shows the source of the manga in its card and on its page, with the language', async () => {
@@ -1744,6 +1739,30 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'RESUME ALL' }).click();
         await expect(session.page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
         await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('downloads three chapters of a source at once, and PAUSE ALL keeps the one that waits waiting until RESUME ALL', async () => {
+        fake.imageDelayMs = 400;
+        fake.laterChapters = [103, 104];
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        const jobs = session.page.getByTestId('manga-job');
+        await expect(jobs.getByText('Downloading', { exact: true })).toHaveCount(3);
+        await expect(jobs.filter({ hasText: 'Chapter 4' }).getByText('Waiting', { exact: true })).toBeVisible();
+
+        await session.page.getByRole('button', { name: 'PAUSE ALL' }).click();
+        await expect(jobs.getByText('Paused', { exact: true })).toHaveCount(3);
+        await expect(jobs.filter({ hasText: 'Chapter 4' }).getByText('Waiting', { exact: true })).toBeVisible();
+        await expect(session.page.getByText('The downloads are paused: the chapters that wait start with RESUME ALL.')).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'PAUSE ALL' })).toHaveCount(0);
+
+        await session.page.getByRole('button', { name: 'RESUME ALL' }).click();
+        await expect(session.page.getByText(/The downloads are paused/)).toHaveCount(0);
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}, { timeout: 20000 }).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz', 'Chapter 3.cbz', 'Chapter 4.cbz']);
     });
 
     test('tries a chapter whose pages the server cannot give three times, then shows why and lets it be retried', async () => {
@@ -1789,7 +1808,8 @@ test.describe('manga section', () => {
         await openOnePieceInLibrary(session.page);
         await downloadSeason(session.page);
         await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
-        const job = session.page.getByTestId('manga-job');
+        // Both chapters download at once (three at a time for a source): the first one is paused.
+        const job = session.page.getByTestId('manga-job').filter({ hasText: 'Romance Dawn' });
         await job.getByRole('button', { name: 'PAUSE' }).click();
         await expect(job.getByText('Paused', { exact: true })).toBeVisible();
         expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))).toBe(false);
@@ -1797,6 +1817,60 @@ test.describe('manga section', () => {
         await expect(session.page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
         await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(true);
         await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('keeps the paused chapters when the app is closed, and goes on with them at the same place', async () => {
+        fake.imageDelayMs = 400;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        await session.page.getByRole('button', { name: 'PAUSE ALL' }).click();
+        await expect(session.page.getByTestId('manga-job').getByText('Paused', { exact: true })).toHaveCount(2);
+        await session.app.close();
+
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        const jobs = session.page.getByTestId('manga-job');
+        await expect(jobs.getByText('Paused', { exact: true })).toHaveCount(2);
+        await expect(jobs.getByRole('button', { name: 'CANCEL' })).toHaveCount(2);
+        await session.page.getByRole('button', { name: 'RESUME ALL' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
+        // The same names, and no folder of pages left behind.
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}, { timeout: 20000 }).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('cancels from the library a chapter that was paused when the app was closed, deleting its pages', async () => {
+        fake.imageDelayMs = 400;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        await session.page.getByRole('button', { name: 'PAUSE ALL' }).click();
+        await expect(session.page.getByTestId('manga-job').getByText('Paused', { exact: true })).toHaveCount(2);
+        await session.app.close();
+
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        const row = session.page.getByTestId('manga-chapter').filter({ hasText: 'Romance Dawn' });
+        await expect(row.getByText('Paused', { exact: true })).toBeVisible();
+        await expect(row.getByRole('button', { name: 'RESUME: Romance Dawn' })).toBeVisible();
+        await row.getByRole('button', { name: 'CANCEL: Romance Dawn' }).click();
+        await expect(row.getByRole('button', { name: 'RETRY: Romance Dawn' })).toBeVisible();
+        await expect(row.getByRole('button', { name: 'RESUME: Romance Dawn' })).toHaveCount(0);
+        await expect.poll(() => {
+            return readdirSync(join(mangaFolder(), 'One Piece')).filter((name) => {
+                return name.startsWith('Chapter 1');
+            });
+        }).toEqual([]);
     });
 
     test('removes the download of a chapter, which stays as not downloaded, and a manga with its folder', async () => {

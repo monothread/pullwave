@@ -1047,6 +1047,8 @@ test('cancelling a download ends the process: the file is never finished', async
     // The fake would have written the file five seconds after it started: it must not, because nothing is left running.
     await page.waitForTimeout(7000);
     expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'))).toBe(false);
+    // The folder of the episode goes with the unfinished file in it.
+    expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1'))).toBe(false);
     await expect(job.locator('.badge--cancelled')).toBeVisible();
     await backFromDownloads(page);
     await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
@@ -1101,6 +1103,40 @@ test('closing the app with a paused episode keeps it as paused, with its unfinis
     await session.page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
     await session.page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
     await expect(session.page.getByTestId('anime-episode').locator('.history__meta').first()).toHaveText('PAUSED');
+});
+
+test('an episode paused when the app was closed is in the downloads again, and cancelling it from the library deletes its unfinished file', async () => {
+    const { page, animeDir } = session;
+    await openAnimeTab(page);
+    await search(page, 'slow');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1]);
+    await showDownloads(page);
+    const job = page.getByTestId('anime-job');
+    await expect(job.getByText('25.0%')).toBeVisible();
+    await job.getByRole('button', { name: 'PAUSE' }).click();
+    await expect(job.locator('.badge--paused')).toHaveText('PAUSED');
+    await session.app.close();
+    const episodeFolder = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1');
+    expect(existsSync(join(episodeFolder, 'Fake Anime Episode 1.mp4.part'))).toBe(true);
+
+    session = await launch(join(workDir, 'user-data'));
+    const reopened = session.page;
+    await openAnimeTab(reopened);
+    await showDownloads(reopened);
+    const restored = reopened.getByTestId('anime-job');
+    await expect(restored.locator('.badge--paused')).toHaveText('PAUSED');
+    await expect(restored.getByRole('button', { name: 'RESUME' })).toBeVisible();
+    await expect(restored.getByRole('button', { name: 'CANCEL' })).toBeVisible();
+    await backFromDownloads(reopened);
+
+    await reopened.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+    await reopened.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+    await reopened.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+    await reopened.getByRole('button', { name: 'CANCEL: Fake Anime EP 1' }).click();
+    await expect(reopened.getByTestId('anime-episode').locator('.history__meta').first()).toHaveText('CANCELLED');
+    await expect(reopened.getByRole('button', { name: 'CANCEL: Fake Anime EP 1' })).toHaveCount(0);
+    expect(existsSync(episodeFolder)).toBe(false);
 });
 
 test('shows why a download failed and retries it', async () => {

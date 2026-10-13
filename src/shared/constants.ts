@@ -101,6 +101,7 @@ export const IPC = {
     mangaPause: 'manga:pause',
     mangaResume: 'manga:resume',
     mangaPauseAll: 'manga:pause-all',
+    mangaQueueHeld: 'manga:queue-held',
     mangaResumeAll: 'manga:resume-all',
     mangaClearFinished: 'manga:clear-finished',
     mangaRemoveDownload: 'manga:remove-download',
@@ -137,6 +138,7 @@ export const IPC = {
     eventMangaServer: 'event:manga-server',
     eventMangaCloudflare: 'event:manga-cloudflare',
     eventMangaJob: 'event:manga-job',
+    eventMangaQueueHeld: 'event:manga-queue-held',
     eventMangaLibrary: 'event:manga-library',
     eventAnimeJob: 'event:anime-job',
     eventAnimeLibrary: 'event:anime-library',
@@ -200,10 +202,6 @@ export const MIN_LIVE_END_CHECK_SECONDS = 1;
 export const MAX_LIVE_END_CHECK_SECONDS = 120;
 // Downloads of the video downloader and of the anime run three at a time: this is not a setting.
 export const CONCURRENT_DOWNLOADS = 3;
-// The manga downloads: how many sources run together (a setting).
-export const MANGA_CONCURRENT_DOWNLOADS = 3;
-export const MIN_MANGA_CONCURRENT_DOWNLOADS = 1;
-export const MAX_MANGA_CONCURRENT_DOWNLOADS = 6;
 
 export const DEFAULT_SETTINGS: Settings = {
     downloadDir: '',
@@ -246,7 +244,6 @@ export const DEFAULT_SETTINGS: Settings = {
     animeSubtitles: 'auto',
     mangaDirectory: '',
     mangaFormat: 'cbz',
-    mangaMaxConcurrent: MANGA_CONCURRENT_DOWNLOADS,
     mangaFlaresolverrUrl: '',
     mangaFlaresolverrEnabled: false,
     mangaShowAdult: false,

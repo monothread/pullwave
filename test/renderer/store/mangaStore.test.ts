@@ -56,12 +56,16 @@ describe('mangaStore init', () => {
         mock.api.manga.status.mockResolvedValue(makeMangaStatus());
         mock.api.manga.library.mockResolvedValue(library);
         mock.api.manga.jobs.mockResolvedValue(jobs);
+        mock.api.manga.queueHeld.mockResolvedValue(true);
+        expect(state().queueHeld).toBe(false);
         const unsubscribe = await state().init();
         expect(state().status).toEqual(makeMangaStatus());
         expect(state().library).toEqual(library);
         expect(state().jobs).toEqual(jobs);
+        expect(mock.api.manga.queueHeld).toHaveBeenCalledTimes(1);
+        expect(state().queueHeld).toBe(true);
         unsubscribe();
-        expect(mock.unsubscribers).toHaveLength(8);
+        expect(mock.unsubscribers).toHaveLength(9);
         mock.unsubscribers.forEach((fn) => {
             expect(fn).toHaveBeenCalledTimes(1);
         });
@@ -136,6 +140,13 @@ describe('mangaStore init', () => {
             expect(state().cloudflare).toEqual([{ id: 1, host: 'manganato.com', startedAt: 5 }]);
             mock.emitMangaCloudflare([]);
             expect(state().cloudflare).toEqual([]);
+        });
+
+        it('knows when the queue is held by PAUSE ALL and let go by RESUME ALL', () => {
+            mock.emitMangaQueueHeld(true);
+            expect(state().queueHeld).toBe(true);
+            mock.emitMangaQueueHeld(false);
+            expect(state().queueHeld).toBe(false);
         });
 
         it('keeps the jobs up to date', () => {

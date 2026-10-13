@@ -790,6 +790,41 @@ describe('MangaDetail the site of the source and the chapters that failed', () =
         expect(mock.api.manga.retry).toHaveBeenLastCalledWith(2);
     });
 
+    it('offers to go on with or cancel a paused chapter, in the library page only, and nothing else for it', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({
+            library: [
+                makeLibraryManga([
+                    makeChapterRecord({ id: 1, remoteId: 11, status: 'paused' }),
+                    makeChapterRecord({ id: 2, remoteId: 12, status: 'downloading' }),
+                    makeChapterRecord({ id: 3, remoteId: 13, status: 'done' })
+                ])
+            ]
+        });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getAllByRole('button', { name: /^RESUME/ }).map((button) => {
+            return button.getAttribute('aria-label');
+        })).toEqual(['RESUME: Romance Dawn']);
+        expect(screen.getAllByRole('button', { name: /^CANCEL/ }).map((button) => {
+            return button.getAttribute('aria-label');
+        })).toEqual(['CANCEL: Romance Dawn']);
+        expect(screen.queryByRole('button', { name: /^(DOWNLOAD|RETRY): Romance Dawn/ })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'RESUME: Romance Dawn' }));
+        expect(mock.api.manga.resume).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.resume).toHaveBeenCalledWith(1);
+        await user.click(screen.getByRole('button', { name: 'CANCEL: Romance Dawn' }));
+        expect(mock.api.manga.cancel).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.cancel).toHaveBeenCalledWith(1);
+    });
+
+    it('does not offer to go on with or cancel a paused chapter on the page of the browse', () => {
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse', library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'paused' })])] });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByRole('button', { name: /^(RESUME|CANCEL)/ })).not.toBeInTheDocument();
+    });
+
     it('does not offer it on the page of the browse', () => {
         useMangaStore.setState({ selectionFrom: 'browse', view: 'browse', library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'error' })])] });
         open();

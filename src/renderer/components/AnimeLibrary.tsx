@@ -41,6 +41,9 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
     const resumeJob = useAnimeStore((state) => {
         return state.resumeJob;
     });
+    const cancelJob = useAnimeStore((state) => {
+        return state.cancelJob;
+    });
     const setWatched = useAnimeStore((state) => {
         return state.setWatched;
     });
@@ -102,16 +105,28 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                     </>
                 )}
                 {episode.status === 'paused' && (
-                    <button
-                        type="button"
-                        className="btn btn--small btn--primary"
-                        aria-label={`${t('anime.job.resume')}: ${anime.title} ${label}`}
-                        onClick={() => {
-                            void resumeJob(episode.id);
-                        }}
-                    >
-                        {t('anime.job.resume')}
-                    </button>
+                    <>
+                        <button
+                            type="button"
+                            className="btn btn--small btn--primary"
+                            aria-label={`${t('anime.job.resume')}: ${anime.title} ${label}`}
+                            onClick={() => {
+                                void resumeJob(episode.id);
+                            }}
+                        >
+                            {t('anime.job.resume')}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn--small btn--hot"
+                            aria-label={`${t('anime.job.cancel')}: ${anime.title} ${label}`}
+                            onClick={() => {
+                                void cancelJob(episode.id);
+                            }}
+                        >
+                            {t('anime.job.cancel')}
+                        </button>
+                    </>
                 )}
                 {episode.status === 'idle' && (
                     <button

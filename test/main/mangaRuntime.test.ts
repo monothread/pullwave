@@ -113,7 +113,7 @@ describe('createMangaRuntime availability', () => {
         const before = new MangaDb(path);
         const manga = before.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
         const chapter = before.ensureChapter(manga.id, { remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 });
-        before.markDownloading(chapter.id);
+        before.markDownloading(chapter.id, join(dir, 'Chapter 1.cbz'));
         before.close();
         const runtime = createMangaRuntime({
             platform: 'linux',
@@ -126,6 +126,46 @@ describe('createMangaRuntime availability', () => {
             externalBaseUrl: EXTERNAL
         });
         expect(runtime?.db.getChapter(chapter.id)).toMatchObject({ status: 'error', error: { code: 'UNKNOWN' } });
+    });
+
+    it('shows again the chapters that were paused, counting the complete pages they kept, and cancels one deleting its pages', () => {
+        const dir = makeTempDir();
+        const path = join(dir, 'userData', 'manga', 'manga.db');
+        const before = new MangaDb(path);
+        const manga = before.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        const kept = before.ensureChapter(manga.id, { remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 });
+        const lost = before.ensureChapter(manga.id, { remoteId: 2, name: 'Chapter 2', number: 2, dateUploaded: null, scanlator: null, sourceOrder: 2 });
+        const outputPath = join(dir, 'Pullwave Manga', 'One Piece', 'Chapter 1.cbz');
+        const work = `${outputPath}.part`;
+        mkdirSync(work, { recursive: true });
+        ['001.jpg', '002.png', '003.tmp', 'ComicInfo.xml'].forEach((file) => {
+            writeFileSync(join(work, file), 'x');
+        });
+        before.markDownloading(kept.id, outputPath);
+        before.setPageCount(kept.id, 4);
+        before.markPaused(kept.id);
+        // Its folder of pages is gone: nothing is counted.
+        before.markDownloading(lost.id, join(dir, 'Pullwave Manga', 'One Piece', 'Chapter 2.cbz'));
+        before.setPageCount(lost.id, 4);
+        before.markPaused(lost.id);
+        before.close();
+        const runtime = createMangaRuntime({
+            platform: 'linux',
+            arch: 'x64',
+            dataDir: join(dir, 'userData'),
+            defaultDownloadDir: dir,
+            getSettings: () => {return DEFAULT_SETTINGS},
+            send: () => {return undefined},
+            openFolder: () => {return undefined},
+            externalBaseUrl: EXTERNAL
+        });
+        expect(runtime?.queue.list()).toEqual([
+            { chapterId: kept.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: '123', status: 'paused', pagesDone: 2, pageCount: 4, percent: 50, error: null },
+            { chapterId: lost.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: '123', status: 'paused', pagesDone: 0, pageCount: 4, percent: 0, error: null }
+        ]);
+        runtime?.queue.cancel(kept.id);
+        expect(existsSync(work)).toBe(false);
+        expect(runtime?.db.getChapter(kept.id)?.status).toBe('cancelled');
     });
 });
 
@@ -300,6 +340,18 @@ describe('createMangaRuntime downloading a chapter', () => {
         expect(sent.some((item) => {
             return item.channel === IPC.eventMangaLibrary;
         })).toBe(true);
+    });
+
+    it('tells the screen when the queue is held and let go', () => {
+        const { runtime, sent } = setup();
+        runtime!.queue.pauseAll();
+        runtime!.queue.resumeAll();
+        expect(sent.filter((item) => {
+            return item.channel === IPC.eventMangaQueueHeld;
+        })).toEqual([
+            { channel: IPC.eventMangaQueueHeld, payload: true },
+            { channel: IPC.eventMangaQueueHeld, payload: false }
+        ]);
     });
 
     it('reads the pages of a downloaded chapter from its CBZ, through the scheme of the pages, with no request to the server', async () => {

@@ -1,5 +1,5 @@
 import { posix, win32 } from 'node:path';
-import type { MangaChapter } from '@shared/manga';
+import type { MangaChapter, MangaOutputFormat } from '@shared/manga';
 import { animeFolderName } from '../animeFiles';
 
 export const DEFAULT_MANGA_FOLDER = 'Pullwave Manga';
@@ -55,23 +55,37 @@ export function chapterOutputPath(
     return pathFor(platform).join(mangaFolder, format === 'cbz' ? `${base}${CBZ_EXTENSION}` : base);
 }
 
-// The same path when nothing is there, otherwise the path with " (2)", " (3)"... before the extension.
-export function uniquePath(path: string, exists: (path: string) => boolean, platform: NodeJS.Platform = process.platform): string {
-    if (!exists(path)) {
+// The path with " (2)", " (3)"... before the extension (the first attempt is the path itself).
+export function numberedPath(path: string, attempt: number, platform: NodeJS.Platform = process.platform): string {
+    if (attempt < 2) {
         return path;
     }
-    const system = pathFor(platform);
-    const extension = system.extname(path);
+    const extension = pathFor(platform).extname(path);
     const stem = extension.length > 0 ? path.slice(0, -extension.length) : path;
-    let attempt = 2;
-    while (exists(`${stem} (${attempt})${extension}`)) {
+    return `${stem} (${attempt})${extension}`;
+}
+
+// The same path when nothing is there, otherwise the path with " (2)", " (3)"... before the extension.
+export function uniquePath(path: string, exists: (path: string) => boolean, platform: NodeJS.Platform = process.platform): string {
+    let attempt = 1;
+    while (exists(numberedPath(path, attempt, platform))) {
         attempt += 1;
     }
-    return `${stem} (${attempt})${extension}`;
+    return numberedPath(path, attempt, platform);
+}
+
+// The format a chapter that was started is made in: the one its path has (the setting may have changed since).
+export function formatOfPath(path: string): MangaOutputFormat {
+    return path.toLowerCase().endsWith(CBZ_EXTENSION) ? 'cbz' : 'folder';
 }
 
 // The folder where the pages are kept while the chapter is downloaded (next to the final place, so the move at the end is a
 // rename on the same disk).
 export function chapterWorkDirectory(finalPath: string): string {
     return `${finalPath}.part`;
+}
+
+// Whether a file of the folder of a chapter being downloaded is a page that is complete (not one half written, nor the ComicInfo).
+export function isCompletePage(fileName: string): boolean {
+    return !fileName.endsWith(TEMPORARY_EXTENSION) && fileName !== COMIC_INFO_FILE;
 }

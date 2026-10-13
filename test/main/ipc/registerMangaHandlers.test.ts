@@ -63,6 +63,7 @@ const MANGA_CHANNELS = [
     IPC.mangaOpenFolder,
     IPC.mangaPause,
     IPC.mangaPauseAll,
+    IPC.mangaQueueHeld,
     IPC.mangaRemoveDownload,
     IPC.mangaRemoveManga,
     IPC.mangaResume,
@@ -121,7 +122,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
             return { result: new Promise(() => {return undefined}), cancel: vi.fn() };
         },
         getSettings: () => {
-            return { maxConcurrent: 2, mangaDirectory: '', mangaFormat: 'cbz' };
+            return { mangaDirectory: '', mangaFormat: 'cbz' };
         },
         defaultDownloadDir: '/home/me/Downloads',
         platform: 'linux',
@@ -130,10 +131,18 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
             return false;
         },
         removePath: () => {return undefined},
+        countCompletePages: () => {
+            return 0;
+        },
         onJobUpdate: () => {return undefined},
         onLibraryChanged: () => {
             libraryChanges.count += 1;
-        }
+        },
+        onHeldChange: () => {
+            return undefined;
+        },
+        // One chapter at a time for each source: the handlers are tested here, the limits with the queue.
+        limits: { sources: 2, perSource: 1 }
     });
     const service = {
         status: vi.fn((): MangaStatusInfo => {
@@ -316,6 +325,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaDownload)).toBeNull();
         expect(ipc.call(IPC.mangaLibrary)).toEqual([]);
         expect(ipc.call(IPC.mangaJobs)).toEqual([]);
+        expect(ipc.call(IPC.mangaQueueHeld)).toBe(false);
         [IPC.mangaDownloadMissing, IPC.mangaCancel, IPC.mangaRetry, IPC.mangaPause, IPC.mangaResume, IPC.mangaPauseAll, IPC.mangaResumeAll, IPC.mangaClearFinished, IPC.mangaRemoveDownload, IPC.mangaRemoveManga, IPC.mangaOpenFolder].forEach((channel) => {
             expect(ipc.call(channel)).toBeUndefined();
         });
@@ -746,6 +756,15 @@ describe('the site and the folder of the mangas', () => {
         await first;
         // Once it is over, the downloads work again.
         expect(call(IPC.mangaDownload, REQUEST)).not.toBeNull();
+    });
+
+    it('tells whether the queue is held by PAUSE ALL', () => {
+        const { call } = setup();
+        expect(call(IPC.mangaQueueHeld)).toBe(false);
+        call(IPC.mangaPauseAll);
+        expect(call(IPC.mangaQueueHeld)).toBe(true);
+        call(IPC.mangaResumeAll);
+        expect(call(IPC.mangaQueueHeld)).toBe(false);
     });
 
     it('pauses and resumes everything through the queue, and the resume waits while the files are moved', async () => {

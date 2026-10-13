@@ -1105,6 +1105,18 @@ describe('AnimeLibrary paused episodes', () => {
         expect(screen.queryByRole('button', { name: 'RETRY: Naruto EP 1' })).not.toBeInTheDocument();
     });
 
+    it('offers CANCEL for a paused episode only, and cancels it by its id', async () => {
+        const { user } = await openSeries();
+
+        expect(screen.getAllByRole('button', { name: /^CANCEL: / }).map((button) => {
+            return button.getAttribute('aria-label');
+        })).toEqual(['CANCEL: Naruto EP 1']);
+        await user.click(screen.getByRole('button', { name: 'CANCEL: Naruto EP 1' }));
+
+        expect(mock.api.cancelAnimeJob).toHaveBeenCalledTimes(1);
+        expect(mock.api.cancelAnimeJob).toHaveBeenCalledWith(1);
+    });
+
     it('has no button to remove a paused episode either', async () => {
         const { rows } = await openSeries();
 

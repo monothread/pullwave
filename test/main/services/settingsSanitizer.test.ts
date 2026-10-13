@@ -54,7 +54,6 @@ describe('sanitizeSettings', () => {
             animeSubtitles: 'Portuguese',
             mangaDirectory: '/media/manga',
             mangaFormat: 'folder',
-            mangaMaxConcurrent: 4,
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
             mangaFlaresolverrEnabled: true,
             mangaShowAdult: true,
@@ -103,22 +102,11 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(true);
     });
 
-    it('downloads the mangas from three sources at the same time by default', () => {
-        expect(DEFAULT_SETTINGS.mangaMaxConcurrent).toBe(3);
-        expect(sanitizeSettings({}).mangaMaxConcurrent).toBe(3);
-        expect(sanitizeSettings(null).mangaMaxConcurrent).toBe(3);
-    });
-
-    it.each([[1, 1], [4, 4], [6, 6], [0, 1], [-5, 1], [7, 6], [100, 6], [2.6, 3]])('keeps the limit of manga downloads %j within 1 to 6 (%j)', (value, expected) => {
-        expect(sanitizeSettings({ mangaMaxConcurrent: value }).mangaMaxConcurrent).toBe(expected);
-    });
-
-    it.each(['4', NaN, Infinity, null, [], {}])('falls back to three manga downloads for the invalid value %j', (mangaMaxConcurrent) => {
-        expect(sanitizeSettings({ mangaMaxConcurrent }).mangaMaxConcurrent).toBe(3);
-    });
-
-    it('does not touch the limit of the other downloads when the one of the mangas changes', () => {
-        expect(sanitizeSettings({ mangaMaxConcurrent: 5 }).maxConcurrent).toBe(3);
+    it('drops the limit of manga downloads saved by an older version (it is fixed now), touching nothing else', () => {
+        const sanitized = sanitizeSettings({ mangaMaxConcurrent: 5 });
+        expect(sanitized).toEqual(DEFAULT_SETTINGS);
+        expect(Object.keys(sanitized)).not.toContain('mangaMaxConcurrent');
+        expect(Object.keys(DEFAULT_SETTINGS)).not.toContain('mangaMaxConcurrent');
     });
 
     it('does not download the new chapters by default', () => {

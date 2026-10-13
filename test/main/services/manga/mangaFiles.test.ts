@@ -5,8 +5,11 @@ import {
     chapterOutputPath,
     chapterWorkDirectory,
     formatChapterNumber,
+    formatOfPath,
+    isCompletePage,
     mangaDirectory,
     mangaFolderName,
+    numberedPath,
     pageFileName,
     uniquePath
 } from '@main/services/manga/mangaFiles';
@@ -116,6 +119,47 @@ describe('uniquePath', () => {
         expect(uniquePath('/m/Chapter 1', (path) => {
             return taken.has(path);
         }, 'linux')).toBe('/m/Chapter 1 (2)');
+    });
+});
+
+describe('numberedPath', () => {
+    it('is the path itself for the first attempt (and anything below it)', () => {
+        expect(numberedPath('/m/a.cbz', 1, 'linux')).toBe('/m/a.cbz');
+        expect(numberedPath('/m/a.cbz', 0, 'linux')).toBe('/m/a.cbz');
+    });
+
+    it('puts the number before the extension, or at the end of a folder', () => {
+        expect(numberedPath('/m/a.cbz', 2, 'linux')).toBe('/m/a (2).cbz');
+        expect(numberedPath('/m/a.cbz', 13, 'linux')).toBe('/m/a (13).cbz');
+        expect(numberedPath('/m/Chapter 1', 3, 'linux')).toBe('/m/Chapter 1 (3)');
+    });
+
+    it('follows the rules of Windows paths', () => {
+        expect(numberedPath('C:\\m\\a.cbz', 2, 'win32')).toBe('C:\\m\\a (2).cbz');
+    });
+});
+
+describe('formatOfPath', () => {
+    it('is a CBZ for a path that ends in .cbz, whatever its case', () => {
+        expect(formatOfPath('/m/Chapter 1.cbz')).toBe('cbz');
+        expect(formatOfPath('/m/Chapter 1 (2).CBZ')).toBe('cbz');
+    });
+
+    it('is a folder for any other path', () => {
+        expect(formatOfPath('/m/Chapter 1')).toBe('folder');
+        expect(formatOfPath('/m/Chapter 1.cbz.part')).toBe('folder');
+    });
+});
+
+describe('isCompletePage', () => {
+    it('takes a page that has its final name', () => {
+        expect(isCompletePage('001.jpg')).toBe(true);
+        expect(isCompletePage('012.webp')).toBe(true);
+    });
+
+    it('leaves out a page that is half written and the ComicInfo', () => {
+        expect(isCompletePage('003.tmp')).toBe(false);
+        expect(isCompletePage('ComicInfo.xml')).toBe(false);
     });
 });
 

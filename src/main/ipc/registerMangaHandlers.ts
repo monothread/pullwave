@@ -140,6 +140,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
             return [];
         });
     });
+    ipcMain.handle(IPC.mangaQueueHeld, () => {
+        return false;
+    });
     [
         IPC.mangaDownloadMissing,
         IPC.mangaCancel,
@@ -341,6 +344,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaJobs, (): MangaJob[] => {
         return queue.list();
+    });
+    ipcMain.handle(IPC.mangaQueueHeld, (): boolean => {
+        return queue.isHeld();
     });
     const byChapter: Array<[string, 'cancel' | 'retry' | 'pause' | 'resume']> = [
         [IPC.mangaCancel, 'cancel'],

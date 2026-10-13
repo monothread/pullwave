@@ -3,9 +3,7 @@ import {
     LANGUAGE_SETTINGS,
     MAX_LIVE_END_CHECK_SECONDS,
     MAX_TITLE_LENGTH,
-    MAX_MANGA_CONCURRENT_DOWNLOADS,
     MIN_LIVE_END_CHECK_SECONDS,
-    MIN_MANGA_CONCURRENT_DOWNLOADS,
     MIN_TITLE_LENGTH,
     RESOLUTIONS,
     START_TABS,
@@ -693,16 +691,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         hint={t('settings.mangaFormat.hint')}
                         onChange={(value) => {
                             change('mangaFormat', value);
-                        }}
-                    />
-                    <NumberField
-                        label={t('settings.mangaMaxConcurrent')}
-                        value={draft.mangaMaxConcurrent}
-                        min={MIN_MANGA_CONCURRENT_DOWNLOADS}
-                        max={MAX_MANGA_CONCURRENT_DOWNLOADS}
-                        hint={t('settings.mangaMaxConcurrent.hint')}
-                        onChange={(value) => {
-                            edit('mangaMaxConcurrent', value);
                         }}
                     />
                     <TextField

@@ -120,7 +120,9 @@ const MIGRATIONS: readonly string[] = [
         SELECT COUNT(*) FROM manga_group other
         WHERE other.name COLLATE NOCASE < manga_group.name COLLATE NOCASE
             OR (other.name COLLATE NOCASE = manga_group.name COLLATE NOCASE AND other.id < manga_group.id)
-    );`
+    );`,
+    // Where a chapter that was started is being made (its pages are kept beside it), so a pause survives the app being closed.
+    `ALTER TABLE chapter ADD COLUMN output_path TEXT;`
 ];
 
 type Row = Record<string, unknown>;
@@ -413,8 +415,9 @@ export class MangaDb {
         this.run(`UPDATE chapter SET status = 'queued', error_code = NULL, error_raw = NULL WHERE id = ?`, chapterId);
     }
 
-    markDownloading(chapterId: number): void {
-        this.run(`UPDATE chapter SET status = 'downloading', error_code = NULL, error_raw = NULL WHERE id = ?`, chapterId);
+    // The chapter starts a run that makes it at this place (remembered until it is downloaded, fails or is cancelled).
+    markDownloading(chapterId: number, outputPath: string): void {
+        this.run(`UPDATE chapter SET status = 'downloading', output_path = ?, error_code = NULL, error_raw = NULL WHERE id = ?`, outputPath, chapterId);
     }
 
     markPaused(chapterId: number): void {
@@ -427,7 +430,7 @@ export class MangaDb {
 
     markDone(chapterId: number, filePath: string, sizeBytes: number | null, pageCount: number): void {
         this.run(
-            `UPDATE chapter SET status = 'done', file_path = ?, size_bytes = ?, page_count = ?, error_code = NULL, error_raw = NULL, downloaded_at = ? WHERE id = ?`,
+            `UPDATE chapter SET status = 'done', file_path = ?, size_bytes = ?, page_count = ?, output_path = NULL, error_code = NULL, error_raw = NULL, downloaded_at = ? WHERE id = ?`,
             filePath,
             sizeBytes,
             pageCount,
@@ -437,7 +440,27 @@ export class MangaDb {
     }
 
     markFailed(chapterId: number, status: 'error' | 'cancelled', error: MangaError | null): void {
-        this.run('UPDATE chapter SET status = ?, error_code = ?, error_raw = ? WHERE id = ?', status, error?.code ?? null, error?.message ?? null, chapterId);
+        this.run('UPDATE chapter SET status = ?, output_path = NULL, error_code = ?, error_raw = ? WHERE id = ?', status, error?.code ?? null, error?.message ?? null, chapterId);
+    }
+
+    // Where the chapter was being made when it was started before; null when it was not, or its pages were deleted.
+    outputPathOf(chapterId: number): string | null {
+        const row = this.one('SELECT output_path FROM chapter WHERE id = ?', chapterId);
+        return row === null ? null : nullableText(row, 'output_path');
+    }
+
+    setOutputPath(chapterId: number, outputPath: string): void {
+        this.run('UPDATE chapter SET output_path = ? WHERE id = ?', outputPath, chapterId);
+    }
+
+    // Whether another chapter is (or was, before it was interrupted) being made at this place.
+    isOutputPathClaimed(outputPath: string, exceptChapterId: number): boolean {
+        return this.one('SELECT 1 AS claimed FROM chapter WHERE output_path = ? AND id != ? LIMIT 1', outputPath, exceptChapterId) !== null;
+    }
+
+    // The chapters that are paused, manga by manga, the oldest chapter first.
+    pausedChapters(): MangaChapterRecord[] {
+        return this.all(`SELECT * FROM chapter WHERE status = 'paused' ORDER BY manga_id, source_order, id`).map(toChapter);
     }
 
     // A download that was going on when the app closed did not finish: it is an error that can be retried.

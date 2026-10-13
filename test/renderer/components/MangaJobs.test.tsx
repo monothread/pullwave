@@ -16,7 +16,7 @@ const initialManga = useMangaStore.getState();
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
-    useMangaStore.setState({ ...initialManga, jobs: [] });
+    useMangaStore.setState({ ...initialManga, jobs: [], queueHeld: false });
 });
 
 describe('MangaJobs', () => {
@@ -184,6 +184,38 @@ describe('MangaJobs', () => {
         await user.click(screen.getByRole('button', { name: 'RESUME ALL' }));
         expect(mock.api.manga.resumeAll).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.pauseAll).not.toHaveBeenCalled();
+    });
+
+    it('offers RESUME ALL and not PAUSE ALL in a held queue where the downloads wait, and says they start with it', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ queueHeld: true, jobs: [makeMangaJob({ chapterId: 5, status: 'queued' })] });
+        render(<MangaJobs />);
+        expect(screen.queryByRole('button', { name: 'PAUSE ALL' })).not.toBeInTheDocument();
+        expect(screen.getByText('The downloads are paused: the chapters that wait start with RESUME ALL.')).toBeInTheDocument();
+        expect(screen.getByText('Waiting')).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'RESUME ALL' }));
+        expect(mock.api.manga.resumeAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers PAUSE ALL in a held queue for a download resumed by itself, and RESUME ALL too', () => {
+        useMangaStore.setState({ queueHeld: true, jobs: [makeMangaJob({ chapterId: 1, status: 'running' }), makeMangaJob({ chapterId: 2, status: 'queued' })] });
+        render(<MangaJobs />);
+        expect(screen.getByRole('button', { name: 'PAUSE ALL' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'RESUME ALL' })).toBeEnabled();
+    });
+
+    it('offers RESUME ALL in a held queue without downloads that wait, and does not say anything about them', () => {
+        useMangaStore.setState({ queueHeld: true, jobs: [makeMangaJob({ chapterId: 1, status: 'error' })] });
+        render(<MangaJobs />);
+        expect(screen.getByRole('button', { name: 'RESUME ALL' })).toBeEnabled();
+        expect(screen.queryByRole('button', { name: 'PAUSE ALL' })).not.toBeInTheDocument();
+        expect(screen.queryByText(/The downloads are paused/)).not.toBeInTheDocument();
+    });
+
+    it('does not say the downloads are paused when the queue is not held', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 1, status: 'queued' })] });
+        render(<MangaJobs />);
+        expect(screen.queryByText(/The downloads are paused/)).not.toBeInTheDocument();
     });
 
     it('offers both when some are going on and some are paused', () => {

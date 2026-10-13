@@ -151,8 +151,6 @@ export interface Settings {
     // chapter is made a CBZ file or a folder of images.
     mangaDirectory: string;
     mangaFormat: MangaOutputFormat;
-    // How many sources the manga downloads run on together (each source does one chapter at a time).
-    mangaMaxConcurrent: number;
     // The address of a FlareSolverr the user runs already (empty: the app runs one in Docker).
     mangaFlaresolverrUrl: string;
     // Whether the user installed the helper for sites behind Cloudflare (FlareSolverr, which runs in Docker); it is not installed by itself.

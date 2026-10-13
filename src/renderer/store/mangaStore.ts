@@ -212,6 +212,8 @@ interface MangaState {
     // The series that is open in the library (its key, see `groupLibrary`), or null for the cards.
     librarySeries: string | null;
     jobs: MangaJob[];
+    // Whether PAUSE ALL holds the queue: the chapters that wait keep waiting until RESUME ALL.
+    queueHeld: boolean;
     browse: MangaBrowseState;
     search: MangaSearchState;
     selection: MangaSelection | null;
@@ -450,6 +452,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         hiddenGroupIds: [],
         librarySeries: null,
         jobs: [],
+        queueHeld: false,
         browse: { ...EMPTY_BROWSE, sourceLanguage: initialPrefs.sourceLanguage },
         search: EMPTY_SEARCH,
         selection: null,
@@ -482,8 +485,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     return undefined;
                 };
             }
-            const [library, jobs, groups] = await Promise.all([api.library(), api.jobs(), api.groups()]);
-            set({ library, jobs, groups });
+            const [library, jobs, groups, queueHeld] = await Promise.all([api.library(), api.jobs(), api.groups(), api.queueHeld()]);
+            set({ library, jobs, groups, queueHeld });
             const unsubscribers = [
                 api.onToolState((tool) => {
                     // Two programs are downloaded: the one that runs the extensions, and the one that gets past Cloudflare.
@@ -531,6 +534,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     set((state) => {
                         return { jobs: upsertMangaJob(state.jobs, job) };
                     });
+                }),
+                api.onQueueHeld((queueHeld) => {
+                    set({ queueHeld });
                 }),
                 api.onLibraryChanged(() => {
                     void get().refreshLibrary();

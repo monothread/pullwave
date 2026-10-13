@@ -212,6 +212,8 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             options.send(IPC.eventAnimeLibrary);
         }
     });
+    // The episodes that were paused when the app closed are shown again, ready to go on or be cancelled.
+    queue.restore();
     // The video of a downloaded episode, or null when it has none.
     const downloadedFile = (episodeId: number): string | null => {
         const episode = db.getEpisode(episodeId);

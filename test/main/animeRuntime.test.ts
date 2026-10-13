@@ -96,6 +96,23 @@ describe('createAnimeRuntime', () => {
         expect(runtime?.db.getEpisode(episode.id)).toMatchObject({ status: 'error', error: { code: 'UNKNOWN' } });
     });
 
+    it('shows again in the downloads the episodes that were paused, which can be cancelled', () => {
+        const { root, options: given } = options();
+        const path = join(root, 'data', 'anime', 'anime.db');
+        const previous = new AnimeDb(path);
+        const anime = previous.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+        const episode = previous.ensureEpisode(anime.id, '1');
+        previous.markPaused(episode.id);
+        previous.close();
+
+        const runtime = open(given);
+        expect(runtime?.queue.list()).toEqual([
+            { episodeId: episode.id, animeId: anime.id, animeTitle: 'Naruto', episode: '1', status: 'paused', percent: 0, speed: '', eta: '', error: null }
+        ]);
+        runtime?.queue.cancel(episode.id);
+        expect(runtime?.db.getEpisode(episode.id)?.status).toBe('cancelled');
+    });
+
     it('serves the video and the subtitles of a downloaded episode only', () => {
         const runtime = open(options().options);
         const db = runtime?.db as AnimeDb;

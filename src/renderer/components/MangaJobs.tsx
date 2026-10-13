@@ -16,6 +16,14 @@ function isPausable(job: MangaJob): boolean {
     return job.status === 'running' || job.status === 'queued';
 }
 
+function isRunning(job: MangaJob): boolean {
+    return job.status === 'running';
+}
+
+function isQueued(job: MangaJob): boolean {
+    return job.status === 'queued';
+}
+
 function isPaused(job: MangaJob): boolean {
     return job.status === 'paused';
 }
@@ -44,6 +52,9 @@ export function MangaJobs() {
     const t = useTranslator();
     const jobs = useMangaStore((state) => {
         return state.jobs;
+    });
+    const queueHeld = useMangaStore((state) => {
+        return state.queueHeld;
     });
     const cancelJob = useMangaStore((state) => {
         return state.cancelJob;
@@ -74,6 +85,9 @@ export function MangaJobs() {
         return <p className="empty">{t('manga.jobs.empty')}</p>;
     }
     const failed = jobs.filter(isFailed).length;
+    // A held queue has nothing more to pause than the chapters resumed one by one; what waits there goes on with RESUME ALL.
+    const canPauseAll = queueHeld ? jobs.some(isRunning) : jobs.some(isPausable);
+    const canResumeAll = queueHeld || jobs.some(isPaused);
     const sorted = [...jobs].sort((first, second) => {
         return ORDER[first.status] - ORDER[second.status];
     });
@@ -82,7 +96,7 @@ export function MangaJobs() {
         <section className="manga__jobs queue" aria-label={t('manga.jobs.label', { count: jobs.length })}>
             <div className="queue__toolbar">
                 <span className="section-label">{t('manga.jobs.label', { count: jobs.length })}</span>
-                {jobs.some(isPausable) && (
+                {canPauseAll && (
                     <button
                         type="button"
                         className="btn btn--small"
@@ -93,7 +107,7 @@ export function MangaJobs() {
                         {t('manga.jobs.pauseAll')}
                     </button>
                 )}
-                {jobs.some(isPaused) && (
+                {canResumeAll && (
                     <button
                         type="button"
                         className="btn btn--small btn--primary"
@@ -127,6 +141,7 @@ export function MangaJobs() {
                     </button>
                 )}
             </div>
+            {queueHeld && jobs.some(isQueued) && <p className="field__hint">{t('manga.jobs.held')}</p>}
             {sorted.map((job) => {
                 const title = `${job.mangaTitle} · ${job.chapterName}`;
                 return (

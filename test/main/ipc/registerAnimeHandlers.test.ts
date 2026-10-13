@@ -1178,6 +1178,24 @@ describe('registerAnimeHandlers', () => {
             expect(onLibraryChanged).toHaveBeenCalledTimes(1);
         });
 
+        it('forgets the job while the episode is still in the library, so the queue can find the folder of its partial file', () => {
+            const { call, db, queue } = setup();
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const episode = db.ensureEpisode(anime.id, '1');
+            db.markPaused(episode.id);
+            const seen: Array<string | null> = [];
+            queue.forget.mockImplementation((ids: number[]) => {
+                seen.push(...ids.map((id) => {
+                    return db.getEpisode(id)?.status ?? null;
+                }));
+            });
+
+            call(IPC.animeRemoveEpisode, episode.id);
+
+            expect(seen).toEqual(['paused']);
+            expect(db.getEpisode(episode.id)).toBeNull();
+        });
+
         it('deletes every subtitle of the episode that is on the disk', () => {
             const folder = makeTempDir();
             ['a.mp4', 'a.vtt', 'a.subtitle-Japanese.vtt', 'a.import-mine.vtt', 'b.vtt'].forEach((name) => {
@@ -1225,6 +1243,24 @@ describe('registerAnimeHandlers', () => {
     });
 
     describe('removeAnime', () => {
+        it('forgets the jobs while the anime is still in the library, so the queue can find the folders of the partial files', () => {
+            const { call, db, queue } = setup();
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const episode = db.ensureEpisode(anime.id, '1');
+            db.markPaused(episode.id);
+            const seen: Array<string | null> = [];
+            queue.forget.mockImplementation((ids: number[]) => {
+                seen.push(...ids.map((id) => {
+                    return db.getEpisode(id)?.status ?? null;
+                }));
+            });
+
+            call(IPC.animeRemoveAnime, anime.id);
+
+            expect(seen).toEqual(['paused']);
+            expect(db.getAnime(anime.id)).toBeNull();
+        });
+
         it('forgets the jobs, removes the anime, deletes every video and subtitle and then its folder', () => {
             const { call, db, queue, removeFiles, removeFolders, onLibraryChanged } = setup();
             const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });

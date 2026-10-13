@@ -526,9 +526,11 @@ export interface MangaApi {
     retry: (chapterId: number) => Promise<void>;
     pause: (chapterId: number) => Promise<void>;
     resume: (chapterId: number) => Promise<void>;
-    // Pauses everything that is going on or waiting, and goes on with everything that is paused.
+    // Pauses what is going on and holds what waits (it keeps waiting), and goes on with everything that is paused or held.
     pauseAll: () => Promise<void>;
     resumeAll: () => Promise<void>;
+    // Whether the queue is held by PAUSE ALL.
+    queueHeld: () => Promise<boolean>;
     clearFinished: () => Promise<void>;
     removeDownload: (chapterId: number) => Promise<void>;
     removeManga: (mangaId: number) => Promise<void>;
@@ -580,6 +582,8 @@ export interface MangaApi {
     // The checks of Cloudflare that are going on, every time they change (an empty list when none is).
     onCloudflareActivity: (listener: (active: MangaCloudflareActivity[]) => void) => () => void;
     onJobUpdate: (listener: (job: MangaJob) => void) => () => void;
+    // The queue was held by PAUSE ALL (true) or let go by RESUME ALL (false).
+    onQueueHeld: (listener: (held: boolean) => void) => () => void;
     onLibraryChanged: (listener: () => void) => () => void;
 }
 

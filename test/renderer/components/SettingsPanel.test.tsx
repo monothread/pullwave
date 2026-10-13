@@ -1288,28 +1288,11 @@ describe('SettingsPanel manga section', () => {
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaFormat: 'folder' });
     });
 
-    it('has a field for how many sources the chapters are downloaded from together, 3 by default, with its limits and its hint', () => {
-        render(<SettingsPanel scope="manga" />);
-        const field = screen.getByLabelText('Downloads at the same time');
-        expect(field).toHaveValue(3);
-        expect(field).toHaveAttribute('min', '1');
-        expect(field).toHaveAttribute('max', '6');
-        expect(screen.getByText(/Each source still does one chapter at a time/)).toBeInTheDocument();
-    });
-
-    it('saves the number of manga downloads at the same time after the delay', async () => {
-        render(<SettingsPanel scope="manga" />);
-        fireEvent.change(screen.getByLabelText('Downloads at the same time'), { target: { value: '5' } });
-        expect(mock.api.saveSettings).not.toHaveBeenCalled();
-        await advance(AUTOSAVE_DELAY_MS);
-        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
-        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaMaxConcurrent: 5 });
-    });
-
-    it('does not show the manga downloads field in the other scopes', () => {
-        (['global', 'downloads'] as const).forEach((scope) => {
+    it('has no field for the number of manga downloads at the same time (it is fixed), in any scope', () => {
+        (['manga', 'global', 'downloads'] as const).forEach((scope) => {
             const { unmount } = render(<SettingsPanel scope={scope} />);
             expect(screen.queryByLabelText('Downloads at the same time')).not.toBeInTheDocument();
+            expect(screen.queryByText(/Each source still does one chapter at a time/)).not.toBeInTheDocument();
             unmount();
         });
     });

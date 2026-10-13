@@ -115,3 +115,11 @@
 - Manga: own limit of downloads (3), PAUSE ALL / RESUME ALL, source badges and LINK SOURCE, and the window to move a manga with a language filter (D-101).
 - Released 0.21.4 (tag `v0.21.4` = `4ea3777`): type check, lint, unit 235 files (7914) OK, e2e 380 passed / 13 skipped in a virtual screen with a window manager (two tests that depended on timing were made steadier), Test Windows OK. Packages: AppImage 134.7 MiB (was 296.4), deb 102.2 (239.7), rpm 88.9 (208.5), pacman 91.9 (220.3), Windows setup 117.3 (218.3). The two tests of `live-downloads.e2e-spec.ts` that say "two downloads at a time" are for the real network and were not run or changed: they need to say three.
 
+## 2026-10-13 · Manga: pause and cancel, fixed limits, held queue (D-103)
+- Pause and cancel fixed: a pause survives the app being closed (place of each chapter kept in the library, paused chapters restored with their pages, RESUME and CANCEL in the library page, the chapters paused by older versions find the pages they left), CLEAR FINISHED keeps the paused ones, a CANCEL while a pause ends wins, the pages of a chapter removed while it runs go once the run ends.
+- Limits fixed at 3 sources × 3 chapters (9 at most), no longer a setting; PAUSE ALL holds the queue and keeps the chapters that wait as Waiting until RESUME ALL.
+- Checks: type check, lint, unit tests, and the manga e2e spec in a virtual screen.
+
+## 2026-10-13 · Anime: pause and cancel (D-104)
+- The same review as the manga for the anime queue: CLEAR FINISHED keeps the paused episodes, a CANCEL during a pause wins, the paused episodes are restored in the downloads when the app opens (RESUME and CANCEL, also in the library), a cancel deletes the folder of the episode with its unfinished file, and removing an episode or an anime deletes the unfinished files.
+- Checks: type check, lint, unit tests, and the anime e2e spec in a virtual screen.

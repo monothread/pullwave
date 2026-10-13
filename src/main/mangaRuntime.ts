@@ -9,7 +9,7 @@ import { MangaDb } from './services/manga/mangaDb';
 import { MangaDownloadQueue } from './services/manga/mangaDownloadQueue';
 import { migrateMangaFolder, type MangaMigrationFileSystem } from './services/manga/mangaMigration';
 import { MangaUpdateChecker } from './services/manga/mangaUpdateChecker';
-import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, mangaDirectory } from './services/manga/mangaFiles';
+import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, isCompletePage, mangaDirectory } from './services/manga/mangaFiles';
 import { createImageFetcher } from './services/manga/mangaImages';
 import { LocalPages } from './services/manga/localPages';
 import { MangaCovers } from './services/manga/mangaCovers';
@@ -97,6 +97,15 @@ function removeChapterPath(path: string): void {
         } catch {
             return;
         }
+    }
+}
+
+// How many pages are complete in the folder of a chapter being downloaded (0 when the folder cannot be read).
+function countCompletePages(workDirectory: string): number {
+    try {
+        return readdirSync(workDirectory).filter(isCompletePage).length;
+    } catch {
+        return 0;
     }
 }
 
@@ -222,7 +231,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         getSettings: () => {
             const settings = options.getSettings();
-            return { maxConcurrent: settings.mangaMaxConcurrent, mangaDirectory: settings.mangaDirectory, mangaFormat: settings.mangaFormat };
+            return { mangaDirectory: settings.mangaDirectory, mangaFormat: settings.mangaFormat };
         },
         defaultDownloadDir: options.defaultDownloadDir,
         platform: options.platform,
@@ -233,13 +242,19 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         removePath: (path) => {
             rmSync(path, { recursive: true, force: true });
         },
+        countCompletePages,
         onJobUpdate: (job) => {
             send(IPC.eventMangaJob, job);
         },
         onLibraryChanged: () => {
             send(IPC.eventMangaLibrary);
+        },
+        onHeldChange: (held) => {
+            send(IPC.eventMangaQueueHeld, held);
         }
     });
+    // The chapters that were paused when the app closed are shown again, ready to go on or be cancelled.
+    queue.restore();
     const baseDirectory = (): string => {
         const configured = options.getSettings().mangaDirectory;
         return configured.length > 0 ? configured : join(options.defaultDownloadDir, DEFAULT_MANGA_FOLDER);

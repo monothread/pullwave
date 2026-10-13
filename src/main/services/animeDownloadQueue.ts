@@ -30,7 +30,7 @@ export interface AnimeQueueDependencies {
     onEpisodeDownloaded?: (episodeId: number) => void;
     onJobUpdate: (job: AnimeJob) => void;
     onLibraryChanged: () => void;
-    // Deletes a folder with what is in it (the folder of an episode whose download was cut short by closing the app).
+    // Deletes a folder with what is in it (the folder of an episode whose download was cancelled, removed or cut short by closing the app).
     removeDirectory?: (path: string) => void;
     // The system the files are on (decides the rules of file names); this one by default.
     platform?: NodeJS.Platform;
@@ -45,6 +45,7 @@ function isActive(job: AnimeJob): boolean {
 
 export class AnimeDownloadQueue {
     private readonly jobs = new Map<number, AnimeJob>();
+    // The runs that are going on, until they end (also the run of an episode removed from the library, whose job is gone).
     private readonly handles = new Map<number, AniDownloadHandle>();
     private readonly lastReported = new Map<number, number>();
     // The folder each running download writes to.
@@ -125,6 +126,18 @@ export class AnimeDownloadQueue {
         this.pump();
     }
 
+    // The episodes that were paused when the app last closed are shown again as paused, so they can go on (from their partial file) or be
+    // cancelled.
+    restore(): void {
+        this.deps.db.pausedEpisodes().forEach((episode) => {
+            const anime = this.deps.db.getAnime(episode.animeId);
+            if (anime === null || this.jobs.has(episode.id)) {
+                return;
+            }
+            this.jobs.set(episode.id, { ...this.newJob(anime, episode), status: 'paused' });
+        });
+    }
+
     // Ends the run of a download that is going on, keeping what it downloaded so far.
     pause(episodeId: number): void {
         const job = this.jobs.get(episodeId);
@@ -143,41 +156,47 @@ export class AnimeDownloadQueue {
         }
     }
 
+    // Cancels an episode that waits, runs or is paused, and deletes the folder of the episode with the partial file in it.
     cancel(episodeId: number): void {
         const job = this.jobs.get(episodeId);
-        if (job?.status === 'paused') {
-            this.deps.db.markFailed(episodeId, 'cancelled', null);
-            this.update(job, { status: 'cancelled' });
-            this.deps.onLibraryChanged();
-            return;
-        }
-        if (!job || !isActive(job)) {
+        if (!job || (!isActive(job) && job.status !== 'paused')) {
             return;
         }
         const handle = this.handles.get(episodeId);
         if (handle) {
-            // The result of the run settles the job.
+            // A pause asked for before wins no more: the result of the run settles the job as cancelled.
+            this.pauseRequested.delete(episodeId);
             handle.cancel();
             return;
         }
+        this.removePartial(job.animeId, job.episode);
         this.deps.db.markFailed(episodeId, 'cancelled', null);
         this.update(job, { status: 'cancelled' });
         this.deps.onLibraryChanged();
     }
 
+    // A paused episode is not finished: it stays, so it can still go on or be cancelled.
     clearFinished(): void {
         this.list().forEach((job) => {
-            if (!isActive(job)) {
+            if (!isActive(job) && job.status !== 'paused') {
                 this.jobs.delete(job.episodeId);
             }
         });
     }
 
-    // The episodes are gone from the library: whatever is still running for them is stopped and forgotten.
+    // The episodes are leaving the library (call it before they are removed from it): whatever is still running for them is stopped and
+    // forgotten, and the partial files are deleted. Those of a run go once it has ended (before, it could still write), and its place goes to the
+    // next episode only then.
     forget(episodeIds: number[]): void {
         episodeIds.forEach((episodeId) => {
-            this.handles.get(episodeId)?.cancel();
-            this.handles.delete(episodeId);
+            const handle = this.handles.get(episodeId);
+            const episode = this.deps.db.getEpisode(episodeId);
+            if (handle) {
+                handle.cancel();
+            } else if (episode && episode.status !== 'done') {
+                // Waiting, paused, failed or cancelled: a partial file may be in its folder.
+                this.removePartial(episode.animeId, episode.number);
+            }
             this.jobs.delete(episodeId);
             this.lastReported.delete(episodeId);
             this.pauseRequested.delete(episodeId);
@@ -226,11 +245,8 @@ export class AnimeDownloadQueue {
         return job !== undefined && isActive(job);
     }
 
-    private queueEpisode(anime: AnimeRecord, episode: AnimeEpisodeRecord): void {
-        if (episode.status === 'done' || this.isActiveJob(episode.id)) {
-            return;
-        }
-        const job: AnimeJob = {
+    private newJob(anime: AnimeRecord, episode: AnimeEpisodeRecord): AnimeJob {
+        return {
             episodeId: episode.id,
             animeId: anime.id,
             animeTitle: anime.title,
@@ -241,8 +257,29 @@ export class AnimeDownloadQueue {
             eta: '',
             error: null
         };
+    }
+
+    private queueEpisode(anime: AnimeRecord, episode: AnimeEpisodeRecord): void {
+        if (episode.status === 'done' || this.isActiveJob(episode.id)) {
+            return;
+        }
+        const job = this.newJob(anime, episode);
         this.jobs.set(episode.id, job);
         this.deps.onJobUpdate({ ...job });
+    }
+
+    // Where an episode is downloaded: the folder of the episode inside the folder its anime has, or the one it will have.
+    private downloadDirectoryOf(anime: AnimeRecord, episode: string, platform: NodeJS.Platform): string {
+        const animeDirectory = this.existingAnimeDirectory(anime.id, platform) ?? this.newAnimeDirectory(anime, this.deps.getSettings(), platform);
+        return episodeDownloadDirectory(animeDirectory, episode, platform);
+    }
+
+    // Deletes the folder of an episode that is not downloaded and not running, with the partial file a pause (or a run cut short) left in it.
+    private removePartial(animeId: number, episode: string): void {
+        const anime = this.deps.db.getAnime(animeId);
+        if (anime) {
+            this.deps.removeDirectory?.(this.downloadDirectoryOf(anime, episode, this.deps.platform ?? process.platform));
+        }
     }
 
     private update(job: AnimeJob, changes: Partial<AnimeJob>): void {
@@ -276,8 +313,7 @@ export class AnimeDownloadQueue {
         }
         const settings = this.deps.getSettings();
         const platform = this.deps.platform ?? process.platform;
-        const animeDirectory = this.existingAnimeDirectory(anime.id, platform) ?? this.newAnimeDirectory(anime, settings, platform);
-        const downloadDir = episodeDownloadDirectory(animeDirectory, job.episode, platform);
+        const downloadDir = this.downloadDirectoryOf(anime, job.episode, platform);
         try {
             this.deps.ensureDirectory(downloadDir);
         } catch (error) {
@@ -308,12 +344,20 @@ export class AnimeDownloadQueue {
             // The pause only counts for the run it was asked of, whichever way that run ended.
             const paused = this.pauseRequested.delete(job.episodeId);
             if (!this.jobs.has(job.episodeId)) {
+                // The episode was removed while it ran: its folder goes now that nothing writes in it (with the video, when the run
+                // still got to the end: what is not in the library is not kept on the disk).
+                this.deps.removeDirectory?.(downloadDir);
+                this.pump();
                 return;
             }
             if (result.status === 'cancelled' && paused) {
                 db.markPaused(job.episodeId);
                 this.update(job, { status: 'paused', speed: '', eta: '' });
             } else if (result.status === 'cancelled') {
+                // Closing the app deletes the folder itself, once every run has ended or the wait is over.
+                if (!this.closed) {
+                    this.deps.removeDirectory?.(downloadDir);
+                }
                 db.markFailed(job.episodeId, 'cancelled', null);
                 this.update(job, { status: 'cancelled', speed: '', eta: '' });
             } else if (result.status === 'error') {

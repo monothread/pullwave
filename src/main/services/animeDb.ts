@@ -487,6 +487,11 @@ export class AnimeDb {
         this.run(`UPDATE episode SET status = ?, error_code = ?, error_raw = ? WHERE id = ?`, status, error?.code ?? null, error?.raw ?? null, episodeId);
     }
 
+    // The episodes that are paused, anime by anime, in the order they were put in the library.
+    pausedEpisodes(): AnimeEpisodeRecord[] {
+        return this.all(`SELECT * FROM episode WHERE status = 'paused' ORDER BY anime_id, id`).map(toEpisode);
+    }
+
     // The queue lives in memory: whatever was waiting or downloading when the app closed will not continue by itself.
     failInterrupted(): void {
         this.run(

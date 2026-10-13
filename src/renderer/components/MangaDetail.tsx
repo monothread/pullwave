@@ -102,6 +102,12 @@ export function MangaDetail() {
     const retryJob = useMangaStore((state) => {
         return state.retryJob;
     });
+    const resumeJob = useMangaStore((state) => {
+        return state.resumeJob;
+    });
+    const cancelJob = useMangaStore((state) => {
+        return state.cancelJob;
+    });
     const refresh = useMangaStore((state) => {
         return state.selectionRefresh;
     });
@@ -539,6 +545,30 @@ export function MangaDetail() {
                                         >
                                             {t('manga.jobs.retry')}
                                         </button>
+                                    )}
+                                    {inLibraryPage && state && state.status === 'paused' && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                className="btn btn--small btn--primary"
+                                                aria-label={`${t('manga.jobs.resume')}: ${label}`}
+                                                onClick={() => {
+                                                    void resumeJob(state.id);
+                                                }}
+                                            >
+                                                {t('manga.jobs.resume')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn--small btn--hot"
+                                                aria-label={`${t('manga.jobs.cancel')}: ${label}`}
+                                                onClick={() => {
+                                                    void cancelJob(state.id);
+                                                }}
+                                            >
+                                                {t('manga.jobs.cancel')}
+                                            </button>
+                                        </>
                                     )}
                                     {inLibraryPage && state && state.status === 'done' && (
                                         <button

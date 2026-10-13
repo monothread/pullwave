@@ -40,6 +40,7 @@ export interface MockApiHandle {
     emitMangaServer: (status: MangaServerStatus) => void;
     emitMangaCloudflare: (active: MangaCloudflareActivity[]) => void;
     emitMangaJob: (job: MangaJob) => void;
+    emitMangaQueueHeld: (held: boolean) => void;
     emitMangaLibraryChanged: () => void;
     emitMangaMigration: (progress: MangaMigrationProgress) => void;
     emitMangaServerUpdate: (state: ToolState) => void;
@@ -79,6 +80,7 @@ export function createMockApi(): MockApiHandle {
     const mangaServerListeners: Array<(status: MangaServerStatus) => void> = [];
     const mangaCloudflareListeners: Array<(active: MangaCloudflareActivity[]) => void> = [];
     const mangaJobListeners: Array<(job: MangaJob) => void> = [];
+    const mangaQueueHeldListeners: Array<(held: boolean) => void> = [];
     const mangaLibraryListeners: Array<() => void> = [];
     const mangaMigrationListeners: Array<(progress: MangaMigrationProgress) => void> = [];
     const mangaNewChaptersListeners: Array<(news: MangaNewChapters) => void> = [];
@@ -194,6 +196,9 @@ export function createMockApi(): MockApiHandle {
         resumeAll: vi.fn(async () => {
             return undefined;
         }),
+        queueHeld: vi.fn(async () => {
+            return false;
+        }),
         clearFinished: vi.fn(async () => {return undefined}),
         removeDownload: vi.fn(async () => {return undefined}),
         removeManga: vi.fn(async () => {return undefined}),
@@ -270,6 +275,9 @@ export function createMockApi(): MockApiHandle {
         }),
         onJobUpdate: vi.fn((listener: (job: MangaJob) => void) => {
             return subscribe(mangaJobListeners, listener);
+        }),
+        onQueueHeld: vi.fn((listener: (held: boolean) => void) => {
+            return subscribe(mangaQueueHeldListeners, listener);
         }),
         onLibraryChanged: vi.fn((listener: () => void) => {
             return subscribe(mangaLibraryListeners, listener);
@@ -544,6 +552,11 @@ export function createMockApi(): MockApiHandle {
         emitMangaCloudflare: (active) => {
             mangaCloudflareListeners.forEach((listener) => {
                 listener(active);
+            });
+        },
+        emitMangaQueueHeld: (held) => {
+            mangaQueueHeldListeners.forEach((listener) => {
+                listener(held);
             });
         },
         emitMangaJob: (job) => {

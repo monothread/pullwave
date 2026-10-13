@@ -5,7 +5,7 @@ import { writeCbz as defaultWriteCbz, type CbzEntry } from './cbzWriter';
 import { buildComicInfo } from './comicInfo';
 import { detectImageType, resolveImageType } from './imageType';
 import { ImageFetchError, type ImageFetcher } from './mangaImages';
-import { chapterWorkDirectory, COMIC_INFO_FILE, pageFileName, TEMPORARY_EXTENSION } from './mangaFiles';
+import { chapterWorkDirectory, COMIC_INFO_FILE, isCompletePage, pageFileName, TEMPORARY_EXTENSION } from './mangaFiles';
 
 // How many times a page is asked for again after it fails, and how long to wait before each.
 export const PAGE_RETRY_DELAYS_MS: readonly number[] = [500, 1500];
@@ -202,11 +202,7 @@ export class MangaChapterDownloader {
 
     private async finish(options: ChapterDownloadOptions, workDirectory: string, pageCount: number): Promise<ChapterDownloadResult> {
         const comicInfo = buildComicInfo({ seriesTitle: options.seriesTitle, chapter: options.chapter, details: options.details, pageCount });
-        const pages = readdirSync(workDirectory)
-            .filter((file) => {
-                return !file.endsWith(TEMPORARY_EXTENSION) && file !== COMIC_INFO_FILE;
-            })
-            .sort();
+        const pages = readdirSync(workDirectory).filter(isCompletePage).sort();
         if (options.format === 'cbz') {
             const entries: CbzEntry[] = pages.map((file) => {
                 return { name: file, path: join(workDirectory, file) };

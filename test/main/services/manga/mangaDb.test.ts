@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('MangaDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(8);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(9);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -34,7 +34,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(8);
+        expect(second.schemaVersion).toBe(9);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -205,25 +205,95 @@ describe('MangaDb states of a download', () => {
         return { db, manga, id: saved.id };
     }
 
-    it('goes queued, downloading, paused and done', () => {
+    it('goes queued, downloading, paused and done, remembering where it is made until it is done', () => {
         const { db, id } = withChapter();
+        expect(db.outputPathOf(id)).toBeNull();
         db.markQueued(id);
         expect(db.getChapter(id)?.status).toBe('queued');
-        db.markDownloading(id);
+        db.markDownloading(id, '/m/Chapter 1.cbz');
         expect(db.getChapter(id)?.status).toBe('downloading');
+        expect(db.outputPathOf(id)).toBe('/m/Chapter 1.cbz');
         db.setPageCount(id, 30);
         expect(db.getChapter(id)?.pageCount).toBe(30);
         db.markPaused(id);
         expect(db.getChapter(id)?.status).toBe('paused');
+        expect(db.outputPathOf(id)).toBe('/m/Chapter 1.cbz');
+        db.markQueued(id);
+        expect(db.outputPathOf(id)).toBe('/m/Chapter 1.cbz');
         db.markDone(id, '/m/Chapter 1.cbz', 4096, 30);
         expect(db.getChapter(id)).toMatchObject({ status: 'done', filePath: '/m/Chapter 1.cbz', sizeBytes: 4096, pageCount: 30, error: null, downloadedAt: 5000 });
+        expect(db.outputPathOf(id)).toBeNull();
+    });
+
+    it('forgets where a chapter was made once it fails or is cancelled (its pages are deleted then)', () => {
+        const { db, id } = withChapter();
+        db.markDownloading(id, '/m/Chapter 1.cbz');
+        db.markFailed(id, 'error', { code: 'DISK', message: 'full' });
+        expect(db.outputPathOf(id)).toBeNull();
+        db.markDownloading(id, '/m/Chapter 1 (2).cbz');
+        db.markFailed(id, 'cancelled', null);
+        expect(db.outputPathOf(id)).toBeNull();
+    });
+
+    it('sets the place of a chapter, and has none for a chapter it does not know', () => {
+        const { db, id } = withChapter();
+        db.setOutputPath(id, '/m/Chapter 1.cbz');
+        expect(db.outputPathOf(id)).toBe('/m/Chapter 1.cbz');
+        expect(db.getChapter(id)?.status).toBe('idle');
+        expect(db.outputPathOf(999)).toBeNull();
+    });
+
+    it('tells whether another chapter claims a place', () => {
+        const { db, manga } = setup();
+        const first = db.ensureChapter(manga.id, chapter(1)).id;
+        const second = db.ensureChapter(manga.id, chapter(2)).id;
+        db.markDownloading(first, '/m/Chapter 1.cbz');
+        expect(db.isOutputPathClaimed('/m/Chapter 1.cbz', second)).toBe(true);
+        expect(db.isOutputPathClaimed('/m/Chapter 1.cbz', first)).toBe(false);
+        expect(db.isOutputPathClaimed('/m/Chapter 2.cbz', second)).toBe(false);
+    });
+
+    it('adds the place to a library made before it existed, keeping its paused chapters without one', () => {
+        const path = join(makeTempDir(), 'before.db');
+        const before = new MangaDb(path);
+        const manga = before.upsertManga(MANGA);
+        const id = before.ensureChapter(manga.id, chapter(1)).id;
+        before.markPaused(id);
+        before.close();
+        const old = new DatabaseSync(path);
+        old.exec('ALTER TABLE chapter DROP COLUMN output_path; PRAGMA user_version = 8;');
+        old.close();
+        const db = new MangaDb(path);
+        expect(db.schemaVersion).toBe(9);
+        expect(db.pausedChapters().map((item) => {
+            return [item.id, item.status];
+        })).toEqual([[id, 'paused']]);
+        expect(db.outputPathOf(id)).toBeNull();
+        db.close();
+    });
+
+    it('lists the paused chapters manga by manga, the oldest chapter first', () => {
+        const { db, manga } = setup();
+        const other = db.upsertManga({ remoteId: 8, sourceId: 'src', title: 'Bleach', thumbnailUrl: null });
+        const later = db.ensureChapter(manga.id, chapter(3)).id;
+        const earlier = db.ensureChapter(manga.id, chapter(1)).id;
+        const running = db.ensureChapter(manga.id, chapter(2)).id;
+        const otherPaused = db.ensureChapter(other.id, chapter(1)).id;
+        [later, earlier, otherPaused].forEach((id) => {
+            db.markPaused(id);
+        });
+        db.markDownloading(running, '/m/Chapter 2.cbz');
+        expect(db.pausedChapters().map((item) => {
+            return item.id;
+        })).toEqual([earlier, later, otherPaused]);
+        expect(db.pausedChapters()[0]).toMatchObject({ mangaId: manga.id, remoteId: 1, status: 'paused' });
     });
 
     it('keeps the error of a failure and clears it when the download starts again', () => {
         const { db, id } = withChapter();
         db.markFailed(id, 'error', { code: 'IMAGE', message: 'page 3 is not an image' });
         expect(db.getChapter(id)).toMatchObject({ status: 'error', error: { code: 'IMAGE', message: 'page 3 is not an image' } });
-        db.markDownloading(id);
+        db.markDownloading(id, '/m/Chapter 1.cbz');
         expect(db.getChapter(id)).toMatchObject({ status: 'downloading', error: null });
         db.markFailed(id, 'error', { code: 'DISK', message: 'full' });
         db.markQueued(id);
@@ -242,7 +312,7 @@ describe('MangaDb states of a download', () => {
             return db.ensureChapter(manga.id, chapter(number)).id;
         });
         db.markQueued(ids[0]!);
-        db.markDownloading(ids[1]!);
+        db.markDownloading(ids[1]!, '/m/2.cbz');
         db.markPaused(ids[2]!);
         db.markDone(ids[3]!, '/m/4.cbz', 1, 1);
         db.failInterrupted();
@@ -254,6 +324,8 @@ describe('MangaDb states of a download', () => {
         expect(states.slice(2).map((state) => {
             return state?.status;
         })).toEqual(['paused', 'done', 'idle']);
+        // The place of the interrupted chapter is kept: retrying it goes on from the pages it left.
+        expect(db.outputPathOf(ids[1]!)).toBe('/m/2.cbz');
     });
 });
 
@@ -279,7 +351,7 @@ describe('MangaDb the page of the manga on its site', () => {
             PRAGMA user_version = 2;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(8);
+        expect(db.schemaVersion).toBe(9);
         expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, series: null, season: null, seasonName: null, groupIds: [], chapters: [] }]);
         db.close();
     });
@@ -772,7 +844,7 @@ describe('MangaDb when a chapter was put in the library', () => {
             PRAGMA user_version = 4;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(8);
+        expect(db.schemaVersion).toBe(9);
         expect(db.chaptersOf(1)[0]).toMatchObject({ remoteId: 5, addedAt: null });
         db.close();
     });
@@ -868,7 +940,7 @@ describe('MangaDb the cover that is kept', () => {
             PRAGMA user_version = 5;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(8);
+        expect(db.schemaVersion).toBe(9);
         expect(db.coverHash(1)).toBeNull();
         expect(db.coverless().map((item) => {
             return item.title;
@@ -1127,7 +1199,7 @@ describe('MangaDb the tables of the histories in a library made before them', ()
             PRAGMA user_version = 6;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(8);
+        expect(db.schemaVersion).toBe(9);
         expect(db.updates()).toEqual([]);
         expect(db.readingHistory()).toEqual([]);
         db.recordReading({ sourceId: 's', mangaRemoteId: 1, title: 'Old', thumbnailUrl: null, chapterRemoteId: 2, chapterName: '', chapterNumber: null, page: 0, pageCount: 1 });
@@ -1154,7 +1226,7 @@ describe('MangaDb the order of the groups in a library made before it', () => {
             PRAGMA user_version = 7;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(8);
+        expect(db.schemaVersion).toBe(9);
         // By name, whatever the case; the ones with the same name by their id.
         expect(
             db.listGroups().map((group) => {

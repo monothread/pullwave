@@ -265,6 +265,34 @@ describe('AnimeDb.failInterrupted', () => {
     });
 });
 
+describe('AnimeDb.pausedEpisodes', () => {
+    it('lists the paused episodes anime by anime, in the order they were put in the library, and none of the others', () => {
+        const db = makeDb();
+        const naruto = db.upsertAnime(NARUTO);
+        const bleach = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 2, audio: 'dub' });
+        const bleachPaused = db.ensureEpisode(bleach.id, '4');
+        const second = db.ensureEpisode(naruto.id, '2');
+        const first = db.ensureEpisode(naruto.id, '1');
+        const running = db.ensureEpisode(naruto.id, '3');
+        [bleachPaused, second, first].forEach((episode) => {
+            db.markPaused(episode.id);
+        });
+        db.markDownloading(running.id);
+
+        expect(db.pausedEpisodes().map((episode) => {
+            return [episode.animeId, episode.number, episode.status];
+        })).toEqual([
+            [naruto.id, '2', 'paused'],
+            [naruto.id, '1', 'paused'],
+            [bleach.id, '4', 'paused']
+        ]);
+    });
+
+    it('is empty when nothing is paused', () => {
+        expect(makeDb().pausedEpisodes()).toEqual([]);
+    });
+});
+
 describe('AnimeDb.saveProgress', () => {
     it('stores the position, the duration and whether it was watched', () => {
         const db = makeDb();
