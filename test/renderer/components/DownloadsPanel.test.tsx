@@ -6,7 +6,8 @@ import type { HistoryEntry } from '@shared/types';
 import { DownloadsPanel } from '@renderer/components/DownloadsPanel';
 import { SETTINGS_ICON } from '@renderer/components/TabButton';
 import { useAppStore } from '@renderer/store/appStore';
-import { installMockApi } from '../../helpers/mockApi';
+import { useProgramsStore } from '@renderer/store/programsStore';
+import { installMockApi, makeProgramInfo, makeProgramsStatus } from '../../helpers/mockApi';
 
 const initial = useAppStore.getState();
 const DONE: HistoryEntry = { id: 'h1', url: 'https://x.com/1', title: 'Done Video', filePath: '/d/Done Video.mp4', status: 'done', errorTitle: null, finishedAt: 1700000000000 };
@@ -14,6 +15,7 @@ const DONE: HistoryEntry = { id: 'h1', url: 'https://x.com/1', title: 'Done Vide
 beforeEach(() => {
     installMockApi();
     useAppStore.setState({ ...initial, tab: 'downloads', downloadsView: 'queue', jobs: [], history: [], settings: DEFAULT_SETTINGS });
+    useProgramsStore.setState({ status: makeProgramsStatus(), updates: {}, versions: null, checking: false, working: {}, results: {} });
 });
 
 function subNav(): HTMLElement {
@@ -21,6 +23,49 @@ function subNav(): HTMLElement {
 }
 
 describe('DownloadsPanel', () => {
+    describe('programs', () => {
+        function failProgram(id: 'ytdlp' | 'deno' | 'ffmpeg'): void {
+            const base = makeProgramsStatus();
+            useProgramsStore.setState({
+                status: {
+                    ...base,
+                    programs: base.programs.map((program) => {
+                        return program.id === id ? makeProgramInfo(id, { state: { ...program.state, status: 'error', percent: 0, version: null, error: { code: 'DOWNLOAD_FAILED', message: 'offline' } } }) : program;
+                    })
+                }
+            });
+        }
+
+        it('shows the queue once yt-dlp, deno and ffmpeg are ready', () => {
+            render(<DownloadsPanel />);
+            expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            expect(screen.getByLabelText('Link 1')).toBeInTheDocument();
+        });
+
+        it('shows how the programs are downloaded, and TRY AGAIN for the one that failed, in place of the queue', async () => {
+            failProgram('ytdlp');
+            const user = userEvent.setup();
+            const mock = installMockApi();
+            render(<DownloadsPanel />);
+            expect(screen.getByTestId('programs-setup-downloads')).toHaveTextContent('PREPARING THE VIDEO DOWNLOADER');
+            expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
+            expect(within(screen.getByTestId('program-setup-ytdlp')).getByRole('alert')).toHaveTextContent('The download failed. Check your connection and try again.');
+            await user.click(within(screen.getByTestId('program-setup-ytdlp')).getByRole('button', { name: 'TRY AGAIN' }));
+            expect(mock.api.programs.install).toHaveBeenCalledWith('ytdlp');
+        });
+
+        it('does not hold the history or the settings back', async () => {
+            failProgram('ffmpeg');
+            const user = userEvent.setup();
+            render(<DownloadsPanel />);
+            await user.click(within(subNav()).getByRole('button', { name: 'HISTORY' }));
+            expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            await user.click(within(subNav()).getByRole('button', { name: 'SETTINGS' }));
+            expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            expect(screen.getByTestId('programs-block-downloads')).toBeInTheDocument();
+        });
+    });
+
     it('is a region of the video downloader with a QUEUE, a HISTORY and a SETTINGS screen', () => {
         render(<DownloadsPanel />);
         expect(screen.getByRole('region', { name: 'Video downloader' })).toBeInTheDocument();
@@ -82,7 +127,7 @@ describe('DownloadsPanel', () => {
         expect(within(subNav()).getByRole('button', { name: 'SETTINGS' })).toHaveAttribute('aria-current', 'page');
         expect(within(subNav()).getByRole('button', { name: 'QUEUE' })).not.toHaveAttribute('aria-current');
         expect(screen.getByRole('region', { name: 'Settings' })).toBeInTheDocument();
-        ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED'].forEach((legend) => {
+        ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'Status of the programs', 'ADVANCED'].forEach((legend) => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
         expect(screen.queryByText('APPEARANCE & WINDOW')).not.toBeInTheDocument();

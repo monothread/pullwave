@@ -140,6 +140,9 @@ body::after {
     gap: 8px;
 }
 
+/* No chip to show: the programs are all installed and running. */
+.binary-status:empty { display: none; }
+
 .chip {
     padding: 2px 8px;
     border: 1px solid currentColor;
@@ -147,7 +150,6 @@ body::after {
     text-transform: uppercase;
 }
 
-.chip--ok { color: var(--green); }
 .chip--bad { color: var(--red); box-shadow: var(--glow-red); }
 .chip--pending { color: var(--muted); }
 
@@ -1330,9 +1332,14 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .manga__tag--plain { color: var(--muted); cursor: default; }
 .manga__tag:is(button):hover, .manga__tag:is(button):focus-visible { border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); outline: none; }
 .badge--new { color: var(--yellow); border-color: var(--yellow); text-shadow: 0 0 6px var(--yellow); align-self: flex-start; }
+.badge--source { color: var(--muted); border-color: var(--muted); align-self: flex-start; overflow-wrap: anywhere; }
 .manga__tag--on { background: var(--cyan); color: var(--bg); border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
 .manga__tag--some { border-style: dashed; border-color: var(--cyan); }
 .manga__candidates { max-height: 320px; overflow-y: auto; }
+/* The window to move a manga to another source: the filters in a row that wraps, the results in the middle with their own scroll. */
+.manga__migrate-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.manga__migrate-filters > .field { flex: 1 1 150px; min-width: 0; }
+.manga__migrate-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .manga__more { min-height: 48px; display: flex; align-items: center; justify-content: center; }
 .manga__head { gap: 14px; position: relative; }
 .manga__head-gear { position: absolute; top: 6px; right: 6px; }

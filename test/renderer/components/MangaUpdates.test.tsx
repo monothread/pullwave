@@ -110,7 +110,7 @@ describe('MangaUpdates', () => {
         expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(null);
         const working = screen.getByRole('button', { name: 'LOOKING…' });
         expect(working).toBeDisabled();
-        answer({ ok: true, count: 0, titles: [], failed: 0 });
+        answer({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
         expect(await screen.findByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeEnabled();
     });
 

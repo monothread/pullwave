@@ -44,7 +44,6 @@ export interface AppState {
     notice: Notice | null;
     // The notices that are on the screen together, the newest on top of the others; each one goes away by itself.
     toasts: ToastItem[];
-    updating: boolean;
     appUpdate: AppUpdateState;
     traySupport: TraySupport | null;
     browsers: DetectedBrowser[] | null;
@@ -69,9 +68,6 @@ export interface AppState {
     clearHistory: () => Promise<void>;
     saveSettings: (settings: Settings) => Promise<Settings>;
     refreshBinaries: () => Promise<void>;
-    updateYtdlp: () => Promise<void>;
-    // Goes back to the yt-dlp that ships with the app.
-    resetYtdlp: () => Promise<void>;
     chooseDirectory: () => Promise<string | null>;
     checkAppUpdate: () => Promise<void>;
     downloadAppUpdate: () => Promise<void>;
@@ -119,7 +115,6 @@ export const useAppStore = create<AppState>((set, get) => {
         binaries: null,
         notice: null,
         toasts: [],
-        updating: false,
         appUpdate: INITIAL_APP_UPDATE,
         traySupport: null,
         browsers: null,
@@ -264,26 +259,6 @@ export const useAppStore = create<AppState>((set, get) => {
 
         refreshBinaries: async () => {
             set({ binaries: await window.api.checkBinaries() });
-        },
-
-        updateYtdlp: async () => {
-            set({ updating: true });
-            const result = await window.api.updateYtdlp();
-            set({
-                updating: false,
-                notice: { kind: result.ok ? 'info' : 'error', message: result.output || translateNow(get().settings, result.ok ? 'notice.ytdlpUpToDate' : 'notice.updateFailed') }
-            });
-            await get().refreshBinaries();
-        },
-
-        resetYtdlp: async () => {
-            set({ updating: true });
-            const result = await window.api.resetYtdlp();
-            set({
-                updating: false,
-                notice: { kind: result.ok ? 'info' : 'error', message: result.output || translateNow(get().settings, 'notice.updateFailed') }
-            });
-            await get().refreshBinaries();
         },
 
         chooseDirectory: () => {

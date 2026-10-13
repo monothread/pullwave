@@ -10,6 +10,9 @@ export interface MangaUpdateCheckerDependencies {
     db: Pick<MangaDb, 'list' | 'getLibraryManga' | 'registerChapters' | 'saveDetails'>;
     // What the source says now about a manga of the library; throws when it cannot be reached.
     fetchManga: (remoteId: number) => Promise<{ details: MangaDetails; chapters: MangaChapter[] }>;
+    // The ids of the sources whose extension is installed. The mangas of any other source are not asked about (the server could only answer
+    // that the source is not installed). Null, or no function: the list is not known and every manga is asked about.
+    installedSourceIds?: () => Promise<ReadonlySet<string> | null>;
     // Whether the check is turned on (read at every check).
     isEnabled: () => boolean;
     onNewChapters: (news: MangaNewChapters) => void;
@@ -80,11 +83,29 @@ export class MangaUpdateChecker {
         return this.running;
     }
 
-    // Checks one manga of the library, now (the button of its page).
+    // The ids of the sources that are installed, or null when that cannot be known (then nothing is left out). With no way to ask, it does
+    // not wait for anything.
+    private async installedSources(): Promise<ReadonlySet<string> | null> {
+        if (this.deps.installedSourceIds === undefined) {
+            return null;
+        }
+        try {
+            return await this.deps.installedSourceIds();
+        } catch {
+            return null;
+        }
+    }
+
+    // Checks one manga of the library, now (the button of its page). A manga whose extension is not installed is not asked about: it is
+    // answered as skipped.
     async checkManga(mangaId: number): Promise<MangaCheckResponse> {
         const manga = this.deps.db.getLibraryManga(mangaId);
         if (manga === null) {
             return { ok: false, error: { code: 'NOT_FOUND', message: 'The manga is not in the library.' } };
+        }
+        const installed = this.deps.installedSourceIds === undefined ? null : await this.installedSources();
+        if (installed !== null && !installed.has(manga.sourceId)) {
+            return { ok: true, count: 0, titles: [], failed: 0, skipped: 1 };
         }
         const news: MangaNewChapters = { count: 0, titles: [] };
         try {
@@ -93,18 +114,24 @@ export class MangaUpdateChecker {
             return { ok: false, error: toCheckError(error) };
         }
         this.tell(news);
-        return { ok: true, count: news.count, titles: news.titles, failed: 0 };
+        return { ok: true, count: news.count, titles: news.titles, failed: 0, skipped: 0 };
     }
 
     private async run(origin: ArrivalOrigin): Promise<MangaCheckResponse> {
         const news: MangaNewChapters = { count: 0, titles: [] };
         let failed = 0;
+        let skipped = 0;
         if (origin === 'auto' && !this.deps.isEnabled()) {
-            return { ok: true, count: 0, titles: [], failed: 0 };
+            return { ok: true, count: 0, titles: [], failed: 0, skipped: 0 };
         }
+        const installed = this.deps.installedSourceIds === undefined ? null : await this.installedSources();
         for (const manga of this.deps.db.list()) {
             if (this.stopped) {
                 break;
+            }
+            if (installed !== null && !installed.has(manga.sourceId)) {
+                skipped += 1;
+                continue;
             }
             try {
                 await this.check(manga, origin, news);
@@ -113,7 +140,7 @@ export class MangaUpdateChecker {
             }
         }
         this.tell(news);
-        return { ok: true, count: news.count, titles: news.titles, failed };
+        return { ok: true, count: news.count, titles: news.titles, failed, skipped };
     }
 
     // Asks the source about one manga; what is new is put in the library (and downloaded, when the user wants that). Throws when the

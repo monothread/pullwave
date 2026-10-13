@@ -5,11 +5,10 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { SelectField, TextField } from './fields';
+import { SEVERAL_LANGUAGES } from './mangaSearchSources';
 import { ALL_LANGUAGES, listedSources } from './mangaText';
 import { RowLink } from './RowLink';
 
-// The language of a source that reads sites in several languages (the extension says "all").
-const SEVERAL_LANGUAGES = 'all';
 
 // The languages of the sources, each once; the sources of several languages go last, the others by code.
 export function sourceLanguages(sources: readonly MangaSource[]): string[] {

@@ -3,7 +3,9 @@ import {
     LANGUAGE_SETTINGS,
     MAX_LIVE_END_CHECK_SECONDS,
     MAX_TITLE_LENGTH,
+    MAX_MANGA_CONCURRENT_DOWNLOADS,
     MIN_LIVE_END_CHECK_SECONDS,
+    MIN_MANGA_CONCURRENT_DOWNLOADS,
     MIN_TITLE_LENGTH,
     RESOLUTIONS,
     START_TABS,
@@ -24,6 +26,7 @@ import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
 import { MangaHealthSettings } from './MangaHealthSettings';
+import { ProgramsStatusBlock } from './ProgramsStatusBlock';
 import { MangaHelperSettings } from './MangaHelperSettings';
 import { MangaStoreSettings } from './MangaStoreSettings';
 import { formatResolution } from './settingsFormat';
@@ -143,18 +146,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const checkAppUpdate = useAppStore((state) => {
         return state.checkAppUpdate;
     });
-    const binaries = useAppStore((state) => {
-        return state.binaries;
-    });
-    const updatingYtdlp = useAppStore((state) => {
-        return state.updating;
-    });
-    const updateYtdlp = useAppStore((state) => {
-        return state.updateYtdlp;
-    });
-    const resetYtdlp = useAppStore((state) => {
-        return state.resetYtdlp;
-    });
     const traySupport = useAppStore((state) => {
         return state.traySupport;
     });
@@ -169,18 +160,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     });
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
-    });
-    const aniCli = useAnimeStore((state) => {
-        return state.status.aniCli;
-    });
-    const updatingAniCli = useAnimeStore((state) => {
-        return state.updatingCli;
-    });
-    const updateAniCli = useAnimeStore((state) => {
-        return state.updateCli;
-    });
-    const resetAniCli = useAnimeStore((state) => {
-        return state.resetCli;
     });
     const library = useAnimeStore((state) => {
         return state.library;
@@ -371,6 +350,8 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             }}
                         />
                     </fieldset>
+
+                    <ProgramsStatusBlock place="global" />
                 </>
             )}
 
@@ -612,39 +593,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         )}
                     </fieldset>
 
-                    <fieldset className="panel">
-                        <legend>YT-DLP</legend>
-                        <p className="update-status" aria-live="polite">
-                            {binaries?.ytdlp.found
-                                ? t('settings.ytdlp.installed', { version: binaries.ytdlp.version ?? t('settings.ytdlp.versionUnknown') })
-                                : t('settings.ytdlp.notFound')}
-                        </p>
-                        <div className="field-row">
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                disabled={updatingYtdlp}
-                                onClick={() => {
-                                    void updateYtdlp();
-                                }}
-                            >
-                                {updatingYtdlp ? t('settings.ytdlp.updating') : t('settings.ytdlp.update')}
-                            </button>
-                            {binaries?.ytdlp.source === 'updated' && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small"
-                                    disabled={updatingYtdlp}
-                                    onClick={() => {
-                                        void resetYtdlp();
-                                    }}
-                                >
-                                    {t('settings.ytdlp.reset')}
-                                </button>
-                            )}
-                        </div>
-                        <span className="field__hint">{t('settings.ytdlp.hint')}</span>
-                    </fieldset>
+                    <ProgramsStatusBlock place="downloads" />
 
                     <fieldset className="panel">
                         <legend>{t('settings.advanced')}</legend>
@@ -744,6 +693,16 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         hint={t('settings.mangaFormat.hint')}
                         onChange={(value) => {
                             change('mangaFormat', value);
+                        }}
+                    />
+                    <NumberField
+                        label={t('settings.mangaMaxConcurrent')}
+                        value={draft.mangaMaxConcurrent}
+                        min={MIN_MANGA_CONCURRENT_DOWNLOADS}
+                        max={MAX_MANGA_CONCURRENT_DOWNLOADS}
+                        hint={t('settings.mangaMaxConcurrent.hint')}
+                        onChange={(value) => {
+                            edit('mangaMaxConcurrent', value);
                         }}
                     />
                     <TextField
@@ -881,39 +840,10 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         }}
                     />
                     <TranslationSettings draft={draft} change={change} edit={edit} changeMany={changeMany} />
-                    <div className="field">
-                        <span className="field__label">ani-cli</span>
-                        <p className="update-status" aria-live="polite">
-                            {aniCli?.found ? t('settings.anicli.installed', { version: aniCli.version ?? t('settings.ytdlp.versionUnknown') }) : t('settings.anicli.notFound')}
-                        </p>
-                        <div className="field-row">
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                disabled={updatingAniCli}
-                                onClick={() => {
-                                    void updateAniCli();
-                                }}
-                            >
-                                {updatingAniCli ? t('settings.anicli.updating') : t('settings.anicli.update')}
-                            </button>
-                            {aniCli?.source === 'updated' && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small"
-                                    disabled={updatingAniCli}
-                                    onClick={() => {
-                                        void resetAniCli();
-                                    }}
-                                >
-                                    {t('settings.anicli.reset')}
-                                </button>
-                            )}
-                        </div>
-                        <span className="field__hint">{t('settings.anicli.hint')}</span>
-                    </div>
                 </fieldset>
             )}
+
+            {scope === 'anime' && animeSupported && <ProgramsStatusBlock place="anime" />}
         </section>
     );
 }

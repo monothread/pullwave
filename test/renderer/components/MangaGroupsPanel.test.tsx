@@ -32,6 +32,87 @@ describe('MangaGroupsPanel', () => {
         ).toEqual(['Mangas', 'Manhwas']);
     });
 
+    describe('the order of the groups', () => {
+        const THREE = [{ id: 1, name: 'Mangas' }, { id: 2, name: 'Manhwas' }, { id: 3, name: 'Webtoons' }];
+
+        beforeEach(() => {
+            useMangaStore.setState({ groups: THREE });
+        });
+
+        it('has an arrow up and an arrow down in every group, with the name of the group', () => {
+            render(<MangaGroupsPanel />);
+            THREE.forEach((group) => {
+                const up = screen.getByRole('button', { name: `Move up (towards the left tab): ${group.name}` });
+                const down = screen.getByRole('button', { name: `Move down (towards the right tab): ${group.name}` });
+                expect(up).toHaveTextContent('↑');
+                expect(down).toHaveTextContent('↓');
+                expect(up).toHaveAttribute('title', 'Move up (towards the left tab)');
+                expect(down).toHaveAttribute('title', 'Move down (towards the right tab)');
+            });
+        });
+
+        it('cannot move the first group up, nor the last one down', () => {
+            render(<MangaGroupsPanel />);
+            expect(screen.getByRole('button', { name: 'Move up (towards the left tab): Mangas' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Move down (towards the right tab): Mangas' })).toBeEnabled();
+            expect(screen.getByRole('button', { name: 'Move up (towards the left tab): Manhwas' })).toBeEnabled();
+            expect(screen.getByRole('button', { name: 'Move down (towards the right tab): Manhwas' })).toBeEnabled();
+            expect(screen.getByRole('button', { name: 'Move up (towards the left tab): Webtoons' })).toBeEnabled();
+            expect(screen.getByRole('button', { name: 'Move down (towards the right tab): Webtoons' })).toBeDisabled();
+        });
+
+        it('cannot move a single group anywhere', () => {
+            useMangaStore.setState({ groups: [THREE[0]!] });
+            render(<MangaGroupsPanel />);
+            expect(screen.getByRole('button', { name: 'Move up (towards the left tab): Mangas' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Move down (towards the right tab): Mangas' })).toBeDisabled();
+        });
+
+        it('moves the group up and down with the arrows, asking the app with its id and the direction', async () => {
+            const user = userEvent.setup();
+            render(<MangaGroupsPanel />);
+            await user.click(screen.getByRole('button', { name: 'Move up (towards the left tab): Webtoons' }));
+            expect(mock.api.manga.moveGroup).toHaveBeenCalledTimes(1);
+            expect(mock.api.manga.moveGroup).toHaveBeenLastCalledWith(3, 'up');
+            await user.click(screen.getByRole('button', { name: 'Move down (towards the right tab): Mangas' }));
+            expect(mock.api.manga.moveGroup).toHaveBeenCalledTimes(2);
+            expect(mock.api.manga.moveGroup).toHaveBeenLastCalledWith(1, 'down');
+        });
+
+        it('shows the groups in the new order once the app says it', async () => {
+            const user = userEvent.setup();
+            mock.api.manga.groups.mockResolvedValue([THREE[0]!, THREE[2]!, THREE[1]!]);
+            render(<MangaGroupsPanel />);
+            await user.click(screen.getByRole('button', { name: 'Move down (towards the right tab): Manhwas' }));
+            await vi.waitFor(() => {
+                expect(
+                    screen.getAllByTestId('manga-group').map((row) => {
+                        return row.querySelector('.history__title')?.textContent;
+                    })
+                ).toEqual(['Mangas', 'Webtoons', 'Manhwas']);
+            });
+            expect(screen.getByRole('button', { name: 'Move down (towards the right tab): Manhwas' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Move up (towards the left tab): Webtoons' })).toBeEnabled();
+        });
+
+        it('does not show the arrows while a group is being renamed', async () => {
+            const user = userEvent.setup();
+            render(<MangaGroupsPanel />);
+            await user.click(screen.getByRole('button', { name: 'RENAME: Manhwas' }));
+            expect(screen.queryByRole('button', { name: /Move up .*: Manhwas/ })).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: /Move down .*: Manhwas/ })).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Move up (towards the left tab): Webtoons' })).toBeEnabled();
+        });
+
+        it('lets a group that is hidden be moved too', async () => {
+            const user = userEvent.setup();
+            useMangaStore.setState({ hiddenGroupIds: [2] });
+            render(<MangaGroupsPanel />);
+            await user.click(screen.getByRole('button', { name: 'Move up (towards the left tab): Manhwas' }));
+            expect(mock.api.manga.moveGroup).toHaveBeenCalledWith(2, 'up');
+        });
+    });
+
     it('says there is no group yet', () => {
         useMangaStore.setState({ groups: [] });
         render(<MangaGroupsPanel />);

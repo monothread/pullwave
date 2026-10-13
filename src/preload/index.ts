@@ -94,6 +94,12 @@ const manga: CyberApi['manga'] = {
     resume: (chapterId) => {
         return ipcRenderer.invoke(IPC.mangaResume, chapterId);
     },
+    pauseAll: () => {
+        return ipcRenderer.invoke(IPC.mangaPauseAll);
+    },
+    resumeAll: () => {
+        return ipcRenderer.invoke(IPC.mangaResumeAll);
+    },
     clearFinished: () => {
         return ipcRenderer.invoke(IPC.mangaClearFinished);
     },
@@ -151,6 +157,9 @@ const manga: CyberApi['manga'] = {
     deleteGroup: (groupId) => {
         return ipcRenderer.invoke(IPC.mangaGroupDelete, groupId);
     },
+    moveGroup: (groupId, direction) => {
+        return ipcRenderer.invoke(IPC.mangaGroupMove, groupId, direction);
+    },
     setGroupMembers: (groupId, mangaIds, member) => {
         return ipcRenderer.invoke(IPC.mangaGroupMembers, groupId, mangaIds, member);
     },
@@ -203,6 +212,33 @@ const manga: CyberApi['manga'] = {
     }
 };
 
+const programs: CyberApi['programs'] = {
+    status: () => {
+        return ipcRenderer.invoke(IPC.programsStatus);
+    },
+    install: (id) => {
+        return ipcRenderer.invoke(IPC.programsInstall, id);
+    },
+    reinstall: (id) => {
+        return ipcRenderer.invoke(IPC.programsReinstall, id);
+    },
+    check: () => {
+        return ipcRenderer.invoke(IPC.programsCheck);
+    },
+    update: (id) => {
+        return ipcRenderer.invoke(IPC.programsUpdate, id);
+    },
+    reset: (id) => {
+        return ipcRenderer.invoke(IPC.programsReset, id);
+    },
+    onToolState: (listener) => {
+        return subscribe<ToolState>(IPC.eventProgramTool, listener);
+    },
+    onUpdateState: (listener) => {
+        return subscribe<ToolState>(IPC.eventProgramUpdate, listener);
+    }
+};
+
 const api: CyberApi = {
     manga,
     getSettings: () => {
@@ -250,12 +286,7 @@ const api: CyberApi = {
     checkBinaries: () => {
         return ipcRenderer.invoke(IPC.binariesCheck);
     },
-    updateYtdlp: () => {
-        return ipcRenderer.invoke(IPC.ytdlpUpdate);
-    },
-    resetYtdlp: () => {
-        return ipcRenderer.invoke(IPC.ytdlpReset);
-    },
+    programs,
     getAppUpdateState: () => {
         return ipcRenderer.invoke(IPC.appUpdateGet);
     },
@@ -396,12 +427,6 @@ const api: CyberApi = {
     },
     clearLlmToken: (provider) => {
         return ipcRenderer.invoke(IPC.llmTokenClear, provider);
-    },
-    updateAniCli: () => {
-        return ipcRenderer.invoke(IPC.animeUpdateCli);
-    },
-    resetAniCli: () => {
-        return ipcRenderer.invoke(IPC.animeResetCli);
     },
     openAnimeStream: (request) => {
         return ipcRenderer.invoke(IPC.animeStreamOpen, request);

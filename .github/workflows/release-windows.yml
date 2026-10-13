@@ -28,9 +28,6 @@ jobs:
           npm run typecheck
           npm run lint
 
-      - name: Fetch the bundled binaries (the build below reuses them)
-        run: node scripts/fetch-binaries.mjs
-
       - name: Unit tests of the anime section and of the interface
         run: npx vitest run test/main/services/ani test/main/services/anime mediaProtocol streamProxy registerAnimeHandlers animeRuntime test/shared test/renderer
 

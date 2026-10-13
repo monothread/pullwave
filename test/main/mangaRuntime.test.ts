@@ -583,7 +583,7 @@ describe('createMangaRuntime looking for new chapters', () => {
         const { runtime, sent } = setup({ fetchImpl: fetchWithChapters([1, 2, 3]) });
         const id = addManga(runtime!);
 
-        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 2, titles: ['One Piece'], failed: 0 });
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 2, titles: ['One Piece'], failed: 0, skipped: 0 });
 
         expect(runtime!.db.chaptersOf(id).map((chapter) => {return [chapter.remoteId, chapter.status]}).sort()).toEqual([[1, 'idle'], [2, 'idle'], [3, 'idle']]);
         expect(runtime!.db.getManga(id)).toMatchObject({ url: 'https://dex.example/one-piece', author: 'Oda', genres: ['Action'], status: 'ongoing' });
@@ -597,7 +597,7 @@ describe('createMangaRuntime looking for new chapters', () => {
         const fetchImpl = fetchWithChapters([1, 2, 3]);
         const { runtime, sent } = setup({ fetchImpl, settings: { mangaCheckNewChapters: false } });
         addManga(runtime!);
-        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
         expect(fetchImpl).not.toHaveBeenCalled();
         expect(sent).toEqual([]);
     });
@@ -606,8 +606,8 @@ describe('createMangaRuntime looking for new chapters', () => {
         const fetchImpl = fetchWithChapters([1, 2]);
         const { runtime } = setup({ fetchImpl, settings: { mangaCheckNewChapters: false } });
         const id = addManga(runtime!);
-        await expect(runtime!.handlers.checkNewChapters(id)).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
-        await expect(runtime!.handlers.checkNewChapters(null)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        await expect(runtime!.handlers.checkNewChapters(id)).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
+        await expect(runtime!.handlers.checkNewChapters(null)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
         expect(runtime!.db.updates().map((entry) => {
             return [entry.chapterRemoteId, entry.origin];
         })).toEqual([[2, 'manual']]);
@@ -642,9 +642,55 @@ describe('createMangaRuntime looking for new chapters', () => {
     it('leaves the library alone when the server cannot answer', async () => {
         const { runtime, sent } = setup();
         const id = addManga(runtime!);
-        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 1 });
+        await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 1, skipped: 0 });
         expect(runtime!.db.chaptersOf(id)).toHaveLength(1);
         expect(sent).toEqual([]);
+    });
+
+    describe('with the sources the server has', () => {
+        // The server lists the sources whose extension is installed, and answers about the mangas.
+        function fetchWithSources(sourceIds: string[], chapters: number[]): typeof fetch {
+            const withManga = fetchWithChapters(chapters);
+            return vi.fn((input: string | URL | Request, init?: RequestInit) => {
+                const body = JSON.parse(String(init?.body)) as { query: string };
+                if (body.query.includes('sources') && !body.query.includes('fetchMangaAndChapters')) {
+                    const nodes = sourceIds.map((id) => {
+                        return { id, name: `Site ${id}`, displayName: `Site ${id}`, lang: 'en', iconUrl: '/icon', supportsLatest: true, contentWarning: 'SAFE', extension: { pkgName: 'pkg', storeIndexUrl: null } };
+                    });
+                    return Promise.resolve(new Response(JSON.stringify({ data: { sources: { nodes } } }), { status: 200 }));
+                }
+                return withManga(input, init);
+            }) as unknown as typeof fetch;
+        }
+
+        it('does not look at the manga whose source is not among them, and says so', async () => {
+            const fetchImpl = fetchWithSources(['999'], [1, 2, 3]);
+            const { runtime, sent } = setup({ fetchImpl });
+            const id = addManga(runtime!);
+            await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 1 });
+            const asked = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.map((call) => {
+                return (JSON.parse(String((call[1] as RequestInit).body)) as { query: string }).query;
+            });
+            expect(
+                asked.some((query) => {
+                    return query.includes('fetchMangaAndChapters');
+                })
+            ).toBe(false);
+            expect(runtime!.db.chaptersOf(id)).toHaveLength(1);
+            expect(sent).toEqual([]);
+        });
+
+        it('looks at the manga whose source is among them', async () => {
+            const { runtime } = setup({ fetchImpl: fetchWithSources(['123'], [1, 2, 3]) });
+            addManga(runtime!);
+            await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 2, titles: ['One Piece'], failed: 0, skipped: 0 });
+        });
+
+        it('answers the check of one manga as skipped when its source is not among them', async () => {
+            const { runtime } = setup({ fetchImpl: fetchWithSources(['999'], [1, 2]) });
+            const id = addManga(runtime!);
+            await expect(runtime!.handlers.checkNewChapters(id)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 1 });
+        });
     });
 
     it('uses the times it is told to use', async () => {

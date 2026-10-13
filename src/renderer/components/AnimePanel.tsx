@@ -9,6 +9,7 @@ import { AnimePlayer } from './AnimePlayer';
 import { AnimeSchedule } from './AnimeSchedule';
 import { AnimeSearch } from './AnimeSearch';
 import { AnimeStreamPlayer } from './AnimeStreamPlayer';
+import { ProgramsGate } from './ProgramsSetup';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
 import { TabMenu } from './TabMenu';
@@ -23,9 +24,6 @@ const VIEWS: ReadonlyArray<{ id: AnimeBrowseView; label: 'anime.nav.schedule' | 
 
 export function AnimePanel() {
     const t = useTranslator();
-    const status = useAnimeStore((state) => {
-        return state.status;
-    });
     const view = useAnimeStore((state) => {
         return state.view;
     });
@@ -42,16 +40,6 @@ export function AnimePanel() {
         return activeJobCount(state.jobs);
     });
 
-    if (!status.available) {
-        return (
-            <section className="panel" aria-label={t('anime.aria')}>
-                <p className="field__warning" role="alert">
-                    {t('anime.unavailable.title')}
-                </p>
-                <p className="field__hint">{t('anime.unavailable.hint')}</p>
-            </section>
-        );
-    }
     if (view === 'downloads') {
         return (
             <section className="anime" aria-label={t('anime.aria')}>
@@ -103,10 +91,14 @@ export function AnimePanel() {
                     })}
                 </nav>
             </div>
-            {view === 'schedule' && <AnimeSchedule />}
-            {view === 'search' && <AnimeSearch />}
-            {view === 'library' && <AnimeLibrary />}
-            {view === 'history' && <AnimeHistory />}
+            {view !== 'settings' && (
+                <ProgramsGate area="anime">
+                    {view === 'schedule' && <AnimeSchedule />}
+                    {view === 'search' && <AnimeSearch />}
+                    {view === 'library' && <AnimeLibrary />}
+                    {view === 'history' && <AnimeHistory />}
+                </ProgramsGate>
+            )}
             {view === 'settings' && <SettingsPanel scope="anime" />}
             <AnimePlayer />
             <AnimeStreamPlayer />

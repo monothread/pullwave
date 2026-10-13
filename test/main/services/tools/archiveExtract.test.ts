@@ -1,4 +1,5 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as tar from 'tar';
 import { ZipFile } from 'yazl';
@@ -180,5 +181,101 @@ describe('extractArchive zip', () => {
         const file = join(root, 'not.zip');
         writeFileSync(file, 'plain text');
         await expect(extractArchive('zip', file, { destination: join(root, 'out'), stripComponents: 1, exclude: [] })).rejects.toThrow();
+    });
+});
+
+describe('extractArchive of a .tar.xz', () => {
+    it('asks the tar of the system to unpack it without the leading folders, in the destination', async () => {
+        const root = makeTempDir();
+        const destination = join(root, 'out');
+        const run = vi.fn(async () => {
+            mkdirSync(join(destination, 'bin'), { recursive: true });
+        });
+        await extractArchive('tar.xz', join(root, 'a.tar.xz'), { destination, stripComponents: 1, exclude: [] }, run, 'linux');
+        expect(run).toHaveBeenCalledTimes(1);
+        expect(run).toHaveBeenCalledWith('tar', ['-xJf', join(root, 'a.tar.xz'), '-C', destination, '--strip-components=1']);
+    });
+
+    it('uses the tar of Windows itself on Windows, not the first one in the PATH', async () => {
+        const root = makeTempDir();
+        const run = vi.fn(async () => {return undefined});
+        await extractArchive('tar.xz', join(root, 'a.tar.xz'), { destination: join(root, 'out'), stripComponents: 0, exclude: [] }, run, 'win32');
+        const command = (run.mock.calls[0] as unknown as [string, string[]])[0];
+        expect(command.replace(/\\/g, '/')).toMatch(/\/System32\/tar\.exe$/);
+        expect((run.mock.calls[0] as unknown as [string, string[]])[1]).toContain('--strip-components=0');
+    });
+
+    it('takes away the folders that are not needed after it unpacks', async () => {
+        const root = makeTempDir();
+        const destination = join(root, 'out');
+        const run = vi.fn(async () => {
+            mkdirSync(join(destination, 'bin'), { recursive: true });
+            mkdirSync(join(destination, 'include', 'sub'), { recursive: true });
+            mkdirSync(join(destination, 'doc'), { recursive: true });
+            writeFileSync(join(destination, 'bin', 'ffmpeg'), 'x');
+            writeFileSync(join(destination, 'include', 'sub', 'h.h'), 'x');
+        });
+        await extractArchive('tar.xz', join(root, 'a.tar.xz'), { destination, stripComponents: 1, exclude: ['include', 'doc'] }, run, 'linux');
+        expect(existsSync(join(destination, 'bin', 'ffmpeg'))).toBe(true);
+        expect(existsSync(join(destination, 'include'))).toBe(false);
+        expect(existsSync(join(destination, 'doc'))).toBe(false);
+    });
+
+    it('does not remove anything outside the destination for an exclude that would leave it', async () => {
+        const root = makeTempDir();
+        const destination = join(root, 'out');
+        writeFileSync(join(root, 'keep.txt'), 'x');
+        await expect(extractArchive('tar.xz', join(root, 'a.tar.xz'), { destination, stripComponents: 0, exclude: ['../keep.txt'] }, async () => {return undefined}, 'linux')).rejects.toBeInstanceOf(ArchiveError);
+        expect(existsSync(join(root, 'keep.txt'))).toBe(true);
+    });
+
+    it('passes on the failure of tar', async () => {
+        const root = makeTempDir();
+        const run = vi.fn(async () => {
+            throw new ArchiveError('tar could not unpack the file');
+        });
+        await expect(extractArchive('tar.xz', join(root, 'a.tar.xz'), { destination: join(root, 'out'), stripComponents: 0, exclude: [] }, run, 'linux')).rejects.toThrow('tar could not unpack the file');
+    });
+
+    it('fails with an ArchiveError, not with something else, when the archive is not there', async () => {
+        const root = makeTempDir();
+        await expect(extractArchive('tar.xz', join(root, 'a.tar.xz'), { destination: join(root, 'out'), stripComponents: 0, exclude: [] }, undefined, 'linux').then(() => {return 'ok'})).rejects.toBeInstanceOf(ArchiveError);
+    });
+
+    const xzThere = spawnSync('xz', ['--version']).status === 0 && spawnSync('tar', ['--version']).status === 0;
+
+    it.runIf(xzThere)('unpacks a real .tar.xz with its links, with no leading folder and without the excluded one', async () => {
+        const root = makeTempDir();
+        const source = join(root, 'source', 'top');
+        mkdirSync(join(source, 'bin'), { recursive: true });
+        mkdirSync(join(source, 'lib'), { recursive: true });
+        mkdirSync(join(source, 'doc'), { recursive: true });
+        writeFileSync(join(source, 'bin', 'ffmpeg'), 'binary', { mode: 0o755 });
+        writeFileSync(join(source, 'lib', 'libx.so.1'), 'library');
+        symlinkSync('libx.so.1', join(source, 'lib', 'libx.so'));
+        writeFileSync(join(source, 'doc', 'readme'), 'doc');
+        const archive = join(root, 'a.tar.xz');
+        expect(spawnSync('tar', ['-cJf', archive, '-C', join(root, 'source'), 'top']).status).toBe(0);
+        const destination = join(root, 'out');
+        await extractArchive('tar.xz', archive, { destination, stripComponents: 1, exclude: ['doc'] });
+        expect(readFileSync(join(destination, 'bin', 'ffmpeg'), 'utf-8')).toBe('binary');
+        expect(statSync(join(destination, 'bin', 'ffmpeg')).mode & 0o111).not.toBe(0);
+        expect(lstatSync(join(destination, 'lib', 'libx.so')).isSymbolicLink()).toBe(true);
+        expect(readFileSync(join(destination, 'lib', 'libx.so'), 'utf-8')).toBe('library');
+        expect(existsSync(join(destination, 'doc'))).toBe(false);
+        expect(existsSync(join(destination, 'top'))).toBe(false);
+    });
+
+    it.runIf(xzThere)('fails, with the reason, for a file that is not a .tar.xz', async () => {
+        const root = makeTempDir();
+        writeFileSync(join(root, 'bad.tar.xz'), 'not an archive');
+        await expect(extractArchive('tar.xz', join(root, 'bad.tar.xz'), { destination: join(root, 'out'), stripComponents: 0, exclude: [] })).rejects.toThrow(/tar could not unpack the file/);
+    });
+});
+
+describe('extractArchive of a file that is not packed', () => {
+    it('has nothing to unpack: the installer puts the file in its place itself', async () => {
+        const root = makeTempDir();
+        await expect(extractArchive('raw', join(root, 'x'), { destination: join(root, 'out'), stripComponents: 0, exclude: [] })).rejects.toBeInstanceOf(ArchiveError);
     });
 });

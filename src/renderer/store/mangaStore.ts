@@ -11,6 +11,7 @@ import type {
     MangaFilter,
     MangaExtension,
     MangaGroup,
+    MangaGroupDirection,
     MangaGroupResponse,
     MangaHealth,
     MangaUpdateEntry,
@@ -335,6 +336,8 @@ interface MangaState {
     createGroup: (name: string) => Promise<MangaGroupResponse>;
     renameGroup: (groupId: number, name: string) => Promise<MangaGroupResponse>;
     deleteGroup: (groupId: number) => Promise<void>;
+    // Moves a group up (towards the first tab of the library) or down.
+    moveGroup: (groupId: number, direction: MangaGroupDirection) => Promise<void>;
     setGroupMembers: (groupId: number, mangaIds: number[], member: boolean) => Promise<void>;
     // Moves a manga of the library to the same manga in another source; on success the manga that is open is the one of the new source.
     migrateSource: (request: MangaSourceMigrationRequest) => Promise<MangaSourceMigrationResponse>;
@@ -352,6 +355,8 @@ interface MangaState {
     // Tries again every download that failed or was cancelled.
     retryFailedJobs: () => Promise<void>;
     pauseJob: (chapterId: number) => Promise<void>;
+    pauseAllJobs: () => Promise<void>;
+    resumeAllJobs: () => Promise<void>;
     resumeJob: (chapterId: number) => Promise<void>;
     clearFinishedJobs: () => Promise<void>;
 
@@ -565,8 +570,14 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 const response = await window.api.manga.checkNewChapters(mangaId);
                 if (!response.ok) {
                     toast('manga.notice.checkFailed', { message: response.error.message });
-                } else if (response.count === 0) {
-                    toast(response.failed > 0 ? 'manga.notice.checkUnreached' : 'manga.notice.checkNone', { failed: response.failed });
+                } else {
+                    if (response.count === 0) {
+                        toast(response.failed > 0 ? 'manga.notice.checkUnreached' : 'manga.notice.checkNone', { failed: response.failed });
+                    }
+                    // The mangas whose extension is not installed were not asked about, whether or not there is something new in the others.
+                    if (response.skipped > 0) {
+                        toast('manga.notice.checkSkipped', { skipped: response.skipped });
+                    }
                 }
                 await get().refreshLibrary();
                 if (get().view === 'updates') {
@@ -1265,6 +1276,11 @@ export const useMangaStore = create<MangaState>((set, get) => {
             await get().refreshLibrary();
         },
 
+        moveGroup: async (groupId, direction) => {
+            await window.api.manga.moveGroup(groupId, direction);
+            await get().refreshGroups();
+        },
+
         setGroupMembers: async (groupId, mangaIds, member) => {
             await window.api.manga.setGroupMembers(groupId, mangaIds, member);
             await get().refreshLibrary();
@@ -1346,6 +1362,14 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         resumeJob: async (chapterId) => {
             await window.api.manga.resume(chapterId);
+        },
+
+        pauseAllJobs: async () => {
+            await window.api.manga.pauseAll();
+        },
+
+        resumeAllJobs: async () => {
+            await window.api.manga.resumeAll();
         },
 
         clearFinishedJobs: async () => {

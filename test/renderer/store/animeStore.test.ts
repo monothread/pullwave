@@ -17,7 +17,7 @@ const SUPPORTED = makeStatus();
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, notice: null });
-    useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, updatingCli: false, view: 'search', returnView: 'search', jobs: [], library: [], history: [], migration: null, search: INITIAL_SEARCH, schedule: INITIAL_SCHEDULE, selection: null, playing: null, streaming: null });
+    useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, view: 'search', returnView: 'search', jobs: [], library: [], history: [], migration: null, search: INITIAL_SEARCH, schedule: INITIAL_SCHEDULE, selection: null, playing: null, streaming: null });
 });
 
 describe('effectiveAudio', () => {
@@ -31,7 +31,6 @@ describe('effectiveAudio', () => {
 describe('useAnimeStore initial state', () => {
     it('starts unsupported and empty', () => {
         expect(initialAnime.status).toEqual({ supported: false, available: false, aniCli: null });
-        expect(initialAnime.updatingCli).toBe(false);
         expect(initialAnime.view).toBe('schedule');
         expect(initialAnime.returnView).toBe('schedule');
         expect(initialAnime.schedule).toEqual({ status: 'idle', entries: [], error: null, view: 'day', timeZone: machineTimeZone(), limits: [] });
@@ -284,76 +283,6 @@ describe('renameSeries', () => {
         mock.api.renameAnimeSeries.mockResolvedValue({ ok: false, reason: 'invalid' });
         expect(await useAnimeStore.getState().renameSeries([1], '')).toEqual({ ok: false, reason: 'invalid' });
         expect(mock.api.listAnimeLibrary).not.toHaveBeenCalled();
-    });
-});
-
-describe('updateCli', () => {
-    it('updates ani-cli, reads the new version and tells the user', async () => {
-        const updated = { found: true, path: '/data/bin/ani-cli', version: '5.2.0', source: 'updated' as const };
-        mock.api.updateAniCli.mockResolvedValue({ ok: true, output: 'Updated ani-cli 5.1.4 → 5.2.0.' });
-        mock.api.getAnimeStatus.mockResolvedValue(makeStatus({ aniCli: updated }));
-
-        const updating = useAnimeStore.getState().updateCli();
-        expect(useAnimeStore.getState().updatingCli).toBe(true);
-        await updating;
-
-        expect(useAnimeStore.getState().updatingCli).toBe(false);
-        expect(useAnimeStore.getState().status.aniCli).toEqual(updated);
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Updated ani-cli 5.1.4 → 5.2.0.' });
-    });
-
-    it('tells the user when the update failed', async () => {
-        mock.api.updateAniCli.mockResolvedValue({ ok: false, output: 'getaddrinfo ENOTFOUND' });
-        mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
-        await useAnimeStore.getState().updateCli();
-        expect(useAnimeStore.getState().updatingCli).toBe(false);
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'getaddrinfo ENOTFOUND' });
-    });
-
-    it('says something even when the result has no text', async () => {
-        mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
-        mock.api.updateAniCli.mockResolvedValue({ ok: true, output: '' });
-        await useAnimeStore.getState().updateCli();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'yt-dlp is up to date.' });
-        mock.api.updateAniCli.mockResolvedValue({ ok: false, output: '' });
-        await useAnimeStore.getState().updateCli();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Update failed.' });
-    });
-});
-
-describe('resetCli', () => {
-    it('goes back to the ani-cli that ships with the app, reads which one is used and tells the user', async () => {
-        const bundled = { found: true, path: '/app/resources/bin/ani/ani-cli', version: '5.1.4', source: 'bundled' as const };
-        mock.api.resetAniCli.mockResolvedValue({ ok: true, output: 'Using the ani-cli that ships with the app again.' });
-        mock.api.getAnimeStatus.mockResolvedValue(makeStatus({ aniCli: bundled }));
-
-        const resetting = useAnimeStore.getState().resetCli();
-        expect(useAnimeStore.getState().updatingCli).toBe(true);
-        await resetting;
-
-        expect(mock.api.resetAniCli).toHaveBeenCalledTimes(1);
-        expect(mock.api.updateAniCli).not.toHaveBeenCalled();
-        expect(useAnimeStore.getState().updatingCli).toBe(false);
-        expect(useAnimeStore.getState().status.aniCli).toEqual(bundled);
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Using the ani-cli that ships with the app again.' });
-    });
-
-    it('tells the user when there was nothing to remove', async () => {
-        mock.api.resetAniCli.mockResolvedValue({ ok: false, output: 'There is no updated ani-cli to remove: the one that ships with the app is already in use.' });
-        mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
-        await useAnimeStore.getState().resetCli();
-        expect(useAnimeStore.getState().updatingCli).toBe(false);
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'There is no updated ani-cli to remove: the one that ships with the app is already in use.' });
-    });
-
-    it('says something even when the result has no text', async () => {
-        mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
-        mock.api.resetAniCli.mockResolvedValue({ ok: true, output: '' });
-        await useAnimeStore.getState().resetCli();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'yt-dlp is up to date.' });
-        mock.api.resetAniCli.mockResolvedValue({ ok: false, output: '' });
-        await useAnimeStore.getState().resetCli();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Update failed.' });
     });
 });
 

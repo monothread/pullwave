@@ -2,13 +2,40 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
-import type { ToolState } from '@shared/tools';
+import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
+import { PROGRAM_IDS, type ProgramId, type ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
 
 export type MockMangaApi = { [K in keyof MangaApi]: ReturnType<typeof vi.fn> };
+export type MockProgramsApi = { [K in keyof CyberApi['programs']]: ReturnType<typeof vi.fn> };
+
+export function makeProgramInfo(id: ProgramId, overrides: Partial<ProgramInfo> = {}): ProgramInfo {
+    return { id, state: { id, status: 'ready', version: '1.0.0', bytesDone: 0, bytesTotal: 0, percent: 100, error: null }, custom: false, directory: `/tools/${id}/1.0.0`, ...overrides };
+}
+
+// Every program installed: the screens that wait for the programs let their content through.
+export function makeProgramsStatus(overrides: Partial<ProgramsStatus> = {}): ProgramsStatus {
+    return {
+        supported: true,
+        programs: PROGRAM_IDS.map((id) => {
+            return makeProgramInfo(id);
+        }),
+        ...overrides
+    };
+}
+
+export function makeProgramVersions(overrides: Partial<ProgramVersions> = {}): ProgramVersions {
+    const versions = {} as ProgramVersions;
+    PROGRAM_IDS.forEach((id) => {
+        versions[id] = { id, current: '1.0.0', latest: '1.0.0', updatable: false, base: '1.0.0', chosen: false, error: null, errorMessage: null, unfit: [] };
+    });
+    return { ...versions, ...overrides };
+}
 
 export interface MockApiHandle {
-    api: { [K in Exclude<keyof CyberApi, 'manga'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi };
+    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi; programs: MockProgramsApi };
+    emitProgramTool: (state: ToolState) => void;
+    emitProgramUpdate: (state: ToolState) => void;
     emitMangaTool: (state: ToolState) => void;
     emitMangaServer: (status: MangaServerStatus) => void;
     emitMangaCloudflare: (active: MangaCloudflareActivity[]) => void;
@@ -45,6 +72,8 @@ export function createMockApi(): MockApiHandle {
     const animeAvailabilityListeners: Array<(availability: AnimeAvailability) => void> = [];
     const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
+    const programToolListeners: Array<(state: ToolState) => void> = [];
+    const programUpdateListeners: Array<(state: ToolState) => void> = [];
     const mangaToolListeners: Array<(state: ToolState) => void> = [];
     const mangaServerUpdateListeners: Array<(state: ToolState) => void> = [];
     const mangaServerListeners: Array<(status: MangaServerStatus) => void> = [];
@@ -61,6 +90,33 @@ export function createMockApi(): MockApiHandle {
         unsubscribers.push(unsubscribe);
         return unsubscribe;
     }
+
+    const programs: MockProgramsApi = {
+        status: vi.fn(async (): Promise<ProgramsStatus> => {
+            return makeProgramsStatus();
+        }),
+        install: vi.fn(async (id: ProgramId): Promise<ToolState> => {
+            return makeProgramInfo(id).state;
+        }),
+        reinstall: vi.fn(async (id: ProgramId): Promise<ToolState> => {
+            return makeProgramInfo(id).state;
+        }),
+        check: vi.fn(async (): Promise<ProgramVersions> => {
+            return makeProgramVersions();
+        }),
+        update: vi.fn(async (): Promise<ProgramUpdateResult> => {
+            return { ok: true, version: '1.0.1' };
+        }),
+        reset: vi.fn(async (): Promise<ProgramResetResult> => {
+            return { ok: true };
+        }),
+        onToolState: vi.fn((listener: (state: ToolState) => void) => {
+            return subscribe(programToolListeners, listener);
+        }),
+        onUpdateState: vi.fn((listener: (state: ToolState) => void) => {
+            return subscribe(programUpdateListeners, listener);
+        })
+    };
 
     const manga: MockMangaApi = {
         // Like the anime section, the manga section is off until a test turns it on.
@@ -132,6 +188,12 @@ export function createMockApi(): MockApiHandle {
         retry: vi.fn(async () => {return undefined}),
         pause: vi.fn(async () => {return undefined}),
         resume: vi.fn(async () => {return undefined}),
+        pauseAll: vi.fn(async () => {
+            return undefined;
+        }),
+        resumeAll: vi.fn(async () => {
+            return undefined;
+        }),
         clearFinished: vi.fn(async () => {return undefined}),
         removeDownload: vi.fn(async () => {return undefined}),
         removeManga: vi.fn(async () => {return undefined}),
@@ -142,7 +204,7 @@ export function createMockApi(): MockApiHandle {
         }),
         clearUpdates: vi.fn(async () => {return undefined}),
         checkNewChapters: vi.fn(async () => {
-            return { ok: true, count: 0, titles: [], failed: 0 };
+            return { ok: true, count: 0, titles: [], failed: 0, skipped: 0 };
         }),
         recordReading: vi.fn(async () => {return undefined}),
         readingHistory: vi.fn(async () => {
@@ -183,6 +245,7 @@ export function createMockApi(): MockApiHandle {
             return { ok: true, group: { id: groupId, name } };
         }),
         deleteGroup: vi.fn(async () => {return undefined}),
+        moveGroup: vi.fn(async () => {return undefined}),
         setGroupMembers: vi.fn(async () => {return undefined}),
         migrateSource: vi.fn(async () => {
             return { ok: false, reason: 'invalid' };
@@ -215,6 +278,7 @@ export function createMockApi(): MockApiHandle {
 
     const api: MockApiHandle['api'] = {
         manga,
+        programs,
         getSettings: vi.fn(async () => {
             return DEFAULT_SETTINGS;
         }),
@@ -259,15 +323,9 @@ export function createMockApi(): MockApiHandle {
         }),
         checkBinaries: vi.fn(async () => {
             return {
-                ytdlp: { found: true, path: '/app/bin/yt-dlp', version: '2026.08.19', source: 'bundled' },
-                ffmpeg: { found: true, path: '/app/bin/ffmpeg', version: '7.0', source: 'bundled' }
+                ytdlp: { found: true, path: '/app/bin/yt-dlp', version: '2026.08.19', source: 'installed' },
+                ffmpeg: { found: true, path: '/app/bin/ffmpeg', version: '7.0', source: 'installed' }
             };
-        }),
-        updateYtdlp: vi.fn(async () => {
-            return { ok: true, output: 'Updated' };
-        }),
-        resetYtdlp: vi.fn(async () => {
-            return { ok: true, output: 'Using the bundled yt-dlp' };
         }),
         getAppUpdateState: vi.fn(async () => {
             return APP_UPDATE_IDLE;
@@ -410,12 +468,6 @@ export function createMockApi(): MockApiHandle {
         clearLlmToken: vi.fn(async () => {
             return undefined;
         }),
-        updateAniCli: vi.fn(async () => {
-            return { ok: true, output: 'Updated ani-cli' };
-        }),
-        resetAniCli: vi.fn(async () => {
-            return { ok: true, output: 'Using the bundled ani-cli' };
-        }),
         openAnimeStream: vi.fn(async (): Promise<{ ok: true; stream: { sessionId: string; url: string; subtitleUrl: string | null } }> => {
             return { ok: true, stream: { sessionId: 's1', url: 'pullwave-stream://p/s1/abc', subtitleUrl: null } };
         }),
@@ -469,6 +521,16 @@ export function createMockApi(): MockApiHandle {
     return {
         api,
         unsubscribers,
+        emitProgramTool: (state) => {
+            programToolListeners.forEach((listener) => {
+                listener(state);
+            });
+        },
+        emitProgramUpdate: (state) => {
+            programUpdateListeners.forEach((listener) => {
+                listener(state);
+            });
+        },
         emitMangaTool: (state) => {
             mangaToolListeners.forEach((listener) => {
                 listener(state);

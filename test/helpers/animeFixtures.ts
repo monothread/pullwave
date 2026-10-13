@@ -51,7 +51,7 @@ export function makeScheduleEntry(overrides: Partial<AnimeScheduleEntry> = {}): 
     };
 }
 
-export const ANI_CLI_INFO: AniCliInfo = { found: true, path: '/app/resources/bin/ani/ani-cli', version: '5.1.4', source: 'bundled' };
+export const ANI_CLI_INFO: AniCliInfo = { found: true, path: '/app/resources/bin/ani/ani-cli', version: '5.1.4', source: 'installed' };
 
 export function makeStatus(overrides: Partial<AnimeStatus> = {}): AnimeStatus {
     return { supported: true, available: true, aniCli: ANI_CLI_INFO, ...overrides };

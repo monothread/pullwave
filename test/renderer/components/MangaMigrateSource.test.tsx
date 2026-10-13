@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaMigrateSource } from '@renderer/components/MangaMigrateSource';
@@ -223,17 +223,20 @@ describe('MangaMigrateSource', () => {
         expect(screen.getByRole('button', { name: 'MIGRATE' })).toBeDisabled();
     });
 
-    it('moves the manga to the one that was picked, with its chapters and details', async () => {
+    it('moves the manga to the one that was picked, with its chapters and details, and closes', async () => {
         const user = userEvent.setup();
         const moved = makeLibraryManga([], { id: 9, sourceId: '200', remoteId: 70 });
         mock.api.manga.migrateSource.mockResolvedValue({ ok: true, manga: moved, matched: 2, added: 1, dropped: 0 });
-        renderPanel();
+        const onClose = renderPanel();
         await user.click(screen.getByRole('button', { name: 'SEARCH' }));
         await user.click(await screen.findByRole('button', { name: 'Pick: One Piece (Other Dex)' }));
         await user.click(await screen.findByRole('button', { name: 'MIGRATE' }));
         expect(mock.api.manga.migrateSource).toHaveBeenCalledWith({
             mangaId: 9,
             target: { manga: makeSummary({ remoteId: 70, sourceId: '200', title: 'One Piece' }), details: makeDetails({ remoteId: 70, sourceId: '200' }), chapters: chapters(1, 2, 4) }
+        });
+        await vi.waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -246,12 +249,13 @@ describe('MangaMigrateSource', () => {
     ] as const)('says why the move did not happen (%s)', async (reason, message) => {
         const user = userEvent.setup();
         mock.api.manga.migrateSource.mockResolvedValue({ ok: false, reason });
-        renderPanel();
+        const onClose = renderPanel();
         await user.click(screen.getByRole('button', { name: 'SEARCH' }));
         await user.click(await screen.findByRole('button', { name: 'Pick: One Piece (Other Dex)' }));
         await user.click(await screen.findByRole('button', { name: 'MIGRATE' }));
         expect(await screen.findByRole('alert')).toHaveTextContent(message);
         expect(screen.getByRole('button', { name: 'MIGRATE' })).toBeEnabled();
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('clears an old problem when another manga is picked or a new search is made', async () => {
@@ -284,5 +288,126 @@ describe('MangaMigrateSource', () => {
         const onClose = renderPanel();
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    describe('as a window', () => {
+        it('is a modal dialog named after the move, over the page, with the focus inside it', () => {
+            renderPanel();
+            const dialog = screen.getByRole('dialog', { name: 'MIGRATE TO ANOTHER SOURCE' });
+            expect(dialog).toHaveAttribute('aria-modal', 'true');
+            expect(dialog).toHaveClass('modal', 'modal--wide');
+            expect(dialog.parentElement).toHaveClass('modal-backdrop');
+            expect(dialog.parentElement?.parentElement).toBe(document.body);
+            expect(dialog).toContainElement(document.activeElement as HTMLElement);
+        });
+
+        it('is closed with Esc and with a click outside of it, but not with a click inside', async () => {
+            const user = userEvent.setup();
+            const onClose = renderPanel();
+            fireEvent.mouseDown(screen.getByRole('dialog'));
+            expect(onClose).not.toHaveBeenCalled();
+            await user.keyboard('{Escape}');
+            expect(onClose).toHaveBeenCalledTimes(1);
+            fireEvent.mouseDown(screen.getByRole('dialog').parentElement as HTMLElement);
+            expect(onClose).toHaveBeenCalledTimes(2);
+        });
+
+        it('cannot be closed while the move is being made', async () => {
+            const user = userEvent.setup();
+            let finish: (value: unknown) => void = () => {return undefined};
+            mock.api.manga.migrateSource.mockReturnValue(
+                new Promise((resolve) => {
+                    finish = resolve;
+                })
+            );
+            const onClose = renderPanel();
+            await user.click(screen.getByRole('button', { name: 'SEARCH' }));
+            await user.click(await screen.findByRole('button', { name: 'Pick: One Piece (Other Dex)' }));
+            await user.click(await screen.findByRole('button', { name: 'MIGRATE' }));
+            expect(screen.getByRole('button', { name: 'CANCEL' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'MIGRATE' })).toBeDisabled();
+            await user.keyboard('{Escape}');
+            fireEvent.mouseDown(screen.getByRole('dialog').parentElement as HTMLElement);
+            expect(onClose).not.toHaveBeenCalled();
+            finish({ ok: false, reason: 'busy' });
+            expect(await screen.findByRole('alert')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'CANCEL' })).toBeEnabled();
+        });
+    });
+
+    describe('the language filter', () => {
+        function languageOptions(): Array<string | null> {
+            return within(screen.getByLabelText('Language'))
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.textContent;
+                });
+        }
+
+        function sourceOptions(): Array<string | null> {
+            return within(screen.getByLabelText('Search in'))
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.textContent;
+                });
+        }
+
+        it('lists all languages first, then the languages of the other sources, without the ones for adults or the one the manga is in alone', () => {
+            renderPanel();
+            expect(languageOptions()).toEqual(['All languages', 'EN', 'PT']);
+            expect(screen.getByLabelText('Language')).toHaveValue('all-languages');
+        });
+
+        it('puts the sources that read several languages last in the list of languages', () => {
+            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, makeSource({ id: '500', name: 'Everywhere', lang: 'all' })] } });
+            renderPanel();
+            expect(languageOptions()).toEqual(['All languages', 'EN', 'PT', 'Several languages']);
+        });
+
+        it('limits the sources to the ones of the language, plus the ones that read several languages, and starts on all of them again', async () => {
+            const user = userEvent.setup();
+            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, makeSource({ id: '500', name: 'Everywhere', lang: 'all' })] } });
+            renderPanel();
+            await user.selectOptions(screen.getByLabelText('Search in'), '300');
+            await user.selectOptions(screen.getByLabelText('Language'), 'pt');
+            expect(sourceOptions()).toEqual(['All sources', 'Everywhere (all)', 'Third Scans (pt)']);
+            expect(screen.getByLabelText('Search in')).toHaveValue('all');
+            await user.selectOptions(screen.getByLabelText('Language'), 'en');
+            expect(sourceOptions()).toEqual(['All sources', 'Everywhere (all)', 'Other Dex (en)']);
+        });
+
+        it('searches only the sources of the language that was chosen', async () => {
+            const user = userEvent.setup();
+            renderPanel();
+            await user.selectOptions(screen.getByLabelText('Language'), 'pt');
+            await user.click(screen.getByRole('button', { name: 'SEARCH' }));
+            await screen.findAllByTestId('manga-candidate');
+            expect(mock.api.manga.list.mock.calls).toEqual([[{ sourceId: '300', kind: 'search', page: 1, query: 'One Piece' }]]);
+            expect(screen.getAllByTestId('manga-candidate')).toHaveLength(1);
+        });
+
+        it('searches the one source that was picked inside the language', async () => {
+            const user = userEvent.setup();
+            renderPanel();
+            await user.selectOptions(screen.getByLabelText('Language'), 'en');
+            await user.selectOptions(screen.getByLabelText('Search in'), '200');
+            await user.click(screen.getByRole('button', { name: 'SEARCH' }));
+            await screen.findAllByTestId('manga-candidate');
+            expect(mock.api.manga.list.mock.calls).toEqual([[{ sourceId: '200', kind: 'search', page: 1, query: 'One Piece' }]]);
+        });
+
+        it('shows the languages of the sources for adults when the user asked for them', () => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, makeSource({ id: '600', name: 'Adult Spanish', lang: 'es', contentWarning: 'NSFW' })] } });
+            renderPanel();
+            expect(languageOptions()).toEqual(['All languages', 'EN', 'ES', 'PT']);
+        });
+
+        it('keeps the search from being made when the language has no source', () => {
+            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [SOURCES[0]!, SOURCES[3]!] } });
+            renderPanel();
+            expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
+            expect(screen.getByText('There is no other source: install another extension first.')).toBeInTheDocument();
+        });
     });
 });

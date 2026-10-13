@@ -21,7 +21,7 @@ There is nothing else to install: everything the app needs comes with it.
 - **Subtitles made for you:** translate a subtitle into another language, or create one from the audio of an episode that has none, with your own account at OpenAI, Claude, Gemini and others.
 - **Manga** from the sources of the Mihon/Tachiyomi extensions: search them all at once, keep a library of cards, read in the app and download as CBZ.
 - The whole app in **English, Português, Español, 中文 and 日本語**.
-- Updates itself, and updates its video and anime tools from inside the app.
+- Updates itself, and downloads and updates its video and anime tools from inside the app (the package stays small).
 
 ## Install
 Download the file for your system from the [Releases page](https://github.com/monothread/pullwave/releases/latest).
@@ -49,6 +49,8 @@ chmod +x pullwave-x.y.z.AppImage
 ```
 Ubuntu 22.04 and newer need FUSE 2 for AppImages (`sudo apt install libfuse2`, or `libfuse2t64` on Ubuntu 24.04). If it does not open on Ubuntu 24.04, run it with `--no-sandbox`; the `.deb` does not have this problem.
 
+**The first time it opens** the app downloads the programs it runs (yt-dlp, deno and ffmpeg for the video downloader, plus ani-cli, busybox and curl for the anime section; about 200 MB in all) into its own folder, so the package stays small and none of your programs is touched. The header shows how it goes, and the video downloader and the anime section wait for their programs with a bar for each one; if one fails (no connection, for example) it says why and has **TRY AGAIN**, and what is ready is kept. You need a connection that first time only; the same boxes **Status of the programs** in the settings (ffmpeg in the global ones, yt-dlp in those of the video downloader, ani-cli in those of the anime) keep them up to date afterwards.
+
 Once installed, the app looks for new versions by itself (the ⚙ of the top bar, APP UPDATES): one click downloads the update and another restarts into it.
 
 ## Getting around
@@ -67,7 +69,7 @@ The back and forward buttons of the mouse take you through the screens you have 
 
 ### Queue
 - Paste a link, or several: **+ ADD LINK** gives you one field per link. **FOLDER** sends that download to another folder, and **OPTIONS** changes the quality, the format and the live-stream behavior for that download only.
-- Every download shows its progress, speed and time left, and can be paused, resumed, cancelled or retried. Up to two downloads run at the same time, the others wait their turn. When one finishes you get a notice, and it moves to the history.
+- Every download shows its progress, speed and time left, and can be paused, resumed, cancelled or retried. Up to three downloads run at the same time, the others wait their turn. When one finishes you get a notice, and it moves to the history.
 - **PAUSE** stops a download and keeps what was already downloaded; **RESUME** goes on from there, and a paused download leaves its place in the queue to the next one. A live recording cannot be paused (STOP & SAVE ends it). A paused download is still there, paused, when you open the app again, and RESUME goes on from its partial files. Closing the app while downloads are running cancels them and deletes their unfinished files (paused downloads are kept, with theirs); the app asks before it does.
 - If something goes wrong, a clear message explains what happened, with the details one click away.
 
@@ -97,7 +99,7 @@ Use the cookies of your browser for age-restricted, private or members-only vide
 ### Settings of the video downloader (⚙)
 ![Settings of the video downloader](docs/screenshots/cyberpunk-settings.png)
 
-Where downloads are saved and how files are named, quality and format, playlists and subtitles, live streams, browser cookies, and advanced options such as a speed limit or using your own yt-dlp and ffmpeg. **UPDATE YT-DLP** brings the download tool up to date without waiting for a new version of the app: it only installs a release whose list of checksums is signed by the yt-dlp project (the signature is checked with the key of the project that comes with the app), and it runs the new one before it replaces the old one. If the updated one turns out worse, **USE THE ONE THAT SHIPS WITH THE APP** deletes it; the app also drops an updated one by itself when it is older than the one that comes with a newer version of the app, or when it no longer runs.
+Where downloads are saved and how files are named, quality and format, playlists and subtitles, live streams, browser cookies, and advanced options such as a speed limit or using your own yt-dlp and ffmpeg. The **Status of the programs** box shows yt-dlp and deno (which it runs the scripts of some sites with): whether they are installed, their version, the latest one (**CHECK FOR NEW VERSIONS**) and **UPDATE TO** it, which installs the release beside the one that works, checks it (the list of checksums of yt-dlp has to be signed by the yt-dlp project, with the key that comes with the app) and only then uses it. **USE THE VERSION OF THE APP** goes back to the version the app was made with. If a program failed to download or does not run, the box says why and has **TRY AGAIN** or **INSTALL AGAIN**. A yt-dlp you chose by its path is yours: the app does not download or update it.
 
 ## Anime
 Pullwave includes [ani-cli](https://github.com/pystardust/ani-cli) and everything it needs, so the anime section works as soon as the app is installed.
@@ -175,7 +177,7 @@ Lists the anime you opened or watched, the most recent first, with the last epis
 ### Keeping your library
 - **IMPORT LIBRARY** rebuilds the library from a folder, for a new computer, a reinstall, or after you renamed or moved folders. Episodes downloaded by the app come back exactly as they were, with where you stopped watching. An episode whose file is gone is marked.
 - **MIGRATE FOLDER** (in the anime settings) moves the whole library to another folder safely, and points the app to it.
-- **UPDATE ANI-CLI** (in the ⚙ of the ANIME tab) gets the newest ani-cli when the source changes and something stops working. It downloads the latest version from the ani-cli project, so use it only if you trust that project (it publishes no signature, so what is checked is that the file looks like ani-cli, that the shell accepts it, and that the changes Pullwave makes to it still fit: if the one that finds the stream no longer fits, it is not installed, and if only a subtitle feature does not fit, it is installed and you are told). **USE THE ONE THAT SHIPS WITH THE APP** deletes the updated one; the version that comes with the app keeps working without it.
+- **Status of the programs** (in the ⚙ of the ANIME tab) shows ani-cli, busybox and curl: installed or not, version, and **UPDATE TO** the newest ani-cli when the source changes and something stops working. It downloads the latest version from the ani-cli project, so use it only if you trust that project (it publishes no signature, so what is checked is that the file looks like ani-cli, that the shell accepts it, and that the changes Pullwave makes to it still fit: if the one that finds the stream no longer fits, it is not installed, and if only a subtitle feature does not fit, it is installed and you are told). **USE THE VERSION OF THE APP** goes back to the version the app was made with; busybox and curl stay at it. The programs are downloaded the first time the app opens, so nothing of the anime section works until they are there (a bar shows how it goes, and **TRY AGAIN** appears for any that failed).
 
 ### Good to know
 The episodes come from an external source that can change or block requests at any time; updating ani-cli often fixes that. Some antivirus programs distrust the small tools ani-cli uses on Windows; they are the official builds (see [`resources/THIRD_PARTY_NOTICES.md`](resources/THIRD_PARTY_NOTICES.md)). Some video formats may not play inside the app. The same disclaimer applies: see [DISCLAIMER.md](DISCLAIMER.md).
@@ -186,14 +188,15 @@ Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](http
 - **Filters and reader:** the SEARCH of a source has a FILTERS panel with what the source offers (genres, tags, status, order...), like the WebUI of Suwayomi. A chapter is read with READ, from the source or, when it was downloaded, from its file: single page, vertical scroll or webtoon, left to right or right to left, with the size and the background of your choice, and it comes back to the page you left on.
 - **EXTENSIONS:** add a *store* (the address of an `index.min.json`, for instance the [keiyoushi](https://github.com/keiyoushi/extensions) one, which has a button) and install the extensions you want. An extension brings one or more *sources*, the sites that have the manga. Extensions are made by other people: install only the ones you trust.
 - **BROWSE:** the sources of the installed extensions, by language (as in the Suwayomi WebUI). Open one on its **popular** or **latest** manga, search it, open a manga and pick chapters. Some sources need to be set up first (a server address, a mirror, a language): the ⚙ on the page of the source.
-- **Downloads:** one chapter at a time for each site, three tries, pause and resume, and a chapter that is cut short goes on from the pages it has. Each chapter is a **CBZ** (or a folder of images, in the settings) with a `ComicInfo.xml`, in `Pullwave Manga/<manga>/` inside your downloads folder (or the folder you choose).
+- **Downloads:** one chapter at a time for each site and, by default, three sites at once (**Downloads at the same time** in the settings of the manga, 1 to 6), three tries, pause and resume, and a chapter that is cut short goes on from the pages it has. **PAUSE ALL** and **RESUME ALL** on the list of downloads pause or go on with everything at once, including the chapters that wait. Each chapter is a **CBZ** (or a folder of images, in the settings) with a `ComicInfo.xml`, in `Pullwave Manga/<manga>/` inside your downloads folder (or the folder you choose).
 - **SEARCH:** look for a name in **all the sources of a language at once** (two at a time). Each source says whether it found it, did not, or failed, and a result opens the manga. A title that you already have from another source is marked *in library (other source)*, and adding it again asks first. The last search is kept when you change tabs.
 
   ![The search in all the sources](docs/screenshots/manga-search.png)
-- **LIBRARY:** your mangas as cards, like the anime ones, with how many chapters are downloaded and badges for the seasons of a series and for new chapters. Inside a manga you download what is missing, read, **open the folder**, look for new chapters, and remove a chapter or the manga with its files. They can be put in groups, which show as tabs.
+- **LIBRARY:** your mangas as cards, like the anime ones, with how many chapters are downloaded and badges for the seasons of a series, for new chapters and for the **source** each manga comes from (name and language; the page of the manga says it too). When the extension of a source is uninstalled the card says so and the page of the manga has **LINK SOURCE**, which opens the window to move it to a source that works (see below). Inside a manga you download what is missing, read, **open the folder**, look for new chapters, and remove a chapter or the manga with its files. They can be put in groups, which show as tabs, in the order you choose with the arrows (↑ moves a tab to the left, ↓ to the right).
 
   ![The library of the manga](docs/screenshots/manga-library.png)
   ![The page of a manga](docs/screenshots/manga-page.png)
+- **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: pick a **language** to see only the sources in it (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number.
 - **The folder:** as with the anime, once there are mangas in the library the folder is fixed and only **MIGRATE FOLDER** changes it (it moves the files, checks them and then removes the old ones).
 
   ![The settings of the manga, with the folder fixed](docs/screenshots/manga-settings.png)
@@ -214,12 +217,12 @@ The ⚙ of each part has the settings of that part. The app adapts to the size o
 - **System tray on Linux:** it works on KDE, XFCE, Cinnamon, MATE, LXQt and GNOME with an extension. Stock GNOME has no tray: install "AppIndicator and KStatusNotifierItem Support" (Ubuntu ships it enabled; on Fedora `sudo dnf install gnome-shell-extension-appindicator`; on Arch `sudo pacman -S gnome-shell-extension-appindicator`, then enable it). Without one, closing the window quits the app. Right-click the tray icon to restart or quit.
 - **Cookies on Windows:** taking cookies from Chrome or Edge can fail because of their newer encryption; Firefox is more reliable.
 - **If the app does not start on Linux** because of the system's security settings, run it with `--no-sandbox`.
-- The third-party software that comes with the app is listed in [`resources/THIRD_PARTY_NOTICES.md`](resources/THIRD_PARTY_NOTICES.md).
+- The third-party software the app uses (it downloads it the first time it opens) is listed in [`resources/THIRD_PARTY_NOTICES.md`](resources/THIRD_PARTY_NOTICES.md).
 
 ## Development
 More documentation is in [`docs/`](docs/README.md); how to publish a version is in [`docs/RELEASING.md`](docs/RELEASING.md).
 
-You need Node.js 22 or newer. To build the Linux packages you also need `rpm`, `libarchive-tools` and `zstd` (`npm run check:tools` tells you what is missing). `npm run fetch-binaries` downloads the tools that come with the app.
+You need Node.js 22 or newer. To build the Linux packages you also need `rpm`, `libarchive-tools` and `zstd` (`npm run check:tools` tells you what is missing). The app downloads yt-dlp, deno, ffmpeg, ani-cli, busybox and curl itself the first time it opens (they are not in the package); `npm run fetch-binaries` downloads real copies of them for the end-to-end tests.
 
 | Command | What it does |
 |---|---|
@@ -229,7 +232,7 @@ You need Node.js 22 or newer. To build the Linux packages you also need `rpm`, `
 | `npm run test:e2e` | Build and run the end-to-end tests on the real app |
 | `npm run typecheck` | Type check |
 | `npm run lint` | Lint (no warnings allowed) |
-| `npm run fetch-binaries` | Download the bundled tools (`-- --force` to refresh) |
+| `npm run fetch-binaries` | Download the programs the end-to-end tests run for real (`-- --force` to refresh); they are not shipped |
 | `npm run dist` | Linux: build and package AppImage, deb, rpm and pacman into `dist/` (never publishes) |
 | `npm run dist:win` | Windows: build the installer |
 | `npm run release` / `npm run release:win` | Same as `dist` / `dist:win`, then upload to a draft GitHub Release (needs `GH_TOKEN`) |

@@ -29,6 +29,9 @@ export function MangaGroupsPanel() {
     const showGroup = useMangaStore((state) => {
         return state.showGroup;
     });
+    const moveGroup = useMangaStore((state) => {
+        return state.moveGroup;
+    });
     const [name, setName] = useState('');
     const [problem, setProblem] = useState<string | null>(null);
     const [editing, setEditing] = useState<number | null>(null);
@@ -64,7 +67,7 @@ export function MangaGroupsPanel() {
             <p className="field__hint">{t('manga.groups.hint')}</p>
             {groups.length === 0 && <p className="empty">{t('manga.groups.empty')}</p>}
             <ul className="history__list">
-                {groups.map((group) => {
+                {groups.map((group, index) => {
                     return (
                         <li key={group.id} className="history__item" data-testid="manga-group">
                             {editing === group.id ? (
@@ -104,6 +107,30 @@ export function MangaGroupsPanel() {
                                         <span className="history__title">{group.name}</span>
                                     </div>
                                     <span className="anime__actions">
+                                        <button
+                                            type="button"
+                                            className="btn btn--small"
+                                            disabled={index === 0}
+                                            aria-label={`${t('manga.groups.moveUp')}: ${group.name}`}
+                                            title={t('manga.groups.moveUp')}
+                                            onClick={() => {
+                                                void moveGroup(group.id, 'up');
+                                            }}
+                                        >
+                                            ↑
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn--small"
+                                            disabled={index === groups.length - 1}
+                                            aria-label={`${t('manga.groups.moveDown')}: ${group.name}`}
+                                            title={t('manga.groups.moveDown')}
+                                            onClick={() => {
+                                                void moveGroup(group.id, 'down');
+                                            }}
+                                        >
+                                            ↓
+                                        </button>
                                         {hiddenGroupIds.includes(group.id) && <span className="badge">{t('manga.groups.hidden')}</span>}
                                         <button
                                             type="button"

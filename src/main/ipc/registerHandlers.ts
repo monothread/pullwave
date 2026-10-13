@@ -6,14 +6,12 @@ import type {
     DetectedBrowser,
     HistoryEntry,
     Settings,
-    TraySupport,
-    UpdateResult
+    TraySupport
 } from '@shared/types';
 import { checkBinaries } from '../services/binaryLocator';
 import type { BinaryResolver } from '../services/binaryResolver';
 import { sanitizeDownloadOptions } from '../services/settingsSanitizer';
 import type { RequestExtras } from '../services/ytdlpArgsBuilder';
-import { discardOutdatedUpdate, resetYtdlp, updateYtdlp } from '../services/updater';
 import type { BrowserCatalog } from '../services/browserCatalog';
 import type { AppUpdateService } from '../services/appUpdateService';
 import type { HistoryStore } from '../services/historyStore';
@@ -106,21 +104,8 @@ export function registerHandlers(deps: HandlerDependencies): void {
     ipcMain.handle(IPC.historyClear, (): void => {
         historyStore.clear();
     });
-    // Once per run, before the binaries are first looked at: an updated yt-dlp that the app has since outdone (or that no longer runs) is
-    // dropped, so the bundled one is the one used.
-    let outdatedUpdateChecked: Promise<boolean> | null = null;
-    ipcMain.handle(IPC.binariesCheck, async (): Promise<BinariesStatus> => {
-        outdatedUpdateChecked ??= discardOutdatedUpdate(settingsStore.get(), deps.resolver).catch(() => {
-            return false;
-        });
-        await outdatedUpdateChecked;
+    ipcMain.handle(IPC.binariesCheck, (): Promise<BinariesStatus> => {
         return checkBinaries(settingsStore.get(), deps.resolver);
-    });
-    ipcMain.handle(IPC.ytdlpUpdate, (): Promise<UpdateResult> => {
-        return updateYtdlp(settingsStore.get(), deps.resolver);
-    });
-    ipcMain.handle(IPC.ytdlpReset, (): UpdateResult => {
-        return resetYtdlp(deps.resolver);
     });
     ipcMain.handle(IPC.appUpdateGet, (): AppUpdateState => {
         return deps.appUpdates.getState();

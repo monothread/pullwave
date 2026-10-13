@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('MangaDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(7);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(8);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -34,7 +34,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(7);
+        expect(second.schemaVersion).toBe(8);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -279,7 +279,7 @@ describe('MangaDb the page of the manga on its site', () => {
             PRAGMA user_version = 2;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(7);
+        expect(db.schemaVersion).toBe(8);
         expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, series: null, season: null, seasonName: null, groupIds: [], chapters: [] }]);
         db.close();
     });
@@ -435,14 +435,112 @@ describe('MangaDb groups', () => {
         return db.upsertManga({ remoteId, sourceId: '123', title, thumbnailUrl: null });
     }
 
-    it('makes groups, lists them by name and finds each by its id', () => {
+    it('makes groups, lists them in the order they were made and finds each by its id', () => {
         const { db } = setup();
         const manhwas = db.createGroup('Manhwas');
         const mangas = db.createGroup('mangas');
         expect(manhwas).toEqual({ id: 1, name: 'Manhwas' });
-        expect(db.listGroups()).toEqual([mangas, manhwas]);
+        expect(db.listGroups()).toEqual([manhwas, mangas]);
         expect(db.getGroup(1)).toEqual(manhwas);
         expect(db.getGroup(99)).toBeNull();
+    });
+
+    describe('the order of the groups', () => {
+        function names(db: MangaDb): string[] {
+            return db.listGroups().map((group) => {
+                return group.name;
+            });
+        }
+
+        it('puts a new group at the end', () => {
+            const { db } = setup();
+            db.createGroup('Zeta');
+            db.createGroup('Alpha');
+            db.createGroup('Mid');
+            expect(names(db)).toEqual(['Zeta', 'Alpha', 'Mid']);
+        });
+
+        it('moves a group up, by changing places with the one before it', () => {
+            const { db } = setup();
+            db.createGroup('A');
+            db.createGroup('B');
+            const c = db.createGroup('C')!;
+            expect(db.moveGroup(c.id, 'up')).toBe(true);
+            expect(names(db)).toEqual(['A', 'C', 'B']);
+            expect(db.moveGroup(c.id, 'up')).toBe(true);
+            expect(names(db)).toEqual(['C', 'A', 'B']);
+        });
+
+        it('moves a group down, by changing places with the one after it', () => {
+            const { db } = setup();
+            const a = db.createGroup('A')!;
+            db.createGroup('B');
+            db.createGroup('C');
+            expect(db.moveGroup(a.id, 'down')).toBe(true);
+            expect(names(db)).toEqual(['B', 'A', 'C']);
+            expect(db.moveGroup(a.id, 'down')).toBe(true);
+            expect(names(db)).toEqual(['B', 'C', 'A']);
+        });
+
+        it('does nothing for the first group going up, the last going down, and a group that is not there', () => {
+            const { db } = setup();
+            const a = db.createGroup('A')!;
+            db.createGroup('B');
+            const c = db.createGroup('C')!;
+            expect(db.moveGroup(a.id, 'up')).toBe(false);
+            expect(db.moveGroup(c.id, 'down')).toBe(false);
+            expect(db.moveGroup(99, 'up')).toBe(false);
+            expect(db.moveGroup(99, 'down')).toBe(false);
+            expect(names(db)).toEqual(['A', 'B', 'C']);
+        });
+
+        it('does nothing when there is a single group', () => {
+            const { db } = setup();
+            const only = db.createGroup('Only')!;
+            expect(db.moveGroup(only.id, 'up')).toBe(false);
+            expect(db.moveGroup(only.id, 'down')).toBe(false);
+            expect(names(db)).toEqual(['Only']);
+        });
+
+        it('keeps the order after a group is deleted, and still moves the ones next to the gap', () => {
+            const { db } = setup();
+            db.createGroup('A');
+            const b = db.createGroup('B')!;
+            const c = db.createGroup('C')!;
+            const d = db.createGroup('D')!;
+            db.deleteGroup(b.id);
+            expect(names(db)).toEqual(['A', 'C', 'D']);
+            expect(db.moveGroup(d.id, 'up')).toBe(true);
+            expect(names(db)).toEqual(['A', 'D', 'C']);
+            expect(db.moveGroup(c.id, 'up')).toBe(true);
+            expect(names(db)).toEqual(['A', 'C', 'D']);
+        });
+
+        it('puts a group made after a deletion at the end, and moves it like the others', () => {
+            const { db } = setup();
+            db.createGroup('A');
+            const b = db.createGroup('B')!;
+            db.deleteGroup(b.id);
+            const e = db.createGroup('E')!;
+            db.createGroup('F');
+            expect(names(db)).toEqual(['A', 'E', 'F']);
+            expect(db.moveGroup(e.id, 'down')).toBe(true);
+            expect(names(db)).toEqual(['A', 'F', 'E']);
+        });
+
+        it('keeps the order when a group is renamed, and when the library is opened again', () => {
+            const path = join(makeTempDir(), 'groups.db');
+            const first = new MangaDb(path);
+            first.createGroup('B');
+            const a = first.createGroup('A')!;
+            first.moveGroup(a.id, 'up');
+            first.renameGroup(a.id, 'Zed');
+            expect(names(first)).toEqual(['Zed', 'B']);
+            first.close();
+            const second = new MangaDb(path);
+            expect(names(second)).toEqual(['Zed', 'B']);
+            second.close();
+        });
     });
 
     it('does not make two groups with the same name, whatever the case or the accents', () => {
@@ -674,7 +772,7 @@ describe('MangaDb when a chapter was put in the library', () => {
             PRAGMA user_version = 4;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(7);
+        expect(db.schemaVersion).toBe(8);
         expect(db.chaptersOf(1)[0]).toMatchObject({ remoteId: 5, addedAt: null });
         db.close();
     });
@@ -770,7 +868,7 @@ describe('MangaDb the cover that is kept', () => {
             PRAGMA user_version = 5;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(7);
+        expect(db.schemaVersion).toBe(8);
         expect(db.coverHash(1)).toBeNull();
         expect(db.coverless().map((item) => {
             return item.title;
@@ -1029,11 +1127,45 @@ describe('MangaDb the tables of the histories in a library made before them', ()
             PRAGMA user_version = 6;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(7);
+        expect(db.schemaVersion).toBe(8);
         expect(db.updates()).toEqual([]);
         expect(db.readingHistory()).toEqual([]);
         db.recordReading({ sourceId: 's', mangaRemoteId: 1, title: 'Old', thumbnailUrl: null, chapterRemoteId: 2, chapterName: '', chapterNumber: null, page: 0, pageCount: 1 });
         expect(db.readingHistory()[0]?.libraryMangaId).toBe(1);
+        db.close();
+    });
+});
+
+describe('MangaDb the order of the groups in a library made before it', () => {
+    it('gives the groups that were there the alphabetical order they had, and goes on from it', () => {
+        const path = join(makeTempDir(), 'before-order.db');
+        const old = new DatabaseSync(path);
+        old.exec(`CREATE TABLE manga (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, remote_id INTEGER NOT NULL, title TEXT NOT NULL, thumbnail_url TEXT, created_at INTEGER NOT NULL, UNIQUE (source_id, remote_id));
+            CREATE TABLE chapter (id INTEGER PRIMARY KEY AUTOINCREMENT, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, remote_id INTEGER NOT NULL, name TEXT NOT NULL, number REAL, date_uploaded INTEGER, scanlator TEXT, source_order INTEGER NOT NULL, status TEXT NOT NULL, page_count INTEGER NOT NULL DEFAULT 0, file_path TEXT, size_bytes INTEGER, error_code TEXT, error_raw TEXT, downloaded_at INTEGER, UNIQUE (manga_id, remote_id));
+            ALTER TABLE manga ADD COLUMN author TEXT; ALTER TABLE manga ADD COLUMN artist TEXT; ALTER TABLE manga ADD COLUMN description TEXT; ALTER TABLE manga ADD COLUMN genres TEXT; ALTER TABLE manga ADD COLUMN status TEXT; ALTER TABLE manga ADD COLUMN url TEXT;
+            ALTER TABLE manga ADD COLUMN series TEXT; ALTER TABLE manga ADD COLUMN season INTEGER; ALTER TABLE manga ADD COLUMN season_name TEXT;
+            CREATE TABLE manga_group (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+            CREATE TABLE manga_group_member (group_id INTEGER NOT NULL REFERENCES manga_group (id) ON DELETE CASCADE, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, PRIMARY KEY (group_id, manga_id));
+            ALTER TABLE chapter ADD COLUMN added_at INTEGER;
+            ALTER TABLE manga ADD COLUMN cover_hash TEXT;
+            CREATE TABLE chapter_update (id INTEGER PRIMARY KEY AUTOINCREMENT, manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE, chapter_id INTEGER NOT NULL REFERENCES chapter (id) ON DELETE CASCADE, found_at INTEGER NOT NULL, origin TEXT NOT NULL);
+            CREATE TABLE reading_history (id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, manga_remote_id INTEGER NOT NULL, title TEXT NOT NULL, thumbnail_url TEXT, chapter_remote_id INTEGER NOT NULL, chapter_name TEXT NOT NULL, chapter_number REAL, page INTEGER NOT NULL, page_count INTEGER NOT NULL, read_at INTEGER NOT NULL, UNIQUE (source_id, manga_remote_id));
+            INSERT INTO manga_group (name, created_at) VALUES ('Manhwas', 1), ('mangas', 2), ('Favorites', 3), ('Mangas', 4);
+            PRAGMA user_version = 7;`);
+        old.close();
+        const db = new MangaDb(path);
+        expect(db.schemaVersion).toBe(8);
+        // By name, whatever the case; the ones with the same name by their id.
+        expect(
+            db.listGroups().map((group) => {
+                return group.name;
+            })
+        ).toEqual(['Favorites', 'mangas', 'Mangas', 'Manhwas']);
+        const added = db.createGroup('Zeta')!;
+        expect(db.listGroups().at(-1)).toEqual(added);
+        const favorites = db.listGroups()[0]!;
+        expect(db.moveGroup(favorites.id, 'down')).toBe(true);
+        expect(db.listGroups()[1]).toEqual(favorites);
         db.close();
     });
 });

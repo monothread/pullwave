@@ -369,7 +369,7 @@ describe('MangaDetail in the library page', () => {
         expect(mock.api.manga.checkNewChapters).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(9);
         expect(screen.getByRole('button', { name: 'LOOKING…' })).toBeDisabled();
-        answer({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        answer({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
         expect(await screen.findByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeEnabled();
     });
 
@@ -411,6 +411,48 @@ describe('MangaDetail in the library page', () => {
         await user.click(screen.getByRole('button', { name: 'OPEN FOLDER' }));
         expect(mock.api.manga.openFolder).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.openFolder).toHaveBeenCalledWith(9);
+    });
+
+    it('shows the source the manga comes from, with its language, on its page in the library', () => {
+        useMangaStore.setState({ library: [SAVED], browse: { ...initialManga.browse, sources: [makeSource({ id: '123', name: 'MangaDex', lang: 'en' })], sourcesStatus: 'ready' } });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByTestId('manga-source')).toHaveTextContent('Source: MangaDex (EN)');
+        expect(screen.queryByTestId('manga-source-gone')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'LINK SOURCE' })).not.toBeInTheDocument();
+    });
+
+    it('does not show the source on the page of the browse', () => {
+        useMangaStore.setState({ library: [SAVED], selectionFrom: 'browse', view: 'browse', browse: { ...initialManga.browse, sources: [makeSource({ id: '123' })], sourcesStatus: 'ready' } });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByTestId('manga-source')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'LINK SOURCE' })).not.toBeInTheDocument();
+    });
+
+    it('says the extension is gone and offers LINK SOURCE, which opens the window to move the manga to a source that works', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [SAVED], browse: { ...initialManga.browse, sources: [makeSource({ id: '200', name: 'Other Dex' })], sourcesStatus: 'ready' } });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByTestId('manga-source')).not.toBeInTheDocument();
+        expect(screen.getByTestId('manga-source-gone')).toHaveTextContent('Source: 123. Its extension is not installed, so there is no source to read or update this manga from.');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'LINK SOURCE' }));
+        expect(screen.getByRole('dialog', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeInTheDocument();
+        expect(within(screen.getByLabelText('Search in')).getAllByRole('option')).toHaveLength(2);
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it.each(['idle', 'loading', 'error'] as const)('says nothing about the source while the list of sources is %s', (status) => {
+        useMangaStore.setState({ library: [SAVED], browse: { ...initialManga.browse, sources: [], sourcesStatus: status } });
+        mock.api.manga.sources.mockResolvedValue({ ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'down' } });
+        open();
+        render(<MangaDetail />);
+        expect(screen.queryByTestId('manga-source')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('manga-source-gone')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'LINK SOURCE' })).not.toBeInTheDocument();
     });
 
     it('cannot go to the source when its extension is not installed, and says why', () => {
@@ -814,9 +856,9 @@ describe('MangaDetail organizing a manga of the library', () => {
         render(<MangaDetail />);
         await openGear(user);
         await user.click(screen.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' }));
-        expect(screen.getByRole('region', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).not.toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' })).toBeInTheDocument();
     });
 

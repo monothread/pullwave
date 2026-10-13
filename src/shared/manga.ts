@@ -253,6 +253,9 @@ export interface MangaGroup {
 
 export const MAX_GROUP_NAME_LENGTH = 60;
 
+// Which way a group is moved in the order of the groups (the first one is the tab on the left of the library).
+export type MangaGroupDirection = 'up' | 'down';
+
 // Joining a manga to a series (or taking it out of one). `suggested` is the first season number the series does not have.
 export interface MangaSeriesRequest {
     mangaId: number;
@@ -462,8 +465,9 @@ export interface MangaUpdateEntry {
     status: MangaChapterStatus;
 }
 
-// What a check for new chapters found: how many chapters, in which mangas, and in how many mangas the source could not be reached.
-export type MangaCheckResponse = { ok: true; count: number; titles: string[]; failed: number } | { ok: false; error: MangaError };
+// What a check for new chapters found: how many chapters, in which mangas, in how many mangas the source could not be reached, and how many
+// mangas were not even asked about because the extension of their source is not installed.
+export type MangaCheckResponse = { ok: true; count: number; titles: string[]; failed: number; skipped: number } | { ok: false; error: MangaError };
 
 // Where a manga was left: the chapter and the page. It is kept for the mangas of the library and for the ones that are only read.
 export interface ReadingRecord {
@@ -522,6 +526,9 @@ export interface MangaApi {
     retry: (chapterId: number) => Promise<void>;
     pause: (chapterId: number) => Promise<void>;
     resume: (chapterId: number) => Promise<void>;
+    // Pauses everything that is going on or waiting, and goes on with everything that is paused.
+    pauseAll: () => Promise<void>;
+    resumeAll: () => Promise<void>;
     clearFinished: () => Promise<void>;
     removeDownload: (chapterId: number) => Promise<void>;
     removeManga: (mangaId: number) => Promise<void>;
@@ -547,6 +554,7 @@ export interface MangaApi {
     createGroup: (name: string) => Promise<MangaGroupResponse>;
     renameGroup: (groupId: number, name: string) => Promise<MangaGroupResponse>;
     deleteGroup: (groupId: number) => Promise<void>;
+    moveGroup: (groupId: number, direction: MangaGroupDirection) => Promise<void>;
     // Puts mangas in a group, or takes them out of it.
     setGroupMembers: (groupId: number, mangaIds: number[], member: boolean) => Promise<void>;
     // Moves a manga of the library to the same manga in another source, keeping what was downloaded.

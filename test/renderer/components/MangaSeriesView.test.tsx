@@ -100,23 +100,69 @@ describe('MangaSeriesView', () => {
         expect(mock.api.manga.setGroupMembers).toHaveBeenCalledWith(1, [1, 2], true);
     });
 
-    it('removes one season, asking in a window first', async () => {
+    it('takes one season out of the series, without asking and without deleting the manga', async () => {
         const user = userEvent.setup();
         renderView();
-        await user.click(screen.getByRole('button', { name: 'REMOVE: Frieren 2' }));
+        await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Frieren 2' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.manga.setSeries).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 2, series: null, season: null, seasonName: null });
         expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
-        const dialog = screen.getByRole('dialog', { name: 'Remove "Frieren 2"?' });
-        await user.click(within(dialog).getByRole('button', { name: 'REMOVE' }));
-        expect(mock.api.manga.removeManga).toHaveBeenCalledWith(2);
     });
 
-    it('does not let the manga that gives its name to the series be removed alone', () => {
+    it('reads the library again after a season leaves the series, and stays on the screen of the series that is left', async () => {
+        const user = userEvent.setup();
+        const { onBack } = renderView();
+        const callsBefore = mock.api.manga.library.mock.calls.length;
+        await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Frieren' }));
+        await vi.waitFor(() => {
+            expect(mock.api.manga.library.mock.calls.length).toBe(callsBefore + 1);
+        });
+        expect(onBack).not.toHaveBeenCalled();
+    });
+
+    it('lets the manga that gives its name to the series leave it too', async () => {
+        const user = userEvent.setup();
         const named = makeLibraryManga([], { id: 7, title: 'sousou NO frieren', series: 'Sousou no Frieren', season: 1 });
         render(<MangaSeriesView group={groupLibrary([named, SECOND])[0]!} onBack={vi.fn()} onRenamed={vi.fn()} />);
-        const blocked = screen.getByRole('button', { name: 'REMOVE: sousou NO frieren' });
-        expect(blocked).toBeDisabled();
-        expect(blocked).toHaveAttribute('title', 'This manga gives its name to the series. To remove it, remove the whole series.');
-        expect(screen.getByRole('button', { name: 'REMOVE: Frieren 2' })).toBeEnabled();
+        const button = screen.getByRole('button', { name: 'REMOVE FROM SERIES: sousou NO frieren' });
+        expect(button).toBeEnabled();
+        expect(button).not.toHaveAttribute('title');
+        await user.click(button);
+        expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 7, series: null, season: null, seasonName: null });
+        expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
+    });
+
+    it('goes back to the library when the manga that leaves is the only one of the series, which is then gone', async () => {
+        const user = userEvent.setup();
+        const only = makeLibraryManga([makeChapterRecord({ id: 9, status: 'done' })], { id: 9, remoteId: 19, title: 'Solo', series: 'Alone', season: 1 });
+        const onBack = vi.fn();
+        render(<MangaSeriesView group={groupLibrary([only])[0]!} onBack={onBack} onRenamed={vi.fn()} />);
+        await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Solo' }));
+        await vi.waitFor(() => {
+            expect(onBack).toHaveBeenCalledTimes(1);
+        });
+        expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 9, series: null, season: null, seasonName: null });
+        expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
+    });
+
+    it('stays on the screen when the app does not take the manga out of the series', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.setSeries.mockResolvedValue({ ok: false, reason: 'invalid' });
+        const only = makeLibraryManga([], { id: 9, remoteId: 19, title: 'Solo', series: 'Alone', season: 1 });
+        const onBack = vi.fn();
+        render(<MangaSeriesView group={groupLibrary([only])[0]!} onBack={onBack} onRenamed={vi.fn()} />);
+        await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Solo' }));
+        await vi.waitFor(() => {
+            expect(mock.api.manga.setSeries).toHaveBeenCalledTimes(1);
+        });
+        expect(onBack).not.toHaveBeenCalled();
+    });
+
+    it('has no button to delete one season: only the menu of the series deletes, and all of it', () => {
+        renderView();
+        expect(screen.queryByRole('button', { name: /^REMOVE: / })).not.toBeInTheDocument();
+        expect(screen.getAllByRole('button', { name: /^REMOVE FROM SERIES: / })).toHaveLength(2);
     });
 
     it('removes the whole series from its menu, asking in a window, one season after the other', async () => {

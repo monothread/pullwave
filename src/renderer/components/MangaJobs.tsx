@@ -12,6 +12,14 @@ function isFailed(job: MangaJob): boolean {
     return job.status === 'error' || job.status === 'cancelled';
 }
 
+function isPausable(job: MangaJob): boolean {
+    return job.status === 'running' || job.status === 'queued';
+}
+
+function isPaused(job: MangaJob): boolean {
+    return job.status === 'paused';
+}
+
 function isFinished(job: MangaJob): boolean {
     return job.status === 'done' || job.status === 'error' || job.status === 'cancelled';
 }
@@ -49,6 +57,12 @@ export function MangaJobs() {
     const resumeJob = useMangaStore((state) => {
         return state.resumeJob;
     });
+    const pauseAllJobs = useMangaStore((state) => {
+        return state.pauseAllJobs;
+    });
+    const resumeAllJobs = useMangaStore((state) => {
+        return state.resumeAllJobs;
+    });
     const clearFinishedJobs = useMangaStore((state) => {
         return state.clearFinishedJobs;
     });
@@ -68,6 +82,28 @@ export function MangaJobs() {
         <section className="manga__jobs queue" aria-label={t('manga.jobs.label', { count: jobs.length })}>
             <div className="queue__toolbar">
                 <span className="section-label">{t('manga.jobs.label', { count: jobs.length })}</span>
+                {jobs.some(isPausable) && (
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            void pauseAllJobs();
+                        }}
+                    >
+                        {t('manga.jobs.pauseAll')}
+                    </button>
+                )}
+                {jobs.some(isPaused) && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void resumeAllJobs();
+                        }}
+                    >
+                        {t('manga.jobs.resumeAll')}
+                    </button>
+                )}
                 {failed > 0 && (
                     <button
                         type="button"

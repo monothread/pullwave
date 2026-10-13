@@ -324,6 +324,92 @@ describe('MangaDownloadQueue progress and results', () => {
     });
 });
 
+describe('MangaDownloadQueue pause all and resume all', () => {
+    function byRemote(db: MangaDb, remoteId: number) {
+        return db.chaptersOf(1).find((item) => {
+            return item.remoteId === remoteId;
+        })!;
+    }
+
+    it('holds the chapters that wait and ends the run of the ones that go on, so none takes the place of another', async () => {
+        const { queue, downloads, db, updates } = setup({ maxConcurrent: 1 });
+        queue.enqueue(request([chapter(1), chapter(2), chapter(3)]));
+        expect(downloads).toHaveLength(1);
+
+        queue.pauseAll();
+
+        expect(db.getChapter(byRemote(db, 2).id)?.status).toBe('paused');
+        expect(db.getChapter(byRemote(db, 3).id)?.status).toBe('paused');
+        expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+        downloads[0]?.finish({ status: 'cancelled' });
+        await flush();
+        expect(db.getChapter(byRemote(db, 1).id)?.status).toBe('paused');
+        expect(downloads).toHaveLength(1);
+        expect(queue.list().map((job) => {
+            return [job.chapterName, job.status];
+        })).toEqual([['Chapter 1', 'paused'], ['Chapter 2', 'paused'], ['Chapter 3', 'paused']]);
+        expect(updates.filter((job) => {
+            return job.status === 'paused';
+        }).map((job) => {
+            return job.chapterName;
+        }).sort()).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3']);
+    });
+
+    it('tells the screen of the library once, and does nothing with nothing in the queue', () => {
+        const { queue, state } = setup();
+        queue.pauseAll();
+        expect(state.libraryChanges).toBe(1);
+        expect(queue.list()).toEqual([]);
+    });
+
+    it('leaves the chapters that are over as they are', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 1 });
+        queue.enqueue(request([chapter(1), chapter(2)]));
+        downloads[0]?.finish(DONE('/m/1.cbz'));
+        await flush();
+        queue.cancel(byRemote(db, 2).id);
+        downloads[1]?.finish({ status: 'cancelled' });
+        await flush();
+        queue.pauseAll();
+        expect(db.getChapter(byRemote(db, 1).id)?.status).toBe('done');
+        expect(db.getChapter(byRemote(db, 2).id)?.status).toBe('cancelled');
+    });
+
+    it('goes on with every paused chapter, as many at once as the limit allows, each source one at a time', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 2 });
+        queue.enqueue(request([chapter(1), chapter(2), chapter(3)]));
+        queue.enqueue(request([chapter(1)], { manga: { remoteId: 8, sourceId: 'src-b', title: 'Naruto', thumbnailUrl: null } }));
+        queue.pauseAll();
+        downloads.forEach((item) => {
+            item.finish({ status: 'cancelled' });
+        });
+        await flush();
+        const started = downloads.length;
+
+        queue.resumeAll();
+
+        expect(downloads.length - started).toBe(2);
+        const running = queue.list().filter((job) => {
+            return job.status === 'running';
+        });
+        expect(running.map((job) => {
+            return job.sourceId;
+        }).sort()).toEqual(['src-a', 'src-b']);
+        expect(queue.list().filter((job) => {
+            return job.status === 'queued';
+        })).toHaveLength(2);
+        expect(db.getChapter(byRemote(db, 1).id)?.status).toBe('downloading');
+    });
+
+    it('does not start anything when nothing is paused', () => {
+        const { queue, downloads } = setup({ maxConcurrent: 1 });
+        queue.enqueue(request([chapter(1), chapter(2)]));
+        queue.resumeAll();
+        expect(downloads).toHaveLength(1);
+        expect(downloads[0]?.cancel).not.toHaveBeenCalled();
+    });
+});
+
 describe('MangaDownloadQueue pause, resume and cancel', () => {
     it('pauses a running chapter keeping its pages, and goes on from the same place', async () => {
         const { queue, downloads, db, removed, updates } = setup();

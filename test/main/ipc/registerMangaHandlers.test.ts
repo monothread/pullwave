@@ -50,6 +50,7 @@ const MANGA_CHANNELS = [
     IPC.mangaGroupCreate,
     IPC.mangaGroupDelete,
     IPC.mangaGroupMembers,
+    IPC.mangaGroupMove,
     IPC.mangaGroupRename,
     IPC.mangaGroups,
     IPC.mangaMigrateFolder,
@@ -61,9 +62,11 @@ const MANGA_CHANNELS = [
     IPC.mangaList,
     IPC.mangaOpenFolder,
     IPC.mangaPause,
+    IPC.mangaPauseAll,
     IPC.mangaRemoveDownload,
     IPC.mangaRemoveManga,
     IPC.mangaResume,
+    IPC.mangaResumeAll,
     IPC.mangaRetry,
     IPC.mangaSourcePreferenceSet,
     IPC.mangaSourceFilters,
@@ -232,7 +235,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         icons,
         checkNewChapters: (mangaId) => {
             checks.push(mangaId);
-            return Promise.resolve(options.checkResponse ?? { ok: true as const, count: 0, titles: [], failed: 0 });
+            return Promise.resolve(options.checkResponse ?? { ok: true as const, count: 0, titles: [], failed: 0, skipped: 0 });
         },
         restartApp: () => {
             restarts.count += 1;
@@ -304,6 +307,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaGroupRename)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaGroupDelete)).toBeUndefined();
         expect(ipc.call(IPC.mangaGroupMembers)).toBeUndefined();
+        expect(ipc.call(IPC.mangaGroupMove)).toBeUndefined();
         expect(ipc.call(IPC.mangaMigrateSource)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.mangaMigrateFolder)).toEqual({ ok: false, reason: 'failed' });
         expect(ipc.call(IPC.mangaHelperInstall)).toBeUndefined();
@@ -312,7 +316,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaDownload)).toBeNull();
         expect(ipc.call(IPC.mangaLibrary)).toEqual([]);
         expect(ipc.call(IPC.mangaJobs)).toEqual([]);
-        [IPC.mangaDownloadMissing, IPC.mangaCancel, IPC.mangaRetry, IPC.mangaPause, IPC.mangaResume, IPC.mangaClearFinished, IPC.mangaRemoveDownload, IPC.mangaRemoveManga, IPC.mangaOpenFolder].forEach((channel) => {
+        [IPC.mangaDownloadMissing, IPC.mangaCancel, IPC.mangaRetry, IPC.mangaPause, IPC.mangaResume, IPC.mangaPauseAll, IPC.mangaResumeAll, IPC.mangaClearFinished, IPC.mangaRemoveDownload, IPC.mangaRemoveManga, IPC.mangaOpenFolder].forEach((channel) => {
             expect(ipc.call(channel)).toBeUndefined();
         });
     });
@@ -744,6 +748,32 @@ describe('the site and the folder of the mangas', () => {
         expect(call(IPC.mangaDownload, REQUEST)).not.toBeNull();
     });
 
+    it('pauses and resumes everything through the queue, and the resume waits while the files are moved', async () => {
+        let finish: (value: MangaMigrationResponse) => void = () => {return undefined};
+        const { call, queue } = setup({
+            migrate: () => {
+                return new Promise((resolve) => {
+                    finish = resolve;
+                });
+            }
+        });
+        const pauseAll = vi.spyOn(queue, 'pauseAll');
+        const resumeAll = vi.spyOn(queue, 'resumeAll');
+        call(IPC.mangaResumeAll);
+        call(IPC.mangaPauseAll);
+        expect(resumeAll.mock.calls).toEqual([[]]);
+        expect(pauseAll.mock.calls).toEqual([[]]);
+        const first = call(IPC.mangaMigrateFolder);
+        call(IPC.mangaPauseAll);
+        call(IPC.mangaResumeAll);
+        expect(pauseAll).toHaveBeenCalledTimes(2);
+        expect(resumeAll).toHaveBeenCalledTimes(1);
+        finish({ ok: false, reason: 'cancelled' });
+        await first;
+        call(IPC.mangaResumeAll);
+        expect(resumeAll).toHaveBeenCalledTimes(2);
+    });
+
     it('lets a download be paused or cancelled while the files are moved', async () => {
         let finish: (value: MangaMigrationResponse) => void = () => {return undefined};
         const { call, queue } = setup({
@@ -858,6 +888,48 @@ describe('series, groups and the move to another source', () => {
         expect(context.call(IPC.mangaGroupRename, 0, 'Fine')).toEqual({ ok: false, reason: 'invalid' });
         expect(context.call(IPC.mangaGroupRename, 2, '')).toEqual({ ok: false, reason: 'invalid' });
         expect(context.call(IPC.mangaGroups)).toHaveLength(2);
+    });
+
+    describe('the order of the groups', () => {
+        function names(context: ReturnType<typeof setup>): string[] {
+            return (context.call(IPC.mangaGroups) as Array<{ name: string }>).map((group) => {
+                return group.name;
+            });
+        }
+
+        it('moves a group up and down, and says the library changed each time it moved', () => {
+            const context = setup();
+            context.call(IPC.mangaGroupCreate, 'A');
+            context.call(IPC.mangaGroupCreate, 'B');
+            context.call(IPC.mangaGroupCreate, 'C');
+            expect(names(context)).toEqual(['A', 'B', 'C']);
+            context.call(IPC.mangaGroupMove, 3, 'up');
+            expect(names(context)).toEqual(['A', 'C', 'B']);
+            expect(context.libraryChanges.count).toBe(1);
+            context.call(IPC.mangaGroupMove, 1, 'down');
+            expect(names(context)).toEqual(['C', 'A', 'B']);
+            expect(context.libraryChanges.count).toBe(2);
+        });
+
+        it('does nothing, and says nothing, for a group at the end it goes to or one that is not there', () => {
+            const context = setup();
+            context.call(IPC.mangaGroupCreate, 'A');
+            context.call(IPC.mangaGroupCreate, 'B');
+            context.call(IPC.mangaGroupMove, 1, 'up');
+            context.call(IPC.mangaGroupMove, 2, 'down');
+            context.call(IPC.mangaGroupMove, 99, 'up');
+            expect(names(context)).toEqual(['A', 'B']);
+            expect(context.libraryChanges.count).toBe(0);
+        });
+
+        it.each([[0, 'up'], [-1, 'down'], ['x', 'up'], [1.5, 'down'], [null, 'up'], [2, 'left'], [2, ''], [2, 5], [2, undefined]])('ignores a move of %j to %j', (groupId, direction) => {
+            const context = setup();
+            context.call(IPC.mangaGroupCreate, 'A');
+            context.call(IPC.mangaGroupCreate, 'B');
+            context.call(IPC.mangaGroupMove, groupId, direction);
+            expect(names(context)).toEqual(['A', 'B']);
+            expect(context.libraryChanges.count).toBe(0);
+        });
     });
 
     it('puts mangas in a group and takes them out', () => {
@@ -1180,7 +1252,7 @@ describe('the channels of the new chapters', () => {
     });
 
     it('looks for new chapters in all the mangas, or in one of them, and gives what was found', async () => {
-        const found: MangaCheckResponse = { ok: true, count: 2, titles: ['One Piece'], failed: 0 };
+        const found: MangaCheckResponse = { ok: true, count: 2, titles: ['One Piece'], failed: 0, skipped: 0 };
         const context = setup({ checkResponse: found });
         await expect(context.call(IPC.mangaCheckNew, null)).resolves.toEqual(found);
         await expect(context.call(IPC.mangaCheckNew, 5)).resolves.toEqual(found);

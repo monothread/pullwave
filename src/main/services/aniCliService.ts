@@ -44,7 +44,7 @@ function doNothing(): void {
 }
 
 const SINGLE_EPISODE = '1';
-const MISSING_SCRIPT = 'ani-cli was not found: the copy that ships with the app is missing.';
+const MISSING_SCRIPT = 'ani-cli is not installed.';
 
 function choicesFor(outcome: AniRunOutcome, prompt: string): string[] {
     return outcome.menuChoices
@@ -74,7 +74,7 @@ export class AniCliService {
 
     // Whether the copy of ani-cli to use exists.
     isAvailable(): boolean {
-        return this.deps.locator.script(this.deps.customScriptPath()) !== null;
+        return this.deps.locator.isReady(this.deps.customScriptPath());
     }
 
     private start(args: string[], audio: AnimeAudio, downloadDir: string, extra: Partial<AniRunOptions> = {}, player?: string): AniRunHandle | null {

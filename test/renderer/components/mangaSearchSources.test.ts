@@ -1,4 +1,4 @@
-import { RESULTS_PER_SOURCE, SEARCH_CONCURRENCY, runLimited, searchableSources } from '@renderer/components/mangaSearchSources';
+import { RESULTS_PER_SOURCE, SEARCH_CONCURRENCY, SEVERAL_LANGUAGES, migrationSources, runLimited, searchableSources } from '@renderer/components/mangaSearchSources';
 import { makeSource } from '../../helpers/mangaFixtures';
 
 const SOURCES = [
@@ -47,6 +47,40 @@ describe('searchableSources', () => {
         const copy = [...SOURCES];
         searchableSources(SOURCES, 'all-languages', true);
         expect(SOURCES).toEqual(copy);
+    });
+});
+
+describe('migrationSources', () => {
+    it('knows the language of the sources that read several languages', () => {
+        expect(SEVERAL_LANGUAGES).toBe('all');
+    });
+
+    it('lists every source but the current one and the ones for adults, by name, when no language is chosen', () => {
+        expect(ids(migrationSources(SOURCES, '1', 'all-languages', false))).toEqual(['2', '5', '3']);
+    });
+
+    it('lists the ones for adults too when the user asked for them', () => {
+        expect(ids(migrationSources(SOURCES, '1', 'all-languages', true))).toEqual(['2', '5', '4', '3']);
+    });
+
+    it('limits them to the language, keeping the sources that read several languages', () => {
+        expect(ids(migrationSources(SOURCES, '1', 'pt', false))).toEqual(['5', '3']);
+        expect(ids(migrationSources(SOURCES, '1', 'en', false))).toEqual(['2', '3']);
+        expect(ids(migrationSources(SOURCES, '1', 'en', true))).toEqual(['2', '4', '3']);
+    });
+
+    it('leaves out the current source even in its own language', () => {
+        expect(ids(migrationSources(SOURCES, '5', 'pt', false))).toEqual(['3', '1']);
+    });
+
+    it('gives nothing for a language no source has other than the multi-language ones', () => {
+        expect(ids(migrationSources(SOURCES, '1', 'ja', false))).toEqual(['3']);
+        expect(migrationSources([], '1', 'pt', false)).toEqual([]);
+    });
+
+    it('sorts by name, then by language, without regard to case', () => {
+        const same = [makeSource({ id: 'b', name: 'Same', lang: 'pt' }), makeSource({ id: 'a', name: 'same', lang: 'en' }), makeSource({ id: 'c', name: 'Zed', lang: 'en' })];
+        expect(ids(migrationSources(same, 'x', 'all-languages', false))).toEqual(['a', 'b', 'c']);
     });
 });
 

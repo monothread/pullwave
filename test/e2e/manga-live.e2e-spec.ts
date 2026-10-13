@@ -37,7 +37,7 @@ test.beforeEach(async () => {
     // The program is shared, not copied: it is large and nothing here changes it.
     symlinkSync(TOOLS, join(userData, 'manga', 'tools'));
     writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', checkUpdatesOnStart: false, downloadDir: join(workDir, 'downloads'), mangaDirectory: join(workDir, 'manga') }));
-    app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, PULLWAVE_E2E_LIVE: '1' } });
+    app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, PULLWAVE_NO_TOOLS: '1', PULLWAVE_E2E_LIVE: '1' } });
     page = await app.firstWindow();
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });

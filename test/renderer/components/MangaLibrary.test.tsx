@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaLibrary } from '@renderer/components/MangaLibrary';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeChapterRecord, makeLibraryManga } from '../../helpers/mangaFixtures';
+import { makeChapterRecord, makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -269,6 +269,188 @@ describe('MangaLibrary series, groups and search', () => {
         expect(useMangaStore.getState().libraryGroup).toBeNull();
         expect(screen.getAllByTestId('manga-entry')).toHaveLength(1);
         expect(screen.queryByTestId('manga-series')).not.toBeInTheDocument();
+    });
+
+    describe('the source of each manga', () => {
+        const ONE = makeLibraryManga([], { id: 50, remoteId: 51, title: 'First', sourceId: 'alpha', groupIds: [] });
+        const TWO = makeLibraryManga([], { id: 51, remoteId: 52, title: 'Second', sourceId: 'beta', groupIds: [] });
+
+        function listSources(): void {
+            useMangaStore.setState({
+                browse: {
+                    ...useMangaStore.getState().browse,
+                    sources: [makeSource({ id: 'alpha', name: 'MangaDex', lang: 'en' }), makeSource({ id: 'beta', name: 'Leitor', lang: 'pt' })],
+                    sourcesStatus: 'ready'
+                }
+            });
+        }
+
+        it('has a badge with the name and the language of the source in the card of a manga', () => {
+            useMangaStore.setState({ library: [ONE, TWO] });
+            listSources();
+            render(<MangaLibrary />);
+            const cards = screen.getAllByTestId('manga-entry');
+            const first = within(cards[0]!).getByTestId('manga-source-name');
+            expect(first).toHaveTextContent('MangaDex · EN');
+            expect(first).toHaveClass('badge', 'badge--source');
+            expect(first).toHaveAttribute('title', 'Source the manga comes from');
+            expect(first.parentElement).toHaveClass('job__badges');
+            expect(within(cards[1]!).getByTestId('manga-source-name')).toHaveTextContent('Leitor · PT');
+        });
+
+        it('has the badge of every different source of a series, once each', () => {
+            const one = makeLibraryManga([], { id: 52, remoteId: 53, title: 'S1', sourceId: 'alpha', series: 'Show', season: 1, groupIds: [] });
+            const two = makeLibraryManga([], { id: 53, remoteId: 54, title: 'S2', sourceId: 'beta', series: 'Show', season: 2, groupIds: [] });
+            const three = makeLibraryManga([], { id: 54, remoteId: 55, title: 'S3', sourceId: 'alpha', series: 'Show', season: 3, groupIds: [] });
+            useMangaStore.setState({ library: [one, two, three] });
+            listSources();
+            render(<MangaLibrary />);
+            const names = within(screen.getByTestId('manga-series')).getAllByTestId('manga-source-name').map((badge) => {
+                return badge.textContent;
+            });
+            expect(names).toEqual(['MangaDex · EN', 'Leitor · PT']);
+        });
+
+        it('has no badge of the name while the sources are not known, or for a source that is gone (which has its own badge)', () => {
+            useMangaStore.setState({ library: [ONE], browse: { ...useMangaStore.getState().browse, sources: [], sourcesStatus: 'idle' } });
+            mock.api.manga.sources.mockResolvedValue({ ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'down' } });
+            const { unmount } = render(<MangaLibrary />);
+            expect(screen.queryByTestId('manga-source-name')).not.toBeInTheDocument();
+            unmount();
+            useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sources: [makeSource({ id: 'other' })], sourcesStatus: 'ready' } });
+            render(<MangaLibrary />);
+            expect(screen.queryByTestId('manga-source-name')).not.toBeInTheDocument();
+            expect(screen.getByTestId('manga-source-missing')).toBeInTheDocument();
+        });
+    });
+
+    describe('the mangas whose extension is not installed', () => {
+        const HERE = makeLibraryManga([], { id: 40, remoteId: 41, title: 'Here', sourceId: 'here', groupIds: [] });
+        const GONE = makeLibraryManga([], { id: 41, remoteId: 42, title: 'Gone', sourceId: 'gone', groupIds: [] });
+
+        function listSources(ids: string[], status: 'ready' | 'idle' | 'loading' | 'error' = 'ready'): void {
+            useMangaStore.setState({
+                browse: {
+                    ...useMangaStore.getState().browse,
+                    sources: ids.map((id) => {
+                        return makeSource({ id, name: `Site ${id}` });
+                    }),
+                    sourcesStatus: status
+                }
+            });
+        }
+
+        it('has a badge in the card of a manga whose source is not installed, and not in the card of one whose source is', () => {
+            useMangaStore.setState({ library: [HERE, GONE] });
+            listSources(['here']);
+            render(<MangaLibrary />);
+            const cards = screen.getAllByTestId('manga-entry');
+            expect(within(cards[0]!).getByRole('heading', { name: 'Gone' })).toBeInTheDocument();
+            const badge = within(cards[0]!).getByTestId('manga-source-missing');
+            expect(badge).toHaveTextContent('SOURCE NOT INSTALLED');
+            expect(badge).toHaveClass('badge', 'badge--error');
+            expect(badge).toHaveAttribute('title', 'The extension of this source is not installed.');
+            expect(badge.parentElement).toHaveClass('job__badges');
+            expect(badge.closest('.cover-card__footer')).not.toBeNull();
+            expect(within(cards[1]!).getByRole('heading', { name: 'Here' })).toBeInTheDocument();
+            expect(within(cards[1]!).queryByTestId('manga-source-missing')).not.toBeInTheDocument();
+        });
+
+        it('has no badge for the local source, which is never in the list', () => {
+            useMangaStore.setState({ library: [makeLibraryManga([], { id: 42, remoteId: 43, title: 'Local one', sourceId: '0', groupIds: [] })] });
+            listSources(['here']);
+            render(<MangaLibrary />);
+            expect(screen.queryByTestId('manga-source-missing')).not.toBeInTheDocument();
+        });
+
+        it.each(['idle', 'loading', 'error'] as const)('has no badge while the list of sources is %s: nothing is known', (status) => {
+            useMangaStore.setState({ library: [GONE] });
+            listSources([], status);
+            mock.api.manga.sources.mockResolvedValue({ ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'down' } });
+            render(<MangaLibrary />);
+            expect(screen.queryByTestId('manga-source-missing')).not.toBeInTheDocument();
+        });
+
+        it('has the badge in the card of a series when one of its seasons has no extension, beside the badge of the seasons', () => {
+            const one = makeLibraryManga([], { id: 43, remoteId: 44, title: 'S1', sourceId: 'here', series: 'Show', season: 1, groupIds: [] });
+            const two = makeLibraryManga([], { id: 44, remoteId: 45, title: 'S2', sourceId: 'gone', series: 'Show', season: 2, groupIds: [] });
+            useMangaStore.setState({ library: [one, two] });
+            listSources(['here']);
+            render(<MangaLibrary />);
+            const series = screen.getByTestId('manga-series');
+            const badges = Array.from(series.querySelectorAll('.cover-card__footer .job__badges .badge')).map((badge) => {
+                return badge.textContent;
+            });
+            expect(badges).toEqual(['2 SEASONS', 'Site here · EN', 'SOURCE NOT INSTALLED']);
+        });
+
+        it('has no badge in the card of a series when every season has its extension', () => {
+            const one = makeLibraryManga([], { id: 43, remoteId: 44, title: 'S1', sourceId: 'here', series: 'Show', season: 1, groupIds: [] });
+            const two = makeLibraryManga([], { id: 44, remoteId: 45, title: 'S2', sourceId: 'there', series: 'Show', season: 2, groupIds: [] });
+            useMangaStore.setState({ library: [one, two] });
+            listSources(['here', 'there']);
+            render(<MangaLibrary />);
+            expect(screen.queryByTestId('manga-source-missing')).not.toBeInTheDocument();
+        });
+
+        it('reads the sources by itself when they were not read yet, and shows the badge once they are', async () => {
+            useMangaStore.setState({ library: [GONE] });
+            listSources([], 'idle');
+            mock.api.manga.sources.mockResolvedValue({ ok: true, value: [makeSource({ id: 'here' })] });
+            render(<MangaLibrary />);
+            expect(await screen.findByTestId('manga-source-missing')).toBeInTheDocument();
+            expect(mock.api.manga.sources).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not read the sources again when they are already known', () => {
+            useMangaStore.setState({ library: [GONE] });
+            listSources(['here']);
+            render(<MangaLibrary />);
+            expect(mock.api.manga.sources).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('the order of the tabs', () => {
+        const NARUTO = makeLibraryManga([], { id: 30, remoteId: 31, title: 'Naruto', groupIds: [] });
+
+        function tabs(): Array<string | null> {
+            return within(screen.getByRole('navigation', { name: 'Groups' }))
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.textContent;
+                });
+        }
+
+        beforeEach(() => {
+            useMangaStore.setState({ library: [FRIEREN_IN_MANGAS, BLEACH_IN_MANHWAS, NARUTO] });
+        });
+
+        it('follows the order of the groups, not the alphabetical one: the first group is the tab on the left', () => {
+            useMangaStore.setState({ groups: [{ id: 2, name: 'Manhwas' }, { id: 1, name: 'Mangas' }] });
+            render(<MangaLibrary />);
+            expect(tabs()).toEqual(['ALL', 'Manhwas', 'Mangas']);
+        });
+
+        it('moves a tab to the left or to the right when its group is moved', () => {
+            useMangaStore.setState({ groups: [{ id: 1, name: 'Mangas' }, { id: 2, name: 'Manhwas' }] });
+            const { rerender } = render(<MangaLibrary />);
+            expect(tabs()).toEqual(['ALL', 'Mangas', 'Manhwas']);
+            act(() => {
+                useMangaStore.setState({ groups: [{ id: 2, name: 'Manhwas' }, { id: 1, name: 'Mangas' }] });
+            });
+            rerender(<MangaLibrary />);
+            expect(tabs()).toEqual(['ALL', 'Manhwas', 'Mangas']);
+        });
+
+        it('keeps the order of the tabs that are shown when a group in the middle is hidden', () => {
+            useMangaStore.setState({
+                groups: [{ id: 3, name: 'Webtoons' }, { id: 2, name: 'Manhwas' }, { id: 1, name: 'Mangas' }],
+                hiddenGroupIds: [2],
+                library: [FRIEREN_IN_MANGAS, BLEACH_IN_MANHWAS, NARUTO, makeLibraryManga([], { id: 31, remoteId: 32, title: 'Solo', groupIds: [3] })]
+            });
+            render(<MangaLibrary />);
+            expect(tabs()).toEqual(['ALL', 'Webtoons', 'Mangas']);
+        });
     });
 
     describe('hidden groups', () => {

@@ -128,7 +128,7 @@ export interface AniCliInfo {
     found: boolean;
     path: string;
     version: string | null;
-    source: 'custom' | 'updated' | 'bundled';
+    source: 'custom' | 'installed';
 }
 
 export interface AnimeStatus {

@@ -69,7 +69,6 @@ export interface StreamingEpisode {
 export interface AnimeState {
     status: AnimeStatus;
     // ani-cli is being updated.
-    updatingCli: boolean;
     // How far the migration of the anime folder is, or null when none is running.
     migration: AnimeMigrationProgress | null;
     view: AnimeView;
@@ -94,9 +93,8 @@ export interface AnimeState {
     // buttons of the mouse go through it.
     librarySeries: string | null;
     init: () => Promise<() => void>;
-    updateCli: () => Promise<void>;
-    // Goes back to the ani-cli that ships with the app.
-    resetCli: () => Promise<void>;
+    // Reads whether the anime section is available (its programs are installed) and the version of ani-cli again.
+    refreshStatus: () => Promise<void>;
     setView: (view: AnimeBrowseView) => void;
     openDownloads: () => void;
     closeDownloads: () => void;
@@ -247,7 +245,6 @@ function initialSchedule(): AnimeScheduleState {
 export const useAnimeStore = create<AnimeState>((set, get) => {
     return {
         status: UNSUPPORTED_STATUS,
-        updatingCli: false,
         migration: null,
         view: 'schedule',
         returnView: 'schedule',
@@ -317,18 +314,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             };
         },
 
-        updateCli: async () => {
-            set({ updatingCli: true });
-            const result = await window.api.updateAniCli();
-            set({ updatingCli: false, status: await window.api.getAnimeStatus() });
-            notify(result.ok ? 'info' : 'error', result.output || translateNow(result.ok ? 'notice.ytdlpUpToDate' : 'notice.updateFailed'));
-        },
-
-        resetCli: async () => {
-            set({ updatingCli: true });
-            const result = await window.api.resetAniCli();
-            set({ updatingCli: false, status: await window.api.getAnimeStatus() });
-            notify(result.ok ? 'info' : 'error', result.output || translateNow(result.ok ? 'notice.ytdlpUpToDate' : 'notice.updateFailed'));
+        refreshStatus: async () => {
+            set({ status: await window.api.getAnimeStatus() });
         },
 
         setView: (view) => {

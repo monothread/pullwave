@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Downloads the third-party binaries bundled with the app (yt-dlp, ffmpeg/ffprobe, deno and the ani-cli toolset in
-// resources/bin/ani) into resources/bin.
+// Downloads the third-party programs the end-to-end tests run for real (yt-dlp, ffmpeg/ffprobe, deno and the ani-cli toolset in
+// resources/bin/ani) into resources/bin. They are NOT shipped with the app: the app downloads its own copies the first time it opens
+// (see ProgramTools), and the tests link these into a folder that stands for them (test/e2e/programs.ts).
 // Every download is verified against the checksum published by its source.
 //
 //   node scripts/fetch-binaries.mjs [--platform=linux|win32] [--out=<dir>] [--force]

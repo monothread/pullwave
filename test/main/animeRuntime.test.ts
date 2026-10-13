@@ -31,17 +31,27 @@ afterEach(() => {
     cleanTempDirs();
 });
 
+// Nothing is installed: what runs ani-cli reports that it is missing.
+const NO_PROGRAMS = {
+    pathOf: () => {
+        return null;
+    },
+    expectedPathOf: () => {
+        return null;
+    }
+};
+
 function options(overrides: Partial<AnimeRuntimeOptions> = {}) {
     const root = makeTempDir();
     const send = vi.fn();
     const base: AnimeRuntimeOptions = {
         platform: process.platform,
         dataDir: join(root, 'data'),
-        bundledDir: join(root, 'resources', 'bin'),
         scriptsDir: join(root, 'resources', 'ani-scripts'),
         defaultDownloadDir: join(root, 'Downloads'),
         systemLocale: 'en-US',
-        resolver: new BinaryResolver({ bundledDir: join(root, 'resources', 'bin'), userBinDir: join(root, 'data', 'bin') }),
+        programs: NO_PROGRAMS,
+        resolver: new BinaryResolver(NO_PROGRAMS),
         getSettings: () => {
             return DEFAULT_SETTINGS;
         },
@@ -818,86 +828,6 @@ describe('createAnimeRuntime', () => {
         expect((await (runtime?.streamHandler as (request: Request) => Promise<Response>)(new Request(stream?.url ?? ''))).status).toBe(404);
     });
 
-    it('updates ani-cli through the dependencies it was given', async () => {
-        const updaterDependencies = {
-            fetchText: vi.fn(async (url: string) => {
-                // A script the change of Pullwave that finds the stream fits (without it the update is refused).
-                return url.includes('/commits/')
-                    ? JSON.stringify({ sha: 'b'.repeat(40) })
-                    : '#!/bin/sh\nversion_number="9.0.0"\n        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;\n';
-            }),
-            checkSyntax: vi.fn(async () => {
-                return true;
-            }),
-            readText: vi.fn(() => {
-                return null;
-            }),
-            writeFile: vi.fn(),
-            replaceFile: vi.fn(),
-            removeFile: vi.fn(),
-            makeDirectory: vi.fn()
-        };
-        const { root, options: given } = options({ updaterDependencies });
-        const runtime = open(given);
-
-        expect(await runtime?.handlers.updateAniCli()).toEqual({
-            ok: true,
-            output: 'Updated ani-cli unknown → 9.0.0, but a change of Pullwave no longer fits it: subtitle language choice, saving every subtitle. That feature will not work until Pullwave is updated.'
-        });
-        expect(updaterDependencies.replaceFile).toHaveBeenCalledWith(join(root, 'data', 'bin', 'ani-cli.tmp'), join(root, 'data', 'bin', 'ani-cli'));
-    });
-
-    it('goes back to the ani-cli that ships with the app by deleting the one an update saved', async () => {
-        const readText = vi.fn((path: string) => {
-            return path.endsWith(join('data', 'bin', 'ani-cli')) ? '#!/bin/sh\nversion_number="9.0.0"\n' : null;
-        });
-        const removeFile = vi.fn();
-        const updaterDependencies = {
-            fetchText: vi.fn(),
-            checkSyntax: vi.fn(),
-            readText,
-            writeFile: vi.fn(),
-            replaceFile: vi.fn(),
-            removeFile,
-            makeDirectory: vi.fn()
-        };
-        const { root, options: given } = options({ updaterDependencies });
-        const runtime = open(given);
-
-        expect(runtime?.handlers.resetAniCli()).toEqual({ ok: true, output: 'Using the ani-cli that ships with the app again.' });
-        expect(removeFile).toHaveBeenCalledTimes(1);
-        expect(removeFile).toHaveBeenCalledWith(join(root, 'data', 'bin', 'ani-cli'));
-        expect(updaterDependencies.fetchText).not.toHaveBeenCalled();
-    });
-
-    it('says there is nothing to delete when no update saved an ani-cli', () => {
-        const removeFile = vi.fn();
-        const { options: given } = options({
-            updaterDependencies: { fetchText: vi.fn(), checkSyntax: vi.fn(), readText: vi.fn(() => { return null; }), writeFile: vi.fn(), replaceFile: vi.fn(), removeFile, makeDirectory: vi.fn() }
-        });
-        expect(open(given)?.handlers.resetAniCli()).toEqual({ ok: false, output: 'There is no updated ani-cli to remove: the one that ships with the app is already in use.' });
-        expect(removeFile).not.toHaveBeenCalled();
-    });
-
-    it('does not update a script that was replaced by another one', async () => {
-        const fetchText = vi.fn();
-        const { options: given } = options({
-            customScriptPath: () => {
-                return '/opt/ani-cli';
-            },
-            updaterDependencies: { fetchText, checkSyntax: vi.fn(), readText: vi.fn(), writeFile: vi.fn(), replaceFile: vi.fn(), removeFile: vi.fn(), makeDirectory: vi.fn() }
-        });
-        const result = await open(given)?.handlers.updateAniCli();
-        expect(result?.ok).toBe(false);
-        expect(fetchText).not.toHaveBeenCalled();
-    });
-
-    it('updates with the real network and shell when none are given (the script is not touched when the answer is bad)', () => {
-        const { options: given } = options();
-        const runtime = open(given);
-        expect(typeof runtime?.handlers.updateAniCli).toBe('function');
-    });
-
     it('removes folders and tells where the anime go, for the handlers', () => {
         const { root, options: given } = options();
         const runtime = open(given);
@@ -1309,7 +1239,7 @@ describe('createAnimeRuntime', () => {
         // There is no ani-cli in the empty resources folder, so the download ends with that error.
         expect(runtime?.db.getEpisode(1)).toMatchObject({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: 'ani-cli was not found: the copy that ships with the app is missing.' }
+            error: { code: 'UNKNOWN', raw: 'ani-cli is not installed.' }
         });
         expect(send).toHaveBeenCalledWith(IPC.eventAnimeLibrary);
     });

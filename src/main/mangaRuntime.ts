@@ -222,7 +222,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         getSettings: () => {
             const settings = options.getSettings();
-            return { maxConcurrent: settings.maxConcurrent, mangaDirectory: settings.mangaDirectory, mangaFormat: settings.mangaFormat };
+            return { maxConcurrent: settings.mangaMaxConcurrent, mangaDirectory: settings.mangaDirectory, mangaFormat: settings.mangaFormat };
         },
         defaultDownloadDir: options.defaultDownloadDir,
         platform: options.platform,
@@ -353,6 +353,16 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
                 throw new Error(result.error.message);
             }
             return result.value;
+        },
+        installedSourceIds: async () => {
+            const sources = await service.sources();
+            return sources.ok
+                ? new Set(
+                      sources.value.map((source) => {
+                          return source.id;
+                      })
+                  )
+                : null;
         },
         isEnabled: () => {
             return options.getSettings().mangaCheckNewChapters;

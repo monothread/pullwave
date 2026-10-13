@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { installedProgramsEnv } from './programs';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
@@ -40,7 +41,7 @@ async function launch(theme: string): Promise<void> {
             { id: 'b', url: 'https://x/2', title: 'Short', filePath: '/tmp/b.mp4', status: 'done', errorTitle: null, finishedAt: 1700000000000 }
         ])
     );
-    app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql' } });
+    app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, ...installedProgramsEnv(workDir), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql' } });
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1100, height: 780 });
     await page.waitForSelector('.logo');

@@ -164,6 +164,33 @@ export class MangaDownloadQueue {
         }
     }
 
+    // Pauses everything: the chapters that wait are held first (so none of them takes the place of one that is paused), then the ones that
+    // are running end their run, keeping their pages.
+    pauseAll(): void {
+        const jobs = this.list();
+        jobs.forEach((job) => {
+            if (job.status === 'queued' && !this.handles.has(job.chapterId)) {
+                this.deps.db.markPaused(job.chapterId);
+                this.update(job, { status: 'paused' });
+            }
+        });
+        jobs.forEach((job) => {
+            if (job.status === 'running') {
+                this.pause(job.chapterId);
+            }
+        });
+        this.deps.onLibraryChanged();
+    }
+
+    // Queues again every chapter that is paused.
+    resumeAll(): void {
+        this.list().forEach((job) => {
+            if (job.status === 'paused') {
+                this.resume(job.chapterId);
+            }
+        });
+    }
+
     cancel(chapterId: number): void {
         const job = this.jobs.get(chapterId);
         if (job === undefined || job.status === 'done') {

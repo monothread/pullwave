@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { cleanSeriesName, sameSeries } from '@shared/series';
+import type { LibraryManga } from '@shared/manga';
+import { cleanSeriesName } from '@shared/series';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
 import { MangaGroupChips } from './MangaGroupChips';
 import { NewChaptersBadge } from './MangaLibrary';
-import { MangaRemove } from './MangaRemove';
 import { downloadedCount, downloadedTotals, newChapterCount, seasonLabel, type MangaLibraryGroup } from './mangaText';
 import { RowLink } from './RowLink';
 import { SeriesMenu } from './SeriesMenu';
@@ -83,6 +83,9 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
     const removeManga = useMangaStore((state) => {
         return state.removeManga;
     });
+    const setSeries = useMangaStore((state) => {
+        return state.setSeries;
+    });
     const downloadMissing = useMangaStore((state) => {
         return state.downloadMissing;
     });
@@ -95,6 +98,15 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
     const ids = group.entries.map((manga) => {
         return manga.id;
     });
+
+    // The manga leaves the series and stays in the library, with its chapters and files. When it was the only one the series has no more
+    // mangas, so there is no series: the screen goes back to the library.
+    async function takeOutOfSeries(manga: LibraryManga): Promise<void> {
+        const response = await setSeries({ mangaId: manga.id, series: null, season: null, seasonName: null });
+        if (response.ok && group.entries.length === 1) {
+            onBack();
+        }
+    }
 
     return (
         <section className="library__view manga__series-view" aria-label={name}>
@@ -183,17 +195,16 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                                 <span className="season__meta">{t('manga.library.progress', { done: downloadedCount(manga), total: manga.chapters.length })}</span>
                                 <NewChaptersBadge count={newChapterCount([manga])} />
                                 <span className="season__actions">
-                                    <MangaRemove
-                                        label={t('manga.library.remove')}
-                                        ariaLabel={`${t('manga.library.remove')}: ${manga.title}`}
-                                        title={t('manga.remove.manga.title', { name: manga.title })}
-                                        message={t('manga.remove.manga.message')}
-                                        blocked={sameSeries(manga.title, name) ? t('manga.remove.blocked') : undefined}
-                                        quiet
-                                        onRemove={() => {
-                                            void removeManga(manga.id);
+                                    <button
+                                        type="button"
+                                        className="btn btn--small btn--ghost"
+                                        aria-label={`${t('manga.series.removeFrom')}: ${manga.title}`}
+                                        onClick={() => {
+                                            void takeOutOfSeries(manga);
                                         }}
-                                    />
+                                    >
+                                        {t('manga.series.removeFrom')}
+                                    </button>
                                 </span>
                             </div>
                         </section>

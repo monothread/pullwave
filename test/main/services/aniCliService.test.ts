@@ -1,19 +1,21 @@
 import type { AniRunResult } from '@shared/anime';
-import { AniCliLocator, type AniLocations, type AniTools, type AniToolsFs } from '@main/services/aniCliLocator';
+import { AniCliLocator, type AniLocations, type AniPrograms, type AniTools, type AniToolsFs } from '@main/services/aniCliLocator';
 import { AniCliService, type AniDownloadOptions } from '@main/services/aniCliService';
 import type { AniRunHandle, AniRunOptions, AniRunOutcome, MenuChoice } from '@main/services/aniCliRunner';
 
 const LOCATIONS: AniLocations = {
-    bundledDir: '/app/resources/bin',
     scriptsDir: '/app/resources/ani-scripts',
-    userBinDir: '/data/bin',
     dataDir: '/data/anime'
 };
-const SCRIPT = '/app/resources/bin/ani/ani-cli';
+const SCRIPT = '/data/tools/anicli/abc/ani-cli';
+const BUSYBOX = '/data/tools/busybox/1.35/busybox';
+const CURL = '/data/tools/curl/8.0/curl';
 const RUNNER = '/app/resources/ani-scripts/pullwave-run.sh';
 const TOOLS: AniTools = {
-    ytdlp: { path: '/app/resources/bin/yt-dlp', source: 'bundled' },
-    ffmpeg: { path: '/app/resources/bin/ffmpeg', source: 'bundled' }
+    ytdlp: { path: '/data/tools/ytdlp/1/yt-dlp', source: 'installed' },
+    ffmpeg: { path: '/data/tools/ffmpeg/b/bin/ffmpeg', source: 'installed' },
+    deno: null,
+    ffprobe: null
 };
 
 function outcome(partial: Partial<AniRunOutcome> = {}): AniRunOutcome {
@@ -51,16 +53,23 @@ interface SetupOptions {
     scriptText?: string;
 }
 
+const ALL_INSTALLED: AniPrograms = {
+    anicli: () => {
+        return SCRIPT;
+    },
+    busybox: () => {
+        return '/nonexistent/busybox';
+    },
+    curl: () => {
+        return CURL;
+    }
+};
+
 function setup(results: Array<AniRunResult<AniRunOutcome>>, scriptExists: Array<boolean> = [true, true, true], options: SetupOptions = {}): Setup {
     let existsCalls = 0;
     const fs: AniToolsFs = {
-        exists: (path) => {
-            if (path !== SCRIPT) {
-                return false;
-            }
-            const answer = scriptExists[existsCalls] ?? scriptExists[scriptExists.length - 1] ?? false;
-            existsCalls += 1;
-            return answer;
+        exists: () => {
+            return true;
         },
         mkdir: () => {
             return undefined;
@@ -81,7 +90,21 @@ function setup(results: Array<AniRunResult<AniRunOutcome>>, scriptExists: Array<
             return undefined;
         }
     };
-    const locator = new AniCliLocator(LOCATIONS, fs, 'linux');
+    // The script is "installed" or not by the sequence given: one answer for each time it is asked for, the last one for the rest.
+    const programs: AniPrograms = {
+        anicli: () => {
+            const answer = scriptExists[existsCalls] ?? scriptExists[scriptExists.length - 1] ?? false;
+            existsCalls += 1;
+            return answer ? SCRIPT : null;
+        },
+        busybox: () => {
+            return BUSYBOX;
+        },
+        curl: () => {
+            return CURL;
+        }
+    };
+    const locator = new AniCliLocator(LOCATIONS, programs, fs, 'linux');
     const prepareTools = vi.spyOn(locator, 'prepareTools');
     const cancel = vi.fn();
     const queue = [...results];
@@ -187,7 +210,7 @@ describe('AniCliService.resolveSubtitles', () => {
         const missing = setup([], [false]);
         expect(await missing.service.resolveSubtitles(request)).toEqual({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: 'ani-cli was not found: the copy that ships with the app is missing.' }
+            error: { code: 'UNKNOWN', raw: 'ani-cli is not installed.' }
         });
         expect(missing.run).not.toHaveBeenCalled();
     });
@@ -238,7 +261,7 @@ describe('AniCliService.resolveStream', () => {
         const { service, run } = setup([], [false]);
         expect(await service.resolveStream(request)).toEqual({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: 'ani-cli was not found: the copy that ships with the app is missing.' }
+            error: { code: 'UNKNOWN', raw: 'ani-cli is not installed.' }
         });
         expect(run).not.toHaveBeenCalled();
     });
@@ -267,10 +290,10 @@ describe('AniCliService.search', () => {
 
         expect(prepareTools).toHaveBeenCalledWith(TOOLS);
         const [call] = callsOf();
-        expect(call?.binary).toBe('/app/resources/bin/ani/busybox');
+        expect(call?.binary).toBe(BUSYBOX);
         expect(call?.args).toEqual(['sh', RUNNER, SCRIPT, 'd naruto']);
         expect(call?.env).toMatchObject({
-            PATH: '/data/anime/tools:/app/resources/bin',
+            PATH: '/data/anime/tools',
             ANI_CLI_MODE: 'dub',
             ANI_CLI_DOWNLOAD_DIR: '.',
             ANI_CLI_MENU: 'pullwave_menu'
@@ -323,7 +346,7 @@ describe('AniCliService.search', () => {
         const { service, run } = setup([], [false]);
         expect(await service.search('naruto', 'sub')).toEqual({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: 'ani-cli was not found: the copy that ships with the app is missing.' }
+            error: { code: 'UNKNOWN', raw: 'ani-cli is not installed.' }
         });
         expect(run).not.toHaveBeenCalled();
     });
@@ -366,7 +389,7 @@ describe('AniCliService.episodes', () => {
         const { service } = setup([done(outcome({ exitCode: 0 }))], [true, false]);
         expect(await service.episodes('x', 1, 'sub')).toEqual({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: 'ani-cli was not found: the copy that ships with the app is missing.' }
+            error: { code: 'UNKNOWN', raw: 'ani-cli is not installed.' }
         });
     });
 
@@ -457,7 +480,7 @@ describe('AniCliService.download', () => {
         const handle = service.download(request);
         expect(await handle.result).toEqual({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: 'ani-cli was not found: the copy that ships with the app is missing.' }
+            error: { code: 'UNKNOWN', raw: 'ani-cli is not installed.' }
         });
         expect(() => {
             handle.cancel();
@@ -468,7 +491,7 @@ describe('AniCliService.download', () => {
 
 describe('AniCliService default runner', () => {
     it('starts a real process when no runner is injected', async () => {
-        const locator = new AniCliLocator(LOCATIONS, {
+        const locator = new AniCliLocator(LOCATIONS, ALL_INSTALLED, {
             exists: () => {
                 return true;
             },

@@ -8,6 +8,9 @@ import { IPC } from '@shared/constants';
 import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerMangaHandlers } from './ipc/registerMangaHandlers';
+import { registerProgramHandlers } from './ipc/registerProgramHandlers';
+import { removeLegacyBinaries } from './services/tools/legacyBinaries';
+import { ProgramTools } from './services/tools/programTools';
 import { createMangaRuntime } from './mangaRuntime';
 import { registerHandlers } from './ipc/registerHandlers';
 import { registerLlmHandlers } from './ipc/registerLlmHandlers';
@@ -294,10 +297,33 @@ function bootstrap(): BootstrapResult {
     const pausedStore = new PausedStore(join(dataDir, 'paused.json'));
     const llmTokens = new LlmTokenStore(new JsonStore(join(dataDir, 'llm-tokens.json'), {}), createSecretCipher());
     applyLanguage(settingsStore.get().language, app.getLocale());
-    const resolver = new BinaryResolver({
-        bundledDir: app.isPackaged ? join(process.resourcesPath, 'bin') : join(app.getAppPath(), 'resources', 'bin'),
-        userBinDir: join(dataDir, 'bin')
+    // yt-dlp, deno, ffmpeg, ani-cli and the shell and curl it runs on are downloaded on the first run into a folder of their own inside the
+    // data folder (PULLWAVE_TOOLS_DIR is another folder for them, used by the end-to-end tests). A program the user gave a path for in the
+    // settings is not downloaded.
+    const programs = new ProgramTools({
+        rootDirectory: process.env.PULLWAVE_TOOLS_DIR ?? join(dataDir, 'tools'),
+        customPath: (id) => {
+            const settings = settingsStore.get();
+            switch (id) {
+                case 'ytdlp':
+                case 'deno':
+                    return settings.ytdlpPath;
+                case 'ffmpeg':
+                    return settings.ffmpegPath;
+                case 'anicli':
+                    return process.env.PULLWAVE_ANI_CLI ?? '';
+                default:
+                    return '';
+            }
+        },
+        onState: (state) => {
+            sendToRenderer(IPC.eventProgramTool, state);
+        },
+        onUpdateState: (state) => {
+            sendToRenderer(IPC.eventProgramUpdate, state);
+        }
     });
+    const resolver = new BinaryResolver(programs);
     const queue = new QueueManager({
         getSettings: () => {
             return settingsStore.get();
@@ -341,7 +367,7 @@ function bootstrap(): BootstrapResult {
     const anime = createAnimeRuntime({
         platform: process.platform,
         dataDir,
-        bundledDir: join(app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'), 'bin'),
+        programs,
         scriptsDir: join(app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'), 'ani-scripts'),
         defaultDownloadDir: app.getPath('downloads'),
         systemLocale: app.getLocale(),
@@ -563,6 +589,14 @@ function bootstrap(): BootstrapResult {
 
     registerAnimeHandlers(ipcMain, anime ? anime.handlers : null);
     registerMangaHandlers(ipcMain, manga ? manga.handlers : null);
+    // The yt-dlp and ani-cli that updates of older versions saved are not used any more.
+    removeLegacyBinaries(dataDir, [settingsStore.get().ytdlpPath, settingsStore.get().ffmpegPath, process.env.PULLWAVE_ANI_CLI ?? '']);
+    registerProgramHandlers(ipcMain, { programs });
+    // The programs are downloaded when the app opens (nothing happens for the ones that are there already). PULLWAVE_NO_TOOLS leaves it for
+    // later (used by the end-to-end tests that need none of them).
+    if (process.env.PULLWAVE_NO_TOOLS !== '1') {
+        void programs.prepare();
+    }
     // The program that runs the manga extensions is downloaded when the app opens (nothing happens when it is there already).
     manga?.prepare();
     registerLlmHandlers(ipcMain, { tokens: llmTokens });

@@ -2,9 +2,14 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { checkBinaries, defaultExecFile, parseFfmpegVersion } from '@main/services/binaryLocator';
 import { BinaryResolver } from '@main/services/binaryResolver';
 
-function makeResolver(existing: string[] = []): BinaryResolver {
-    return new BinaryResolver({ bundledDir: '/b', userBinDir: '/u' }, (path) => {
-        return existing.includes(path);
+function makeResolver(installed: { ytdlp?: string; ffmpeg?: string } = {}): BinaryResolver {
+    return new BinaryResolver({
+        pathOf: (id) => {
+            return id === 'ytdlp' || id === 'ffmpeg' ? (installed[id] ?? null) : null;
+        },
+        expectedPathOf: (id) => {
+            return id === 'ytdlp' || id === 'ffmpeg' ? (installed[id] ?? null) : null;
+        }
     });
 }
 
@@ -20,38 +25,25 @@ describe('parseFfmpegVersion', () => {
 });
 
 describe('checkBinaries', () => {
-    it('reports both system binaries as found with their versions', async () => {
+    it('reports both installed programs as found with their versions', async () => {
         const exec = vi.fn(async (file: string) => {
-            return file === 'yt-dlp' ? '2026.08.19\n' : 'ffmpeg version 7.0 Copyright';
+            return file === '/t/yt-dlp' ? '2026.08.19\n' : 'ffmpeg version 7.0 Copyright';
         });
-        await expect(checkBinaries(DEFAULT_SETTINGS, makeResolver(), exec)).resolves.toEqual({
-            ytdlp: { found: true, path: 'yt-dlp', version: '2026.08.19', source: 'system' },
-            ffmpeg: { found: true, path: 'ffmpeg', version: '7.0', source: 'system' }
+        await expect(checkBinaries(DEFAULT_SETTINGS, makeResolver({ ytdlp: '/t/yt-dlp', ffmpeg: '/t/ffmpeg' }), exec)).resolves.toEqual({
+            ytdlp: { found: true, path: '/t/yt-dlp', version: '2026.08.19', source: 'installed' },
+            ffmpeg: { found: true, path: '/t/ffmpeg', version: '7.0', source: 'installed' }
         });
-        expect(exec).toHaveBeenCalledWith('yt-dlp', ['--version']);
-        expect(exec).toHaveBeenCalledWith('ffmpeg', ['-version']);
+        expect(exec).toHaveBeenCalledWith('/t/yt-dlp', ['--version']);
+        expect(exec).toHaveBeenCalledWith('/t/ffmpeg', ['-version']);
     });
 
-    it('probes the bundled and updated binaries with their sources', async () => {
-        const exec = vi.fn(async () => {
-            return '1.0';
-        });
-        const resolver = makeResolver(['/u/yt-dlp', '/b/ffmpeg']);
-        await expect(checkBinaries(DEFAULT_SETTINGS, resolver, exec)).resolves.toEqual({
-            ytdlp: { found: true, path: '/u/yt-dlp', version: '1.0', source: 'updated' },
-            ffmpeg: { found: true, path: '/b/ffmpeg', version: null, source: 'bundled' }
-        });
-        expect(exec).toHaveBeenCalledWith('/u/yt-dlp', ['--version']);
-        expect(exec).toHaveBeenCalledWith('/b/ffmpeg', ['-version']);
-    });
-
-    it('reports missing binaries', async () => {
+    it('reports a program that does not run as missing', async () => {
         const exec = vi.fn(async () => {
             throw new Error('ENOENT');
         });
-        await expect(checkBinaries(DEFAULT_SETTINGS, makeResolver(), exec)).resolves.toEqual({
-            ytdlp: { found: false, path: 'yt-dlp', version: null, source: 'system' },
-            ffmpeg: { found: false, path: 'ffmpeg', version: null, source: 'system' }
+        await expect(checkBinaries(DEFAULT_SETTINGS, makeResolver({ ytdlp: '/t/yt-dlp' }), exec)).resolves.toEqual({
+            ytdlp: { found: false, path: '/t/yt-dlp', version: null, source: 'installed' },
+            ffmpeg: { found: false, path: '', version: null, source: 'installed' }
         });
     });
 
@@ -71,11 +63,11 @@ describe('checkBinaries', () => {
         const exec = vi.fn(async () => {
             return '  \n';
         });
-        expect((await checkBinaries(DEFAULT_SETTINGS, makeResolver(), exec)).ytdlp).toEqual({
+        expect((await checkBinaries(DEFAULT_SETTINGS, makeResolver({ ytdlp: '/t/yt-dlp' }), exec)).ytdlp).toEqual({
             found: true,
-            path: 'yt-dlp',
+            path: '/t/yt-dlp',
             version: null,
-            source: 'system'
+            source: 'installed'
         });
     });
 });

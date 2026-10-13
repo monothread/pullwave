@@ -10,7 +10,7 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { canDownload, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames } from './mangaText';
+import { canDownload, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 
 function chapterLabel(name: string, number: number | null): string {
@@ -143,6 +143,9 @@ export function MangaDetail() {
     const sources = useMangaStore((state) => {
         return state.browse.sources;
     });
+    const sourcesStatus = useMangaStore((state) => {
+        return state.browse.sourcesStatus;
+    });
 
     const [migrating, setMigrating] = useState(false);
     const [confirmingDuplicate, setConfirmingDuplicate] = useState(false);
@@ -156,6 +159,11 @@ export function MangaDetail() {
         return null;
     }
     const { manga, details, chapters } = selection;
+    const currentSource = sources.find((source) => {
+        return source.id === manga.sourceId;
+    });
+    // The extension of the source is not installed (known only once the list of the sources was read).
+    const sourceGone = sourceIsMissing(sources, sourcesStatus, manga.sourceId);
     // Downloading and removing files are done from the library; the page of a manga opened in the browse only reads it and adds it.
     const inLibraryPage = selectionFrom === 'library';
     const saved = libraryEntry(library, manga.sourceId, manga.remoteId);
@@ -236,6 +244,16 @@ export function MangaDetail() {
                             <TermButton term={details.artist} kind="artist" searchable={searchable(details.artist, 'artist')} label={t('manga.detail.searchBy', { term: details.artist })} onSearch={searchByTerm} />
                         </span>
                     )}
+                    {inLibraryPage && saved && currentSource !== undefined && (
+                        <span className="history__meta" data-testid="manga-source">
+                            {t('manga.detail.source', { name: currentSource.name, language: currentSource.lang.toUpperCase() })}
+                        </span>
+                    )}
+                    {inLibraryPage && saved && sourceGone && (
+                        <span className="field__warning" data-testid="manga-source-gone">
+                            {t('manga.detail.sourceGone', { id: manga.sourceId })}
+                        </span>
+                    )}
                     {details && <span className="history__meta">{t(mangaStatusKey(details.status))}</span>}
                     {details && details.genres.length > 0 && (
                         <ul className="manga__tags" aria-label={t('manga.detail.genres')}>
@@ -272,27 +290,26 @@ export function MangaDetail() {
                         <MangaGroupChips mangaIds={[saved.id]} title={saved.title} />
                     </section>
                     <MangaSeriesSettings key={`${String(saved.id)}-${saved.series ?? ''}-${String(saved.season ?? '')}`} manga={saved} />
-                    {migrating ? (
-                        <MangaMigrateSource
-                            manga={saved}
-                            onClose={() => {
-                                setMigrating(false);
+                    <div className="job__actions">
+                        <button
+                            type="button"
+                            className="btn btn--small"
+                            onClick={() => {
+                                setMigrating(true);
                             }}
-                        />
-                    ) : (
-                        <div className="job__actions">
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                onClick={() => {
-                                    setMigrating(true);
-                                }}
-                            >
-                                {t('manga.migrateSource.title')}
-                            </button>
-                        </div>
-                    )}
+                        >
+                            {t('manga.migrateSource.title')}
+                        </button>
+                    </div>
                 </div>
+            )}
+            {inLibraryPage && saved && migrating && (
+                <MangaMigrateSource
+                    manga={saved}
+                    onClose={() => {
+                        setMigrating(false);
+                    }}
+                />
             )}
             {selection.status === 'loading' && <p className="empty">{t('manga.detail.loading')}</p>}
             {selection.status === 'error' && selection.error && (
@@ -352,6 +369,17 @@ export function MangaDetail() {
                                         }}
                                     >
                                         {t('manga.detail.downloadSeason')}
+                                    </button>
+                                )}
+                                {saved && sourceGone && (
+                                    <button
+                                        type="button"
+                                        className="btn btn--primary"
+                                        onClick={() => {
+                                            setMigrating(true);
+                                        }}
+                                    >
+                                        {t('manga.detail.linkSource')}
                                     </button>
                                 )}
                                 <button type="button" className="btn" disabled={!sourceInstalled} title={sourceInstalled ? undefined : t('manga.detail.sourceMissing')} onClick={() => {

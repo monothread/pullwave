@@ -13,7 +13,7 @@ The app updates itself (via `electron-updater`) from the **public Releases** of
 5. **Windows installer:** Actions tab → **Release Windows** → *Run workflow*.
 6. Each run uploads its files to the **draft** Release `v<version>` (creating it if needed): Linux uploads `pullwave-<version>.{AppImage,deb,rpm,pacman}` and `latest-linux.yml`; Windows uploads `pullwave-<version>-setup.exe` and `latest.yml`. Wait until every run you started has finished.
 7. On GitHub, open the draft Release, check the assets and click **Publish release**. Drafts are **not** seen by installed apps.
-8. In the Release notes, mention where the FFmpeg source code can be found (Linux: https://github.com/BtbN/FFmpeg-Builds, Windows: https://www.gyan.dev/ffmpeg/builds/; GPLv3). The Linux packages also carry ani-cli (GPLv3, https://github.com/pystardust/ani-cli), BusyBox (GPLv2, https://busybox.net) and a static curl (https://github.com/stunnel/static-curl); see `resources/THIRD_PARTY_NOTICES.md`.
+8. In the Release notes, mention where the FFmpeg source code can be found (https://github.com/BtbN/FFmpeg-Builds on both systems; GPLv3). The app also downloads ani-cli (GPLv3, https://github.com/pystardust/ani-cli), BusyBox (GPLv2, https://busybox.net) and a static curl (https://github.com/stunnel/static-curl); see `resources/THIRD_PARTY_NOTICES.md`.
 
 Run the two workflows **one after the other**, not at the same time: both create the draft Release if it does not exist yet, and running them in parallel can create two drafts for the same tag.
 
@@ -35,9 +35,9 @@ Rules that keep the updater working:
 
 ## Things to keep in mind
 - The repository must be **public** (the app does not carry a token).
-- The bundled yt-dlp has its own update mechanism (the "UPDATE YT-DLP" button), independent of the app version.
-- ffmpeg and deno only change when you rebuild the package (`npm run fetch-binaries -- --force`) and release a new version.
-- `npm run fetch-binaries` (run by `npm run dist` / `npm run release`) also downloads **ani-cli, busybox and curl** into `resources/bin/ani` (`busybox.exe` and `curl.exe` on Windows), each pinned to one version and one sha256 in `scripts/fetch-binaries.mjs`. To move to a newer ani-cli, change the commit and hash there (the in-app "UPDATE ANI-CLI" button is independent, like the yt-dlp one). busybox.net publishes no checksums, so the Linux hash is pinned in the script; the Windows build (busybox-w32 from frippery.org) is also compared with the signed `SHA256SUM` the site publishes.
+- The packages do not contain yt-dlp, deno, ffmpeg, ani-cli, busybox or curl: the app downloads them the first time it opens (D-099), and its "Status of the programs" boxes update them, independent of the app version.
+- The version of each program the app is made with (and its sha256) is pinned in `src/main/services/tools/programSpecs.ts`; to move one, change it there. ffmpeg has no pinned version: the first install takes the latest build and the box can bring a newer one.
+- `npm run fetch-binaries` is only for the end-to-end tests (it fills `resources/bin` with real copies, which `test/e2e/programs.ts` links into the folder that stands for the downloaded programs); `npm run dist` / `npm run release` do not run it and the packages do not include them.
 - Before releasing, run `npm run test:e2e` locally (Linux, with a fake ani-cli) and the **Test Windows** workflow (Actions tab; `live=true` also runs the tests that use the real source, which needs the network and can fail because of the source). The Windows installer is not code-signed; antivirus programs may distrust BusyBox/curl, which are the official builds.
 - Code signing is not required on Linux. On Windows it is optional, but unsigned installers trigger a SmartScreen warning.
 

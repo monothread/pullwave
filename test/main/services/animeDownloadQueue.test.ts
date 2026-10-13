@@ -83,7 +83,7 @@ function doneAt(path: string | null): DownloadResult {
 
 describe('AnimeDownloadQueue.enqueue', () => {
     it('adds the anime and its episodes to the library and queues a job for each', () => {
-        const { queue, db, updates, state } = setup();
+        const { queue, db, updates, state } = setup({ maxConcurrent: 2 });
         const anime = queue.enqueue(REQUEST);
 
         expect(anime).toMatchObject({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });

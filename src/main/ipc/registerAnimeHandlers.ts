@@ -34,7 +34,6 @@ import {
 import { IPC } from '@shared/constants';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, sameSeries } from '@shared/series';
 import type { AnimeAddResponse, AnimeRenameSeriesResponse, AnimeStatus } from '@shared/anime';
-import type { UpdateResult } from '@shared/types';
 import type { AnimeDb } from '../services/animeDb';
 import { animeFolderOf, animeFoldersToRemove, episodeFolderOf, filesOfEpisode, foldersWithoutOthers, seriesFolderOf } from '../services/animeFiles';
 import type { AnimeDownloadQueue } from '../services/animeDownloadQueue';
@@ -58,8 +57,6 @@ export interface AnimeHandlerDependencies {
     availability: { request: (targets: AnimeAvailabilityTarget[]) => AnimeAvailability[] };
     // The episodes that air in a stretch of time.
     schedule: { list: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse> };
-    updateAniCli: () => Promise<UpdateResult>;
-    resetAniCli: () => UpdateResult;
     streams: Pick<StreamSessions, 'create' | 'close'>;
     // The quality of the settings, used to pick the stream.
     streamQuality: () => string;
@@ -346,12 +343,6 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeStreamOpen, (): AnimeStreamResponse => {
         return { ok: false, error: UNSUPPORTED };
     });
-    ipcMain.handle(IPC.animeUpdateCli, (): UpdateResult => {
-        return { ok: false, output: UNSUPPORTED.raw };
-    });
-    ipcMain.handle(IPC.animeResetCli, (): UpdateResult => {
-        return { ok: false, output: UNSUPPORTED.raw };
-    });
     ipcMain.handle(IPC.animeImportLibrary, (): AnimeImportResponse => {
         return { ok: false, reason: 'cancelled' };
     });
@@ -402,12 +393,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
 
     ipcMain.handle(IPC.animeStatus, (): AnimeStatus => {
         return { supported: true, available: service.isAvailable(), aniCli: service.info() };
-    });
-    ipcMain.handle(IPC.animeUpdateCli, (): Promise<UpdateResult> => {
-        return deps.updateAniCli();
-    });
-    ipcMain.handle(IPC.animeResetCli, (): UpdateResult => {
-        return deps.resetAniCli();
     });
     ipcMain.handle(IPC.animeSearch, async (_event, query, audio) => {
         const cleaned = validQuery(query);

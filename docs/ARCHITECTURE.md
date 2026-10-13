@@ -8,7 +8,7 @@ src/
     index.ts                    # window, lifecycle, wiring
     ipc/registerHandlers.ts     # typed IPC channels
     services/
-      binaryResolver.ts         # where each binary lives (custom > updated > bundled > system)
+      binaryResolver.ts         # which yt-dlp / ffmpeg to run (custom path > the one the app installed; never the system's)
       binaryLocator.ts          # version probe of the resolved binaries
       ytdlpArgsBuilder.ts       # Settings + URL -> string[] (pure function)
       ytdlpRunner.ts            # spawn, progress, cancellation
@@ -126,8 +126,13 @@ Neon cyan/magenta/yellow on a dark background, mono font, scanlines, glitch on t
 - Unit: `test/main/**`, `test/renderer/**`, `test/shared/**`; helpers in `test/helpers/` (`mockApi.ts`, `fakeChild.ts`, `tempDir.ts`).
 - e2e: `test/e2e/app.e2e-spec.ts` launches the real Electron app (run `npm run build` first) with a temporary `--user-data-dir` and `FAKE_YTDLP_LOG` to record the fake yt-dlp's argv and `PATH`.
 
-## Bundled binaries
-`scripts/fetch-binaries.mjs [--platform=linux|win32] [--out=<dir>] [--force]` → `resources/bin/` (git-ignored): `yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, `ffmpeg-GPLv3.txt` on Linux (plus `resources/lib/` with ffmpeg's shared libraries, see D-024, and `resources/bin/ani/` with `ani-cli`, a static `busybox` and a static `curl`, each pinned to one version and one sha256, D-036), and the same with `.exe` on Windows (no `lib/`; `ani/` holds `ani-cli`, `busybox.exe` (busybox-w32, 64-bit Unicode) and `curl.exe`, D-039). Every download is checked against the checksum its source publishes. In dev the app uses `<appPath>/resources/bin`; packaged, `process.resourcesPath/bin`. See D-013.
+## Programs the app downloads (D-099)
+yt-dlp, deno, ffmpeg, ani-cli, busybox and curl are **not in the package**: `ProgramTools` (`src/main/services/tools/`) downloads them in the background when the app opens (`prepare()`, two at a time; `PULLWAVE_NO_TOOLS=1` skips it) into `<userData>/tools/<id>/<version>/` (`PULLWAVE_TOOLS_DIR` is another folder, used by the e2e tests), with the same `ToolInstaller` as Suwayomi: download, sha256, unpack into a staging folder, atomic rename, marker `.pullwave-tool.json`. Formats: raw file, zip, tar.gz and tar.xz (the system `tar`; Windows has it in System32); a `verify` hook runs the program (or `sh -n` for ani-cli) before it is put in its place.
+- **Versions:** `programSpecs.ts` pins the version of the app (and its sha256) for yt-dlp, deno, ani-cli, busybox and curl; ffmpeg has no pinned one (rolling builds): the first install looks the latest up. `programLatest.ts` finds the latest and its checksum: yt-dlp (PGP-signed `SHA2-256SUMS`, checked with openpgp), deno (`.sha256sum`), ffmpeg (the GPL shared build of BtbN, Linux `.tar.xz` and Windows `.zip`, from its `checksums.sha256`), ani-cli (the master commit; the file is downloaded to hash it and the changes of the app are checked against it). busybox and curl never update. The chosen version is `<root>/<id>-selected.json` (validated; the URL is rebuilt in code from the version).
+- **Updates** download beside the working version (`updater` installer, its own state events), are verified, and only then become the chosen one (no restart); a failure keeps the old one. `reset` goes back to the pinned version.
+- **Isolation:** `BinaryResolver` never falls back to a program of the system; a path in the settings (`ytdlpPath`, `ffmpegPath`, `PULLWAVE_ANI_CLI`) means the program is the user's: not downloaded, not updated. `spawnEnv` puts the folders of deno and ffmpeg on `PATH`; ani-cli runs on the installed busybox and curl with links in `<userData>/anime/tools`.
+- **Screens:** IPC `programs:*` (`registerProgramHandlers`) → `programsStore` → `ProgramsStatusBlock` (ffmpeg in the global settings, yt-dlp and deno in those of the video downloader, ani-cli, busybox and curl in those of the anime) and `ProgramsGate` (queue of the video downloader, content of the anime tabs: a bar per program, TRY AGAIN on failure; the history and the settings are never held back), header chips with the percentage / WAITING / FAILED.
+- **Tests:** unit tests use fakes for the network; the e2e tests link real copies from `resources/bin` (`node scripts/fetch-binaries.mjs`, dev-only) into the folder `PULLWAVE_TOOLS_DIR` points at (`test/e2e/programs.ts`).
 
 ## Platforms
 | OS | Package | Built by | Auto-update |

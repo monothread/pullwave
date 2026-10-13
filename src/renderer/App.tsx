@@ -12,6 +12,7 @@ import { useMouseNavigation } from './hooks/useMouseNavigation';
 import { useAppLanguage, useTranslator } from './i18n/useTranslator';
 import { useAnimeStore } from './store/animeStore';
 import { useMangaStore } from './store/mangaStore';
+import { useProgramsStore } from './store/programsStore';
 import { useAppStore, type Tab } from './store/appStore';
 import { applyTheme, DARK_SCHEME_QUERY, rememberTheme } from './theme/resolveTheme';
 
@@ -46,6 +47,9 @@ export function App() {
         return state.status.supported;
     });
     const initManga = useMangaStore((state) => {
+        return state.init;
+    });
+    const initPrograms = useProgramsStore((state) => {
         return state.init;
     });
     // The manga section only exists on Linux and Windows (64 bits); elsewhere its tab is left out too.
@@ -92,11 +96,12 @@ export function App() {
     useEffect(() => {
         let dispose: (() => void) | null = null;
         let cancelled = false;
-        void Promise.all([init(), initAnime(), initManga()]).then(([unsubscribeApp, unsubscribeAnime, unsubscribeManga]) => {
+        void Promise.all([init(), initAnime(), initManga(), initPrograms()]).then(([unsubscribeApp, unsubscribeAnime, unsubscribeManga, unsubscribePrograms]) => {
             const unsubscribe = (): void => {
                 unsubscribeApp();
                 unsubscribeAnime();
                 unsubscribeManga();
+                unsubscribePrograms();
             };
             if (cancelled) {
                 unsubscribe();
@@ -114,7 +119,7 @@ export function App() {
             cancelled = true;
             dispose?.();
         };
-    }, [init, initAnime, initManga, setTab]);
+    }, [init, initAnime, initManga, initPrograms, setTab]);
 
     return (
         <div className="app">

@@ -13,14 +13,9 @@ files:
   - resources/icon.png
 icon: resources/icon.png
 linux:
-  # ffmpeg/ffprobe on Linux are the shared build: the programs are in bin, their libraries in ../lib.
+  # yt-dlp, deno, ffmpeg, ani-cli, busybox and curl are not in the package: the app downloads them the first time it opens (see ProgramTools).
   extraResources:
-    - from: resources/bin
-      to: bin
-    - from: resources/lib
-      to: lib
-    # The anime section (ani-cli): the script that wraps it with stand-ins for the menu, the player and tput. The tools it
-    # runs on (busybox, curl, ani-cli) are in resources/bin/ani, copied with the rest of bin.
+    # The anime section (ani-cli): the script that wraps it with stand-ins for the menu, the player and tput.
     - from: resources/ani-scripts
       to: ani-scripts
     - from: resources/THIRD_PARTY_NOTICES.md
@@ -38,8 +33,6 @@ linux:
   synopsis: Cyberpunk yt-dlp GUI and video downloader
 win:
   extraResources:
-    - from: resources/bin
-      to: bin
     - from: resources/ani-scripts
       to: ani-scripts
     - from: resources/THIRD_PARTY_NOTICES.md

@@ -42,6 +42,8 @@ import type {
     LibraryAnime
 } from './anime';
 import type { MangaApi, MangaOutputFormat } from './manga';
+import type { ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersions } from './programs';
+import type { ProgramId, ToolState } from './tools';
 import type { LlmProviderId, LlmStatus, LlmTokenSlot, SpeechProviderId } from './llm';
 
 export type VideoContainer = 'mp4' | 'mkv' | 'webm';
@@ -123,7 +125,7 @@ export interface Settings {
     autoSubtitles: boolean;
     embedSubtitles: boolean;
     rateLimit: string;
-    // Always CONCURRENT_DOWNLOADS (2 downloads run at a time); it is not shown in the settings.
+    // Always CONCURRENT_DOWNLOADS (3 downloads run at a time); it is not shown in the settings.
     maxConcurrent: number;
     ytdlpPath: string;
     ffmpegPath: string;
@@ -149,6 +151,8 @@ export interface Settings {
     // chapter is made a CBZ file or a folder of images.
     mangaDirectory: string;
     mangaFormat: MangaOutputFormat;
+    // How many sources the manga downloads run on together (each source does one chapter at a time).
+    mangaMaxConcurrent: number;
     // The address of a FlareSolverr the user runs already (empty: the app runs one in Docker).
     mangaFlaresolverrUrl: string;
     // Whether the user installed the helper for sites behind Cloudflare (FlareSolverr, which runs in Docker); it is not installed by itself.
@@ -263,7 +267,8 @@ export interface HistoryEntry {
     finishedAt: number;
 }
 
-export type BinarySource = 'custom' | 'updated' | 'bundled' | 'system';
+// Where a program the app runs comes from: a path the user chose in the settings, or the one the app installed in its own folder.
+export type BinarySource = 'custom' | 'installed';
 
 export interface BinaryInfo {
     found: boolean;
@@ -311,6 +316,23 @@ export interface TraySupport {
     reason: string | null;
 }
 
+export interface ProgramsApi {
+    status: () => Promise<ProgramsStatus>;
+    // Installs a program that is not installed (TRY AGAIN after a failure).
+    install: (id: ProgramId) => Promise<ToolState>;
+    // Takes away what is installed of the program and installs it again.
+    reinstall: (id: ProgramId) => Promise<ToolState>;
+    // Looks for the latest version of every program.
+    check: () => Promise<ProgramVersions>;
+    // Moves a program to the latest version, keeping the one that works if it cannot.
+    update: (id: ProgramId) => Promise<ProgramUpdateResult>;
+    // Goes back to the version the app was made with.
+    reset: (id: ProgramId) => Promise<ProgramResetResult>;
+    // What the install of a program is doing, and what the download of an update is doing.
+    onToolState: (listener: (state: ToolState) => void) => () => void;
+    onUpdateState: (listener: (state: ToolState) => void) => () => void;
+}
+
 export interface CyberApi {
     // The manga section.
     manga: MangaApi;
@@ -330,9 +352,8 @@ export interface CyberApi {
     listHistory: () => Promise<HistoryEntry[]>;
     clearHistory: () => Promise<void>;
     checkBinaries: () => Promise<BinariesStatus>;
-    updateYtdlp: () => Promise<UpdateResult>;
-    // Goes back to the yt-dlp that ships with the app, removing the one an update saved.
-    resetYtdlp: () => Promise<UpdateResult>;
+    // The programs the app downloads on its first run (yt-dlp, deno, ffmpeg, ani-cli, busybox and curl).
+    programs: ProgramsApi;
     getAppUpdateState: () => Promise<AppUpdateState>;
     checkAppUpdate: () => Promise<void>;
     downloadAppUpdate: () => Promise<void>;
@@ -399,9 +420,6 @@ export interface CyberApi {
     clearLlmToken: (slot: LlmTokenSlot) => Promise<void>;
     onSubtitleTranslationUpdate: (listener: (job: SubtitleTranslationJob) => void) => () => void;
     onSubtitleGenerationUpdate: (listener: (job: SubtitleGenerationJob) => void) => () => void;
-    updateAniCli: () => Promise<UpdateResult>;
-    // Goes back to the ani-cli that ships with the app, removing the one an update saved.
-    resetAniCli: () => Promise<UpdateResult>;
     openAnimeStream: (request: AnimeStreamRequest) => Promise<AnimeStreamResponse>;
     closeAnimeStream: (sessionId: string) => Promise<void>;
     listAnimeSchedule: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse>;

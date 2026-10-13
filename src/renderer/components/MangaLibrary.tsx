@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { LibraryManga } from '@shared/manga';
 import { foldSeries } from '@shared/series';
 import { useTranslator } from '../i18n/useTranslator';
@@ -10,7 +10,7 @@ import { MangaDetail } from './MangaDetail';
 import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
 import { RowLink } from './RowLink';
-import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesSearch, newChapterCount, type MangaLibraryGroup } from './mangaText';
+import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesSearch, newChapterCount, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 
 interface MangaRowProps {
     manga: LibraryManga;
@@ -39,6 +39,10 @@ interface MangaCardProps {
     newChapters: number;
     // How many seasons the card stands for, when it is a series (the badge of the seasons).
     seasons?: number;
+    // The extension of the source of the manga (of one of the seasons, for a series) is not installed.
+    sourceMissing: boolean;
+    // The sources the manga comes from (name and language), once each; the ones that are not known are left out.
+    sourceLabels: readonly string[];
     onOpen: () => void;
     // What goes at the bottom of the card, under the badges.
     actions?: ReactNode;
@@ -46,7 +50,7 @@ interface MangaCardProps {
 
 // The card of the library, like the one of the anime: the cover, the name (the way into the manga or the series), how much is downloaded and
 // the badges at the bottom (the seasons of a series, the chapters that are new) with what can be done to it.
-function MangaCard({ testId, title, openLabel, thumbnailUrl, done, total, newChapters, seasons, onOpen, actions }: MangaCardProps) {
+function MangaCard({ testId, title, openLabel, thumbnailUrl, done, total, newChapters, seasons, sourceMissing, sourceLabels, onOpen, actions }: MangaCardProps) {
     const t = useTranslator();
     return (
         <li className="job job--done series cover-card row--link manga__entry" data-testid={testId}>
@@ -61,10 +65,22 @@ function MangaCard({ testId, title, openLabel, thumbnailUrl, done, total, newCha
                     <span className="history__meta">{t('manga.library.progress', { done, total })}</span>
                 </header>
                 <div className="cover-card__footer">
-                    {(seasons !== undefined || newChapters > 0) && (
+                    {(seasons !== undefined || newChapters > 0 || sourceMissing || sourceLabels.length > 0) && (
                         <span className="job__badges">
                             {seasons !== undefined && <span className="badge">{seasons === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: seasons })}</span>}
                             <NewChaptersBadge count={newChapters} />
+                            {sourceLabels.map((label) => {
+                                return (
+                                    <span key={label} className="badge badge--source" data-testid="manga-source-name" title={t('manga.library.source')}>
+                                        {label}
+                                    </span>
+                                );
+                            })}
+                            {sourceMissing && (
+                                <span className="badge badge--error" data-testid="manga-source-missing" title={t('manga.detail.sourceMissing')}>
+                                    {t('manga.library.sourceMissing')}
+                                </span>
+                            )}
                         </span>
                     )}
                     {actions !== undefined && <div className="job__actions library__footer">{actions}</div>}
@@ -74,8 +90,31 @@ function MangaCard({ testId, title, openLabel, thumbnailUrl, done, total, newCha
     );
 }
 
+// Whether the extension of the source of any of these mangas is not installed (not known while the list of the sources is not read).
+function useSourceMissing(mangas: readonly LibraryManga[]): boolean {
+    const sources = useMangaStore((state) => {
+        return state.browse.sources;
+    });
+    const sourcesStatus = useMangaStore((state) => {
+        return state.browse.sourcesStatus;
+    });
+    return mangas.some((manga) => {
+        return sourceIsMissing(sources, sourcesStatus, manga.sourceId);
+    });
+}
+
+// The name and the language of the sources of these mangas, once each (a source the list does not have is left out).
+function useSourceLabels(mangas: readonly LibraryManga[]): string[] {
+    const sources = useMangaStore((state) => {
+        return state.browse.sources;
+    });
+    return sourceLabelsOf(sources, mangas);
+}
+
 function MangaRow({ manga }: MangaRowProps) {
     const t = useTranslator();
+    const sourceMissing = useSourceMissing([manga]);
+    const sourceLabels = useSourceLabels([manga]);
     const removeManga = useMangaStore((state) => {
         return state.removeManga;
     });
@@ -92,6 +131,8 @@ function MangaRow({ manga }: MangaRowProps) {
             done={downloadedCount(manga)}
             total={manga.chapters.length}
             newChapters={newChapterCount([manga])}
+            sourceMissing={sourceMissing}
+            sourceLabels={sourceLabels}
             onOpen={() => {
                 void openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
             }}
@@ -119,6 +160,8 @@ interface SeriesRowProps {
 function SeriesRow({ group, onOpen }: SeriesRowProps) {
     const t = useTranslator();
     const totals = downloadedTotals(group.entries);
+    const sourceMissing = useSourceMissing(group.entries);
+    const sourceLabels = useSourceLabels(group.entries);
     return (
         <MangaCard
             testId="manga-series"
@@ -129,6 +172,8 @@ function SeriesRow({ group, onOpen }: SeriesRowProps) {
             total={totals.total}
             newChapters={newChapterCount(group.entries)}
             seasons={group.entries.length}
+            sourceMissing={sourceMissing}
+            sourceLabels={sourceLabels}
             onOpen={onOpen}
         />
     );
@@ -168,8 +213,21 @@ export function MangaLibrary() {
     const closeSeries = useMangaStore((state) => {
         return state.closeSeries;
     });
+    const sourcesStatus = useMangaStore((state) => {
+        return state.browse.sourcesStatus;
+    });
+    const loadSources = useMangaStore((state) => {
+        return state.loadSources;
+    });
     const [search, setSearch] = useState('');
     const [managing, setManaging] = useState(false);
+
+    // The sources are read to tell which mangas have an extension that is not installed.
+    useEffect(() => {
+        if (sourcesStatus === 'idle') {
+            void loadSources();
+        }
+    }, [sourcesStatus, loadSources]);
 
     // A manga opened from the library is shown as it is from the browse: its chapters, to read, download or remove.
     if (selection !== null && selectionFrom === 'library') {

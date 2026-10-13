@@ -27,7 +27,8 @@ const TOOL_ERROR_KEYS: Record<ToolErrorCode, MessageKey> = {
     EXTRACT_FAILED: 'manga.setup.error.EXTRACT_FAILED',
     INCOMPLETE: 'manga.setup.error.INCOMPLETE',
     DISK: 'manga.setup.error.DISK',
-    DOCKER_MISSING: 'manga.setup.error.DOCKER_MISSING'
+    DOCKER_MISSING: 'manga.setup.error.DOCKER_MISSING',
+    INVALID: 'manga.setup.error.INVALID'
 };
 
 const CHAPTER_STATUS_KEYS: Record<MangaChapterStatus, MessageKey> = {
@@ -153,6 +154,30 @@ export function otherSourceNames(entries: readonly LibraryManga[], sources: read
     return [...new Set(names)];
 }
 
+// Whether the extension of the source of a manga is known not to be installed: only when the list of the sources was read (the local source,
+// which is not listed, is always there).
+export function sourceIsMissing(sources: readonly MangaSource[], sourcesStatus: 'idle' | 'loading' | 'ready' | 'error', sourceId: string): boolean {
+    return (
+        sourcesStatus === 'ready' &&
+        sourceId !== LOCAL_SOURCE_ID &&
+        !sources.some((source) => {
+            return source.id === sourceId;
+        })
+    );
+}
+
+// The name and the language of the sources of these mangas ("MangaDex · EN"), once each, in the order the mangas come. A source the list does not
+// have (its extension is gone, or the list was not read) is left out: there is no name to show.
+export function sourceLabelsOf(sources: readonly MangaSource[], mangas: readonly Pick<LibraryManga, 'sourceId'>[]): string[] {
+    const labels = mangas.flatMap((manga) => {
+        const source = sources.find((candidate) => {
+            return candidate.id === manga.sourceId;
+        });
+        return source === undefined ? [] : [`${source.name} · ${source.lang.toUpperCase()}`];
+    });
+    return [...new Set(labels)];
+}
+
 // How many chapters of a manga of the library are downloaded.
 export function downloadedCount(manga: Pick<LibraryManga, 'chapters'>): number {
     return manga.chapters.filter((chapter) => {
@@ -220,6 +245,9 @@ export interface ExtensionFilter {
 }
 
 export const ALL_LANGUAGES = 'all-languages';
+
+// The id of the local source of the server, which is not an extension and is not listed.
+const LOCAL_SOURCE_ID = '0';
 
 // Whether something with this content warning is listed: the ones for adults only when the user asked for them.
 export function isListed(contentWarning: MangaSource['contentWarning'], showAdult: boolean): boolean {

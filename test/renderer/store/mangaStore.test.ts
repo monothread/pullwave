@@ -853,6 +853,15 @@ describe('mangaStore library and jobs', () => {
         expect(mock.api.manga.resume).toHaveBeenCalledWith(4);
     });
 
+    it('pauses and resumes every download at once', async () => {
+        await state().pauseAllJobs();
+        expect(mock.api.manga.pauseAll).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.resumeAll).not.toHaveBeenCalled();
+        await state().resumeAllJobs();
+        expect(mock.api.manga.resumeAll).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.pauseAll).toHaveBeenCalledTimes(1);
+    });
+
     it('clears the downloads that are over and keeps the others', async () => {
         useMangaStore.setState({
             jobs: (['queued', 'running', 'paused', 'error', 'cancelled'] as const).map((status, index) => {
@@ -1443,6 +1452,19 @@ describe('mangaStore series, groups and the move to another source', () => {
         expect(mock.api.manga.library).toHaveBeenCalledTimes(3);
     });
 
+    it('moves a group up or down, and reads the groups again to show the new order', async () => {
+        mock.api.manga.groups.mockResolvedValue([GROUPS[1]!, GROUPS[0]!]);
+        await state().moveGroup(2, 'up');
+        expect(mock.api.manga.moveGroup).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.moveGroup).toHaveBeenCalledWith(2, 'up');
+        expect(state().groups).toEqual([GROUPS[1], GROUPS[0]]);
+        mock.api.manga.groups.mockResolvedValue([GROUPS[0]!, GROUPS[1]!]);
+        await state().moveGroup(2, 'down');
+        expect(mock.api.manga.moveGroup).toHaveBeenLastCalledWith(2, 'down');
+        expect(state().groups).toEqual([GROUPS[0], GROUPS[1]]);
+        expect(mock.api.manga.groups).toHaveBeenCalledTimes(2);
+    });
+
     describe('moving a manga to another source', () => {
         const REQUEST = { mangaId: 3, target: { manga: makeSummary({ remoteId: 70, sourceId: '999' }), details: null, chapters: [makeChapter()] } };
 
@@ -1810,7 +1832,7 @@ describe('mangaStore looking for new chapters', () => {
         );
         const pending = state().checkNewChapters(null);
         expect(state().checkingNew).toBe('all');
-        answer({ ok: true, count: 2, titles: ['One Piece'], failed: 0 });
+        answer({ ok: true, count: 2, titles: ['One Piece'], failed: 0, skipped: 0 });
         await pending;
         expect(state().checkingNew).toBeNull();
         expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(null);
@@ -1829,17 +1851,45 @@ describe('mangaStore looking for new chapters', () => {
         );
         const pending = state().checkNewChapters(9);
         expect(state().checkingNew).toBe(9);
-        answer({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        answer({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
         await pending;
         expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(9);
     });
 
     it('says there is nothing new, or that some mangas could not be reached', async () => {
-        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 0 });
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
         await state().checkNewChapters(null);
-        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 3 });
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 3, skipped: 0 });
         await state().checkNewChapters(null);
         expect(toasts()).toEqual(['No new chapters.', 'No new chapters. 3 manga(s) could not be reached.']);
+    });
+
+    it('says how many mangas were left out because the extension of their source is not installed, whether or not there is something new', async () => {
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 0, skipped: 2 });
+        await state().checkNewChapters(null);
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 3, titles: ['One Piece'], failed: 0, skipped: 1 });
+        await state().checkNewChapters(null);
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 1, skipped: 4 });
+        await state().checkNewChapters(null);
+        expect(toasts()).toEqual([
+            'No new chapters.',
+            '2 manga(s) were not looked at: the extension of their source is not installed.',
+            '1 manga(s) were not looked at: the extension of their source is not installed.',
+            'No new chapters. 1 manga(s) could not be reached.',
+            '4 manga(s) were not looked at: the extension of their source is not installed.'
+        ]);
+    });
+
+    it('says the manga was not looked at, when the check of one manga is skipped', async () => {
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 0, titles: [], failed: 0, skipped: 1 });
+        await state().checkNewChapters(9);
+        expect(toasts()).toEqual(['No new chapters.', '1 manga(s) were not looked at: the extension of their source is not installed.']);
+    });
+
+    it('says nothing about left out mangas when none was', async () => {
+        mock.api.manga.checkNewChapters.mockResolvedValueOnce({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
+        await state().checkNewChapters(null);
+        expect(toasts()).toEqual([]);
     });
 
     it('says why a check failed', async () => {
@@ -1857,7 +1907,7 @@ describe('mangaStore looking for new chapters', () => {
 
     it('reads the list again when it is the screen that is shown', async () => {
         useMangaStore.setState({ view: 'updates' });
-        mock.api.manga.checkNewChapters.mockResolvedValue({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        mock.api.manga.checkNewChapters.mockResolvedValue({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
         await state().checkNewChapters(null);
         expect(mock.api.manga.updates).toHaveBeenCalledTimes(1);
     });

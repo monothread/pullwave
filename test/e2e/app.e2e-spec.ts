@@ -4,16 +4,13 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { installedProgramsEnv, programsEnv } from './programs';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
 const FAKE_FFMPEG = resolve(__dirname, 'fixtures/fake-ffmpeg.js');
-const BUNDLED_DIR = join(ROOT, 'resources', 'bin');
-const HAS_BUNDLED_BINARIES = ['yt-dlp', 'ffmpeg', 'deno'].every((name) => {
-    return existsSync(join(BUNDLED_DIR, name));
-});
 
 interface Session {
     app: ElectronApplication;
@@ -48,7 +45,7 @@ async function launch(options: LaunchOptions = {}): Promise<Session> {
     prepare?.(userData);
     const app = await electron.launch({
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`, ...args],
-        env: { ...process.env, FAKE_YTDLP_LOG: logPath, ...env }
+        env: { ...process.env, ...installedProgramsEnv(workDir), FAKE_YTDLP_LOG: logPath, ...env }
     });
     let exited = false;
     app.on('close', () => {
@@ -126,133 +123,107 @@ test.afterEach(async () => {
     rmSync(resolve(session.userData, '..'), { recursive: true, force: true });
 });
 
-test('shows the detected yt-dlp version and marks the custom path as its source', async () => {
+test('has no chip at the top once the programs are installed and run, and shows the yt-dlp of the custom path as one chosen by the user in the settings', async () => {
     const { page } = session;
-    const chip = page.locator('.chip--ok', { hasText: 'yt-dlp fake-1.0' });
-    await expect(chip).toBeVisible();
-    await expect(chip).toHaveAttribute('title', `${FAKE_YTDLP} (custom)`);
-    await expect(page.locator('.chip', { hasText: 'ffmpeg' })).toBeVisible();
+    // Everything is in place: the header has nothing to say about the programs.
+    await expect(page.locator('.logo')).toBeVisible();
+    await expect(page.locator('.binary-status .chip')).toHaveCount(0);
+    await expect(page.locator('.binary-status')).toBeHidden();
+    await openDownloadsSettings(page);
+    const ytdlp = page.getByTestId('program-ytdlp');
+    await expect(ytdlp).toContainText(`Using the one you chose in the settings: ${FAKE_YTDLP}`);
+    await expect(page.locator('.binary-status .chip')).toHaveCount(0);
 });
 
-// A yt-dlp an update would have saved in the data folder, here a script that only says its version (or fails).
-function saveUpdatedYtdlp(userData: string, body: string): string {
-    const path = join(userData, 'bin', 'yt-dlp');
-    mkdirSync(join(userData, 'bin'), { recursive: true });
-    writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-    return path;
+// The folder where the app keeps the programs it installed (see programs.ts): the tests start it with them in place.
+function toolsDirOf(userData: string): string {
+    return join(dirname(userData), 'tools');
 }
 
-test.describe('the yt-dlp an update saved', () => {
-    test.skip(!HAS_BUNDLED_BINARIES || process.platform === 'win32', 'needs `npm run fetch-binaries` and a system where a script can stand for yt-dlp');
-    const bundledVersion = (): string => {
-        return execFileSync(join(BUNDLED_DIR, 'yt-dlp'), ['--version'], { encoding: 'utf-8' }).trim();
-    };
-
-    async function launchWith(body: string): Promise<{ run: Session; saved: string }> {
-        let saved = '';
-        const run = await launch({
-            useFakeYtdlp: false,
-            prepare: (userData) => {
-                saved = saveUpdatedYtdlp(userData, body);
-            }
-        });
-        return { run, saved };
-    }
-
-    test('is the one in use, and a button goes back to the one that ships with the app', async () => {
-        const { run, saved } = await launchWith('echo 2999.12.31');
-        try {
-            const chip = run.page.locator('.chip--ok', { hasText: 'yt-dlp 2999.12.31' });
-            await expect(chip).toHaveAttribute('title', `${saved} (updated)`);
-            await openDownloadsSettings(run.page);
-            await expect(run.page.getByText('Installed version: 2999.12.31')).toBeVisible();
-
-            await run.page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' }).click();
-
-            await expect(run.page.locator('.toast--info .toast__message')).toHaveText('Using the yt-dlp that ships with the app again.');
-            await expect(run.page.getByText(`Installed version: ${bundledVersion()}`)).toBeVisible();
-            await expect(run.page.locator('.chip--ok', { hasText: `yt-dlp ${bundledVersion()}` })).toHaveAttribute('title', `${join(BUNDLED_DIR, 'yt-dlp')} (bundled)`);
-            await expect(run.page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toHaveCount(0);
-            expect(existsSync(saved)).toBe(false);
-            expect(existsSync(join(BUNDLED_DIR, 'yt-dlp'))).toBe(true);
-        } finally {
-            await run.app.close();
-            rmSync(resolve(run.userData, '..'), { recursive: true, force: true });
-        }
+test.describe('the programs the app installs', () => {
+    test('shows ffmpeg in the global settings as installed, and nothing about yt-dlp there', async () => {
+        const { page } = session;
+        await openGlobalSettings(page);
+        const block = page.getByTestId('programs-block-global');
+        await expect(block).toBeVisible();
+        await expect(block.getByTestId(/^program-/)).toHaveCount(1);
+        const ffmpeg = block.getByTestId('program-ffmpeg');
+        await expect(ffmpeg).toContainText('ffmpeg');
+        await expect(ffmpeg.locator('.badge')).toHaveText('INSTALLED');
+        await expect(block.getByRole('button', { name: 'CHECK FOR NEW VERSIONS' })).toBeEnabled();
     });
 
-    test('is dropped when it is older than the one that ships with the app, which is then used', async () => {
-        const { run, saved } = await launchWith('echo 2020.01.01');
-        try {
-            await expect(run.page.locator('.chip--ok', { hasText: `yt-dlp ${bundledVersion()}` })).toHaveAttribute('title', `${join(BUNDLED_DIR, 'yt-dlp')} (bundled)`);
-            await openDownloadsSettings(run.page);
-            await expect(run.page.getByText(`Installed version: ${bundledVersion()}`)).toBeVisible();
-            await expect(run.page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toHaveCount(0);
-            expect(existsSync(saved)).toBe(false);
-        } finally {
-            await run.app.close();
-            rmSync(resolve(run.userData, '..'), { recursive: true, force: true });
-        }
+    test('shows yt-dlp (the one chosen in the settings) and deno in the settings of the video downloader', async () => {
+        const { page } = session;
+        await openDownloadsSettings(page);
+        const block = page.getByTestId('programs-block-downloads');
+        await expect(block.getByTestId(/^program-/)).toHaveCount(2);
+        const ytdlp = block.getByTestId('program-ytdlp');
+        await expect(ytdlp.locator('.badge')).toHaveText('YOURS');
+        await expect(ytdlp).toContainText(`Using the one you chose in the settings: ${FAKE_YTDLP}`);
+        await expect(ytdlp.getByRole('button')).toHaveCount(0);
+        // deno is for the yt-dlp of the app: it is not downloaded when the user chose their own.
+        await expect(block.getByTestId('program-deno')).toContainText('Not downloaded: you chose your own yt-dlp in the settings.');
+        await expect(page.getByTestId('programs-block-global')).toHaveCount(0);
     });
 
-    test('is dropped when it no longer runs', async () => {
-        const { run, saved } = await launchWith('exit 1');
-        try {
-            await expect(run.page.locator('.chip--ok', { hasText: `yt-dlp ${bundledVersion()}` })).toBeVisible();
-            expect(existsSync(saved)).toBe(false);
-        } finally {
-            await run.app.close();
-            rmSync(resolve(run.userData, '..'), { recursive: true, force: true });
-        }
-    });
-
-    test('is left alone when it is newer, and when a yt-dlp was chosen in the settings', async () => {
-        const kept = await launchWith('echo 2999.12.31');
-        try {
-            await expect(kept.run.page.locator('.chip--ok', { hasText: 'yt-dlp 2999.12.31' })).toBeVisible();
-            expect(existsSync(kept.saved)).toBe(true);
-        } finally {
-            await kept.run.app.close();
-            rmSync(resolve(kept.run.userData, '..'), { recursive: true, force: true });
-        }
-        const own = await launch({ settings: { ytdlpPath: FAKE_YTDLP }, prepare: (userData) => { saveUpdatedYtdlp(userData, 'echo 2020.01.01'); } });
-        try {
-            await expect(own.page.locator('.chip--ok', { hasText: 'yt-dlp fake-1.0' })).toBeVisible();
-            expect(existsSync(join(own.userData, 'bin', 'yt-dlp'))).toBe(true);
-        } finally {
-            await own.app.close();
-            rmSync(resolve(own.userData, '..'), { recursive: true, force: true });
-        }
-    });
-});
-
-test.describe('bundled binaries', () => {
-    test.skip(!HAS_BUNDLED_BINARIES, 'run `npm run fetch-binaries` to enable these tests');
-
-    test('uses the bundled yt-dlp and ffmpeg by default', async () => {
-        const bundled = await launch({ useFakeYtdlp: false });
-        try {
-            const ytdlpChip = bundled.page.locator('.chip--ok', { hasText: /^yt-dlp \d/ });
-            await expect(ytdlpChip).toBeVisible();
-            await expect(ytdlpChip).toHaveAttribute('title', `${join(BUNDLED_DIR, 'yt-dlp')} (bundled)`);
-            const ffmpegChip = bundled.page.locator('.chip--ok', { hasText: /^ffmpeg \S+/ });
-            await expect(ffmpegChip).toBeVisible();
-            await expect(ffmpegChip).toHaveAttribute('title', `${join(BUNDLED_DIR, 'ffmpeg')} (bundled)`);
-        } finally {
-            await bundled.app.close();
-            rmSync(resolve(bundled.userData, '..'), { recursive: true, force: true });
-        }
-    });
-
-    test('passes the bundled ffmpeg folder to yt-dlp and puts the bundled folder first in PATH', async () => {
-        const { page, logPath } = session;
+    test('passes the folder of the installed ffmpeg to yt-dlp and puts the folders of deno and ffmpeg first in PATH', async () => {
+        const { page, logPath, userData } = session;
         await submitUrl(page, 'https://example.com/ok');
         await expectDownloadsComplete(page);
+        const tools = toolsDirOf(userData);
+        const ffmpegFolder = join(tools, 'ffmpeg', readdirSync(join(tools, 'ffmpeg'))[0] ?? '', 'bin');
+        const denoFolder = join(tools, 'deno', readdirSync(join(tools, 'deno'))[0] ?? '');
         const args = readCalls(logPath).find((call) => {
             return call.includes('--no-playlist');
         }) ?? [];
-        expect(args[args.indexOf('--ffmpeg-location') + 1]).toBe(BUNDLED_DIR);
-        expect(readFileSync(`${logPath}.env`, 'utf-8').startsWith(`${BUNDLED_DIR}:`)).toBe(true);
+        expect(args[args.indexOf('--ffmpeg-location') + 1]).toBe(ffmpegFolder);
+        const path = readFileSync(`${logPath}.env`, 'utf-8');
+        expect(path.startsWith(`${denoFolder}${process.platform === 'win32' ? ';' : ':'}${ffmpegFolder}`)).toBe(true);
+    });
+
+    test.describe('before they are downloaded', () => {
+        let empty: Session;
+        let emptyTools: string;
+
+        test.beforeEach(async () => {
+            emptyTools = mkdtempSync(join(tmpdir(), 'pullwave-empty-tools-'));
+            empty = await launch({ useFakeYtdlp: false, env: { PULLWAVE_TOOLS_DIR: emptyTools } });
+        });
+
+        test.afterEach(async () => {
+            await empty.app.close();
+            rmSync(resolve(empty.userData, '..'), { recursive: true, force: true });
+            rmSync(emptyTools, { recursive: true, force: true });
+        });
+
+        test('says in the header that they are waiting', async () => {
+            const chips = empty.page.locator('.binary-status .chip--pending');
+            await expect(chips).toHaveText(['yt-dlp WAITING', 'ffmpeg WAITING', 'ani-cli WAITING']);
+        });
+
+        test('shows what the video downloader waits for in place of the queue, and keeps the history and the settings reachable', async () => {
+            const { page } = empty;
+            const setup = page.getByTestId('programs-setup-downloads');
+            await expect(setup).toContainText('PREPARING THE VIDEO DOWNLOADER');
+            await expect(setup.getByTestId(/^program-setup-/)).toHaveCount(3);
+            await expect(setup.getByTestId('program-setup-ytdlp')).toContainText('Waiting…');
+            await expect(page.getByLabel('Link 1')).toHaveCount(0);
+
+            await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'HISTORY', exact: true }).click();
+            await expect(page.getByTestId('programs-setup-downloads')).toHaveCount(0);
+
+            await openDownloadsSettings(page);
+            const block = page.getByTestId('programs-block-downloads');
+            await expect(block.getByTestId('program-ytdlp').locator('.badge')).toHaveText('NOT INSTALLED');
+            await expect(block.getByTestId('program-deno').locator('.badge')).toHaveText('NOT INSTALLED');
+        });
+
+        test('shows ffmpeg as not installed in the global settings', async () => {
+            const { page } = empty;
+            await openGlobalSettings(page);
+            await expect(page.getByTestId('programs-block-global').getByTestId('program-ffmpeg').locator('.badge')).toHaveText('NOT INSTALLED');
+        });
     });
 });
 
@@ -305,7 +276,7 @@ test('stacks the completions, newest on top, each one going away five seconds af
     await expect(page.locator('.history__item--done')).toHaveCount(2);
 });
 
-test('does not offer simultaneous downloads in the settings and always runs two at a time', async () => {
+test('does not offer simultaneous downloads in the settings and always runs three at a time', async () => {
     const stale = await launch({ settings: { maxConcurrent: 5 } });
     try {
         const { page, userData } = stale;
@@ -319,7 +290,7 @@ test('does not offer simultaneous downloads in the settings and always runs two 
         await expect.poll(() => {
             return readSettings(userData).rateLimit;
         }).toBe('2M');
-        expect(readSettings(userData).maxConcurrent).toBe(2);
+        expect(readSettings(userData).maxConcurrent).toBe(3);
     } finally {
         await stale.app.close();
         rmSync(resolve(stale.userData, '..'), { recursive: true, force: true });
@@ -424,16 +395,21 @@ test('a paused download frees its place in the queue for the next one', async ()
     const { page } = session;
     await submitUrl(page, 'https://example.com/slow-first');
     await expect(page.getByTestId('job-card').locator('.badge')).toHaveText('DOWNLOADING');
+    // Each link is sent once the card of the one before is there, so none is lost while the field is being cleared.
     await submitUrl(page, 'https://example.com/slow-second');
+    await expect(page.getByTestId('job-card')).toHaveCount(2);
     await submitUrl(page, 'https://example.com/slow-third');
+    await expect(page.getByTestId('job-card')).toHaveCount(3);
+    await submitUrl(page, 'https://example.com/slow-fourth');
+    await expect(page.getByTestId('job-card')).toHaveCount(4);
     const badges = page.getByTestId('job-card').locator('.badge');
-    // The queue runs two downloads at a time: the third waits.
-    await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'QUEUED']);
+    // The queue runs three downloads at a time: the fourth waits.
+    await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'DOWNLOADING', 'QUEUED']);
 
     await page.getByTestId('job-card').first().getByRole('button', { name: 'PAUSE' }).click();
 
-    // The paused one gives its place to the third, and is shown after the two that run now.
-    await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'PAUSED']);
+    // The paused one gives its place to the fourth, and is shown after the three that run now.
+    await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'DOWNLOADING', 'PAUSED']);
 });
 
 test('a paused download is still there when the app is opened again, and goes on from it when it is resumed', async () => {
@@ -457,7 +433,7 @@ test('a paused download is still there when the app is opened again, and goes on
     expect(downloadsOf()).toHaveLength(1);
 
     await session.app.close();
-    const reopened = await electron.launch({ args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, FAKE_YTDLP_LOG: logPath } });
+    const reopened = await electron.launch({ args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, ...programsEnv(join(dirname(userData), 'tools')), FAKE_YTDLP_LOG: logPath } });
     try {
         const again = await reopened.firstWindow();
         await again.waitForSelector('.logo');
@@ -1154,22 +1130,6 @@ test('audio-only quick toggle switches to audio extraction', async () => {
     expect(args).toEqual(expect.arrayContaining(['-x', '--audio-format', 'mp3', '-f', 'ba/b']));
 });
 
-test('the yt-dlp update button is in the settings, not in the header', async () => {
-    const { page } = session;
-    await expect(page.getByRole('button', { name: 'UPDATE YT-DLP' })).toHaveCount(0);
-    await expect(page.locator('.binary-status').getByRole('button')).toHaveCount(0);
-    await openDownloadsSettings(page);
-    await expect(page.getByRole('button', { name: 'UPDATE YT-DLP' })).toBeVisible();
-    await expect(page.getByText('Installed version: fake-1.0')).toBeVisible();
-});
-
-test('updating yt-dlp from the settings shows the command output in a notice', async () => {
-    const { page } = session;
-    await openDownloadsSettings(page);
-    await page.getByRole('button', { name: 'UPDATE YT-DLP' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Fake yt-dlp is up to date' })).toBeVisible();
-});
-
 test.describe('themes', () => {
     const BACKGROUNDS: Record<string, string> = { cyberpunk: 'rgb(7, 6, 15)', dark: 'rgb(22, 24, 29)', light: 'rgb(243, 244, 247)' };
 
@@ -1331,7 +1291,7 @@ test.describe('themes', () => {
 
         const reopened = await electron.launch({
             args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-            env: { ...process.env, FAKE_YTDLP_LOG: session.logPath }
+            env: { ...process.env, ...programsEnv(join(dirname(userData), 'tools')), FAKE_YTDLP_LOG: session.logPath }
         });
         try {
             const reopenedPage = await reopened.firstWindow();
@@ -1475,7 +1435,7 @@ test.describe('languages', () => {
 
         const reopened = await electron.launch({
             args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-            env: { ...process.env, FAKE_YTDLP_LOG: session.logPath }
+            env: { ...process.env, ...programsEnv(join(dirname(userData), 'tools')), FAKE_YTDLP_LOG: session.logPath }
         });
         try {
             const reopenedPage = await reopened.firstWindow();
@@ -1497,7 +1457,7 @@ test.describe('languages', () => {
         writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'device', ytdlpPath: FAKE_YTDLP, downloadDir: join(workDir, 'downloads') }));
         const spanish = await electron.launch({
             args: [ROOT, '--no-sandbox', '--lang=es-ES', `--user-data-dir=${userData}`],
-            env: { ...process.env, LANGUAGE: 'es_ES', LC_ALL: 'es_ES.UTF-8', FAKE_YTDLP_LOG: join(workDir, 'calls.log') }
+            env: { ...process.env, ...installedProgramsEnv(workDir), LANGUAGE: 'es_ES', LC_ALL: 'es_ES.UTF-8', FAKE_YTDLP_LOG: join(workDir, 'calls.log') }
         });
         try {
             const spanishPage = await spanish.firstWindow();
@@ -1533,7 +1493,7 @@ test.describe('settings layout @resize', () => {
     }
 
     // The panels of the settings of the video downloader (the ones of the whole app and of the anime section are on screens of their own).
-    const LEGENDS = ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED'];
+    const LEGENDS = ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'Status of the programs', 'ADVANCED'];
 
     test('the panels have all the same width and flow in two even columns, with no panel on a row of its own', async () => {
         const { page } = session;

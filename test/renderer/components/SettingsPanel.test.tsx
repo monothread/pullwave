@@ -6,9 +6,10 @@ import { SettingsPanel } from '@renderer/components/SettingsPanel';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { INITIAL_APP_UPDATE, useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { ANI_CLI_INFO, makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
+import { useProgramsStore } from '@renderer/store/programsStore';
+import { makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
 import { makeChapterRecord, makeLibraryManga } from '../../helpers/mangaFixtures';
-import { APP_UPDATE_IDLE, installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { APP_UPDATE_IDLE, installMockApi, makeProgramsStatus, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
 const initial = useAppStore.getState();
@@ -18,6 +19,7 @@ beforeEach(() => {
     mock = installMockApi();
     useAnimeStore.setState({ status: UNSUPPORTED_STATUS, library: [], migration: null });
     useAppStore.setState({ ...initial, settings: DEFAULT_SETTINGS, notice: null, appUpdate: INITIAL_APP_UPDATE, traySupport: null, browsers: null });
+    useProgramsStore.setState({ status: makeProgramsStatus(), updates: {}, versions: null, checking: false, working: {}, results: {} });
 });
 
 afterEach(() => {
@@ -59,7 +61,7 @@ describe('SettingsPanel layout', () => {
 
     it('renders the sections of the video downloader with the stored values', () => {
         render(<SettingsPanel scope="downloads" />);
-        ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED'].forEach((legend) => {
+        ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'Status of the programs', 'ADVANCED'].forEach((legend) => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
         ['APPEARANCE & WINDOW', 'APP UPDATES', 'ANIME'].forEach((legend) => {
@@ -195,7 +197,7 @@ describe('SettingsPanel language', () => {
     it('renders the sections of the video downloader in the saved language', () => {
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt' } });
         render(<SettingsPanel scope="downloads" />);
-        ['SAÍDA', 'QUALIDADE E FORMATO', 'PLAYLISTS E LEGENDAS', 'TRANSMISSÕES AO VIVO', 'COOKIES DO NAVEGADOR', 'YT-DLP', 'AVANÇADO'].forEach((legend) => {
+        ['SAÍDA', 'QUALIDADE E FORMATO', 'PLAYLISTS E LEGENDAS', 'TRANSMISSÕES AO VIVO', 'COOKIES DO NAVEGADOR', 'Status dos programas', 'AVANÇADO'].forEach((legend) => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
         expect(screen.getByText('As alterações são salvas automaticamente.')).toBeInTheDocument();
@@ -221,13 +223,13 @@ describe('SettingsPanel language', () => {
         expect(screen.getByText('Sin bandeja.')).toBeInTheDocument();
     });
 
-    it('translates the yt-dlp status', () => {
+    it('translates the status of the programs', () => {
         useAppStore.setState({
             settings: { ...DEFAULT_SETTINGS, language: 'ja' },
-            binaries: { ytdlp: { found: true, path: '/bin/yt-dlp', version: '2026.08.19', source: 'bundled' }, ffmpeg: { found: false, path: '', version: null, source: 'system' } }
+            binaries: { ytdlp: { found: true, path: '/bin/yt-dlp', version: '2026.08.19', source: 'installed' }, ffmpeg: { found: false, path: '', version: null, source: 'installed' } }
         });
         render(<SettingsPanel scope="downloads" />);
-        expect(screen.getByText('インストール済みのバージョン：2026.08.19')).toBeInTheDocument();
+        expect(screen.getByText('バージョン 2026.08.19')).toBeInTheDocument();
     });
 
     it('translates the app update summary', () => {
@@ -906,80 +908,6 @@ describe('SettingsPanel theme', () => {
     });
 });
 
-describe('SettingsPanel yt-dlp update', () => {
-    const BINARIES = {
-        ytdlp: { found: true, path: '/data/bin/yt-dlp', version: '2026.08.19', source: 'updated' as const },
-        ffmpeg: { found: true, path: '/app/bin/ffmpeg', version: '7.0', source: 'bundled' as const }
-    };
-
-    it('shows the installed version and the update button', () => {
-        useAppStore.setState({ binaries: BINARIES, updating: false });
-        render(<SettingsPanel scope="downloads" />);
-        expect(screen.getByText('Installed version: 2026.08.19')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'UPDATE YT-DLP' })).toBeEnabled();
-    });
-
-    it('says when the version is unknown or yt-dlp was not found', () => {
-        useAppStore.setState({ binaries: { ...BINARIES, ytdlp: { ...BINARIES.ytdlp, version: null } } });
-        const { unmount } = render(<SettingsPanel scope="downloads" />);
-        expect(screen.getByText('Installed version: unknown')).toBeInTheDocument();
-        unmount();
-        useAppStore.setState({ binaries: { ...BINARIES, ytdlp: { ...BINARIES.ytdlp, found: false } } });
-        render(<SettingsPanel scope="downloads" />);
-        expect(screen.getByText('yt-dlp was not found.')).toBeInTheDocument();
-    });
-
-    it('updates yt-dlp when the button is clicked', async () => {
-        useAppStore.setState({ binaries: BINARIES, updating: false });
-        render(<SettingsPanel scope="downloads" />);
-        fireEvent.click(screen.getByRole('button', { name: 'UPDATE YT-DLP' }));
-        await flushPromises();
-        expect(mock.api.updateYtdlp).toHaveBeenCalledTimes(1);
-    });
-
-    it('offers to go back to the yt-dlp that ships with the app only when an updated one is the one in use', () => {
-        useAppStore.setState({ binaries: BINARIES, updating: false });
-        const { unmount } = render(<SettingsPanel scope="downloads" />);
-        expect(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toBeEnabled();
-        unmount();
-        for (const source of ['bundled', 'system', 'custom'] as const) {
-            useAppStore.setState({ binaries: { ...BINARIES, ytdlp: { ...BINARIES.ytdlp, source } } });
-            const { unmount: next } = render(<SettingsPanel scope="downloads" />);
-            expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
-            next();
-        }
-    });
-
-    it('does not offer it while the binaries have not been read', () => {
-        useAppStore.setState({ binaries: null, updating: false });
-        render(<SettingsPanel scope="downloads" />);
-        expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
-    });
-
-    it('goes back to the yt-dlp that ships with the app when its button is clicked, and reads the binaries again', async () => {
-        useAppStore.setState({ binaries: BINARIES, updating: false });
-        render(<SettingsPanel scope="downloads" />);
-        fireEvent.click(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' }));
-        await flushPromises();
-        expect(mock.api.resetYtdlp).toHaveBeenCalledTimes(1);
-        expect(mock.api.updateYtdlp).not.toHaveBeenCalled();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Using the bundled yt-dlp' });
-    });
-
-    it('disables the button to go back while it is updating', () => {
-        useAppStore.setState({ binaries: BINARIES, updating: true });
-        render(<SettingsPanel scope="downloads" />);
-        expect(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toBeDisabled();
-    });
-
-    it('disables the button and says it is updating', () => {
-        useAppStore.setState({ binaries: BINARIES, updating: true });
-        render(<SettingsPanel scope="downloads" />);
-        expect(screen.getByRole('button', { name: 'UPDATING…' })).toBeDisabled();
-    });
-});
-
-
 describe('SettingsPanel anime section', () => {
     it('is left out where the section does not exist', () => {
         render(<SettingsPanel scope="anime" />);
@@ -1172,77 +1100,6 @@ describe('SettingsPanel anime section', () => {
             expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, animeQuality: '480p', animeAudio: 'dub' });
         });
 
-        it('shows the version of ani-cli', () => {
-            render(<SettingsPanel scope="anime" />);
-            expect(screen.getByText('ani-cli version: 5.1.4')).toBeInTheDocument();
-            expect(screen.getByText(/finds the episodes/)).toBeInTheDocument();
-        });
-
-        it('says when the version is not known or ani-cli is missing', () => {
-            useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, version: null } }) });
-            const { unmount } = render(<SettingsPanel scope="anime" />);
-            expect(screen.getByText('ani-cli version: unknown')).toBeInTheDocument();
-            unmount();
-
-            useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, found: false } }) });
-            render(<SettingsPanel scope="anime" />);
-            expect(screen.getByText('ani-cli was not found.')).toBeInTheDocument();
-        });
-
-        it('updates ani-cli and shows the new version', async () => {
-            let finish: () => void = () => {
-                return undefined;
-            };
-            mock.api.updateAniCli.mockReturnValue(
-                new Promise((resolve) => {
-                    finish = () => {
-                        resolve({ ok: true, output: 'Updated ani-cli 5.1.4 → 5.2.0.' });
-                    };
-                })
-            );
-            mock.api.getAnimeStatus.mockResolvedValue(makeStatus({ aniCli: { ...ANI_CLI_INFO, version: '5.2.0', source: 'updated' } }));
-            render(<SettingsPanel scope="anime" />);
-
-            fireEvent.click(screen.getByRole('button', { name: 'UPDATE ANI-CLI' }));
-            await flushPromises();
-            expect(screen.getByRole('button', { name: 'UPDATING…' })).toBeDisabled();
-
-            finish();
-            await flushPromises();
-            expect(screen.getByRole('button', { name: 'UPDATE ANI-CLI' })).toBeEnabled();
-            expect(screen.getByText('ani-cli version: 5.2.0')).toBeInTheDocument();
-            expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Updated ani-cli 5.1.4 → 5.2.0.' });
-        });
-
-        it('offers to go back to the ani-cli that ships with the app only when an updated one is the one in use', () => {
-            useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, source: 'updated' } }) });
-            const { unmount } = render(<SettingsPanel scope="anime" />);
-            expect(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toBeEnabled();
-            unmount();
-            for (const source of ['bundled', 'custom'] as const) {
-                useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, source } }) });
-                const { unmount: next } = render(<SettingsPanel scope="anime" />);
-                expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
-                next();
-            }
-        });
-
-        it('goes back to the ani-cli that ships with the app when its button is clicked, and shows the version in use', async () => {
-            useAnimeStore.setState({ status: makeStatus({ aniCli: { ...ANI_CLI_INFO, version: '5.2.0', source: 'updated' } }) });
-            mock.api.getAnimeStatus.mockResolvedValue(makeStatus({ aniCli: { ...ANI_CLI_INFO, version: '5.1.4', source: 'bundled' } }));
-            render(<SettingsPanel scope="anime" />);
-            expect(screen.getByText('ani-cli version: 5.2.0')).toBeInTheDocument();
-
-            fireEvent.click(screen.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' }));
-            await flushPromises();
-
-            expect(mock.api.resetAniCli).toHaveBeenCalledTimes(1);
-            expect(mock.api.updateAniCli).not.toHaveBeenCalled();
-            expect(screen.getByText('ani-cli version: 5.1.4')).toBeInTheDocument();
-            expect(screen.queryByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).not.toBeInTheDocument();
-            expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Using the bundled ani-cli' });
-        });
-
         it('saves the language of the subtitles at once', async () => {
             render(<SettingsPanel scope="anime" />);
             fireEvent.change(screen.getByLabelText('Anime subtitles'), { target: { value: 'Portuguese' } });
@@ -1400,7 +1257,6 @@ describe('SettingsPanel manga section', () => {
     it('does not show the manga settings in the other scopes', () => {
         (['global', 'downloads', 'anime'] as const).forEach((scope) => {
             const { unmount } = render(<SettingsPanel scope={scope} />);
-            expect(screen.queryByRole('group', { name: 'Status of the programs' })).not.toBeInTheDocument();
             expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
             expect(screen.queryByLabelText('Manga folder')).not.toBeInTheDocument();
             expect(screen.queryByLabelText('Format of each chapter')).not.toBeInTheDocument();
@@ -1430,6 +1286,32 @@ describe('SettingsPanel manga section', () => {
         fireEvent.change(screen.getByLabelText('Format of each chapter'), { target: { value: 'folder' } });
         await flushPromises();
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaFormat: 'folder' });
+    });
+
+    it('has a field for how many sources the chapters are downloaded from together, 3 by default, with its limits and its hint', () => {
+        render(<SettingsPanel scope="manga" />);
+        const field = screen.getByLabelText('Downloads at the same time');
+        expect(field).toHaveValue(3);
+        expect(field).toHaveAttribute('min', '1');
+        expect(field).toHaveAttribute('max', '6');
+        expect(screen.getByText(/Each source still does one chapter at a time/)).toBeInTheDocument();
+    });
+
+    it('saves the number of manga downloads at the same time after the delay', async () => {
+        render(<SettingsPanel scope="manga" />);
+        fireEvent.change(screen.getByLabelText('Downloads at the same time'), { target: { value: '5' } });
+        expect(mock.api.saveSettings).not.toHaveBeenCalled();
+        await advance(AUTOSAVE_DELAY_MS);
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaMaxConcurrent: 5 });
+    });
+
+    it('does not show the manga downloads field in the other scopes', () => {
+        (['global', 'downloads'] as const).forEach((scope) => {
+            const { unmount } = render(<SettingsPanel scope={scope} />);
+            expect(screen.queryByLabelText('Downloads at the same time')).not.toBeInTheDocument();
+            unmount();
+        });
     });
 
     it('has a field for the address of a FlareSolverr of the user, empty by default, and saves it after the delay', async () => {
@@ -1667,5 +1549,45 @@ describe('SettingsPanel manga section', () => {
         await flushPromises();
         expect(screen.getByLabelText('Manga folder')).toHaveValue('/keep');
         expect(mock.api.saveSettings).not.toHaveBeenCalled();
+    });
+});
+
+describe('SettingsPanel status of the programs', () => {
+    function blockNames(): string[] {
+        return screen.queryAllByTestId(/^program-/).map((row) => {
+            return row.getAttribute('data-testid') ?? '';
+        });
+    }
+
+    it('shows ffmpeg in the settings of the whole app, and only it', () => {
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByTestId('programs-block-global')).toBeInTheDocument();
+        expect(blockNames()).toEqual(['program-ffmpeg']);
+    });
+
+    it('shows yt-dlp and deno in the settings of the video downloader, and no other block of programs', () => {
+        render(<SettingsPanel scope="downloads" />);
+        expect(screen.getByTestId('programs-block-downloads')).toBeInTheDocument();
+        expect(screen.queryByTestId('programs-block-global')).not.toBeInTheDocument();
+        expect(blockNames()).toEqual(['program-ytdlp', 'program-deno']);
+    });
+
+    it('shows ani-cli, busybox and curl in the settings of the anime, where the section exists', () => {
+        useAnimeStore.setState({ status: makeStatus() });
+        render(<SettingsPanel scope="anime" />);
+        expect(screen.getByTestId('programs-block-anime')).toBeInTheDocument();
+        expect(blockNames()).toEqual(['program-anicli', 'program-busybox', 'program-curl']);
+    });
+
+    it('leaves the block out of the anime settings where the section does not exist', () => {
+        render(<SettingsPanel scope="anime" />);
+        expect(screen.queryByTestId('programs-block-anime')).not.toBeInTheDocument();
+    });
+
+    it('has no block of programs in the settings of the manga (its server has its own)', () => {
+        render(<SettingsPanel scope="manga" />);
+        expect(screen.queryByTestId('programs-block-global')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('programs-block-downloads')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('programs-block-anime')).not.toBeInTheDocument();
     });
 });

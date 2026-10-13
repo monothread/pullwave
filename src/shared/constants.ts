@@ -16,8 +16,12 @@ export const IPC = {
     historyList: 'history:list',
     historyClear: 'history:clear',
     binariesCheck: 'binaries:check',
-    ytdlpUpdate: 'ytdlp:update',
-    ytdlpReset: 'ytdlp:reset',
+    programsStatus: 'programs:status',
+    programsInstall: 'programs:install',
+    programsReinstall: 'programs:reinstall',
+    programsCheck: 'programs:check',
+    programsUpdate: 'programs:update',
+    programsReset: 'programs:reset',
     appUpdateGet: 'app-update:get',
     appUpdateCheck: 'app-update:check',
     appUpdateDownload: 'app-update:download',
@@ -65,8 +69,6 @@ export const IPC = {
     animeHistoryRecord: 'anime:history-record',
     animeHistoryRemove: 'anime:history-remove',
     animeHistoryClear: 'anime:history-clear',
-    animeUpdateCli: 'anime:update-cli',
-    animeResetCli: 'anime:reset-cli',
     animeStreamOpen: 'anime:stream-open',
     animeStreamClose: 'anime:stream-close',
     animeSchedule: 'anime:schedule',
@@ -98,6 +100,8 @@ export const IPC = {
     mangaRetry: 'manga:retry',
     mangaPause: 'manga:pause',
     mangaResume: 'manga:resume',
+    mangaPauseAll: 'manga:pause-all',
+    mangaResumeAll: 'manga:resume-all',
     mangaClearFinished: 'manga:clear-finished',
     mangaRemoveDownload: 'manga:remove-download',
     mangaRemoveManga: 'manga:remove-manga',
@@ -110,6 +114,7 @@ export const IPC = {
     mangaGroupCreate: 'manga:group-create',
     mangaGroupRename: 'manga:group-rename',
     mangaGroupDelete: 'manga:group-delete',
+    mangaGroupMove: 'manga:group-move',
     mangaGroupMembers: 'manga:group-members',
     mangaMigrateSource: 'manga:migrate-source',
     mangaToolsCheck: 'manga:tools-check',
@@ -141,6 +146,8 @@ export const IPC = {
     eventAnimeCover: 'event:anime-cover',
     eventAnimeAvailability: 'event:anime-availability',
     eventJobUpdate: 'event:job-update',
+    eventProgramTool: 'event:program-tool',
+    eventProgramUpdate: 'event:program-update',
     eventJobRemoved: 'event:job-removed',
     eventHistoryChanged: 'event:history-changed',
     eventAppUpdateState: 'event:app-update-state'
@@ -191,8 +198,12 @@ export const MIN_TITLE_LENGTH = 20;
 export const MAX_TITLE_LENGTH = 200;
 export const MIN_LIVE_END_CHECK_SECONDS = 1;
 export const MAX_LIVE_END_CHECK_SECONDS = 120;
-// Downloads run two at a time: this is not a setting.
-export const CONCURRENT_DOWNLOADS = 2;
+// Downloads of the video downloader and of the anime run three at a time: this is not a setting.
+export const CONCURRENT_DOWNLOADS = 3;
+// The manga downloads: how many sources run together (a setting).
+export const MANGA_CONCURRENT_DOWNLOADS = 3;
+export const MIN_MANGA_CONCURRENT_DOWNLOADS = 1;
+export const MAX_MANGA_CONCURRENT_DOWNLOADS = 6;
 
 export const DEFAULT_SETTINGS: Settings = {
     downloadDir: '',
@@ -235,6 +246,7 @@ export const DEFAULT_SETTINGS: Settings = {
     animeSubtitles: 'auto',
     mangaDirectory: '',
     mangaFormat: 'cbz',
+    mangaMaxConcurrent: MANGA_CONCURRENT_DOWNLOADS,
     mangaFlaresolverrUrl: '',
     mangaFlaresolverrEnabled: false,
     mangaShowAdult: false,

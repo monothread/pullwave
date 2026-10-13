@@ -1,6 +1,9 @@
 import type { MangaSource } from '@shared/manga';
 import { ALL_LANGUAGES, listedSources } from './mangaText';
 
+// The language of a source that reads sites in several languages (the extension says "all").
+export const SEVERAL_LANGUAGES = 'all';
+
 // How many results of each source are shown.
 export const RESULTS_PER_SOURCE = 12;
 // How many sources are asked at the same time.
@@ -16,6 +19,18 @@ export function searchableSources(sources: readonly MangaSource[], language: str
     return listed
         .filter((source) => {
             return language === ALL_LANGUAGES || !known || source.lang === language;
+        })
+        .sort((first, second) => {
+            return first.name.localeCompare(second.name, undefined, { sensitivity: 'base' }) || first.lang.localeCompare(second.lang);
+        });
+}
+
+// The sources a manga of the library can move to: not the one it is in, not the ones for adults unless they are asked for, and, when a language
+// is chosen, the ones in that language and the ones that read several languages. By name, which is also the order they are searched in.
+export function migrationSources(sources: readonly MangaSource[], currentSourceId: string, language: string, showAdult: boolean): MangaSource[] {
+    return listedSources(sources, showAdult)
+        .filter((source) => {
+            return source.id !== currentSourceId && (language === ALL_LANGUAGES || source.lang === language || source.lang === SEVERAL_LANGUAGES);
         })
         .sort((first, second) => {
             return first.name.localeCompare(second.name, undefined, { sensitivity: 'base' }) || first.lang.localeCompare(second.lang);

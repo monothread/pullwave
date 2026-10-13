@@ -14,6 +14,7 @@ import { UrlInput } from '@renderer/components/UrlInput';
 import { resolveAppLanguage, systemLocale } from '@renderer/i18n/language';
 import { useAppLanguage, useTranslator } from '@renderer/i18n/useTranslator';
 import { INITIAL_APP_UPDATE, useAppStore } from '@renderer/store/appStore';
+import { useProgramsStore } from '@renderer/store/programsStore';
 import { APP_UPDATE_IDLE, installMockApi, makeJob, type MockApiHandle } from '../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -33,7 +34,7 @@ beforeEach(() => {
         settings: DEFAULT_SETTINGS,
         binaries: null,
         notice: null,
-        updating: false,
+       
         appUpdate: INITIAL_APP_UPDATE
     });
 });
@@ -359,20 +360,14 @@ describe('components in another language', () => {
 });
 
 describe('store messages in another language', () => {
-    it('uses the saved language for the fallback of the yt-dlp update notice', async () => {
+    it('uses the saved language for the toast of a program that could not be downloaded', async () => {
         useLanguage('pt');
-        mock.api.updateYtdlp.mockResolvedValueOnce({ ok: true, output: '' });
-        await useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'O yt-dlp está atualizado.' });
-        mock.api.updateYtdlp.mockResolvedValueOnce({ ok: false, output: '' });
-        await useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'A atualização falhou.' });
-    });
-
-    it('keeps the message that the main process wrote', async () => {
-        useLanguage('pt');
-        mock.api.updateYtdlp.mockResolvedValueOnce({ ok: false, output: 'O yt-dlp já está atualizado (1).' });
-        await useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'O yt-dlp já está atualizado (1).' });
+        useAppStore.setState({ toasts: [] });
+        const stop = await useProgramsStore.getState().init();
+        mock.emitProgramTool({ id: 'ytdlp', status: 'error', version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: { code: 'DOWNLOAD_FAILED', message: 'offline' } });
+        expect(useAppStore.getState().toasts.map((toast) => {
+            return toast.message;
+        })).toEqual(['Não foi possível baixar o yt-dlp. Abra as configurações da seção para tentar de novo.']);
+        stop();
     });
 });

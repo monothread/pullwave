@@ -37,6 +37,8 @@ import {
     STORE_PLACEHOLDER,
     libraryEntriesByTitle,
     libraryEntry,
+    sourceIsMissing,
+    sourceLabelsOf,
     otherSourceNames,
     mangaErrorKey,
     mangaErrorTextKey,
@@ -682,5 +684,47 @@ describe('the same title from another source', () => {
         expect(otherSourceNames([library[0]!, library[1]!, library[3]!], sources)).toEqual(['MangaDex', 'Site B']);
         expect(otherSourceNames([library[2]!], sources)).toEqual(['555']);
         expect(otherSourceNames([], sources)).toEqual([]);
+    });
+});
+
+describe('sourceLabelsOf', () => {
+    const sources = [makeSource({ id: '123', name: 'MangaDex', lang: 'en' }), makeSource({ id: '456', name: 'Leitor', lang: 'pt' })];
+
+    it('gives the name and the language of the source of each manga', () => {
+        expect(sourceLabelsOf(sources, [{ sourceId: '123' }, { sourceId: '456' }])).toEqual(['MangaDex · EN', 'Leitor · PT']);
+    });
+
+    it('gives each source once, in the order the mangas come', () => {
+        expect(sourceLabelsOf(sources, [{ sourceId: '456' }, { sourceId: '123' }, { sourceId: '456' }])).toEqual(['Leitor · PT', 'MangaDex · EN']);
+    });
+
+    it('leaves out a source the list does not have, and gives nothing with no mangas or no list', () => {
+        expect(sourceLabelsOf(sources, [{ sourceId: '999' }, { sourceId: '123' }])).toEqual(['MangaDex · EN']);
+        expect(sourceLabelsOf(sources, [])).toEqual([]);
+        expect(sourceLabelsOf([], [{ sourceId: '123' }])).toEqual([]);
+    });
+});
+
+describe('sourceIsMissing', () => {
+    const sources = [makeSource({ id: '123' }), makeSource({ id: '456', name: 'Other' })];
+
+    it('is true for a source that is not in the list, once the list was read', () => {
+        expect(sourceIsMissing(sources, 'ready', '999')).toBe(true);
+        expect(sourceIsMissing([], 'ready', '123')).toBe(true);
+    });
+
+    it('is false for a source that is in the list', () => {
+        expect(sourceIsMissing(sources, 'ready', '123')).toBe(false);
+        expect(sourceIsMissing(sources, 'ready', '456')).toBe(false);
+    });
+
+    it('is false for the local source, which is never listed', () => {
+        expect(sourceIsMissing(sources, 'ready', '0')).toBe(false);
+        expect(sourceIsMissing([], 'ready', '0')).toBe(false);
+    });
+
+    it.each(['idle', 'loading', 'error'] as const)('is false while the list of sources is %s: nothing is known yet', (status) => {
+        expect(sourceIsMissing([], status, '999')).toBe(false);
+        expect(sourceIsMissing(sources, status, '999')).toBe(false);
     });
 });

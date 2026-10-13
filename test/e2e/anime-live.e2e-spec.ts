@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { appEnv } from './programs';
 
 // Runs against the real source ani-cli reads, so it needs the network and can fail because of the source (it can change or
 // block requests). It is left out unless PULLWAVE_LIVE=1, and run on demand by the "Test Windows" workflow.
@@ -30,7 +31,7 @@ test.beforeAll(async () => {
         join(userData, 'settings.json'),
         JSON.stringify({ language: 'en', checkUpdatesOnStart: false, animeQuality: 'worst', animeDownloadDir: join(workDir, 'anime'), downloadDir: join(workDir, 'downloads') })
     );
-    app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`] });
+    app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: appEnv(workDir) });
     page = await app.firstWindow();
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });

@@ -1,11 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
 import type { AniCliInfo, AnimeAudio } from '@shared/anime';
-import type { BinarySource } from '@shared/types';
 import { patchAniCli } from './aniPatches';
-import { compareVersions, parseAniCliVersion } from './aniVersion';
+import { parseAniCliVersion } from './aniVersion';
 import { SUBTITLE_LABELS_VARIABLE } from './aniSubtitles';
-import { executableName, type ResolvedBinary } from './binaryResolver';
+import type { ResolvedBinary } from './binaryResolver';
 
 export const ANI_CLI_COMMAND = 'ani-cli';
 // The stand-ins for what ani-cli expects to find on a desktop (a menu and a player) are functions defined by the script that
@@ -54,19 +53,25 @@ export const BUSYBOX_APPLETS = [
 ];
 
 export interface AniLocations {
-    // resources/bin: yt-dlp, ffmpeg, deno and the ani folder with ani-cli, busybox and curl.
-    bundledDir: string;
     // resources/ani-scripts: the script that runs ani-cli with its stand-ins.
     scriptsDir: string;
-    // userData/bin: where an updated ani-cli is saved.
-    userBinDir: string;
     // userData/anime: the folder for everything ani-cli writes (history) and, on Linux, for the links to the tools.
     dataDir: string;
+}
+
+// The files of the programs the app installed that ani-cli runs on, null while one is not installed.
+export interface AniPrograms {
+    anicli: () => string | null;
+    busybox: () => string | null;
+    curl: () => string | null;
 }
 
 export interface AniTools {
     ytdlp: ResolvedBinary;
     ffmpeg: ResolvedBinary;
+    // The files of deno (yt-dlp runs it) and ffprobe (it is beside ffmpeg), null while one is not installed.
+    deno: string | null;
+    ffprobe: string | null;
 }
 
 export interface AniToolsFs {
@@ -130,6 +135,7 @@ export class AniCliLocator {
 
     constructor(
         private readonly locations: AniLocations,
+        private readonly programs: AniPrograms,
         private readonly fs: AniToolsFs = defaultFs,
         private readonly platform: NodeJS.Platform = process.platform
     ) {
@@ -139,10 +145,6 @@ export class AniCliLocator {
     // BusyBox for Windows (and the shell it runs) is happier with forward slashes.
     private forScript(path: string): string {
         return this.platform === 'win32' ? path.replace(/\\/g, '/') : path;
-    }
-
-    private get bundledAniDir(): string {
-        return this.path.join(this.locations.bundledDir, 'ani');
     }
 
     get toolsDir(): string {
@@ -157,42 +159,28 @@ export class AniCliLocator {
         return this.path.join(this.locations.scriptsDir, ANI_RUNNER_SCRIPT);
     }
 
-    get userBinDirectory(): string {
-        return this.locations.userBinDir;
-    }
-
-    get userAniCliPath(): string {
-        return this.path.join(this.locations.userBinDir, ANI_CLI_COMMAND);
-    }
-
+    // The shell the script runs on and the curl it does its requests with, as installed ('' while they are not).
     get busyboxPath(): string {
-        return this.path.join(this.bundledAniDir, executableName('busybox', this.platform));
+        return this.programs.busybox() ?? '';
     }
 
     get curlPath(): string {
-        return this.path.join(this.bundledAniDir, executableName('curl', this.platform));
+        return this.programs.curl() ?? '';
     }
 
-    // ani-cli never comes from the system: it has to match the tools that ship with the app. A copy the app updated is used
-    // unless the one that ships with it is newer (the app itself was updated since).
+    // ani-cli never comes from the system: it has to match the shell and the curl the app installed. The script is the one the user chose
+    // in the settings, otherwise the one the app installed (null while it is not).
     script(customPath: string): ResolvedBinary | null {
         if (customPath.length > 0) {
             return { path: customPath, source: 'custom' };
         }
-        const bundledPath = this.path.join(this.bundledAniDir, ANI_CLI_COMMAND);
-        const hasUpdated = this.fs.exists(this.userAniCliPath);
-        const hasBundled = this.fs.exists(bundledPath);
-        if (hasUpdated && (!hasBundled || !this.isNewer(bundledPath, this.userAniCliPath))) {
-            return { path: this.userAniCliPath, source: 'updated' };
-        }
-        return hasBundled ? { path: bundledPath, source: 'bundled' } : null;
+        const installed = this.programs.anicli();
+        return installed === null ? null : { path: installed, source: 'installed' };
     }
 
-    // Whether the script at `candidate` says a newer version than the one at `other` (false when either says nothing).
-    private isNewer(candidate: string, other: string): boolean {
-        const newer = this.versionOf(candidate);
-        const older = this.versionOf(other);
-        return newer !== null && older !== null && compareVersions(newer, older) > 0;
+    // Whether everything ani-cli runs on is there: its script, the shell and curl.
+    isReady(customPath: string): boolean {
+        return this.script(customPath) !== null && this.programs.busybox() !== null && this.programs.curl() !== null;
     }
 
     private versionOf(path: string): string | null {
@@ -204,10 +192,10 @@ export class AniCliLocator {
     info(customPath: string): AniCliInfo {
         const script = this.script(customPath);
         if (script === null) {
-            return { found: false, path: this.path.join(this.bundledAniDir, ANI_CLI_COMMAND), version: null, source: 'bundled' };
+            return { found: false, path: '', version: null, source: 'installed' };
         }
         const version = this.versionOf(script.path);
-        return { found: this.fs.exists(script.path), path: script.path, version, source: script.source as AniCliInfo['source'] };
+        return { found: this.fs.exists(script.path), path: script.path, version, source: script.source };
     }
 
     // The names every tool answers to inside the isolated PATH, and what each one points at.
@@ -218,13 +206,16 @@ export class AniCliLocator {
             }),
             { name: 'curl', target: this.curlPath }
         ];
-        const optional: Array<{ name: string; binary: ResolvedBinary }> = [
-            { name: 'yt-dlp', binary: tools.ytdlp },
-            { name: 'ffmpeg', binary: tools.ffmpeg }
+        // yt-dlp, ffmpeg (and ffprobe, which yt-dlp looks for beside it) and deno, the ones that are installed or the user chose.
+        const optional: Array<{ name: string; target: string | null }> = [
+            { name: 'yt-dlp', target: tools.ytdlp.path },
+            { name: 'ffmpeg', target: tools.ffmpeg.path },
+            { name: 'ffprobe', target: tools.ffprobe },
+            { name: 'deno', target: tools.deno }
         ];
-        optional.forEach(({ name, binary }) => {
-            if (isLinkable(binary.source)) {
-                links.push({ name, target: binary.path });
+        optional.forEach(({ name, target }) => {
+            if (target !== null && target !== '') {
+                links.push({ name, target });
             }
         });
         return links;
@@ -276,24 +267,16 @@ export class AniCliLocator {
         return { binary: this.busyboxPath, args: ['sh', this.forScript(this.runnerPath), this.forScript(script.path)] };
     }
 
-    // Where ani-cli finds its tools. Only what ships with the app (and the yt-dlp and ffmpeg chosen) is on it: nothing installed on
-    // the system can leak in.
+    // Where ani-cli finds its tools. Only what the app installed (and the yt-dlp and ffmpeg chosen) is on it: nothing installed on the
+    // system can leak in. On Linux every tool is a link in one folder; Windows has no links, so the folders of the tools are on Path.
     private searchPath(options: AniEnvOptions): string {
         if (this.platform !== 'win32') {
-            return `${this.toolsDir}:${this.locations.bundledDir}`;
+            return this.toolsDir;
         }
-        const chosen = options.tools ? [options.tools.ytdlp, options.tools.ffmpeg] : [];
-        const folders = [
-            ...chosen
-                .filter((binary) => {
-                    return binary.source !== 'system';
-                })
-                .map((binary) => {
-                    return this.path.dirname(binary.path);
-                }),
-            this.locations.bundledDir,
-            this.bundledAniDir
-        ];
+        const files = [options.tools?.ytdlp.path, options.tools?.ffmpeg.path, options.tools?.deno, this.programs.busybox(), this.programs.curl()];
+        const folders = files.flatMap((file) => {
+            return file === undefined || file === null || file === '' ? [] : [this.path.dirname(file)];
+        });
         return [...new Set(folders)].join(this.path.delimiter);
     }
 
@@ -319,8 +302,4 @@ export class AniCliLocator {
         });
         return env;
     }
-}
-
-function isLinkable(source: BinarySource): boolean {
-    return source !== 'system';
 }

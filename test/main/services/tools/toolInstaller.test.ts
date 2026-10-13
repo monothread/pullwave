@@ -310,3 +310,144 @@ describe('ToolInstaller keeping the other versions', () => {
         }).not.toThrow();
     });
 });
+
+describe('ToolInstaller a program that is one file (raw)', () => {
+    const RAW: ToolSpec = {
+        id: 'ytdlp',
+        version: '2026.08.19',
+        url: 'https://example.com/yt-dlp_linux',
+        sha256: 'b'.repeat(64),
+        sizeBytes: 500,
+        format: 'raw',
+        stripComponents: 0,
+        exclude: [],
+        executables: ['yt-dlp'],
+        entry: 'yt-dlp'
+    };
+
+    function rawDownload(content = 'the program'): { download: Download; calls: DownloadOptions[] } {
+        const calls: DownloadOptions[] = [];
+        const download: Download = (options) => {
+            calls.push(options);
+            mkdirSync(dirname(options.destination), { recursive: true });
+            writeFileSync(options.destination, content);
+            return Promise.resolve({ sha256: RAW.sha256, bytes: content.length });
+        };
+        return { download, calls };
+    }
+
+    function rawSetup(download: Download, extract?: Extract) {
+        const root = makeTempDir();
+        const states: ToolState[] = [];
+        const extractions: unknown[] = [];
+        const installer = new ToolInstaller({
+            rootDirectory: root,
+            download,
+            extract:
+                extract ??
+                ((...args) => {
+                    extractions.push(args);
+                    return Promise.resolve();
+                }),
+            onState: (state) => {
+                states.push(state);
+            }
+        });
+        return { installer, root, states, extractions };
+    }
+
+    it('puts the downloaded file where the spec says, unpacking nothing, and makes it runnable', async () => {
+        const { download, calls } = rawDownload();
+        const { installer, root, extractions } = rawSetup(download);
+        const result = await installer.install(RAW);
+        expect(result).toMatchObject({ id: 'ytdlp', status: 'ready', version: '2026.08.19', percent: 100 });
+        expect(extractions).toEqual([]);
+        expect(calls[0]).toMatchObject({ url: RAW.url, destination: join(root, 'ytdlp', 'download-2026.08.19.part'), expectedBytes: 500 });
+        expect(readFileSync(installer.pathOf(RAW, 'yt-dlp'), 'utf-8')).toBe('the program');
+        if (process.platform !== 'win32') {
+            expect(statSync(installer.pathOf(RAW, 'yt-dlp')).mode & 0o111).not.toBe(0);
+        }
+        expect(JSON.parse(readFileSync(installer.pathOf(RAW, MARKER_FILE), 'utf-8'))).toEqual({ id: 'ytdlp', version: '2026.08.19', sha256: RAW.sha256 });
+        expect(readdirSync(join(root, 'ytdlp'))).toEqual(['2026.08.19']);
+        expect(installer.isReady(RAW)).toBe(true);
+    });
+
+    it('puts a file in a folder of its own, like the program that goes in bin/', async () => {
+        const nested: ToolSpec = { ...RAW, id: 'anicli', version: 'abc1234', executables: ['bin/ani-cli'], entry: 'bin/ani-cli' };
+        const { installer } = rawSetup(rawDownload('#!/bin/sh').download);
+        await installer.install(nested);
+        expect(readFileSync(installer.pathOf(nested, 'bin/ani-cli'), 'utf-8')).toBe('#!/bin/sh');
+    });
+
+    it('does not take a file that is not the one the app expects', async () => {
+        const { installer, root, states } = rawSetup((options) => {
+            mkdirSync(dirname(options.destination), { recursive: true });
+            writeFileSync(options.destination, 'other');
+            return Promise.resolve({ sha256: 'c'.repeat(64), bytes: 5 });
+        });
+        const result = await installer.install(RAW);
+        expect(result).toMatchObject({ status: 'error', error: { code: 'HASH_MISMATCH' } });
+        expect(states.at(-1)).toMatchObject({ status: 'error' });
+        expect(existsSync(join(root, 'ytdlp', '2026.08.19'))).toBe(false);
+        expect(readdirSync(join(root, 'ytdlp'))).toEqual([]);
+    });
+});
+
+describe('ToolInstaller the check of what was unpacked', () => {
+    it('puts the program in its place when the check lets it through, and gives the check the folder it unpacked', async () => {
+        const { installer, root } = setup();
+        const seen: string[] = [];
+        const result = await installer.install(SPEC, undefined, false, (directory) => {
+            seen.push(directory);
+            expect(existsSync(join(directory, 'bin/server.jar'))).toBe(true);
+            return Promise.resolve();
+        });
+        expect(result.status).toBe('ready');
+        expect(seen).toEqual([join(root, 'suwayomi', 'staging-v1')]);
+        expect(installer.isReady(SPEC)).toBe(true);
+    });
+
+    it('installs nothing, and says why, when the check throws', async () => {
+        const { installer, folder, states } = setup();
+        const result = await installer.install(SPEC, undefined, false, () => {
+            return Promise.reject(new Error('The new program does not run'));
+        });
+        expect(result).toEqual({ id: 'suwayomi', status: 'error', version: 'v1', bytesDone: 0, bytesTotal: 0, percent: 0, error: { code: 'INVALID', message: 'The new program does not run' } });
+        expect(states.at(-1)).toMatchObject({ status: 'error', error: { code: 'INVALID' } });
+        expect(installer.isReady(SPEC)).toBe(false);
+        expect(readdirSync(folder)).toEqual([]);
+    });
+
+    it('keeps the version that works when the check of the new one fails', async () => {
+        const { installer, folder } = setup();
+        await installer.install(SPEC);
+        const next: ToolSpec = { ...SPEC, version: 'v2' };
+        const result = await installer.install(next, undefined, true, () => {
+            return Promise.reject(new Error('does not run'));
+        });
+        expect(result.status).toBe('error');
+        expect(installer.isReady(SPEC)).toBe(true);
+        expect(readdirSync(folder)).toEqual(['v1']);
+    });
+
+    it('does not run the check when the program is already there', async () => {
+        const { installer } = setup();
+        await installer.install(SPEC);
+        const verify = vi.fn(() => {
+            return Promise.resolve();
+        });
+        await installer.install(SPEC, undefined, false, verify);
+        expect(verify).not.toHaveBeenCalled();
+    });
+
+    it('does not run the check for a download that failed, nor for a checksum that does not match', async () => {
+        const verify = vi.fn(() => {
+            return Promise.resolve();
+        });
+        const failing = setup({ download: () => {return Promise.reject(new ToolDownloadError('offline'))} });
+        expect((await failing.installer.install(SPEC, undefined, false, verify)).error?.code).toBe('DOWNLOAD_FAILED');
+        const wrong = setup({ download: goodDownload({ sha256: 'f'.repeat(64) }).download });
+        expect((await wrong.installer.install(SPEC, undefined, false, verify)).error?.code).toBe('HASH_MISMATCH');
+        expect(verify).not.toHaveBeenCalled();
+    });
+});

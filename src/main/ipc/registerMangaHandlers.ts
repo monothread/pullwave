@@ -97,7 +97,7 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
             return { ok: false, reason: 'invalid' };
         });
     });
-    [IPC.mangaGroupDelete, IPC.mangaGroupMembers].forEach((channel) => {
+    [IPC.mangaGroupDelete, IPC.mangaGroupMove, IPC.mangaGroupMembers].forEach((channel) => {
         ipcMain.handle(channel, () => {
             return undefined;
         });
@@ -146,6 +146,8 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
         IPC.mangaRetry,
         IPC.mangaPause,
         IPC.mangaResume,
+        IPC.mangaPauseAll,
+        IPC.mangaResumeAll,
         IPC.mangaClearFinished,
         IPC.mangaRemoveDownload,
         IPC.mangaRemoveManga,
@@ -346,6 +348,15 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         [IPC.mangaPause, 'pause'],
         [IPC.mangaResume, 'resume']
     ];
+    ipcMain.handle(IPC.mangaPauseAll, (): void => {
+        queue.pauseAll();
+    });
+    ipcMain.handle(IPC.mangaResumeAll, (): void => {
+        // Nothing is started while the files are being moved.
+        if (!migrating) {
+            queue.resumeAll();
+        }
+    });
     byChapter.forEach(([channel, action]) => {
         ipcMain.handle(channel, (_event, chapterId) => {
             const id = asId(chapterId);
@@ -440,6 +451,12 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         const id = asId(groupId);
         if (id !== null) {
             db.deleteGroup(id);
+            deps.onLibraryChanged();
+        }
+    });
+    ipcMain.handle(IPC.mangaGroupMove, (_event, groupId, direction) => {
+        const id = asId(groupId);
+        if (id !== null && (direction === 'up' || direction === 'down') && db.moveGroup(id, direction)) {
             deps.onLibraryChanged();
         }
     });

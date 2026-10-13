@@ -18,7 +18,7 @@ beforeEach(() => {
     mock = installMockApi();
     useAnimeStore.setState({ status: UNSUPPORTED_STATUS, jobs: [], library: [], selection: null, playing: null });
     useMangaStore.setState({ status: makeMangaStatus({ supported: false, tool: null }), jobs: [], library: [], selection: null, view: 'browse' });
-    useAppStore.setState({ ...initial, tab: 'downloads', jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, updating: false, appUpdate: { ...APP_UPDATE_IDLE, currentVersion: '' } });
+    useAppStore.setState({ ...initial, tab: 'downloads', jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, appUpdate: { ...APP_UPDATE_IDLE, currentVersion: '' } });
 });
 
 describe('App', () => {
@@ -30,7 +30,9 @@ describe('App', () => {
         });
         expect(screen.queryByText('// BOOTING SYSTEMS…')).not.toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'PULLWAVE' })).toBeInTheDocument();
-        expect(screen.getByText('yt-dlp 2026.08.19')).toBeInTheDocument();
+        // The programs are installed and run: the header has no chip about them.
+        expect(screen.queryByText(/^yt-dlp /)).not.toBeInTheDocument();
+        expect(document.querySelectorAll('.chip')).toHaveLength(0);
     });
 
     it('marks the active tab and switches between sections', async () => {
@@ -100,7 +102,7 @@ describe('App', () => {
         const { unmount } = render(<App />);
         await screen.findByLabelText('Link 1');
         unmount();
-        expect(mock.unsubscribers).toHaveLength(4);
+        expect(mock.unsubscribers).toHaveLength(6);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
@@ -124,7 +126,7 @@ describe('App', () => {
         unmount();
         release();
         await waitFor(() => {
-            expect(mock.unsubscribers).toHaveLength(4);
+            expect(mock.unsubscribers).toHaveLength(6);
         });
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -379,7 +381,7 @@ describe('App anime section', () => {
         const { unmount } = render(<App />);
         await screen.findByRole('button', { name: 'ANIME' });
         unmount();
-        expect(mock.unsubscribers).toHaveLength(9);
+        expect(mock.unsubscribers).toHaveLength(11);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
@@ -467,7 +469,7 @@ describe('App manga section', () => {
         await screen.findByRole('button', { name: 'MANGA' });
         const before = mock.unsubscribers.length;
         unmount();
-        expect(before).toBe(12);
+        expect(before).toBe(14);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

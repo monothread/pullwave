@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { appEnv } from './programs';
 
 // Runs the real yt-dlp (the one in resources/bin) against archive.org and the real ani-cli against its source: pausing, closing the app
 // with downloads going on, resuming after opening it again, and how many downloads run at a time. It needs the network and
@@ -50,7 +51,7 @@ function writeSettings(settings: Record<string, unknown>): void {
 }
 
 async function open(): Promise<Running> {
-    const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`] });
+    const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: appEnv(workDir) });
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });

@@ -7,8 +7,7 @@ import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechTokenSlot, speechTranslatesTo, t
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import type { Settings } from '@shared/types';
 import type { AnimeHandlerDependencies } from './ipc/registerAnimeHandlers';
-import { AniCliLocator, readTextFile } from './services/aniCliLocator';
-import { createDefaultUpdaterDependencies, resetAniCli, updateAniCli, type AniCliUpdaterDependencies } from './services/aniCliUpdater';
+import { AniCliLocator, type AniPrograms } from './services/aniCliLocator';
 import { AniCliService } from './services/aniCliService';
 import { subtitleLabels } from './services/aniSubtitles';
 import { AnimeDb } from './services/animeDb';
@@ -18,7 +17,8 @@ import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
 import { animeBaseDirectory, isInsideDirectory, removeDirectories, removeEmptyDirectories } from './services/animeFiles';
 import { migrateAnimeFolder, type MigrationFileSystem } from './services/animeMigration';
-import type { BinaryResolver } from './services/binaryResolver';
+import { executableName, type BinaryResolver } from './services/binaryResolver';
+import type { ProgramTools } from './services/tools/programTools';
 import type { MediaSource } from './services/mediaProtocol';
 import { createStreamHandler, STREAM_USER_AGENT, StreamSessions } from './services/streamProxy';
 import { removeFiles } from './services/partialFiles';
@@ -44,22 +44,21 @@ export interface AnimeRuntimeOptions {
     platform: NodeJS.Platform;
     // userData: the library lives in <dataDir>/anime.
     dataDir: string;
-    // resources/bin and resources/ani-scripts (inside the package once built).
-    bundledDir: string;
+    // resources/ani-scripts (inside the package once built): the script that runs ani-cli with its stand-ins.
     scriptsDir: string;
+    // The programs the app installed (ani-cli, the shell and the curl it runs on, deno and ffmpeg).
+    programs: Pick<ProgramTools, 'pathOf'>;
     defaultDownloadDir: string;
     resolver: BinaryResolver;
     getSettings: () => Settings;
     // The language of the system, which the interface (and so the subtitles) follows when it is set to "device".
     systemLocale: string;
-    // A different ani-cli to run instead of the one that ships with the app (used by the end-to-end tests).
+    // A different ani-cli to run instead of the one the app installs (used by the end-to-end tests).
     customScriptPath?: () => string;
     // How files and folders are deleted (the tests replace it).
     remover?: { files: (paths: string[]) => void; folders: (paths: string[]) => void; emptyFolders?: (paths: string[]) => void };
     // How long to wait before removing again what could not be removed at first (the tests make it short).
     removeRetryMs?: number;
-    // How the update of ani-cli reaches the network and checks what it got (the end-to-end tests replace it).
-    updaterDependencies?: AniCliUpdaterDependencies;
     // Asks the user for a folder of anime to put into the library, starting at the given folder; null when they gave up (the
     // tests replace it).
     chooseLibraryFolder?: (startAt: string) => Promise<string | null>;
@@ -153,16 +152,18 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     const db = new AnimeDb(join(animeDir, 'anime.db'));
     // The queue lives in memory: what was not finished when the app closed has to be started again by the user.
     db.failInterrupted();
-    const locator = new AniCliLocator(
-        {
-            bundledDir: options.bundledDir,
-            scriptsDir: options.scriptsDir,
-            userBinDir: join(options.dataDir, 'bin'),
-            dataDir: animeDir
+    const installed: AniPrograms = {
+        anicli: () => {
+            return options.programs.pathOf('anicli');
         },
-        undefined,
-        options.platform
-    );
+        busybox: () => {
+            return options.programs.pathOf('busybox');
+        },
+        curl: () => {
+            return options.programs.pathOf('curl');
+        }
+    };
+    const locator = new AniCliLocator({ scriptsDir: options.scriptsDir, dataDir: animeDir }, installed, undefined, options.platform);
     const customScriptPath = options.customScriptPath ?? ((): string => {
         return '';
     });
@@ -175,7 +176,12 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         },
         tools: () => {
             const settings = options.getSettings();
-            return { ytdlp: options.resolver.ytdlp(settings), ffmpeg: options.resolver.ffmpeg(settings) };
+            return {
+                ytdlp: options.resolver.ytdlp(settings),
+                ffmpeg: options.resolver.ffmpeg(settings),
+                deno: options.programs.pathOf('deno'),
+                ffprobe: options.programs.pathOf('ffmpeg', `bin/${executableName('ffprobe', options.platform)}`)
+            };
         }
     });
     const queue = new AnimeDownloadQueue({
@@ -394,12 +400,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             availability,
             schedule: {
                 list: listSchedule
-            },
-            updateAniCli: () => {
-                return updateAniCli(locator, customScriptPath(), options.updaterDependencies ?? createDefaultUpdaterDependencies(locator.busyboxPath, readTextFile));
-            },
-            resetAniCli: () => {
-                return resetAniCli(locator, options.updaterDependencies ?? createDefaultUpdaterDependencies(locator.busyboxPath, readTextFile));
             },
             streams,
             streamQuality: () => {

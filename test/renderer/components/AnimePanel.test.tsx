@@ -7,7 +7,8 @@ import { SETTINGS_ICON } from '@renderer/components/TabButton';
 import { INITIAL_SCHEDULE, INITIAL_SEARCH, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { makeAnime, makeAnimeJob, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
-import { installMockApi } from '../../helpers/mockApi';
+import { useProgramsStore } from '@renderer/store/programsStore';
+import { installMockApi, makeProgramInfo, makeProgramsStatus } from '../../helpers/mockApi';
 
 const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
@@ -26,6 +27,7 @@ beforeEach(() => {
         selection: null,
         playing: null
     });
+    useProgramsStore.setState({ status: makeProgramsStatus(), updates: {}, versions: null, checking: false, working: {}, results: {} });
 });
 
 function subNav(): HTMLElement {
@@ -33,13 +35,28 @@ function subNav(): HTMLElement {
 }
 
 describe('AnimePanel', () => {
-    it('warns when the tools of the section are missing and shows nothing else', () => {
-        useAnimeStore.setState({ status: makeStatus({ available: false }) });
+    it('waits for the programs of the section: it shows how they are downloaded in place of the content, with the tabs kept', () => {
+        const base = makeProgramsStatus();
+        useProgramsStore.setState({
+            status: {
+                ...base,
+                programs: base.programs.map((program) => {
+                    return program.id === 'anicli' ? makeProgramInfo('anicli', { state: { ...program.state, status: 'downloading', percent: 30, version: null } }) : program;
+                })
+            }
+        });
         render(<AnimePanel />);
-        expect(screen.getByRole('alert')).toHaveTextContent('ANIME TOOLS NOT FOUND');
-        expect(screen.getByText('The files the anime section runs on are missing from this installation. Reinstall the app.')).toBeInTheDocument();
-        expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+        expect(screen.getByTestId('programs-setup-anime')).toHaveTextContent('PREPARING THE ANIME SECTION');
+        expect(screen.getByTestId('program-setup-anicli')).toHaveTextContent('Downloading… 30%');
+        expect(screen.getByRole('progressbar', { name: 'ani-cli' })).toHaveAttribute('aria-valuenow', '30');
+        expect(subNav()).toBeInTheDocument();
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
+    });
+
+    it('shows the content once the programs are ready', () => {
+        render(<AnimePanel />);
+        expect(screen.queryByTestId('programs-setup-anime')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Anime name')).toBeInTheDocument();
     });
 
     it('also has the tabs gathered in one list, without the gear, which the theme shows on a very narrow window', async () => {
@@ -150,20 +167,29 @@ describe('AnimePanel', () => {
         expect(screen.getByRole('region', { name: 'Settings' })).toBeInTheDocument();
         expect(screen.getByText('ANIME')).toBeInTheDocument();
         expect(screen.getByLabelText('Anime download folder')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'UPDATE ANI-CLI' })).toBeInTheDocument();
-        ['APPEARANCE & WINDOW', 'OUTPUT', 'QUALITY & FORMAT', 'YT-DLP', 'ADVANCED'].forEach((legend) => {
+        expect(screen.getByTestId('programs-block-anime')).toBeInTheDocument();
+        ['APPEARANCE & WINDOW', 'OUTPUT', 'QUALITY & FORMAT', 'ADVANCED'].forEach((legend) => {
             expect(screen.queryByText(legend)).not.toBeInTheDocument();
         });
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
         expect(useAnimeStore.getState()).toMatchObject({ view: 'settings', returnView: 'settings' });
     });
 
-    it('has no settings to reach while the tools of the section are missing', () => {
-        useAnimeStore.setState({ status: makeStatus({ available: false }), view: 'settings' });
+    it('still reaches the settings while the programs are missing, to try the download again from there', () => {
+        const base = makeProgramsStatus();
+        useProgramsStore.setState({
+            status: {
+                ...base,
+                programs: base.programs.map((program) => {
+                    return program.id === 'busybox' ? makeProgramInfo('busybox', { state: { ...program.state, status: 'error', error: { code: 'DOWNLOAD_FAILED', message: 'offline' } } }) : program;
+                })
+            }
+        });
+        useAnimeStore.setState({ view: 'settings' });
         render(<AnimePanel />);
-        expect(screen.getByRole('alert')).toHaveTextContent('ANIME TOOLS NOT FOUND');
-        expect(screen.queryByRole('region', { name: 'Settings' })).not.toBeInTheDocument();
-        expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Settings' })).toBeInTheDocument();
+        expect(screen.queryByTestId('programs-setup-anime')).not.toBeInTheDocument();
+        expect(within(screen.getByTestId('program-busybox')).getByRole('button', { name: 'TRY AGAIN' })).toBeEnabled();
     });
 
     describe('downloads', () => {

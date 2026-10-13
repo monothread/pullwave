@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { installedProgramsEnv } from './programs';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
@@ -39,7 +40,7 @@ async function launch(userData: string, settings: Record<string, unknown> = {}, 
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
         // The folder the library is rebuilt from is not asked for: there is no way to answer a dialog of the system here.
         // The schedule of the day is not asked of AniList: the address is one nobody answers at, unless a test gives its own.
-        env: { ...process.env, PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_IMPORT_DIR: animeDir, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', ...env }
+        env: { ...process.env, ...installedProgramsEnv(workDir), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_IMPORT_DIR: animeDir, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', ...env }
     });
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
@@ -1649,48 +1650,42 @@ test.describe('layout for every size of window @resize', () => {
     });
 });
 
-test('goes back to the ani-cli that ships with the app, by deleting the one an update saved', async () => {
+test('uses the ani-cli the app installed when none is chosen, and shows it as installed in the settings', async () => {
+    test.skip(!HAS_ANI_TOOLS, 'needs the real ani-cli: run `node scripts/fetch-binaries.mjs`');
     await session.app.close();
     const userData = join(workDir, 'user-data');
-    const bundledScript = readFileSync(join(ROOT, 'resources', 'bin', 'ani', 'ani-cli'), 'utf-8');
-    const bundledVersion = /version_number="([^"]*)"/.exec(bundledScript)?.[1] as string;
-    const saved = join(userData, 'bin', 'ani-cli');
-    mkdirSync(join(userData, 'bin'), { recursive: true });
-    writeFileSync(saved, bundledScript.replace(/version_number="[^"]*"/, 'version_number="99.0.0"'), { mode: 0o755 });
+    const script = readFileSync(join(ROOT, 'resources', 'bin', 'ani', 'ani-cli'), 'utf-8');
+    const version = /version_number="([^"]*)"/.exec(script)?.[1] as string;
 
-    // Without the stand-in of the tests, the app uses the scripts it finds: the one an update saved is newer than the one that ships.
+    // Without the stand-in of the tests, the app uses the script it installed.
     session = await launch(userData, {}, { PULLWAVE_ANI_CLI: '' });
     const { page } = session;
-    const chip = page.locator('.chip', { hasText: 'ani-cli' });
-    await expect(chip).toHaveText('ani-cli 99.0.0');
-    await expect(chip).toHaveAttribute('title', `${saved} (updated)`);
+    const installed = join(workDir, 'tools', 'anicli');
+    // Installed and running: no chip at the top, the version is in the settings.
+    await expect(page.locator('.logo')).toBeVisible();
+    await expect(page.locator('.binary-status .chip')).toHaveCount(0);
     await openAnimeSettings(page);
-    await expect(page.getByText('ani-cli version: 99.0.0')).toBeVisible();
-
-    await page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' }).click();
-
-    await expect(page.locator('.toast--info .toast__message')).toHaveText('Using the ani-cli that ships with the app again.');
-    await expect(page.getByText(`ani-cli version: ${bundledVersion}`)).toBeVisible();
-    await expect(chip).toHaveText(`ani-cli ${bundledVersion}`);
-    await expect(chip).toHaveAttribute('title', `${join(ROOT, 'resources', 'bin', 'ani', 'ani-cli')} (bundled)`);
-    await expect(page.getByRole('button', { name: 'USE THE ONE THAT SHIPS WITH THE APP' })).toHaveCount(0);
-    expect(existsSync(saved)).toBe(false);
-    expect(readFileSync(join(ROOT, 'resources', 'bin', 'ani', 'ani-cli'), 'utf-8')).toBe(bundledScript);
+    const block = page.getByTestId('programs-block-anime');
+    await expect(block.getByTestId(/^program-/)).toHaveCount(3);
+    await expect(block.getByTestId('program-anicli')).toContainText(`version ${version}`);
+    expect(await block.getByTestId('program-anicli').getAttribute('data-testid')).toBe('program-anicli');
+    expect(readdirSync(installed).length).toBeGreaterThan(0);
+    await expect(block.getByTestId('program-anicli').locator('.badge')).toHaveText('INSTALLED');
+    await expect(block.getByTestId('program-busybox').locator('.badge')).toHaveText('INSTALLED');
+    await expect(block.getByTestId('program-curl').locator('.badge')).toHaveText('INSTALLED');
+    await expect(block.getByTestId('program-busybox')).toContainText('Stays at the version the app was made with.');
 });
 
-test('shows the version of ani-cli at the top and in the settings, and does not update a script that was chosen', async () => {
+test('shows the ani-cli the user chose as theirs in the settings, and has no chip at the top', async () => {
     const { page } = session;
-    const chip = page.locator('.chip', { hasText: 'ani-cli' });
-    await expect(chip).toHaveText('ani-cli 0.0.0-fake');
-    await expect(chip).toHaveClass(/chip--ok/);
-    await expect(chip).toHaveAttribute('title', `${FAKE_ANI_CLI} (custom)`);
+    await expect(page.locator('.logo')).toBeVisible();
+    await expect(page.locator('.binary-status .chip')).toHaveCount(0);
 
     await openAnimeSettings(page);
-    await expect(page.getByText('ani-cli version: 0.0.0-fake')).toBeVisible();
-    await page.getByRole('button', { name: 'UPDATE ANI-CLI' }).click();
-    await expect(page.locator('.toast--error .toast__message')).toHaveText('You chose your own ani-cli in the settings, so the app does not update it.');
-    await expect(page.getByRole('button', { name: 'UPDATE ANI-CLI' })).toBeEnabled();
-    await expect(chip).toHaveText('ani-cli 0.0.0-fake');
+    const row = page.getByTestId('program-anicli');
+    await expect(row).toContainText(`Using the one you chose in the settings: ${FAKE_ANI_CLI}`);
+    await expect(row.locator('.badge')).toHaveText('YOURS');
+    await expect(row.getByRole('button')).toHaveCount(0);
 });
 
 test('shows the anime settings and saves them', async () => {

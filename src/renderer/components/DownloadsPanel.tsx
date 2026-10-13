@@ -2,6 +2,7 @@ import type { MessageKey } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore, type DownloadsView } from '../store/appStore';
 import { HistoryList } from './HistoryList';
+import { ProgramsGate } from './ProgramsSetup';
 import { QueueList } from './QueueList';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
@@ -41,10 +42,10 @@ export function DownloadsPanel() {
                 })}
             </nav>
             {view === 'queue' && (
-                <>
+                <ProgramsGate area="downloads">
                     <UrlInput />
                     <QueueList />
-                </>
+                </ProgramsGate>
             )}
             {view === 'history' && <HistoryList />}
             {view === 'settings' && <SettingsPanel scope="downloads" />}

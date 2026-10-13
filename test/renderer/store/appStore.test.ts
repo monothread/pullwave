@@ -9,7 +9,7 @@ const initial = useAppStore.getState();
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], updating: false, appUpdate: INITIAL_APP_UPDATE, traySupport: null, tab: 'downloads', downloadsView: 'queue' });
+    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], appUpdate: INITIAL_APP_UPDATE, traySupport: null, tab: 'downloads', downloadsView: 'queue' });
 });
 
 const HISTORY_ENTRY: HistoryEntry = { id: 'h1', url: 'https://x.com', title: 'T', filePath: '/d/T.mp4', status: 'done', errorTitle: null, finishedAt: 5 };
@@ -391,91 +391,6 @@ describe('useAppStore settings and binaries', () => {
     it('opens the directory chooser', async () => {
         mock.api.chooseDirectory.mockResolvedValueOnce('/picked');
         await expect(useAppStore.getState().chooseDirectory()).resolves.toBe('/picked');
-    });
-});
-
-describe('useAppStore.updateYtdlp', () => {
-    it('shows an info notice with the output on success', async () => {
-        mock.api.updateYtdlp.mockResolvedValueOnce({ ok: true, output: 'Updated to 2026.09' });
-        await useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().updating).toBe(false);
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Updated to 2026.09' });
-        expect(mock.api.checkBinaries).toHaveBeenCalledTimes(1);
-    });
-
-    it('shows an error notice on failure', async () => {
-        mock.api.updateYtdlp.mockResolvedValueOnce({ ok: false, output: 'Permission denied' });
-        await useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Permission denied' });
-    });
-
-    it('uses fallback messages when the output is empty', async () => {
-        mock.api.updateYtdlp.mockResolvedValueOnce({ ok: true, output: '' });
-        await useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'yt-dlp is up to date.' });
-        mock.api.updateYtdlp.mockResolvedValueOnce({ ok: false, output: '' });
-        await useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Update failed.' });
-    });
-
-    it('marks the store as updating while the request is pending', async () => {
-        let release: () => void = () => {
-            return undefined;
-        };
-        mock.api.updateYtdlp.mockReturnValueOnce(
-            new Promise((resolve) => {
-                release = () => {
-                    resolve({ ok: true, output: 'done' });
-                };
-            })
-        );
-        const pending = useAppStore.getState().updateYtdlp();
-        expect(useAppStore.getState().updating).toBe(true);
-        release();
-        await pending;
-        expect(useAppStore.getState().updating).toBe(false);
-    });
-});
-
-describe('useAppStore.resetYtdlp', () => {
-    it('goes back to the yt-dlp that ships with the app, tells the user and reads the binaries again', async () => {
-        mock.api.resetYtdlp.mockResolvedValueOnce({ ok: true, output: 'Using the yt-dlp that ships with the app again.' });
-        await useAppStore.getState().resetYtdlp();
-        expect(mock.api.resetYtdlp).toHaveBeenCalledTimes(1);
-        expect(mock.api.updateYtdlp).not.toHaveBeenCalled();
-        expect(useAppStore.getState().updating).toBe(false);
-        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Using the yt-dlp that ships with the app again.' });
-        expect(mock.api.checkBinaries).toHaveBeenCalledTimes(1);
-    });
-
-    it('shows an error notice when there was nothing to remove', async () => {
-        mock.api.resetYtdlp.mockResolvedValueOnce({ ok: false, output: 'There is no updated yt-dlp to remove: the one that ships with the app is already in use.' });
-        await useAppStore.getState().resetYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'There is no updated yt-dlp to remove: the one that ships with the app is already in use.' });
-    });
-
-    it('says something even when the result has no text', async () => {
-        mock.api.resetYtdlp.mockResolvedValueOnce({ ok: false, output: '' });
-        await useAppStore.getState().resetYtdlp();
-        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'Update failed.' });
-    });
-
-    it('marks the store as updating while the request is pending, so the buttons wait', async () => {
-        let release: () => void = () => {
-            return undefined;
-        };
-        mock.api.resetYtdlp.mockReturnValueOnce(
-            new Promise((resolve) => {
-                release = () => {
-                    resolve({ ok: true, output: 'done' });
-                };
-            })
-        );
-        const pending = useAppStore.getState().resetYtdlp();
-        expect(useAppStore.getState().updating).toBe(true);
-        release();
-        await pending;
-        expect(useAppStore.getState().updating).toBe(false);
     });
 });
 

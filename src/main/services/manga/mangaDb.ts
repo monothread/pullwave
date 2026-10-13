@@ -16,6 +16,7 @@ import {
     type MangaError,
     type MangaErrorCode,
     type MangaGroup,
+    type MangaGroupDirection,
     type MangaRecord,
     type MangaStatus,
     type MangaSummary,
@@ -111,6 +112,14 @@ const MIGRATIONS: readonly string[] = [
         page_count INTEGER NOT NULL,
         read_at INTEGER NOT NULL,
         UNIQUE (source_id, manga_remote_id)
+    );`,
+    // The order of the groups, which is the order of the tabs of the library (the first is the one on the left). The groups that were there
+    // keep the alphabetical order they had.
+    `ALTER TABLE manga_group ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+    UPDATE manga_group SET position = (
+        SELECT COUNT(*) FROM manga_group other
+        WHERE other.name COLLATE NOCASE < manga_group.name COLLATE NOCASE
+            OR (other.name COLLATE NOCASE = manga_group.name COLLATE NOCASE AND other.id < manga_group.id)
     );`
 ];
 
@@ -588,7 +597,7 @@ export class MangaDb {
     // ----- Groups -----
 
     listGroups(): MangaGroup[] {
-        return this.all('SELECT * FROM manga_group ORDER BY name COLLATE NOCASE, id').map(toGroup);
+        return this.all('SELECT * FROM manga_group ORDER BY position, id').map(toGroup);
     }
 
     getGroup(id: number): MangaGroup | null {
@@ -607,7 +616,27 @@ export class MangaDb {
         if (this.groupNameTaken(name, 0)) {
             return null;
         }
-        return toGroup(this.one('INSERT INTO manga_group (name, created_at) VALUES (?, ?) RETURNING *', name, this.now()) ?? {});
+        // At the end of the others.
+        return toGroup(
+            this.one('INSERT INTO manga_group (name, created_at, position) VALUES (?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM manga_group)) RETURNING *', name, this.now()) ?? {}
+        );
+    }
+
+    // Moves the group one place up (towards the first) or down, by changing places with the one next to it. False when it is not there or is
+    // already at that end.
+    moveGroup(id: number, direction: MangaGroupDirection): boolean {
+        const groups = this.all('SELECT id, position FROM manga_group ORDER BY position, id');
+        const index = groups.findIndex((row) => {
+            return numeric(row, 'id') === id;
+        });
+        const other = groups[index + (direction === 'up' ? -1 : 1)];
+        const group = groups[index];
+        if (index === -1 || other === undefined || group === undefined) {
+            return false;
+        }
+        this.run('UPDATE manga_group SET position = ? WHERE id = ?', numeric(other, 'position'), id);
+        this.run('UPDATE manga_group SET position = ? WHERE id = ?', numeric(group, 'position'), numeric(other, 'id'));
+        return true;
     }
 
     // Null when the group is not there or another group has the name.

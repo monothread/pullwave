@@ -32,7 +32,7 @@ describe('sanitizeSettings', () => {
             autoSubtitles: true,
             embedSubtitles: true,
             rateLimit: '2M',
-            maxConcurrent: 2,
+            maxConcurrent: 3,
             ytdlpPath: '/opt/yt-dlp',
             ffmpegPath: '/opt/ffmpeg',
             jsRuntime: 'node:/usr/bin/node',
@@ -54,6 +54,7 @@ describe('sanitizeSettings', () => {
             animeSubtitles: 'Portuguese',
             mangaDirectory: '/media/manga',
             mangaFormat: 'folder',
+            mangaMaxConcurrent: 4,
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
             mangaFlaresolverrEnabled: true,
             mangaShowAdult: true,
@@ -100,6 +101,24 @@ describe('sanitizeSettings', () => {
 
     it.each(['yes', 0, null, []])('falls back to looking for new chapters for the invalid value %j', (mangaCheckNewChapters) => {
         expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(true);
+    });
+
+    it('downloads the mangas from three sources at the same time by default', () => {
+        expect(DEFAULT_SETTINGS.mangaMaxConcurrent).toBe(3);
+        expect(sanitizeSettings({}).mangaMaxConcurrent).toBe(3);
+        expect(sanitizeSettings(null).mangaMaxConcurrent).toBe(3);
+    });
+
+    it.each([[1, 1], [4, 4], [6, 6], [0, 1], [-5, 1], [7, 6], [100, 6], [2.6, 3]])('keeps the limit of manga downloads %j within 1 to 6 (%j)', (value, expected) => {
+        expect(sanitizeSettings({ mangaMaxConcurrent: value }).mangaMaxConcurrent).toBe(expected);
+    });
+
+    it.each(['4', NaN, Infinity, null, [], {}])('falls back to three manga downloads for the invalid value %j', (mangaMaxConcurrent) => {
+        expect(sanitizeSettings({ mangaMaxConcurrent }).mangaMaxConcurrent).toBe(3);
+    });
+
+    it('does not touch the limit of the other downloads when the one of the mangas changes', () => {
+        expect(sanitizeSettings({ mangaMaxConcurrent: 5 }).maxConcurrent).toBe(3);
     });
 
     it('does not download the new chapters by default', () => {
@@ -330,7 +349,7 @@ describe('sanitizeSettings', () => {
         expect(result.cookiesBrowserDir).toBe('');
         expect(result.downloadDir).toBe('');
         expect(result.maxTitleLength).toBe(80);
-        expect(result.maxConcurrent).toBe(2);
+        expect(result.maxConcurrent).toBe(3);
     });
 
     it('checks the end of live streams for 10 seconds by default', () => {
@@ -369,13 +388,13 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ maxTitleLength: 80.6 }).maxTitleLength).toBe(81);
     });
 
-    it('always runs two downloads at a time, whatever the saved value is', () => {
-        expect(DEFAULT_SETTINGS.maxConcurrent).toBe(2);
+    it('always runs three downloads at a time, whatever the saved value is', () => {
+        expect(DEFAULT_SETTINGS.maxConcurrent).toBe(3);
         [0, 1, 2, 3, 5, 50, -4, 2.5, NaN, '3', null, undefined].forEach((value) => {
-            expect(sanitizeSettings({ maxConcurrent: value }).maxConcurrent).toBe(2);
+            expect(sanitizeSettings({ maxConcurrent: value }).maxConcurrent).toBe(3);
         });
-        expect(sanitizeSettings({}).maxConcurrent).toBe(2);
-        expect(sanitizeSettings(null).maxConcurrent).toBe(2);
+        expect(sanitizeSettings({}).maxConcurrent).toBe(3);
+        expect(sanitizeSettings(null).maxConcurrent).toBe(3);
     });
 
     it('trims string values', () => {

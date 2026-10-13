@@ -18,6 +18,8 @@ interface Setup {
     fetched: number[];
     answers: Map<number, { details: MangaDetails; chapters: MangaChapter[] } | Error>;
     enabled: { value: boolean };
+    // The ids of the sources that are installed (null: not known), and whether asking for them fails.
+    installed: { value: ReadonlySet<string> | null; fails: boolean; asked: number };
 }
 
 function setup(): Setup {
@@ -27,6 +29,7 @@ function setup(): Setup {
     const fetched: number[] = [];
     const answers = new Map<number, { details: MangaDetails; chapters: MangaChapter[] } | Error>();
     const enabled = { value: true };
+    const installed: { value: ReadonlySet<string> | null; fails: boolean; asked: number } = { value: null, fails: false, asked: 0 };
     const checker = new MangaUpdateChecker({
         db,
         fetchManga: (remoteId) => {
@@ -36,6 +39,10 @@ function setup(): Setup {
                 return Promise.reject(answer ?? new Error('not reachable'));
             }
             return Promise.resolve(answer);
+        },
+        installedSourceIds: () => {
+            installed.asked += 1;
+            return installed.fails ? Promise.reject(new Error('no sources')) : Promise.resolve(installed.value);
         },
         isEnabled: () => {
             return enabled.value;
@@ -47,11 +54,11 @@ function setup(): Setup {
             changes.count += 1;
         }
     });
-    return { db, checker, news, changes, fetched, answers, enabled };
+    return { db, checker, news, changes, fetched, answers, enabled, installed };
 }
 
-function addManga(context: Setup, remoteId: number, title: string, chapters: number[]): number {
-    const manga = context.db.upsertManga({ remoteId, sourceId: 's', title, thumbnailUrl: null });
+function addManga(context: Setup, remoteId: number, title: string, chapters: number[], sourceId = 's'): number {
+    const manga = context.db.upsertManga({ remoteId, sourceId, title, thumbnailUrl: null });
     context.db.registerChapters(manga.id, chapters.map((id) => {return chapter(id)}));
     return manga.id;
 }
@@ -84,7 +91,7 @@ describe('MangaUpdateChecker', () => {
         context.answers.set(8, { details: details(8), chapters: [chapter(1), chapter(2), chapter(3)] });
         context.answers.set(9, { details: details(9), chapters: [chapter(1)] });
 
-        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 3, titles: ['Bleach', 'One Piece'], failed: 0 });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 3, titles: ['Bleach', 'One Piece'], failed: 0, skipped: 0 });
 
         expect(context.db.chaptersOf(one).map((item) => {return [item.remoteId, item.status]}).sort()).toEqual([[1, 'idle'], [2, 'idle'], [3, 'idle']]);
         expect(context.db.chaptersOf(bleach)).toHaveLength(3);
@@ -133,7 +140,7 @@ describe('MangaUpdateChecker', () => {
         const context = setup();
         addManga(context, 7, 'One Piece', [1, 2]);
         context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
-        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
         expect(context.news).toEqual([]);
     });
 
@@ -143,7 +150,7 @@ describe('MangaUpdateChecker', () => {
         const bleach = addManga(context, 8, 'Bleach', [1]);
         context.answers.set(7, new Error('offline'));
         context.answers.set(8, { details: details(8), chapters: [chapter(1), chapter(2)] });
-        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 1, titles: ['Bleach'], failed: 1 });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 1, titles: ['Bleach'], failed: 1, skipped: 0 });
         expect(context.db.chaptersOf(bleach)).toHaveLength(2);
     });
 
@@ -151,8 +158,8 @@ describe('MangaUpdateChecker', () => {
         const context = setup();
         addManga(context, 7, 'One Piece', [1]);
         context.enabled.value = false;
-        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
-        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
         expect(context.fetched).toEqual([]);
     });
 
@@ -161,7 +168,7 @@ describe('MangaUpdateChecker', () => {
         const id = addManga(context, 7, 'One Piece', [1]);
         context.enabled.value = false;
         context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
-        await expect(context.checker.checkNow('manual')).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0 });
+        await expect(context.checker.checkNow('manual')).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
         expect(context.fetched).toEqual([7]);
         expect(context.db.chaptersOf(id)).toHaveLength(2);
     });
@@ -297,6 +304,104 @@ describe('MangaUpdateChecker', () => {
     });
 });
 
+describe('MangaUpdateChecker the mangas whose extension is not installed', () => {
+    function twoSources(): { context: Setup; installedManga: number; goneManga: number } {
+        const context = setup();
+        const installedManga = addManga(context, 1, 'One Piece', [1], 'here');
+        const goneManga = addManga(context, 2, 'Bleach', [1], 'gone');
+        context.answers.set(1, { details: details(1), chapters: [chapter(1), chapter(2)] });
+        context.answers.set(2, { details: details(2), chapters: [chapter(1), chapter(2)] });
+        context.installed.value = new Set(['here', 'local']);
+        return { context, installedManga, goneManga };
+    }
+
+    it('does not ask the server about them, and says how many it left out', async () => {
+        const { context } = twoSources();
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 1 });
+        expect(context.fetched).toEqual([1]);
+    });
+
+    it('works without a way to ask which sources are installed, as before', async () => {
+        const context = setup();
+        addManga(context, 7, 'One Piece', [1], 'whatever');
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        const plain = new MangaUpdateChecker({
+            db: context.db,
+            fetchManga: (remoteId) => {
+                context.fetched.push(remoteId);
+                return Promise.resolve(context.answers.get(remoteId) as { details: MangaDetails; chapters: MangaChapter[] });
+            },
+            isEnabled: () => {return true},
+            onNewChapters: () => {return undefined},
+            onLibraryChanged: () => {return undefined}
+        });
+        await expect(plain.checkNow()).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
+        expect(context.fetched).toEqual([7]);
+    });
+
+    it('keeps them in the library, untouched, and does not count them as unreached', async () => {
+        const { context, goneManga } = twoSources();
+        await context.checker.checkNow('manual');
+        expect(context.db.getManga(goneManga)).toMatchObject({ title: 'Bleach', sourceId: 'gone' });
+        expect(context.db.chaptersOf(goneManga)).toHaveLength(1);
+        expect(context.news).toEqual([{ count: 1, titles: ['One Piece'] }]);
+    });
+
+    it('leaves them out in the check every hour too, but not while it is turned off', async () => {
+        const { context } = twoSources();
+        await expect(context.checker.checkNow('auto')).resolves.toMatchObject({ skipped: 1 });
+        expect(context.fetched).toEqual([1]);
+        context.enabled.value = false;
+        context.fetched.length = 0;
+        context.installed.asked = 0;
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
+        expect(context.fetched).toEqual([]);
+        expect(context.installed.asked).toBe(0);
+    });
+
+    it('asks which sources are installed once for the whole check, not once for each manga', async () => {
+        const { context } = twoSources();
+        addManga(context, 3, 'Naruto', [1], 'gone');
+        await context.checker.checkNow();
+        expect(context.installed.asked).toBe(1);
+    });
+
+    it('asks about every manga when the list of installed sources is not known', async () => {
+        const { context } = twoSources();
+        context.installed.value = null;
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 2, titles: ['Bleach', 'One Piece'], failed: 0, skipped: 0 });
+        expect(context.fetched).toEqual([2, 1]);
+    });
+
+    it('asks about every manga when the list of installed sources cannot be read', async () => {
+        const { context } = twoSources();
+        context.installed.fails = true;
+        await expect(context.checker.checkNow()).resolves.toMatchObject({ count: 2, failed: 0, skipped: 0 });
+        expect(context.fetched).toEqual([2, 1]);
+    });
+
+    it('still counts as unreached a manga of an installed source that the server could not reach', async () => {
+        const { context } = twoSources();
+        context.answers.set(1, new Error('timeout'));
+        await expect(context.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 1, skipped: 1 });
+    });
+
+    it('answers a check of one of them as skipped, with no question to the server', async () => {
+        const { context, goneManga, installedManga } = twoSources();
+        await expect(context.checker.checkManga(goneManga)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 1 });
+        expect(context.fetched).toEqual([]);
+        expect(context.news).toEqual([]);
+        await expect(context.checker.checkManga(installedManga)).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
+        expect(context.fetched).toEqual([1]);
+    });
+
+    it('checks one of them when the list of installed sources is not known', async () => {
+        const { context, goneManga } = twoSources();
+        context.installed.value = null;
+        await expect(context.checker.checkManga(goneManga)).resolves.toEqual({ ok: true, count: 1, titles: ['Bleach'], failed: 0, skipped: 0 });
+    });
+});
+
 describe('MangaUpdateChecker the history of new chapters', () => {
     it('writes what the check every hour finds as automatic, and what the user asks for as manual', async () => {
         const context = setup();
@@ -333,7 +438,7 @@ describe('MangaUpdateChecker one manga', () => {
         const one = addManga(context, 7, 'One Piece', [1]);
         addManga(context, 8, 'Bleach', [1]);
         context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2), chapter(3)] });
-        await expect(context.checker.checkManga(one)).resolves.toEqual({ ok: true, count: 2, titles: ['One Piece'], failed: 0 });
+        await expect(context.checker.checkManga(one)).resolves.toEqual({ ok: true, count: 2, titles: ['One Piece'], failed: 0, skipped: 0 });
         expect(context.fetched).toEqual([7]);
         expect(context.news).toEqual([{ count: 2, titles: ['One Piece'] }]);
         expect(context.changes.count).toBe(1);
@@ -351,7 +456,7 @@ describe('MangaUpdateChecker one manga', () => {
         const context = setup();
         const one = addManga(context, 7, 'One Piece', [1]);
         context.answers.set(7, { details: details(7, { author: 'Eiichiro Oda' }), chapters: [chapter(1)] });
-        await expect(context.checker.checkManga(one)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0 });
+        await expect(context.checker.checkManga(one)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
         expect(context.news).toEqual([]);
         expect(context.changes.count).toBe(0);
         expect(context.db.getManga(one)).toMatchObject({ author: 'Eiichiro Oda' });

@@ -1,5 +1,5 @@
-import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { ToolError, ToolErrorCode, ToolId, ToolSpec, ToolState } from '@shared/tools';
 import { extractArchive } from './archiveExtract';
 import { downloadFile, ToolDownloadError } from './toolDownload';
@@ -16,6 +16,10 @@ export interface ToolInstallerDependencies {
     extract?: typeof extractArchive;
     onState?: (state: ToolState) => void;
 }
+
+// Looks at what was unpacked before it takes its place (it runs the program, reads the script...) and throws, with the reason, when it is not
+// what it should be.
+export type InstallVerifier = (directory: string) => Promise<void>;
 
 interface Marker {
     id: string;
@@ -73,19 +77,20 @@ export class ToolInstaller {
 
     // Installs the program (nothing happens when it is there). Asking again while it goes on waits for the same install.
     // `keepOthers` leaves the versions that are there (the one that runs is not taken away while it runs; `removeOthers` does it later).
-    install(spec: ToolSpec, signal?: AbortSignal, keepOthers = false): Promise<ToolState> {
+    // `verify` looks at the unpacked program before it is put in its place: when it throws, nothing is installed.
+    install(spec: ToolSpec, signal?: AbortSignal, keepOthers = false, verify?: InstallVerifier): Promise<ToolState> {
         const existing = this.running.get(spec.id);
         if (existing !== undefined) {
             return existing;
         }
-        const job = this.run(spec, signal, keepOthers).finally(() => {
+        const job = this.run(spec, signal, keepOthers, verify).finally(() => {
             this.running.delete(spec.id);
         });
         this.running.set(spec.id, job);
         return job;
     }
 
-    private async run(spec: ToolSpec, signal: AbortSignal | undefined, keepOthers: boolean): Promise<ToolState> {
+    private async run(spec: ToolSpec, signal: AbortSignal | undefined, keepOthers: boolean, verify?: InstallVerifier): Promise<ToolState> {
         if (this.isReady(spec)) {
             return this.publish(spec, 'ready', 100);
         }
@@ -94,7 +99,7 @@ export class ToolInstaller {
         const staging = join(folder, `staging-${spec.version}`);
         try {
             await this.fetchArchive(spec, archive, signal);
-            await this.unpack(spec, archive, staging);
+            await this.unpack(spec, archive, staging, verify);
             this.complete(spec, staging, folder, keepOthers);
             return this.publish(spec, 'ready', 100);
         } catch (error) {
@@ -126,11 +131,18 @@ export class ToolInstaller {
         }
     }
 
-    private async unpack(spec: ToolSpec, archive: string, staging: string): Promise<void> {
+    private async unpack(spec: ToolSpec, archive: string, staging: string, verify?: InstallVerifier): Promise<void> {
         this.publish(spec, 'extracting', EXTRACT_PERCENT);
         rmSync(staging, { recursive: true, force: true });
-        const extract = this.deps.extract ?? extractArchive;
-        await extract(spec.format, archive, { destination: staging, stripComponents: spec.stripComponents, exclude: spec.exclude });
+        if (spec.format === 'raw') {
+            // Nothing to unpack: the file is the program, and it goes where the spec says.
+            const target = join(staging, spec.entry);
+            mkdirSync(dirname(target), { recursive: true });
+            copyFileSync(archive, target);
+        } else {
+            const extract = this.deps.extract ?? extractArchive;
+            await extract(spec.format, archive, { destination: staging, stripComponents: spec.stripComponents, exclude: spec.exclude });
+        }
         spec.executables.forEach((relativePath) => {
             const path = join(staging, relativePath);
             if (!existsSync(path)) {
@@ -142,6 +154,13 @@ export class ToolInstaller {
         });
         if (!existsSync(join(staging, spec.entry))) {
             throw new InstallFailure('INCOMPLETE', `The archive does not have ${spec.entry}`);
+        }
+        if (verify !== undefined) {
+            try {
+                await verify(staging);
+            } catch (error) {
+                throw new InstallFailure('INVALID', messageOf(error));
+            }
         }
         const marker: Marker = { id: spec.id, version: spec.version, sha256: spec.sha256 };
         writeFileSync(join(staging, MARKER_FILE), JSON.stringify(marker), 'utf-8');

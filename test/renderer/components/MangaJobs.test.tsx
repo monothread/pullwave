@@ -166,6 +166,40 @@ describe('MangaJobs', () => {
         expect(mock.api.manga.cancel).toHaveBeenCalledWith(6);
     });
 
+    it.each(['running', 'queued'] as const)('offers PAUSE ALL when a download is %s, and not RESUME ALL', async (status) => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 5, status })] });
+        render(<MangaJobs />);
+        expect(screen.queryByRole('button', { name: 'RESUME ALL' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'PAUSE ALL' }));
+        expect(mock.api.manga.pauseAll).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.resumeAll).not.toHaveBeenCalled();
+    });
+
+    it('offers RESUME ALL when a download is paused, and not PAUSE ALL', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 6, status: 'paused' })] });
+        render(<MangaJobs />);
+        expect(screen.queryByRole('button', { name: 'PAUSE ALL' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'RESUME ALL' }));
+        expect(mock.api.manga.resumeAll).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.pauseAll).not.toHaveBeenCalled();
+    });
+
+    it('offers both when some are going on and some are paused', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 1, status: 'running' }), makeMangaJob({ chapterId: 2, status: 'paused' })] });
+        render(<MangaJobs />);
+        expect(screen.getByRole('button', { name: 'PAUSE ALL' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'RESUME ALL' })).toBeEnabled();
+    });
+
+    it.each(['done', 'error', 'cancelled'] as const)('offers neither when the only download is %s', (status) => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 1, status })] });
+        render(<MangaJobs />);
+        expect(screen.queryByRole('button', { name: 'PAUSE ALL' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'RESUME ALL' })).not.toBeInTheDocument();
+    });
+
     it('can only cancel a download that waits', async () => {
         const user = userEvent.setup();
         useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 7, status: 'queued' })] });

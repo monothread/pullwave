@@ -76,9 +76,7 @@ const ANIME_CHANNELS = [
     IPC.animeSubtitleTranslateEstimate,
     IPC.animeSubtitleTranslateMany,
     IPC.animeSubtitles,
-    IPC.animeSubtitlesCheck,
-    IPC.animeResetCli,
-    IPC.animeUpdateCli
+    IPC.animeSubtitlesCheck
 ].sort();
 
 function setup(available = true) {
@@ -107,13 +105,7 @@ function setup(available = true) {
             return 'https://s4.anilist.co/cover.jpg';
         })
     };
-    const updateAniCli = vi.fn(async () => {
-        return { ok: true, output: 'Updated ani-cli 5.1.4 → 5.2.0.' };
-    });
-    const resetAniCli = vi.fn(() => {
-        return { ok: true, output: 'Using the ani-cli that ships with the app again.' };
-    });
-    const aniCliInfo = { found: true, path: '/app/resources/bin/ani/ani-cli', version: '5.1.4', source: 'bundled' as const };
+    const aniCliInfo = { found: true, path: '/data/tools/anicli/abc/ani-cli', version: '5.1.4', source: 'installed' as const };
     const resolveStream = vi.fn(async (): Promise<AniRunResult<ResolvedStream>> => {
         return { status: 'done', value: { url: 'https://cdn.example/master.m3u8', subtitleUrl: null, referer: 'https://embed.example/', subtitles: [] } };
     });
@@ -190,8 +182,6 @@ function setup(available = true) {
         schedule,
         covers,
         availability,
-        updateAniCli,
-        resetAniCli,
         streams,
         streamQuality: () => {
             return '720p';
@@ -216,7 +206,7 @@ function setup(available = true) {
         subtitles
     } as unknown as AnimeHandlerDependencies;
     registerAnimeHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, availability, updateAniCli, resetAniCli, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, migrateFolder, missing, onLibraryChanged, subtitles, deps };
+    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, availability, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, migrateFolder, missing, onLibraryChanged, subtitles, deps };
 }
 
 describe('registerAnimeHandlers', () => {
@@ -225,24 +215,9 @@ describe('registerAnimeHandlers', () => {
     });
 
     it('reports whether ani-cli is in place and which one is used', () => {
-        const info = { found: true, path: '/app/resources/bin/ani/ani-cli', version: '5.1.4', source: 'bundled' };
+        const info = { found: true, path: '/data/tools/anicli/abc/ani-cli', version: '5.1.4', source: 'installed' };
         expect(setup(true).call(IPC.animeStatus)).toEqual({ supported: true, available: true, aniCli: info });
         expect(setup(false).call(IPC.animeStatus)).toEqual({ supported: true, available: false, aniCli: info });
-    });
-
-    it('updates ani-cli and gives the result as it is', async () => {
-        const { call, updateAniCli } = setup();
-        expect(await call(IPC.animeUpdateCli)).toEqual({ ok: true, output: 'Updated ani-cli 5.1.4 → 5.2.0.' });
-        expect(updateAniCli).toHaveBeenCalledTimes(1);
-        expect(updateAniCli).toHaveBeenCalledWith();
-    });
-
-    it('goes back to the ani-cli that ships with the app and gives the result as it is', () => {
-        const { call, resetAniCli, updateAniCli } = setup();
-        expect(call(IPC.animeResetCli)).toEqual({ ok: true, output: 'Using the ani-cli that ships with the app again.' });
-        expect(resetAniCli).toHaveBeenCalledTimes(1);
-        expect(resetAniCli).toHaveBeenCalledWith();
-        expect(updateAniCli).not.toHaveBeenCalled();
     });
 
     describe('search', () => {
@@ -1762,8 +1737,6 @@ describe('registerAnimeHandlers where the section does not exist', () => {
 
         expect(ipc.channels()).toEqual(ANIME_CHANNELS);
         expect(ipc.call(IPC.animeStatus)).toEqual({ supported: false, available: false, aniCli: null });
-        expect(ipc.call(IPC.animeUpdateCli)).toEqual({ ok: false, output: unsupported.raw });
-        expect(ipc.call(IPC.animeResetCli)).toEqual({ ok: false, output: unsupported.raw });
         expect(ipc.call(IPC.animeSearch, 'naruto', 'sub')).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeEpisodes, 'naruto', 1, 'sub')).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeDownload, {})).toEqual({ ok: false, message: unsupported.raw });

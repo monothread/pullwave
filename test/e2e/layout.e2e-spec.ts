@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { installedProgramsEnv } from './programs';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
@@ -127,7 +128,7 @@ test('nothing is cut, misaligned or out of its box on any screen, at any size fr
     const app = await electron.launch({
         executablePath: ELECTRON_PATH,
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-        env: { ...process.env, PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', FAKE_YTDLP_LOG: join(work, 'y.log') }
+        env: { ...process.env, ...installedProgramsEnv(work), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', FAKE_YTDLP_LOG: join(work, 'y.log') }
     });
     const page = await app.firstWindow();
     const resize = async (w: number, h: number): Promise<void> => {
