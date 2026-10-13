@@ -1,6 +1,6 @@
 {
   "name": "pullwave",
-  "version": "0.21.3",
+  "version": "0.21.4",
   "description": "Cyberpunk yt-dlp GUI and video downloader for Linux and Windows",
   "main": "out/main/index.js",
   "author": {
@@ -18,11 +18,11 @@
     "lint": "eslint src/ test/ --max-warnings=0",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
-    "dist": "npm run check:tools && npm run fetch-binaries && npm run build && electron-builder --linux AppImage deb rpm pacman --publish never",
+    "dist": "npm run check:tools && npm run build && electron-builder --linux AppImage deb rpm pacman --publish never",
     "fetch-binaries": "node scripts/fetch-binaries.mjs",
-    "release": "npm run check:tools && npm run fetch-binaries && npm run build && electron-builder --linux AppImage deb rpm pacman --publish always",
-    "dist:win": "npm run fetch-binaries && npm run build && electron-builder --win nsis --x64 --publish never",
-    "release:win": "npm run fetch-binaries && npm run build && electron-builder --win nsis --x64 --publish always",
+    "release": "npm run check:tools && npm run build && electron-builder --linux AppImage deb rpm pacman --publish always",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "release:win": "npm run build && electron-builder --win nsis --x64 --publish always",
     "check:tools": "node scripts/check-linux-tools.mjs"
   },
   "dependencies": {
