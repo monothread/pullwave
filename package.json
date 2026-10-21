@@ -1,6 +1,6 @@
 {
   "name": "pullwave",
-  "version": "0.21.5",
+  "version": "0.21.6",
   "description": "Cyberpunk yt-dlp GUI and video downloader for Linux and Windows",
   "main": "out/main/index.js",
   "author": {
