@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { CLOUDFLARE_SHOW_AFTER_MS } from '@renderer/components/MangaCloudflareNotice';
 import { MangaPanel } from '@renderer/components/MangaPanel';
+import { restoreScroll } from '@renderer/hooks/scrollRestoration';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapterRecord, makeLibraryManga, makeMangaJob, makeMangaStatus, makeSource, makeTool } from '../../helpers/mangaFixtures';
@@ -270,5 +271,30 @@ describe('MangaPanel starting each page at the top', () => {
             useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 9, status: 'running' })] });
         });
         expect(area.scrollTop).toBe(700);
+    });
+
+    it('leaves the scroll alone while the buttons of the mouse are putting it back', () => {
+        vi.stubGlobal('requestAnimationFrame', () => {
+            return 1;
+        });
+        vi.stubGlobal('cancelAnimationFrame', () => {
+            return undefined;
+        });
+        Object.defineProperty(area, 'clientHeight', { value: 800, configurable: true });
+        Object.defineProperty(area, 'scrollHeight', { value: 4000, configurable: true });
+        render(<MangaPanel />, { container: area.appendChild(document.createElement('div')) });
+        area.scrollTop = 700;
+        restoreScroll(area, 700);
+        act(() => {
+            useMangaStore.getState().setView('library');
+        });
+        expect(area.scrollTop).toBe(700);
+        restoreScroll(area, 0);
+        area.scrollTop = 700;
+        act(() => {
+            useMangaStore.getState().setView('extensions');
+        });
+        expect(area.scrollTop).toBe(0);
+        vi.unstubAllGlobals();
     });
 });

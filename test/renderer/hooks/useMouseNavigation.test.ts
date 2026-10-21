@@ -581,4 +581,112 @@ describe('useMouseNavigation', () => {
         press(MOUSE_BACK_BUTTON);
         expect(useAppStore.getState().tab).toBe('anime');
     });
+
+    describe('scroll of the pages', () => {
+        let area: HTMLElement;
+        let frames: Array<(time: number) => void>;
+
+        beforeEach(() => {
+            frames = [];
+            vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => {
+                frames.push(callback);
+                return frames.length;
+            });
+            vi.stubGlobal('cancelAnimationFrame', () => {
+                return undefined;
+            });
+            area = document.createElement('div');
+            area.className = 'app__main';
+            Object.defineProperty(area, 'clientHeight', { value: 800, configurable: true });
+            Object.defineProperty(area, 'scrollHeight', { value: 4000, configurable: true });
+            document.body.appendChild(area);
+        });
+
+        afterEach(() => {
+            area.remove();
+            vi.unstubAllGlobals();
+        });
+
+        function runFrame(time: number): void {
+            act(() => {
+                frames.splice(0).forEach((frame) => {
+                    frame(time);
+                });
+            });
+        }
+
+        it('puts back where the page was scrolled to when going back and forward', () => {
+            mount();
+            area.scrollTop = 640;
+            setTab('anime');
+            area.scrollTop = 220;
+            setTab('settings');
+            area.scrollTop = 0;
+
+            press(MOUSE_BACK_BUTTON);
+            area.scrollTop = 0;
+            runFrame(16);
+            expect(useAppStore.getState().tab).toBe('anime');
+            expect(area.scrollTop).toBe(220);
+
+            press(MOUSE_BACK_BUTTON);
+            area.scrollTop = 0;
+            runFrame(32);
+            expect(useAppStore.getState().tab).toBe('downloads');
+            expect(area.scrollTop).toBe(640);
+
+            press(MOUSE_FORWARD_BUTTON);
+            area.scrollTop = 0;
+            runFrame(48);
+            expect(useAppStore.getState().tab).toBe('anime');
+            expect(area.scrollTop).toBe(220);
+        });
+
+        it('keeps the scroll that the viewer left on the page when going back', () => {
+            mount();
+            setTab('anime');
+            area.scrollTop = 1500;
+            press(MOUSE_BACK_BUTTON);
+            runFrame(16);
+            press(MOUSE_FORWARD_BUTTON);
+            runFrame(32);
+            expect(useAppStore.getState().tab).toBe('anime');
+            expect(area.scrollTop).toBe(1500);
+        });
+
+        it('does not scroll when the page was at the top', () => {
+            mount();
+            setTab('anime');
+            press(MOUSE_BACK_BUTTON);
+            expect(frames).toHaveLength(0);
+        });
+
+        it('does not scroll when there is no page to go to', () => {
+            mount();
+            area.scrollTop = 500;
+            press(MOUSE_BACK_BUTTON);
+            expect(frames).toHaveLength(0);
+            expect(area.scrollTop).toBe(500);
+        });
+
+        it('goes back without the area that scrolls', () => {
+            area.remove();
+            mount();
+            setTab('anime');
+            press(MOUSE_BACK_BUTTON);
+            expect(useAppStore.getState().tab).toBe('downloads');
+            expect(frames).toHaveLength(0);
+        });
+
+        it('does not scroll the page when going back only closes the reader of the manga', () => {
+            mount();
+            setTab('manga' as 'anime');
+            area.scrollTop = 900;
+            useMangaStore.setState({ reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+            press(MOUSE_BACK_BUTTON);
+            expect(useMangaStore.getState().reader.status).toBe('closed');
+            expect(frames).toHaveLength(0);
+            expect(area.scrollTop).toBe(900);
+        });
+    });
 });

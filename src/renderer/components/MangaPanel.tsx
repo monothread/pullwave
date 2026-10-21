@@ -1,4 +1,5 @@
 import { Fragment, useEffect } from 'react';
+import { isScrollRestoring } from '../hooks/scrollRestoration';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore, type MangaBrowseView } from '../store/mangaStore';
 import { MangaBrowse } from './MangaBrowse';
@@ -62,6 +63,10 @@ export function MangaPanel() {
     });
 
     useEffect(() => {
+        // Coming back to a page by the buttons of the mouse puts the scroll where it was, and not at the top.
+        if (isScrollRestoring()) {
+            return;
+        }
         const area = document.querySelector<HTMLElement>('.app__main');
         if (area !== null) {
             area.scrollTop = 0;

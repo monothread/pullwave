@@ -4,6 +4,7 @@ import { useAnimeStore, type AnimeBrowseView, type AnimeSelection, type AnimeVie
 import { useAppStore, type DownloadsView, type Tab } from '../store/appStore';
 import { useMangaStore, type MangaBrowseView, type MangaSelection, type MangaView } from '../store/mangaStore';
 import { MAX_NAVIGATION_ENTRIES, NavigationHistory } from './navigationHistory';
+import { isScrollRestoring, restoreScroll } from './scrollRestoration';
 
 // The buttons on the side of the mouse that browsers use to go back and forward.
 export const MOUSE_BACK_BUTTON = 3;
@@ -120,17 +121,34 @@ function isPlayerOpen(): boolean {
     return playing !== null || streaming !== null || useMangaStore.getState().reader.status !== 'closed';
 }
 
+// The area of the app that scrolls.
+function scrollArea(): HTMLElement | null {
+    return document.querySelector<HTMLElement>('.app__main');
+}
+
 // Makes the back and forward buttons of the mouse move through the pages the viewer has been to.
 export function useMouseNavigation(): void {
     useEffect(() => {
         const history = new NavigationHistory<NavigationSnapshot>(MAX_NAVIGATION_ENTRIES, snapshotKey);
         let showing = false;
+        // Keeps how far the page is scrolled. A page still being put back where it was is not read: its position is not the real one yet.
+        const rememberScroll = (area: HTMLElement | null): void => {
+            if (area !== null && !isScrollRestoring()) {
+                history.rememberScroll(area.scrollTop);
+            }
+        };
+        // The stores tell a page is going before the screen is drawn again, so the scroll is still the one of the page that is left.
         const record = (): void => {
             if (!showing) {
+                rememberScroll(scrollArea());
                 history.record(readSnapshot());
             }
         };
-        const show = (snapshot: NavigationSnapshot | null): void => {
+        // Goes to the page `move` gives: the one that is left keeps how far it is scrolled, and the one that is shown gets its own back.
+        const go = (move: () => NavigationSnapshot | null): void => {
+            const area = scrollArea();
+            rememberScroll(area);
+            const snapshot = move();
             if (snapshot === null) {
                 return;
             }
@@ -140,17 +158,24 @@ export function useMouseNavigation(): void {
             } finally {
                 showing = false;
             }
+            if (area !== null) {
+                restoreScroll(area, history.currentScroll());
+            }
         };
         const onMouseUp = (event: MouseEvent): void => {
             if (event.button === MOUSE_BACK_BUTTON) {
                 event.preventDefault();
                 if (!closePlayers()) {
-                    show(history.back());
+                    go(() => {
+                        return history.back();
+                    });
                 }
             } else if (event.button === MOUSE_FORWARD_BUTTON) {
                 event.preventDefault();
                 if (!isPlayerOpen()) {
-                    show(history.forward());
+                    go(() => {
+                        return history.forward();
+                    });
                 }
             }
         };

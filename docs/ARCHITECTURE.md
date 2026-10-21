@@ -50,7 +50,7 @@ src/
                 Toast, UpdateBanner, UpdateActions, fields,
                 AnimePanel, AnimeSearch, AnimeDetail, AnimeJobs, AnimeLibrary, AnimeHistory, AnimePlayer, AnimeStreamPlayer, AnimeRemove,
                 VideoControls (the player's own control bar), subtitleChoice / subtitleScale (what the viewer chose), SeriesFields (series name and season)
-    hooks/ useAutoSaveSettings (debounced settings auto-save), useMouseNavigation + navigationHistory (back/forward buttons of the mouse), useFullscreenIdle (controls hide in fullscreen)
+    hooks/ useAutoSaveSettings (debounced settings auto-save), useMouseNavigation + navigationHistory + scrollRestoration (back/forward buttons of the mouse, with the scroll of each page), useFullscreenIdle (controls hide in fullscreen)
     store/ (zustand): appStore.ts, animeStore.ts
 test/            # unit tests mirroring src
 test/e2e/        # Playwright-Electron (fake yt-dlp via stub)

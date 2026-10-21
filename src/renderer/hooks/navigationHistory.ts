@@ -4,6 +4,8 @@ export const MAX_NAVIGATION_ENTRIES = 50;
 // drops everything ahead of it, as in a browser.
 export class NavigationHistory<T> {
     private entries: T[] = [];
+    // How far each page was scrolled when it was left, by the position of its entry.
+    private scrolls: number[] = [];
     private index = -1;
 
     constructor(
@@ -19,7 +21,20 @@ export class NavigationHistory<T> {
             return;
         }
         this.entries = [...this.entries.slice(0, this.index + 1), entry].slice(-this.limit);
+        this.scrolls = [...this.scrolls.slice(0, this.index + 1), 0].slice(-this.limit);
         this.index = this.entries.length - 1;
+    }
+
+    // Keeps how far the current page is scrolled, to be given back when the viewer comes to it again.
+    rememberScroll(scrollTop: number): void {
+        if (this.entries[this.index] !== undefined) {
+            this.scrolls[this.index] = scrollTop;
+        }
+    }
+
+    // How far the current page was scrolled the last time it was left (0 when it has not been).
+    currentScroll(): number {
+        return this.scrolls[this.index] ?? 0;
     }
 
     // The previous page, or null when there is none.

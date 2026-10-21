@@ -666,6 +666,48 @@ test('the back and forward buttons of the mouse move through the tabs that were 
     await expect(page.getByText('Changes are saved automatically.')).toBeVisible();
 });
 
+test('the back and forward buttons of the mouse put back how far the page was scrolled', async () => {
+    const { page } = session;
+    const pressSideButton = async (button: 3 | 4): Promise<boolean> => {
+        return page.evaluate((which) => {
+            const event = new MouseEvent('mouseup', { button: which, bubbles: true, cancelable: true });
+            window.dispatchEvent(event);
+            return event.defaultPrevented;
+        }, button);
+    };
+    const scrollTopOfMain = async (): Promise<number> => {
+        return page.evaluate(() => {
+            return document.querySelector<HTMLElement>('.app__main')?.scrollTop ?? -1;
+        });
+    };
+    await openDownloadsSettings(page);
+    const reach = await page.evaluate(() => {
+        const main = document.querySelector<HTMLElement>('.app__main');
+        const room = main === null ? 0 : main.scrollHeight - main.clientHeight;
+        const target = Math.min(300, Math.floor(room / 2));
+        if (main !== null) {
+            main.scrollTop = target;
+        }
+        return { room, target };
+    });
+    expect(reach.room).toBeGreaterThan(0);
+    expect(reach.target).toBeGreaterThan(0);
+    expect(await scrollTopOfMain()).toBe(reach.target);
+
+    // The tab is dispatched a click instead of being clicked: Playwright would scroll the page to reach it first.
+    await page.getByRole('button', { name: 'HISTORY', exact: true }).dispatchEvent('click');
+    await expect(page.getByText('// HISTORY IS EMPTY.')).toBeVisible();
+    expect(await scrollTopOfMain()).toBe(0);
+
+    expect(await pressSideButton(3)).toBe(true);
+    await expect(page.getByText('Changes are saved automatically.')).toBeVisible();
+    await expect.poll(scrollTopOfMain).toBe(reach.target);
+
+    expect(await pressSideButton(4)).toBe(true);
+    await expect(page.getByText('// HISTORY IS EMPTY.')).toBeVisible();
+    await expect.poll(scrollTopOfMain).toBe(0);
+});
+
 test('the settings tabs are a gear at the right end of their bar, in the app and in the video downloader', async () => {
     const { page } = session;
     // The gear sits against the right end of its bar and every other tab keeps to the left.

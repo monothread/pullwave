@@ -103,4 +103,76 @@ describe('NavigationHistory', () => {
         expect(history.back()).toEqual(page('c'));
         expect(history.back()).toBeNull();
     });
+
+    describe('scroll of the pages', () => {
+        it('has no scroll before anything was remembered', () => {
+            const history = makeHistory();
+            expect(history.currentScroll()).toBe(0);
+            history.record(page('a'));
+            expect(history.currentScroll()).toBe(0);
+        });
+
+        it('ignores a scroll to remember while it is empty', () => {
+            const history = makeHistory();
+            history.rememberScroll(300);
+            expect(history.currentScroll()).toBe(0);
+            history.record(page('a'));
+            expect(history.currentScroll()).toBe(0);
+        });
+
+        it('gives back the scroll of each page when the viewer comes to it again', () => {
+            const history = makeHistory();
+            history.record(page('a'));
+            history.rememberScroll(120);
+            history.record(page('b'));
+            history.rememberScroll(480);
+            history.record(page('c'));
+
+            history.back();
+            expect(history.currentScroll()).toBe(480);
+            history.back();
+            expect(history.currentScroll()).toBe(120);
+            history.forward();
+            expect(history.currentScroll()).toBe(480);
+            history.forward();
+            expect(history.currentScroll()).toBe(0);
+        });
+
+        it('keeps the scroll of a page that is refreshed with the same key', () => {
+            const history = makeHistory();
+            history.record(page('a', 'loading'));
+            history.rememberScroll(250);
+            history.record(page('a', 'ready'));
+            expect(history.currentScroll()).toBe(250);
+        });
+
+        it('starts a new page at the top and forgets the scroll of the pages dropped ahead', () => {
+            const history = makeHistory();
+            history.record(page('a'));
+            history.record(page('b'));
+            history.rememberScroll(900);
+            history.back();
+            history.record(page('c'));
+            expect(history.currentScroll()).toBe(0);
+            expect(history.forward()).toBeNull();
+            history.back();
+            history.forward();
+            expect(history.currentScroll()).toBe(0);
+        });
+
+        it('keeps each scroll with its page when the oldest ones are forgotten', () => {
+            const history = makeHistory(2);
+            history.record(page('a'));
+            history.rememberScroll(10);
+            history.record(page('b'));
+            history.rememberScroll(20);
+            history.record(page('c'));
+            history.rememberScroll(30);
+
+            expect(history.back()).toEqual(page('b'));
+            expect(history.currentScroll()).toBe(20);
+            history.forward();
+            expect(history.currentScroll()).toBe(30);
+        });
+    });
 });
