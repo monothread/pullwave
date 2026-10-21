@@ -190,3 +190,47 @@ describe('AnimeCover that looks the cover up by the title', () => {
         expect(mock.api.findAnimeCover).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('AnimeCover that has no cover yet', () => {
+    it('asks again each time it is shown, and shows the picture once one is found', async () => {
+        mock.api.findAnimeCover.mockResolvedValueOnce(null).mockResolvedValueOnce(COVER);
+
+        const first = render(<AnimeCover title="Naruto" />);
+        expect(await screen.findByText('COVER NOT FOUND')).toBeInTheDocument();
+        first.unmount();
+        const second = render(<AnimeCover title="Naruto" />);
+
+        await vi.waitFor(() => {
+            expect(image(second.container)).toHaveAttribute('src', COVER);
+        });
+        expect(mock.api.findAnimeCover).toHaveBeenCalledTimes(2);
+        expect(mock.api.findAnimeCover).toHaveBeenNthCalledWith(1, 'Naruto');
+        expect(mock.api.findAnimeCover).toHaveBeenNthCalledWith(2, 'Naruto');
+    });
+
+    it('takes the picture when the main process finds the cover in the background', async () => {
+        mock.api.getAnimeStatus.mockResolvedValue({ ...initialAnime.status, supported: true });
+        await useAnimeStore.getState().init();
+        mock.api.findAnimeCover.mockResolvedValue(null);
+
+        const { container } = render(<AnimeCover title="Naruto" />);
+        expect(await screen.findByText('COVER NOT FOUND')).toBeInTheDocument();
+        act(() => {
+            mock.emitAnimeCover({ title: 'Naruto', url: COVER });
+        });
+
+        expect(image(container)).toHaveAttribute('src', COVER);
+        expect(screen.queryByText('COVER NOT FOUND')).not.toBeInTheDocument();
+    });
+
+    it('tries the picture again when it is shown again after it failed to load', () => {
+        const first = render(<AnimeCover title="Naruto" url={COVER} />);
+        fireEvent.error(image(first.container) as HTMLImageElement);
+        expect(image(first.container)).toBeNull();
+        first.unmount();
+
+        const second = render(<AnimeCover title="Naruto" url={COVER} />);
+
+        expect(image(second.container)).toHaveAttribute('src', COVER);
+    });
+});

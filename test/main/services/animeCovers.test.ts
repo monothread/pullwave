@@ -7,6 +7,7 @@ import {
     COVER_QUERY,
     CoverFetchError,
     MAX_RETRY_WAIT_MS,
+    MISSING_COVER_RETRY_MS,
     searchVariants,
     type CoverServiceDependencies
 } from '@main/services/animeCovers';
@@ -512,7 +513,7 @@ describe('AnimeCoverService store', () => {
         });
 
         it('finds a cover for a title that had none, and tells', async () => {
-            const { service, onChange, save } = withStore({ [KEY]: { url: null, checkedAt: TODAY - 1 } }, [found(COVER)]);
+            const { service, onChange, save } = withStore({ [KEY]: { url: null, checkedAt: TODAY - MISSING_COVER_RETRY_MS } }, [found(COVER)]);
 
             expect(await service.find('Naruto')).toBeNull();
 
@@ -523,7 +524,7 @@ describe('AnimeCoverService store', () => {
         });
 
         it('does not tell when a title that had no cover still has none', async () => {
-            const { service, onChange, save } = withStore({ [KEY]: { url: null, checkedAt: TODAY - 1 } }, [notFound()]);
+            const { service, onChange, save } = withStore({ [KEY]: { url: null, checkedAt: TODAY - MISSING_COVER_RETRY_MS } }, [notFound()]);
 
             await service.find('Naruto');
 
@@ -568,5 +569,179 @@ describe('AnimeCoverService store', () => {
                 expect(fetchFn).toHaveBeenCalledTimes(1);
             });
         });
+    });
+});
+
+describe('AnimeCoverService asking again for a title that has no cover', () => {
+    const KEY = 'naruto';
+    const HOUR = 3_600_000;
+    const NOW = TODAY + 5000;
+    const NONE_FRESH: StoredCover = { url: null, checkedAt: NOW - HOUR + 1 };
+    const NONE_OLD: StoredCover = { url: null, checkedAt: NOW - HOUR };
+
+    function withMissing(rows: Record<string, StoredCover>, answers: Answer[], overrides: Partial<CoverServiceDependencies> = {}) {
+        const kept = makeStore(rows);
+        const onChange = vi.fn();
+        let now = NOW;
+        const setups = setup(answers, { store: kept.store, startOfToday: () => { return TODAY; }, now: () => { return now; }, onChange, ...overrides });
+        return {
+            ...setups,
+            ...kept,
+            onChange,
+            advance: (milliseconds: number): void => {
+                now += milliseconds;
+            }
+        };
+    }
+
+    it('asks again once an hour', () => {
+        expect(MISSING_COVER_RETRY_MS).toBe(HOUR);
+    });
+
+    it('gives that there is none at once and asks in the background when the last time was an hour ago', async () => {
+        const { service, fetchFn, searched } = withMissing({ [KEY]: NONE_OLD }, [found(COVER)]);
+
+        expect(await service.find('Naruto')).toBeNull();
+
+        await vi.waitFor(() => {
+            expect(fetchFn).toHaveBeenCalledTimes(1);
+        });
+        expect(searched).toEqual(['Naruto']);
+    });
+
+    it('does not ask when the last time was less than an hour ago', async () => {
+        const { service, fetchFn } = withMissing({ [KEY]: NONE_FRESH }, []);
+
+        expect(await service.find('Naruto')).toBeNull();
+        await Promise.resolve();
+
+        expect(fetchFn).not.toHaveBeenCalled();
+    });
+
+    it('keeps the cover it finds, tells, and gives it the next time', async () => {
+        const { service, onChange, save, rows } = withMissing({ [KEY]: NONE_OLD }, [found(COVER)]);
+
+        await service.find('Naruto');
+
+        await vi.waitFor(() => {
+            expect(onChange).toHaveBeenCalledTimes(1);
+        });
+        expect(onChange).toHaveBeenCalledWith('Naruto', COVER);
+        expect(save).toHaveBeenCalledTimes(1);
+        expect(save).toHaveBeenCalledWith(KEY, COVER);
+        expect(rows.get(KEY)?.url).toBe(COVER);
+        expect(await service.find('Naruto')).toBe(COVER);
+    });
+
+    it('keeps that there is still none, without telling, and waits another hour', async () => {
+        const { service, onChange, save, fetchFn, advance } = withMissing({ [KEY]: NONE_OLD }, [notFound(), found(COVER)]);
+
+        await service.find('Naruto');
+        await vi.waitFor(() => {
+            expect(save).toHaveBeenCalledWith(KEY, null);
+        });
+        expect(onChange).not.toHaveBeenCalled();
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+
+        advance(HOUR - 1);
+        await service.find('Naruto');
+        await Promise.resolve();
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+
+        advance(1);
+        await service.find('Naruto');
+        await vi.waitFor(() => {
+            expect(onChange).toHaveBeenCalledWith('Naruto', COVER);
+        });
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks only once while the card is shown over and over, even when AniList cannot be reached', async () => {
+        const { service, save, onChange, fetchFn, advance } = withMissing({ [KEY]: NONE_OLD }, [status(500), found(COVER)]);
+
+        await service.find('Naruto');
+        await vi.waitFor(() => {
+            expect(fetchFn).toHaveBeenCalledTimes(1);
+        });
+        await service.find('Naruto');
+        await service.find('naruto ');
+        await Promise.resolve();
+
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+        expect(save).not.toHaveBeenCalled();
+        expect(onChange).not.toHaveBeenCalled();
+        expect(await service.find('Naruto')).toBeNull();
+
+        advance(HOUR);
+        await service.find('Naruto');
+        await vi.waitFor(() => {
+            expect(onChange).toHaveBeenCalledWith('Naruto', COVER);
+        });
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks once when the title is shown by several cards at the same time', async () => {
+        const { service, fetchFn } = withMissing({ [KEY]: NONE_OLD }, [found(COVER)]);
+
+        await Promise.all([service.find('Naruto'), service.find('Naruto'), service.find('NARUTO')]);
+
+        await vi.waitFor(() => {
+            expect(fetchFn).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('tries the simpler names of the title, as the first ask does', async () => {
+        const { service, searched, onChange } = withMissing({ 'naruto (tv)': NONE_OLD }, [notFound(), found(COVER)]);
+
+        await service.find('Naruto (TV)');
+
+        await vi.waitFor(() => {
+            expect(onChange).toHaveBeenCalledWith('Naruto (TV)', COVER);
+        });
+        expect(searched).toEqual(['Naruto (TV)', 'Naruto']);
+    });
+
+    it('uses the interval it is given', async () => {
+        const { service, fetchFn } = withMissing({ [KEY]: { url: null, checkedAt: NOW - 1000 } }, [notFound()], { missingRetryMs: 1000 });
+
+        await service.find('Naruto');
+        await vi.waitFor(() => {
+            expect(fetchFn).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('keeps the titles apart', async () => {
+        const { service, searched, onChange } = withMissing({ [KEY]: NONE_OLD, bleach: NONE_FRESH }, [found(COVER)]);
+
+        await service.find('Naruto');
+        await service.find('Bleach');
+
+        await vi.waitFor(() => {
+            expect(onChange).toHaveBeenCalledTimes(1);
+        });
+        expect(searched).toEqual(['Naruto']);
+    });
+
+    it('does not use this interval for a title that has a cover: that one is checked once a day', async () => {
+        const { service, fetchFn } = withMissing({ [KEY]: { url: COVER, checkedAt: TODAY + 1 } }, []);
+
+        await service.find('Naruto');
+        await Promise.resolve();
+
+        expect(fetchFn).not.toHaveBeenCalled();
+    });
+
+    it('asks again for a title it found nothing for in this run, an hour later, without a store', async () => {
+        let now = NOW;
+        const { service, fetchFn } = setup([notFound(), found(COVER)], { now: () => { return now; } });
+
+        expect(await service.find('Naruto')).toBeNull();
+        now += HOUR;
+        expect(await service.find('Naruto')).toBeNull();
+
+        await vi.waitFor(() => {
+            expect(fetchFn).toHaveBeenCalledTimes(2);
+        });
+        expect(await service.find('Naruto')).toBe(COVER);
     });
 });

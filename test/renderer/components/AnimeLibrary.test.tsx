@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeLibrary } from '@renderer/components/AnimeLibrary';
@@ -96,6 +96,21 @@ describe('AnimeLibrary', () => {
             expect(screen.getAllByTestId('anime-card')).toHaveLength(1);
             expect(within(card as HTMLElement).getByText('8 SEASONS')).toBeInTheDocument();
             expect(screen.queryByRole('list', { name: 'Seasons of Big' })).not.toBeInTheDocument();
+        });
+
+        it('shows the cover of the series at the top of its screen, looked up like the one of its card', async () => {
+            const user = userEvent.setup();
+            mock.api.findAnimeCover.mockResolvedValue('https://s4.anilist.co/cover/frieren.jpg');
+            useAnimeStore.setState({ library: SERIES_LIBRARY });
+            render(<AnimeLibrary />);
+
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+
+            const view = screen.getByTestId('series-view');
+            await waitFor(() => {
+                expect(view.querySelector('.series__cover img.cover')).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
+            });
+            expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Frieren');
         });
 
         it('opens the screen of a series, with every season and a way back to the cards', async () => {

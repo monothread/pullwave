@@ -199,6 +199,27 @@ describe('AnimeDetail', () => {
         });
     }
 
+    it('shows the cover of the anime at the top of its screen, looked up by its title', async () => {
+        mock.api.findAnimeCover.mockResolvedValue('https://s4.anilist.co/cover/edgerunners.jpg');
+        open(['1', '2']);
+        const { container } = render(<AnimeSearch />);
+
+        await waitFor(() => {
+            expect(container.querySelector('.anime__detail .series__cover img.cover')).toHaveAttribute('src', 'https://s4.anilist.co/cover/edgerunners.jpg');
+        });
+        expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Cyberpunk: Edgerunners');
+    });
+
+    it('asks for the cover by the title of the library when the anime is in it, as its card does', async () => {
+        mock.api.findAnimeCover.mockResolvedValue(null);
+        open(['1', '2']);
+        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 7, title: 'Cyberpunk: Edgerunners', audio: 'sub', searchIndex: 1 })] });
+        render(<AnimeSearch />);
+
+        expect(await screen.findAllByText('COVER NOT FOUND')).not.toHaveLength(0);
+        expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Cyberpunk: Edgerunners');
+    });
+
     it('says it is loading, and cannot add the anime until its episodes are known', () => {
         open([], { status: 'loading' });
         render(<AnimeSearch />);

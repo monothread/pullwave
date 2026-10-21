@@ -4,6 +4,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { sameSeries, suggestSeries } from '@shared/series';
 import { animeErrorKey, seriesNames } from './animeText';
 import { AddToLibraryDialog } from './AddToLibraryDialog';
+import { AnimeCover } from './AnimeCover';
 
 // The anime that was opened: its episodes (a click on one opens the player, without downloading it), and the way to put it in the library with
 // all of them.
@@ -104,6 +105,9 @@ export function AnimeDetail() {
                         {t('anime.library.add')}
                     </button>
                 )}
+            </div>
+            <div className="series__cover">
+                <AnimeCover title={entry?.title ?? selection.result.title} />
             </div>
             {entry !== undefined && entry.series !== null && entry.season !== null && (
                 <p className="field__hint" data-testid="anime-series-info">

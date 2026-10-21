@@ -103,7 +103,8 @@ export interface AnimeState {
     setQuery: (query: string) => void;
     setAudio: (audio: AnimeAudio) => void;
     runSearch: () => Promise<void>;
-    // Looks the cover of an anime up by its title (once: what was asked is not asked again while the app is open).
+    // Looks the cover of an anime up by its title. A cover that was found is not asked for again; one that was not found (or could not be asked
+    // for) is, every time a screen that shows it opens (the main process decides when AniList is asked again).
     loadCover: (title: string) => Promise<void>;
     // Lists the episodes of the day (or of the week) in the time zone that is set.
     // `refresh` asks AniList again instead of using what was listed in the last day.
@@ -442,7 +443,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         loadCover: async (title) => {
             const key = coverKey(title);
             const known = get().covers[key];
-            if (key.length === 0 || (known !== undefined && known.status !== 'failed') || coversAsked.has(key)) {
+            if (key.length === 0 || known?.status === 'found' || coversAsked.has(key)) {
                 return;
             }
             coversAsked.add(key);
@@ -454,6 +455,10 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 state = { status: 'failed' };
             } finally {
                 coversAsked.delete(key);
+            }
+            // A title that still has none is not a change: the main process looks for it again in the background and tells when it finds one.
+            if (state.status === 'none' && get().covers[key]?.status === 'none') {
+                return;
             }
             set((current) => {
                 return { covers: { ...current.covers, [key]: state } };

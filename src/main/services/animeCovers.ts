@@ -12,6 +12,8 @@ export const COVER_QUERY = `query ($search: String!) {
 export const COVER_INTERVAL_MS = 1000;
 export const MAX_RETRY_WAIT_MS = 90_000;
 export const COVER_ATTEMPTS = 3;
+// An anime that has no cover is asked for again when it is shown, at most this often.
+export const MISSING_COVER_RETRY_MS = 3_600_000;
 const TOO_MANY_REQUESTS_STATUS = 429;
 const NOT_FOUND_STATUS = 404;
 
@@ -50,7 +52,9 @@ export interface CoverServiceDependencies extends ScheduleFetchOptions {
     // The moment now, and the one the current day started at, in milliseconds.
     now?: () => number;
     startOfToday?: () => number;
-    // A cover that was checked again and turned out to be another one.
+    // How long before a title that has no cover is asked for again (an hour by default).
+    missingRetryMs?: number;
+    // A cover that was checked again and turned out to be another one, or that was found for a title that had none.
     onChange?: (title: string, url: string) => void;
     // How the program waits (the tests make it instant) and how far apart the requests are.
     sleep?: (milliseconds: number) => Promise<void>;
@@ -76,6 +80,8 @@ export class AnimeCoverService {
     private readonly pending = new Map<string, Promise<string | null>>();
     // What was already checked again in this run, so a failure is not tried again every time a card is shown.
     private readonly refreshed = new Set<string>();
+    // When the cover of a title that has none was last asked for again in this run, so a title shown over and over does not ask each time.
+    private readonly missingTried = new Map<string, number>();
     // The requests take turns: each one is let go once the one before it and the interval have passed.
     private turns: Promise<void> = Promise.resolve();
     private readonly intervalMs: number;
@@ -89,7 +95,11 @@ export class AnimeCoverService {
         const stored = this.known.get(key) ?? this.deps.store?.get(key) ?? null;
         if (stored !== null) {
             this.known.set(key, stored);
-            this.refreshIfOld(title.trim(), key, stored);
+            if (stored.url === null) {
+                this.retryMissing(title.trim(), key, stored);
+            } else {
+                this.refreshIfOld(title.trim(), key, stored);
+            }
             return Promise.resolve(stored.url);
         }
         const inFlight = this.pending.get(key);
@@ -111,6 +121,28 @@ export class AnimeCoverService {
     private remember(key: string, url: string | null): void {
         this.deps.store?.save(key, url);
         this.known.set(key, { url, checkedAt: (this.deps.now ?? Date.now)() });
+    }
+
+    // A title that has no cover is asked for again in the background, once an hour at most (counted from the last time it was asked for,
+    // whether or not AniList could be reached): the one that is kept is what is shown meanwhile, and `onChange` tells when one is found.
+    private retryMissing(title: string, key: string, stored: StoredCover): void {
+        const now = (this.deps.now ?? Date.now)();
+        const lastAsked = Math.max(stored.checkedAt, this.missingTried.get(key) ?? 0);
+        if (now - lastAsked < (this.deps.missingRetryMs ?? MISSING_COVER_RETRY_MS)) {
+            return;
+        }
+        this.missingTried.set(key, now);
+        void this.ask(title)
+            .then((url) => {
+                this.remember(key, url);
+                if (url !== null) {
+                    this.deps.onChange?.(title, url);
+                }
+            })
+            .catch(() => {
+                // AniList could not be reached: there is still none, and it is asked again an hour from now.
+                return undefined;
+            });
     }
 
     private refreshIfOld(title: string, key: string, stored: StoredCover): void {

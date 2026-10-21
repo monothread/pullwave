@@ -875,6 +875,8 @@ body::after {
 .cover-card--bottom-meta .history__meta { margin-top: auto; }
 .cover { flex: none; width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid var(--line); background: var(--line); }
 .cover--none { display: flex; align-items: center; justify-content: center; padding: 4px; box-sizing: border-box; text-align: center; font-size: 10px; line-height: 1.25; letter-spacing: 0.5px; color: var(--muted); overflow: hidden; }
+/* The screens of one anime (the detail and the series of the library) show its cover at the top, at the size of the cards' cover of the schedule. */
+.series__cover { width: 90px; margin-bottom: 8px; }
 /* Manga section: in a row (the library, the head of a manga) the cover has a size of its own; as wide as the row it would push the rest out. */
 .manga__head .cover { width: 72px; }
 .manga__head { align-items: flex-start; }

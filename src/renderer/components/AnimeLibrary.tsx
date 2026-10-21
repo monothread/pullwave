@@ -492,6 +492,9 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                 <span className="section-label">{name}</span>
             </div>
             <article className="job job--done series" data-testid="series-view">
+                <div className="series__cover">
+                    <AnimeCover title={group.entries[0]?.title ?? name} />
+                </div>
                 <header className="job__head">
                     <h3 className="series__title" title={name}>
                         {name}

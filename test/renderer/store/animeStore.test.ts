@@ -1562,13 +1562,39 @@ describe('covers', () => {
         expect(mock.api.findAnimeCover).toHaveBeenCalledTimes(1);
     });
 
-    it('does not ask again for a title that has no cover', async () => {
+    it('asks again for a title that has no cover each time a card is shown, and keeps it as it is while there is none', async () => {
         mock.api.findAnimeCover.mockResolvedValue(null);
 
         await useAnimeStore.getState().loadCover('Unknown');
+        const covers = useAnimeStore.getState().covers;
         await useAnimeStore.getState().loadCover('Unknown');
+        await useAnimeStore.getState().loadCover('unknown ');
+
+        expect(mock.api.findAnimeCover).toHaveBeenCalledTimes(3);
+        expect(mock.api.findAnimeCover).toHaveBeenNthCalledWith(1, 'Unknown');
+        expect(mock.api.findAnimeCover).toHaveBeenNthCalledWith(2, 'Unknown');
+        expect(mock.api.findAnimeCover).toHaveBeenNthCalledWith(3, 'unknown ');
+        expect(useAnimeStore.getState().covers).toBe(covers);
+        expect(covers).toEqual({ unknown: { status: 'none' } });
+    });
+
+    it('takes the cover of a title that had none when it is found by the next ask', async () => {
+        mock.api.findAnimeCover.mockResolvedValueOnce(null).mockResolvedValueOnce(COVER);
+
+        await useAnimeStore.getState().loadCover('Naruto');
+        expect(useAnimeStore.getState().covers).toEqual({ naruto: { status: 'none' } });
+        await useAnimeStore.getState().loadCover('Naruto');
+
+        expect(useAnimeStore.getState().covers).toEqual({ naruto: { status: 'found', url: COVER } });
+    });
+
+    it('does not ask again for a title whose cover was found', async () => {
+        mock.api.findAnimeCover.mockResolvedValue(COVER);
+        await useAnimeStore.getState().loadCover('Naruto');
+        await useAnimeStore.getState().loadCover('Naruto');
 
         expect(mock.api.findAnimeCover).toHaveBeenCalledTimes(1);
+        expect(useAnimeStore.getState().covers).toEqual({ naruto: { status: 'found', url: COVER } });
     });
 
     it('asks again for a title whose cover could not be asked for, the next time its card is shown', async () => {
