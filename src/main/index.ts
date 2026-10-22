@@ -44,7 +44,7 @@ import { checkTraySupport } from './services/trayAvailability';
 import { TrayManager } from './services/trayManager';
 import { createMediaHandler, defaultMediaFileSystem } from './services/mediaProtocol';
 import { createQuitRequester, decideCloseAction, describePending } from './services/windowClose';
-import { runYtdlp } from './services/ytdlpRunner';
+import { runYtdlpLiveAware } from './services/liveHlsRunner';
 
 const APP_ID = 'dev.lucas.pullwave';
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
@@ -348,7 +348,7 @@ function bootstrap(): BootstrapResult {
             removeFiles(paths);
         },
         startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess) => {
-            return runYtdlp({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, env: resolver.spawnEnv() });
+            return runYtdlpLiveAware({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, env: resolver.spawnEnv(), ffmpegBinary: resolver.ffmpeg(settingsStore.get()).path });
         },
         pausedStorage: pausedStore,
         addHistory: (entry) => {

@@ -12,7 +12,10 @@ import {
     parseFileLine,
     parseInfoLine,
     parsePostProcessLine,
-    parseProgressLine
+    parseProgressLine,
+    parseStreamLine,
+    STREAM_PREFIX,
+    STREAM_PRINT_TEMPLATE
 } from '@main/services/progressParser';
 
 describe('progress templates', () => {
@@ -33,6 +36,77 @@ describe('progress templates', () => {
 
     it('exposes the template that announces each download and whether it is live', () => {
         expect(INFO_PRINT_TEMPLATE).toBe('before_dl:CYBERINFO|%(is_live)s|%(filename)s');
+    });
+
+    it('exposes the template that tells where the stream can be fetched from', () => {
+        expect(STREAM_PREFIX).toBe('CYBERSTREAM|');
+        expect(STREAM_PRINT_TEMPLATE).toBe('before_dl:CYBERSTREAM|%(.{is_live,protocol,url,http_headers,requested_formats})j');
+    });
+});
+
+describe('parseStreamLine', () => {
+    const HEADERS = { 'User-Agent': 'Mozilla/5.0', Referer: 'https://site.test/' };
+
+    function line(data: unknown): string {
+        return `${STREAM_PREFIX}${JSON.stringify(data)}`;
+    }
+
+    it('reads the video and the audio that are apart, each with the headers it needs', () => {
+        const audioHeaders = { 'User-Agent': 'Audio' };
+        expect(
+            parseStreamLine(
+                line({
+                    is_live: true,
+                    protocol: 'm3u8_native+m3u8_native',
+                    requested_formats: [
+                        { url: 'https://cdn.test/video.m3u8', protocol: 'm3u8_native', http_headers: HEADERS, format_id: '7' },
+                        { url: 'https://cdn.test/audio.m3u8', protocol: 'm3u8_native', http_headers: audioHeaders }
+                    ]
+                })
+            )
+        ).toEqual({
+            live: true,
+            sources: [
+                { url: 'https://cdn.test/video.m3u8', protocol: 'm3u8_native', headers: HEADERS },
+                { url: 'https://cdn.test/audio.m3u8', protocol: 'm3u8_native', headers: audioHeaders }
+            ]
+        });
+    });
+
+    it('reads a stream that has the video and the audio together from the line itself', () => {
+        expect(parseStreamLine(line({ is_live: true, protocol: 'm3u8', url: 'https://cdn.test/all.m3u8', http_headers: HEADERS, requested_formats: null }))).toEqual({
+            live: true,
+            sources: [{ url: 'https://cdn.test/all.m3u8', protocol: 'm3u8', headers: HEADERS }]
+        });
+    });
+
+    it('gives a rendition without headers the ones of the whole video', () => {
+        expect(parseStreamLine(line({ is_live: true, http_headers: HEADERS, requested_formats: [{ url: 'https://cdn.test/v.m3u8', protocol: 'm3u8_native' }] }))?.sources).toEqual([
+            { url: 'https://cdn.test/v.m3u8', protocol: 'm3u8_native', headers: HEADERS }
+        ]);
+    });
+
+    it('keeps only the headers that are text', () => {
+        expect(parseStreamLine(line({ is_live: true, url: 'https://a.test/x.m3u8', protocol: 'm3u8', http_headers: { A: 'b', C: 1, D: null } }))?.sources[0]?.headers).toEqual({ A: 'b' });
+    });
+
+    it.each([[false], [null], ['True']])('reads is_live=%j as not live', (value) => {
+        expect(parseStreamLine(line({ is_live: value, url: 'https://a.test/x.m3u8', protocol: 'm3u8' }))?.live).toBe(false);
+    });
+
+    it.each([
+        ['text that is not JSON', `${STREAM_PREFIX}{not json`],
+        ['JSON that is not an object', `${STREAM_PREFIX}[1,2]`],
+        ['JSON that is a number', `${STREAM_PREFIX}7`],
+        ['a rendition without an address', line({ is_live: true, requested_formats: [{ protocol: 'm3u8_native' }] })],
+        ['a rendition without a protocol', line({ is_live: true, requested_formats: [{ url: 'https://a.test/x.m3u8' }] })],
+        ['a rendition that is not an object', line({ is_live: true, requested_formats: ['x'] })],
+        ['an empty list of renditions', line({ is_live: true, requested_formats: [] })],
+        ['no address at all', line({ is_live: true })],
+        ['another line', 'CYBERINFO|True|/d/v.mp4'],
+        ['an empty line', '']
+    ])('gives nothing for %s', (_label, text) => {
+        expect(parseStreamLine(text)).toBeNull();
     });
 });
 

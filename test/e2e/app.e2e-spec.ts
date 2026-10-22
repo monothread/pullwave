@@ -2,6 +2,8 @@ import { expect, test, _electron as electron, type ElectronApplication, type Loc
 import './display';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -11,6 +13,7 @@ const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
 const FAKE_FFMPEG = resolve(__dirname, 'fixtures/fake-ffmpeg.js');
+const FAKE_FFMPEG_COPY = resolve(__dirname, 'fixtures/fake-ffmpeg-copy.js');
 
 interface Session {
     app: ElectronApplication;
@@ -2620,5 +2623,170 @@ test.describe('start at login', () => {
         } finally {
             await closeQuietly(own);
         }
+    });
+});
+
+// A live HLS stream that moves on every 300 ms: a segment is the text "<v or a><number>;", and a playlist lists the last four.
+class FakeHlsSite {
+    readonly requests: string[] = [];
+    // The playlists answer 403, like a site that does not let the app in.
+    refuse = false;
+    private server: Server | null = null;
+    private readonly startedAt = Date.now();
+
+    get port(): number {
+        return (this.server!.address() as AddressInfo).port;
+    }
+
+    async start(): Promise<void> {
+        this.server = createServer((request, response) => {
+            const path = request.url ?? '';
+            this.requests.push(path);
+            const match = /^\/(video|audio)\/(list\.m3u8|init\.mp4|seg(\d+)\.m4s)$/.exec(path);
+            if (match === null || (this.refuse && match[2] === 'list.m3u8')) {
+                response.writeHead(this.refuse ? 403 : 404);
+                response.end();
+                return;
+            }
+            const prefix = match[1] === 'video' ? 'v' : 'a';
+            if (match[2] === 'list.m3u8') {
+                const current = Math.floor((Date.now() - this.startedAt) / 300) + 4;
+                const lines = ['#EXTM3U', '#EXT-X-VERSION:6', '#EXT-X-TARGETDURATION:1', `#EXT-X-MEDIA-SEQUENCE:${String(current - 4)}`, '#EXT-X-MAP:URI="init.mp4"'];
+                for (let sequence = current - 4; sequence < current; sequence += 1) {
+                    lines.push('#EXTINF:0.3,', `seg${String(sequence)}.m4s`);
+                }
+                response.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+                response.end(lines.join('\n'));
+                return;
+            }
+            response.writeHead(200);
+            response.end(match[2] === 'init.mp4' ? `${prefix}init;` : `${prefix}${match[3] ?? ''};`);
+        });
+        await new Promise<void>((resolveStart) => {
+            this.server!.listen(0, '127.0.0.1', resolveStart);
+        });
+    }
+
+    async stop(): Promise<void> {
+        await new Promise<void>((resolveStop) => {
+            this.server?.close(() => {
+                resolveStop();
+            });
+            this.server?.closeAllConnections();
+        });
+    }
+}
+
+// The numbers of the segments of one rendition in a recording made by the fake ffmpeg (the video, then the audio).
+function segmentsInRecording(content: string, prefix: 'v' | 'a'): number[] {
+    return [...content.matchAll(new RegExp(`${prefix}(\\d+);`, 'g'))].map((match) => {
+        return Number(match[1]);
+    });
+}
+
+test.describe('live HLS streams recorded by the app', () => {
+    let site: FakeHlsSite;
+
+    test.beforeEach(async () => {
+        site = new FakeHlsSite();
+        await site.start();
+    });
+
+    test.afterEach(async () => {
+        await site.stop();
+    });
+
+    async function relaunchWith(settings: Record<string, unknown>): Promise<Session> {
+        await session.app.close();
+        rmSync(resolve(session.userData, '..'), { recursive: true, force: true });
+        session = await launch({ settings });
+        return session;
+    }
+
+    test('records the stream itself, segment after segment with none missing, and STOP & SAVE keeps the file', async () => {
+        const { page, downloadDir, logPath } = await relaunchWith({ ffmpegPath: FAKE_FFMPEG_COPY });
+        await submitUrl(page, `https://example.com/livehls-${String(site.port)}`);
+
+        const card = page.getByTestId('job-card');
+        await expect(card.locator('.badge')).toHaveText('RECORDING');
+        await expect(card.getByText('● LIVE')).toBeVisible();
+        // The fake segments are a few bytes each.
+        await expect(card.getByText(/\d+(\.\d)? (B|KiB)$/)).toBeVisible();
+        await expect.poll(() => {
+            return site.requests.filter((path) => {
+                return path.includes('/seg');
+            }).length;
+        }, { timeout: 10000 }).toBeGreaterThan(12);
+
+        await card.getByRole('button', { name: 'STOP & SAVE' }).click();
+        await expectDownloadsComplete(page);
+        await expect(card).toHaveCount(0);
+
+        const finalPath = join(downloadDir, 'Live Hls [abc].mp4');
+        expect(readdirSync(downloadDir)).toEqual(['Live Hls [abc].mp4']);
+        // The file is what the app recorded (the fake ffmpeg puts the video and then the audio in it), not what the fake yt-dlp writes.
+        const content = readFileSync(finalPath, 'utf-8');
+        expect(content.startsWith('vinit;v')).toBe(true);
+        expect(content).toContain('ainit;a');
+        const video = segmentsInRecording(content, 'v');
+        const audio = segmentsInRecording(content, 'a');
+        expect(video.length).toBeGreaterThan(5);
+        expect(audio.length).toBeGreaterThan(5);
+        [video, audio].forEach((numbers) => {
+            numbers.forEach((number, index) => {
+                expect(number).toBe((numbers[0] ?? 0) + index);
+            });
+        });
+        // yt-dlp announced the stream (the app asks for it in every download) and was run once: it was ended before it recorded.
+        const calls = readCalls(logPath).filter((call) => {
+            return call.at(-1)?.includes('livehls');
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toContain('before_dl:CYBERSTREAM|%(.{is_live,protocol,url,http_headers,requested_formats})j');
+        await page.getByRole('button', { name: 'HISTORY' }).click();
+        await expect(page.locator('.history__item--done')).toHaveCount(1);
+    });
+
+    test('CANCEL on the recording discards it and leaves nothing in the folder', async () => {
+        const { page, downloadDir } = await relaunchWith({ ffmpegPath: FAKE_FFMPEG_COPY });
+        await submitUrl(page, `https://example.com/livehls-${String(site.port)}`);
+
+        const card = page.getByTestId('job-card');
+        await expect(card.locator('.badge')).toHaveText('RECORDING');
+        await expect.poll(() => {
+            return site.requests.filter((path) => {
+                return path.includes('/seg');
+            }).length;
+        }, { timeout: 10000 }).toBeGreaterThan(4);
+        await card.getByRole('button', { name: 'CANCEL' }).click();
+        await expect(card.locator('.badge')).toHaveText('CANCELLED');
+        expect(readdirSync(downloadDir).filter((name) => {
+            return name.endsWith('.mp4');
+        })).toEqual([]);
+    });
+
+    test('records the stream with yt-dlp, as it always did, when the site does not let the app follow it', async () => {
+        site.refuse = true;
+        const { page, downloadDir, logPath } = await relaunchWith({ ffmpegPath: FAKE_FFMPEG_COPY });
+        await submitUrl(page, `https://example.com/livehls-${String(site.port)}`);
+
+        const card = page.getByTestId('job-card');
+        await expect(card.locator('.badge')).toHaveText('RECORDING');
+        await expect.poll(() => {
+            return readCalls(logPath).filter((call) => {
+                return call.at(-1)?.includes('livehls');
+            }).length;
+        }, { timeout: 10000 }).toBe(2);
+        expect(site.requests.filter((path) => {
+            return path.endsWith('list.m3u8');
+        }).length).toBeGreaterThan(0);
+        await card.getByRole('button', { name: 'STOP & SAVE' }).click();
+        await expectDownloadsComplete(page);
+        // What the fake yt-dlp wrote, not what the app records.
+        const content = readFileSync(join(downloadDir, 'Live Hls [abc].mp4'));
+        expect(content.byteLength).toBeGreaterThan(0);
+        expect(content.every((byte) => {
+            return byte === 0;
+        })).toBe(true);
     });
 });

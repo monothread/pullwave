@@ -164,6 +164,26 @@ if (url.includes('partialfail') || url.includes('livefail')) {
     setInterval(() => {
         progress(50);
     }, 200);
+} else if (url.includes('livehls')) {
+    // A live HLS stream: announces where its playlists are (the port is the end of the link) and records like yt-dlp does, with a
+    // growing .part file, unless the app ends it to record the stream itself.
+    const port = url.match(/-(\d+)$/)[1];
+    const finalPath = `${downloadDir}/Live Hls [abc].mp4`;
+    fs.mkdirSync(downloadDir, { recursive: true });
+    fs.writeFileSync(`${finalPath}.part`, '');
+    process.stdout.write(`CYBERINFO|True|${finalPath}\n`);
+    const rendition = (name) => {
+        return { url: `http://127.0.0.1:${port}/${name}/list.m3u8`, protocol: 'm3u8_native', http_headers: { 'User-Agent': 'FakeAgent' } };
+    };
+    process.stdout.write(`CYBERSTREAM|${JSON.stringify({ is_live: true, protocol: 'm3u8_native+m3u8_native', requested_formats: [rendition('video'), rendition('audio')] })}\n`);
+    setInterval(() => {
+        fs.appendFileSync(`${finalPath}.part`, Buffer.alloc(2048));
+    }, 50);
+    process.on('SIGINT', () => {
+        fs.renameSync(`${finalPath}.part`, finalPath);
+        process.stdout.write(`CYBERFILE|${finalPath}\n`);
+        process.exit(0);
+    });
 } else if (url.includes('livestream')) {
     // Like a real live recording: announces it is live, grows a .part file and, on SIGINT, finishes and keeps the file.
     const finalPath = `${downloadDir}/Live Show [abc].mp4`;

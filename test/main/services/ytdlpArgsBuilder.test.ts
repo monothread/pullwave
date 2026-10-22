@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
-import { FILE_PRINT_TEMPLATE, INFO_PRINT_TEMPLATE, POSTPROCESS_TEMPLATE, PROGRESS_TEMPLATE } from '@main/services/progressParser';
+import { FILE_PRINT_TEMPLATE, INFO_PRINT_TEMPLATE, POSTPROCESS_TEMPLATE, PROGRESS_TEMPLATE, STREAM_PRINT_TEMPLATE } from '@main/services/progressParser';
 import { buildYtdlpArgs, escapeTitleForTemplate, splitArguments } from '@main/services/ytdlpArgsBuilder';
 
 const URL = 'https://example.com/watch?v=abc';
@@ -45,6 +45,8 @@ describe('buildYtdlpArgs', () => {
             FILE_PRINT_TEMPLATE,
             '--print',
             INFO_PRINT_TEMPLATE,
+            '--print',
+            STREAM_PRINT_TEMPLATE,
             '-P',
             DEFAULT_DIR,
             '-o',
@@ -386,6 +388,13 @@ describe('buildYtdlpArgs for live streams', () => {
         const args = build({});
         const infoIndex = args.indexOf(INFO_PRINT_TEMPLATE);
         expect(args[infoIndex - 1]).toBe('--print');
+    });
+
+    it('asks yt-dlp to print, right after that, where the stream can be fetched from', () => {
+        const args = build({});
+        const streamIndex = args.indexOf(STREAM_PRINT_TEMPLATE);
+        expect(args[streamIndex - 1]).toBe('--print');
+        expect(args[streamIndex - 2]).toBe(INFO_PRINT_TEMPLATE);
     });
 });
 

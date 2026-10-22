@@ -79,6 +79,38 @@ describe('runYtdlp', () => {
         ]);
     });
 
+    it('tells where the stream can be fetched from, and does not take that line for anything else', async () => {
+        const fake = createFakeChild();
+        const onStream = vi.fn();
+        const infos: DownloadInfo[] = [];
+        const run = runYtdlp({
+            binary: 'yt-dlp',
+            args: [],
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: vi.fn(),
+            onInfo: (info) => {
+                infos.push(info);
+            },
+            onStream
+        });
+        fake.stdout.write('CYBERINFO|True|/d/Live [abc].mp4\n');
+        fake.stdout.write(`CYBERSTREAM|${JSON.stringify({ is_live: true, url: 'https://cdn.test/live.m3u8', protocol: 'm3u8_native', http_headers: { Referer: 'https://site.test/' } })}\n`);
+        fake.stdout.write('CYBERSTREAM|{broken\n');
+        await new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(infos).toEqual([{ live: true, filePath: '/d/Live [abc].mp4' }]);
+        expect(onStream).toHaveBeenCalledTimes(1);
+        expect(onStream).toHaveBeenCalledWith({
+            live: true,
+            sources: [{ url: 'https://cdn.test/live.m3u8', protocol: 'm3u8_native', headers: { Referer: 'https://site.test/' } }]
+        });
+        fake.emitter.emit('close', 0);
+        await expect(run.result).resolves.toEqual({ status: 'done', filePath: null });
+    });
+
     it('tells that yt-dlp is waiting for a scheduled live stream, once per "[wait]" line', async () => {
         const fake = createFakeChild();
         const onWaiting = vi.fn();

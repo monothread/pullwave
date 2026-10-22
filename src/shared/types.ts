@@ -255,6 +255,19 @@ export interface DownloadInfo {
     filePath: string;
 }
 
+// Where a stream that is being downloaded can be fetched from: one entry for each rendition yt-dlp picked (the video and the audio
+// when they are apart), with what has to be sent to get it.
+export interface StreamSource {
+    url: string;
+    protocol: string;
+    headers: Record<string, string>;
+}
+
+export interface LiveStreamInfo {
+    live: boolean;
+    sources: StreamSource[];
+}
+
 export interface HistoryEntry {
     id: string;
     url: string;

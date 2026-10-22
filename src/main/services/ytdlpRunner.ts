@@ -1,8 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import type { DownloadError, DownloadInfo, PostProcessEvent, ProgressInfo } from '@shared/types';
+import type { DownloadError, DownloadInfo, LiveStreamInfo, PostProcessEvent, ProgressInfo } from '@shared/types';
 import { mapDownloadError, mapSpawnError } from './errorMapper';
 import { killProcessTree, type GroupKill, type TaskkillSpawn } from './processTree';
-import { isWaitLine, parseFileLine, parseInfoLine, parsePostProcessLine, parseProgressLine, POSTPROCESS_PREFIX } from './progressParser';
+import { isWaitLine, parseFileLine, parseInfoLine, parsePostProcessLine, parseProgressLine, parseStreamLine, POSTPROCESS_PREFIX } from './progressParser';
 
 // After yt-dlp exits its pipes may still be held open by a process it started (an ffmpeg left behind), which would keep
 // the download "running" forever: the result is given anyway once this time has passed.
@@ -34,6 +34,8 @@ export interface RunOptions {
     args: string[];
     onProgress: (progress: ProgressInfo) => void;
     onInfo?: (info: DownloadInfo) => void;
+    // Where the stream about to be downloaded can be fetched from (printed right after the info).
+    onStream?: (stream: LiveStreamInfo) => void;
     // yt-dlp is waiting for a scheduled live stream to start.
     onWaiting?: () => void;
     // A post-processor (the ffmpeg steps after the download: conversion, merge, metadata...) started or finished.
@@ -97,6 +99,11 @@ export function runYtdlp(options: RunOptions): RunHandle {
         const info = parseInfoLine(line);
         if (info) {
             options.onInfo?.(info);
+            return;
+        }
+        const stream = parseStreamLine(line);
+        if (stream) {
+            options.onStream?.(stream);
             return;
         }
         if (isWaitLine(line)) {
