@@ -35,14 +35,50 @@ describe('LocalPages from a CBZ', () => {
             { name: '002.png', data: 'two' },
             { name: 'ComicInfo.xml', data: '<ComicInfo/>' },
             { name: '001.png', data: 'one' },
-            { name: '010.png', data: 'ten' },
+            { name: '003.png', data: 'three' },
             { name: 'readme.txt', data: 'x' }
         ]);
         const pages = new LocalPages();
         await expect(pages.count(path)).resolves.toBe(3);
         await expect(pages.read(path, 0)).resolves.toEqual(Buffer.from('one'));
         await expect(pages.read(path, 1)).resolves.toEqual(Buffer.from('two'));
-        await expect(pages.read(path, 2)).resolves.toEqual(Buffer.from('ten'));
+        await expect(pages.read(path, 2)).resolves.toEqual(Buffer.from('three'));
+    });
+
+    it('keeps the places of the pages when the chapter lacks some, and says which are lacking', async () => {
+        const path = writeCbz(makeTempDir(), 'Chapter 1.cbz', [
+            { name: '001.png', data: 'one' },
+            { name: '004.png', data: 'four' },
+            { name: 'ComicInfo.xml', data: '<ComicInfo/>' },
+            { name: '003.png', data: 'three' }
+        ]);
+        const pages = new LocalPages();
+        await expect(pages.count(path)).resolves.toBe(3);
+        await expect(pages.missing(path, 5)).resolves.toEqual([1, 4]);
+        await expect(pages.read(path, 0)).resolves.toEqual(Buffer.from('one'));
+        await expect(pages.read(path, 2)).resolves.toEqual(Buffer.from('three'));
+        await expect(pages.read(path, 3)).resolves.toEqual(Buffer.from('four'));
+        await expect(pages.read(path, 1)).rejects.toThrow('There is no such page');
+        await expect(pages.read(path, 4)).rejects.toThrow('There is no such page');
+    });
+
+    it('reads by position when the names do not say the place of the pages', async () => {
+        const path = writeCbz(makeTempDir(), 'c.cbz', [
+            { name: 'b.png', data: 'second' },
+            { name: 'a.png', data: 'first' }
+        ]);
+        const pages = new LocalPages();
+        await expect(pages.read(path, 0)).resolves.toEqual(Buffer.from('first'));
+        await expect(pages.read(path, 1)).resolves.toEqual(Buffer.from('second'));
+        await expect(pages.read(path, 2)).rejects.toThrow('There is no such page');
+    });
+
+    it('says no page is lacking in a chapter that has all of them', async () => {
+        const path = writeCbz(makeTempDir(), 'c.cbz', [
+            { name: '001.png', data: 'one' },
+            { name: '002.png', data: 'two' }
+        ]);
+        await expect(new LocalPages().missing(path, 2)).resolves.toEqual([]);
     });
 
     it('refuses a page that is not there', async () => {
@@ -100,5 +136,34 @@ describe('LocalPages from a folder of images', () => {
         await expect(pages.read(folder, 0)).resolves.toEqual(Buffer.from('one'));
         await expect(pages.read(folder, 1)).resolves.toEqual(Buffer.from('two'));
         await expect(pages.read(folder, 2)).rejects.toThrow('There is no such page');
+    });
+});
+
+describe('LocalPages from a folder of images that lacks pages', () => {
+    it('keeps the places of the pages and says which are lacking', async () => {
+        const folder = join(makeTempDir(), 'Chapter 1');
+        mkdirSync(folder);
+        writeFileSync(join(folder, '001.jpg'), 'one');
+        writeFileSync(join(folder, '003.jpg'), 'three');
+        writeFileSync(join(folder, 'ComicInfo.xml'), '<ComicInfo/>');
+        const pages = new LocalPages();
+        await expect(pages.count(folder)).resolves.toBe(2);
+        await expect(pages.missing(folder, 3)).resolves.toEqual([1]);
+        await expect(pages.read(folder, 0)).resolves.toEqual(Buffer.from('one'));
+        await expect(pages.read(folder, 1)).rejects.toThrow('There is no such page');
+        await expect(pages.read(folder, 2)).resolves.toEqual(Buffer.from('three'));
+    });
+
+    it('lists the folder again once a page was added', async () => {
+        const folder = join(makeTempDir(), 'Chapter 1');
+        mkdirSync(folder);
+        writeFileSync(join(folder, '001.jpg'), 'one');
+        writeFileSync(join(folder, '003.jpg'), 'three');
+        const pages = new LocalPages();
+        await expect(pages.missing(folder, 3)).resolves.toEqual([1]);
+        writeFileSync(join(folder, '002.jpg'), 'two');
+        utimesSync(folder, new Date(), new Date(Date.now() + 5000));
+        await expect(pages.missing(folder, 3)).resolves.toEqual([]);
+        await expect(pages.read(folder, 1)).resolves.toEqual(Buffer.from('two'));
     });
 });

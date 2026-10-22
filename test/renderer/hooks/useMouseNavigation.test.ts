@@ -537,7 +537,7 @@ describe('useMouseNavigation', () => {
                 useMangaStore.getState().setView('library');
             });
             act(() => {
-                useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+                useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, missing: [], error: null } });
             });
             press(MOUSE_BACK_BUTTON);
             expect(useMangaStore.getState().reader.status).toBe('closed');
@@ -553,7 +553,7 @@ describe('useMouseNavigation', () => {
             });
             press(MOUSE_BACK_BUTTON);
             act(() => {
-                useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+                useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, missing: [], error: null } });
             });
             const event = press(MOUSE_FORWARD_BUTTON);
             expect(event.defaultPrevented).toBe(true);
@@ -682,7 +682,7 @@ describe('useMouseNavigation', () => {
             mount();
             setTab('manga' as 'anime');
             area.scrollTop = 900;
-            useMangaStore.setState({ reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+            useMangaStore.setState({ reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, missing: [], error: null } });
             press(MOUSE_BACK_BUTTON);
             expect(useMangaStore.getState().reader.status).toBe('closed');
             expect(frames).toHaveLength(0);

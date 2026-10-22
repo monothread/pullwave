@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaDetail } from '@renderer/components/MangaDetail';
@@ -144,7 +144,7 @@ describe('MangaDetail', () => {
 });
 
 describe('MangaDetail downloading the season', () => {
-    const SEASON = (statuses: Array<'done' | 'queued' | 'downloading' | 'idle' | 'error' | 'cancelled' | 'paused'>) => {
+    const SEASON = (statuses: Array<'done' | 'incomplete' | 'queued' | 'downloading' | 'idle' | 'error' | 'cancelled' | 'paused'>) => {
         return makeLibraryManga(
             statuses.map((status, index) => {
                 return makeChapterRecord({ id: index + 1, remoteId: 11 + index, status });
@@ -172,6 +172,15 @@ describe('MangaDetail downloading the season', () => {
         expect(screen.getByRole('button', { name: 'DOWNLOAD SEASON: One Piece' })).toBeEnabled();
     });
 
+    it('is there when a chapter lacks pages, and downloads them with the rest', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [SEASON(['done', 'incomplete'])] });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD SEASON: One Piece' }));
+        expect(mock.api.manga.downloadMissing).toHaveBeenCalledWith([9]);
+    });
+
     it('is not there when everything is downloaded, waiting or going on', () => {
         useMangaStore.setState({ library: [SEASON(['done', 'queued', 'downloading'])] });
         open();
@@ -192,7 +201,7 @@ describe('MangaDetail downloading the season', () => {
 });
 
 describe('MangaDetail downloading one chapter', () => {
-    const SAVED = (statuses: Array<'done' | 'queued' | 'downloading' | 'idle' | 'error' | 'cancelled' | 'paused'>) => {
+    const SAVED = (statuses: Array<'done' | 'incomplete' | 'queued' | 'downloading' | 'idle' | 'error' | 'cancelled' | 'paused'>) => {
         return makeLibraryManga(
             statuses.map((status, index) => {
                 return makeChapterRecord({ id: index + 1, remoteId: 11 + index, status });
@@ -788,6 +797,78 @@ describe('MangaDetail the site of the source and the chapters that failed', () =
         expect(mock.api.manga.retry).toHaveBeenCalledWith(1);
         await user.click(screen.getByRole('button', { name: 'RETRY: #2' }));
         expect(mock.api.manga.retry).toHaveBeenLastCalledWith(2);
+    });
+
+    it('marks a chapter that lacks pages as incomplete, in yellow, and offers to download the missing pages', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.repairChapter.mockResolvedValue({ ok: true, value: { missing: [] } });
+        useMangaStore.setState({
+            library: [
+                makeLibraryManga([
+                    makeChapterRecord({ id: 1, remoteId: 11, status: 'incomplete' }),
+                    makeChapterRecord({ id: 2, remoteId: 12, status: 'done' })
+                ])
+            ]
+        });
+        open();
+        render(<MangaDetail />);
+        const rows = screen.getAllByTestId('manga-chapter');
+        expect(within(rows[0]!).getByText('Incomplete')).toHaveClass('badge--incomplete');
+        expect(within(rows[0]!).queryByText('Downloaded')).not.toBeInTheDocument();
+        expect(within(rows[0]!).queryByRole('button', { name: /^DOWNLOAD:/ })).not.toBeInTheDocument();
+        expect(within(rows[1]!).queryByRole('button', { name: /^RETRY/ })).not.toBeInTheDocument();
+        await user.click(within(rows[0]!).getByRole('button', { name: 'RETRY: Romance Dawn' }));
+        expect(mock.api.manga.repairChapter).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.repairChapter).toHaveBeenCalledWith(1, null);
+        expect(mock.api.manga.retry).not.toHaveBeenCalled();
+        expect(useAppStore.getState().toasts.map((toast) => {
+            return toast.message;
+        })).toEqual(['The missing pages were downloaded.']);
+    });
+
+    it('keeps the button of an incomplete chapter off while its pages are being downloaded', async () => {
+        const user = userEvent.setup();
+        let answer: (value: { ok: true; value: { missing: number[] } }) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.repairChapter.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'incomplete' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'incomplete' })])] });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'RETRY: Romance Dawn' }));
+        expect(screen.getByRole('button', { name: 'RETRY: Romance Dawn' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'RETRY: #2' })).toBeEnabled();
+        await act(async () => {
+            answer({ ok: true, value: { missing: [1, 3, 5] } });
+        });
+        expect(screen.getByRole('button', { name: 'RETRY: Romance Dawn' })).toBeEnabled();
+        expect(useAppStore.getState().toasts.map((toast) => {
+            return toast.message;
+        })).toEqual(['3 page(s) are still missing.']);
+    });
+
+    it('does not offer to download the missing pages on the page of the browse', () => {
+        useMangaStore.setState({ selectionFrom: 'browse', view: 'browse', library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'incomplete' })])] });
+        open();
+        render(<MangaDetail />);
+        expect(within(screen.getAllByTestId('manga-chapter')[0]!).getByText('Incomplete')).toHaveClass('badge--incomplete');
+        expect(screen.queryByRole('button', { name: /^RETRY/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Remove download/ })).not.toBeInTheDocument();
+    });
+
+    it('can remove the download of an incomplete chapter', async () => {
+        const user = userEvent.setup();
+        const library = [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'incomplete' })])];
+        mock.api.manga.library.mockResolvedValue(library);
+        useMangaStore.setState({ library });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'Remove download: Romance Dawn' }));
+        expect(mock.api.manga.removeDownload).toHaveBeenCalledWith(1);
     });
 
     it('offers to go on with or cancel a paused chapter, in the library page only, and nothing else for it', async () => {

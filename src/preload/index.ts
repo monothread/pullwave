@@ -88,6 +88,9 @@ const manga: CyberApi['manga'] = {
     retry: (chapterId) => {
         return ipcRenderer.invoke(IPC.mangaRetry, chapterId);
     },
+    repairChapter: (chapterId, pageIndex) => {
+        return ipcRenderer.invoke(IPC.mangaRepairChapter, chapterId, pageIndex);
+    },
     pause: (chapterId) => {
         return ipcRenderer.invoke(IPC.mangaPause, chapterId);
     },

@@ -22,7 +22,7 @@ const CHAPTERS: ReaderChapter[] = [
 const PAGES = ['http://127.0.0.1:4321/p/0', 'http://127.0.0.1:4321/p/1', 'http://127.0.0.1:4321/p/2'];
 
 function open(patch: Partial<MangaReaderState> = {}): void {
-    useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: PAGES, local: false, error: null, ...patch } });
+    useMangaStore.setState({ reader: { status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: PAGES, local: false, missing: [], error: null, ...patch } });
 }
 
 function shownPage(): string | null {
@@ -32,7 +32,7 @@ function shownPage(): string | null {
 beforeEach(() => {
     window.localStorage.clear();
     mock = installMockApi();
-    mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: PAGES, local: false } });
+    mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: PAGES, local: false, missing: [] } });
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
     useMangaStore.setState({ ...initialManga });
 });
@@ -219,6 +219,127 @@ describe('MangaReader single page', () => {
         await user.click(screen.getByRole('button', { name: 'TRY AGAIN' }));
         expect(screen.getByRole('img')).toHaveAttribute('src', PAGES[0]);
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaReader a downloaded chapter that lacks pages', () => {
+    const LOCAL = ['pullwave-manga://page/8/0', 'pullwave-manga://page/8/1', 'pullwave-manga://page/8/2'];
+
+    it('says the page was not downloaded, and offers to download it instead of loading it again', () => {
+        open({ pages: LOCAL, local: true, missing: [0] });
+        render(<MangaReader />);
+        fireEvent.error(screen.getByRole('img'));
+        expect(screen.getByRole('alert')).toHaveTextContent('Page 1 was not downloaded.');
+        expect(screen.queryByRole('img')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'DOWNLOAD PAGE' })).toBeEnabled();
+        expect(screen.queryByRole('button', { name: 'TRY AGAIN' })).not.toBeInTheDocument();
+    });
+
+    it('downloads the page of the chapter of the library, and shows it once it is there', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.repairChapter.mockResolvedValue({ ok: true, value: { missing: [] } });
+        open({ pages: LOCAL, local: true, missing: [0] });
+        render(<MangaReader />);
+        fireEvent.error(screen.getByRole('img'));
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD PAGE' }));
+        expect(mock.api.manga.repairChapter).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.repairChapter).toHaveBeenCalledWith(8, 0);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('img')).toHaveAttribute('src', LOCAL[0]);
+        expect(useMangaStore.getState().reader.missing).toEqual([]);
+    });
+
+    it('tells that the page could not be downloaded, and lets the user try again', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.repairChapter.mockResolvedValueOnce({ ok: false, error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+        mock.api.manga.repairChapter.mockResolvedValueOnce({ ok: true, value: { missing: [] } });
+        open({ pages: LOCAL, local: true, missing: [0] });
+        render(<MangaReader />);
+        fireEvent.error(screen.getByRole('img'));
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD PAGE' }));
+        const alerts = screen.getAllByRole('alert');
+        expect(alerts.map((alert) => {
+            return alert.textContent;
+        })).toEqual(['Page 1 was not downloaded.', 'The page could not be downloaded. Try again.']);
+        expect(screen.queryByRole('img')).not.toBeInTheDocument();
+        expect(useMangaStore.getState().reader.missing).toEqual([0]);
+        expect(screen.getByRole('button', { name: 'DOWNLOAD PAGE' })).toBeEnabled();
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD PAGE' }));
+        expect(mock.api.manga.repairChapter).toHaveBeenCalledTimes(2);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.getByRole('img')).toHaveAttribute('src', LOCAL[0]);
+    });
+
+    it('keeps the button off while the page is being downloaded', async () => {
+        const user = userEvent.setup();
+        let answer: (result: { ok: true; value: { missing: number[] } }) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.repairChapter.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        open({ pages: LOCAL, local: true, missing: [0] });
+        render(<MangaReader />);
+        fireEvent.error(screen.getByRole('img'));
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD PAGE' }));
+        expect(screen.getByRole('button', { name: 'DOWNLOAD PAGE' })).toBeDisabled();
+        await act(async () => {
+            answer({ ok: true, value: { missing: [] } });
+        });
+        expect(screen.getByRole('img')).toHaveAttribute('src', LOCAL[0]);
+        expect(mock.api.manga.repairChapter).toHaveBeenCalledTimes(1);
+    });
+
+    it('downloads only the page that is lacking in the scroll, and leaves the other pages as they are', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.repairChapter.mockResolvedValue({ ok: true, value: { missing: [] } });
+        open({ pages: LOCAL, local: true, missing: [2] });
+        render(<MangaReader />);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'vertical');
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        const before = screen.getAllByRole('img');
+        fireEvent.error(before[2]!);
+        expect(screen.getByRole('alert')).toHaveTextContent('Page 3 was not downloaded.');
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD PAGE' }));
+        expect(mock.api.manga.repairChapter).toHaveBeenCalledWith(8, 2);
+        const after = screen.getAllByRole('img');
+        expect(after).toHaveLength(3);
+        expect(after[0]).toBe(before[0]);
+        expect(after[1]).toBe(before[1]);
+        expect(after[2]).toHaveAttribute('src', LOCAL[2]);
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('loads again a page that is there but did not load, even when the chapter lacks another page', async () => {
+        const user = userEvent.setup();
+        open({ pages: LOCAL, local: true, missing: [2] });
+        render(<MangaReader />);
+        fireEvent.error(screen.getByRole('img'));
+        expect(screen.getByRole('alert')).toHaveTextContent('Page 1 could not be loaded.');
+        expect(screen.queryByRole('button', { name: 'DOWNLOAD PAGE' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'TRY AGAIN' }));
+        expect(mock.api.manga.repairChapter).not.toHaveBeenCalled();
+        expect(screen.getByRole('img')).toHaveAttribute('src', LOCAL[0]);
+    });
+
+    it('forgets that a page could not be downloaded when the chapter changes', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.repairChapter.mockResolvedValue({ ok: false, error: { code: 'IMAGE', message: 'A page came back empty' } });
+        open({ pages: LOCAL, local: true, missing: [0] });
+        render(<MangaReader />);
+        fireEvent.error(screen.getByRole('img'));
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD PAGE' }));
+        expect(screen.getByText('The page could not be downloaded. Try again.')).toBeInTheDocument();
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: PAGES, local: false, missing: [] } });
+        await act(async () => {
+            await useMangaStore.getState().goToChapter(1);
+        });
+        fireEvent.error(screen.getByRole('img'));
+        expect(screen.getByRole('alert')).toHaveTextContent('Page 1 could not be loaded.');
+        expect(screen.queryByText('The page could not be downloaded. Try again.')).not.toBeInTheDocument();
     });
 });
 

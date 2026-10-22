@@ -1,5 +1,6 @@
+import { hasChapterFile } from '@shared/manga';
 import type { LibraryManga, MangaChapterRecord, MangaDownloadRequest, MangaError, MangaJob, MangaOutputFormat, MangaRecord } from '@shared/manga';
-import type { ChapterDownloadHandle, ChapterDownloadOptions } from './mangaChapterDownloader';
+import type { ChapterDownloadHandle, ChapterDownloadOptions, ChapterDownloadResult } from './mangaChapterDownloader';
 import type { MangaDb } from './mangaDb';
 import { chapterOutputPath, chapterWorkDirectory, DEFAULT_MANGA_FOLDER, formatOfPath, mangaDirectory, numberedPath, uniquePath } from './mangaFiles';
 import { join } from 'node:path';
@@ -132,7 +133,7 @@ export class MangaDownloadQueue {
                 return;
             }
             [...this.deps.db.chaptersOf(mangaId)].reverse().forEach((chapter) => {
-                if (chapter.status !== 'done') {
+                if (!hasChapterFile(chapter.status)) {
                     this.queueChapter(manga, chapter);
                 }
             });
@@ -166,7 +167,7 @@ export class MangaDownloadQueue {
     retry(chapterId: number): void {
         const chapter = this.deps.db.getChapter(chapterId);
         const manga = chapter === null ? null : this.deps.db.getManga(chapter.mangaId);
-        if (chapter === null || manga === null || chapter.status === 'done' || this.isActiveJob(chapterId)) {
+        if (chapter === null || manga === null || hasChapterFile(chapter.status) || this.isActiveJob(chapterId)) {
             return;
         }
         this.tries.delete(chapterId);
@@ -351,12 +352,13 @@ export class MangaDownloadQueue {
             pagesDone: 0,
             pageCount: 0,
             percent: 0,
-            error: null
+            error: null,
+            missingPages: 0
         };
     }
 
     private queueChapter(manga: MangaRecord, chapter: MangaChapterRecord): void {
-        if (chapter.status === 'done' || this.isActiveJob(chapter.id)) {
+        if (hasChapterFile(chapter.status) || this.isActiveJob(chapter.id)) {
             return;
         }
         this.deps.db.markQueued(chapter.id);
@@ -531,7 +533,7 @@ export class MangaDownloadQueue {
             } else if (result.status === 'error') {
                 this.onFailure(job, result.error);
             } else {
-                this.finishDownloaded(job, result.value.filePath, result.value.sizeBytes, result.value.pageCount);
+                this.finishDownloaded(job, result.value);
             }
             // A chapter the user resumed in a held queue may still start again when it is tried again after a failure.
             if (job.status !== 'queued') {
@@ -567,11 +569,16 @@ export class MangaDownloadQueue {
         this.update(job, { status: 'queued', error: null });
     }
 
-    private finishDownloaded(job: MangaJob, filePath: string, sizeBytes: number, pageCount: number): void {
-        this.deps.db.markDone(job.chapterId, filePath, sizeBytes, pageCount);
+    private finishDownloaded(job: MangaJob, result: ChapterDownloadResult): void {
+        const { filePath, sizeBytes, pageCount, missingPages } = result;
+        if (missingPages.length > 0) {
+            this.deps.db.markIncomplete(job.chapterId, filePath, sizeBytes, pageCount);
+        } else {
+            this.deps.db.markDone(job.chapterId, filePath, sizeBytes, pageCount);
+        }
         this.outputPaths.delete(job.chapterId);
         this.tries.delete(job.chapterId);
-        this.update(job, { status: 'done', percent: 100, pagesDone: pageCount, pageCount });
+        this.update(job, { status: 'done', percent: 100, pagesDone: pageCount, pageCount, missingPages: missingPages.length });
         // The screen of the downloads is for what is going on or went wrong: a chapter that is complete is in the library.
         this.jobs.delete(job.chapterId);
     }

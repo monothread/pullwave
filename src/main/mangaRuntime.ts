@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { IPC } from '@shared/constants';
-import { isMangaSupported } from '@shared/manga';
+import { hasChapterFile, isMangaSupported } from '@shared/manga';
 import type { Settings, SiteBrowser } from '@shared/types';
 import type { MangaHandlerDependencies } from './ipc/registerMangaHandlers';
 import { MangaChapterDownloader } from './services/manga/mangaChapterDownloader';
@@ -16,6 +16,7 @@ import { MangaCovers } from './services/manga/mangaCovers';
 import { MangaIcons } from './services/manga/mangaIcons';
 import { createMangaProtocolHandler } from './services/manga/mangaPageProtocol';
 import { MangaReader } from './services/manga/mangaReader';
+import { MangaRepair } from './services/manga/mangaRepair';
 import { MangaService } from './services/manga/mangaService';
 import { SuwayomiClient } from './services/manga/suwayomiClient';
 import { CloudflareMonitor } from './services/tools/cloudflareMonitor';
@@ -277,13 +278,27 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
     });
     const fileOf = (chapterId: number): string | null => {
         const chapter = db.getChapter(chapterId);
-        return chapter !== null && chapter.status === 'done' ? chapter.filePath : null;
+        return chapter !== null && hasChapterFile(chapter.status) ? chapter.filePath : null;
     };
     const reader = new MangaReader({
         fileOf,
+        incompletePageCount: (chapterId) => {
+            const chapter = db.getChapter(chapterId);
+            return chapter?.status === 'incomplete' ? chapter.pageCount : null;
+        },
         localPages,
         remotePages: (chapterRemoteId) => {
             return service.pagesOf(chapterRemoteId);
+        }
+    });
+    const repair = new MangaRepair({
+        db,
+        repair: (repairOptions, signal) => {
+            return downloader.repair(repairOptions, signal);
+        },
+        pathExists: existsSync,
+        onLibraryChanged: () => {
+            send(IPC.eventMangaLibrary);
         }
     });
     const updates = new MangaToolUpdates({
@@ -317,6 +332,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         queue,
         db,
         reader,
+        repair,
         removeChapterFiles: (paths) => {
             paths.forEach(removeChapterPath);
         },
@@ -326,7 +342,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
                 return null;
             }
             const downloaded = manga.chapters.find((chapter) => {
-                return chapter.status === 'done' && chapter.filePath !== null;
+                return hasChapterFile(chapter.status) && chapter.filePath !== null;
             });
             return downloaded?.filePath != null ? dirname(downloaded.filePath) : mangaDirectory(baseDirectory(), manga.title, options.platform);
         },
@@ -442,7 +458,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         shutdown: async () => {
             checker.stop();
-            await Promise.all([queue.shutdown(), service.shutdown(), monitor?.stop()]);
+            await Promise.all([queue.shutdown(), repair.shutdown(), service.shutdown(), monitor?.stop()]);
         }
     };
 }

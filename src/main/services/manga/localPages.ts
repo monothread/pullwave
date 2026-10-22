@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import yauzl from 'yauzl';
-import { COMIC_INFO_FILE } from './mangaFiles';
+import { COMIC_INFO_FILE, missingPageIndexes, pageIndexOfFile } from './mangaFiles';
 
 export class LocalPagesError extends Error {}
 
@@ -111,6 +111,21 @@ interface Listing {
     modified: number;
     isFolder: boolean;
     names: string[];
+    // The names by the place of the page they are named after, when every name is (the ones the app makes are); a chapter that lacks
+    // a page keeps the places of the others.
+    byPlace: Map<number, string> | null;
+}
+
+function namesByPlace(names: readonly string[]): Map<number, string> | null {
+    const places = names.map(pageIndexOfFile);
+    if (places.some((place) => {
+        return place === null;
+    })) {
+        return null;
+    }
+    return new Map(names.map((name, position) => {
+        return [places[position] as number, name];
+    }));
 }
 
 // Reads the pages of a chapter that was downloaded, from the CBZ or from the folder of images the app made. Only the list of names is
@@ -127,7 +142,8 @@ export class LocalPages {
             return cached;
         }
         const isFolder = stats.isDirectory();
-        const listing: Listing = { modified: stats.mtimeMs, isFolder, names: isFolder ? await folderNames(path) : await cbzNames(path) };
+        const names = isFolder ? await folderNames(path) : await cbzNames(path);
+        const listing: Listing = { modified: stats.mtimeMs, isFolder, names, byPlace: namesByPlace(names) };
         this.listings.set(path, listing);
         if (this.listings.size > CACHED_CHAPTERS) {
             this.listings.delete(this.listings.keys().next().value as string);
@@ -140,9 +156,15 @@ export class LocalPages {
         return (await this.listing(path)).names.length;
     }
 
+    // The places (from 0) of the pages the chapter lacks, out of the number it should have.
+    async missing(path: string, pageCount: number): Promise<number[]> {
+        return missingPageIndexes((await this.listing(path)).names, pageCount);
+    }
+
+    // The page at this place (from 0): the one named after the place, or the one at that position when the names say nothing.
     async read(path: string, index: number): Promise<Buffer> {
         const listing = await this.listing(path);
-        const name = listing.names[index];
+        const name = listing.byPlace === null ? listing.names[index] : listing.byPlace.get(index);
         if (!Number.isInteger(index) || name === undefined) {
             throw new LocalPagesError('There is no such page');
         }

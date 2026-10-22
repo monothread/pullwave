@@ -1,6 +1,7 @@
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { useEffect, useMemo, useState } from 'react';
+import { hasChapterFile } from '@shared/manga';
 import { ConfirmDialog } from './ConfirmDialog';
 import { MangaCover } from './MangaCover';
 import { activateFilter, type TermKind } from './mangaFilterSearch';
@@ -99,6 +100,9 @@ export function MangaDetail() {
     const openSite = useMangaStore((state) => {
         return state.openSite;
     });
+    const repairChapter = useMangaStore((state) => {
+        return state.repairChapter;
+    });
     const retryJob = useMangaStore((state) => {
         return state.retryJob;
     });
@@ -156,6 +160,20 @@ export function MangaDetail() {
     const [migrating, setMigrating] = useState(false);
     const [confirmingDuplicate, setConfirmingDuplicate] = useState(false);
     const [organizing, setOrganizing] = useState(false);
+    // The incomplete chapters whose missing pages are being downloaded again.
+    const [repairingIds, setRepairingIds] = useState<number[]>([]);
+
+    async function repairIncomplete(chapterId: number): Promise<void> {
+        setRepairingIds((current) => {
+            return [...current, chapterId];
+        });
+        await repairChapter(chapterId);
+        setRepairingIds((current) => {
+            return current.filter((id) => {
+                return id !== chapterId;
+            });
+        });
+    }
     // The page each chapter was left on: read again when the reader closes (it is what the reader writes).
     const progress = useMemo(() => {
         return readerOpen ? {} : loadAllProgress();
@@ -178,13 +196,18 @@ export function MangaDetail() {
     const missingFromLibrary = chapters.filter((chapter) => {
         return chapterState(saved, chapter.remoteId) === null;
     }).length;
-    // Only what is missing in this season is downloaded: the chapters that a download does something for.
-    const toDownload = downloadablePicks(
-        saved,
-        chapters.map((chapter) => {
-            return chapter.remoteId;
-        })
-    ).length;
+    // Only what is missing in this season is downloaded: the chapters that a download does something for, and the pages the incomplete
+    // chapters lack.
+    const toDownload =
+        downloadablePicks(
+            saved,
+            chapters.map((chapter) => {
+                return chapter.remoteId;
+            })
+        ).length +
+        chapters.filter((chapter) => {
+            return chapterState(saved, chapter.remoteId)?.status === 'incomplete';
+        }).length;
     const shown = details ?? manga;
     // The chapters in reading order (the list shows the newest first), each with its place in the library when it is there.
     const readable = [...chapters]
@@ -570,7 +593,20 @@ export function MangaDetail() {
                                             </button>
                                         </>
                                     )}
-                                    {inLibraryPage && state && state.status === 'done' && (
+                                    {inLibraryPage && state && state.status === 'incomplete' && (
+                                        <button
+                                            type="button"
+                                            className="btn btn--small btn--primary"
+                                            disabled={repairingIds.includes(state.id)}
+                                            aria-label={`${t('manga.jobs.retry')}: ${label}`}
+                                            onClick={() => {
+                                                void repairIncomplete(state.id);
+                                            }}
+                                        >
+                                            {t('manga.jobs.retry')}
+                                        </button>
+                                    )}
+                                    {inLibraryPage && state && hasChapterFile(state.status) && (
                                         <button
                                             type="button"
                                             className="btn btn--small btn--ghost"

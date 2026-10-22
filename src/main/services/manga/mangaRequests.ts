@@ -15,6 +15,7 @@ import type {
     MangaSummary,
     ReadingRecord
 } from '@shared/manga';
+import { MAX_LOCAL_PAGES } from './localPages';
 import { MANGA_LIST_KINDS, MANGA_STATUSES, MANGA_TRI_STATES, MAX_GROUP_NAME_LENGTH } from '@shared/manga';
 import { cleanSeasonName, cleanSeriesName, isValidSeason } from '@shared/series';
 
@@ -34,6 +35,11 @@ function isRecord(value: unknown): value is Raw {
 
 export function asId(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= Number.MAX_SAFE_INTEGER ? value : null;
+}
+
+// The place (from 0) of a page of a chapter that came from the screen.
+export function asPageIndex(value: unknown): number | null {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < MAX_LOCAL_PAGES ? value : null;
 }
 
 // The ids that came from the screen that are ids, without repeating one.

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MangaChapterDownloader, PAGE_RETRY_DELAYS_MS, type ChapterDownloadOptions, type ChapterDownloaderDependencies } from '@main/services/manga/mangaChapterDownloader';
+import { MAX_CONSECUTIVE_SERVER_FAILURES, MangaChapterDownloader, PAGE_RETRY_DELAYS_MS, type ChapterDownloadOptions, type ChapterDownloaderDependencies, type ChapterRepairOptions } from '@main/services/manga/mangaChapterDownloader';
 import { ImageFetchError, type FetchedImage } from '@main/services/manga/mangaImages';
 import { buildComicInfo } from '@main/services/manga/comicInfo';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
@@ -91,7 +91,7 @@ describe('MangaChapterDownloader into a CBZ', () => {
         if (result.status !== 'done') {
             return;
         }
-        expect(result.value).toEqual({ filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 3 });
+        expect(result.value).toEqual({ filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 3, missingPages: [] });
         const entries = readZipEntries(readFileSync(context.outputPath));
         expect(entries.map((entry) => {
             return entry.name;
@@ -152,6 +152,82 @@ describe('MangaChapterDownloader into a CBZ', () => {
     });
 });
 
+describe('MangaChapterDownloader a server that does not answer', () => {
+    const MANY = Array.from({ length: 12 }, (_value, index) => {
+        return `http://127.0.0.1:1/p/${index}`;
+    });
+    const NO_ANSWER = (): FetchedImage => {
+        return image(new Uint8Array(), null, 503);
+    };
+
+    function failing(indexes: number[], answer: () => FetchedImage | Error = NO_ANSWER) {
+        return (url: string): FetchedImage | Error => {
+            return indexes.includes(Number(url.split('/').pop())) ? answer() : image(JPEG);
+        };
+    }
+
+    it('gives up the chapter after the pages that fail one after the other because of the server, without waiting for the rest', async () => {
+        expect(MAX_CONSECUTIVE_SERVER_FAILURES).toBe(5);
+        const context = setup({ pages: MANY, fetchImage: failing([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 503 for a page' } });
+        // Two pages that arrived, then five pages with their three tries each; none of the other five was asked for.
+        expect(context.fetched).toHaveLength(2 + 5 * (1 + PAGE_RETRY_DELAYS_MS.length));
+        expect(context.fetched.at(-1)).toBe(MANY[6]);
+        expect(context.progress).toEqual([[1, 12], [2, 12], [3, 12], [4, 12], [5, 12], [6, 12]]);
+        expect(readdirSync(`${context.outputPath}.part`).sort()).toEqual(['001.jpg', '002.jpg']);
+        expect(existsSync(context.outputPath)).toBe(false);
+    });
+
+    it('counts the pages the connection could not get as the ones the server did not answer', async () => {
+        const context = setup({ pages: MANY, fetchImage: failing([0, 1, 2, 3, 4, 5], () => {
+            return Object.assign(new Error('the server is gone'), { code: 'SERVER_UNAVAILABLE' });
+        }) });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result).toEqual({ status: 'error', error: { code: 'SERVER_UNAVAILABLE', message: 'the server is gone' } });
+        expect(context.fetched).toHaveLength(5 * (1 + PAGE_RETRY_DELAYS_MS.length));
+    });
+
+    it('starts the count again when a page arrives, so scattered failures only leave pages missing', async () => {
+        const missing = [0, 1, 2, 3, 5, 6, 7, 8, 10, 11];
+        const context = setup({ pages: MANY, fetchImage: failing(missing) });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result.status).toBe('done');
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual(missing);
+        expect(readZipEntries(readFileSync(context.outputPath)).map((entry) => {
+            return entry.name;
+        })).toEqual(['005.jpg', '010.jpg', 'ComicInfo.xml']);
+    });
+
+    it('does not count the pages that are not images or that the app refuses, which fail at once', async () => {
+        const context = setup({ pages: MANY, fetchImage: failing([0, 1, 2, 3, 4, 5, 6, 7], () => {
+            return image(HTML, 'text/html');
+        }) });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+        expect(context.sleeps).toHaveLength(8 * PAGE_RETRY_DELAYS_MS.length);
+        const refused = setup({ pages: MANY, fetchImage: failing([0, 1, 2, 3, 4, 5, 6], () => {
+            return new ImageFetchError('The page is not on the server of the app');
+        }) });
+        const answer = await refused.downloader.download(refused.options()).result;
+        expect(answer.status === 'done' ? answer.value.missingPages : null).toEqual([0, 1, 2, 3, 4, 5, 6]);
+        expect(refused.sleeps).toEqual([]);
+    });
+
+    it('does not let a page that is not an image or refused interrupt the count of the server failures', async () => {
+        const context = setup({ pages: MANY, fetchImage: (url) => {
+            const index = Number(url.split('/').pop());
+            if (index === 2) {
+                return image(HTML, 'text/html');
+            }
+            return index < 5 ? NO_ANSWER() : image(JPEG);
+        } });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result.status).toBe('done');
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([0, 1, 2, 3, 4]);
+    });
+});
+
 describe('MangaChapterDownloader into a folder', () => {
     it('makes the folder with the pages and the ComicInfo, and nothing else', async () => {
         const context = setup({ format: 'folder' });
@@ -165,7 +241,7 @@ describe('MangaChapterDownloader into a folder', () => {
         const expectedSize = readdirSync(context.outputPath).reduce((total, file) => {
             return total + readFileSync(join(context.outputPath, file)).length;
         }, 0);
-        expect(result.value).toEqual({ filePath: context.outputPath, sizeBytes: expectedSize, pageCount: 3 });
+        expect(result.value).toEqual({ filePath: context.outputPath, sizeBytes: expectedSize, pageCount: 3, missingPages: [] });
     });
 
     it('fails and keeps the pages when the place for the folder is taken', async () => {
@@ -188,14 +264,78 @@ describe('MangaChapterDownloader failures', () => {
         expect(context.sleeps).toEqual([...PAGE_RETRY_DELAYS_MS]);
     });
 
-    it('gives up on a page that keeps failing and keeps the pages it has', async () => {
+    it('skips a page that keeps failing and finishes the chapter without it', async () => {
         const context = setup({ fetchImage: (url) => {
             return url.endsWith('/1') ? image(new Uint8Array(), null, 500) : image(JPEG);
         } });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
-        expect(context.fetched).toEqual([PAGES[0], PAGES[1], PAGES[1], PAGES[1]]);
-        expect(readdirSync(`${context.outputPath}.part`)).toEqual(['001.jpg']);
+        expect(result.status).toBe('done');
+        if (result.status !== 'done') {
+            return;
+        }
+        expect(result.value).toEqual({ filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 3, missingPages: [1] });
+        expect(context.fetched).toEqual([PAGES[0], PAGES[1], PAGES[1], PAGES[1], PAGES[2]]);
+        expect(context.sleeps).toEqual([...PAGE_RETRY_DELAYS_MS]);
+        expect(context.progress).toEqual([[1, 3], [2, 3], [3, 3]]);
+        const entries = readZipEntries(readFileSync(context.outputPath));
+        expect(entries.map((entry) => {
+            return entry.name;
+        })).toEqual(['001.jpg', '003.jpg', 'ComicInfo.xml']);
+        expect(entries[2]!.data.toString('utf-8')).toBe(
+            buildComicInfo({
+                seriesTitle: 'One Piece',
+                chapter: { name: 'Romance Dawn', number: 1, scanlator: null },
+                details: { author: 'Oda', artist: null, description: null, genres: ['Action'] },
+                pageCount: 2
+            })
+        );
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
+    });
+
+    it('skips the pages that are not images or that the app refuses to fetch, and tells which ones are missing', async () => {
+        const context = setup({ pages: [...PAGES, 'http://127.0.0.1:1/p/3', 'http://127.0.0.1:1/p/4'], fetchImage: (url) => {
+            if (url.endsWith('/0')) {
+                return image(HTML, 'text/html');
+            }
+            if (url.endsWith('/3')) {
+                return new ImageFetchError('The page is not on the server of the app');
+            }
+            return image(JPEG);
+        } });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result).toEqual({ status: 'done', value: { filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 5, missingPages: [0, 3] } });
+        expect(readZipEntries(readFileSync(context.outputPath)).map((entry) => {
+            return entry.name;
+        })).toEqual(['002.jpg', '003.jpg', '005.jpg', 'ComicInfo.xml']);
+    });
+
+    it('skips a page that keeps failing in a folder too', async () => {
+        const context = setup({ format: 'folder', fetchImage: (url) => {
+            return url.endsWith('/0') ? new Error('ECONNRESET') : image(JPEG);
+        } });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result.status).toBe('done');
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([0]);
+        expect(readdirSync(context.outputPath).sort()).toEqual(['002.jpg', '003.jpg', 'ComicInfo.xml']);
+    });
+
+    it('asks again, when it goes on, for the pages it had skipped', async () => {
+        const context = setup();
+        const work = `${context.outputPath}.part`;
+        mkdirSync(work, { recursive: true });
+        writeFileSync(join(work, '001.jpg'), Buffer.from(JPEG));
+        writeFileSync(join(work, '003.jpg'), Buffer.from(JPEG));
+        const result = await context.downloader.download(context.options()).result;
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([]);
+        expect(context.fetched).toEqual([PAGES[1]]);
+    });
+
+    it('fails with the last failure when no page at all could be downloaded', async () => {
+        const context = setup({ fetchImage: (url) => {
+            return url.endsWith('/2') ? image(new Uint8Array(), null, 503) : image(HTML, 'text/html');
+        } });
+        const result = await context.downloader.download(context.options()).result;
+        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 503 for a page' } });
         expect(existsSync(context.outputPath)).toBe(false);
     });
 
@@ -331,5 +471,280 @@ describe('MangaChapterDownloader cancelling', () => {
         await context.downloader.download(context.options()).result;
         expect(context.signals).toHaveLength(3);
         expect(new Set(context.signals).size).toBe(1);
+    });
+});
+
+describe('MangaChapterDownloader downloading again the missing pages', () => {
+    interface Repairing {
+        context: Setup;
+        failing: Set<string>;
+        // Whether the pages in `failing` fail because the server does not answer (otherwise because they are not images).
+        serverDown: { value: boolean };
+        repairOptions: (overrides?: Partial<ChapterRepairOptions>) => ChapterRepairOptions;
+        fetchedBefore: () => number;
+    }
+
+    // A chapter that was downloaded while the pages in `failing` failed; those pages answer from then on only when `failing` is emptied.
+    async function incompleteChapter(failingUrls: string[], format: 'cbz' | 'folder' = 'cbz', pages: string[] = PAGES, serverDownAtFirst = true): Promise<Repairing> {
+        const failing = new Set(failingUrls);
+        const serverDown = { value: serverDownAtFirst };
+        const context = setup({ format, pages, fetchImage: (url) => {
+            if (!failing.has(url)) {
+                return image(PNG, 'image/png');
+            }
+            return serverDown.value ? image(new Uint8Array(), null, 500) : image(HTML, 'text/html');
+        } });
+        const first = await context.downloader.download(context.options()).result;
+        expect(first.status).toBe('done');
+        const fetchedBefore = context.fetched.length;
+        return {
+            context,
+            failing,
+            serverDown,
+            fetchedBefore: () => {
+                return fetchedBefore;
+            },
+            repairOptions: (overrides = {}) => {
+                return {
+                    chapterRemoteId: 11,
+                    seriesTitle: 'One Piece',
+                    chapter: { name: 'Romance Dawn', number: 1, scanlator: null },
+                    details: { author: 'Oda', artist: null, description: null, genres: ['Action'] },
+                    filePath: context.outputPath,
+                    pageCount: pages.length,
+                    pageIndex: null,
+                    ...overrides
+                };
+            }
+        };
+    }
+
+    function comicInfoOf(pageCount: number): string {
+        return buildComicInfo({
+            seriesTitle: 'One Piece',
+            chapter: { name: 'Romance Dawn', number: 1, scanlator: null },
+            details: { author: 'Oda', artist: null, description: null, genres: ['Action'] },
+            pageCount
+        });
+    }
+
+    it('downloads only the missing pages into the CBZ and keeps the ones it had', async () => {
+        const { context, failing, repairOptions, fetchedBefore } = await incompleteChapter([PAGES[1]!]);
+        failing.clear();
+        const result = await context.downloader.repair(repairOptions());
+        expect(result).toEqual({ status: 'done', value: { filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 3, missingPages: [] } });
+        expect(context.fetched.slice(fetchedBefore())).toEqual([PAGES[1]]);
+        const entries = readZipEntries(readFileSync(context.outputPath));
+        expect(entries.map((entry) => {
+            return entry.name;
+        })).toEqual(['001.png', '002.png', '003.png', 'ComicInfo.xml']);
+        expect([...entries[0]!.data]).toEqual([...PNG]);
+        expect([...entries[1]!.data]).toEqual([...PNG]);
+        expect(entries[3]!.data.toString('utf-8')).toBe(comicInfoOf(3));
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
+    });
+
+    it('downloads only the page asked for and leaves the others missing', async () => {
+        const { context, failing, repairOptions, fetchedBefore } = await incompleteChapter([PAGES[0]!, PAGES[2]!]);
+        failing.clear();
+        const result = await context.downloader.repair(repairOptions({ pageIndex: 2 }));
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([0]);
+        expect(context.fetched.slice(fetchedBefore())).toEqual([PAGES[2]]);
+        expect(readZipEntries(readFileSync(context.outputPath)).map((entry) => {
+            return entry.name;
+        })).toEqual(['002.png', '003.png', 'ComicInfo.xml']);
+    });
+
+    it('keeps the pages it could get and the ones that failed again stay missing', async () => {
+        const { context, failing, repairOptions } = await incompleteChapter([PAGES[0]!, PAGES[2]!]);
+        failing.delete(PAGES[0]!);
+        const result = await context.downloader.repair(repairOptions());
+        expect(result).toEqual({ status: 'done', value: { filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 3, missingPages: [2] } });
+        const entries = readZipEntries(readFileSync(context.outputPath));
+        expect(entries.map((entry) => {
+            return entry.name;
+        })).toEqual(['001.png', '002.png', 'ComicInfo.xml']);
+        expect(entries[2]!.data.toString('utf-8')).toBe(comicInfoOf(2));
+    });
+
+    it('fails, leaving the CBZ as it was, when none of the pages asked for could be downloaded', async () => {
+        const { context, repairOptions } = await incompleteChapter([PAGES[1]!]);
+        const before = readFileSync(context.outputPath);
+        const result = await context.downloader.repair(repairOptions());
+        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+        expect(readFileSync(context.outputPath).equals(before)).toBe(true);
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
+    });
+
+    it('asks again for a page that failed, waiting longer each time', async () => {
+        const { context, repairOptions } = await incompleteChapter([PAGES[1]!]);
+        context.sleeps.length = 0;
+        await context.downloader.repair(repairOptions());
+        expect(context.sleeps).toEqual([...PAGE_RETRY_DELAYS_MS]);
+    });
+
+    it('rebuilds the CBZ without asking for anything when no page is lacking', async () => {
+        const { context, repairOptions, fetchedBefore } = await incompleteChapter([]);
+        const result = await context.downloader.repair(repairOptions());
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([]);
+        expect(context.fetched).toHaveLength(fetchedBefore());
+    });
+
+    it('asks for nothing when the page asked for is already there', async () => {
+        const { context, repairOptions, fetchedBefore } = await incompleteChapter([PAGES[1]!]);
+        const result = await context.downloader.repair(repairOptions({ pageIndex: 0 }));
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([1]);
+        expect(context.fetched).toHaveLength(fetchedBefore());
+    });
+
+    it('does not take what a work folder left by an earlier try has', async () => {
+        const { context, failing, repairOptions } = await incompleteChapter([PAGES[1]!]);
+        const work = `${context.outputPath}.part`;
+        mkdirSync(work, { recursive: true });
+        writeFileSync(join(work, '002.jpg'), 'stale');
+        failing.clear();
+        await context.downloader.repair(repairOptions());
+        const entries = readZipEntries(readFileSync(context.outputPath));
+        expect([...entries[1]!.data]).toEqual([...PNG]);
+        expect(existsSync(work)).toBe(false);
+    });
+
+    it('works in place on a folder of images and writes its ComicInfo again', async () => {
+        const { context, failing, repairOptions, fetchedBefore } = await incompleteChapter([PAGES[2]!], 'folder');
+        expect(readdirSync(context.outputPath).sort()).toEqual(['001.png', '002.png', 'ComicInfo.xml']);
+        expect(readFileSync(join(context.outputPath, 'ComicInfo.xml'), 'utf-8')).toBe(comicInfoOf(2));
+        failing.clear();
+        const result = await context.downloader.repair(repairOptions());
+        const expectedSize = readdirSync(context.outputPath).reduce((total, file) => {
+            return total + readFileSync(join(context.outputPath, file)).length;
+        }, 0);
+        expect(result).toEqual({ status: 'done', value: { filePath: context.outputPath, sizeBytes: expectedSize, pageCount: 3, missingPages: [] } });
+        expect(context.fetched.slice(fetchedBefore())).toEqual([PAGES[2]]);
+        expect(readdirSync(context.outputPath).sort()).toEqual(['001.png', '002.png', '003.png', 'ComicInfo.xml']);
+        expect(readFileSync(join(context.outputPath, 'ComicInfo.xml'), 'utf-8')).toBe(comicInfoOf(3));
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1']);
+    });
+
+    it('fails, leaving the folder as it was, when the page could not be downloaded', async () => {
+        const { context, repairOptions } = await incompleteChapter([PAGES[2]!], 'folder');
+        const result = await context.downloader.repair(repairOptions({ pageIndex: 2 }));
+        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+        expect(readdirSync(context.outputPath).sort()).toEqual(['001.png', '002.png', 'ComicInfo.xml']);
+    });
+
+    it('refuses to go on when the source has another number of pages now', async () => {
+        const { context, repairOptions } = await incompleteChapter([PAGES[1]!]);
+        const result = await context.downloader.repair(repairOptions({ pageCount: 5 }));
+        expect(result).toEqual({ status: 'error', error: { code: 'INVALID_RESPONSE', message: 'The source has another number of pages now' } });
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
+    });
+
+    it('reports the failure to get the list of pages', async () => {
+        const failing = new MangaChapterDownloader({
+            pages: () => {
+                return Promise.reject(Object.assign(new Error('the server said no'), { code: 'SERVER_UNAVAILABLE' }));
+            },
+            fetchImage: () => {
+                return Promise.resolve(image(JPEG));
+            }
+        });
+        const result = await failing.repair({
+            chapterRemoteId: 11,
+            seriesTitle: 'One Piece',
+            chapter: { name: 'Romance Dawn', number: 1, scanlator: null },
+            details: null,
+            filePath: join(makeTempDir(), 'Chapter 1.cbz'),
+            pageCount: 3,
+            pageIndex: null
+        });
+        expect(result).toEqual({ status: 'error', error: { code: 'SERVER_UNAVAILABLE', message: 'the server said no' } });
+    });
+
+    it('uses the extractor it is given to open the CBZ', async () => {
+        const dir = makeTempDir();
+        const filePath = join(dir, 'Chapter 1.cbz');
+        writeFileSync(filePath, 'not a zip');
+        const extracted: Array<[string, string]> = [];
+        const downloader = new MangaChapterDownloader({
+            pages: () => {
+                return Promise.resolve(PAGES);
+            },
+            fetchImage: () => {
+                return Promise.resolve(image(JPEG));
+            },
+            extractCbzPages: (file, directory) => {
+                extracted.push([file, directory]);
+                writeFileSync(join(directory, '001.jpg'), Buffer.from(JPEG));
+                writeFileSync(join(directory, '003.jpg'), Buffer.from(JPEG));
+                return Promise.resolve();
+            }
+        });
+        const result = await downloader.repair({
+            chapterRemoteId: 11,
+            seriesTitle: 'One Piece',
+            chapter: { name: 'Romance Dawn', number: 1, scanlator: null },
+            details: null,
+            filePath,
+            pageCount: 3,
+            pageIndex: null
+        });
+        expect(extracted).toEqual([[filePath, `${filePath}.part`]]);
+        expect(result.status === 'done' ? result.value.missingPages : null).toEqual([]);
+        expect(readZipEntries(readFileSync(filePath)).map((entry) => {
+            return entry.name;
+        })).toEqual(['001.jpg', '002.jpg', '003.jpg', 'ComicInfo.xml']);
+    });
+
+    it('gives up after the pages that fail one after the other because the server does not answer', async () => {
+        const pages = Array.from({ length: 9 }, (_value, index) => {
+            return `http://127.0.0.1:1/p/${index}`;
+        });
+        const lacking = pages.slice(1, 8);
+        const { context, serverDown, repairOptions, fetchedBefore } = await incompleteChapter(lacking, 'cbz', pages, false);
+        const before = readFileSync(context.outputPath);
+        serverDown.value = true;
+        const result = await context.downloader.repair(repairOptions());
+        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+        expect(context.fetched.slice(fetchedBefore())).toHaveLength(MAX_CONSECUTIVE_SERVER_FAILURES * (1 + PAGE_RETRY_DELAYS_MS.length));
+        expect(readFileSync(context.outputPath).equals(before)).toBe(true);
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
+    });
+
+    it('tells it was cancelled, leaving the CBZ as it was and no work folder, when it is aborted', async () => {
+        const { context, repairOptions, fetchedBefore } = await incompleteChapter([PAGES[1]!]);
+        const before = readFileSync(context.outputPath);
+        const controller = new AbortController();
+        controller.abort();
+        expect(await context.downloader.repair(repairOptions(), controller.signal)).toEqual({ status: 'cancelled' });
+        expect(context.fetched).toHaveLength(fetchedBefore());
+        expect(readFileSync(context.outputPath).equals(before)).toBe(true);
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
+    });
+
+    it('stops in the middle of the pages when it is aborted, and gives the signal to the pages it asks for', async () => {
+        const { context, failing, repairOptions, fetchedBefore } = await incompleteChapter([PAGES[1]!, PAGES[2]!]);
+        failing.clear();
+        const controller = new AbortController();
+        const downloader = new MangaChapterDownloader({
+            pages: () => {
+                return Promise.resolve(PAGES);
+            },
+            fetchImage: (url, signal) => {
+                context.fetched.push(url);
+                context.signals.push(signal);
+                if (url === PAGES[1]) {
+                    controller.abort();
+                    signal.throwIfAborted();
+                }
+                return Promise.resolve(image(PNG, 'image/png'));
+            },
+            sleep: () => {
+                return Promise.resolve();
+            }
+        });
+        expect(await downloader.repair(repairOptions({ pageCount: 3 }), controller.signal)).toEqual({ status: 'cancelled' });
+        expect(context.fetched.slice(fetchedBefore())).toEqual([PAGES[1]]);
+        expect(context.signals.at(-1)).toBe(controller.signal);
+        expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
     });
 });

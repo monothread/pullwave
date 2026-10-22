@@ -6,9 +6,11 @@ import { toMangaError } from './mangaService';
 export interface MangaReaderDependencies {
     // The file of a chapter of the library, when it was downloaded.
     fileOf: (chapterId: number) => string | null;
-    localPages: Pick<LocalPages, 'count'>;
+    localPages: Pick<LocalPages, 'count' | 'missing'>;
     // The addresses of the pages on the source.
     remotePages: (chapterRemoteId: number) => Promise<string[]>;
+    // How many pages a chapter should have when it was downloaded without some of them; null when it is whole (or not downloaded).
+    incompletePageCount: (chapterId: number) => number | null;
     pathExists?: (path: string) => boolean;
 }
 
@@ -24,7 +26,7 @@ export class MangaReader {
         }
         try {
             const pages = await this.deps.remotePages(request.chapterRemoteId);
-            return { ok: true, value: { pages, local: false } };
+            return { ok: true, value: { pages, local: false, missing: [] } };
         } catch (error) {
             return { ok: false, error: toMangaError(error) };
         }
@@ -43,11 +45,13 @@ export class MangaReader {
             if (count === 0) {
                 return null;
             }
+            const total = this.deps.incompletePageCount(chapterId) ?? count;
             return {
-                pages: Array.from({ length: count }, (_unused, index) => {
+                pages: Array.from({ length: total }, (_unused, index) => {
                     return localPageUrl(chapterId, index);
                 }),
-                local: true
+                local: true,
+                missing: total === count ? [] : await this.deps.localPages.missing(path, total)
             };
         } catch {
             return null;

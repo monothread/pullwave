@@ -68,6 +68,7 @@ const MANGA_CHANNELS = [
     IPC.mangaRemoveManga,
     IPC.mangaResume,
     IPC.mangaResumeAll,
+    IPC.mangaRepairChapter,
     IPC.mangaRetry,
     IPC.mangaSourcePreferenceSet,
     IPC.mangaSourceFilters,
@@ -201,7 +202,15 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const reader = {
         pages: vi.fn(() => {
-            return Promise.resolve({ ok: true as const, value: { pages: ['pullwave-manga://page/3/0'], local: true } });
+            return Promise.resolve({ ok: true as const, value: { pages: ['pullwave-manga://page/3/0'], local: true, missing: [] } });
+        })
+    };
+    const repair = {
+        repair: vi.fn(() => {
+            return Promise.resolve({ ok: true as const, value: { missing: [2] } });
+        }),
+        repairMissing: vi.fn(() => {
+            return Promise.resolve();
         })
     };
     const updates = {
@@ -252,6 +261,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         queue,
         db,
         reader,
+        repair,
         removeChapterFiles: (paths) => {
             removedFiles.push(paths);
         },
@@ -273,7 +283,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const ipc = makeIpc();
     registerMangaHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, queue, service, reader, downloads, removedFiles, opened, sites, libraryChanges, updates, restarts, covers, coverRequests, checks, presented };
+    return { ...ipc, db, queue, service, reader, repair, downloads, removedFiles, opened, sites, libraryChanges, updates, restarts, covers, coverRequests, checks, presented };
 }
 
 afterEach(() => {
@@ -292,7 +302,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaStatus)).toEqual({ supported: false, tool: null, helper: null, helperProblem: null, helperExternal: false, server: 'stopped', serverError: null });
         expect(ipc.call(IPC.mangaInstall)).toBeNull();
         const unsupported = { ok: false, error: { code: 'UNKNOWN', message: 'The manga section is only available on Linux and Windows (64 bits).' } };
-        [IPC.mangaStores, IPC.mangaStoreAdd, IPC.mangaStoreRemove, IPC.mangaExtensions, IPC.mangaExtensionChange, IPC.mangaSources, IPC.mangaSourcePreferences, IPC.mangaSourcePreferenceSet, IPC.mangaSourceFilters, IPC.mangaList, IPC.mangaDetails].forEach((channel) => {
+        [IPC.mangaStores, IPC.mangaStoreAdd, IPC.mangaStoreRemove, IPC.mangaExtensions, IPC.mangaExtensionChange, IPC.mangaSources, IPC.mangaSourcePreferences, IPC.mangaSourcePreferenceSet, IPC.mangaSourceFilters, IPC.mangaReadPages, IPC.mangaRepairChapter, IPC.mangaList, IPC.mangaDetails].forEach((channel) => {
             expect(ipc.call(channel)).toEqual(unsupported);
         });
         expect(ipc.call(IPC.mangaExtensionsUpdateAll)).toEqual(unsupported);
@@ -396,10 +406,37 @@ describe('the extension channels', () => {
     });
 });
 
+describe('downloading again the pages of an incomplete chapter', () => {
+    it('asks for the pages of one place, or for all that are lacking', async () => {
+        const { call, repair } = setup();
+        await expect(call(IPC.mangaRepairChapter, 5, 3)).resolves.toEqual({ ok: true, value: { missing: [2] } });
+        expect(repair.repair).toHaveBeenLastCalledWith(5, 3);
+        await expect(call(IPC.mangaRepairChapter, 5, 0)).resolves.toEqual({ ok: true, value: { missing: [2] } });
+        expect(repair.repair).toHaveBeenLastCalledWith(5, 0);
+        await expect(call(IPC.mangaRepairChapter, 6, null)).resolves.toEqual({ ok: true, value: { missing: [2] } });
+        expect(repair.repair).toHaveBeenLastCalledWith(6, null);
+        expect(repair.repair).toHaveBeenCalledTimes(3);
+    });
+
+    it.each([
+        ['a chapter that is not an id', 0, null],
+        ['a chapter that is a text', 'x', null],
+        ['a place below zero', 5, -1],
+        ['a place that is not a whole number', 5, 1.5],
+        ['a place that is a text', 5, '2'],
+        ['a place that is not there', 5, undefined],
+        ['a place past the limit of pages', 5, 5000]
+    ])('refuses %s', (_label, chapterId, pageIndex) => {
+        const { call, repair } = setup();
+        expect(call(IPC.mangaRepairChapter, chapterId, pageIndex)).toEqual({ ok: false, error: { code: 'INVALID_REQUEST', message: 'The chapter is not valid.' } });
+        expect(repair.repair).not.toHaveBeenCalled();
+    });
+});
+
 describe('reading a chapter', () => {
     it('gives the pages of the chapter on the server, or of its file when it is in the library', async () => {
         const { call, reader } = setup();
-        await expect(call(IPC.mangaReadPages, { chapterRemoteId: 11, libraryChapterId: 3 })).resolves.toEqual({ ok: true, value: { pages: ['pullwave-manga://page/3/0'], local: true } });
+        await expect(call(IPC.mangaReadPages, { chapterRemoteId: 11, libraryChapterId: 3 })).resolves.toEqual({ ok: true, value: { pages: ['pullwave-manga://page/3/0'], local: true, missing: [] } });
         expect(reader.pages).toHaveBeenCalledWith({ chapterRemoteId: 11, libraryChapterId: 3 });
         await call(IPC.mangaReadPages, { chapterRemoteId: 12 });
         expect(reader.pages).toHaveBeenLastCalledWith({ chapterRemoteId: 12, libraryChapterId: null });
@@ -524,11 +561,13 @@ describe('the library channels', () => {
         expect(db.list()).toEqual([]);
     });
 
-    it('downloads what is missing of the mangas it is given, ignoring ids that are not ids', () => {
-        const { call, db, downloads } = setup();
+    it('downloads what is missing of the mangas it is given, ignoring ids that are not ids, and downloads again the pages incomplete chapters lack', () => {
+        const { call, db, downloads, repair } = setup();
         call(IPC.mangaAddToLibrary, REQUEST);
         const id = db.list()[0]!.id;
         call(IPC.mangaDownloadMissing, [id, id, 'x', 0, 999]);
+        expect(repair.repairMissing).toHaveBeenCalledTimes(1);
+        expect(repair.repairMissing).toHaveBeenCalledWith([id, 999]);
         // The oldest chapter goes first, and a source gives one chapter at a time.
         expect(downloads.map((item) => {
             return item.chapterRemoteId;
@@ -612,6 +651,16 @@ describe('the library channels', () => {
         expect(removedFiles).toEqual([['/m/One Piece/Chapter 2.cbz']]);
         expect(db.getChapter(chapterId)).toMatchObject({ status: 'idle', filePath: null });
         expect(libraryChanges.count).toBe(before + 1);
+    });
+
+    it('removes the download of an incomplete chapter too', () => {
+        const { call, db, removedFiles } = setup();
+        call(IPC.mangaAddToLibrary, REQUEST);
+        const chapterId = db.chaptersOf(1)[0]!.id;
+        db.markIncomplete(chapterId, '/m/One Piece/Chapter 2.cbz', 10, 3);
+        call(IPC.mangaRemoveDownload, chapterId);
+        expect(removedFiles).toEqual([['/m/One Piece/Chapter 2.cbz']]);
+        expect(db.getChapter(chapterId)).toMatchObject({ status: 'idle', filePath: null });
     });
 
     it('does nothing for a chapter that is not downloaded', () => {
@@ -733,7 +782,7 @@ describe('the site and the folder of the mangas', () => {
 
     it('does one migration at a time, and starts nothing while the files are moved', async () => {
         let finish: (value: MangaMigrationResponse) => void = () => {return undefined};
-        const { call, db, queue, downloads } = setup({
+        const { call, db, queue, downloads, repair } = setup({
             migrate: () => {
                 return new Promise((resolve) => {
                     finish = resolve;
@@ -745,6 +794,7 @@ describe('the site and the folder of the mangas', () => {
         // Downloads, retries, resumes and removals wait.
         expect(call(IPC.mangaDownload, REQUEST)).toBeNull();
         call(IPC.mangaDownloadMissing, [1]);
+        expect(repair.repairMissing).not.toHaveBeenCalled();
         call(IPC.mangaRetry, 1);
         call(IPC.mangaResume, 1);
         call(IPC.mangaRemoveDownload, 1);

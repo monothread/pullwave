@@ -1,4 +1,4 @@
-import type { MangaChapter, MangaChapterRecord } from './manga';
+import { hasChapterFile, type MangaChapter, type MangaChapterRecord } from './manga';
 
 // Moving a manga to the same manga in another source: the chapters of the library are matched to the chapters the other source has by
 // their number (or, when they have none, by their name), so what was downloaded stays attached to the right chapter.
@@ -76,12 +76,12 @@ export function matchChapters(existing: readonly MangaChapterRecord[], incoming:
 // their files), the others go, since there is nothing to download them from.
 export function droppedChapters(matching: ChapterMatching): MangaChapterRecord[] {
     return matching.unmatched.filter((record) => {
-        return record.status !== 'done';
+        return !hasChapterFile(record.status);
     });
 }
 
 export function keptUnmatched(matching: ChapterMatching): MangaChapterRecord[] {
     return matching.unmatched.filter((record) => {
-        return record.status === 'done';
+        return hasChapterFile(record.status);
     });
 }

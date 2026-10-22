@@ -117,7 +117,7 @@ async function flush(): Promise<void> {
 }
 
 const DONE = (filePath: string): Result => {
-    return { status: 'done', value: { filePath, sizeBytes: 4096, pageCount: 20 } };
+    return { status: 'done', value: { filePath, sizeBytes: 4096, pageCount: 20, missingPages: [] } };
 };
 
 describe('MangaDownloadQueue the order of what is queued', () => {
@@ -283,6 +283,28 @@ describe('MangaDownloadQueue progress and results', () => {
         expect(queue.list()).toEqual([]);
         expect(state.libraryChanges).toBeGreaterThan(before);
         expect(queue.hasRunsToEnd()).toBe(false);
+    });
+
+    it('keeps a chapter that ended without some pages as incomplete, with its file, out of the downloads, and tells how many are missing', async () => {
+        const { queue, downloads, updates, db, state, removed } = setup();
+        queue.enqueue(request([chapter(1)]));
+        const before = state.libraryChanges;
+        downloads[0]?.finish({ status: 'done', value: { filePath: '/m/Chapter 1.cbz', sizeBytes: 2048, pageCount: 20, missingPages: [3, 7] } });
+        await flush();
+        expect(db.chaptersOf(1)[0]).toMatchObject({ status: 'incomplete', filePath: '/m/Chapter 1.cbz', sizeBytes: 2048, pageCount: 20, downloadedAt: 1000, error: null });
+        expect(db.outputPathOf(db.chaptersOf(1)[0]!.id)).toBeNull();
+        expect(updates.at(-1)).toMatchObject({ status: 'done', percent: 100, pagesDone: 20, pageCount: 20, missingPages: 2 });
+        expect(queue.list()).toEqual([]);
+        expect(state.libraryChanges).toBeGreaterThan(before);
+        expect(removed).toEqual([]);
+    });
+
+    it('tells that a chapter that is whole misses no page', async () => {
+        const { queue, downloads, updates } = setup();
+        queue.enqueue(request([chapter(1)]));
+        downloads[0]?.finish(DONE('/m/Chapter 1.cbz'));
+        await flush();
+        expect(updates.at(-1)).toMatchObject({ status: 'done', missingPages: 0 });
     });
 
     it('tries a chapter again when it fails, and leaves it as an error after the last try', async () => {
@@ -675,6 +697,21 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
         expect(downloads).toHaveLength(1);
     });
 
+    it('does not queue an incomplete chapter again: its file is there, and its missing pages are downloaded apart', async () => {
+        const { queue, downloads, db } = setup({}, { limits: { sources: 5, perSource: 1 } });
+        queue.enqueue(request([chapter(1)]));
+        const id = db.chaptersOf(1)[0]!.id;
+        downloads[0]?.finish({ status: 'done', value: { filePath: '/m/1.cbz', sizeBytes: 1, pageCount: 3, missingPages: [1] } });
+        await flush();
+        queue.retry(id);
+        queue.downloadMissing([1]);
+        queue.downloadChapters(1, [1]);
+        queue.enqueue(request([chapter(1)]));
+        expect(downloads).toHaveLength(1);
+        expect(queue.list()).toEqual([]);
+        expect(db.getChapter(id)).toMatchObject({ status: 'incomplete', filePath: '/m/1.cbz' });
+    });
+
     it('queues every chapter of a manga that is not downloaded, and skips the ones that are', async () => {
         const { queue, downloads, db } = setup({}, { limits: { sources: 5, perSource: 1 } });
         const manga = db.upsertManga({ remoteId: 7, sourceId: 'src-a', title: 'One Piece', thumbnailUrl: null });
@@ -950,9 +987,9 @@ describe('MangaDownloadQueue the chapters paused when the app last closed', () =
         const { queue, updates, counted, downloads } = setup({}, { db, pages: { [`${ONE_PIECE}/Chapter 1.cbz.part`]: 5, [`${ONE_PIECE}/Chapter 2.cbz.part`]: 12 } });
         queue.restore();
         expect(queue.list()).toEqual([
-            { chapterId: first, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: 'src-a', status: 'paused', pagesDone: 5, pageCount: 20, percent: 25, error: null },
+            { chapterId: first, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: 'src-a', status: 'paused', pagesDone: 5, pageCount: 20, percent: 25, error: null, missingPages: 0 },
             // More pages than the chapter has are not counted past its end.
-            { chapterId: second, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: 'src-a', status: 'paused', pagesDone: 10, pageCount: 10, percent: 100, error: null }
+            { chapterId: second, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: 'src-a', status: 'paused', pagesDone: 10, pageCount: 10, percent: 100, error: null, missingPages: 0 }
         ]);
         expect(counted).toEqual([`${ONE_PIECE}/Chapter 1.cbz.part`, `${ONE_PIECE}/Chapter 2.cbz.part`]);
         expect(updates).toEqual([]);

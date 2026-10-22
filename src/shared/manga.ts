@@ -193,8 +193,13 @@ export type MangaResult<T> = { ok: true; value: T } | { ok: false; error: MangaE
 // The library and the downloads
 // ---------------------------------------------------------------------------------------------------------------------
 
-export const MANGA_CHAPTER_STATUSES = ['idle', 'queued', 'downloading', 'paused', 'done', 'error', 'cancelled'] as const;
+export const MANGA_CHAPTER_STATUSES = ['idle', 'queued', 'downloading', 'paused', 'done', 'incomplete', 'error', 'cancelled'] as const;
 export type MangaChapterStatus = (typeof MANGA_CHAPTER_STATUSES)[number];
+
+// Whether the chapter has a file to read: downloaded whole, or downloaded with pages the source would not give (`incomplete`).
+export function hasChapterFile(status: MangaChapterStatus): boolean {
+    return status === 'done' || status === 'incomplete';
+}
 
 export const MANGA_OUTPUT_FORMATS = ['cbz', 'folder'] as const;
 export type MangaOutputFormat = (typeof MANGA_OUTPUT_FORMATS)[number];
@@ -300,6 +305,8 @@ export interface MangaJob {
     // 0 to 100.
     percent: number;
     error: MangaError | null;
+    // How many pages the source would not give when the chapter ended (0 until then, and for a chapter that is whole).
+    missingPages: number;
 }
 
 export interface MangaDownloadRequest {
@@ -368,6 +375,13 @@ export interface MangaReadPages {
     pages: string[];
     // The pages come from the downloaded file and not from the source.
     local: boolean;
+    // The places (from 0) of the pages a downloaded chapter lacks; their addresses give nothing until the page is downloaded again.
+    missing: number[];
+}
+
+// How a try to download again the missing pages of a chapter ended: the pages it still lacks (none: it is whole now).
+export interface MangaRepairResult {
+    missing: number[];
 }
 
 export type ExtensionAction = 'install' | 'uninstall' | 'update';
@@ -524,6 +538,8 @@ export interface MangaApi {
     jobs: () => Promise<MangaJob[]>;
     cancel: (chapterId: number) => Promise<void>;
     retry: (chapterId: number) => Promise<void>;
+    // Downloads again the pages an incomplete chapter lacks: only the one at this place (from 0), or all of them (null).
+    repairChapter: (chapterId: number, pageIndex: number | null) => Promise<MangaResult<MangaRepairResult>>;
     pause: (chapterId: number) => Promise<void>;
     resume: (chapterId: number) => Promise<void>;
     // Pauses what is going on and holds what waits (it keeps waiting), and goes on with everything that is paused or held.

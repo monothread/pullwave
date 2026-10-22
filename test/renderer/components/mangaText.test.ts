@@ -127,6 +127,11 @@ describe('library helpers', () => {
         expect(downloadedCount(library[1]!)).toBe(0);
     });
 
+    it('does not count a chapter that lacks pages as downloaded', () => {
+        const manga = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'incomplete' })]);
+        expect(downloadedCount(manga)).toBe(1);
+    });
+
     it('finds the state of a chapter of a manga of the library', () => {
         expect(chapterState(library[0]!, 12)?.status).toBe('error');
         expect(chapterState(library[0]!, 99)).toBeNull();
@@ -435,6 +440,7 @@ describe('what a download does something for', () => {
         ['error', true],
         ['cancelled', true],
         ['done', false],
+        ['incomplete', false],
         ['queued', false],
         ['downloading', false],
         ['paused', false]

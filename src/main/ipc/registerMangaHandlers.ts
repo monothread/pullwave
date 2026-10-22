@@ -1,13 +1,15 @@
 import { IPC } from '@shared/constants';
+import { hasChapterFile } from '@shared/manga';
 import type { ComponentHealth, LibraryManga, MangaCheckResponse, MangaUpdateEntry, ReadingEntry, MangaGroup, MangaHealth, MangaToolUpdateResult, MangaToolVersions, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
 import type { MangaDb } from '../services/manga/mangaDb';
 import type { MangaCovers } from '../services/manga/mangaCovers';
 import type { MangaIcons } from '../services/manga/mangaIcons';
 import { parseCoverUrl } from '../services/manga/mangaPageProtocol';
 import type { MangaReader } from '../services/manga/mangaReader';
+import type { MangaRepair } from '../services/manga/mangaRepair';
 import type { MangaToolUpdates } from '../services/manga/mangaToolUpdates';
 import type { MangaDownloadQueue } from '../services/manga/mangaDownloadQueue';
-import { asDownloadRequest, asReadingRecord, asExtensionAction, asGroupName, asId, asIds, asListRequest, asPackageName, asPreferenceChange, asReadRequest, asSeriesRequest, asSourceId, asSourceMigrationRequest, asStoreUrl } from '../services/manga/mangaRequests';
+import { asDownloadRequest, asReadingRecord, asExtensionAction, asGroupName, asId, asIds, asPageIndex, asListRequest, asPackageName, asPreferenceChange, asReadRequest, asSeriesRequest, asSourceId, asSourceMigrationRequest, asStoreUrl } from '../services/manga/mangaRequests';
 import { cleanSeriesName } from '@shared/series';
 import type { MangaService } from '../services/manga/mangaService';
 import { fromStoredAddress, toStoredAddress } from '../services/manga/serverAddress';
@@ -30,6 +32,8 @@ export interface MangaHandlerDependencies {
     restartApp: () => void;
     db: MangaDb;
     reader: Pick<MangaReader, 'pages'>;
+    // Downloads again the pages an incomplete chapter lacks.
+    repair: Pick<MangaRepair, 'repair' | 'repairMissing'>;
     // Deletes the files (CBZ files and folders of images) of chapters; only what the app made is deleted.
     removeChapterFiles: (paths: string[]) => void;
     // The folder the chapters of a manga are in, or null when none is known.
@@ -125,7 +129,7 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.mangaExtensionsUpdateAll, () => {
         return unsupported;
     });
-    [IPC.mangaStores, IPC.mangaStoreAdd, IPC.mangaStoreRemove, IPC.mangaExtensions, IPC.mangaExtensionChange, IPC.mangaSources, IPC.mangaSourcePreferences, IPC.mangaSourcePreferenceSet, IPC.mangaSourceFilters, IPC.mangaReadPages, IPC.mangaList, IPC.mangaDetails].forEach((channel) => {
+    [IPC.mangaStores, IPC.mangaStoreAdd, IPC.mangaStoreRemove, IPC.mangaExtensions, IPC.mangaExtensionChange, IPC.mangaSources, IPC.mangaSourcePreferences, IPC.mangaSourcePreferenceSet, IPC.mangaSourceFilters, IPC.mangaReadPages, IPC.mangaRepairChapter, IPC.mangaList, IPC.mangaDetails].forEach((channel) => {
         ipcMain.handle(channel, () => {
             return unsupported;
         });
@@ -167,7 +171,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         registerUnsupported(ipcMain);
         return;
     }
-    const { service, queue, db, reader, removeChapterFiles, covers, icons, onLibraryChanged, checkNewChapters } = deps;
+    const { service, queue, db, reader, repair, removeChapterFiles, covers, icons, onLibraryChanged, checkNewChapters } = deps;
     let migrating = false;
 
     // The cover the app keeps is shown when there is one. Otherwise it is the one of the source, kept as a path of the server (its port
@@ -257,6 +261,14 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         const checked = asReadRequest(request);
         return checked === null ? invalid('The chapter is not valid.') : reader.pages(checked);
     });
+    ipcMain.handle(IPC.mangaRepairChapter, (_event, chapterId, pageIndex) => {
+        const id = asId(chapterId);
+        const index = pageIndex === null ? null : asPageIndex(pageIndex);
+        if (id === null || (pageIndex !== null && index === null)) {
+            return invalid('The chapter is not valid.');
+        }
+        return repair.repair(id, index);
+    });
     ipcMain.handle(IPC.mangaSourceFilters, (_event, sourceId) => {
         const id = asSourceId(sourceId);
         return id === null ? invalid('The source is not valid.') : service.sourceFilters(id);
@@ -324,7 +336,10 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaDownloadMissing, (_event, mangaIds) => {
         if (!migrating) {
-            queue.downloadMissing(asIds(mangaIds));
+            const ids = asIds(mangaIds);
+            queue.downloadMissing(ids);
+            // The chapters that lack pages are not downloaded again: the pages they lack are, in the background.
+            void repair.repairMissing(ids);
         }
     });
     ipcMain.handle(IPC.mangaLibrary, (): LibraryManga[] => {
@@ -378,7 +393,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     ipcMain.handle(IPC.mangaRemoveDownload, (_event, chapterId) => {
         const id = asId(chapterId);
         // Only a chapter that is downloaded has a download to remove: it stays in the library as one that is not downloaded.
-        if (id === null || migrating || db.getChapter(id)?.status !== 'done') {
+        if (id === null || migrating || !hasChapterFile(db.getChapter(id)?.status ?? 'idle')) {
             return;
         }
         queue.forget([id]);

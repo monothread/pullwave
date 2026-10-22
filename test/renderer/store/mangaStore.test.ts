@@ -185,6 +185,19 @@ describe('mangaStore init', () => {
             }
         });
 
+        it('says a chapter that ended without some pages is incomplete, and how many are missing', () => {
+            vi.useFakeTimers();
+            try {
+                mock.emitMangaJob(makeMangaJob({ chapterId: 1, status: 'done', percent: 100, missingPages: 2 }));
+                expect(toasts()).toEqual(['Download finished without 2 page(s): One Piece · Romance Dawn']);
+                expect(state().jobs).toEqual([makeMangaJob({ chapterId: 1, status: 'done', percent: 100, missingPages: 2 })]);
+                vi.advanceTimersByTime(DONE_JOB_LINGER_MS);
+                expect(state().jobs).toEqual([]);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
         it('keeps a chapter that is tried again while its finished job was waiting to leave', () => {
             vi.useFakeTimers();
             try {
@@ -864,6 +877,27 @@ describe('mangaStore library and jobs', () => {
         expect(mock.api.manga.resume).toHaveBeenCalledWith(4);
     });
 
+    describe('downloading again the pages of an incomplete chapter', () => {
+        it('downloads all the missing pages and says they were downloaded', async () => {
+            mock.api.manga.repairChapter.mockResolvedValue({ ok: true, value: { missing: [] } });
+            await state().repairChapter(5);
+            expect(mock.api.manga.repairChapter).toHaveBeenCalledWith(5, null);
+            expect(toasts()).toEqual(['The missing pages were downloaded.']);
+        });
+
+        it('says how many pages are still missing', async () => {
+            mock.api.manga.repairChapter.mockResolvedValue({ ok: true, value: { missing: [1, 4, 6] } });
+            await state().repairChapter(5);
+            expect(toasts()).toEqual(['3 page(s) are still missing.']);
+        });
+
+        it('says why the pages could not be downloaded', async () => {
+            mock.api.manga.repairChapter.mockResolvedValue({ ok: false, error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+            await state().repairChapter(5);
+            expect(toasts()).toEqual(['Could not download the missing pages: The server answered 500 for a page']);
+        });
+    });
+
     it('pauses and resumes every download at once', async () => {
         await state().pauseAllJobs();
         expect(mock.api.manga.pauseAll).toHaveBeenCalledTimes(1);
@@ -1188,16 +1222,67 @@ describe('mangaStore reader', () => {
     ];
 
     it('opens a chapter: it loads, then has the pages the main process gave', async () => {
-        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true } });
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true, missing: [] } });
         const opening = state().openReader('One Piece', CHAPTERS, 1);
-        expect(state().reader).toEqual({ status: 'loading', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: [], local: false, error: null, manga: null, resume: false });
+        expect(state().reader).toEqual({ status: 'loading', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: [], local: false, missing: [], error: null, manga: null, resume: false });
         await opening;
         expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 2, libraryChapterId: 8 });
-        expect(state().reader).toEqual({ status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: ['pullwave-manga://page/8/0'], local: true, error: null, manga: null, resume: false });
+        expect(state().reader).toEqual({ status: 'ready', mangaTitle: 'One Piece', chapters: CHAPTERS, index: 1, pages: ['pullwave-manga://page/8/0'], local: true, missing: [], error: null, manga: null, resume: false });
+    });
+
+    it('keeps the places of the pages the downloaded chapter lacks', async () => {
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0', 'pullwave-manga://page/8/1'], local: true, missing: [1] } });
+        await state().openReader('One Piece', CHAPTERS, 1);
+        expect(state().reader).toMatchObject({ status: 'ready', pages: ['pullwave-manga://page/8/0', 'pullwave-manga://page/8/1'], local: true, missing: [1] });
+    });
+
+    describe('downloading a page the chapter lacks', () => {
+        beforeEach(async () => {
+            mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0', 'pullwave-manga://page/8/1', 'pullwave-manga://page/8/2'], local: true, missing: [1, 2] } });
+            await state().openReader('One Piece', CHAPTERS, 1);
+        });
+
+        it('asks for the page of the chapter being read, and keeps the pages that are still lacking', async () => {
+            mock.api.manga.repairChapter.mockResolvedValue({ ok: true, value: { missing: [2] } });
+            await expect(state().repairReaderPage(1)).resolves.toBeNull();
+            expect(mock.api.manga.repairChapter).toHaveBeenCalledWith(8, 1);
+            expect(state().reader.missing).toEqual([2]);
+        });
+
+        it('gives the error, and keeps the pages lacking as they were, when the page could not be downloaded', async () => {
+            const error = { code: 'IMAGE' as const, message: 'A page came back empty' };
+            mock.api.manga.repairChapter.mockResolvedValue({ ok: false, error });
+            await expect(state().repairReaderPage(1)).resolves.toEqual(error);
+            expect(state().reader.missing).toEqual([1, 2]);
+        });
+
+        it('does not touch the pages of another chapter the reader went on to meanwhile', async () => {
+            let answer: (result: { ok: true; value: { missing: number[] } }) => void = () => {
+            return undefined;
+        };
+            mock.api.manga.repairChapter.mockReturnValue(
+                new Promise((resolve) => {
+                    answer = resolve;
+                })
+            );
+            mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/9/0'], local: true, missing: [] } });
+            const repairing = state().repairReaderPage(1);
+            await state().goToChapter(1);
+            answer({ ok: true, value: { missing: [2] } });
+            await expect(repairing).resolves.toBeNull();
+            expect(state().reader).toMatchObject({ index: 2, missing: [] });
+        });
+
+        it('says the chapter is not in the library when it is not, without asking the main process', async () => {
+            mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['http://127.0.0.1:1/p/0'], local: false, missing: [] } });
+            await state().openReader('One Piece', CHAPTERS, 0);
+            await expect(state().repairReaderPage(0)).resolves.toEqual({ code: 'INVALID_REQUEST', message: 'The chapter is not in the library.' });
+            expect(mock.api.manga.repairChapter).not.toHaveBeenCalled();
+        });
     });
 
     it('says that a chapter was opened to be continued, while it loads and when it is ready, and not for the ones that follow', async () => {
-        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true } });
+        mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true, missing: [] } });
         const opening = state().openReader('One Piece', CHAPTERS, 1, true);
         expect(state().reader).toMatchObject({ status: 'loading', index: 1, resume: true });
         await opening;
@@ -1210,7 +1295,7 @@ describe('mangaStore reader', () => {
 
     describe('chapters reached by scrolling through the zone between chapters', () => {
         beforeEach(async () => {
-            mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true } });
+            mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true, missing: [] } });
             await state().openReader('One Piece', CHAPTERS, 1);
         });
 
@@ -1335,7 +1420,7 @@ describe('mangaStore reader', () => {
         mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['a'], local: false } });
         await state().openReader('One Piece', CHAPTERS, 0);
         state().closeReader();
-        expect(state().reader).toEqual({ status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null });
+        expect(state().reader).toEqual({ status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, missing: [], error: null });
     });
 });
 

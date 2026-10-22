@@ -89,3 +89,25 @@ export function chapterWorkDirectory(finalPath: string): string {
 export function isCompletePage(fileName: string): boolean {
     return !fileName.endsWith(TEMPORARY_EXTENSION) && fileName !== COMIC_INFO_FILE;
 }
+
+const PAGE_FILE = /^(\d+)\.[a-z0-9]+$/i;
+
+// The place (from 0) a file of a chapter is the page of, from its name ("003.jpg" is the third page); null for any other file.
+export function pageIndexOfFile(fileName: string): number | null {
+    const match = PAGE_FILE.exec(fileName);
+    if (match === null || match[1] === undefined) {
+        return null;
+    }
+    const index = Number(match[1]) - 1;
+    return index >= 0 ? index : null;
+}
+
+// The places (from 0) of the pages of a chapter that none of these files is.
+export function missingPageIndexes(fileNames: readonly string[], pageCount: number): number[] {
+    const present = new Set(fileNames.map(pageIndexOfFile));
+    return Array.from({ length: pageCount }, (_unused, index) => {
+        return index;
+    }).filter((index) => {
+        return !present.has(index);
+    });
+}

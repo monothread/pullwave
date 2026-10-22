@@ -14,6 +14,7 @@ import {
     asId,
     asIds,
     asListRequest,
+    asPageIndex,
     asPackageName,
     asPreferenceChange,
     asReadRequest,
@@ -108,6 +109,16 @@ describe('asListRequest', () => {
         [{ sourceId: '1', kind: 'popular', page: '1' }]
     ])('refuses %j', (value) => {
         expect(asListRequest(value)).toBeNull();
+    });
+});
+
+describe('asPageIndex', () => {
+    it.each([[0], [1], [42], [4999]])('accepts %j', (value) => {
+        expect(asPageIndex(value)).toBe(value);
+    });
+
+    it.each([[-1], [1.5], [5000], [Number.MAX_SAFE_INTEGER], ['2'], [null], [undefined], [{}], [NaN]])('refuses %j', (value) => {
+        expect(asPageIndex(value)).toBeNull();
     });
 });
 

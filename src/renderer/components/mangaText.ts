@@ -1,5 +1,6 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
+import { hasChapterFile } from '@shared/manga';
 import type { LibraryManga, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
 
@@ -37,6 +38,7 @@ const CHAPTER_STATUS_KEYS: Record<MangaChapterStatus, MessageKey> = {
     downloading: 'manga.chapter.status.downloading',
     paused: 'manga.chapter.status.paused',
     done: 'manga.chapter.status.done',
+    incomplete: 'manga.chapter.status.incomplete',
     error: 'manga.chapter.status.error',
     cancelled: 'manga.chapter.status.cancelled'
 };
@@ -221,7 +223,7 @@ export function chapterState(manga: LibraryManga | null, remoteId: number): Mang
 
 // Whether picking a chapter of the library for a download makes sense: not when it is downloaded already, or waiting or going on.
 export function canDownload(chapter: Pick<MangaChapterRecord, 'status'> | null): boolean {
-    return chapter === null || (chapter.status !== 'done' && chapter.status !== 'queued' && chapter.status !== 'downloading' && chapter.status !== 'paused');
+    return chapter === null || (!hasChapterFile(chapter.status) && chapter.status !== 'queued' && chapter.status !== 'downloading' && chapter.status !== 'paused');
 }
 
 // Of the chapters picked, the ones that a download would do something for.

@@ -128,7 +128,7 @@ describe('MangaPanel', () => {
     it('shows the reader instead of the section while a chapter is being read, and the section again when it is closed', async () => {
         const user = userEvent.setup();
         useMangaStore.setState({
-            reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [{ remoteId: 1, libraryChapterId: null, name: 'Chapter 1', number: 1 }], index: 0, pages: ['http://127.0.0.1:4321/p/0'], local: false, error: null }
+            reader: { status: 'ready', mangaTitle: 'One Piece', chapters: [{ remoteId: 1, libraryChapterId: null, name: 'Chapter 1', number: 1 }], index: 0, pages: ['http://127.0.0.1:4321/p/0'], local: false, missing: [], error: null }
         });
         render(<MangaPanel />);
         expect(screen.getByRole('region', { name: 'Reader' })).toBeInTheDocument();
@@ -249,10 +249,10 @@ describe('MangaPanel starting each page at the top', () => {
                 useMangaStore.setState({ libraryGroup: 2 });
             },
             () => {
-                useMangaStore.setState({ reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+                useMangaStore.setState({ reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, missing: [], error: null } });
             },
             () => {
-                useMangaStore.setState({ reader: { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null } });
+                useMangaStore.setState({ reader: { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, missing: [], error: null } });
             }
         ];
         changes.forEach((change) => {

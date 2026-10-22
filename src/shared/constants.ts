@@ -98,6 +98,7 @@ export const IPC = {
     mangaJobs: 'manga:jobs',
     mangaCancel: 'manga:cancel',
     mangaRetry: 'manga:retry',
+    mangaRepairChapter: 'manga:repair-chapter',
     mangaPause: 'manga:pause',
     mangaResume: 'manga:resume',
     mangaPauseAll: 'manga:pause-all',

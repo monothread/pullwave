@@ -64,6 +64,9 @@ export function MangaReader() {
     const goToChapterIndex = useMangaStore((state) => {
         return state.goToChapterIndex;
     });
+    const repairReaderPage = useMangaStore((state) => {
+        return state.repairReaderPage;
+    });
     const closeReader = useMangaStore((state) => {
         return state.closeReader;
     });
@@ -80,6 +83,9 @@ export function MangaReader() {
     const [attempt, setAttempt] = useState(0);
     // How many times each page was tried again: a page that is tried again is loaded again, and only that one.
     const [retries, setRetries] = useState<Record<number, number>>({});
+    // The page being downloaded again (a page the downloaded chapter lacks), and the pages that could not be.
+    const [repairing, setRepairing] = useState<number | null>(null);
+    const [repairFailed, setRepairFailed] = useState<number[]>([]);
     const [autoScrolling, setAutoScrolling] = useState(false);
     // The page a chapter in the scroll is being brought to (null when it is not). The pages above it have no height until their pictures
     // arrive, so the place moves while they do: the chapter is brought back to the page until they are all there, or the user takes over.
@@ -148,6 +154,7 @@ export function MangaReader() {
         setRestoreTo(continuous && start > 0 ? start : null);
         setFailed([]);
         setRetries({});
+        setRepairFailed([]);
     }
 
     useEffect(() => {
@@ -484,32 +491,64 @@ export function MangaReader() {
         }
     }
 
+    // A page that did not load is loaded again; one the downloaded chapter lacks is downloaded first.
+    async function retryPage(index: number, isMissing: boolean): Promise<void> {
+        if (isMissing) {
+            setRepairing(index);
+            const error = await repairReaderPage(index);
+            setRepairing(null);
+            if (error !== null) {
+                setRepairFailed((current) => {
+                    return current.includes(index) ? current : [...current, index];
+                });
+                return;
+            }
+            setRepairFailed((current) => {
+                return current.filter((item) => {
+                    return item !== index;
+                });
+            });
+        }
+        setFailed((current) => {
+            return current.filter((item) => {
+                return item !== index;
+            });
+        });
+        setRetries((current) => {
+            return { ...current, [index]: (current[index] ?? 0) + 1 };
+        });
+        setAttempt((current) => {
+            return current + 1;
+        });
+    }
+
     function renderPage(index: number) {
         const address = reader.pages[index];
         if (address === undefined) {
             return null;
         }
         if (pageError(index)) {
+            const isMissing = reader.missing.includes(index);
             return (
                 <div className="reader__failed" data-page={index} key={`failed-${String(index)}`}>
                     <p className="field__warning" role="alert">
-                        {t('manga.reader.pageError', { page: index + 1 })}
+                        {t(isMissing ? 'manga.reader.pageMissing' : 'manga.reader.pageError', { page: index + 1 })}
                     </p>
+                    {repairFailed.includes(index) && (
+                        <p className="field__warning" role="alert">
+                            {t('manga.reader.repairFailed')}
+                        </p>
+                    )}
                     <button
                         type="button"
                         className="btn btn--small"
+                        disabled={repairing === index}
                         onClick={(event) => {
                             event.stopPropagation();
-                            setFailed(
-                                failed.filter((item) => {
-                                    return item !== index;
-                                })
-                            );
-                            setRetries({ ...retries, [index]: (retries[index] ?? 0) + 1 });
-                            setAttempt(attempt + 1);
+                            void retryPage(index, isMissing);
                         }}
                     >
-                        {t('manga.reader.retry')}
+                        {t(isMissing ? 'manga.reader.downloadPage' : 'manga.reader.retry')}
                     </button>
                 </div>
             );

@@ -36,8 +36,8 @@ function chapter(remoteId: number): MangaChapter {
 
 // Puts a manga with a chapter in the library as downloaded, as a CBZ in the folder of the manga (or, when `images` is given, as a folder
 // of images).
-function addChapter(fixture: Fixture, base: string, options: { title?: string; remoteId?: number; mangaRemoteId?: number; content?: string; images?: string[] } = {}): { chapterId: number; path: string } {
-    const { title = 'One Piece', remoteId = 1, mangaRemoteId = 7, content = 'cbz-data', images } = options;
+function addChapter(fixture: Fixture, base: string, options: { title?: string; remoteId?: number; mangaRemoteId?: number; content?: string; images?: string[]; incomplete?: boolean } = {}): { chapterId: number; path: string } {
+    const { title = 'One Piece', remoteId = 1, mangaRemoteId = 7, content = 'cbz-data', images, incomplete = false } = options;
     const manga = fixture.db.upsertManga({ remoteId: mangaRemoteId, sourceId: 's', title, thumbnailUrl: null });
     const saved = fixture.db.ensureChapter(manga.id, chapter(remoteId));
     const folder = join(base, title);
@@ -54,7 +54,11 @@ function addChapter(fixture: Fixture, base: string, options: { title?: string; r
         });
         size = content.length * images.length;
     }
-    fixture.db.markDone(saved.id, path, size, 3);
+    if (incomplete) {
+        fixture.db.markIncomplete(saved.id, path, size, 3);
+    } else {
+        fixture.db.markDone(saved.id, path, size, 3);
+    }
     return { chapterId: saved.id, path };
 }
 
@@ -92,6 +96,18 @@ describe('migrateMangaFolder', () => {
             expect(fixture.db.getChapter(chapterId)).toMatchObject({ status: 'done', sizeBytes: 8 });
             expect(existsSync(join(fixture.oldBase, 'One Piece'))).toBe(false);
             expect(existsSync(fixture.oldBase)).toBe(false);
+        });
+
+        it('moves an incomplete chapter too, and keeps it incomplete', async () => {
+            const fixture = newFixture();
+            const { chapterId } = addChapter(fixture, fixture.oldBase, { incomplete: true });
+
+            expect(await migrate(fixture)).toEqual({ ok: true, chapters: 1, files: 1 });
+
+            const moved = join(fixture.newBase, 'One Piece', 'Chapter 1.cbz');
+            expect(readFileSync(moved, 'utf-8')).toBe('cbz-data');
+            expect(fixture.db.getChapter(chapterId)).toMatchObject({ status: 'incomplete', filePath: moved, sizeBytes: 8, pageCount: 3 });
+            expect(existsSync(join(fixture.oldBase, 'One Piece'))).toBe(false);
         });
 
         it('saves the new folder in the settings, once', async () => {

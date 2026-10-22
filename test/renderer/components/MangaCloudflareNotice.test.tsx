@@ -231,7 +231,7 @@ describe('MangaCloudflareNotice only for the source the user is in', () => {
 
     it('is about the manga being read', () => {
         const reading = (status: MangaReaderState['status'], sourceId: string | null): MangaReaderState => {
-            return { status, mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null, manga: sourceId === null ? null : makeSummary({ sourceId }) };
+            return { status, mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, missing: [], error: null, manga: sourceId === null ? null : makeSummary({ sourceId }) };
         };
         useMangaStore.setState({ cloudflare: [CHECK], reader: reading('loading', '123') });
         const first = render(<MangaCloudflareNotice />);
@@ -250,7 +250,7 @@ describe('MangaCloudflareNotice only for the source the user is in', () => {
     });
 
     it('takes the manga of the page that is open when the reader does not know its manga', () => {
-        useMangaStore.setState({ cloudflare: [CHECK], reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, error: null } });
+        useMangaStore.setState({ cloudflare: [CHECK], reader: { status: 'loading', mangaTitle: 'One Piece', chapters: [], index: 0, pages: [], local: false, missing: [], error: null } });
         openManga('123');
         render(<MangaCloudflareNotice />);
         wait(CLOUDFLARE_SHOW_AFTER_MS);

@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { PassThrough } from 'node:stream';
@@ -24,7 +24,9 @@ const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9])
 
 type Sent = { channel: string; payload: unknown };
 
-function fakeSuwayomi(): { fetchImpl: typeof fetch; requests: string[] } {
+// The pages (by their number) whose address is not on the server of the app while they are in `failing`: the app refuses to fetch
+// those, so they fail at once and are not asked for again.
+function fakeSuwayomi(failing: ReadonlySet<string> = new Set()): { fetchImpl: typeof fetch; requests: string[] } {
     const requests: string[] = [];
     const fetchImpl = vi.fn((input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
@@ -32,7 +34,10 @@ function fakeSuwayomi(): { fetchImpl: typeof fetch; requests: string[] } {
         if (url.endsWith('/api/graphql')) {
             const body = JSON.parse(String(init?.body)) as { query: string };
             if (body.query.includes('fetchChapterPages')) {
-                return Promise.resolve(new Response(JSON.stringify({ data: { fetchChapterPages: { pages: ['/api/v1/manga/7/chapter/1/page/0', '/api/v1/manga/7/chapter/1/page/1'] } } }), { status: 200 }));
+                const pages = ['0', '1'].map((number) => {
+                    return failing.has(number) ? `http://elsewhere.example/page/${number}` : `/api/v1/manga/7/chapter/1/page/${number}`;
+                });
+                return Promise.resolve(new Response(JSON.stringify({ data: { fetchChapterPages: { pages } } }), { status: 200 }));
             }
             return Promise.resolve(new Response(JSON.stringify({ errors: [{ message: 'not faked' }] }), { status: 200 }));
         }
@@ -42,11 +47,11 @@ function fakeSuwayomi(): { fetchImpl: typeof fetch; requests: string[] } {
     return { fetchImpl, requests };
 }
 
-function setup(overrides: Partial<MangaRuntimeOptions> & { settings?: Partial<Settings> } = {}) {
+function setup({ failing = new Set<string>(), ...overrides }: Partial<MangaRuntimeOptions> & { settings?: Partial<Settings>; failing?: Set<string> } = {}) {
     const dir = makeTempDir();
     const sent: Sent[] = [];
     const opened: string[] = [];
-    const fake = fakeSuwayomi();
+    const fake = fakeSuwayomi(failing);
     const settings: Settings = { ...DEFAULT_SETTINGS, ...overrides.settings };
     const runtime = createMangaRuntime({
         platform: 'linux',
@@ -160,8 +165,8 @@ describe('createMangaRuntime availability', () => {
             externalBaseUrl: EXTERNAL
         });
         expect(runtime?.queue.list()).toEqual([
-            { chapterId: kept.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: '123', status: 'paused', pagesDone: 2, pageCount: 4, percent: 50, error: null },
-            { chapterId: lost.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: '123', status: 'paused', pagesDone: 0, pageCount: 4, percent: 0, error: null }
+            { chapterId: kept.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: '123', status: 'paused', pagesDone: 2, pageCount: 4, percent: 50, error: null, missingPages: 0 },
+            { chapterId: lost.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: '123', status: 'paused', pagesDone: 0, pageCount: 4, percent: 0, error: null, missingPages: 0 }
         ]);
         runtime?.queue.cancel(kept.id);
         expect(existsSync(work)).toBe(false);
@@ -361,7 +366,7 @@ describe('createMangaRuntime downloading a chapter', () => {
         const chapter = runtime!.db.chaptersOf(library.id)[0]!;
         const before = requests.length;
         const answer = await runtime!.handlers.reader.pages({ chapterRemoteId: 1, libraryChapterId: chapter.id });
-        expect(answer).toEqual({ ok: true, value: { pages: [`pullwave-manga://page/${String(chapter.id)}/0`, `pullwave-manga://page/${String(chapter.id)}/1`], local: true } });
+        expect(answer).toEqual({ ok: true, value: { pages: [`pullwave-manga://page/${String(chapter.id)}/0`, `pullwave-manga://page/${String(chapter.id)}/1`], local: true, missing: [] } });
         const first = await runtime!.pageHandler(new Request(`pullwave-manga://page/${String(chapter.id)}/0`));
         expect(first.status).toBe(200);
         expect(first.headers.get('Content-Type')).toBe('image/jpeg');
@@ -386,10 +391,83 @@ describe('createMangaRuntime downloading a chapter', () => {
         expect(Buffer.from(await first.arrayBuffer())).toEqual(Buffer.from(JPEG));
     });
 
+    it('finishes a chapter whose page cannot be fetched as incomplete, and tells the screen how many pages are missing', async () => {
+        const { runtime, dir, sent } = setup({ failing: new Set(['1']) });
+        const library = runtime!.queue.enqueue(REQUEST) as LibraryManga;
+        await untilIdle(runtime!);
+        const expected = join(dir, 'Downloads', 'Pullwave Manga', 'One Piece', 'Chapter 1.cbz');
+        expect(runtime!.db.chaptersOf(library.id)[0]).toMatchObject({ status: 'incomplete', filePath: expected, pageCount: 2, error: null });
+        expect(readZipEntries(readFileSync(expected)).map((entry) => {
+            return entry.name;
+        })).toEqual(['001.jpg', 'ComicInfo.xml']);
+        const jobs = sent.filter((item) => {
+            return item.channel === IPC.eventMangaJob;
+        });
+        expect(jobs.at(-1)?.payload).toMatchObject({ status: 'done', pagesDone: 2, pageCount: 2, missingPages: 1 });
+    });
+
+    it('reads an incomplete chapter from its file, with a place kept for the missing page, and downloads the page when asked', async () => {
+        const failing = new Set(['1']);
+        const { runtime, requests, sent } = setup({ failing });
+        const library = runtime!.queue.enqueue(REQUEST) as LibraryManga;
+        await untilIdle(runtime!);
+        const chapter = runtime!.db.chaptersOf(library.id)[0]!;
+        const pageUrl = (index: number): string => {
+            return `pullwave-manga://page/${String(chapter.id)}/${String(index)}`;
+        };
+        const before = await runtime!.handlers.reader.pages({ chapterRemoteId: 1, libraryChapterId: chapter.id });
+        expect(before).toEqual({ ok: true, value: { pages: [pageUrl(0), pageUrl(1)], local: true, missing: [1] } });
+        expect((await runtime!.pageHandler(new Request(pageUrl(0)))).status).toBe(200);
+        expect((await runtime!.pageHandler(new Request(pageUrl(1)))).status).toBe(404);
+
+        failing.clear();
+        const libraryChanges = sent.filter((item) => {
+            return item.channel === IPC.eventMangaLibrary;
+        }).length;
+        await expect(runtime!.handlers.repair.repair(chapter.id, 1)).resolves.toEqual({ ok: true, value: { missing: [] } });
+        expect(requests.at(-1)).toBe(`${EXTERNAL}/api/v1/manga/7/chapter/1/page/1`);
+        expect(runtime!.db.getChapter(chapter.id)).toMatchObject({ status: 'done', filePath: chapter.filePath, pageCount: 2 });
+        expect(sent.filter((item) => {
+            return item.channel === IPC.eventMangaLibrary;
+        }).length).toBeGreaterThan(libraryChanges);
+        const after = await runtime!.handlers.reader.pages({ chapterRemoteId: 1, libraryChapterId: chapter.id });
+        expect(after).toEqual({ ok: true, value: { pages: [pageUrl(0), pageUrl(1)], local: true, missing: [] } });
+        const second = await runtime!.pageHandler(new Request(pageUrl(1)));
+        expect(second.status).toBe(200);
+        expect(second.headers.get('Content-Type')).toBe('image/png');
+        expect(Buffer.from(await second.arrayBuffer())).toEqual(Buffer.from(PNG));
+    });
+
+    it('keeps the chapter incomplete, and says why, when the page still cannot be downloaded', async () => {
+        const { runtime } = setup({ failing: new Set(['1']) });
+        const library = runtime!.queue.enqueue(REQUEST) as LibraryManga;
+        await untilIdle(runtime!);
+        const chapter = runtime!.db.chaptersOf(library.id)[0]!;
+        await expect(runtime!.handlers.repair.repair(chapter.id, null)).resolves.toEqual({ ok: false, error: { code: 'IMAGE', message: 'The page is not on the server of the app' } });
+        expect(runtime!.db.getChapter(chapter.id)).toMatchObject({ status: 'incomplete', filePath: chapter.filePath });
+    });
+
+    it('repairs the folder of an incomplete chapter in place', async () => {
+        const target = makeTempDir();
+        const failing = new Set(['0']);
+        const { runtime } = setup({ settings: { mangaDirectory: target, mangaFormat: 'folder' }, failing });
+        const library = runtime!.queue.enqueue(REQUEST) as LibraryManga;
+        await untilIdle(runtime!);
+        const chapter = runtime!.db.chaptersOf(library.id)[0]!;
+        const folder = join(target, 'One Piece', 'Chapter 1');
+        expect(chapter).toMatchObject({ status: 'incomplete', filePath: folder });
+        expect(readdirSync(folder).sort()).toEqual(['002.png', 'ComicInfo.xml']);
+        failing.clear();
+        await expect(runtime!.handlers.repair.repair(chapter.id, 0)).resolves.toEqual({ ok: true, value: { missing: [] } });
+        expect(readdirSync(folder).sort()).toEqual(['001.jpg', '002.png', 'ComicInfo.xml']);
+        expect(readFileSync(join(folder, '001.jpg'))).toEqual(Buffer.from(JPEG));
+        expect(runtime!.db.getChapter(chapter.id)).toMatchObject({ status: 'done', filePath: folder });
+    });
+
     it('reads the pages of a chapter that is not downloaded from the server', async () => {
         const { runtime, requests } = setup();
         const answer = await runtime!.handlers.reader.pages({ chapterRemoteId: 1, libraryChapterId: null });
-        expect(answer).toEqual({ ok: true, value: { pages: [expect.stringContaining('/api/v1/manga/7/chapter/1/page/0'), expect.stringContaining('/api/v1/manga/7/chapter/1/page/1')], local: false } });
+        expect(answer).toEqual({ ok: true, value: { pages: [expect.stringContaining('/api/v1/manga/7/chapter/1/page/0'), expect.stringContaining('/api/v1/manga/7/chapter/1/page/1')], local: false, missing: [] } });
         expect(requests).toEqual([`${EXTERNAL}/api/graphql`]);
     });
 
@@ -454,6 +532,8 @@ describe('createMangaRuntime files', () => {
         const chapter = runtime!.db.ensureChapter(manga.id, { remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 });
         runtime!.db.markDone(chapter.id, '/elsewhere/One Piece/Chapter 1.cbz', 1, 1);
         expect(runtime!.handlers.folderOf(manga.id)).toBe('/elsewhere/One Piece');
+        runtime!.db.markIncomplete(chapter.id, '/incomplete/One Piece/Chapter 1.cbz', 1, 2);
+        expect(runtime!.handlers.folderOf(manga.id)).toBe('/incomplete/One Piece');
     });
 
     it('uses the folder of the settings for a manga with nothing downloaded', () => {

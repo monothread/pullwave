@@ -9,8 +9,10 @@ import {
     isCompletePage,
     mangaDirectory,
     mangaFolderName,
+    missingPageIndexes,
     numberedPath,
     pageFileName,
+    pageIndexOfFile,
     uniquePath
 } from '@main/services/manga/mangaFiles';
 
@@ -166,5 +168,48 @@ describe('isCompletePage', () => {
 describe('chapterWorkDirectory', () => {
     it('sits beside the final place', () => {
         expect(chapterWorkDirectory('/m/One Piece/Chapter 7.cbz')).toBe('/m/One Piece/Chapter 7.cbz.part');
+    });
+});
+
+describe('pageIndexOfFile', () => {
+    it.each([
+        ['001.jpg', 0],
+        ['003.png', 2],
+        ['012.webp', 11],
+        ['1000.jpg', 999],
+        ['7.JPEG', 6]
+    ])('gives the place of %s', (name, index) => {
+        expect(pageIndexOfFile(name)).toBe(index);
+    });
+
+    it.each(['ComicInfo.xml', '003.tmp.bak', 'cover.jpg', '000.jpg', '001', '001.', '.jpg', '../001.jpg', 'a/001.jpg', '001.jpg/'])('gives no place for %s', (name) => {
+        expect(pageIndexOfFile(name)).toBeNull();
+    });
+
+    it('takes a half-written page for a page by its name only (the caller leaves those out)', () => {
+        expect(pageIndexOfFile('003.tmp')).toBe(2);
+    });
+});
+
+describe('missingPageIndexes', () => {
+    it('gives the places no file is the page of', () => {
+        expect(missingPageIndexes(['001.jpg', '003.png', '005.webp'], 5)).toEqual([1, 3]);
+    });
+
+    it('counts the pages at the end that are lacking', () => {
+        expect(missingPageIndexes(['001.jpg', '002.jpg'], 4)).toEqual([2, 3]);
+    });
+
+    it('gives nothing for a chapter that has all its pages, whatever the other files are', () => {
+        expect(missingPageIndexes(['002.jpg', '001.jpg', 'ComicInfo.xml'], 2)).toEqual([]);
+    });
+
+    it('gives every place for a chapter with no page, and nothing for one with no pages to have', () => {
+        expect(missingPageIndexes([], 3)).toEqual([0, 1, 2]);
+        expect(missingPageIndexes(['001.jpg'], 0)).toEqual([]);
+    });
+
+    it('ignores a page past the number the chapter should have', () => {
+        expect(missingPageIndexes(['001.jpg', '009.jpg'], 3)).toEqual([1, 2]);
     });
 });

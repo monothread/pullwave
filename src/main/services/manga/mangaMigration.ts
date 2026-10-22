@@ -1,5 +1,6 @@
 import { copyFileSync, constants, existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, statSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
+import { hasChapterFile } from '@shared/manga';
 import type { LibraryManga, MangaChapterRecord, MangaMigrationFailure, MangaMigrationProgress } from '@shared/manga';
 import { isInsideDirectory, removeEmptyDirectories } from '../animeFiles';
 import type { MangaDb } from './mangaDb';
@@ -127,7 +128,7 @@ function planChapters(library: readonly LibraryManga[], dependencies: MangaMigra
     return library.flatMap((manga) => {
         return manga.chapters.flatMap((chapter: MangaChapterRecord) => {
             const oldPath = chapter.filePath;
-            if (chapter.status !== 'done' || oldPath === null || !files.exists(oldPath) || !isInsideDirectory(oldPath, currentDirectory, platform)) {
+            if (!hasChapterFile(chapter.status) || oldPath === null || !files.exists(oldPath) || !isInsideDirectory(oldPath, currentDirectory, platform)) {
                 return [];
             }
             const oldMangaFolder = path.dirname(oldPath);

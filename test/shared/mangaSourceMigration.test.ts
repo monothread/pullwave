@@ -93,4 +93,13 @@ describe('what the move does to the chapters the other source lacks', () => {
         expect(droppedChapters(matching).map((item) => {return item.id})).toEqual([2, 4]);
         expect(matching.matched.map((pair) => {return pair.record.id})).toEqual([5]);
     });
+
+    it('keeps an incomplete chapter, which is read from its file, and drops none of the downloaded ones', () => {
+        const matching = matchChapters(
+            [record(1, 1, 'One', 'incomplete'), record(2, 2, 'Two', 'idle'), record(3, 3, 'Three', 'done')],
+            [incoming(10, 9, 'Nine')]
+        );
+        expect(keptUnmatched(matching).map((item) => {return item.id})).toEqual([1, 3]);
+        expect(droppedChapters(matching).map((item) => {return item.id})).toEqual([2]);
+    });
 });

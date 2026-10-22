@@ -225,6 +225,16 @@ describe('MangaDb states of a download', () => {
         expect(db.outputPathOf(id)).toBeNull();
     });
 
+    it('marks a chapter made without some pages as incomplete, keeps its file and can make it whole later', () => {
+        const { db, id } = withChapter();
+        db.markDownloading(id, '/m/Chapter 1.cbz');
+        db.markIncomplete(id, '/m/Chapter 1.cbz', 2048, 30);
+        expect(db.getChapter(id)).toMatchObject({ status: 'incomplete', filePath: '/m/Chapter 1.cbz', sizeBytes: 2048, pageCount: 30, error: null, downloadedAt: 5000 });
+        expect(db.outputPathOf(id)).toBeNull();
+        db.markDone(id, '/m/Chapter 1.cbz', 4096, 30);
+        expect(db.getChapter(id)).toMatchObject({ status: 'done', filePath: '/m/Chapter 1.cbz', sizeBytes: 4096, pageCount: 30 });
+    });
+
     it('forgets where a chapter was made once it fails or is cancelled (its pages are deleted then)', () => {
         const { db, id } = withChapter();
         db.markDownloading(id, '/m/Chapter 1.cbz');
@@ -746,6 +756,14 @@ describe('MangaDb moving a manga to another source', () => {
         expect(db.getChapter(one.id)).toMatchObject({ remoteId: 701, status: 'done', filePath: '/m/One Piece/Chapter 1.cbz', sizeBytes: 10 });
     });
 
+    it('keeps an incomplete chapter that the other source lacks, with its file', () => {
+        const { db, manga, two } = inLibrary();
+        db.markIncomplete(two.id, '/m/One Piece/Chapter 2.cbz', 20, 5);
+        const result = db.moveToSource(manga.id, { manga: TARGET, details: null, chapters: [chapter(1, { remoteId: 701 })] });
+        expect(result).toEqual({ ok: true, matched: 1, added: 0, dropped: 1 });
+        expect(db.getChapter(two.id)).toMatchObject({ status: 'incomplete', filePath: '/m/One Piece/Chapter 2.cbz', pageCount: 5 });
+    });
+
     it('keeps the state and the file of the chapters that match, and takes the data of the new ones', () => {
         const { db, manga, one, two } = inLibrary();
         db.moveToSource(manga.id, {
@@ -857,6 +875,14 @@ describe('MangaDb removal', () => {
         db.markDone(saved.id, '/m/Chapter 1.cbz', 1, 1);
         expect(db.removeDownload(saved.id)).toBe('/m/Chapter 1.cbz');
         expect(db.getChapter(saved.id)).toMatchObject({ id: saved.id, remoteId: 1, name: 'Chapter 1', status: 'idle', filePath: null, sizeBytes: null, downloadedAt: null, error: null });
+    });
+
+    it('removes the download of an incomplete chapter too', () => {
+        const { db, manga } = setup();
+        const saved = db.ensureChapter(manga.id, chapter(1));
+        db.markIncomplete(saved.id, '/m/Chapter 1.cbz', 1, 3);
+        expect(db.removeDownload(saved.id)).toBe('/m/Chapter 1.cbz');
+        expect(db.getChapter(saved.id)).toMatchObject({ status: 'idle', filePath: null, sizeBytes: null, downloadedAt: null });
     });
 
     it('gives nothing, and changes nothing, for a chapter that is not downloaded or not there', () => {

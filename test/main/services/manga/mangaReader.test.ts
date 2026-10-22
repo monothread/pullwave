@@ -1,7 +1,7 @@
 import { MangaReader } from '@main/services/manga/mangaReader';
 import { SuwayomiApiError } from '@main/services/manga/suwayomiClient';
 
-function setup(options: { file?: string | null; count?: number | Error; remote?: string[] | Error; exists?: boolean } = {}) {
+function setup(options: { file?: string | null; count?: number | Error; remote?: string[] | Error; exists?: boolean; incompletePageCount?: number | null; missing?: number[] } = {}) {
     const fileOf = vi.fn(() => {
         return options.file === undefined ? '/manga/One Piece/Chapter 1.cbz' : options.file;
     });
@@ -13,10 +13,16 @@ function setup(options: { file?: string | null; count?: number | Error; remote?:
         const value = options.remote ?? ['http://127.0.0.1:4321/api/v1/manga/7/chapter/11/page/0'];
         return value instanceof Error ? Promise.reject(value) : Promise.resolve(value);
     });
+    const missing = vi.fn(() => {
+        return Promise.resolve(options.missing ?? []);
+    });
+    const incompletePageCount = vi.fn(() => {
+        return options.incompletePageCount ?? null;
+    });
     const pathExists = vi.fn(() => {
         return options.exists ?? true;
     });
-    return { reader: new MangaReader({ fileOf, localPages: { count }, remotePages, pathExists }), fileOf, count, remotePages, pathExists };
+    return { reader: new MangaReader({ fileOf, incompletePageCount, localPages: { count, missing }, remotePages, pathExists }), fileOf, count, missing, incompletePageCount, remotePages, pathExists };
 }
 
 describe('MangaReader', () => {
@@ -24,7 +30,7 @@ describe('MangaReader', () => {
         const { reader, fileOf, count, remotePages, pathExists } = setup();
         await expect(reader.pages({ chapterRemoteId: 11, libraryChapterId: 4 })).resolves.toEqual({
             ok: true,
-            value: { pages: ['pullwave-manga://page/4/0', 'pullwave-manga://page/4/1', 'pullwave-manga://page/4/2'], local: true }
+            value: { pages: ['pullwave-manga://page/4/0', 'pullwave-manga://page/4/1', 'pullwave-manga://page/4/2'], local: true, missing: [] }
         });
         expect(fileOf).toHaveBeenCalledWith(4);
         expect(pathExists).toHaveBeenCalledWith('/manga/One Piece/Chapter 1.cbz');
@@ -36,7 +42,7 @@ describe('MangaReader', () => {
         const { reader, fileOf, remotePages } = setup();
         await expect(reader.pages({ chapterRemoteId: 11, libraryChapterId: null })).resolves.toEqual({
             ok: true,
-            value: { pages: ['http://127.0.0.1:4321/api/v1/manga/7/chapter/11/page/0'], local: false }
+            value: { pages: ['http://127.0.0.1:4321/api/v1/manga/7/chapter/11/page/0'], local: false, missing: [] }
         });
         expect(fileOf).not.toHaveBeenCalled();
         expect(remotePages).toHaveBeenCalledWith(11);
@@ -65,11 +71,41 @@ describe('MangaReader', () => {
             fileOf: () => {
                 return '/does/not/exist.cbz';
             },
-            localPages: { count: vi.fn() },
+            incompletePageCount: () => {
+                return null;
+            },
+            localPages: { count: vi.fn(), missing: vi.fn() },
             remotePages: () => {
                 return Promise.resolve([]);
             }
         });
-        await expect(reader.pages({ chapterRemoteId: 1, libraryChapterId: 2 })).resolves.toEqual({ ok: true, value: { pages: [], local: false } });
+        await expect(reader.pages({ chapterRemoteId: 1, libraryChapterId: 2 })).resolves.toEqual({ ok: true, value: { pages: [], local: false, missing: [] } });
+    });
+
+    it('gives a place for every page of an incomplete chapter, and the places of the ones it lacks', async () => {
+        const { reader, missing, incompletePageCount, remotePages } = setup({ count: 3, incompletePageCount: 5, missing: [1, 4] });
+        await expect(reader.pages({ chapterRemoteId: 11, libraryChapterId: 4 })).resolves.toEqual({
+            ok: true,
+            value: {
+                pages: ['pullwave-manga://page/4/0', 'pullwave-manga://page/4/1', 'pullwave-manga://page/4/2', 'pullwave-manga://page/4/3', 'pullwave-manga://page/4/4'],
+                local: true,
+                missing: [1, 4]
+            }
+        });
+        expect(incompletePageCount).toHaveBeenCalledWith(4);
+        expect(missing).toHaveBeenCalledWith('/manga/One Piece/Chapter 1.cbz', 5);
+        expect(remotePages).not.toHaveBeenCalled();
+    });
+
+    it('does not look for missing pages in a chapter that is whole', async () => {
+        const { reader, missing } = setup({ count: 2, incompletePageCount: null });
+        await reader.pages({ chapterRemoteId: 11, libraryChapterId: 4 });
+        expect(missing).not.toHaveBeenCalled();
+    });
+
+    it('gives no missing page when the file of an incomplete chapter has all its pages', async () => {
+        const { reader, missing } = setup({ count: 3, incompletePageCount: 3 });
+        await expect(reader.pages({ chapterRemoteId: 11, libraryChapterId: 4 })).resolves.toMatchObject({ ok: true, value: { local: true, missing: [] } });
+        expect(missing).not.toHaveBeenCalled();
     });
 });

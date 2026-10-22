@@ -156,7 +156,7 @@ export function createMockApi(): MockApiHandle {
             return { ok: true, value: [] };
         }),
         readPages: vi.fn(async () => {
-            return { ok: true, value: { pages: [], local: false } };
+            return { ok: true, value: { pages: [], local: false, missing: [] } };
         }),
         sourceFilters: vi.fn(async () => {
             return { ok: true, value: [] };
@@ -188,6 +188,9 @@ export function createMockApi(): MockApiHandle {
         }),
         cancel: vi.fn(async () => {return undefined}),
         retry: vi.fn(async () => {return undefined}),
+        repairChapter: vi.fn(async () => {
+            return { ok: true, value: { missing: [] } };
+        }),
         pause: vi.fn(async () => {return undefined}),
         resume: vi.fn(async () => {return undefined}),
         pauseAll: vi.fn(async () => {

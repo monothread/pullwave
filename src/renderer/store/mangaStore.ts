@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { hasChapterFile } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
 import type {
@@ -178,6 +179,8 @@ export interface MangaReaderState {
     pages: string[];
     // The pages are read from the downloaded file.
     local: boolean;
+    // The places (from 0) of the pages the downloaded chapter lacks.
+    missing: number[];
     error: MangaError | null;
     // The manga being read, to write where the user is in the history of reading (null when it is not known).
     manga?: MangaSummary | null;
@@ -193,7 +196,7 @@ const EMPTY_SEARCH: MangaSearchState = { query: '', searchedFor: '', status: 'id
 // Which search is the current one: the answers of an older one are dropped.
 let searchRun = 0;
 
-const CLOSED_READER: MangaReaderState = { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, error: null };
+const CLOSED_READER: MangaReaderState = { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, missing: [], error: null };
 
 interface MangaState {
     reader: MangaReaderState;
@@ -354,6 +357,10 @@ interface MangaState {
 
     cancelJob: (chapterId: number) => Promise<void>;
     retryJob: (chapterId: number) => Promise<void>;
+    // Downloads again the pages an incomplete chapter lacks (all of them, from the list of chapters).
+    repairChapter: (chapterId: number) => Promise<void>;
+    // Downloads the page of the chapter being read at this place (from 0); gives the error when it could not.
+    repairReaderPage: (pageIndex: number) => Promise<MangaError | null>;
     // Tries again every download that failed or was cancelled.
     retryFailedJobs: () => Promise<void>;
     pauseJob: (chapterId: number) => Promise<void>;
@@ -528,7 +535,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
                                 };
                             });
                         }, DONE_JOB_LINGER_MS);
-                        toast('notice.downloadDone', { title: `${job.mangaTitle} · ${job.chapterName}` });
+                        const title = `${job.mangaTitle} · ${job.chapterName}`;
+                        if (job.missingPages > 0) {
+                            toast('manga.notice.downloadIncomplete', { title, count: job.missingPages });
+                        } else {
+                            toast('notice.downloadDone', { title });
+                        }
                         return;
                     }
                     set((state) => {
@@ -1031,7 +1043,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 return;
             }
             const manga = get().selection?.manga ?? get().reader.manga ?? null;
-            set({ reader: { status: 'loading', mangaTitle, chapters, index, pages: [], local: false, error: null, manga, resume, ...(entry === undefined ? {} : { entry }) } });
+            set({ reader: { status: 'loading', mangaTitle, chapters, index, pages: [], local: false, missing: [], error: null, manga, resume, ...(entry === undefined ? {} : { entry }) } });
             const result = await window.api.manga.readPages({ chapterRemoteId: chapter.remoteId, libraryChapterId: chapter.libraryChapterId });
             // The answer for a chapter that is no longer the one on the screen is dropped.
             const now = get().reader;
@@ -1040,7 +1052,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             }
             set({
                 reader: result.ok
-                    ? { ...now, status: 'ready', pages: result.value.pages, local: result.value.local, error: null }
+                    ? { ...now, status: 'ready', pages: result.value.pages, local: result.value.local, missing: result.value.missing, error: null }
                     : { ...now, status: 'error', pages: [], error: result.error }
             });
         },
@@ -1095,7 +1107,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 const inLibrary = libraryEntry(library, selection.manga.sourceId, selection.manga.remoteId);
                 const ids = selection.chapters
                     .filter((chapter) => {
-                        return kind === 'all' || (kind === 'missing' && chapterState(inLibrary, chapter.remoteId)?.status !== 'done');
+                        return kind === 'all' || (kind === 'missing' && !hasChapterFile(chapterState(inLibrary, chapter.remoteId)?.status ?? 'idle'));
                     })
                     .map((chapter) => {
                         return chapter.remoteId;
@@ -1349,6 +1361,32 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         retryJob: async (chapterId) => {
             await window.api.manga.retry(chapterId);
+        },
+
+        repairChapter: async (chapterId) => {
+            const result = await window.api.manga.repairChapter(chapterId, null);
+            if (!result.ok) {
+                toast('manga.notice.repairFailed', { message: result.error.message });
+                return;
+            }
+            toast(result.value.missing.length === 0 ? 'manga.notice.repairDone' : 'manga.notice.repairPartial', { count: result.value.missing.length });
+        },
+
+        repairReaderPage: async (pageIndex) => {
+            const { reader } = get();
+            const chapterId = reader.chapters[reader.index]?.libraryChapterId ?? null;
+            if (chapterId === null) {
+                return { code: 'INVALID_REQUEST', message: 'The chapter is not in the library.' };
+            }
+            const result = await window.api.manga.repairChapter(chapterId, pageIndex);
+            if (!result.ok) {
+                return result.error;
+            }
+            set((state) => {
+                const sameChapter = state.reader.chapters === reader.chapters && state.reader.index === reader.index;
+                return sameChapter ? { reader: { ...state.reader, missing: result.value.missing } } : {};
+            });
+            return null;
         },
 
         retryFailedJobs: async () => {

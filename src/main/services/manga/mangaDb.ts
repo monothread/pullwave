@@ -5,6 +5,7 @@ import { matchChapters, droppedChapters } from '@shared/mangaSourceMigration';
 import { sameSeries } from '@shared/series';
 import {
     ARRIVAL_ORIGINS,
+    hasChapterFile,
     MANGA_CHAPTER_STATUSES,
     MANGA_STATUSES,
     type ArrivalOrigin,
@@ -429,8 +430,18 @@ export class MangaDb {
     }
 
     markDone(chapterId: number, filePath: string, sizeBytes: number | null, pageCount: number): void {
+        this.markDownloaded('done', chapterId, filePath, sizeBytes, pageCount);
+    }
+
+    // The chapter was made, but without some pages the source would not give: it can be read, and the pages can be downloaded again.
+    markIncomplete(chapterId: number, filePath: string, sizeBytes: number | null, pageCount: number): void {
+        this.markDownloaded('incomplete', chapterId, filePath, sizeBytes, pageCount);
+    }
+
+    private markDownloaded(status: 'done' | 'incomplete', chapterId: number, filePath: string, sizeBytes: number | null, pageCount: number): void {
         this.run(
-            `UPDATE chapter SET status = 'done', file_path = ?, size_bytes = ?, page_count = ?, output_path = NULL, error_code = NULL, error_raw = NULL, downloaded_at = ? WHERE id = ?`,
+            `UPDATE chapter SET status = ?, file_path = ?, size_bytes = ?, page_count = ?, output_path = NULL, error_code = NULL, error_raw = NULL, downloaded_at = ? WHERE id = ?`,
+            status,
             filePath,
             sizeBytes,
             pageCount,
@@ -718,7 +729,7 @@ export class MangaDb {
     // changes nothing) for a chapter that is not downloaded.
     removeDownload(chapterId: number): string | null {
         const chapter = this.getChapter(chapterId);
-        if (chapter === null || chapter.status !== 'done') {
+        if (chapter === null || !hasChapterFile(chapter.status)) {
             return null;
         }
         this.run(`UPDATE chapter SET status = 'idle', file_path = NULL, size_bytes = NULL, downloaded_at = NULL, error_code = NULL, error_raw = NULL WHERE id = ?`, chapterId);

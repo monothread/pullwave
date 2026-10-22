@@ -2563,3 +2563,145 @@ test.describe('manga section', () => {
         await expect(menu).toHaveValue('history');
     });
 });
+
+test.describe('manga chapters that lack pages', () => {
+    const MISSING_PAGE = '/api/v1/chapter/101/page/1';
+    const FAILS_FOR_GOOD = 1000;
+
+    function pageRequests(path: string): number {
+        return fake.requests.filter((item) => {
+            return item.path === path;
+        }).length;
+    }
+
+    async function waitForIncomplete(page: Page): Promise<void> {
+        await expect(page.locator('.toast').filter({ hasText: 'Download finished without 1 page(s): One Piece · Romance Dawn' })).toBeVisible({ timeout: 25000 });
+        await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 20000 });
+    }
+
+    test('finishes the chapter without the page that fails, marks it as incomplete, and downloads the missing page with RETRY', async () => {
+        test.setTimeout(60000);
+        fake.failTimes.set(MISSING_PAGE, FAILS_FOR_GOOD);
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await waitForIncomplete(session.page);
+
+        // The page was asked for three times and then skipped: the chapter was not asked for again as a whole.
+        expect(pageRequests(MISSING_PAGE)).toBe(3);
+        expect(pageRequests('/api/v1/chapter/101/page/0')).toBe(1);
+        expect(pageRequests('/api/v1/chapter/101/page/2')).toBe(1);
+        expect(
+            fake.graphqlRequests('fetchChapterPages').filter((item) => {
+                return item.variables?.['chapterId'] === 101;
+            })
+        ).toHaveLength(1);
+        const file = join(mangaFolder(), 'One Piece', 'Chapter 1.cbz');
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+        const entries = readZipEntries(readFileSync(file));
+        expect(entries.map((entry) => {return entry.name})).toEqual(['001.jpg', '003.jpg', 'ComicInfo.xml']);
+        expect(entries[2]!.data.toString('utf-8')).toContain('<PageCount>2</PageCount>');
+
+        const first = session.page.getByTestId('manga-chapter').filter({ hasText: 'Romance Dawn' });
+        const second = session.page.getByTestId('manga-chapter').filter({ hasText: 'The Great Race' });
+        await expect(first.getByText('Incomplete', { exact: true })).toHaveClass(/badge--incomplete/);
+        // Yellow, like a paused chapter: the --yellow of the theme the tests run with (#a15c07).
+        await expect(first.getByText('Incomplete', { exact: true })).toHaveCSS('color', 'rgb(161, 92, 7)');
+        await expect(first.getByText('Downloaded', { exact: true })).toHaveCount(0);
+        await expect(second.getByText('Downloaded', { exact: true })).toBeVisible();
+        await expect(second.getByRole('button', { name: /^RETRY/ })).toHaveCount(0);
+
+        // The page still fails: the chapter says why and stays as it was.
+        await first.getByRole('button', { name: 'RETRY: Romance Dawn' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Could not download the missing pages: The server answered 500 for a page' })).toBeVisible({ timeout: 15000 });
+        await expect(first.getByText('Incomplete', { exact: true })).toBeVisible();
+        await expect(first.getByRole('button', { name: 'RETRY: Romance Dawn' })).toBeEnabled();
+        expect(readZipEntries(readFileSync(file)).map((entry) => {return entry.name})).toEqual(['001.jpg', '003.jpg', 'ComicInfo.xml']);
+
+        // The server gives the page now: only that page is downloaded, and the chapter is whole.
+        fake.failTimes.clear();
+        const before = pageRequests(MISSING_PAGE);
+        await first.getByRole('button', { name: 'RETRY: Romance Dawn' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'The missing pages were downloaded.' })).toBeVisible({ timeout: 15000 });
+        await expect(first.getByText('Downloaded', { exact: true })).toBeVisible();
+        await expect(first.getByText('Incomplete', { exact: true })).toHaveCount(0);
+        await expect(first.getByRole('button', { name: /^RETRY/ })).toHaveCount(0);
+        expect(pageRequests(MISSING_PAGE)).toBe(before + 1);
+        expect(pageRequests('/api/v1/chapter/101/page/0')).toBe(1);
+        const repaired = readZipEntries(readFileSync(file));
+        expect(repaired.map((entry) => {return entry.name})).toEqual(['001.jpg', '002.jpg', '003.jpg', 'ComicInfo.xml']);
+        expect([...repaired[1]!.data]).toEqual([...JPEG]);
+        expect(repaired[3]!.data.toString('utf-8')).toContain('<PageCount>3</PageCount>');
+        expect(readdirSync(join(mangaFolder(), 'One Piece')).sort()).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('warns at the missing page of the reader and downloads it from there', async () => {
+        test.setTimeout(60000);
+        fake.pagesArePicture = true;
+        fake.failTimes.set(MISSING_PAGE, FAILS_FOR_GOOD);
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await waitForIncomplete(session.page);
+
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await expect(reader.getByRole('img')).toHaveCount(1);
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('2 / 3')).toBeVisible();
+        await expect(reader.getByRole('alert')).toHaveText('Page 2 was not downloaded.');
+        await expect(reader.getByRole('button', { name: 'TRY AGAIN' })).toHaveCount(0);
+
+        // The page still fails: the reader says so and keeps the button.
+        await reader.getByRole('button', { name: 'DOWNLOAD PAGE' }).click();
+        await expect(reader.getByRole('alert')).toHaveText(['Page 2 was not downloaded.', 'The page could not be downloaded. Try again.'], { timeout: 15000 });
+        await expect(reader.getByRole('button', { name: 'DOWNLOAD PAGE' })).toBeEnabled();
+
+        fake.failTimes.clear();
+        await reader.getByRole('button', { name: 'DOWNLOAD PAGE' }).click();
+        const image = reader.getByRole('img');
+        await expect(image).toHaveCount(1, { timeout: 15000 });
+        await expect.poll(() => {
+            return image.evaluate((element: HTMLImageElement) => {return element.complete && element.naturalWidth > 0}).catch(() => {return false});
+        }).toBe(true);
+        await expect(reader.getByRole('alert')).toHaveCount(0);
+        // The pages come from the file: only the missing one was asked for again.
+        expect(pageRequests('/api/v1/chapter/101/page/0')).toBe(1);
+        expect(pageRequests(MISSING_PAGE)).toBe(7);
+        const file = join(mangaFolder(), 'One Piece', 'Chapter 1.cbz');
+        expect(readZipEntries(readFileSync(file)).map((entry) => {return entry.name})).toEqual(['001.png', '002.png', '003.png', 'ComicInfo.xml']);
+
+        await reader.getByRole('button', { name: '← CLOSE' }).click();
+        const first = session.page.getByTestId('manga-chapter').filter({ hasText: 'Romance Dawn' });
+        await expect(first.getByText('Downloaded', { exact: true })).toBeVisible();
+        await expect(first.getByText('Incomplete', { exact: true })).toHaveCount(0);
+    });
+
+    test('downloads the pages incomplete chapters lack with the button that downloads what is missing of the season', async () => {
+        test.setTimeout(60000);
+        fake.failTimes.set(MISSING_PAGE, FAILS_FOR_GOOD);
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await waitForIncomplete(session.page);
+        const first = session.page.getByTestId('manga-chapter').filter({ hasText: 'Romance Dawn' });
+        await expect(first.getByText('Incomplete', { exact: true })).toBeVisible();
+
+        fake.failTimes.clear();
+        await downloadSeason(session.page);
+        await expect(first.getByText('Downloaded', { exact: true })).toBeVisible({ timeout: 15000 });
+        await expect(first.getByText('Incomplete', { exact: true })).toHaveCount(0);
+        const file = join(mangaFolder(), 'One Piece', 'Chapter 1.cbz');
+        expect(readZipEntries(readFileSync(file)).map((entry) => {return entry.name})).toEqual(['001.jpg', '002.jpg', '003.jpg', 'ComicInfo.xml']);
+        expect(readdirSync(join(mangaFolder(), 'One Piece')).sort()).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+        // The chapter that was whole is not downloaded again.
+        expect(pageRequests('/api/v1/chapter/102/page/0')).toBe(1);
+    });
+});

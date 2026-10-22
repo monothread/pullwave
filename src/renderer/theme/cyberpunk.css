@@ -362,7 +362,7 @@ body::after {
 .badge--done { color: var(--green); }
 .badge--error { color: var(--red); }
 .badge--queued, .badge--cancelled { color: var(--muted); }
-.badge--paused { color: var(--yellow); }
+.badge--paused, .badge--incomplete { color: var(--yellow); }
 .badge--verifying { color: var(--yellow); animation: badge-blink 0.8s steps(2, jump-none) infinite; }
 .badge--waiting { color: var(--magenta); animation: badge-blink 1.4s ease-in-out infinite; }
 .badge--processing { color: var(--magenta); animation: badge-blink 1s ease-in-out infinite; }
