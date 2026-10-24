@@ -7,6 +7,7 @@ import { MangaJobs } from '@renderer/components/MangaJobs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeMangaJob } from '../../helpers/mangaFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -151,6 +152,9 @@ describe('MangaJobs', () => {
         expect(screen.queryByRole('button', { name: 'RETRY' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'PAUSE' }));
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        expect(mock.api.manga.cancel).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Cancel this download?')).getByText('The download stops. You can start it again later.')).toBeInTheDocument();
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.manga.pause).toHaveBeenCalledWith(5);
         expect(mock.api.manga.cancel).toHaveBeenCalledWith(5);
     });
@@ -162,6 +166,7 @@ describe('MangaJobs', () => {
         expect(screen.queryByRole('button', { name: 'PAUSE' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'RESUME' }));
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.manga.resume).toHaveBeenCalledWith(6);
         expect(mock.api.manga.cancel).toHaveBeenCalledWith(6);
     });
@@ -238,7 +243,20 @@ describe('MangaJobs', () => {
         render(<MangaJobs />);
         expect(screen.queryByRole('button', { name: 'PAUSE' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.manga.cancel).toHaveBeenCalledWith(7);
+    });
+
+    it('keeps the download when the user goes back or presses Esc', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 7, status: 'queued' })] });
+        render(<MangaJobs />);
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        await answerDialog(user, 'Cancel this download?', 'BACK');
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.manga.cancel).not.toHaveBeenCalled();
     });
 
     it.each(['error', 'cancelled'] as const)('retries a download that is %s, and has nothing else to offer', async (status) => {
@@ -258,6 +276,9 @@ describe('MangaJobs', () => {
         useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 1, status: 'running' }), makeMangaJob({ chapterId: 2, status: 'error' })] });
         rerender(<MangaJobs />);
         await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        expect(mock.api.manga.clearFinished).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Clear the finished ones?')).getByText('Only the list goes. Files already saved stay on the disk.')).toBeInTheDocument();
+        await answerDialog(user, 'Clear the finished ones?', 'CLEAR FINISHED');
         expect(mock.api.manga.clearFinished).toHaveBeenCalledTimes(1);
         expect(useMangaStore.getState().jobs.map((job) => {
             return job.chapterId;

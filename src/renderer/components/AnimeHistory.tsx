@@ -1,6 +1,7 @@
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { AnimeCover } from './AnimeCover';
+import { ConfirmButton } from './ConfirmButton';
 import { RowLink } from './RowLink';
 
 // The anime the viewer opened or watched, the most recent first. Opening one goes to its series in the library when it is there, and to its episodes in the search when it is not.
@@ -28,15 +29,15 @@ export function AnimeHistory() {
         <section className="history" aria-label={t('anime.history.aria')}>
             <div className="queue__toolbar">
                 <span className="section-label">{t('anime.history.label', { count: history.length })}</span>
-                <button
-                    type="button"
+                <ConfirmButton
                     className="btn btn--small btn--ghost"
-                    onClick={() => {
+                    dialog={{ title: t('confirm.historyClear.title'), message: t('confirm.historyClear.message'), confirmLabel: t('anime.history.clear') }}
+                    onConfirm={() => {
                         void clearHistory();
                     }}
                 >
                     {t('anime.history.clear')}
-                </button>
+                </ConfirmButton>
             </div>
             <ul className="cover-grid">
                 {history.map((entry) => {
@@ -61,16 +62,16 @@ export function AnimeHistory() {
                                         {entry.episode !== null && ` · ${t('anime.history.episode', { episode: entry.episode })}`} · {new Date(entry.openedAt).toLocaleString(language)}
                                     </span>
                                     <div className="anime__actions">
-                                        <button
-                                            type="button"
+                                        <ConfirmButton
                                             className="btn btn--small btn--ghost"
-                                            aria-label={t('anime.history.removeLabel', { title: entry.title })}
-                                            onClick={() => {
+                                            ariaLabel={t('anime.history.removeLabel', { title: entry.title })}
+                                            dialog={{ title: t('confirm.historyRemove.title', { name: entry.title }), message: t('confirm.historyRemove.message'), confirmLabel: t('anime.history.remove') }}
+                                            onConfirm={() => {
                                                 void removeEntry(entry.id);
                                             }}
                                         >
                                             {t('anime.history.remove')}
-                                        </button>
+                                        </ConfirmButton>
                                     </div>
                                 </div>
                             </div>

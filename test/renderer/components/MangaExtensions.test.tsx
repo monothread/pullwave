@@ -6,6 +6,7 @@ import { MangaExtensions } from '@renderer/components/MangaExtensions';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeExtension } from '../../helpers/mangaFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -210,6 +211,9 @@ describe('MangaExtensions', () => {
         await user.click(within(delta!).getByRole('button', { name: 'INSTALL: Delta' }));
         await user.click(within(alpha!).getByRole('button', { name: 'UPDATE: Alpha' }));
         await user.click(within(beta!).getByRole('button', { name: 'UNINSTALL: Beta' }));
+        expect(mock.api.manga.changeExtension).toHaveBeenCalledTimes(2);
+        expect(within(confirmDialog('Uninstall "Beta"?')).getByText('The extension and its sources are removed from the app. You can install it again later.')).toBeInTheDocument();
+        await answerDialog(user, 'Uninstall "Beta"?', 'UNINSTALL');
         expect(mock.api.manga.changeExtension.mock.calls).toEqual([
             ['d.ja', 'install'],
             ['a.pt', 'update'],

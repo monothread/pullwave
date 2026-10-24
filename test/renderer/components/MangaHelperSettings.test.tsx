@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaHelperSettings } from '@renderer/components/MangaHelperSettings';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeMangaStatus, makeTool } from '../../helpers/mangaFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -63,8 +64,26 @@ describe('MangaHelperSettings', () => {
         useMangaStore.setState({ status: makeMangaStatus({ helper: helper() }) });
         render(<MangaHelperSettings enabled external={false} onEnabledChange={onEnabledChange} />);
         await user.click(screen.getByRole('button', { name: 'REMOVE' }));
+        expect(onEnabledChange).not.toHaveBeenCalled();
+        expect(mock.api.manga.removeHelper).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Remove the helper for Cloudflare?')).getByText('The sites that Cloudflare protects will not work until it is installed again.')).toBeInTheDocument();
+        await answerDialog(user, 'Remove the helper for Cloudflare?', 'REMOVE');
         expect(onEnabledChange).toHaveBeenCalledWith(false);
         expect(mock.api.manga.removeHelper).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the helper when the user keeps it or presses Esc', async () => {
+        const user = userEvent.setup();
+        const onEnabledChange = vi.fn();
+        useMangaStore.setState({ status: makeMangaStatus({ helper: helper() }) });
+        render(<MangaHelperSettings enabled external={false} onEnabledChange={onEnabledChange} />);
+        await user.click(screen.getByRole('button', { name: 'REMOVE' }));
+        await answerDialog(user, 'Remove the helper for Cloudflare?', 'KEEP');
+        await user.click(screen.getByRole('button', { name: 'REMOVE' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(onEnabledChange).not.toHaveBeenCalled();
+        expect(mock.api.manga.removeHelper).not.toHaveBeenCalled();
     });
 
     it('shows the progress of the download and disables the buttons while it goes on', () => {

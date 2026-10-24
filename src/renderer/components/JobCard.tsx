@@ -1,5 +1,6 @@
 import type { DownloadJob } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
+import { ConfirmButton } from './ConfirmButton';
 import { ErrorBanner } from './ErrorBanner';
 import { livePhase, statusLabel } from './jobStatus';
 import { JobMeta, JobProgress } from './JobProgress';
@@ -24,10 +25,9 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
     const canRetry = job.status === 'error' || job.status === 'cancelled';
     // A plain download that is running (not a live recording, nor one closing its file) can be paused.
     const canPause = job.status === 'running' && !job.live && phase === null;
-    // A live recording left behind may still be playable, so deleting it is confirmed first.
-    const confirmDeletion = (): boolean => {
-        return !(job.live && job.hasPartial) || window.confirm(t('job.confirmLivePartial'));
-    };
+    // A live recording left behind may still be playable, so its window warns about that.
+    const livePartialKept = job.live && job.hasPartial;
+    const partialMessage = livePartialKept ? t('job.confirmLivePartial') : undefined;
     return (
         <article className={`job job--${job.status}${phase === null ? '' : ` job--${phase}`}`} data-testid="job-card">
             <header className="job__head">
@@ -96,15 +96,15 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
                     </button>
                 )}
                 {isActive && phase !== 'verifying' && phase !== 'merging' && phase !== 'saving' && phase !== 'processing' && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small btn--hot"
-                        onClick={() => {
+                        dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('job.cancel'), cancelLabel: t('confirm.back') }}
+                        onConfirm={() => {
                             onCancel(job.id);
                         }}
                     >
                         {t('job.cancel')}
-                    </button>
+                    </ConfirmButton>
                 )}
                 {canRetry && !job.error && (
                     <button
@@ -118,17 +118,15 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
                     </button>
                 )}
                 {canRetry && job.hasPartial && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small"
-                        onClick={() => {
-                            if (confirmDeletion()) {
-                                onClearPartials(job.id);
-                            }
+                        dialog={{ title: t('confirm.clearPartials.title'), message: partialMessage ?? t('confirm.clearPartials.message'), confirmLabel: t('job.clearPartial') }}
+                        onConfirm={() => {
+                            onClearPartials(job.id);
                         }}
                     >
                         {t('job.clearPartial')}
-                    </button>
+                    </ConfirmButton>
                 )}
                 {job.status === 'done' && job.filePath && (
                     <button
@@ -142,17 +140,15 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
                     </button>
                 )}
                 {!isActive && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small btn--ghost"
-                        onClick={() => {
-                            if (confirmDeletion()) {
-                                onRemove(job.id);
-                            }
+                        dialog={{ title: t('confirm.jobRemove.title'), message: partialMessage ?? t('confirm.jobRemove.message'), confirmLabel: t('job.remove') }}
+                        onConfirm={() => {
+                            onRemove(job.id);
                         }}
                     >
                         {t('job.remove')}
-                    </button>
+                    </ConfirmButton>
                 )}
             </div>
         </article>

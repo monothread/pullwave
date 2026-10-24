@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeSubtitleTrack, SubtitleEstimateResponse, SubtitleTranslateResponse } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SubtitleTranslateDialog } from '@renderer/components/SubtitleTranslateDialog';
 import { useAppStore } from '@renderer/store/appStore';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -245,8 +246,27 @@ describe('SubtitleTranslateDialog', () => {
             await ready();
             await user.click(screen.getByRole('button', { name: 'TRANSLATE' }));
             await user.click(screen.getByRole('button', { name: 'CANCEL TRANSLATION' }));
+            expect(mock.api.cancelAnimeSubtitleTranslation).not.toHaveBeenCalled();
+            expect(within(confirmDialog('Cancel the translation?')).getByText('The subtitle being translated is discarded.')).toBeInTheDocument();
+            await answerDialog(user, 'Cancel the translation?', 'CANCEL TRANSLATION');
             expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledTimes(1);
             expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledWith(7);
+        });
+
+        it('keeps translating when the user goes back or presses Esc, and the window of the translation stays open', async () => {
+            const user = userEvent.setup();
+            mock.api.translateAnimeSubtitle.mockReturnValue(new Promise(() => {
+                return undefined;
+            }));
+            await ready();
+            await user.click(screen.getByRole('button', { name: 'TRANSLATE' }));
+            await user.click(screen.getByRole('button', { name: 'CANCEL TRANSLATION' }));
+            await answerDialog(user, 'Cancel the translation?', 'BACK');
+            await user.click(screen.getByRole('button', { name: 'CANCEL TRANSLATION' }));
+            await user.keyboard('{Escape}');
+            expect(screen.queryByRole('dialog', { name: 'Cancel the translation?' })).not.toBeInTheDocument();
+            expect(screen.getAllByRole('dialog')).toHaveLength(1);
+            expect(mock.api.cancelAnimeSubtitleTranslation).not.toHaveBeenCalled();
         });
 
         it('says nothing when it was cancelled, and goes back to offering the translation', async () => {

@@ -7,6 +7,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaSelection } from '@renderer/store/mangaStore';
 import { progressKey, saveLastChapter, saveProgress } from '@renderer/components/readerPrefs';
 import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -338,8 +339,24 @@ describe('MangaDetail removing the download of a chapter of the library', () => 
         expect(screen.queryByRole('button', { name: 'Remove download: Fourth' })).not.toBeInTheDocument();
         expect(screen.getAllByRole('button', { name: /^Remove download/ })).toHaveLength(1);
         await user.click(screen.getByRole('button', { name: 'Remove download: Romance Dawn' }));
+        expect(mock.api.manga.removeDownload).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Remove the download of "Romance Dawn"?')).getByText('The downloaded file of this chapter is deleted from the disk. The chapter stays in the library.')).toBeInTheDocument();
+        await answerDialog(user, 'Remove the download of "Romance Dawn"?', 'REMOVE');
         expect(mock.api.manga.removeDownload).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.removeDownload).toHaveBeenCalledWith(1);
+    });
+
+    it('keeps the download of a chapter when the user keeps it or presses Esc', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, status: 'done' })])] });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'Remove download: Romance Dawn' }));
+        await answerDialog(user, 'Remove the download of "Romance Dawn"?', 'KEEP');
+        await user.click(screen.getByRole('button', { name: 'Remove download: Romance Dawn' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.manga.removeDownload).not.toHaveBeenCalled();
     });
 
     it('keeps the chapter in the list as not downloaded once its download is gone', () => {
@@ -868,6 +885,7 @@ describe('MangaDetail the site of the source and the chapters that failed', () =
         open();
         render(<MangaDetail />);
         await user.click(screen.getByRole('button', { name: 'Remove download: Romance Dawn' }));
+        await answerDialog(user, 'Remove the download of "Romance Dawn"?', 'REMOVE');
         expect(mock.api.manga.removeDownload).toHaveBeenCalledWith(1);
     });
 
@@ -895,6 +913,8 @@ describe('MangaDetail the site of the source and the chapters that failed', () =
         expect(mock.api.manga.resume).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.resume).toHaveBeenCalledWith(1);
         await user.click(screen.getByRole('button', { name: 'CANCEL: Romance Dawn' }));
+        expect(mock.api.manga.cancel).not.toHaveBeenCalled();
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.manga.cancel).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.cancel).toHaveBeenCalledWith(1);
     });

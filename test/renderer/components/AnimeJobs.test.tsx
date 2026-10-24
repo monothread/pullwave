@@ -6,6 +6,7 @@ import { AnimeJobs } from '@renderer/components/AnimeJobs';
 import { useAnimeStore, UNSUPPORTED_STATUS, INITIAL_SEARCH } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { makeAnimeJob } from '../../helpers/animeFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -78,7 +79,11 @@ describe('AnimeJobs', () => {
         const buttons = screen.getAllByRole('button', { name: 'CANCEL' });
         expect(buttons).toHaveLength(2);
         await user.click(buttons[0] as HTMLElement);
-        await user.click(buttons[1] as HTMLElement);
+        expect(mock.api.cancelAnimeJob).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Cancel this download?')).getByText('The download stops. You can start it again later.')).toBeInTheDocument();
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
+        await user.click(screen.getAllByRole('button', { name: 'CANCEL' })[1] as HTMLElement);
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.cancelAnimeJob.mock.calls).toEqual([[7], [8]]);
         expect(screen.queryByRole('button', { name: 'RETRY' })).not.toBeInTheDocument();
     });
@@ -118,7 +123,22 @@ describe('AnimeJobs', () => {
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'done' })] });
         rerender(<AnimeJobs />);
         await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        expect(mock.api.clearFinishedAnimeJobs).not.toHaveBeenCalled();
+        await answerDialog(user, 'Clear the finished ones?', 'CLEAR FINISHED');
         expect(mock.api.clearFinishedAnimeJobs).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the downloads going and the finished ones listed when the user goes back or keeps them', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 7, status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'done' })] });
+        render(<AnimeJobs />);
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        await answerDialog(user, 'Cancel this download?', 'BACK');
+        await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.cancelAnimeJob).not.toHaveBeenCalled();
+        expect(mock.api.clearFinishedAnimeJobs).not.toHaveBeenCalled();
     });
 
     it('offers to clear failed and cancelled downloads too', () => {
@@ -162,6 +182,7 @@ describe('AnimeJobs pause and resume', () => {
         expect(mock.api.resumeAnimeJob).toHaveBeenCalledTimes(1);
         expect(mock.api.resumeAnimeJob).toHaveBeenCalledWith(9);
         await user.click(within(job).getByRole('button', { name: 'CANCEL' }));
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.cancelAnimeJob).toHaveBeenCalledWith(9);
         expect(within(job).queryByRole('button', { name: 'PAUSE' })).not.toBeInTheDocument();
         expect(within(job).queryByRole('button', { name: 'RETRY' })).not.toBeInTheDocument();

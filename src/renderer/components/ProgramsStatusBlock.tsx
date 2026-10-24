@@ -6,6 +6,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { PROGRAM_NAMES, useProgramsStore, type ProgramResult } from '../store/programsStore';
 import { displayVersion, isWorking, lookupReasonKey, programErrorKey } from './programText';
+import { ConfirmButton } from './ConfirmButton';
 
 const PATCH_KEYS: Record<string, MessageKey> = {
     subtitleSelection: 'tools.patch.subtitleSelection',
@@ -206,17 +207,17 @@ function ProgramRow({ program, version, runs, customPath, info, result }: Progra
                     </button>
                 )}
                 {info?.chosen && !program.custom && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small"
                         disabled={busy}
-                        aria-label={`${name}: ${resetLabel}`}
-                        onClick={() => {
+                        ariaLabel={`${name}: ${resetLabel}`}
+                        dialog={{ title: t('confirm.programReset.title', { name }), message: t('confirm.programReset.message'), confirmLabel: t('tools.reset'), cancelLabel: t('confirm.back') }}
+                        onConfirm={() => {
                             void reset(program.id);
                         }}
                     >
                         {resetLabel}
-                    </button>
+                    </ConfirmButton>
                 )}
                 <span className={badge.className}>{t(badge.key)}</span>
             </span>

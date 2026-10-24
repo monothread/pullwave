@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { QueueList } from '@renderer/components/QueueList';
 import { useAppStore } from '@renderer/store/appStore';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, makeJob, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -97,8 +98,25 @@ describe('QueueList', () => {
     it.each(['done', 'error', 'cancelled'] as const)('shows clear finished when a job is %s', async (status) => {
         useAppStore.setState({ jobs: [makeJob({ status })] });
         render(<QueueList />);
-        await userEvent.setup().click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        expect(mock.api.clearFinished).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Clear the finished ones?')).getByText('Only the list goes. Files already saved stay on the disk.')).toBeInTheDocument();
+        await answerDialog(user, 'Clear the finished ones?', 'CLEAR FINISHED');
         expect(mock.api.clearFinished).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the finished jobs when the user keeps them or presses Esc', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ jobs: [makeJob({ status: 'done' })] });
+        render(<QueueList />);
+        await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        await answerDialog(user, 'Clear the finished ones?', 'KEEP');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.clearFinished).not.toHaveBeenCalled();
     });
 
     it('wires card actions to the API', async () => {
@@ -114,10 +132,14 @@ describe('QueueList', () => {
         render(<QueueList />);
         const cards = screen.getAllByTestId('job-card');
         await user.click(within(cards[0] as HTMLElement).getByRole('button', { name: 'CANCEL' }));
+        expect(mock.api.cancelJob).not.toHaveBeenCalled();
+        await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.cancelJob).toHaveBeenCalledWith('run');
         await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'SHOW FILE' }));
         expect(mock.api.showItemInFolder).toHaveBeenCalledWith('/d/x.mp4');
         await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'REMOVE' }));
+        expect(mock.api.removeJob).not.toHaveBeenCalled();
+        await answerDialog(user, 'Remove this download from the list?', 'REMOVE');
         expect(mock.api.removeJob).toHaveBeenCalledWith('done');
         await user.click(within(cards[2] as HTMLElement).getByRole('button', { name: 'RETRY' }));
         expect(mock.api.retryJob).toHaveBeenCalledWith('cancelled');
@@ -126,7 +148,10 @@ describe('QueueList', () => {
     it('wires CLEAR PARTIAL FILES to the API', async () => {
         useAppStore.setState({ jobs: [makeJob({ id: 'failed', status: 'cancelled', hasPartial: true })] });
         render(<QueueList />);
-        await userEvent.setup().click(screen.getByRole('button', { name: 'CLEAR PARTIAL FILES' }));
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('button', { name: 'CLEAR PARTIAL FILES' }));
+        expect(mock.api.clearPartialFiles).not.toHaveBeenCalled();
+        await answerDialog(user, 'Delete the partial files?', 'CLEAR PARTIAL FILES');
         expect(mock.api.clearPartialFiles).toHaveBeenCalledTimes(1);
         expect(mock.api.clearPartialFiles).toHaveBeenCalledWith('failed');
     });

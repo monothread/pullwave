@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { MangaCover } from './MangaCover';
+import { ConfirmButton } from './ConfirmButton';
 import { MangaRemove } from './MangaRemove';
 import { RowLink } from './RowLink';
 import { chapterLabel, groupByDay } from './mangaText';
@@ -95,16 +96,16 @@ export function MangaHistory() {
                                             </span>
                                         </div>
                                         {entry.libraryMangaId !== null && <span className="badge badge--done">{t('manga.history.inLibrary')}</span>}
-                                        <button
-                                            type="button"
+                                        <ConfirmButton
                                             className="btn btn--small btn--ghost"
-                                            aria-label={`${t('manga.history.removeOne')}: ${entry.title}`}
-                                            onClick={() => {
+                                            ariaLabel={`${t('manga.history.removeOne')}: ${entry.title}`}
+                                            dialog={{ title: t('confirm.historyRemove.title', { name: entry.title }), message: t('confirm.historyRemove.message'), confirmLabel: t('manga.history.remove') }}
+                                            onConfirm={() => {
                                                 void removeReading(entry.id);
                                             }}
                                         >
                                             {t('manga.history.remove')}
-                                        </button>
+                                        </ConfirmButton>
                                     </li>
                                 );
                             })}

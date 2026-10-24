@@ -1,14 +1,19 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { DownloadError, DownloadJob } from '@shared/types';
 import { JobCard } from '@renderer/components/JobCard';
 import { useAppStore } from '@renderer/store/appStore';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, makeJob } from '../../helpers/mockApi';
 
 const ERROR: DownloadError = { code: 'UNAVAILABLE', title: 'Video unavailable', hint: 'Maybe private.', raw: 'ERROR: gone' };
 const FORBIDDEN: DownloadError = { code: 'FORBIDDEN', title: 'Access refused by the server', hint: 'Expired?', raw: 'HTTP Error 403: Forbidden' };
 const UNSUPPORTED: DownloadError = { code: 'OUTDATED', title: 'yt-dlp may be outdated', hint: 'Update.', raw: 'ERROR: Unsupported URL' };
+
+const CANCEL_TITLE = 'Cancel this download?';
+const REMOVE_TITLE = 'Remove this download from the list?';
+const PARTIALS_TITLE = 'Delete the partial files?';
 
 const initial = useAppStore.getState();
 
@@ -55,9 +60,27 @@ describe('JobCard', () => {
         const user = userEvent.setup();
         const handlers = renderCard(makeJob({ status: 'running' }));
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        expect(handlers.onCancel).not.toHaveBeenCalled();
+        await answerDialog(user, CANCEL_TITLE, 'CANCEL');
         expect(handlers.onCancel).toHaveBeenCalledWith('job-1');
         expect(screen.queryByRole('button', { name: 'REMOVE' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'RETRY' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the download going when the user goes back, presses Esc or clicks outside the window', async () => {
+        const user = userEvent.setup();
+        const handlers = renderCard(makeJob({ status: 'running' }));
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        expect(within(confirmDialog(CANCEL_TITLE)).getByText('The download stops. You can start it again later.')).toBeInTheDocument();
+        await answerDialog(user, CANCEL_TITLE, 'BACK');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+        fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(handlers.onCancel).not.toHaveBeenCalled();
     });
 
     it('offers cancel for queued jobs', () => {
@@ -73,6 +96,8 @@ describe('JobCard', () => {
         await user.click(screen.getByRole('button', { name: 'SHOW FILE' }));
         expect(handlers.onShowFile).toHaveBeenCalledWith('/d/Some Video.mp4');
         await user.click(screen.getByRole('button', { name: 'REMOVE' }));
+        expect(handlers.onRemove).not.toHaveBeenCalled();
+        await answerDialog(user, REMOVE_TITLE, 'REMOVE');
         expect(handlers.onRemove).toHaveBeenCalledWith('job-1');
         expect(screen.queryByRole('button', { name: 'CANCEL' })).not.toBeInTheDocument();
     });
@@ -91,6 +116,7 @@ describe('JobCard', () => {
         await user.click(screen.getByRole('button', { name: 'RETRY' }));
         expect(handlers.onRetry).toHaveBeenCalledWith('job-1');
         await user.click(screen.getByRole('button', { name: 'REMOVE' }));
+        await answerDialog(user, REMOVE_TITLE, 'REMOVE');
         expect(handlers.onRemove).toHaveBeenCalledWith('job-1');
     });
 
@@ -118,10 +144,13 @@ describe('JobCard', () => {
             vi.restoreAllMocks();
         });
 
-        it('offers to clear them on a failed or cancelled download that left some', async () => {
+        it('offers to clear them on a failed or cancelled download that left some, after confirming', async () => {
             const user = userEvent.setup();
             const handlers = renderCard(makeJob({ status: 'error', error: ERROR, hasPartial: true }));
             await user.click(screen.getByRole('button', { name: 'CLEAR PARTIAL FILES' }));
+            expect(handlers.onClearPartials).not.toHaveBeenCalled();
+            expect(within(confirmDialog(PARTIALS_TITLE)).getByText('The partial files of this download are deleted from the disk.')).toBeInTheDocument();
+            await answerDialog(user, PARTIALS_TITLE, 'CLEAR PARTIAL FILES');
             expect(handlers.onClearPartials).toHaveBeenCalledTimes(1);
             expect(handlers.onClearPartials).toHaveBeenCalledWith('job-1');
         });
@@ -140,46 +169,51 @@ describe('JobCard', () => {
             expect(screen.queryByRole('button', { name: 'CLEAR PARTIAL FILES' })).not.toBeInTheDocument();
         });
 
-        it('does not ask anything before clearing or removing an ordinary download', async () => {
-            const confirm = vi.spyOn(window, 'confirm');
+        it('asks before clearing or removing an ordinary download, with the ordinary message, and does nothing until it is confirmed', async () => {
             const user = userEvent.setup();
             const handlers = renderCard(makeJob({ status: 'error', error: ERROR, hasPartial: true }));
             await user.click(screen.getByRole('button', { name: 'CLEAR PARTIAL FILES' }));
+            await answerDialog(user, PARTIALS_TITLE, 'CLEAR PARTIAL FILES');
             await user.click(screen.getByRole('button', { name: 'REMOVE' }));
-            expect(confirm).not.toHaveBeenCalled();
+            expect(within(confirmDialog(REMOVE_TITLE)).getByText('Only the entry leaves the list. Files already saved stay on the disk.')).toBeInTheDocument();
+            await answerDialog(user, REMOVE_TITLE, 'REMOVE');
             expect(handlers.onClearPartials).toHaveBeenCalledTimes(1);
             expect(handlers.onRemove).toHaveBeenCalledTimes(1);
         });
 
-        it('asks first and deletes a live recording only when confirmed', async () => {
-            const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        it('warns that a live recording was not saved in the window, and deletes it only when confirmed', async () => {
             const user = userEvent.setup();
             const handlers = renderCard(makeJob({ status: 'error', error: ERROR, live: true, hasPartial: true }));
             await user.click(screen.getByRole('button', { name: 'CLEAR PARTIAL FILES' }));
-            expect(confirm).toHaveBeenCalledWith('This live recording was not saved. Deleting it cannot be undone. Delete it?');
+            expect(within(confirmDialog(PARTIALS_TITLE)).getByText('This live recording was not saved. Deleting it cannot be undone. Delete it?')).toBeInTheDocument();
+            expect(handlers.onClearPartials).not.toHaveBeenCalled();
+            await answerDialog(user, PARTIALS_TITLE, 'CLEAR PARTIAL FILES');
             expect(handlers.onClearPartials).toHaveBeenCalledWith('job-1');
             await user.click(screen.getByRole('button', { name: 'REMOVE' }));
-            expect(confirm).toHaveBeenCalledTimes(2);
+            expect(within(confirmDialog(REMOVE_TITLE)).getByText('This live recording was not saved. Deleting it cannot be undone. Delete it?')).toBeInTheDocument();
+            await answerDialog(user, REMOVE_TITLE, 'REMOVE');
             expect(handlers.onRemove).toHaveBeenCalledWith('job-1');
         });
 
-        it('keeps a live recording when the user declines', async () => {
-            const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        it('keeps a live recording when the user keeps it, presses Esc or goes back', async () => {
             const user = userEvent.setup();
             const handlers = renderCard(makeJob({ status: 'error', error: ERROR, live: true, hasPartial: true }));
             await user.click(screen.getByRole('button', { name: 'CLEAR PARTIAL FILES' }));
+            await answerDialog(user, PARTIALS_TITLE, 'KEEP');
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
             await user.click(screen.getByRole('button', { name: 'REMOVE' }));
-            expect(confirm).toHaveBeenCalledTimes(2);
+            await user.keyboard('{Escape}');
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
             expect(handlers.onClearPartials).not.toHaveBeenCalled();
             expect(handlers.onRemove).not.toHaveBeenCalled();
         });
 
-        it('removes a live card without partial files without asking', async () => {
-            const confirm = vi.spyOn(window, 'confirm');
+        it('asks the ordinary question for a live card that has no partial files', async () => {
             const user = userEvent.setup();
             const handlers = renderCard(makeJob({ status: 'done', live: true, hasPartial: false, filePath: '/d/live.mp4' }));
             await user.click(screen.getByRole('button', { name: 'REMOVE' }));
-            expect(confirm).not.toHaveBeenCalled();
+            expect(within(confirmDialog(REMOVE_TITLE)).getByText('Only the entry leaves the list. Files already saved stay on the disk.')).toBeInTheDocument();
+            await answerDialog(user, REMOVE_TITLE, 'REMOVE');
             expect(handlers.onRemove).toHaveBeenCalledWith('job-1');
         });
     });
@@ -223,6 +257,8 @@ describe('JobCard', () => {
             expect(handlers.onStop).toHaveBeenCalledWith('job-1');
             expect(handlers.onCancel).not.toHaveBeenCalled();
             await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+            expect(handlers.onCancel).not.toHaveBeenCalled();
+            await answerDialog(user, CANCEL_TITLE, 'CANCEL');
             expect(handlers.onCancel).toHaveBeenCalledWith('job-1');
         });
 

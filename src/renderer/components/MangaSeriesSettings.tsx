@@ -3,6 +3,7 @@ import type { LibraryManga } from '@shared/manga';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, suggestSeries } from '@shared/series';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
+import { ConfirmButton } from './ConfirmButton';
 import { nextSeason, seriesNames, takenSeasons } from './mangaText';
 import { SeriesFields } from './SeriesFields';
 
@@ -105,11 +106,15 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
                     {t('manga.series.suggest')}
                 </button>
                 {manga.series !== null && (
-                    <button type="button" className="btn btn--small btn--hot" onClick={() => {
-                        void leave();
-                    }}>
+                    <ConfirmButton
+                        className="btn btn--small btn--hot"
+                        dialog={{ title: t('confirm.removeFromSeries.title', { name: manga.title }), message: t('confirm.removeFromSeries.message'), confirmLabel: t('manga.series.leave') }}
+                        onConfirm={() => {
+                            void leave();
+                        }}
+                    >
                         {t('manga.series.leave')}
-                    </button>
+                    </ConfirmButton>
                 )}
             </div>
         </section>

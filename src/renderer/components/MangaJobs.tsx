@@ -1,6 +1,7 @@
 import type { MangaJob } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
+import { ConfirmButton } from './ConfirmButton';
 import { formatPercent } from './jobStatus';
 import { jobStatusKey } from './mangaText';
 import { useSmoothPercent } from '../hooks/useSmoothPercent';
@@ -130,15 +131,15 @@ export function MangaJobs() {
                     </button>
                 )}
                 {jobs.some(isFinished) && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small btn--ghost"
-                        onClick={() => {
+                        dialog={{ title: t('confirm.queueClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('manga.jobs.clear') }}
+                        onConfirm={() => {
                             void clearFinishedJobs();
                         }}
                     >
                         {t('manga.jobs.clear')}
-                    </button>
+                    </ConfirmButton>
                 )}
             </div>
             {queueHeld && jobs.some(isQueued) && <p className="field__hint">{t('manga.jobs.held')}</p>}
@@ -186,15 +187,15 @@ export function MangaJobs() {
                                 </button>
                             )}
                             {(job.status === 'queued' || job.status === 'running' || job.status === 'paused') && (
-                                <button
-                                    type="button"
+                                <ConfirmButton
                                     className="btn btn--small btn--hot"
-                                    onClick={() => {
+                                    dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('manga.jobs.cancel'), cancelLabel: t('confirm.back') }}
+                                    onConfirm={() => {
                                         void cancelJob(job.chapterId);
                                     }}
                                 >
                                     {t('manga.jobs.cancel')}
-                                </button>
+                                </ConfirmButton>
                             )}
                             {(job.status === 'error' || job.status === 'cancelled') && (
                                 <button

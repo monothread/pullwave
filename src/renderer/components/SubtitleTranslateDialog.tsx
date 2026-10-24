@@ -11,6 +11,7 @@ import { useModalDialog } from '../hooks/useModalDialog';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { SelectField } from './fields';
+import { ConfirmButton } from './ConfirmButton';
 import { optionIdOf, optionsOf } from './subtitleChoice';
 import { estimateFailureText, providerName, translateFailureText } from './translateText';
 
@@ -126,15 +127,15 @@ export function SubtitleTranslateDialog({ episodeId, tracks, onTranslated, onClo
                 )}
                 <div className="modal__actions">
                     {running ? (
-                        <button
-                            type="button"
+                        <ConfirmButton
                             className="btn btn--small"
-                            onClick={() => {
+                            dialog={{ title: t('confirm.translateCancel.title'), message: t('confirm.translateCancel.message'), confirmLabel: t('anime.translate.cancel'), cancelLabel: t('confirm.back') }}
+                            onConfirm={() => {
                                 void window.api.cancelAnimeSubtitleTranslation(episodeId);
                             }}
                         >
                             {t('anime.translate.cancel')}
-                        </button>
+                        </ConfirmButton>
                     ) : (
                         <button
                             type="button"

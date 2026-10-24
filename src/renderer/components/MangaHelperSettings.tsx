@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
+import { ConfirmButton } from './ConfirmButton';
 import { toolErrorKey } from './mangaText';
 
 interface MangaHelperSettingsProps {
@@ -75,16 +76,16 @@ export function MangaHelperSettings({ enabled, external, onEnabledChange }: Mang
                             </button>
                         ) : null}
                         {enabled && (
-                            <button
-                                type="button"
+                            <ConfirmButton
                                 className="btn btn--small btn--hot"
                                 disabled={working || installing}
-                                onClick={() => {
+                                dialog={{ title: t('confirm.helperRemove.title'), message: t('confirm.helperRemove.message'), confirmLabel: t('settings.mangaHelper.remove') }}
+                                onConfirm={() => {
                                     void handleRemove();
                                 }}
                             >
                                 {t('settings.mangaHelper.remove')}
-                            </button>
+                            </ConfirmButton>
                         )}
                     </div>
                 </>

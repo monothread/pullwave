@@ -5,6 +5,7 @@ import type { AnimeSubtitleTrack, SubtitleGenerateEstimateResponse, SubtitleGene
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SubtitleGenerateDialog } from '@renderer/components/SubtitleGenerateDialog';
 import { useAppStore } from '@renderer/store/appStore';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -375,8 +376,22 @@ describe('SubtitleGenerateDialog: creating', () => {
         it('cancels the subtitle of this episode', async () => {
             const { user } = await started();
             await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+            expect(mock.api.cancelAnimeSubtitleGeneration).not.toHaveBeenCalled();
+            expect(within(confirmDialog('Cancel the subtitle?')).getByText('The subtitle being made is discarded.')).toBeInTheDocument();
+            await answerDialog(user, 'Cancel the subtitle?', 'CANCEL');
             expect(mock.api.cancelAnimeSubtitleGeneration).toHaveBeenCalledTimes(1);
             expect(mock.api.cancelAnimeSubtitleGeneration).toHaveBeenCalledWith(7);
+        });
+
+        it('keeps making the subtitle when the user goes back or presses Esc, and the window of the subtitle stays open', async () => {
+            const { user } = await started();
+            await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+            await answerDialog(user, 'Cancel the subtitle?', 'BACK');
+            await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+            await user.keyboard('{Escape}');
+            expect(screen.queryByRole('dialog', { name: 'Cancel the subtitle?' })).not.toBeInTheDocument();
+            expect(screen.getAllByRole('dialog')).toHaveLength(1);
+            expect(mock.api.cancelAnimeSubtitleGeneration).not.toHaveBeenCalled();
         });
 
         it('takes the progress away and offers CREATE again when it ends', async () => {

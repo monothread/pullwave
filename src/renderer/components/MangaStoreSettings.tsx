@@ -4,6 +4,7 @@ import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
 import { STORE_PLACEHOLDER } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
+import { MangaRemove } from './MangaRemove';
 
 // The stores the extensions come from: adding and removing them is a setting of the manga section.
 export function MangaStoreSettings() {
@@ -48,17 +49,16 @@ export function MangaStoreSettings() {
                                 <span className="history__title">{store.name}</span>
                                 <span className="history__meta">{store.indexUrl}</span>
                             </div>
-                            <button
-                                type="button"
-                                className="btn btn--small btn--hot"
-                                disabled={busy.includes(store.indexUrl)}
-                                aria-label={`${t('manga.ext.removeStore')}: ${store.name}`}
-                                onClick={() => {
+                            <MangaRemove
+                                label={t('manga.ext.removeStore')}
+                                ariaLabel={`${t('manga.ext.removeStore')}: ${store.name}`}
+                                title={t('manga.ext.removeStore.title', { name: store.name })}
+                                message={t('manga.ext.removeStore.message')}
+                                blocked={busy.includes(store.indexUrl) ? t('manga.ext.removeStore') : undefined}
+                                onRemove={() => {
                                     void removeStore(store.indexUrl);
                                 }}
-                            >
-                                {t('manga.ext.removeStore')}
-                            </button>
+                            />
                         </li>
                     );
                 })}

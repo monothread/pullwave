@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeRemove } from '@renderer/components/AnimeRemove';
 import { useAppStore } from '@renderer/store/appStore';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi } from '../../helpers/mockApi';
 
 const initialApp = useAppStore.getState();
+
+const TITLE = 'Remove "Naruto"?';
+const MESSAGE = 'The anime leaves the library and its downloaded episodes are deleted from the disk too.';
 
 beforeEach(() => {
     installMockApi();
@@ -15,7 +19,7 @@ beforeEach(() => {
 
 function setup() {
     const onRemove = vi.fn();
-    render(<AnimeRemove label="REMOVE" ariaLabel="Remove: Naruto EP 1" onRemove={onRemove} />);
+    render(<AnimeRemove label="REMOVE" ariaLabel="Remove: Naruto EP 1" title={TITLE} message={MESSAGE} onRemove={onRemove} />);
     return { onRemove, user: userEvent.setup() };
 }
 
@@ -23,32 +27,39 @@ describe('AnimeRemove', () => {
     it('only shows the button at first', () => {
         const { onRemove } = setup();
         expect(screen.getByRole('button', { name: 'Remove: Naruto EP 1' })).toHaveTextContent('REMOVE');
-        expect(screen.queryByRole('button', { name: 'CONFIRM' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(onRemove).not.toHaveBeenCalled();
     });
 
-    it('asks first, warning that the files go too, and then removes', async () => {
+    it('opens a window that names what goes and warns that the files go too, and removes only after it is confirmed', async () => {
         const { onRemove, user } = setup();
         await user.click(screen.getByRole('button', { name: 'Remove: Naruto EP 1' }));
-        expect(screen.getByRole('group', { name: 'Remove: Naruto EP 1' })).toBeInTheDocument();
-        expect(screen.getByText('The files are deleted from the disk too.')).toBeInTheDocument();
-        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+        const dialog = confirmDialog(TITLE);
+        expect(within(dialog).getByText(MESSAGE)).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'KEEP' })).toHaveFocus();
         expect(onRemove).not.toHaveBeenCalled();
 
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        await answerDialog(user, TITLE, 'REMOVE');
         expect(onRemove).toHaveBeenCalledTimes(1);
         expect(onRemove).toHaveBeenCalledWith();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Remove: Naruto EP 1' })).toBeInTheDocument();
     });
 
-    it('goes back without removing', async () => {
+    it('goes back without removing with KEEP, with Esc and with a click outside the window', async () => {
         const { onRemove, user } = setup();
         await user.click(screen.getByRole('button', { name: 'Remove: Naruto EP 1' }));
-        await user.click(screen.getByRole('button', { name: 'KEEP' }));
+        await answerDialog(user, TITLE, 'KEEP');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Remove: Naruto EP 1' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Remove: Naruto EP 1' }));
+        fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
         expect(onRemove).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: 'Remove: Naruto EP 1' })).toBeInTheDocument();
-        expect(screen.queryByText('The files are deleted from the disk too.')).not.toBeInTheDocument();
     });
 
     describe('when it cannot be removed', () => {
@@ -56,7 +67,7 @@ describe('AnimeRemove', () => {
 
         function setupBlocked() {
             const onRemove = vi.fn();
-            render(<AnimeRemove label="REMOVE ANIME" ariaLabel="Remove anime: Frieren" onRemove={onRemove} blocked={REASON} />);
+            render(<AnimeRemove label="REMOVE ANIME" ariaLabel="Remove anime: Frieren" title={TITLE} message={MESSAGE} onRemove={onRemove} blocked={REASON} />);
             return { onRemove, user: userEvent.setup() };
         }
 
@@ -69,12 +80,10 @@ describe('AnimeRemove', () => {
             expect(button).toHaveClass('btn', 'btn--small', 'btn--ghost');
         });
 
-        it('does not ask anything and does not remove when it is clicked', async () => {
+        it('does not open any window and does not remove when it is clicked', async () => {
             const { onRemove, user } = setupBlocked();
             await user.click(screen.getByRole('button', { name: 'Remove anime: Frieren' }));
-            expect(screen.queryByRole('group')).not.toBeInTheDocument();
-            expect(screen.queryByRole('button', { name: 'CONFIRM' })).not.toBeInTheDocument();
-            expect(screen.queryByText('The files are deleted from the disk too.')).not.toBeInTheDocument();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
             expect(onRemove).not.toHaveBeenCalled();
         });
 
@@ -84,7 +93,7 @@ describe('AnimeRemove', () => {
             expect(button).toBeEnabled();
             expect(button).not.toHaveAttribute('title');
             await user.click(button);
-            await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+            await answerDialog(user, TITLE, 'REMOVE');
             expect(onRemove).toHaveBeenCalledTimes(1);
         });
     });

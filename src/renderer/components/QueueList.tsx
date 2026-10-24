@@ -1,5 +1,6 @@
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
+import { ConfirmButton } from './ConfirmButton';
 import { JobCard } from './JobCard';
 import { sortForDisplay } from './jobStatus';
 
@@ -45,15 +46,15 @@ export function QueueList() {
             <div className="queue__toolbar">
                 <span className="section-label">{t('queue.label', { count: jobs.length })}</span>
                 {hasFinished && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small btn--ghost"
-                        onClick={() => {
+                        dialog={{ title: t('confirm.queueClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('queue.clearFinished') }}
+                        onConfirm={() => {
                             void clearFinished();
                         }}
                     >
                         {t('queue.clearFinished')}
-                    </button>
+                    </ConfirmButton>
                 )}
             </div>
             {sortForDisplay(jobs).map((job) => {

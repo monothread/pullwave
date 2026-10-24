@@ -392,7 +392,7 @@ body::after {
     animation: bar-wave-flow 1.4s linear infinite;
 }
 @keyframes bar-wave-flow { from { background-position: 0 0; } to { background-position: 160px 0; } }
-@media (prefers-reduced-motion: reduce) { .progress:not([class*='progress--']) .progress__bar { animation: none; } }
+/* The wave of a download also flows when the system asks for less motion: it is the sign that the download is going on. */
 
 .job--done .progress__bar { background: var(--green); box-shadow: 0 0 10px var(--green); animation: none; }
 .job--error .progress__bar { background: var(--red); box-shadow: 0 0 10px var(--red); animation: none; }
@@ -878,6 +878,8 @@ body::after {
 .cover--none { display: flex; align-items: center; justify-content: center; padding: 4px; box-sizing: border-box; text-align: center; font-size: 10px; line-height: 1.25; letter-spacing: 0.5px; color: var(--muted); overflow: hidden; }
 /* The screens of one anime (the detail and the series of the library) show its cover at the top, at the size of the cards' cover of the schedule. */
 .series__cover { width: 90px; margin-bottom: 8px; }
+/* The series of the manga section also has a small cover in the row of each season. */
+.season__cover { flex: none; width: 40px; }
 /* Manga section: in a row (the library, the head of a manga) the cover has a size of its own; as wide as the row it would push the rest out. */
 .manga__head .cover { width: 72px; }
 .manga__head { align-items: flex-start; }
@@ -1421,6 +1423,11 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .reader__stage--original .reader__img { max-width: none; width: auto; height: auto; }
 .reader__stage--original { overflow: auto; align-items: flex-start; }
 .reader__failed { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; }
+/* A page whose picture is still on its way holds its place with a block, and the picture waits beside it (it still loads, but takes no room). */
+.reader__loading-page { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 70vh; box-sizing: border-box; padding: 24px; color: var(--muted); letter-spacing: 2px; background: var(--line); }
+.reader__img--pending { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* The chapter is opening: the pages are not known yet, the block holds the place of the reading. */
+.reader__chapter-loading { justify-content: center; min-height: 70vh; color: var(--muted); letter-spacing: 2px; cursor: default; }
 
 /* The options of a group of filters, picked by typing: a field with a list of what matches, and what was picked as chips. */
 .manga__picker { position: relative; }

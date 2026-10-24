@@ -1,4 +1,4 @@
-import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReadingRecord } from '@shared/manga';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useScrolledDown } from '../hooks/useScrolledDown';
@@ -84,6 +84,8 @@ export function MangaReader() {
     const [page, setPage] = useState(0);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [failed, setFailed] = useState<number[]>([]);
+    // The pages whose picture arrived: until then the place of a page holds a block that says it is loading, so the pages below do not move.
+    const [loaded, setLoaded] = useState<number[]>([]);
     const [attempt, setAttempt] = useState(0);
     // How many times each page was tried again: a page that is tried again is loaded again, and only that one.
     const [retries, setRetries] = useState<Record<number, number>>({});
@@ -160,6 +162,7 @@ export function MangaReader() {
         setPage(start);
         setRestoreTo(continuous && start > 0 ? start : null);
         setFailed([]);
+        setLoaded([]);
         setRetries({});
         setRepairFailed([]);
     }
@@ -278,6 +281,21 @@ export function MangaReader() {
         [restoreTo, bringToPage]
     );
 
+    // A picture above the page being brought to is in the flow once it is marked as loaded (the block that held its place is gone then): the place
+    // is corrected after that, not when the picture arrives.
+    const settledLoadedRef = useRef<number[]>([]);
+    useLayoutEffect(() => {
+        const before = settledLoadedRef.current;
+        settledLoadedRef.current = loaded;
+        loaded
+            .filter((index) => {
+                return !before.includes(index);
+            })
+            .forEach((index) => {
+                pageSettled(index);
+            });
+    }, [loaded, pageSettled]);
+
     // In the scroll the page is the one the user has most of in view.
     useEffect(() => {
         const container = scrollRef.current;
@@ -308,7 +326,7 @@ export function MangaReader() {
         return () => {
             observer.disconnect();
         };
-    }, [continuous, reader.pages, attempt]);
+    }, [continuous, reader.pages, attempt, loaded]);
 
     // The pages that come next are loaded before they are needed.
     useEffect(() => {
@@ -558,24 +576,33 @@ export function MangaReader() {
                 </div>
             );
         }
+        const arrived = loaded.includes(index);
         return (
-            <img
-                key={`${address}-${String(retries[index] ?? 0)}`}
-                className="reader__img"
-                src={address}
-                alt={t('manga.reader.pageAlt', { page: index + 1 })}
-                data-page={index}
-                loading={continuous && !(restoreTo !== null && index <= restoreTo + 1) ? 'lazy' : undefined}
-                onLoad={() => {
-                    pageSettled(index);
-                }}
-                onError={() => {
-                    setFailed((current) => {
-                        return current.includes(index) ? current : [...current, index];
-                    });
-                    pageSettled(index);
-                }}
-            />
+            <Fragment key={`${address}-${String(retries[index] ?? 0)}`}>
+                {!arrived && (
+                    <div className="reader__loading-page" data-page={index} role="status">
+                        {t('manga.reader.pageLoading', { page: index + 1 })}
+                    </div>
+                )}
+                <img
+                    className={`reader__img${arrived ? '' : ' reader__img--pending'}`}
+                    src={address}
+                    alt={t('manga.reader.pageAlt', { page: index + 1 })}
+                    data-page={arrived ? index : undefined}
+                    loading={continuous && !(restoreTo !== null && index <= restoreTo + 1) ? 'lazy' : undefined}
+                    onLoad={() => {
+                        setLoaded((current) => {
+                            return current.includes(index) ? current : [...current, index];
+                        });
+                    }}
+                    onError={() => {
+                        setFailed((current) => {
+                            return current.includes(index) ? current : [...current, index];
+                        });
+                        pageSettled(index);
+                    }}
+                />
+            </Fragment>
         );
     }
 
@@ -721,7 +748,11 @@ export function MangaReader() {
             )}
             </header>
             {reader.status === 'loading' && <MangaCloudflareNotice />}
-            {reader.status === 'loading' && <p className="empty">{t('manga.reader.loading')}</p>}
+            {reader.status === 'loading' && (
+                <div className="reader__stage reader__chapter-loading" data-testid="reader-loading" role="status">
+                    {t('manga.reader.loading')}
+                </div>
+            )}
             {reader.status === 'error' && reader.error && (
                 <MangaErrorNotice error={reader.error} />
             )}

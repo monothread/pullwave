@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaStoreSettings } from '@renderer/components/MangaStoreSettings';
@@ -85,12 +85,48 @@ describe('MangaStoreSettings', () => {
         expect(field).toHaveValue('https://bad.example/i.json');
     });
 
-    it('removes a store', async () => {
+    const TITLE = 'Remove the store "My store"?';
+    const MESSAGE = 'The store leaves the list and its extensions are not offered any more. You can add its address again later.';
+
+    it('asks before removing a store, naming it and saying what happens, with the focus on KEEP', async () => {
+        const user = userEvent.setup();
+        render(<MangaStoreSettings />);
+        const row = (await screen.findByTestId('manga-store')) as HTMLElement;
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(within(row).getByRole('button', { name: 'REMOVE: My store' }));
+        const dialog = screen.getByRole('dialog', { name: TITLE });
+        expect(within(dialog).getByText(MESSAGE)).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'REMOVE' })).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'KEEP' })).toHaveFocus();
+        expect(mock.api.manga.removeStore).not.toHaveBeenCalled();
+    });
+
+    it('removes the store only after it is confirmed, and closes the window', async () => {
         const user = userEvent.setup();
         render(<MangaStoreSettings />);
         const row = (await screen.findByTestId('manga-store')) as HTMLElement;
         await user.click(within(row).getByRole('button', { name: 'REMOVE: My store' }));
+        await user.click(within(screen.getByRole('dialog', { name: TITLE })).getByRole('button', { name: 'REMOVE' }));
+        expect(mock.api.manga.removeStore).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.removeStore).toHaveBeenCalledWith(STORE.indexUrl);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('keeps the store when the user chooses KEEP, presses Esc or clicks outside the window', async () => {
+        const user = userEvent.setup();
+        render(<MangaStoreSettings />);
+        const row = (await screen.findByTestId('manga-store')) as HTMLElement;
+        await user.click(within(row).getByRole('button', { name: 'REMOVE: My store' }));
+        await user.click(within(screen.getByRole('dialog', { name: TITLE })).getByRole('button', { name: 'KEEP' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(within(row).getByRole('button', { name: 'REMOVE: My store' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await user.click(within(row).getByRole('button', { name: 'REMOVE: My store' }));
+        fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.manga.removeStore).not.toHaveBeenCalled();
+        expect(screen.getByText('My store')).toBeInTheDocument();
     });
 
     it('disables the button of a store while it is removed', async () => {
@@ -104,6 +140,7 @@ describe('MangaStoreSettings', () => {
         render(<MangaStoreSettings />);
         await screen.findByText('My store');
         await user.click(screen.getByRole('button', { name: 'REMOVE: My store' }));
+        await user.click(within(screen.getByRole('dialog', { name: TITLE })).getByRole('button', { name: 'REMOVE' }));
         expect(screen.getByRole('button', { name: 'REMOVE: My store' })).toBeDisabled();
         finish({ ok: true, value: null });
         await vi.waitFor(() => {

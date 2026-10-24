@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { ProgramId, ToolState } from '@shared/tools';
 import type { ProgramVersionInfo } from '@shared/programs';
@@ -8,6 +9,7 @@ import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useProgramsStore } from '@renderer/store/programsStore';
 import { ANI_CLI_INFO, makeStatus } from '../../helpers/animeFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, makeProgramInfo, makeProgramsStatus, makeProgramVersions, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -303,8 +305,24 @@ describe('ProgramsStatusBlock updates', () => {
         version('ytdlp', { chosen: true });
         render(<ProgramsStatusBlock place="downloads" />);
         fireEvent.click(within(row('ytdlp')).getByRole('button', { name: 'yt-dlp: USE THE VERSION OF THE APP' }));
+        expect(mock.api.programs.reset).not.toHaveBeenCalled();
+        const dialog = confirmDialog(/^Use the version of the app for ".*"\?$/);
+        expect(within(dialog).getByText('The program goes back to the version the app is made with. The one in use now is replaced.')).toBeInTheDocument();
+        fireEvent.click(within(dialog).getByRole('button', { name: 'USE THE VERSION OF THE APP' }));
         expect(mock.api.programs.reset).toHaveBeenCalledWith('ytdlp');
         expect(within(row('deno')).queryByRole('button', { name: /USE THE VERSION OF THE APP/ })).not.toBeInTheDocument();
+    });
+
+    it('keeps the version in use when the user goes back or presses Esc', async () => {
+        const user = userEvent.setup();
+        version('ytdlp', { chosen: true });
+        render(<ProgramsStatusBlock place="downloads" />);
+        await user.click(within(row('ytdlp')).getByRole('button', { name: 'yt-dlp: USE THE VERSION OF THE APP' }));
+        await answerDialog(user, /^Use the version of the app for ".*"\?$/, 'BACK');
+        await user.click(within(row('ytdlp')).getByRole('button', { name: 'yt-dlp: USE THE VERSION OF THE APP' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.programs.reset).not.toHaveBeenCalled();
     });
 
     it('shows GOING BACK… while it goes on', () => {

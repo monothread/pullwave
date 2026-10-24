@@ -113,6 +113,46 @@ describe('AnimeLibrary', () => {
             expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Frieren');
         });
 
+        it('shows the cover of each season in its row, looked up by the title of that season', async () => {
+            const user = userEvent.setup();
+            mock.api.findAnimeCover.mockImplementation(async (title: string) => {
+                return title === 'Frieren Season 2' ? 'https://s4.anilist.co/cover/frieren-2.jpg' : title === 'Frieren' ? 'https://s4.anilist.co/cover/frieren.jpg' : null;
+            });
+            useAnimeStore.setState({ library: SERIES_LIBRARY });
+            render(<AnimeLibrary />);
+
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+
+            const rows = screen.getAllByTestId('anime-season');
+            const covers = rows.map((row) => {
+                return within(row).getByTestId('anime-season-cover');
+            });
+            expect(covers).toHaveLength(2);
+            await waitFor(() => {
+                expect(covers[0]!.querySelector('img.cover')).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
+                expect(covers[1]!.querySelector('img.cover')).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren-2.jpg');
+            });
+            expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Frieren');
+            expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Frieren Season 2');
+        });
+
+        it('says there is no cover in the row of a season that has none, without affecting the other seasons', async () => {
+            const user = userEvent.setup();
+            mock.api.findAnimeCover.mockImplementation(async (title: string) => {
+                return title === 'Frieren' ? 'https://s4.anilist.co/cover/frieren.jpg' : null;
+            });
+            useAnimeStore.setState({ library: SERIES_LIBRARY });
+            render(<AnimeLibrary />);
+
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+
+            const covers = screen.getAllByTestId('anime-season-cover');
+            await waitFor(() => {
+                expect(covers[1]!.querySelector('.cover--none')).toHaveTextContent('COVER NOT FOUND');
+            });
+            expect(covers[0]!.querySelector('img.cover')).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
+        });
+
         it('opens the screen of a series, with every season and a way back to the cards', async () => {
             const user = userEvent.setup();
             useAnimeStore.setState({ library: SERIES_LIBRARY });
@@ -474,7 +514,7 @@ describe('AnimeLibrary', () => {
             render(<AnimeLibrary />);
             await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
             expect(removeAnime).not.toHaveBeenCalled();
-            await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+            await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
             await vi.waitFor(() => {
                 expect(removeAnime.mock.calls).toEqual([[41], [40]]);
             });
@@ -491,13 +531,13 @@ describe('AnimeLibrary', () => {
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
             await user.click(within(screen.getAllByTestId('anime-season')[1] as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
             await user.click(screen.getByRole('button', { name: 'REMOVE ANIME: Frieren Season 2' }));
-            await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+            await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
             expect(removeAnime.mock.calls).toEqual([[40]]);
 
             await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
             await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
             expect(removeAnime).toHaveBeenCalledTimes(1);
-            await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+            await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
             await vi.waitFor(() => {
                 expect(removeAnime.mock.calls).toEqual([[40], [41], [40]]);
             });
@@ -969,7 +1009,7 @@ describe('AnimeLibrary', () => {
         await user.click(within(screen.getAllByTestId('anime-season')[1] as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
         await user.click(screen.getByRole('button', { name: 'REMOVE ANIME: Naruto Shippuden' }));
         expect(mock.api.removeAnime).not.toHaveBeenCalled();
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
         expect(mock.api.removeAnime).toHaveBeenCalledWith(11);
     });
 
@@ -1127,6 +1167,8 @@ describe('AnimeLibrary paused episodes', () => {
             return button.getAttribute('aria-label');
         })).toEqual(['CANCEL: Naruto EP 1']);
         await user.click(screen.getByRole('button', { name: 'CANCEL: Naruto EP 1' }));
+        expect(mock.api.cancelAnimeJob).not.toHaveBeenCalled();
+        await user.click(within(screen.getByRole('dialog', { name: 'Cancel this download?' })).getByRole('button', { name: 'CANCEL' }));
 
         expect(mock.api.cancelAnimeJob).toHaveBeenCalledTimes(1);
         expect(mock.api.cancelAnimeJob).toHaveBeenCalledWith(1);
@@ -1194,7 +1236,7 @@ describe('AnimeLibrary anime that cannot be removed alone', () => {
         // The series is removed whole from the gear, which takes the anime with it.
         await user.click(screen.getByRole('button', { name: 'Series options: Naruto' }));
         await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Naruto' }));
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
         await vi.waitFor(() => {
             expect(mock.api.removeAnime).toHaveBeenCalledWith(10);
         });
@@ -1211,7 +1253,7 @@ describe('AnimeLibrary anime that cannot be removed alone', () => {
         const user = userEvent.setup();
         await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
         await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
         await vi.waitFor(() => {
             expect(mock.api.removeAnime.mock.calls).toEqual([[41], [40]]);
         });
@@ -1300,7 +1342,7 @@ describe('AnimeLibrary the gear of a series', () => {
         expect(screen.getByRole('group', { name: 'RENAME SERIES: Frieren' })).toBeInTheDocument();
     });
 
-    it('asks for a second click before the series is removed, with the gear still open meanwhile', async () => {
+    it('asks in a window before the series is removed, closing the gear, and removes it only after REMOVE', async () => {
         const removeAnime = vi.fn(async () => {
             return undefined;
         });
@@ -1309,13 +1351,14 @@ describe('AnimeLibrary the gear of a series', () => {
         await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
         await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
 
-        expect(screen.getByText('The files are deleted from the disk too.')).toBeInTheDocument();
-        expect(screen.getByRole('group', { name: 'Series options: Frieren' })).toBeInTheDocument();
+        const dialog = screen.getByRole('dialog', { name: 'Remove the series "Frieren"?' });
+        expect(within(dialog).getByText('Every anime of the series leaves the library and their downloaded episodes are deleted from the disk too.')).toBeInTheDocument();
+        expect(screen.queryByRole('group', { name: 'Series options: Frieren' })).not.toBeInTheDocument();
         expect(removeAnime).not.toHaveBeenCalled();
 
-        await user.click(screen.getByRole('button', { name: 'KEEP' }));
+        await user.click(within(dialog).getByRole('button', { name: 'KEEP' }));
         expect(removeAnime).not.toHaveBeenCalled();
-        expect(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' })).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     it('does not put the gear on the card of the series: the card keeps its own remove button', () => {

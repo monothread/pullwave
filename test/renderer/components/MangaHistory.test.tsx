@@ -7,6 +7,7 @@ import { MangaHistory } from '@renderer/components/MangaHistory';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeLibraryManga } from '../../helpers/mangaFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -104,6 +105,9 @@ describe('MangaHistory', () => {
         mock.api.manga.readingHistory.mockResolvedValue([line({ id: 4 }), line({ id: 5, title: 'Bleach' })]);
         render(<MangaHistory />);
         await user.click(await screen.findByRole('button', { name: 'Remove from the history: Bleach' }));
+        expect(mock.api.manga.removeReading).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Remove "Bleach" from the history?')).getByText('Only the entry goes. Nothing is deleted from the disk.')).toBeInTheDocument();
+        await answerDialog(user, 'Remove "Bleach" from the history?', 'REMOVE');
         expect(mock.api.manga.removeReading).toHaveBeenCalledWith(5);
         expect(screen.getAllByTestId('manga-history-entry')).toHaveLength(1);
     });

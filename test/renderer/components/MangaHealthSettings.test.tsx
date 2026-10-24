@@ -5,6 +5,7 @@ import type { MangaHealth, MangaToolUpdateResult, MangaToolVersions } from '@sha
 import { MangaHealthSettings } from '@renderer/components/MangaHealthSettings';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeTool } from '../../helpers/mangaFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -242,6 +243,9 @@ describe('MangaHealthSettings updates of the programs', () => {
         const reset = within(server()).getByRole('button', { name: 'USE THE ONE OF THE APP' });
         expect(reset).toHaveAttribute('title', 'Goes back to v1.0.0, the one the app ships with, from the next time it opens.');
         await user.click(reset);
+        expect(mock.api.manga.resetServerVersion).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Use the server of the app?')).getByText('The manga server goes back to the version the app ships with, from the next time it opens.')).toBeInTheDocument();
+        await answerDialog(user, 'Use the server of the app?', 'USE THE ONE OF THE APP');
         expect(mock.api.manga.resetServerVersion).toHaveBeenCalledTimes(1);
     });
 

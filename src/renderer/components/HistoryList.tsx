@@ -1,5 +1,6 @@
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
+import { ConfirmButton } from './ConfirmButton';
 
 export function HistoryList() {
     const t = useTranslator();
@@ -19,15 +20,15 @@ export function HistoryList() {
         <section className="history" aria-label={t('history.aria')}>
             <div className="queue__toolbar">
                 <span className="section-label">{t('history.label', { count: history.length })}</span>
-                <button
-                    type="button"
+                <ConfirmButton
                     className="btn btn--small btn--ghost"
-                    onClick={() => {
+                    dialog={{ title: t('confirm.historyClear.title'), message: t('confirm.historyClear.message'), confirmLabel: t('history.clear') }}
+                    onConfirm={() => {
                         void clearHistory();
                     }}
                 >
                     {t('history.clear')}
-                </button>
+                </ConfirmButton>
             </div>
             <ul className="history__list">
                 {history.map((entry) => {

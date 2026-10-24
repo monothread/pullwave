@@ -13,13 +13,15 @@ beforeEach(() => {
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
 });
 
+const CONFIRMATION = { title: 'Remove the series "Frieren"?', message: 'Every manga goes.', confirmLabel: 'REMOVE', cancelLabel: 'KEEP' };
+
 function setup() {
     const onRename = vi.fn();
     const onRemove = vi.fn();
     const view = render(
         <div>
             <button type="button">Outside</button>
-            <SeriesMenu name="Frieren" onRename={onRename} onRemove={onRemove} />
+            <SeriesMenu name="Frieren" onRename={onRename} onRemove={onRemove} confirmation={CONFIRMATION} />
         </div>
     );
     return { onRename, onRemove, user: userEvent.setup(), ...view };
@@ -114,37 +116,15 @@ describe('SeriesMenu', () => {
         expect(screen.queryByRole('group', { name: 'Series options: Frieren' })).not.toBeInTheDocument();
     });
 
-    it('asks again before it removes, with the panel still open, and removes only after CONFIRM', async () => {
-        const { user, onRemove } = setup();
-        await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
-        await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
-        expect(onRemove).not.toHaveBeenCalled();
-        expect(screen.getByText('The files are deleted from the disk too.')).toBeInTheDocument();
-        expect(screen.getByRole('group', { name: 'Series options: Frieren' })).toBeInTheDocument();
-
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
-        expect(onRemove).toHaveBeenCalledTimes(1);
-        expect(onRemove).toHaveBeenCalledWith();
-    });
-
-    it('goes back without removing when KEEP is used', async () => {
-        const { user, onRemove } = setup();
-        await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
-        await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
-        await user.click(screen.getByRole('button', { name: 'KEEP' }));
-        expect(onRemove).not.toHaveBeenCalled();
-        expect(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' })).toBeInTheDocument();
-    });
-
     it('tells which series it is about in every name, whatever the series is called', () => {
-        render(<SeriesMenu name="Pokémon: Journeys" onRename={vi.fn()} onRemove={vi.fn()} />);
+        render(<SeriesMenu name="Pokémon: Journeys" onRename={vi.fn()} onRemove={vi.fn()} confirmation={CONFIRMATION} />);
         expect(screen.getByRole('button', { name: 'Series options: Pokémon: Journeys' })).toBeInTheDocument();
     });
 
     it('speaks the language of the settings', async () => {
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, language: 'pt' } });
         const user = userEvent.setup();
-        render(<SeriesMenu name="Frieren" onRename={vi.fn()} onRemove={vi.fn()} />);
+        render(<SeriesMenu name="Frieren" onRename={vi.fn()} onRemove={vi.fn()} confirmation={CONFIRMATION} />);
         await user.click(screen.getByRole('button', { name: 'Opções da série: Frieren' }));
         expect(screen.getByRole('button', { name: 'RENOMEAR SÉRIE: Frieren' })).toHaveTextContent('RENOMEAR SÉRIE');
         expect(screen.getByRole('button', { name: 'REMOVER SÉRIE: Frieren' })).toHaveTextContent('REMOVER SÉRIE');
@@ -152,7 +132,6 @@ describe('SeriesMenu', () => {
 });
 
 describe('SeriesMenu asking in a window', () => {
-    const CONFIRMATION = { title: 'Remove the series "Frieren"?', message: 'Every manga goes.', confirmLabel: 'REMOVE', cancelLabel: 'KEEP' };
 
     function setupWindow() {
         const onRemove = vi.fn();

@@ -360,6 +360,11 @@ async function openOrganize(page: Page): Promise<void> {
     }
 }
 
+// Answers the window that asks before something is taken away (a cancel, a removal, a clear).
+async function answerConfirm(page: Page, title: string | RegExp, answer: string): Promise<void> {
+    await page.getByRole('dialog', { name: title }).getByRole('button', { name: answer, exact: true }).click();
+}
+
 async function waitForDownloaded(page: Page): Promise<void> {
     await expect(page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 20000 });
@@ -466,7 +471,17 @@ test.describe('manga section', () => {
         await expect(session.page.getByTestId('manga-store')).toContainText('Fake Store');
         await expect(session.page.getByTestId('manga-store')).toContainText(STORE_URL);
         expect(fake.graphqlRequests('addExtensionStore')[0]?.variables).toEqual({ indexUrl: STORE_URL });
+        // Removing asks first: KEEP leaves the store and nothing is sent to the server.
         await session.page.getByRole('button', { name: 'REMOVE: Fake Store' }).click();
+        const ask = session.page.getByRole('dialog', { name: 'Remove the store "Fake Store"?' });
+        await expect(ask).toBeVisible();
+        await expect(ask).toContainText('The store leaves the list and its extensions are not offered any more.');
+        await ask.getByRole('button', { name: 'KEEP' }).click();
+        await expect(ask).toBeHidden();
+        await expect(session.page.getByTestId('manga-store')).toHaveCount(1);
+        expect(fake.graphqlRequests('removeExtensionStore')).toHaveLength(0);
+        await session.page.getByRole('button', { name: 'REMOVE: Fake Store' }).click();
+        await ask.getByRole('button', { name: 'REMOVE', exact: true }).click();
         await expect(session.page.getByTestId('manga-store')).toHaveCount(0);
         expect(fake.graphqlRequests('removeExtensionStore')[0]?.variables).toEqual({ indexUrl: STORE_URL });
     });
@@ -813,7 +828,7 @@ test.describe('manga section', () => {
         // The scroll shows all the pages, and the settings are kept for the next chapter.
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('vertical');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         await expect(reader.getByRole('img')).toHaveCount(3);
         // The next chapter.
         await reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true }).click();
@@ -877,9 +892,11 @@ test.describe('manga section', () => {
         await expect(bar).toHaveAttribute('aria-valuenow', '33');
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('webtoon');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         const area = session.page.locator('.app__main');
         await expect(reader.getByRole('img')).toHaveCount(3);
+        // The pages count once their pictures are in the flow (until then each one is a block that says it is loading).
+        await expect(reader.locator('.reader__loading-page')).toHaveCount(0);
         await expect.poll(() => {return area.evaluate((element) => {return element.scrollHeight - element.clientHeight})}).toBeGreaterThan(1500);
         await expect(bar).toHaveAttribute('aria-valuenow', '0');
 
@@ -918,9 +935,10 @@ test.describe('manga section', () => {
         const reader = session.page.getByRole('region', { name: 'Reader' });
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('webtoon');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         const area = session.page.locator('.app__main');
         await expect(reader.getByRole('img')).toHaveCount(3);
+        await expect(reader.locator('.reader__loading-page')).toHaveCount(0);
         await expect.poll(() => {return area.evaluate((element) => {return element.scrollHeight - element.clientHeight})}).toBeGreaterThan(1500);
         // A chapter starts with the zone of the previous chapter above its first page, out of view: that is the top the button goes back to.
         await expect.poll(() => {return area.evaluate((element) => {return element.scrollTop})}).toBeGreaterThan(100);
@@ -1076,9 +1094,11 @@ test.describe('manga section', () => {
         await expect(reader.getByRole('button', { name: 'AUTO SCROLL' })).toBeDisabled();
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('webtoon');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         const area = session.page.locator('.app__main');
         await expect(reader.getByRole('img')).toHaveCount(3);
+        // The pages count once their pictures are in the flow (until then each one is a block that says it is loading).
+        await expect(reader.locator('.reader__loading-page')).toHaveCount(0);
         await expect.poll(() => {return area.evaluate((element) => {return element.scrollHeight - element.clientHeight})}).toBeGreaterThan(1500);
         await expect.poll(() => {return area.evaluate((element) => {return element.scrollTop})}).toBeGreaterThan(100);
         const chapterTop = await area.evaluate((element) => {return element.scrollTop});
@@ -1366,6 +1386,7 @@ test.describe('manga section', () => {
         await goTo(session.page, 'LIBRARY');
         await expect(session.page.locator('.badge--done', { hasText: 'Downloaded' })).toHaveCount(2);
         await session.page.getByRole('button', { name: 'Remove download: Romance Dawn' }).click();
+        await answerConfirm(session.page, 'Remove the download of "Romance Dawn"?', 'REMOVE');
         await expect.poll(() => {return existsSync(newFile)}).toBe(false);
         await downloadSeason(session.page);
         await waitForDownloaded(session.page);
@@ -1516,6 +1537,10 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'Open series: Pirates' }).click();
         await expect(session.page.getByTestId('manga-season')).toHaveCount(2);
         await expect(session.page.getByTestId('manga-season').first()).toContainText('SEASON 1');
+        // The series shows a cover at the top and one in the row of each season.
+        await expect(session.page.getByTestId('manga-series-cover').locator('.cover')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-season-cover')).toHaveCount(2);
+        await expect(session.page.getByTestId('manga-season').first().getByTestId('manga-season-cover').locator('.cover')).toHaveCount(1);
         // The groups of a series are behind its gear.
         await expect(session.page.getByRole('button', { name: 'Mangas', exact: true })).toHaveCount(0);
         await session.page.getByRole('button', { name: 'Series options: Pirates' }).click();
@@ -1896,6 +1921,7 @@ test.describe('manga section', () => {
         await expect(row.getByText('Paused', { exact: true })).toBeVisible();
         await expect(row.getByRole('button', { name: 'RESUME: Romance Dawn' })).toBeVisible();
         await row.getByRole('button', { name: 'CANCEL: Romance Dawn' }).click();
+        await answerConfirm(session.page, 'Cancel this download?', 'CANCEL');
         await expect(row.getByRole('button', { name: 'RETRY: Romance Dawn' })).toBeVisible();
         await expect(row.getByRole('button', { name: 'RESUME: Romance Dawn' })).toHaveCount(0);
         await expect.poll(() => {
@@ -1916,6 +1942,7 @@ test.describe('manga section', () => {
         await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible({ timeout: 30000 });
         await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
         await session.page.getByRole('button', { name: 'Remove download: Romance Dawn' }).click();
+        await answerConfirm(session.page, 'Remove the download of "Romance Dawn"?', 'REMOVE');
         await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))}).toBe(false);
         // The chapter is still in the list, as one that is not downloaded, with nothing left to remove.
         const first = session.page.getByTestId('manga-chapter').filter({ hasText: 'Romance Dawn' });
@@ -2029,6 +2056,34 @@ test.describe('manga section', () => {
         await expect(reader.getByText('2 / 10')).toBeVisible();
     });
 
+    test('holds the place of every page with a block that says it is loading, and gives it to the picture when it arrives', async () => {
+        fake.pagesArePicture = true;
+        fake.imageDelayMs = 1200;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+
+        // The pictures are slow: each page is a block that says so, and the pictures wait beside them, out of the flow.
+        const blocks = reader.locator('.reader__loading-page');
+        await expect(blocks).toHaveCount(3);
+        await expect(blocks.nth(0)).toHaveText('Loading page 1…');
+        await expect(blocks.nth(2)).toHaveText('Loading page 3…');
+        await expect(reader.locator('.reader__img--pending')).toHaveCount(3);
+        const box = await blocks.nth(0).boundingBox();
+        expect(box!.height).toBeGreaterThan(300);
+
+        // When the pictures arrive the blocks are gone and the pages are in the flow.
+        await expect(blocks).toHaveCount(0, { timeout: 15000 });
+        await expect(reader.locator('.reader__img--pending')).toHaveCount(0);
+        await expect(reader.locator('img[data-page]')).toHaveCount(3);
+    });
+
     test('switches the chapter by itself when the user scrolls through the zone between chapters, in both directions', async () => {
         fake.pagesArePicture = true;
         fake.pageTotal = 4;
@@ -2042,8 +2097,10 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('webtoon');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         await expect(reader.getByRole('img')).toHaveCount(4);
+        // The pages count once their pictures are in the flow (until then each one is a block that says it is loading).
+        await expect(reader.locator('.reader__loading-page')).toHaveCount(0);
         await expect(title).toHaveText('One Piece · Romance Dawn');
 
         // The chapter starts with its first page under the bar, the zone of the previous chapter above it, out of view.
@@ -2092,7 +2149,7 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('webtoon');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         await expect(reader.getByRole('img')).toHaveCount(4);
         return { reader, area: session.page.locator('.app__main'), title: reader.locator('.reader__title') };
     }
@@ -2190,7 +2247,7 @@ test.describe('manga section', () => {
         await expect(reader.getByText('2 / 4')).toBeVisible();
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('vertical');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         await session.page.waitForTimeout(1500);
         await expect(title).toHaveText('One Piece · Romance Dawn');
         await expect(reader.getByTestId('reader-zone-start')).toHaveCount(1);
@@ -2339,6 +2396,7 @@ test.describe('manga section', () => {
         // The extension is uninstalled: the manga stays, with a badge on its card.
         await goTo(session.page, 'EXTENSIONS');
         await session.page.getByRole('button', { name: 'UNINSTALL: Tachiyomi: Fake Dex' }).click();
+        await answerConfirm(session.page, 'Uninstall "Tachiyomi: Fake Dex"?', 'UNINSTALL');
         await expect(session.page.getByRole('button', { name: 'INSTALL: Tachiyomi: Fake Dex' })).toBeVisible();
         await goTo(session.page, 'LIBRARY');
         await expect(entry.getByRole('heading', { name: 'One Piece' })).toBeVisible();
@@ -2489,11 +2547,13 @@ test.describe('manga section', () => {
         await expect(session.page.getByText('In the series "One Piece", order 1.')).toBeVisible();
         await session.page.getByRole('button', { name: '← BACK' }).click();
         await session.page.getByRole('button', { name: 'Open series: One Piece' }).click();
-        // The manga that gives its name to the series can leave it, like any other, with no question and no deletion.
+        // The manga that gives its name to the series can leave it, like any other, after the question and with no deletion.
         const leave = session.page.getByRole('button', { name: 'REMOVE FROM SERIES: One Piece' });
         await expect(leave).toBeEnabled();
         await expect(session.page.getByRole('button', { name: 'REMOVE: One Piece' })).toHaveCount(0);
         await leave.click();
+        await expect(session.page.getByRole('dialog', { name: 'Take "One Piece" out of the series?' })).toBeVisible();
+        await answerConfirm(session.page, 'Take "One Piece" out of the series?', 'REMOVE FROM SERIES');
         await expect(session.page.getByRole('dialog')).toHaveCount(0);
 
         // It was the only manga of the series: the series is gone and the screen is the library, where the manga is, by itself.
@@ -2535,6 +2595,7 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'Open series: Pirates' }).click();
         await expect(session.page.getByTestId('manga-season')).toHaveCount(2);
         await session.page.getByRole('button', { name: 'REMOVE FROM SERIES: Bleach' }).click();
+        await answerConfirm(session.page, 'Take "Bleach" out of the series?', 'REMOVE FROM SERIES');
         // The series stays, with one season; the manga that left is not deleted.
         await expect(session.page.getByTestId('manga-season')).toHaveCount(1);
         await expect(session.page.getByTestId('manga-season')).toContainText('One Piece');
@@ -2657,7 +2718,7 @@ test.describe('manga section', () => {
         // In the scroll the zone above the first chapter of the season names the last chapter of the season before, not "first chapter".
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         await reader.getByLabel('Reading mode').selectOption('webtoon');
-        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         await expect(reader.getByTestId('reader-zone-start')).toContainText('The Great Race');
         await expect(reader.getByTestId('reader-zone-start')).not.toContainText('This is the first chapter.');
         await previous.click();

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { TranslationSettings } from '@renderer/components/TranslationSettings';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -143,6 +144,9 @@ describe('TranslationSettings', () => {
             expect(await screen.findByText('A token is saved for this provider.')).toBeInTheDocument();
             mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: ['openai'] });
             await user.click(screen.getByRole('button', { name: 'REMOVE TOKEN' }));
+            expect(mock.api.clearLlmToken).not.toHaveBeenCalled();
+            expect(within(confirmDialog('Remove the token?')).getByText('The saved token is deleted from this computer. You will have to enter it again to use the service.')).toBeInTheDocument();
+            await answerDialog(user, 'Remove the token?', 'REMOVE TOKEN');
             expect(mock.api.clearLlmToken).toHaveBeenCalledTimes(1);
             expect(mock.api.clearLlmToken).toHaveBeenCalledWith('gemini');
             expect(await screen.findByText('No token is saved for this provider.')).toBeInTheDocument();
@@ -356,6 +360,8 @@ describe('TranslationSettings', () => {
                 expect(await screen.findByText('A token is saved for this service.')).toBeInTheDocument();
                 mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: [] });
                 await user.click(screen.getByRole('button', { name: 'REMOVE SPEECH TOKEN' }));
+                expect(mock.api.clearLlmToken).not.toHaveBeenCalled();
+                await answerDialog(user, 'Remove the token?', 'REMOVE SPEECH TOKEN');
                 expect(mock.api.clearLlmToken).toHaveBeenCalledTimes(1);
                 expect(mock.api.clearLlmToken).toHaveBeenCalledWith('speech-openai');
                 expect(await screen.findByText('No token is saved for this service.')).toBeInTheDocument();

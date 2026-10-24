@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaSeriesView } from '@renderer/components/MangaSeriesView';
@@ -39,6 +39,46 @@ beforeEach(() => {
 });
 
 describe('MangaSeriesView', () => {
+    describe('the covers', () => {
+        const COVER_ONE = 'pullwave-manga://cover/1?v=aaaaaaaaaaaa';
+        const COVER_TWO = 'pullwave-manga://cover/2?v=bbbbbbbbbbbb';
+
+        function renderWithCovers(first: string | null, second: string | null) {
+            const library = [{ ...SECOND, thumbnailUrl: second }, { ...FIRST, thumbnailUrl: first }];
+            useMangaStore.setState({ library });
+            render(<MangaSeriesView group={groupLibrary(library)[0]!} onBack={vi.fn()} onRenamed={vi.fn()} />);
+        }
+
+        it('shows the cover of the first season at the top of the series', () => {
+            renderWithCovers(COVER_ONE, COVER_TWO);
+            const cover = screen.getByTestId('manga-series-cover');
+            expect(cover).toHaveClass('series__cover');
+            expect(cover.querySelectorAll('img')).toHaveLength(1);
+            expect(cover.querySelector('img')).toHaveAttribute('src', COVER_ONE);
+            expect(screen.getByTestId('manga-series-view').firstElementChild).toBe(cover);
+        });
+
+        it('shows the cover of each season in its row, in the order of the seasons', () => {
+            renderWithCovers(COVER_ONE, COVER_TWO);
+            const covers = screen.getAllByTestId('manga-season-cover');
+            expect(covers).toHaveLength(2);
+            expect(covers[0]!.querySelector('img')).toHaveAttribute('src', COVER_ONE);
+            expect(covers[1]!.querySelector('img')).toHaveAttribute('src', COVER_TWO);
+            expect(within(screen.getAllByTestId('manga-season')[1]!).getByTestId('manga-season-cover')).toBe(covers[1]);
+        });
+
+        it('shows a plain block where a cover is not there, and falls back to it when the image does not load', () => {
+            renderWithCovers(null, COVER_TWO);
+            const [first, second] = screen.getAllByTestId('manga-season-cover');
+            expect(first!.querySelector('img')).toBeNull();
+            expect(first!.querySelector('.cover--none')).not.toBeNull();
+            expect(screen.getByTestId('manga-series-cover').querySelector('.cover--none')).not.toBeNull();
+            fireEvent.error(second!.querySelector('img')!);
+            expect(second!.querySelector('img')).toBeNull();
+            expect(second!.querySelector('.cover--none')).not.toBeNull();
+        });
+    });
+
     it('shows the name of the series, how many seasons it has, and its seasons in order with their labels and progress', () => {
         renderView();
         expect(screen.getByTestId('manga-series-view')).toBeInTheDocument();
@@ -100,14 +140,29 @@ describe('MangaSeriesView', () => {
         expect(mock.api.manga.setGroupMembers).toHaveBeenCalledWith(1, [1, 2], true);
     });
 
-    it('takes one season out of the series, without asking and without deleting the manga', async () => {
+    it('asks before it takes one season out of the series, and then does it without deleting the manga', async () => {
         const user = userEvent.setup();
         renderView();
         await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Frieren 2' }));
+        const dialog = screen.getByRole('dialog', { name: 'Take "Frieren 2" out of the series?' });
+        expect(within(dialog).getByText('The manga stays in the library with its chapters and files.')).toBeInTheDocument();
+        expect(mock.api.manga.setSeries).not.toHaveBeenCalled();
+        await user.click(within(dialog).getByRole('button', { name: 'REMOVE FROM SERIES' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(mock.api.manga.setSeries).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 2, series: null, season: null, seasonName: null });
         expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
+    });
+
+    it('keeps the season in the series when the user keeps it or presses Esc', async () => {
+        const user = userEvent.setup();
+        renderView();
+        await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Frieren 2' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'KEEP' }));
+        await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Frieren 2' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.manga.setSeries).not.toHaveBeenCalled();
     });
 
     it('reads the library again after a season leaves the series, and stays on the screen of the series that is left', async () => {
@@ -115,6 +170,7 @@ describe('MangaSeriesView', () => {
         const { onBack } = renderView();
         const callsBefore = mock.api.manga.library.mock.calls.length;
         await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Frieren' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE FROM SERIES' }));
         await vi.waitFor(() => {
             expect(mock.api.manga.library.mock.calls.length).toBe(callsBefore + 1);
         });
@@ -129,6 +185,7 @@ describe('MangaSeriesView', () => {
         expect(button).toBeEnabled();
         expect(button).not.toHaveAttribute('title');
         await user.click(button);
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE FROM SERIES' }));
         expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 7, series: null, season: null, seasonName: null });
         expect(mock.api.manga.removeManga).not.toHaveBeenCalled();
     });
@@ -139,6 +196,7 @@ describe('MangaSeriesView', () => {
         const onBack = vi.fn();
         render(<MangaSeriesView group={groupLibrary([only])[0]!} onBack={onBack} onRenamed={vi.fn()} />);
         await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Solo' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE FROM SERIES' }));
         await vi.waitFor(() => {
             expect(onBack).toHaveBeenCalledTimes(1);
         });
@@ -153,6 +211,7 @@ describe('MangaSeriesView', () => {
         const onBack = vi.fn();
         render(<MangaSeriesView group={groupLibrary([only])[0]!} onBack={onBack} onRenamed={vi.fn()} />);
         await user.click(screen.getByRole('button', { name: 'REMOVE FROM SERIES: Solo' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE FROM SERIES' }));
         await vi.waitFor(() => {
             expect(mock.api.manga.setSeries).toHaveBeenCalledTimes(1);
         });

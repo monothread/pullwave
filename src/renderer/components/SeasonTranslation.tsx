@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { LibraryAnime, SubtitleTranslationJob } from '@shared/anime';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
+import { ConfirmButton } from './ConfirmButton';
 
 interface SeasonTranslationProps {
     anime: LibraryAnime;
@@ -63,15 +64,15 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
                 <span className="field__hint" data-testid="season-translation-progress">
                     {t('anime.translateSeason.progress', { done: finished.length, total: all.length })}
                 </span>
-                <button
-                    type="button"
+                <ConfirmButton
                     className="btn btn--small"
-                    onClick={() => {
+                    dialog={{ title: t('confirm.translateCancel.title'), message: t('confirm.translateCancel.message'), confirmLabel: t('anime.translateSeason.stop'), cancelLabel: t('confirm.back') }}
+                    onConfirm={() => {
                         void window.api.cancelAnimeSubtitleTranslation(null);
                     }}
                 >
                     {t('anime.translateSeason.stop')}
-                </button>
+                </ConfirmButton>
             </span>
         );
     }

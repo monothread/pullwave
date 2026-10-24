@@ -3,6 +3,7 @@ import { useMangaStore } from '../store/mangaStore';
 import { useEffect, useMemo, useState } from 'react';
 import { hasChapterFile } from '@shared/manga';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ConfirmButton } from './ConfirmButton';
 import { MangaCover } from './MangaCover';
 import { activateFilter, type TermKind } from './mangaFilterSearch';
 import { MangaGroupChips } from './MangaGroupChips';
@@ -581,16 +582,16 @@ export function MangaDetail() {
                                             >
                                                 {t('manga.jobs.resume')}
                                             </button>
-                                            <button
-                                                type="button"
+                                            <ConfirmButton
                                                 className="btn btn--small btn--hot"
-                                                aria-label={`${t('manga.jobs.cancel')}: ${label}`}
-                                                onClick={() => {
+                                                ariaLabel={`${t('manga.jobs.cancel')}: ${label}`}
+                                                dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('manga.jobs.cancel'), cancelLabel: t('confirm.back') }}
+                                                onConfirm={() => {
                                                     void cancelJob(state.id);
                                                 }}
                                             >
                                                 {t('manga.jobs.cancel')}
-                                            </button>
+                                            </ConfirmButton>
                                         </>
                                     )}
                                     {inLibraryPage && state && state.status === 'incomplete' && (
@@ -607,16 +608,16 @@ export function MangaDetail() {
                                         </button>
                                     )}
                                     {inLibraryPage && state && hasChapterFile(state.status) && (
-                                        <button
-                                            type="button"
+                                        <ConfirmButton
                                             className="btn btn--small btn--ghost"
-                                            aria-label={`${t('manga.library.removeDownload')}: ${label}`}
-                                            onClick={() => {
+                                            ariaLabel={`${t('manga.library.removeDownload')}: ${label}`}
+                                            dialog={{ title: t('confirm.removeDownload.title', { name: label }), message: t('confirm.removeDownload.message'), confirmLabel: t('manga.remove.confirm') }}
+                                            onConfirm={() => {
                                                 void removeDownload(state.id);
                                             }}
                                         >
                                             {t('manga.library.removeDownload')}
-                                        </button>
+                                        </ConfirmButton>
                                     )}
                                 </li>
                             );

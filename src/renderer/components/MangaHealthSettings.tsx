@@ -3,6 +3,7 @@ import type { MessageKey } from '@shared/i18n';
 import type { ComponentHealth, HealthState, MangaToolUpdateResult, ToolVersionInfo } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
+import { ConfirmButton } from './ConfirmButton';
 
 const BADGES: Record<HealthState, string> = {
     healthy: 'badge--done',
@@ -180,16 +181,16 @@ export function MangaHealthSettings() {
                         </button>
                     )}
                     {server?.chosen && (
-                        <button
-                            type="button"
+                        <ConfirmButton
                             className="btn btn--small"
                             title={t('manga.updates.resetHint', { version: server.bundled })}
-                            onClick={() => {
+                            dialog={{ title: t('confirm.serverReset.title'), message: t('confirm.serverReset.message'), confirmLabel: t('manga.updates.reset'), cancelLabel: t('confirm.back') }}
+                            onConfirm={() => {
                                 void resetServerVersion();
                             }}
                         >
                             {t('manga.updates.reset')}
-                        </button>
+                        </ConfirmButton>
                     )}
                 </HealthRow>
                 <HealthRow

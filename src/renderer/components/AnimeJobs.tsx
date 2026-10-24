@@ -1,6 +1,7 @@
 import type { AnimeJob } from '@shared/anime';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
+import { ConfirmButton } from './ConfirmButton';
 import { animeErrorKey, animeStatusKey } from './animeText';
 import { formatPercent } from './jobStatus';
 
@@ -44,15 +45,15 @@ export function AnimeJobs() {
             <div className="queue__toolbar">
                 <span className="section-label">{t('anime.jobs.label', { count: jobs.length })}</span>
                 {jobs.some(isFinished) && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small btn--ghost"
-                        onClick={() => {
+                        dialog={{ title: t('confirm.queueClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('anime.jobs.clear') }}
+                        onConfirm={() => {
                             void clearFinishedJobs();
                         }}
                     >
                         {t('anime.jobs.clear')}
-                    </button>
+                    </ConfirmButton>
                 )}
             </div>
             {sorted.map((job) => {
@@ -111,15 +112,15 @@ export function AnimeJobs() {
                                 </button>
                             )}
                             {(job.status === 'queued' || job.status === 'running' || job.status === 'paused') && (
-                                <button
-                                    type="button"
+                                <ConfirmButton
                                     className="btn btn--small btn--hot"
-                                    onClick={() => {
+                                    dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('anime.job.cancel'), cancelLabel: t('confirm.back') }}
+                                    onConfirm={() => {
                                         void cancelJob(job.episodeId);
                                     }}
                                 >
                                     {t('anime.job.cancel')}
-                                </button>
+                                </ConfirmButton>
                             )}
                             {(job.status === 'error' || job.status === 'cancelled') && (
                                 <button

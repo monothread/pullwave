@@ -6,6 +6,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { animeErrorKey, animeStatusKey, downloadedCount, groupLibrary, matchesSearch, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { AnimeRemove } from './AnimeRemove';
+import { ConfirmButton } from './ConfirmButton';
 import { cleanSeasonName, cleanSeriesName, foldSeries, isValidSeason, MAX_SEASON, MAX_SEASON_NAME_LENGTH, sameSeries } from '@shared/series';
 import { NumberField, TextField } from './fields';
 import { formatBytes, formatDuration } from './jobStatus';
@@ -116,16 +117,16 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                         >
                             {t('anime.job.resume')}
                         </button>
-                        <button
-                            type="button"
+                        <ConfirmButton
                             className="btn btn--small btn--hot"
-                            aria-label={`${t('anime.job.cancel')}: ${anime.title} ${label}`}
-                            onClick={() => {
+                            ariaLabel={`${t('anime.job.cancel')}: ${anime.title} ${label}`}
+                            dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('anime.job.cancel'), cancelLabel: t('confirm.back') }}
+                            onConfirm={() => {
                                 void cancelJob(episode.id);
                             }}
                         >
                             {t('anime.job.cancel')}
-                        </button>
+                        </ConfirmButton>
                     </>
                 )}
                 {episode.status === 'idle' && (
@@ -290,6 +291,8 @@ function AnimeEntry({ anime, seriesName, t }: { anime: LibraryAnime; seriesName:
         <AnimeRemove
             label={t('anime.remove.anime')}
             ariaLabel={`${t('anime.remove.anime')}: ${anime.title}`}
+            title={t('confirm.animeRemove.title', { name: anime.title })}
+            message={t('confirm.animeRemove.message')}
             blocked={sameSeries(anime.title, seriesName) ? t('anime.remove.blocked') : undefined}
             onRemove={() => {
                 void removeAnime(anime.id);
@@ -317,6 +320,9 @@ function AnimeEntry({ anime, seriesName, t }: { anime: LibraryAnime; seriesName:
     return (
         <section ref={card} className="series__season" data-testid="anime-season">
             <div className="season__row row--link">
+                <span className="season__cover" data-testid="anime-season-cover">
+                    <AnimeCover title={anime.title} />
+                </span>
                 <span className="season__chip" title={seasonLabel(anime, t)}>
                     {seasonLabel(anime, t)}
                 </span>
@@ -397,6 +403,8 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
                         <AnimeRemove
                             label={t('anime.series.remove')}
                             ariaLabel={`${t('anime.series.remove')}: ${name}`}
+                            title={t('confirm.animeSeriesRemove.title', { name })}
+                            message={t('confirm.animeSeriesRemove.message')}
                             onRemove={() => {
                                 void group.entries.reduce(async (previous, anime) => {
                                     await previous;
@@ -534,6 +542,7 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                             onRename={() => {
                                 setRenaming(true);
                             }}
+                            confirmation={{ title: t('confirm.animeSeriesRemove.title', { name }), message: t('confirm.animeSeriesRemove.message'), confirmLabel: t('manga.remove.confirm'), cancelLabel: t('manga.remove.cancel') }}
                             onRemove={() => {
                                 void group.entries.reduce(async (previous, anime) => {
                                     await previous;

@@ -268,6 +268,98 @@ describe('MangaReader single page', () => {
     });
 });
 
+describe('MangaReader the blocks that say a page is loading', () => {
+    function blocks(): HTMLElement[] {
+        return screen.queryAllByRole('status').filter((item) => {
+            return item.classList.contains('reader__loading-page');
+        });
+    }
+
+    it('holds the place of the reading with a block while the chapter opens, instead of a line of text', () => {
+        open({ status: 'loading', pages: [] });
+        render(<MangaReader />);
+        const block = screen.getByTestId('reader-loading');
+        expect(block).toHaveAttribute('role', 'status');
+        expect(block).toHaveClass('reader__stage', 'reader__chapter-loading');
+        expect(block).toHaveTextContent('Loading the pages…');
+        expect(block.tagName).toBe('DIV');
+        expect(document.querySelector('p.empty')).toBeNull();
+    });
+
+    it('takes the block of the chapter away when it is ready, and when it fails', () => {
+        open({ status: 'loading', pages: [] });
+        const { rerender } = render(<MangaReader />);
+        open();
+        rerender(<MangaReader />);
+        expect(screen.queryByTestId('reader-loading')).not.toBeInTheDocument();
+        open({ status: 'error', pages: [], error: { code: 'API_ERROR', message: 'x' } });
+        rerender(<MangaReader />);
+        expect(screen.queryByTestId('reader-loading')).not.toBeInTheDocument();
+    });
+
+    it('says the page is loading until its picture arrives, one page at a time', () => {
+        open();
+        render(<MangaReader />);
+        const [block] = blocks();
+        expect(block).toHaveTextContent('Loading page 1…');
+        expect(block).toHaveAttribute('data-page', '0');
+        const picture = screen.getByRole('img');
+        expect(picture).toHaveClass('reader__img', 'reader__img--pending');
+        expect(picture).not.toHaveAttribute('data-page');
+        fireEvent.load(picture);
+        expect(blocks()).toHaveLength(0);
+        expect(screen.getByRole('img')).toHaveClass('reader__img');
+        expect(screen.getByRole('img')).not.toHaveClass('reader__img--pending');
+        expect(screen.getByRole('img')).toHaveAttribute('data-page', '0');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(blocks()).toHaveLength(1);
+        expect(blocks()[0]).toHaveTextContent('Loading page 2…');
+    });
+
+    it('has a block in the place of every page in the scroll, and takes away only the one of the page that arrived', () => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'webtoon' }));
+        open();
+        render(<MangaReader />);
+        expect(
+            blocks().map((item) => {
+                return item.textContent;
+            })
+        ).toEqual(['Loading page 1…', 'Loading page 2…', 'Loading page 3…']);
+        fireEvent.load(screen.getAllByRole('img')[1]!);
+        expect(
+            blocks().map((item) => {
+                return item.textContent;
+            })
+        ).toEqual(['Loading page 1…', 'Loading page 3…']);
+        expect(screen.getAllByRole('img')[1]).toHaveAttribute('data-page', '1');
+        expect(screen.getAllByRole('img')[0]).not.toHaveAttribute('data-page');
+    });
+
+    it('shows the failure of a page in the place of its block, and the block again when it is tried again', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaReader />);
+        fireEvent.error(screen.getByRole('img'));
+        expect(blocks()).toHaveLength(0);
+        expect(screen.getByRole('alert')).toHaveTextContent('Page 1 could not be loaded.');
+        await user.click(screen.getByRole('button', { name: 'TRY AGAIN' }));
+        expect(blocks()).toHaveLength(1);
+        expect(blocks()[0]).toHaveTextContent('Loading page 1…');
+    });
+
+    it('starts the pages of another chapter with their blocks', () => {
+        open();
+        render(<MangaReader />);
+        fireEvent.load(screen.getByRole('img'));
+        expect(blocks()).toHaveLength(0);
+        act(() => {
+            useMangaStore.setState({ reader: { ...useMangaStore.getState().reader, index: 2, pages: ['http://127.0.0.1:4321/q/0'] } });
+        });
+        expect(blocks()).toHaveLength(1);
+        expect(blocks()[0]).toHaveTextContent('Loading page 1…');
+    });
+});
+
 describe('MangaReader a downloaded chapter that lacks pages', () => {
     const LOCAL = ['pullwave-manga://page/8/0', 'pullwave-manga://page/8/1', 'pullwave-manga://page/8/2'];
 

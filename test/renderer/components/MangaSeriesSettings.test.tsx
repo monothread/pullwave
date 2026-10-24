@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaSeriesSettings } from '@renderer/components/MangaSeriesSettings';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeLibraryManga } from '../../helpers/mangaFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -141,10 +142,24 @@ describe('MangaSeriesSettings', () => {
         expect(await screen.findByRole('alert')).toHaveTextContent('Give a series name');
     });
 
+    it('keeps the manga in its series when the user keeps it or presses Esc', async () => {
+        const user = userEvent.setup();
+        render(<MangaSeriesSettings manga={JOINED} />);
+        await user.click(screen.getByRole('button', { name: 'LEAVE SERIES' }));
+        await answerDialog(user, /^Take ".*" out of the series\?$/, 'KEEP');
+        await user.click(screen.getByRole('button', { name: 'LEAVE SERIES' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.manga.setSeries).not.toHaveBeenCalled();
+    });
+
     it('takes the manga out of its series and clears the fields', async () => {
         const user = userEvent.setup();
         render(<MangaSeriesSettings manga={JOINED} />);
         await user.click(screen.getByRole('button', { name: 'LEAVE SERIES' }));
+        expect(mock.api.manga.setSeries).not.toHaveBeenCalled();
+        expect(within(confirmDialog(/^Take ".*" out of the series\?$/)).getByText('The manga stays in the library with its chapters and files.')).toBeInTheDocument();
+        await answerDialog(user, /^Take ".*" out of the series\?$/, 'LEAVE SERIES');
         expect(mock.api.manga.setSeries).toHaveBeenCalledWith({ mangaId: 4, series: null, season: null, seasonName: null });
         await vi.waitFor(() => {
             expect(screen.getByLabelText('Series')).toHaveValue('');

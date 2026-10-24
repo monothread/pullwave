@@ -36,6 +36,11 @@ interface LaunchOptions {
     prepare?: (userData: string) => void;
 }
 
+// Answers the window that asks before something is taken away (a cancel, a removal, a clear).
+async function answerConfirm(page: Page, title: string, answer: string): Promise<void> {
+    await page.getByRole('dialog', { name: title }).getByRole('button', { name: answer, exact: true }).click();
+}
+
 async function launch(options: LaunchOptions = {}): Promise<Session> {
     const { useFakeYtdlp = true, settings = {}, env = {}, args = [], prepare } = options;
     const workDir = mkdtempSync(join(tmpdir(), 'pullwave-e2e-'));
@@ -353,9 +358,11 @@ test('cancels a running download and lets the user remove it', async () => {
     const card = page.getByTestId('job-card');
     await expect(card.locator('.badge')).toHaveText('DOWNLOADING');
     await card.getByRole('button', { name: 'CANCEL' }).click();
+    await answerConfirm(page, 'Cancel this download?', 'CANCEL');
     await expect(card.locator('.badge')).toHaveText('CANCELLED');
 
     await card.getByRole('button', { name: 'REMOVE' }).click();
+    await answerConfirm(page, 'Remove this download from the list?', 'REMOVE');
     await expect(page.getByTestId('job-card')).toHaveCount(0);
     await expect(page.getByText('NO ACTIVE DOWNLOADS')).toBeVisible();
 });
@@ -389,8 +396,10 @@ test('pauses a running download, keeps its card as paused and goes on when it is
     await card.getByRole('button', { name: 'PAUSE' }).click();
     await expect(card.locator('.badge')).toHaveText('PAUSED');
     await card.getByRole('button', { name: 'CANCEL' }).click();
+    await answerConfirm(page, 'Cancel this download?', 'CANCEL');
     await expect(card.locator('.badge')).toHaveText('CANCELLED');
     await card.getByRole('button', { name: 'REMOVE' }).click();
+    await answerConfirm(page, 'Remove this download from the list?', 'REMOVE');
     await expect(page.getByTestId('job-card')).toHaveCount(0);
 });
 
@@ -478,6 +487,7 @@ test('a paused download that was cancelled is not there when the app is opened a
     await card.getByRole('button', { name: 'PAUSE' }).click();
     await expect(card.locator('.badge')).toHaveText('PAUSED');
     await card.getByRole('button', { name: 'CANCEL' }).click();
+    await answerConfirm(page, 'Cancel this download?', 'CANCEL');
     await expect(card.locator('.badge')).toHaveText('CANCELLED');
     await expect.poll(() => {
         return (JSON.parse(readFileSync(join(userData, 'paused.json'), 'utf-8')) as unknown[]).length;
@@ -891,6 +901,7 @@ test.describe('partial files', () => {
             expect(leftovers(own.downloadDir)).toEqual(['Partial Fail [abc].mp4.part', 'Partial Fail [abc].f137.mp4.part', 'Partial Fail [abc].mp4.ytdl']);
 
             await own.page.getByRole('button', { name: 'CLEAR PARTIAL FILES' }).click();
+            await answerConfirm(own.page, 'Delete the partial files?', 'CLEAR PARTIAL FILES');
             await expect(own.page.getByRole('button', { name: 'CLEAR PARTIAL FILES' })).toHaveCount(0);
             expect(leftovers(own.downloadDir)).toEqual([]);
             await expect(FAILED_BADGE(own.page)).toBeVisible();
@@ -906,6 +917,7 @@ test.describe('partial files', () => {
             await submitUrl(own.page, PARTIAL_URL);
             await expect(own.page.getByRole('button', { name: 'CLEAR PARTIAL FILES' })).toBeVisible();
             await own.page.getByRole('button', { name: 'REMOVE' }).click();
+            await answerConfirm(own.page, 'Remove this download from the list?', 'REMOVE');
             await expect(own.page.getByTestId('job-card')).toHaveCount(0);
             expect(leftovers(own.downloadDir)).toEqual([]);
             expect(existsSync(join(own.downloadDir, 'Finished [fin].mp4'))).toBe(true);
@@ -922,19 +934,15 @@ test.describe('partial files', () => {
         expect(readFileSync(join(downloadDir, 'Live Fail [abc].mp4.part'), 'utf-8')).toBe('unfinished');
     });
 
-    test('asks before deleting a live recording and keeps it when the user declines', async () => {
+    test('asks before deleting a live recording, in a window, and keeps it when the user declines', async () => {
         const { page, downloadDir } = session;
         await submitUrl(page, LIVE_URL);
         await expect(page.getByRole('button', { name: 'CLEAR PARTIAL FILES' })).toBeVisible();
-        const messages: string[] = [];
-        page.once('dialog', async (dialog) => {
-            messages.push(dialog.message());
-            await dialog.dismiss();
-        });
         await page.getByRole('button', { name: 'CLEAR PARTIAL FILES' }).click();
-        await expect.poll(() => {
-            return messages;
-        }).toEqual(['This live recording was not saved. Deleting it cannot be undone. Delete it?']);
+        const dialog = page.getByRole('dialog', { name: 'Delete the partial files?' });
+        await expect(dialog).toContainText('This live recording was not saved. Deleting it cannot be undone. Delete it?');
+        await dialog.getByRole('button', { name: 'KEEP', exact: true }).click();
+        await expect(dialog).toBeHidden();
         expect(existsSync(join(downloadDir, 'Live Fail [abc].mp4.part'))).toBe(true);
         await expect(page.getByRole('button', { name: 'CLEAR PARTIAL FILES' })).toBeVisible();
     });
@@ -943,10 +951,9 @@ test.describe('partial files', () => {
         const { page, downloadDir } = session;
         await submitUrl(page, LIVE_URL);
         await expect(page.getByRole('button', { name: 'CLEAR PARTIAL FILES' })).toBeVisible();
-        page.once('dialog', async (dialog) => {
-            await dialog.accept();
-        });
         await page.getByRole('button', { name: 'REMOVE' }).click();
+        await expect(page.getByRole('dialog', { name: 'Remove this download from the list?' })).toContainText('This live recording was not saved. Deleting it cannot be undone. Delete it?');
+        await answerConfirm(page, 'Remove this download from the list?', 'REMOVE');
         await expect(page.getByTestId('job-card')).toHaveCount(0);
         expect(existsSync(join(downloadDir, 'Live Fail [abc].mp4.part'))).toBe(false);
     });
@@ -956,6 +963,7 @@ test.describe('partial files', () => {
         await submitUrl(page, LIVE_URL);
         await expect(FAILED_BADGE(page)).toBeVisible();
         await page.getByRole('button', { name: 'CLEAR FINISHED' }).click();
+        await answerConfirm(page, 'Clear the finished ones?', 'CLEAR FINISHED');
         await expect(page.getByTestId('job-card')).toHaveCount(0);
         expect(existsSync(join(downloadDir, 'Live Fail [abc].mp4.part'))).toBe(true);
     });
@@ -2175,6 +2183,7 @@ test.describe('live streams', () => {
         const card = page.getByTestId('job-card');
         await expect(card.locator('.badge')).toHaveText('RECORDING');
         await card.getByRole('button', { name: 'CANCEL' }).click();
+        await answerConfirm(page, 'Cancel this download?', 'CANCEL');
         await expect(card.locator('.badge')).toHaveText('CANCELLED');
         await expect(card.getByRole('button', { name: 'STOP & SAVE' })).toHaveCount(0);
     });
@@ -2187,6 +2196,7 @@ test.describe('live streams', () => {
         await expect(card.locator('.badge')).toHaveText('DOWNLOADING');
         await expect(card.getByRole('button', { name: 'STOP & SAVE' })).toHaveCount(0);
         await card.getByRole('button', { name: 'CANCEL' }).click();
+        await answerConfirm(page, 'Cancel this download?', 'CANCEL');
     });
 
     test('the live settings are saved and passed to yt-dlp', async () => {
@@ -2411,6 +2421,7 @@ test.describe('stopping and cancelling a recording whose ffmpeg is left behind',
         expect(isAlive(pid)).toBe(true);
 
         await card.getByRole('button', { name: 'CANCEL' }).click();
+        await answerConfirm(page, 'Cancel this download?', 'CANCEL');
         await expect(card.locator('.badge')).toHaveText('CANCELLED', { timeout: 8000 });
         await expect.poll(() => {
             return isAlive(pid);
@@ -2759,6 +2770,7 @@ test.describe('live HLS streams recorded by the app', () => {
             }).length;
         }, { timeout: 10000 }).toBeGreaterThan(4);
         await card.getByRole('button', { name: 'CANCEL' }).click();
+        await answerConfirm(page, 'Cancel this download?', 'CANCEL');
         await expect(card.locator('.badge')).toHaveText('CANCELLED');
         expect(readdirSync(downloadDir).filter((name) => {
             return name.endsWith('.mp4');

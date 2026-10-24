@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { SubtitleTranslationJob } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SeasonTranslation } from '@renderer/components/SeasonTranslation';
 import { useAppStore } from '@renderer/store/appStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -106,8 +107,22 @@ describe('SeasonTranslation', () => {
             const user = await confirmed();
             emit(job(1, 'running'));
             await user.click(screen.getByRole('button', { name: 'STOP' }));
+            expect(mock.api.cancelAnimeSubtitleTranslation).not.toHaveBeenCalled();
+            expect(within(confirmDialog('Cancel the translation?')).getByText('The subtitle being translated is discarded.')).toBeInTheDocument();
+            await answerDialog(user, 'Cancel the translation?', 'STOP');
             expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledTimes(1);
             expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledWith(null);
+        });
+
+        it('keeps translating when the user goes back or presses Esc', async () => {
+            const user = await confirmed();
+            emit(job(1, 'running'));
+            await user.click(screen.getByRole('button', { name: 'STOP' }));
+            await answerDialog(user, 'Cancel the translation?', 'BACK');
+            await user.click(screen.getByRole('button', { name: 'STOP' }));
+            await user.keyboard('{Escape}');
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(mock.api.cancelAnimeSubtitleTranslation).not.toHaveBeenCalled();
         });
 
         it('ignores the updates of episodes that are not of the season', async () => {

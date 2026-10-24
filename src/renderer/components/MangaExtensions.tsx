@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { UPDATE_ALL_KEY, useMangaStore } from '../store/mangaStore';
+import { ConfirmButton } from './ConfirmButton';
 import { MangaExtensionsAbout } from './MangaExtensionsAbout';
 import { SelectField, TextField, ToggleField } from './fields';
 import { ALL_LANGUAGES, extensionLanguages, filterExtensions, isListed } from './mangaText';
@@ -177,17 +178,17 @@ export function MangaExtensions() {
                                             </button>
                                         )}
                                         {extension.isInstalled && (
-                                            <button
-                                                type="button"
+                                            <ConfirmButton
                                                 className="btn btn--small btn--hot"
                                                 disabled={working}
-                                                aria-label={`${t('manga.ext.uninstall')}: ${extension.name}`}
-                                                onClick={() => {
+                                                ariaLabel={`${t('manga.ext.uninstall')}: ${extension.name}`}
+                                                dialog={{ title: t('confirm.uninstallExtension.title', { name: extension.name }), message: t('confirm.uninstallExtension.message'), confirmLabel: t('manga.ext.uninstall') }}
+                                                onConfirm={() => {
                                                     void changeExtension(extension.pkgName, 'uninstall');
                                                 }}
                                             >
                                                 {t('manga.ext.uninstall')}
-                                            </button>
+                                            </ConfirmButton>
                                         )}
                                     </span>
                                 </li>

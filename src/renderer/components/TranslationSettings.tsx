@@ -4,6 +4,7 @@ import { LLM_PROVIDER_IDS, LLM_PROVIDERS, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS,
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
+import { ConfirmButton } from './ConfirmButton';
 import { SelectField, TextField } from './fields';
 import { providerName, speechProviderName } from './translateText';
 
@@ -84,15 +85,15 @@ function TokenField({ slot, inputId, texts, status, onChanged }: TokenFieldProps
                     {texts.save}
                 </button>
                 {hasToken && (
-                    <button
-                        type="button"
+                    <ConfirmButton
                         className="btn btn--small"
-                        onClick={() => {
+                        dialog={{ title: t('confirm.tokenRemove.title'), message: t('confirm.tokenRemove.message'), confirmLabel: texts.clear }}
+                        onConfirm={() => {
                             void clearToken();
                         }}
                     >
                         {texts.clear}
-                    </button>
+                    </ConfirmButton>
                 )}
             </div>
             {failed && (

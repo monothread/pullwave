@@ -167,13 +167,15 @@ describe('components in another language', () => {
     it('translates the finished job actions and asks the live deletion confirmation in the saved language', async () => {
         useLanguage('zh');
         const user = userEvent.setup();
-        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
         const handlers = { onCancel: vi.fn(), onPause: vi.fn(), onResume: vi.fn(), onStop: vi.fn(), onRetry: vi.fn(), onRemove: vi.fn(), onClearPartials: vi.fn(), onShowFile: vi.fn() };
         render(<JobCard job={makeJob({ status: 'cancelled', live: true, hasPartial: true })} {...handlers} />);
         expect(screen.getByText('已取消')).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: '移除' }));
-        expect(confirm).toHaveBeenCalledWith('这段直播录制尚未保存，删除后无法恢复。要删除吗？');
+        const dialog = screen.getByRole('dialog', { name: '要从列表中移除此下载吗？' });
+        expect(within(dialog).getByText('这段直播录制尚未保存，删除后无法恢复。要删除吗？')).toBeInTheDocument();
         expect(handlers.onRemove).not.toHaveBeenCalled();
+        await user.click(within(dialog).getByRole('button', { name: '移除' }));
+        expect(handlers.onRemove).toHaveBeenCalledWith('job-1');
         expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: '清除未完成的文件' })).toBeInTheDocument();
     });

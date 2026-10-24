@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { HistoryEntry } from '@shared/types';
 import { HistoryList } from '@renderer/components/HistoryList';
 import { useAppStore } from '@renderer/store/appStore';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -51,8 +52,25 @@ describe('HistoryList', () => {
     it('clears the history', async () => {
         useAppStore.setState({ history: [DONE] });
         render(<HistoryList />);
-        await userEvent.setup().click(screen.getByRole('button', { name: 'CLEAR HISTORY' }));
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('button', { name: 'CLEAR HISTORY' }));
+        expect(mock.api.clearHistory).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Clear the history?')).getByText('Only the list goes. Downloaded files stay on the disk.')).toBeInTheDocument();
+        await answerDialog(user, 'Clear the history?', 'CLEAR HISTORY');
         expect(mock.api.clearHistory).toHaveBeenCalledTimes(1);
         expect(useAppStore.getState().history).toEqual([]);
+    });
+
+    it('keeps the history when the user keeps it or presses Esc', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ history: [DONE] });
+        render(<HistoryList />);
+        await user.click(screen.getByRole('button', { name: 'CLEAR HISTORY' }));
+        await answerDialog(user, 'Clear the history?', 'KEEP');
+        await user.click(screen.getByRole('button', { name: 'CLEAR HISTORY' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.clearHistory).not.toHaveBeenCalled();
+        expect(useAppStore.getState().history).toEqual([DONE]);
     });
 });

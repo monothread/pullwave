@@ -124,6 +124,11 @@ async function downloadFromLibrary(page: Page, episodes: number[], title = 'Fake
     await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SEARCH', exact: true }).click();
 }
 
+// Answers the window that asks before something is taken away (a cancel, a removal, a clear).
+async function answerConfirm(page: Page, title: string, answer: string): Promise<void> {
+    await page.getByRole('dialog', { name: title }).getByRole('button', { name: answer, exact: true }).click();
+}
+
 async function search(page: Page, query: string): Promise<void> {
     await page.getByLabel('Anime name').fill(query);
     await page.getByLabel('Anime name').press('Enter');
@@ -562,6 +567,7 @@ test('keeps the anime that was opened in the history, opens it again from there 
 
     await subNav.getByRole('button', { name: 'HISTORY', exact: true }).click();
     await history.getByRole('button', { name: 'REMOVE FROM HISTORY: Fake Anime', exact: true }).click();
+    await answerConfirm(page, 'Remove "Fake Anime" from the history?', 'REMOVE');
     await expect(page.getByText('// NOTHING OPENED YET. SEARCH AN ANIME OR PLAY AN EPISODE.')).toBeVisible();
 });
 
@@ -599,6 +605,7 @@ test('the history of the anime survives closing the app and can be cleared', asy
     await expect(reopened.locator('.history__title')).toHaveText(['Fake Anime']);
 
     await reopened.getByRole('button', { name: 'CLEAR HISTORY', exact: true }).click();
+    await answerConfirm(reopened, 'Clear the history?', 'CLEAR HISTORY');
     await expect(reopened.getByText('// NOTHING OPENED YET. SEARCH AN ANIME OR PLAY AN EPISODE.')).toBeVisible();
 });
 
@@ -908,7 +915,7 @@ test('asks for the subtitles in the language of the app, and in another one when
     await openAnimeTab(page);
     await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
     await page.getByRole('button', { name: 'REMOVE SERIES: Fake Anime' }).click();
-    await page.getByRole('button', { name: 'CONFIRM' }).click();
+    await answerConfirm(page, 'Remove the series "Fake Anime"?', 'REMOVE');
     await page.getByRole('button', { name: 'SEARCH', exact: true }).first().click();
     await openFirstResult(page);
     await downloadFromLibrary(page, [1]);
@@ -1042,6 +1049,7 @@ test('cancelling a download ends the process: the file is never finished', async
     await expect(job.locator('.badge--running')).toHaveText('DOWNLOADING');
     await expect(job.getByText('25.0%')).toBeVisible();
     await job.getByRole('button', { name: 'CANCEL' }).click();
+    await answerConfirm(page, 'Cancel this download?', 'CANCEL');
     await expect(job.locator('.badge--cancelled')).toHaveText('CANCELLED');
 
     // The fake would have written the file five seconds after it started: it must not, because nothing is left running.
@@ -1134,6 +1142,7 @@ test('an episode paused when the app was closed is in the downloads again, and c
     await reopened.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
     await reopened.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
     await reopened.getByRole('button', { name: 'CANCEL: Fake Anime EP 1' }).click();
+    await answerConfirm(reopened, 'Cancel this download?', 'CANCEL');
     await expect(reopened.getByTestId('anime-episode').locator('.history__meta').first()).toHaveText('CANCELLED');
     await expect(reopened.getByRole('button', { name: 'CANCEL: Fake Anime EP 1' })).toHaveCount(0);
     expect(existsSync(episodeFolder)).toBe(false);
@@ -1303,7 +1312,7 @@ test('removes a series with its files and its folder', async () => {
     await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
     await page.getByRole('button', { name: 'Series options: Fake Anime' }).click();
     await page.getByRole('button', { name: 'REMOVE SERIES: Fake Anime' }).click();
-    await page.getByRole('button', { name: 'CONFIRM' }).click();
+    await answerConfirm(page, 'Remove the series "Fake Anime"?', 'REMOVE');
 
     await expect(page.getByText('// THE LIBRARY IS EMPTY. SEARCH AN ANIME AND ADD IT TO THE LIBRARY.')).toBeVisible();
     await expect.poll(() => {
@@ -1500,6 +1509,9 @@ test.describe('series and seasons', () => {
         // Its own screen has the seasons with their buttons, and a way back.
         await card.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
         await expect(page.locator('.season__chip')).toHaveText(['SEASON 1', 'SEASON 2']);
+        // Each season has its own cover (or the block that says there is none) in its row.
+        await expect(page.getByTestId('anime-season-cover')).toHaveCount(2);
+        await expect(page.getByTestId('anime-season-cover').locator('.cover')).toHaveCount(2);
         await expect(page.getByTestId('anime-season')).toHaveCount(2);
         await expect(page.getByTestId('anime-season').getByRole('heading', { level: 4 })).toHaveText(['Fake Anime', 'Fake Anime 2']);
         await page.getByRole('button', { name: 'BACK TO LIBRARY', exact: true }).click();
@@ -1609,7 +1621,7 @@ test.describe('series and seasons', () => {
         await expect(blocked).toBeDisabled();
         await expect(blocked).toHaveAttribute('title', 'This anime gives its name to the series. To remove it, remove the whole series.');
         await second.getByRole('button', { name: 'REMOVE ANIME: Fake Anime 2' }).click();
-        await page.getByRole('button', { name: 'CONFIRM' }).click();
+        await answerConfirm(page, 'Remove "Fake Anime 2"?', 'REMOVE');
         await expect(page.getByTestId('anime-season')).toHaveCount(1);
         await page.getByRole('button', { name: 'BACK TO LIBRARY', exact: true }).click();
         await expect(page.getByTestId('anime-card')).toHaveCount(1);
@@ -2716,8 +2728,8 @@ test.describe('library of the search', () => {
         await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
         await page.getByRole('button', { name: 'Series options: Fake Anime' }).click();
         await page.getByRole('button', { name: 'REMOVE SERIES: Fake Anime' }).click();
-        await expect(page.getByText('The files are deleted from the disk too.')).toBeVisible();
-        await page.getByRole('button', { name: 'CONFIRM' }).click();
+        await expect(page.getByRole('dialog', { name: 'Remove the series "Fake Anime"?' })).toContainText('their downloaded episodes are deleted from the disk too.');
+        await answerConfirm(page, 'Remove the series "Fake Anime"?', 'REMOVE');
         await expect(page.getByText('// THE LIBRARY IS EMPTY. SEARCH AN ANIME AND ADD IT TO THE LIBRARY.')).toBeVisible();
     });
 });
@@ -2861,6 +2873,7 @@ test.describe('translating subtitles with a language model', () => {
         }).not.toContain(TOKEN);
 
         await page.getByRole('button', { name: 'REMOVE TOKEN' }).click();
+        await answerConfirm(page, 'Remove the token?', 'REMOVE TOKEN');
         await expect(page.getByText('No token is saved for this provider.')).toBeVisible();
         expect(JSON.parse(readFileSync(join(userData, 'llm-tokens.json'), 'utf-8'))).toEqual({});
     });
@@ -2962,6 +2975,7 @@ test.describe('translating subtitles with a language model', () => {
         }).toBe(1);
 
         await translate.getByRole('button', { name: 'CANCEL TRANSLATION' }).click();
+        await answerConfirm(page, 'Cancel the translation?', 'CANCEL TRANSLATION');
         await expect(translate.getByRole('button', { name: 'TRANSLATE', exact: true })).toBeEnabled();
         await expect(translate.getByRole('alert')).toHaveCount(0);
         expect(existsSync(translatedFile(1))).toBe(false);
@@ -3418,6 +3432,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         ).toEqual(['/v1/audio/translations', '/v1/audio/transcriptions', '/v1/audio/transcriptions']);
 
         await create.getByRole('button', { name: 'CANCEL', exact: true }).click();
+        await answerConfirm(page, 'Cancel the subtitle?', 'CANCEL');
         await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeEnabled();
         await expect(create.getByRole('alert')).toHaveCount(0);
         expect(existsSync(generatedFile('English'))).toBe(false);
@@ -3475,6 +3490,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         }).toBe(1);
 
         await create.getByRole('button', { name: 'CANCEL', exact: true }).click();
+        await answerConfirm(page, 'Cancel the subtitle?', 'CANCEL');
         await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeEnabled();
         await expect(create.getByRole('alert')).toHaveCount(0);
         expect(existsSync(generatedFile('Japanese'))).toBe(false);

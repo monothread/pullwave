@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeHistoryEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -7,6 +7,7 @@ import { makeAnime } from '../../helpers/animeFixtures';
 import { AnimeHistory } from '@renderer/components/AnimeHistory';
 import { INITIAL_SEARCH, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 const initialApp = useAppStore.getState();
@@ -89,6 +90,9 @@ describe('AnimeHistory', () => {
         render(<AnimeHistory />);
 
         await user.click(screen.getByRole('button', { name: 'REMOVE FROM HISTORY: Bleach' }));
+        expect(mock.api.removeAnimeHistory).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Remove "Bleach" from the history?')).getByText('Only the entry goes. Nothing is deleted from the disk.')).toBeInTheDocument();
+        await answerDialog(user, 'Remove "Bleach" from the history?', 'REMOVE');
         expect(mock.api.removeAnimeHistory).toHaveBeenCalledWith(2);
         expect(useAnimeStore.getState().history).toEqual([OPENED]);
         expect(screen.queryByText('Bleach')).not.toBeInTheDocument();
@@ -100,9 +104,29 @@ describe('AnimeHistory', () => {
         render(<AnimeHistory />);
 
         await user.click(screen.getByRole('button', { name: 'CLEAR HISTORY' }));
+        expect(mock.api.clearAnimeHistory).not.toHaveBeenCalled();
+        expect(within(confirmDialog('Clear the history?')).getByText('Only the list goes. Downloaded files stay on the disk.')).toBeInTheDocument();
+        await answerDialog(user, 'Clear the history?', 'CLEAR HISTORY');
         expect(mock.api.clearAnimeHistory).toHaveBeenCalledTimes(1);
         expect(useAnimeStore.getState().history).toEqual([]);
         expect(screen.getByText('// NOTHING OPENED YET. SEARCH AN ANIME OR PLAY AN EPISODE.')).toBeInTheDocument();
+    });
+
+    it('keeps the history and the entry when the user keeps them, presses Esc or clicks outside the window', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ history: [WATCHED, OPENED] });
+        render(<AnimeHistory />);
+
+        await user.click(screen.getByRole('button', { name: 'CLEAR HISTORY' }));
+        await answerDialog(user, 'Clear the history?', 'KEEP');
+        await user.click(screen.getByRole('button', { name: 'REMOVE FROM HISTORY: Bleach' }));
+        await user.keyboard('{Escape}');
+        await user.click(screen.getByRole('button', { name: 'CLEAR HISTORY' }));
+        fireEvent.mouseDown(document.querySelector('.modal-backdrop') as HTMLElement);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.clearAnimeHistory).not.toHaveBeenCalled();
+        expect(mock.api.removeAnimeHistory).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState().history).toEqual([WATCHED, OPENED]);
     });
 });
 
@@ -153,6 +177,7 @@ describe('AnimeHistory cards with a cover', () => {
         render(<AnimeHistory />);
 
         await user.click(screen.getByRole('button', { name: 'REMOVE FROM HISTORY: Naruto' }));
+        await answerDialog(user, 'Remove "Naruto" from the history?', 'REMOVE');
 
         expect(mock.api.removeAnimeHistory).toHaveBeenCalledWith(1);
         expect(mock.api.listAnimeEpisodes).not.toHaveBeenCalled();

@@ -18,6 +18,7 @@ import { useModalDialog } from '../hooks/useModalDialog';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { SelectField } from './fields';
+import { ConfirmButton } from './ConfirmButton';
 import { GenerateProgressPanel } from './GenerateProgressPanel';
 import { formatBytes } from './jobStatus';
 import { generateEstimateFailureText, generateFailureText, providerName, speechProviderName } from './translateText';
@@ -153,15 +154,15 @@ export function SubtitleGenerateDialog({ episodeId, onGenerated, onClose }: Subt
                 )}
                 <div className="modal__actions">
                     {running ? (
-                        <button
-                            type="button"
+                        <ConfirmButton
                             className="btn btn--small"
-                            onClick={() => {
+                            dialog={{ title: t('confirm.generateCancel.title'), message: t('confirm.generateCancel.message'), confirmLabel: t('anime.generate.cancel'), cancelLabel: t('confirm.back') }}
+                            onConfirm={() => {
                                 void window.api.cancelAnimeSubtitleGeneration(episodeId);
                             }}
                         >
                             {t('anime.generate.cancel')}
-                        </button>
+                        </ConfirmButton>
                     ) : (
                         <button
                             type="button"

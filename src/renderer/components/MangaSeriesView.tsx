@@ -4,6 +4,8 @@ import { cleanSeriesName } from '@shared/series';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
+import { MangaCover } from './MangaCover';
+import { ConfirmButton } from './ConfirmButton';
 import { MangaGroupChips } from './MangaGroupChips';
 import { NewChaptersBadge } from './MangaLibrary';
 import { downloadedCount, downloadedTotals, newChapterCount, seasonLabel, type MangaLibraryGroup } from './mangaText';
@@ -117,6 +119,9 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                 <span className="section-label">{name}</span>
             </div>
             <article className="job job--done series" data-testid="manga-series-view">
+                <div className="series__cover" data-testid="manga-series-cover">
+                    <MangaCover url={group.entries[0]?.thumbnailUrl ?? null} />
+                </div>
                 <header className="job__head">
                     <h3 className="series__title" title={name}>
                         {name}
@@ -178,6 +183,9 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                     return (
                         <section key={manga.id} className="series__season" data-testid="manga-season">
                             <div className="season__row row--link">
+                                <span className="season__cover" data-testid="manga-season-cover">
+                                    <MangaCover url={manga.thumbnailUrl} />
+                                </span>
                                 <span className="season__chip" title={seasonLabel(manga, t)}>
                                     {seasonLabel(manga, t)}
                                 </span>
@@ -195,16 +203,16 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                                 <span className="season__meta">{t('manga.library.progress', { done: downloadedCount(manga), total: manga.chapters.length })}</span>
                                 <NewChaptersBadge count={newChapterCount([manga])} />
                                 <span className="season__actions">
-                                    <button
-                                        type="button"
+                                    <ConfirmButton
                                         className="btn btn--small btn--ghost"
-                                        aria-label={`${t('manga.series.removeFrom')}: ${manga.title}`}
-                                        onClick={() => {
+                                        ariaLabel={`${t('manga.series.removeFrom')}: ${manga.title}`}
+                                        dialog={{ title: t('confirm.removeFromSeries.title', { name: manga.title }), message: t('confirm.removeFromSeries.message'), confirmLabel: t('manga.series.removeFrom') }}
+                                        onConfirm={() => {
                                             void takeOutOfSeries(manga);
                                         }}
                                     >
                                         {t('manga.series.removeFrom')}
-                                    </button>
+                                    </ConfirmButton>
                                 </span>
                             </div>
                         </section>
