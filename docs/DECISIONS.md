@@ -715,3 +715,7 @@ New setting `jsRuntime` → `--js-runtimes <value>` (YouTube needs a JS runtime 
 - **Seasons in the reader:** at the edge of a season `goToChapter` opens the first (or last) chapter of the closest season of the series, by `season`, that has chapters (`adjacentSeason`, `readerChapters`); `openReader` takes the manga being read, so the history and the buttons follow the new season. `hasNext`/`hasPrevious` count the neighbour season too.
 - **Seasons in the player:** `nextDownloadedEpisode`/`previousDownloadedEpisode` take the library and give `{ anime, episode }`; the neighbour season must have the same audio and a downloaded episode. A neighbour episode inside the season that is not downloaded still gives nothing.
 - **Searches:** `setSearchQuery` (SEARCH tab) and `setQuery` (search inside a source) clear the results when the text is erased; the answers of a search still going on are dropped.
+
+## D-109 · 2026-10-24 — The zones between chapters of the reader also look at the neighbour season
+- **Why:** in 0.21.8 the buttons crossed to the next or previous season, but the zones of the scroll (`ReaderChapterZone`) only looked at the chapters of the season being read and said "This is the last chapter." at its end.
+- **How:** `neighbourChapter` (`mangaText.ts`) gives the chapter next to the current one, or at the edge the first (last) one of `adjacentSeason`; the reader uses it for the zones and for `hasNext`/`hasPrevious`.
