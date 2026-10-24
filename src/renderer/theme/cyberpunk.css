@@ -172,6 +172,7 @@ body::after {
 }
 
 .tab:hover { color: var(--cyan); }
+.tab .badge { margin-left: 8px; }
 
 /* The settings tabs are a gear at the right end of their bar. */
 /* The gear is bigger than the words, and takes less room above and below, so the bar is no taller than with only words. */

@@ -18,6 +18,7 @@ import {
     seriesNames,
     WATCHED_RATIO
 } from '@renderer/components/animeText';
+import type { AnimeEpisodeRecord } from '@shared/anime';
 import { createTranslator } from '@shared/i18n';
 import { makeAnime, makeAnimeJob, makeEpisode } from '../../helpers/animeFixtures';
 
@@ -104,16 +105,42 @@ describe('nextDownloadedEpisode', () => {
     const anime = makeAnime([first, second, third]);
 
     it('gives the episode that follows when it is downloaded', () => {
-        expect(nextDownloadedEpisode(anime, first)).toBe(second);
+        expect(nextDownloadedEpisode([anime], anime, first)).toEqual({ anime, episode: second });
     });
 
     it('gives null when the next one is not downloaded', () => {
-        expect(nextDownloadedEpisode(anime, second)).toBeNull();
+        expect(nextDownloadedEpisode([anime], anime, second)).toBeNull();
     });
 
     it('gives null after the last episode and for an episode that is not in the anime', () => {
-        expect(nextDownloadedEpisode(anime, third)).toBeNull();
-        expect(nextDownloadedEpisode(anime, makeEpisode({ id: 99 }))).toBeNull();
+        expect(nextDownloadedEpisode([anime], anime, third)).toBeNull();
+        expect(nextDownloadedEpisode([anime], anime, makeEpisode({ id: 99 }))).toBeNull();
+    });
+
+    describe('at the end of a season', () => {
+        const seasonOne = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' })], { id: 10, series: 'Frieren', season: 1 });
+        const emptySeason = makeAnime([makeEpisode({ id: 3, number: '1', status: 'queued' })], { id: 11, series: 'frieren', season: 2 });
+        const seasonThree = makeAnime([makeEpisode({ id: 4, number: '1', status: 'error' }), makeEpisode({ id: 5, number: '2' })], { id: 12, series: 'Frieren', season: 3 });
+        const library = [seasonThree, seasonOne, emptySeason];
+
+        it('goes to the first downloaded episode of the next season that has one', () => {
+            expect(nextDownloadedEpisode(library, seasonOne, seasonOne.episodes[1] as AnimeEpisodeRecord)).toEqual({ anime: seasonThree, episode: seasonThree.episodes[1] });
+        });
+
+        it('gives null after the last season', () => {
+            expect(nextDownloadedEpisode(library, seasonThree, seasonThree.episodes[1] as AnimeEpisodeRecord)).toBeNull();
+        });
+
+        it('does not leave the season when the anime has no series', () => {
+            const alone = makeAnime([makeEpisode({ id: 1 })], { id: 20 });
+            expect(nextDownloadedEpisode([alone, seasonThree], alone, alone.episodes[0] as AnimeEpisodeRecord)).toBeNull();
+        });
+
+        it('ignores seasons of another series or another audio', () => {
+            const other = makeAnime([makeEpisode({ id: 6 })], { id: 13, series: 'Naruto', season: 2 });
+            const dub = makeAnime([makeEpisode({ id: 7 })], { id: 14, series: 'Frieren', season: 2, audio: 'dub' });
+            expect(nextDownloadedEpisode([seasonOne, other, dub], seasonOne, seasonOne.episodes[1] as AnimeEpisodeRecord)).toBeNull();
+        });
     });
 });
 
@@ -124,16 +151,30 @@ describe('previousDownloadedEpisode', () => {
     const anime = makeAnime([first, second, third]);
 
     it('gives the episode that comes before when it is downloaded', () => {
-        expect(previousDownloadedEpisode(anime, third)).toBe(second);
+        expect(previousDownloadedEpisode([anime], anime, third)).toEqual({ anime, episode: second });
     });
 
     it('gives null when the previous one is not downloaded', () => {
-        expect(previousDownloadedEpisode(anime, second)).toBeNull();
+        expect(previousDownloadedEpisode([anime], anime, second)).toBeNull();
     });
 
     it('gives null before the first episode and for an episode that is not in the anime', () => {
-        expect(previousDownloadedEpisode(anime, first)).toBeNull();
-        expect(previousDownloadedEpisode(anime, makeEpisode({ id: 99 }))).toBeNull();
+        expect(previousDownloadedEpisode([anime], anime, first)).toBeNull();
+        expect(previousDownloadedEpisode([anime], anime, makeEpisode({ id: 99 }))).toBeNull();
+    });
+
+    describe('at the start of a season', () => {
+        const seasonOne = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' })], { id: 10, series: 'Frieren', season: 1 });
+        const seasonTwo = makeAnime([makeEpisode({ id: 3, number: '1' })], { id: 11, series: 'Frieren', season: 2 });
+        const library = [seasonTwo, seasonOne];
+
+        it('goes to the last downloaded episode of the previous season', () => {
+            expect(previousDownloadedEpisode(library, seasonTwo, seasonTwo.episodes[0] as AnimeEpisodeRecord)).toEqual({ anime: seasonOne, episode: seasonOne.episodes[1] });
+        });
+
+        it('gives null before the first season', () => {
+            expect(previousDownloadedEpisode(library, seasonOne, seasonOne.episodes[0] as AnimeEpisodeRecord)).toBeNull();
+        });
     });
 });
 

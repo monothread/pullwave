@@ -37,7 +37,7 @@ import type {
     MangaSummary
 } from '@shared/manga';
 import { resolveAppLanguage } from '../i18n/language';
-import { ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, localDetails, type ExtensionFilter } from '../components/mangaText';
+import { adjacentSeason, ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, localDetails, readerChapters, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter, type TermKind } from '../components/mangaFilterSearch';
 import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources } from '../components/mangaSearchSources';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
@@ -293,7 +293,7 @@ interface MangaState {
     setQuery: (query: string) => void;
     // Lists the mangas of the source, from the first page.
     // Opens the reader on a chapter of the list (in reading order).
-    openReader: (mangaTitle: string, chapters: ReaderChapter[], index: number, resume?: boolean, entry?: 'start' | 'end') => Promise<void>;
+    openReader: (mangaTitle: string, chapters: ReaderChapter[], index: number, resume?: boolean, entry?: 'start' | 'end', manga?: MangaSummary) => Promise<void>;
     // Goes to the next chapter (1) or the previous one (-1); false when there is none.
     // `byScroll`: the chapter is reached by scrolling through the zone between chapters (see MangaReaderState.entry).
     goToChapter: (step: 1 | -1, byScroll?: boolean) => Promise<boolean>;
@@ -784,6 +784,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         setSearchQuery: (query) => {
+            if (query.trim().length === 0) {
+                // Clearing the field clears the results too, and the answers of a search that is still going on are dropped.
+                searchRun += 1;
+                set({ search: EMPTY_SEARCH });
+                return;
+            }
             set((state) => {
                 return { search: { ...state.search, query } };
             });
@@ -902,6 +908,11 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         setQuery: (query) => {
+            // Clearing the field of the search clears its results too (the answer of a list still going on is dropped: the query changed).
+            if (query.trim().length === 0 && get().browse.mode === 'search') {
+                patchBrowse({ query, status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
+                return;
+            }
             patchBrowse({ query });
         },
 
@@ -1037,12 +1048,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
             set({ selection: { ...current, status: 'ready', details: result.value.details, chapters: result.value.chapters }, selectionRefresh: { loading: false, error: null } });
         },
 
-        openReader: async (mangaTitle, chapters, index, resume = false, entry) => {
+        openReader: async (mangaTitle, chapters, index, resume = false, entry, readManga) => {
             const chapter = chapters[index];
             if (chapter === undefined) {
                 return;
             }
-            const manga = get().selection?.manga ?? get().reader.manga ?? null;
+            const manga = readManga ?? get().selection?.manga ?? get().reader.manga ?? null;
             set({ reader: { status: 'loading', mangaTitle, chapters, index, pages: [], local: false, missing: [], error: null, manga, resume, ...(entry === undefined ? {} : { entry }) } });
             const result = await window.api.manga.readPages({ chapterRemoteId: chapter.remoteId, libraryChapterId: chapter.libraryChapterId });
             // The answer for a chapter that is no longer the one on the screen is dropped.
@@ -1059,11 +1070,23 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         goToChapter: async (step, byScroll = false) => {
             const { reader } = get();
-            const target = reader.index + step;
-            if (reader.status === 'closed' || reader.chapters[target] === undefined) {
+            if (reader.status === 'closed') {
                 return false;
             }
-            await get().openReader(reader.mangaTitle, reader.chapters, target, false, byScroll ? (step > 0 ? 'start' : 'end') : undefined);
+            const entry = byScroll ? (step > 0 ? 'start' : 'end') : undefined;
+            const target = reader.index + step;
+            if (reader.chapters[target] !== undefined) {
+                // The manga stays the one being read, not the one open behind the reader (it differs after a change of season).
+                await get().openReader(reader.mangaTitle, reader.chapters, target, false, entry, reader.manga ?? undefined);
+                return true;
+            }
+            // At the edge of a season the reading goes on in the one that follows (or comes before) it in the series.
+            const season = adjacentSeason(get().library, reader.manga, step);
+            if (season === null) {
+                return false;
+            }
+            const chapters = readerChapters(season);
+            await get().openReader(season.title, chapters, step > 0 ? 0 : chapters.length - 1, false, entry, { remoteId: season.remoteId, sourceId: season.sourceId, title: season.title, thumbnailUrl: season.thumbnailUrl });
             return true;
         },
 

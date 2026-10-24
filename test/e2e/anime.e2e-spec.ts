@@ -1439,6 +1439,38 @@ test.describe('series and seasons', () => {
         await waitForDownloaded(page);
     }
 
+    test('goes on in the player to the season that comes after (or before) in the series, with the next and the previous episode', async () => {
+        const { page } = session;
+        await openAnimeTab(page);
+        await openFirstResult(page);
+        await downloadFromLibrary(page, [1, 2, 3]);
+        await waitForDownloaded(page);
+        await downloadSecondEntry(page, 'Fake Anime', '2');
+
+        await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('button', { name: 'PLAY: Fake Anime EP 3' }).click();
+
+        // Inside the first season the buttons go from one episode to the other.
+        const last = page.getByRole('dialog', { name: 'Fake Anime · EP 3' });
+        await expect(last).toBeVisible();
+        await expect(last.locator('video')).toHaveAttribute('src', 'pullwave-media://episode/3');
+        await expect(last.getByRole('button', { name: 'PREVIOUS EPISODE' })).toBeVisible();
+        // The last episode of the first season: NEXT EPISODE goes to the first downloaded one of the second season.
+        await last.getByRole('button', { name: 'NEXT EPISODE' }).click();
+        const second = page.getByRole('dialog', { name: 'Fake Anime 2 · EP 1' });
+        await expect(second).toBeVisible();
+        await expect(second.locator('video')).toHaveAttribute('src', 'pullwave-media://episode/7');
+        // The second season is the last one, and its second episode is not downloaded.
+        await expect(second.getByRole('button', { name: 'NEXT EPISODE' })).toHaveCount(0);
+
+        // PREVIOUS EPISODE, at the start of the second season, goes back to the last downloaded one of the first.
+        await second.getByRole('button', { name: 'PREVIOUS EPISODE' }).click();
+        await expect(last).toBeVisible();
+        await expect(last.locator('video')).toHaveAttribute('src', 'pullwave-media://episode/3');
+    });
+
     test('saves each anime in a season folder, suggesting the series, and joins two entries by hand into one card', async () => {
         const { page, animeDir } = session;
         await openAnimeTab(page);

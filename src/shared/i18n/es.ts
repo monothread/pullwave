@@ -905,6 +905,7 @@ export const es: Messages = {
     'manga.groups.show': 'MOSTRAR',
     'manga.groups.hidden': 'OCULTO',
     'manga.library.hiddenGroups': '{count} grupo(s) oculto(s). Abre GESTIONAR GRUPOS para mostrarlos otra vez.',
+    'manga.library.tabMatches': '{count} resultado(s) de la búsqueda',
     'manga.groups.save': 'GUARDAR',
     'manga.groups.cancel': 'CANCELAR',
     'manga.groups.delete': 'ELIMINAR',

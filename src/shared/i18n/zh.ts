@@ -899,6 +899,7 @@ export const zh: Messages = {
     'manga.groups.show': '显示',
     'manga.groups.hidden': '已隐藏',
     'manga.library.hiddenGroups': '已隐藏 {count} 个分组。打开分组管理可重新显示。',
+    'manga.library.tabMatches': '搜索匹配 {count} 项',
     'manga.groups.save': '保存',
     'manga.groups.cancel': '取消',
     'manga.groups.delete': '删除',

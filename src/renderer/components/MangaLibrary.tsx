@@ -10,7 +10,7 @@ import { MangaDetail } from './MangaDetail';
 import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
 import { RowLink } from './RowLink';
-import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesSearch, newChapterCount, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
+import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 
 interface MangaRowProps {
     manga: LibraryManga;
@@ -264,8 +264,18 @@ export function MangaLibrary() {
     const hiddenCount = groups.length - visibleGroups.length;
     const currentGroup = activeGroup(library, visibleGroups, libraryGroup);
     const shown = inGroup(library, currentGroup).filter((manga) => {
-        return matchesSearch(manga.title, search) || (manga.series !== null && matchesSearch(manga.series, search));
+        return matchesManga(manga, search);
     });
+    // While searching, the tabs that hold a match say how many.
+    const tabMatches = searchMatchesByTab(library, [...(hasAllTab ? [null] : []), ...visibleGroups.map((group) => { return group.id; })], search);
+    const matchBadge = (groupId: number | null): ReactNode => {
+        const count = tabMatches.get(groupId);
+        return count === undefined ? null : (
+            <span className="badge" aria-label={t('manga.library.tabMatches', { count })}>
+                {count}
+            </span>
+        );
+    };
     const cards = groupLibrary(shown);
     return (
         <section className="manga__library" aria-label={t('manga.nav.library')}>
@@ -295,6 +305,7 @@ export function MangaLibrary() {
                             }}
                         >
                             {t('manga.library.allGroups')}
+                            {matchBadge(null)}
                         </button>
                     )}
                     {visibleGroups.map((group) => {
@@ -309,6 +320,7 @@ export function MangaLibrary() {
                                 }}
                             >
                                 {group.name}
+                                {matchBadge(group.id)}
                             </button>
                         );
                     })}

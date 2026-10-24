@@ -921,6 +921,7 @@ export const en = {
     'manga.groups.show': 'SHOW',
     'manga.groups.hidden': 'HIDDEN',
     'manga.library.hiddenGroups': '{count} hidden group(s). Open MANAGE GROUPS to show them again.',
+    'manga.library.tabMatches': '{count} match(es) for the search',
     'manga.groups.save': 'SAVE',
     'manga.groups.cancel': 'CANCEL',
     'manga.groups.delete': 'DELETE',

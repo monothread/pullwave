@@ -617,6 +617,38 @@ test.describe('manga section', () => {
         await expect(session.page.getByText('Results: 15')).toBeVisible();
     });
 
+    test('clears the results of the search of all the sources and of the search of a source when the name is erased', async () => {
+        fake.otherSource = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await goTo(session.page, 'BROWSE');
+        await session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'SEARCH', exact: true }).click();
+        const name = session.page.getByLabel('Manga name');
+        await name.fill('bleach');
+        await name.press('Enter');
+        await expect(session.page.getByText('"bleach": found in 1 of 2 sources')).toBeVisible();
+        await expect(session.page.getByTestId('manga-search-source')).toHaveCount(2);
+        await name.fill('');
+        await expect(session.page.getByTestId('manga-search-source')).toHaveCount(0);
+        await expect(session.page.getByText('"bleach": found in 1 of 2 sources')).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'Open: Bleach' })).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'SEARCH', exact: true }).last()).toBeDisabled();
+
+        // The search inside a source: erasing the name takes the list away.
+        await goTo(session.page, 'BROWSE');
+        await backToSources(session.page);
+        await session.page.getByRole('button', { name: 'POPULAR: Fake Dex', exact: true }).click();
+        await session.page.getByRole('button', { name: 'SEARCH', exact: true }).last().click();
+        await name.fill('bleach');
+        await name.press('Enter');
+        await expect(session.page.getByRole('button', { name: 'Open: Bleach' })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'Open: One Piece' })).toHaveCount(0);
+        await name.fill('');
+        await expect(session.page.getByRole('button', { name: 'Open: Bleach' })).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'Open: One Piece' })).toHaveCount(0);
+    });
+
     test('lists the sources by name and has a search to find one', async () => {
         fake.otherSource = true;
         fake.otherSourceFirst = true;
@@ -2544,6 +2576,103 @@ test.describe('manga section', () => {
         await expect(session.page.getByRole('button', { name: 'SAVE SERIES' })).toBeDisabled();
         await session.page.getByLabel('Order').fill('2');
         await expect(session.page.getByRole('button', { name: 'SAVE SERIES' })).toBeEnabled();
+    });
+
+    test('says in the tabs where the mangas that match the search are, only while the user searches', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
+        for (const name of ['Mangas', 'Favorites']) {
+            await session.page.getByLabel('Name of the group').fill(name);
+            await session.page.getByRole('button', { name: 'CREATE', exact: true }).click();
+        }
+        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
+        await session.page.getByTestId('manga-entry').filter({ hasText: 'One Piece' }).getByRole('button', { name: 'Open: One Piece' }).click();
+        await openOrganize(session.page);
+        await session.page.getByRole('button', { name: 'Favorites', exact: true }).click();
+        await expect(session.page.getByRole('button', { name: 'Favorites', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+
+        // Bleach is in no group, so the tab of all (the one that is open) holds it; One Piece is in Favorites.
+        const tabs = session.page.getByRole('navigation', { name: 'Groups' });
+        const search = session.page.getByLabel('Search the library');
+        await expect(tabs.getByRole('button')).toHaveText(['ALL', 'Mangas', 'Favorites']);
+        await expect(tabs.locator('.badge')).toHaveCount(0);
+
+        await search.fill('one piece');
+        await expect(tabs.locator('.badge')).toHaveCount(1);
+        await expect(tabs.getByRole('button', { name: /Favorites/ }).locator('.badge')).toHaveText('1');
+        await expect(tabs.getByRole('button', { name: /Favorites/ }).locator('.badge')).toHaveAttribute('aria-label', '1 match(es) for the search');
+        await expect(session.page.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.')).toBeVisible();
+
+        await search.fill('bleach');
+        await expect(tabs.locator('.badge')).toHaveCount(1);
+        await expect(tabs.getByRole('button', { name: /ALL/ }).locator('.badge')).toHaveText('1');
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'Bleach' })).toBeVisible();
+
+        await search.fill('');
+        await expect(tabs.locator('.badge')).toHaveCount(0);
+        await expect(tabs.getByRole('button')).toHaveText(['ALL', 'Mangas', 'Favorites']);
+    });
+
+    test('goes on to the season that comes after (or before) in the series when the chapters of a season end', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').filter({ hasText: 'One Piece' }).getByRole('button', { name: 'Open: One Piece' }).click();
+        await openOrganize(session.page);
+        await session.page.getByLabel('Series', { exact: true }).fill('Pirates');
+        await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
+        await expect(session.page.getByText('In the series "Pirates", order 1.')).toBeVisible();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: Bleach' }).click();
+        await openOrganize(session.page);
+        await session.page.getByLabel('Series', { exact: true }).fill('pirates');
+        await session.page.getByLabel('Order').fill('2');
+        await session.page.getByRole('button', { name: 'SAVE SERIES' }).click();
+        await expect(session.page.getByText('In the series "Pirates", order 2.')).toBeVisible();
+
+        // From the first chapter of the second season, PREVIOUS goes to the last chapter of the first one.
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const previous = reader.getByRole('button', { name: 'PREVIOUS CHAPTER', exact: true });
+        const next = reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true });
+        await expect(reader.getByText('Bleach · Romance Dawn')).toBeVisible();
+        await expect(previous).toBeEnabled();
+        await previous.click();
+        await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await expect(next).toBeEnabled();
+
+        // And NEXT, at the end of the first season, goes to the first chapter of the second one.
+        await next.click();
+        await expect(reader.getByText('Bleach · Romance Dawn')).toBeVisible();
+        await next.click();
+        await expect(reader.getByText('Bleach · The Great Race')).toBeVisible();
+        // There is no season after the last one.
+        await expect(next).toBeDisabled();
+
+        // The first chapter of the first season has nothing before it.
+        await previous.click();
+        await previous.click();
+        await previous.click();
+        await expect(reader.getByText('One Piece · Romance Dawn')).toBeVisible();
+        await expect(previous).toBeDisabled();
     });
 
     test('has the tabs gathered in one list on a very narrow window', async () => {

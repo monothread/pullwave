@@ -50,23 +50,70 @@ export function resumePosition(episode: AnimeEpisodeRecord): number | null {
     return positionSeconds;
 }
 
-// The episode next to this one in the library (after it for 1, before it for -1), if it is already downloaded.
-function adjacentDownloadedEpisode(anime: LibraryAnime, current: AnimeEpisodeRecord, direction: 1 | -1): AnimeEpisodeRecord | null {
+// An episode to play next, and the anime of the library it belongs to (the season after or before the one being watched, at the edges).
+export interface PlayableEpisode {
+    anime: LibraryAnime;
+    episode: AnimeEpisodeRecord;
+}
+
+// The downloaded episodes of the anime, in reading order.
+function downloadedEpisodes(anime: LibraryAnime): AnimeEpisodeRecord[] {
+    return anime.episodes.filter((episode) => {
+        return episode.status === 'done';
+    });
+}
+
+// The seasons of the series of the anime (the same audio too), in the order of the series.
+function seasonsOfSeries(library: readonly LibraryAnime[], anime: LibraryAnime): LibraryAnime[] {
+    if (anime.series === null || anime.season === null) {
+        return [anime];
+    }
+    const series = anime.series;
+    return library
+        .filter((candidate) => {
+            return candidate.season !== null && candidate.audio === anime.audio && candidate.series !== null && foldSeries(candidate.series) === foldSeries(series);
+        })
+        .sort((first, second) => {
+            return (first.season ?? 0) - (second.season ?? 0) || first.id - second.id;
+        });
+}
+
+// The episode that comes after (1) or before (-1) the current one, if it is already downloaded. At the end of a season it is the first (or
+// last) downloaded episode of the next (or previous) season of the series that has one.
+function adjacentDownloadedEpisode(library: readonly LibraryAnime[], anime: LibraryAnime, current: AnimeEpisodeRecord, direction: 1 | -1): PlayableEpisode | null {
     const position = anime.episodes.findIndex((episode) => {
         return episode.id === current.id;
     });
-    const adjacent = position === -1 ? undefined : anime.episodes[position + direction];
-    return adjacent?.status === 'done' ? adjacent : null;
+    if (position === -1) {
+        return null;
+    }
+    const adjacent = anime.episodes[position + direction];
+    if (adjacent !== undefined) {
+        return adjacent.status === 'done' ? { anime, episode: adjacent } : null;
+    }
+    const seasons = seasonsOfSeries(library, anime);
+    const seasonPosition = seasons.findIndex((season) => {
+        return season.id === anime.id;
+    });
+    const neighbours = direction === 1 ? seasons.slice(seasonPosition + 1) : seasons.slice(0, seasonPosition).reverse();
+    for (const season of neighbours) {
+        const episodes = downloadedEpisodes(season);
+        const episode = direction === 1 ? episodes[0] : episodes[episodes.length - 1];
+        if (episode !== undefined) {
+            return { anime: season, episode };
+        }
+    }
+    return null;
 }
 
 // The episode that follows in the library, if it is already downloaded.
-export function nextDownloadedEpisode(anime: LibraryAnime, current: AnimeEpisodeRecord): AnimeEpisodeRecord | null {
-    return adjacentDownloadedEpisode(anime, current, 1);
+export function nextDownloadedEpisode(library: readonly LibraryAnime[], anime: LibraryAnime, current: AnimeEpisodeRecord): PlayableEpisode | null {
+    return adjacentDownloadedEpisode(library, anime, current, 1);
 }
 
 // The episode that comes before in the library, if it is already downloaded.
-export function previousDownloadedEpisode(anime: LibraryAnime, current: AnimeEpisodeRecord): AnimeEpisodeRecord | null {
-    return adjacentDownloadedEpisode(anime, current, -1);
+export function previousDownloadedEpisode(library: readonly LibraryAnime[], anime: LibraryAnime, current: AnimeEpisodeRecord): PlayableEpisode | null {
+    return adjacentDownloadedEpisode(library, anime, current, -1);
 }
 
 export function isWatched(positionSeconds: number, durationSeconds: number): boolean {

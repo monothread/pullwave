@@ -28,6 +28,7 @@ import {
     type ReaderPrefs
 } from './readerPrefs';
 import { SETTINGS_ICON } from './TabButton';
+import { adjacentSeason } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { useScrollFraction } from '../hooks/useScrollFraction';
 import { useChapterZones } from '../hooks/useChapterZones';
@@ -57,6 +58,9 @@ export function MangaReader() {
     const t = useTranslator();
     const reader = useMangaStore((state) => {
         return state.reader;
+    });
+    const library = useMangaStore((state) => {
+        return state.library;
     });
     const goToChapter = useMangaStore((state) => {
         return state.goToChapter;
@@ -130,8 +134,9 @@ export function MangaReader() {
     const total = reader.pages.length;
     const continuous = prefs.mode !== 'single';
     const scale = prefs.mode === 'webtoon' ? 'width' : prefs.scale;
-    const hasPrevious = reader.index > 0;
-    const hasNext = reader.index < reader.chapters.length - 1;
+    // At the edge of a season the reading goes on in the neighbour one of the series, when there is one.
+    const hasPrevious = reader.index > 0 || adjacentSeason(library, reader.manga, -1) !== null;
+    const hasNext = reader.index < reader.chapters.length - 1 || adjacentSeason(library, reader.manga, 1) !== null;
 
     // A chapter that is ready starts where it was left (the last page counts as read, so it starts over); anything else starts at the first.
     // Done while rendering, so the first picture is the right one.

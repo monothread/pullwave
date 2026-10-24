@@ -900,6 +900,7 @@ export const ja: Messages = {
     'manga.groups.show': '表示',
     'manga.groups.hidden': '非表示中',
     'manga.library.hiddenGroups': '非表示のグループ: {count}。グループの管理から再表示できます。',
+    'manga.library.tabMatches': '検索に一致: {count}',
     'manga.groups.save': '保存',
     'manga.groups.cancel': 'キャンセル',
     'manga.groups.delete': '削除',

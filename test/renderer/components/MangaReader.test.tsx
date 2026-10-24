@@ -7,7 +7,7 @@ import { MangaReader } from '@renderer/components/MangaReader';
 import { loadLastChapter, loadLastPosition, loadProgress, loadReaderPrefs, saveLastPosition, PREFS_KEY, progressKey, saveProgress, saveReaderPrefs } from '@renderer/components/readerPrefs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaReaderState, type ReaderChapter } from '@renderer/store/mangaStore';
-import { makeLibraryManga } from '../../helpers/mangaFixtures';
+import { makeChapterRecord, makeLibraryManga } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -142,6 +142,52 @@ describe('MangaReader single page', () => {
         fireEvent.keyDown(window, { key: 'End' });
         fireEvent.keyDown(window, { key: 'ArrowRight' });
         expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+    });
+
+    describe('across the seasons of a series', () => {
+        const SEASON_ONE = makeLibraryManga([makeChapterRecord({ id: 10, remoteId: 100, name: 'S1', number: 1, sourceOrder: 1 })], { id: 1, remoteId: 7, title: 'One Piece', series: 'One Piece', season: 1 });
+        const SEASON_TWO = makeLibraryManga([makeChapterRecord({ id: 20, remoteId: 200, name: 'S2 first', number: 1, sourceOrder: 1 }), makeChapterRecord({ id: 21, remoteId: 201, name: 'S2 last', number: 2, sourceOrder: 2 })], {
+            id: 2,
+            remoteId: 8,
+            title: 'One Piece 2',
+            series: 'One Piece',
+            season: 2
+        });
+        const SUMMARY = { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null };
+
+        beforeEach(() => {
+            useMangaStore.setState({ library: [SEASON_TWO, SEASON_ONE] });
+        });
+
+        it('offers the next chapter at the end of the season and opens the first chapter of the next one', async () => {
+            const user = userEvent.setup();
+            open({ index: 2, manga: SUMMARY });
+            render(<MangaReader />);
+            expect(screen.getByRole('button', { name: 'NEXT CHAPTER' })).toBeEnabled();
+            await user.click(screen.getByRole('button', { name: 'NEXT CHAPTER' }));
+            expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 200, libraryChapterId: 20 });
+            expect(useMangaStore.getState().reader).toMatchObject({ mangaTitle: 'One Piece 2', index: 0 });
+        });
+
+        it('offers the previous chapter at the start of the season and opens the last chapter of the previous one', async () => {
+            const user = userEvent.setup();
+            open({ index: 0, mangaTitle: 'One Piece 2', manga: { remoteId: 8, sourceId: '123', title: 'One Piece 2', thumbnailUrl: null }, chapters: [{ remoteId: 200, libraryChapterId: 20, name: 'S2 first', number: 1 }] });
+            render(<MangaReader />);
+            await user.click(screen.getByRole('button', { name: 'PREVIOUS CHAPTER' }));
+            expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 100, libraryChapterId: 10 });
+            expect(useMangaStore.getState().reader).toMatchObject({ mangaTitle: 'One Piece', index: 0 });
+        });
+
+        it('disables the buttons at the ends of the first and the last seasons', () => {
+            open({ index: 0, manga: SUMMARY, chapters: [{ remoteId: 100, libraryChapterId: 10, name: 'S1', number: 1 }] });
+            const { unmount } = render(<MangaReader />);
+            expect(screen.getByRole('button', { name: 'PREVIOUS CHAPTER' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'NEXT CHAPTER' })).toBeEnabled();
+            unmount();
+            open({ index: 0, mangaTitle: 'One Piece 2', manga: { remoteId: 8, sourceId: '123', title: 'One Piece 2', thumbnailUrl: null }, chapters: [{ remoteId: 201, libraryChapterId: 21, name: 'S2 last', number: 2 }] });
+            render(<MangaReader />);
+            expect(screen.getByRole('button', { name: 'NEXT CHAPTER' })).toBeDisabled();
+        });
     });
 
     it('goes to the previous chapter before the first page', () => {

@@ -422,6 +422,19 @@ describe('mangaStore browsing', () => {
         expect(state().browse.query).toBe('naruto');
     });
 
+    it('clears the list of the search when its text is erased, and only then', () => {
+        const listed = { sourceId: '5', mode: 'search' as const, query: 'naruto', status: 'done' as const, items: [makeSummary()], page: 3, hasNextPage: true, error: FAILURE };
+        useMangaStore.setState({ browse: { ...state().browse, ...listed } });
+        state().setQuery('narut');
+        expect(state().browse).toMatchObject({ query: 'narut', status: 'done', items: [makeSummary()], page: 3, hasNextPage: true });
+        state().setQuery('   ');
+        expect(state().browse).toMatchObject({ query: '   ', status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
+        // The list of the other modes does not come from the text: erasing it leaves the list.
+        useMangaStore.setState({ browse: { ...state().browse, ...listed, mode: 'popular' } });
+        state().setQuery('');
+        expect(state().browse).toMatchObject({ query: '', status: 'done', items: [makeSummary()] });
+    });
+
     describe('runList', () => {
         beforeEach(() => {
             useMangaStore.setState({ browse: { ...state().browse, sourceId: '5', mode: 'popular', query: '' } });
@@ -1291,6 +1304,77 @@ describe('mangaStore reader', () => {
         expect(state().reader).toMatchObject({ status: 'ready', index: 2, resume: false });
         await state().goToChapterIndex(0);
         expect(state().reader).toMatchObject({ status: 'ready', index: 0, resume: false });
+    });
+
+    describe('chapters across the seasons of a series', () => {
+        const SEASON_ONE = makeLibraryManga(
+            [makeChapterRecord({ id: 11, remoteId: 101, name: 'S1 Chapter 2', number: 2, sourceOrder: 2 }), makeChapterRecord({ id: 10, remoteId: 100, name: 'S1 Chapter 1', number: 1, sourceOrder: 1 })],
+            { id: 1, remoteId: 7, title: 'Frieren', series: 'Frieren', season: 1 }
+        );
+        const EMPTY_SEASON = makeLibraryManga([], { id: 2, remoteId: 8, title: 'Frieren Recap', series: 'frieren', season: 2 });
+        const SEASON_THREE = makeLibraryManga(
+            [makeChapterRecord({ id: 31, remoteId: 301, name: 'S3 Chapter 2', number: 2, sourceOrder: 2 }), makeChapterRecord({ id: 30, remoteId: 300, name: 'S3 Chapter 1', number: 1, sourceOrder: 1 })],
+            { id: 3, remoteId: 9, title: 'Frieren Season 3', thumbnailUrl: null, series: 'Frieren', season: 3 }
+        );
+        const SEASON_ONE_CHAPTERS = [
+            { remoteId: 100, libraryChapterId: 10, name: 'S1 Chapter 1', number: 1 },
+            { remoteId: 101, libraryChapterId: 11, name: 'S1 Chapter 2', number: 2 }
+        ];
+
+        beforeEach(() => {
+            mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: ['pullwave-manga://page/8/0'], local: true, missing: [] } });
+            useMangaStore.setState({ library: [SEASON_THREE, EMPTY_SEASON, SEASON_ONE] });
+        });
+
+        it('goes on in the first chapter of the next season that has chapters, with that manga as the one being read', async () => {
+            await state().openReader('Frieren', SEASON_ONE_CHAPTERS, 1, false, undefined, { remoteId: 7, sourceId: '123', title: 'Frieren', thumbnailUrl: SEASON_ONE.thumbnailUrl });
+            await expect(state().goToChapter(1)).resolves.toBe(true);
+            expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 300, libraryChapterId: 30 });
+            expect(state().reader).toMatchObject({
+                status: 'ready',
+                mangaTitle: 'Frieren Season 3',
+                index: 0,
+                resume: false,
+                manga: { remoteId: 9, sourceId: '123', title: 'Frieren Season 3', thumbnailUrl: null },
+                chapters: [
+                    { remoteId: 300, libraryChapterId: 30, name: 'S3 Chapter 1', number: 1 },
+                    { remoteId: 301, libraryChapterId: 31, name: 'S3 Chapter 2', number: 2 }
+                ]
+            });
+        });
+
+        it('goes back to the last chapter of the previous season, entering it at its end when it is reached by scrolling', async () => {
+            const seasonThreeChapters = [
+                { remoteId: 300, libraryChapterId: 30, name: 'S3 Chapter 1', number: 1 },
+                { remoteId: 301, libraryChapterId: 31, name: 'S3 Chapter 2', number: 2 }
+            ];
+            await state().openReader('Frieren Season 3', seasonThreeChapters, 0, false, undefined, { remoteId: 9, sourceId: '123', title: 'Frieren Season 3', thumbnailUrl: null });
+            await expect(state().goToChapter(-1, true)).resolves.toBe(true);
+            expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 101, libraryChapterId: 11 });
+            expect(state().reader).toMatchObject({ status: 'ready', mangaTitle: 'Frieren', index: 1, entry: 'end', chapters: SEASON_ONE_CHAPTERS, manga: { remoteId: 7, title: 'Frieren' } });
+        });
+
+        it('keeps the manga being read, not the one open behind the reader, when it goes on inside the new season', async () => {
+            useMangaStore.setState({ selection: { manga: { remoteId: 7, sourceId: '123', title: 'Frieren', thumbnailUrl: null } } as ReturnType<typeof state>['selection'] });
+            await state().openReader('Frieren', SEASON_ONE_CHAPTERS, 1, false, undefined, { remoteId: 7, sourceId: '123', title: 'Frieren', thumbnailUrl: null });
+            await state().goToChapter(1);
+            await state().goToChapter(1);
+            expect(state().reader).toMatchObject({ mangaTitle: 'Frieren Season 3', index: 1, manga: { remoteId: 9, title: 'Frieren Season 3' } });
+            await state().goToChapter(-1);
+            await state().goToChapter(-1);
+            expect(state().reader).toMatchObject({ mangaTitle: 'Frieren', index: 1, manga: { remoteId: 7, title: 'Frieren' } });
+        });
+
+        it('stays where it is after the last season, before the first one and for a manga that is on its own', async () => {
+            await state().openReader('Frieren', SEASON_ONE_CHAPTERS, 0, false, undefined, { remoteId: 7, sourceId: '123', title: 'Frieren', thumbnailUrl: null });
+            await expect(state().goToChapter(-1)).resolves.toBe(false);
+            expect(state().reader).toMatchObject({ mangaTitle: 'Frieren', index: 0 });
+            const alone = makeLibraryManga([makeChapterRecord({ id: 50, remoteId: 500 })], { id: 5, remoteId: 55, title: 'Alone' });
+            useMangaStore.setState({ library: [SEASON_ONE, alone] });
+            await state().openReader('Alone', [{ remoteId: 500, libraryChapterId: 50, name: 'A', number: 1 }], 0, false, undefined, { remoteId: 55, sourceId: '123', title: 'Alone', thumbnailUrl: null });
+            await expect(state().goToChapter(1)).resolves.toBe(false);
+            expect(state().reader).toMatchObject({ mangaTitle: 'Alone', index: 0 });
+        });
     });
 
     describe('chapters reached by scrolling through the zone between chapters', () => {
@@ -2236,6 +2320,37 @@ describe('mangaStore searching a manga in all the sources', () => {
     it('keeps the name typed', () => {
         state().setSearchQuery('one piece');
         expect(state().search.query).toBe('one piece');
+    });
+
+    it('clears the results when the name is erased, also the blanks only', async () => {
+        state().setSearchQuery('one piece');
+        await state().runSearch();
+        expect(state().search.results).toHaveLength(2);
+        state().setSearchQuery('');
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
+        state().setSearchQuery('one piece');
+        await state().runSearch();
+        state().setSearchQuery('   ');
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
+    });
+
+    it('drops the answers of a search that is still going on when the name is erased', async () => {
+        const answers: Array<() => void> = [];
+        mock.api.manga.list.mockImplementation(() => {
+            return new Promise((resolve) => {
+                answers.push(() => {
+                    resolve({ ok: true, value: { items: [makeSummary({ remoteId: 1 })], hasNextPage: false } });
+                });
+            });
+        });
+        state().setSearchQuery('one piece');
+        const running = state().runSearch();
+        state().setSearchQuery('');
+        answers.forEach((answer) => {
+            answer();
+        });
+        await running;
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
     });
 
     it('searches the sources of the language, with the name trimmed, and says how each one answered', async () => {

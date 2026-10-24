@@ -242,6 +242,48 @@ describe('AnimePlayer', () => {
         });
     });
 
+    describe('across the seasons of a series', () => {
+        const seasonOne = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' })], { id: 5, title: 'Frieren', series: 'Frieren', season: 1 });
+        const seasonTwo = makeAnime([makeEpisode({ id: 3, number: '1' }), makeEpisode({ id: 4, number: '2' })], { id: 6, title: 'Frieren Season 2', series: 'Frieren', season: 2 });
+
+        beforeEach(() => {
+            useAnimeStore.setState({ library: [seasonTwo, seasonOne] });
+        });
+
+        it('plays the first episode of the next season from the last one of the season', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ playing: { animeId: 5, episodeId: 2 } });
+            render(<AnimePlayer />);
+
+            await user.click(screen.getByRole('button', { name: 'NEXT EPISODE' }));
+
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 6, episodeId: 3 });
+            expect(screen.getByRole('dialog', { name: 'Frieren Season 2 · EP 1' })).toBeInTheDocument();
+        });
+
+        it('plays the last episode of the previous season from the first one of the season', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ playing: { animeId: 6, episodeId: 3 } });
+            render(<AnimePlayer />);
+
+            await user.click(screen.getByRole('button', { name: 'PREVIOUS EPISODE' }));
+
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 2 });
+            expect(screen.getByRole('dialog', { name: 'Frieren · EP 2' })).toBeInTheDocument();
+        });
+
+        it('does not offer a way out of the first and last seasons', () => {
+            useAnimeStore.setState({ playing: { animeId: 6, episodeId: 4 } });
+            const { unmount } = render(<AnimePlayer />);
+            expect(screen.queryByRole('button', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+            unmount();
+
+            useAnimeStore.setState({ playing: { animeId: 5, episodeId: 1 } });
+            render(<AnimePlayer />);
+            expect(screen.queryByRole('button', { name: 'PREVIOUS EPISODE' })).not.toBeInTheDocument();
+        });
+    });
+
     describe('previous episode', () => {
         it('offers the previous one when it is downloaded, saves and plays it', async () => {
             const user = userEvent.setup();

@@ -52,6 +52,9 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
     const play = useAnimeStore((state) => {
         return state.play;
     });
+    const library = useAnimeStore((state) => {
+        return state.library;
+    });
     const closePlayer = useAnimeStore((state) => {
         return state.closePlayer;
     });
@@ -154,8 +157,8 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
         };
     });
 
-    const previous = previousDownloadedEpisode(anime, episode);
-    const next = nextDownloadedEpisode(anime, episode);
+    const previous = previousDownloadedEpisode(library, anime, episode);
+    const next = nextDownloadedEpisode(library, anime, episode);
     const title = t('anime.job.title', { title: anime.title, episode: episode.number });
 
     return (
@@ -170,7 +173,7 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                                 className="btn btn--small"
                                 onClick={() => {
                                     save();
-                                    play(anime.id, previous.id);
+                                    play(previous.anime.id, previous.episode.id);
                                 }}
                             >
                                 {t('anime.player.previous')}
@@ -182,7 +185,7 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                                 className="btn btn--small"
                                 onClick={() => {
                                     save();
-                                    play(anime.id, next.id);
+                                    play(next.anime.id, next.episode.id);
                                 }}
                             >
                                 {t('anime.player.next')}

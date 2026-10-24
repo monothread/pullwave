@@ -579,6 +579,55 @@ describe('MangaLibrary series, groups and search', () => {
         expect(screen.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.')).toBeInTheDocument();
     });
 
+    describe('the tabs while searching', () => {
+        const AFTER_SCHOOL = makeLibraryManga([], { id: 40, remoteId: 41, title: 'After School', groupIds: [2] });
+        const AFTER_HOURS = makeLibraryManga([], { id: 41, remoteId: 42, title: 'After Hours', groupIds: [] });
+
+        function tabs(): Array<string | null> {
+            return within(screen.getByRole('navigation', { name: 'Groups' }))
+                .getAllByRole('button')
+                .map((button) => {
+                    return button.textContent;
+                });
+        }
+
+        beforeEach(() => {
+            useMangaStore.setState({ library: [FRIEREN_IN_MANGAS, AFTER_SCHOOL, AFTER_HOURS], libraryGroup: 1 });
+        });
+
+        it('shows no number in the tabs while nothing is typed', () => {
+            render(<MangaLibrary />);
+            expect(tabs()).toEqual(['ALL', 'Mangas', 'Manhwas']);
+            expect(document.querySelector('.tab .badge')).toBeNull();
+        });
+
+        it('shows how many cards match in each tab that has a match, the current one too', async () => {
+            const user = userEvent.setup();
+            render(<MangaLibrary />);
+            await user.type(screen.getByLabelText('Search the library'), 'after');
+            expect(tabs()).toEqual(['ALL1', 'Mangas', 'Manhwas1']);
+            const badge = within(screen.getByRole('button', { name: /Manhwas/ })).getByLabelText('1 match(es) for the search');
+            expect(badge).toHaveClass('badge');
+            expect(badge).toHaveTextContent('1');
+        });
+
+        it('counts the tab that is open, and the cards of a series as one', async () => {
+            const user = userEvent.setup();
+            useMangaStore.setState({ library: [FRIEREN_IN_MANGAS, FRIEREN_2_IN_MANGAS, AFTER_SCHOOL, AFTER_HOURS] });
+            render(<MangaLibrary />);
+            await user.type(screen.getByLabelText('Search the library'), 'frieren');
+            expect(tabs()).toEqual(['ALL', 'Mangas1', 'Manhwas']);
+        });
+
+        it('takes the numbers away when the search is cleared', async () => {
+            const user = userEvent.setup();
+            render(<MangaLibrary />);
+            await user.type(screen.getByLabelText('Search the library'), 'after');
+            await user.clear(screen.getByLabelText('Search the library'));
+            expect(tabs()).toEqual(['ALL', 'Mangas', 'Manhwas']);
+        });
+    });
+
     it('shows a series as a card with the badge of its seasons at the bottom, and nothing to remove from the card', () => {
         useMangaStore.setState({ library: [FRIEREN, FRIEREN_2], libraryGroup: null });
         render(<MangaLibrary />);

@@ -3,6 +3,7 @@ import { foldSeries } from '@shared/series';
 import { hasChapterFile } from '@shared/manga';
 import type { LibraryManga, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
+import type { ReaderChapter } from '../store/mangaStore';
 
 // The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
 // Shown in the field of the address of a store, as an example of one (the user is the one who adds stores).
@@ -347,12 +348,37 @@ export function matchesSearch(text: string, search: string): boolean {
     return wanted.length === 0 || foldText(text).includes(wanted);
 }
 
+// Whether a manga of the library matches what was typed in the search: by its title or by the name of its series.
+export function matchesManga(manga: Pick<LibraryManga, 'title' | 'series'>, search: string): boolean {
+    return matchesSearch(manga.title, search) || (manga.series !== null && matchesSearch(manga.series, search));
+}
+
 // The mangas of the library that are in the group; with no group chosen (the tab of all), the ones that are in no group: a manga that is
 // put in a group leaves that tab.
 export function inGroup(library: readonly LibraryManga[], groupId: number | null): LibraryManga[] {
     return library.filter((manga) => {
         return groupId === null ? manga.groupIds.length === 0 : manga.groupIds.includes(groupId);
     });
+}
+
+// How many cards of each tab (the group id; null for the tab of all) match the search. Only the tabs that have a match are there, and none
+// when nothing was typed.
+export function searchMatchesByTab(library: readonly LibraryManga[], groupIds: ReadonlyArray<number | null>, search: string): Map<number | null, number> {
+    const counts = new Map<number | null, number>();
+    if (search.trim().length === 0) {
+        return counts;
+    }
+    groupIds.forEach((groupId) => {
+        const count = groupLibrary(
+            inGroup(library, groupId).filter((manga) => {
+                return matchesManga(manga, search);
+            })
+        ).length;
+        if (count > 0) {
+            counts.set(groupId, count);
+        }
+    });
+    return counts;
 }
 
 // The group the library is limited to: the one chosen, and when the tab of all is not there (every manga is in a group) the first group.
@@ -504,4 +530,45 @@ export function checksForSource(checks: readonly MangaCloudflareActivity[], scop
         const known = sources.get(siteOf(check.host));
         return known === undefined ? scope.loading : known === scope.sourceId;
     });
+}
+
+// The chapters of a manga of the library in reading order (the oldest first), as the reader takes them.
+export function readerChapters(manga: Pick<LibraryManga, 'chapters'>): ReaderChapter[] {
+    return [...manga.chapters]
+        .sort((first, second) => {
+            return first.sourceOrder - second.sourceOrder;
+        })
+        .map((chapter) => {
+            return { remoteId: chapter.remoteId, libraryChapterId: chapter.id, name: chapter.name, number: chapter.number };
+        });
+}
+
+// The season of the series that is read after (1) or before (-1) the one being read: the closest one in that direction that has chapters.
+// Null when the manga is on its own, is the last (or first) season, or is not in the library.
+export function adjacentSeason(library: readonly LibraryManga[], current: Pick<LibraryManga, 'sourceId' | 'remoteId'> | null | undefined, step: 1 | -1): LibraryManga | null {
+    const manga = current
+        ? library.find((candidate) => {
+              return candidate.sourceId === current.sourceId && candidate.remoteId === current.remoteId;
+          })
+        : undefined;
+    if (manga === undefined || manga.series === null || manga.season === null) {
+        return null;
+    }
+    const series = foldSeries(manga.series);
+    const seasons = library
+        .filter((candidate) => {
+            return candidate.season !== null && candidate.series !== null && foldSeries(candidate.series) === series;
+        })
+        .sort((first, second) => {
+            return (first.season ?? 0) - (second.season ?? 0) || first.id - second.id;
+        });
+    const place = seasons.findIndex((season) => {
+        return season.id === manga.id;
+    });
+    const neighbours = step === 1 ? seasons.slice(place + 1) : seasons.slice(0, place).reverse();
+    return (
+        neighbours.find((season) => {
+            return season.chapters.length > 0;
+        }) ?? null
+    );
 }

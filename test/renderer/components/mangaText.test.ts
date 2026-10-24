@@ -26,6 +26,10 @@ import {
     localDetails,
     newChapterCount,
     matchesSearch,
+    matchesManga,
+    searchMatchesByTab,
+    readerChapters,
+    adjacentSeason,
     seasonLabel,
     seriesNames,
     extensionLanguages,
@@ -732,5 +736,96 @@ describe('sourceIsMissing', () => {
     it.each(['idle', 'loading', 'error'] as const)('is false while the list of sources is %s: nothing is known yet', (status) => {
         expect(sourceIsMissing([], status, '999')).toBe(false);
         expect(sourceIsMissing(sources, status, '999')).toBe(false);
+    });
+});
+
+describe('matchesManga', () => {
+    it('matches by the title or by the name of the series, without regard to case or accents', () => {
+        const manga = { title: 'Frieren 2', series: 'Sōusou no Fríeren' };
+        expect(matchesManga(manga, 'FRIEREN 2')).toBe(true);
+        expect(matchesManga(manga, 'sousou')).toBe(true);
+        expect(matchesManga(manga, 'bleach')).toBe(false);
+    });
+
+    it('matches everything for an empty search and does not look at a series that is not there', () => {
+        expect(matchesManga({ title: 'Bleach', series: null }, '  ')).toBe(true);
+        expect(matchesManga({ title: 'Bleach', series: null }, 'frieren')).toBe(false);
+    });
+});
+
+describe('searchMatchesByTab', () => {
+    const FRIEREN = makeLibraryManga([], { id: 1, remoteId: 1, title: 'Frieren', series: 'Frieren', season: 1, groupIds: [1] });
+    const FRIEREN_2 = makeLibraryManga([], { id: 2, remoteId: 2, title: 'Frieren 2', series: 'Frieren', season: 2, groupIds: [1] });
+    const AFTER_SCHOOL = makeLibraryManga([], { id: 3, remoteId: 3, title: 'After School', groupIds: [2] });
+    const LOOSE = makeLibraryManga([], { id: 4, remoteId: 4, title: 'After Hours', groupIds: [] });
+    const library = [FRIEREN, FRIEREN_2, AFTER_SCHOOL, LOOSE];
+
+    it('counts the cards that match in each tab, and leaves out the tabs with no match', () => {
+        expect(searchMatchesByTab(library, [null, 1, 2], 'after')).toEqual(
+            new Map([
+                [null, 1],
+                [2, 1]
+            ])
+        );
+    });
+
+    it('counts a series of several seasons as one card', () => {
+        expect(searchMatchesByTab(library, [null, 1, 2], 'frieren')).toEqual(new Map([[1, 1]]));
+    });
+
+    it('is empty when nothing was typed', () => {
+        expect(searchMatchesByTab(library, [null, 1, 2], '')).toEqual(new Map());
+        expect(searchMatchesByTab(library, [null, 1, 2], '   ')).toEqual(new Map());
+    });
+});
+
+describe('readerChapters', () => {
+    it('gives the chapters in reading order as the reader takes them', () => {
+        const manga = makeLibraryManga([
+            makeChapterRecord({ id: 2, remoteId: 22, name: 'Two', number: 2, sourceOrder: 2 }),
+            makeChapterRecord({ id: 1, remoteId: 21, name: 'One', number: null, sourceOrder: 1 })
+        ]);
+        expect(readerChapters(manga)).toEqual([
+            { remoteId: 21, libraryChapterId: 1, name: 'One', number: null },
+            { remoteId: 22, libraryChapterId: 2, name: 'Two', number: 2 }
+        ]);
+    });
+});
+
+describe('adjacentSeason', () => {
+    const chapter = [makeChapterRecord({ id: 1 })];
+    const ONE = makeLibraryManga(chapter, { id: 1, remoteId: 11, title: 'One', series: 'Show', season: 1 });
+    const TWO = makeLibraryManga([], { id: 2, remoteId: 12, title: 'Two', series: 'show', season: 2 });
+    const THREE = makeLibraryManga(chapter, { id: 3, remoteId: 13, title: 'Three', series: 'Show', season: 3 });
+    const OTHER = makeLibraryManga(chapter, { id: 4, remoteId: 14, title: 'Other', series: 'Other', season: 2 });
+    const library = [THREE, OTHER, TWO, ONE];
+    const key = (manga: { sourceId: string; remoteId: number }) => {
+        return { sourceId: manga.sourceId, remoteId: manga.remoteId };
+    };
+
+    it('gives the next season that has chapters, skipping the empty ones', () => {
+        expect(adjacentSeason(library, key(ONE), 1)).toBe(THREE);
+    });
+
+    it('gives the previous season that has chapters, skipping the empty ones', () => {
+        expect(adjacentSeason(library, key(THREE), -1)).toBe(ONE);
+    });
+
+    it('gives null after the last season and before the first one', () => {
+        expect(adjacentSeason(library, key(THREE), 1)).toBeNull();
+        expect(adjacentSeason(library, key(ONE), -1)).toBeNull();
+    });
+
+    it('gives null for a manga with no series, one that is not in the library and when nothing is being read', () => {
+        const alone = makeLibraryManga(chapter, { id: 5, remoteId: 15, title: 'Alone' });
+        expect(adjacentSeason([...library, alone], key(alone), 1)).toBeNull();
+        expect(adjacentSeason(library, { sourceId: '123', remoteId: 999 }, 1)).toBeNull();
+        expect(adjacentSeason(library, null, 1)).toBeNull();
+        expect(adjacentSeason(library, undefined, -1)).toBeNull();
+    });
+
+    it('does not mix up the seasons of another series', () => {
+        expect(adjacentSeason(library, key(OTHER), 1)).toBeNull();
+        expect(adjacentSeason(library, key(OTHER), -1)).toBeNull();
     });
 });
