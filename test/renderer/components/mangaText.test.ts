@@ -30,6 +30,7 @@ import {
     searchMatchesByTab,
     readerChapters,
     adjacentSeason,
+    neighbourChapter,
     seasonLabel,
     seriesNames,
     extensionLanguages,
@@ -827,5 +828,29 @@ describe('adjacentSeason', () => {
     it('does not mix up the seasons of another series', () => {
         expect(adjacentSeason(library, key(OTHER), 1)).toBeNull();
         expect(adjacentSeason(library, key(OTHER), -1)).toBeNull();
+    });
+});
+
+describe('neighbourChapter', () => {
+    const ONE = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 101, name: 'A', number: 1, sourceOrder: 1 }), makeChapterRecord({ id: 2, remoteId: 102, name: 'B', number: 2, sourceOrder: 2 })], { id: 1, remoteId: 11, title: 'One', series: 'Show', season: 1 });
+    const TWO = makeLibraryManga([makeChapterRecord({ id: 3, remoteId: 103, name: 'C', number: 1, sourceOrder: 1 }), makeChapterRecord({ id: 4, remoteId: 104, name: 'D', number: 2, sourceOrder: 2 })], { id: 2, remoteId: 12, title: 'Two', series: 'Show', season: 2 });
+    const library = [TWO, ONE];
+    const reading = (manga: typeof ONE, index: number) => {
+        return { chapters: readerChapters(manga), index, manga: { remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: null } };
+    };
+
+    it('gives the chapter next to the current one inside the season', () => {
+        expect(neighbourChapter(library, reading(ONE, 0), 1)).toEqual({ remoteId: 102, libraryChapterId: 2, name: 'B', number: 2 });
+        expect(neighbourChapter(library, reading(ONE, 1), -1)).toEqual({ remoteId: 101, libraryChapterId: 1, name: 'A', number: 1 });
+    });
+
+    it('gives the first chapter of the next season at the end of a season, and the last of the previous one at the start', () => {
+        expect(neighbourChapter(library, reading(ONE, 1), 1)).toEqual({ remoteId: 103, libraryChapterId: 3, name: 'C', number: 1 });
+        expect(neighbourChapter(library, reading(TWO, 0), -1)).toEqual({ remoteId: 102, libraryChapterId: 2, name: 'B', number: 2 });
+    });
+
+    it('gives undefined past the last season and before the first one', () => {
+        expect(neighbourChapter(library, reading(TWO, 1), 1)).toBeUndefined();
+        expect(neighbourChapter(library, reading(ONE, 0), -1)).toBeUndefined();
     });
 });

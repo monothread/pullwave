@@ -3,7 +3,7 @@ import { foldSeries } from '@shared/series';
 import { hasChapterFile } from '@shared/manga';
 import type { LibraryManga, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
-import type { ReaderChapter } from '../store/mangaStore';
+import type { MangaReaderState, ReaderChapter } from '../store/mangaStore';
 
 // The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
 // Shown in the field of the address of a store, as an example of one (the user is the one who adds stores).
@@ -571,4 +571,19 @@ export function adjacentSeason(library: readonly LibraryManga[], current: Pick<L
             return season.chapters.length > 0;
         }) ?? null
     );
+}
+
+// The chapter after (1) or before (-1) the one being read: in the same season, and at its edge the first (or last) one of the neighbour
+// season. Undefined when there is none.
+export function neighbourChapter(library: readonly LibraryManga[], reader: Pick<MangaReaderState, 'chapters' | 'index' | 'manga'>, step: 1 | -1): ReaderChapter | undefined {
+    const inSeason = reader.chapters[reader.index + step];
+    if (inSeason !== undefined) {
+        return inSeason;
+    }
+    const season = adjacentSeason(library, reader.manga, step);
+    if (season === null) {
+        return undefined;
+    }
+    const chapters = readerChapters(season);
+    return step === 1 ? chapters[0] : chapters[chapters.length - 1];
 }

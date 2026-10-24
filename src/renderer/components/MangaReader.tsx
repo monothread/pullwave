@@ -28,7 +28,7 @@ import {
     type ReaderPrefs
 } from './readerPrefs';
 import { SETTINGS_ICON } from './TabButton';
-import { adjacentSeason } from './mangaText';
+import { neighbourChapter } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { useScrollFraction } from '../hooks/useScrollFraction';
 import { useChapterZones } from '../hooks/useChapterZones';
@@ -134,9 +134,11 @@ export function MangaReader() {
     const total = reader.pages.length;
     const continuous = prefs.mode !== 'single';
     const scale = prefs.mode === 'webtoon' ? 'width' : prefs.scale;
-    // At the edge of a season the reading goes on in the neighbour one of the series, when there is one.
-    const hasPrevious = reader.index > 0 || adjacentSeason(library, reader.manga, -1) !== null;
-    const hasNext = reader.index < reader.chapters.length - 1 || adjacentSeason(library, reader.manga, 1) !== null;
+    // The chapters on both sides of this one. At the edge of a season the reading goes on in the neighbour season of the series, when there is one.
+    const previousChapter = neighbourChapter(library, reader, -1);
+    const nextChapter = neighbourChapter(library, reader, 1);
+    const hasPrevious = previousChapter !== undefined;
+    const hasNext = nextChapter !== undefined;
 
     // A chapter that is ready starts where it was left (the last page counts as read, so it starts over); anything else starts at the first.
     // Done while rendering, so the first picture is the right one.
@@ -368,8 +370,6 @@ export function MangaReader() {
             void goToChapter(1, true);
         }
     });
-    const previousChapter = reader.chapters[reader.index - 1];
-    const nextChapter = reader.chapters[reader.index + 1];
 
     // A chapter starts with its first page under the bar, the zone above it out of view.
     useLayoutEffect(() => {

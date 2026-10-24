@@ -2654,18 +2654,27 @@ test.describe('manga section', () => {
         const next = reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true });
         await expect(reader.getByText('Bleach · Romance Dawn')).toBeVisible();
         await expect(previous).toBeEnabled();
+        // In the scroll the zone above the first chapter of the season names the last chapter of the season before, not "first chapter".
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByTestId('reader-zone-start')).toContainText('The Great Race');
+        await expect(reader.getByTestId('reader-zone-start')).not.toContainText('This is the first chapter.');
         await previous.click();
         await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
-        await expect(reader.getByText('1 / 3')).toBeVisible();
         await expect(next).toBeEnabled();
+        // The zone below the last chapter of the first season names the first chapter of the second one.
+        await expect(reader.getByTestId('reader-zone-end')).toContainText('Romance Dawn');
+        await expect(reader.getByTestId('reader-zone-end')).not.toContainText('This is the last chapter.');
 
         // And NEXT, at the end of the first season, goes to the first chapter of the second one.
         await next.click();
         await expect(reader.getByText('Bleach · Romance Dawn')).toBeVisible();
         await next.click();
         await expect(reader.getByText('Bleach · The Great Race')).toBeVisible();
-        // There is no season after the last one.
+        // There is no season after the last one: the zone says so.
         await expect(next).toBeDisabled();
+        await expect(reader.getByTestId('reader-zone-end')).toContainText('This is the last chapter.');
 
         // The first chapter of the first season has nothing before it.
         await previous.click();

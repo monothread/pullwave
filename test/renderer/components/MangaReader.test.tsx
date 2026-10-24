@@ -1556,6 +1556,42 @@ describe('MangaReader the zones between chapters', () => {
         expect(pages.querySelectorAll('img')).toHaveLength(3);
     });
 
+    describe('the zones at the edge of a season', () => {
+        const SEASON_ONE = makeLibraryManga([makeChapterRecord({ id: 10, remoteId: 100, name: 'S1 last', number: 9, sourceOrder: 1 })], { id: 1, remoteId: 7, title: 'One Piece', series: 'One Piece', season: 1 });
+        const SEASON_TWO = makeLibraryManga([makeChapterRecord({ id: 20, remoteId: 200, name: 'S2 first', number: 1, sourceOrder: 1 }), makeChapterRecord({ id: 21, remoteId: 201, name: 'S2 last', number: 2, sourceOrder: 2 })], {
+            id: 2,
+            remoteId: 8,
+            title: 'One Piece 2',
+            series: 'One Piece',
+            season: 2
+        });
+
+        beforeEach(() => {
+            useMangaStore.setState({ library: [SEASON_TWO, SEASON_ONE] });
+        });
+
+        it('names the first chapter of the next season in the zone below the last chapter, instead of saying it is the last', () => {
+            show({ index: 0, manga: { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null }, chapters: [{ remoteId: 100, libraryChapterId: 10, name: 'S1 last', number: 9 }] });
+            const end = screen.getByTestId('reader-zone-end');
+            expect(within(end).getByText('S2 first')).toBeInTheDocument();
+            expect(within(end).getByRole('button', { name: 'GO TO THE NEXT CHAPTER' })).toBeInTheDocument();
+            expect(within(end).queryByText('This is the last chapter.')).not.toBeInTheDocument();
+            expect(within(screen.getByTestId('reader-zone-start')).getByText('This is the first chapter.')).toBeInTheDocument();
+        });
+
+        it('names the last chapter of the previous season in the zone above the first chapter', () => {
+            show({ index: 0, mangaTitle: 'One Piece 2', manga: { remoteId: 8, sourceId: '123', title: 'One Piece 2', thumbnailUrl: null }, chapters: [{ remoteId: 200, libraryChapterId: 20, name: 'S2 first', number: 1 }, { remoteId: 201, libraryChapterId: 21, name: 'S2 last', number: 2 }] });
+            const start = screen.getByTestId('reader-zone-start');
+            expect(within(start).getByText('S1 last')).toBeInTheDocument();
+            expect(within(start).queryByText('This is the first chapter.')).not.toBeInTheDocument();
+        });
+
+        it('says it is the last chapter only after the last chapter of the last season', () => {
+            show({ index: 1, mangaTitle: 'One Piece 2', manga: { remoteId: 8, sourceId: '123', title: 'One Piece 2', thumbnailUrl: null }, chapters: [{ remoteId: 200, libraryChapterId: 20, name: 'S2 first', number: 1 }, { remoteId: 201, libraryChapterId: 21, name: 'S2 last', number: 2 }] });
+            expect(within(screen.getByTestId('reader-zone-end')).getByText('This is the last chapter.')).toBeInTheDocument();
+        });
+    });
+
     it('has no zone one page at a time', () => {
         show({}, 'single');
         expect(screen.queryByTestId('reader-zone-start')).not.toBeInTheDocument();
