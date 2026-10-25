@@ -33,7 +33,7 @@ Download the file for your system from the [Releases page](https://github.com/mo
 
 **Windows** — run the setup file. It installs for your user only and creates the shortcuts. The installer is not code-signed, so Windows SmartScreen may show "Windows protected your PC": choose *More info* → *Run anyway*.
 
-**Linux** — the AppImage is the only package (the `.deb`, `.rpm` and `.pacman` of the versions up to 0.21.11 are not built any more; an install made from one of them does not update itself, so install the AppImage once). Allow it to run, then open it:
+**Linux** — allow the AppImage to run, then open it:
 ```bash
 chmod +x pullwave-x.y.z.AppImage
 ./pullwave-x.y.z.AppImage
