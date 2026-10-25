@@ -7,11 +7,11 @@ The app updates itself (via `electron-updater`) from the **public Releases** of
 1. Bump the version in `package.json` (semver; the app only offers versions **greater** than the installed one).
 2. Run the checks: `npx tsc --noEmit --project tsconfig.json`, `npx eslint src/ test/ --max-warnings=0`, `npx vitest run`, `npm run test:e2e`.
 3. Push `main` to GitHub (`git push origin main`). Releases are built from the code that is on GitHub.
-4. **Linux packages** (AppImage, deb, rpm for Fedora, pacman for Arch), pick one:
-   - Locally: `sudo apt install rpm libarchive-tools zstd` once, then `export GH_TOKEN=<token>` and `npm run release`.
+4. **Linux package** (the AppImage, the only one), pick one:
+   - Locally: `export GH_TOKEN=<token>` and `npm run release`.
    - On GitHub: Actions tab → **Release Linux** → *Run workflow* (no token needed, it uses the repository's own).
 5. **Windows installer:** Actions tab → **Release Windows** → *Run workflow*.
-6. Each run uploads its files to the **draft** Release `v<version>` (creating it if needed): Linux uploads `pullwave-<version>.{AppImage,deb,rpm,pacman}` and `latest-linux.yml`; Windows uploads `pullwave-<version>-setup.exe` and `latest.yml`. Wait until every run you started has finished.
+6. Each run uploads its files to the **draft** Release `v<version>` (creating it if needed): Linux uploads `pullwave-<version>.AppImage` and `latest-linux.yml`; Windows uploads `pullwave-<version>-setup.exe` and `latest.yml`. Wait until every run you started has finished.
 7. On GitHub, open the draft Release, check the assets and click **Publish release**. Drafts are **not** seen by installed apps.
 8. In the Release notes, mention where the FFmpeg source code can be found (https://github.com/BtbN/FFmpeg-Builds on both systems; GPLv3). The app also downloads ani-cli (GPLv3, https://github.com/pystardust/ani-cli), BusyBox (GPLv2, https://busybox.net) and a static curl (https://github.com/stunnel/static-curl); see `resources/THIRD_PARTY_NOTICES.md`.
 
@@ -28,7 +28,7 @@ Rules that keep the updater working:
 - If a newer version exists, a yellow banner appears with **UPDATE TO x.y.z** → downloads (only the changed blocks) → **RESTART & INSTALL**.
 - Installing takes a separate click on purpose: restarting interrupts downloads in progress.
 - **AppImage:** replaces its own file (needs write permission where the file lives).
-- **.deb, .rpm and .pacman:** `electron-updater` uses the system package manager (apt/dpkg, dnf/rpm, pacman) and asks for a password (polkit/pkexec).
+- **.deb, .rpm and .pacman:** these packages were published up to 0.21.11 and are not built any more. An install made from one of them has no newer file of its own type to find, so it does not update itself: install the AppImage once.
 - **Windows:** the NSIS installer updates itself silently for the current user; releases are unsigned, so Windows SmartScreen may warn on the first install.
 - In development (`npm run dev`) the app shows "Updates are only available in the installed app.".
 - With no Release published yet, the check shows "No published versions on GitHub" — that is expected before the first one.
@@ -42,7 +42,6 @@ Rules that keep the updater working:
 - Code signing is not required on Linux. On Windows it is optional, but unsigned installers trigger a SmartScreen warning.
 
 ## Troubleshooting
-- **`npm run release` stops with "Missing tools needed to build the rpm and pacman packages":** install what it lists (`sudo apt install rpm libarchive-tools zstd` on Ubuntu) or use the **Release Linux** workflow.
 - **A Windows or Linux workflow run created a second draft:** the draft is matched by tag; if it was already published, unpublish it or delete the extra draft and run again before publishing.
 - **The app says "No published versions on GitHub" or never shows the banner:** the Release is still a draft. Publish it, then confirm with
   `curl -s https://api.github.com/repos/monothread/pullwave/releases/latest | grep -E '"tag_name"|"name"'`.

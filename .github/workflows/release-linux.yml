@@ -1,8 +1,7 @@
 name: Release Linux
 
-# Builds every Linux package (AppImage, deb, rpm for Fedora, pacman for Arch) in one go and attaches them,
-# with latest-linux.yml, to the draft GitHub Release of the version in package.json.
-# Use it instead of `npm run release` when the rpm/pacman tools are not installed locally.
+# Builds the Linux package (the AppImage) and attaches it, with latest-linux.yml, to the draft GitHub Release of the
+# version in package.json. Use it instead of `npm run release` when you do not want to build locally.
 # Run it manually from the Actions tab, before publishing the draft Release. Do not mix it with a local
 # `npm run release` of the same version: both upload latest-linux.yml and the last one wins.
 on:
@@ -22,9 +21,6 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install the packaging tools
-        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools zstd
-
       - name: Install dependencies
         run: npm ci
 
@@ -34,19 +30,16 @@ jobs:
           npm run lint
           npm test
 
-      - name: Build the packages and upload them to the draft Release
+      - name: Build the AppImage and upload it to the draft Release
         run: npm run release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Keep the packages as a workflow artifact
+      - name: Keep the AppImage as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-packages
+          name: linux-appimage
           path: |
             dist/*.AppImage
-            dist/*.deb
-            dist/*.rpm
-            dist/*.pacman
             dist/latest-linux.yml
             dist/*.blockmap

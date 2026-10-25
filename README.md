@@ -29,25 +29,16 @@ Download the file for your system from the [Releases page](https://github.com/mo
 | System | File |
 |---|---|
 | Windows 10/11 (64-bit) | `pullwave-x.y.z-setup.exe` |
-| Ubuntu, Debian and derivatives | `pullwave-x.y.z.deb` |
-| Fedora (and other RPM-based distributions) | `pullwave-x.y.z.rpm` |
-| Arch Linux (and derivatives) | `pullwave-x.y.z.pacman` |
-| Any other Linux | `pullwave-x.y.z.AppImage` (portable, installs nothing) |
+| Linux | `pullwave-x.y.z.AppImage` (portable, installs nothing) |
 
 **Windows** — run the setup file. It installs for your user only and creates the shortcuts. The installer is not code-signed, so Windows SmartScreen may show "Windows protected your PC": choose *More info* → *Run anyway*.
 
-**Ubuntu / Debian** — double-click the `.deb` or run `sudo apt install ./pullwave-x.y.z.deb`.
-
-**Fedora** — `sudo dnf install ./pullwave-x.y.z.rpm`
-
-**Arch Linux** — `sudo pacman -U ./pullwave-x.y.z.pacman`
-
-**AppImage** — allow it to run, then open it:
+**Linux** — the AppImage is the only package (the `.deb`, `.rpm` and `.pacman` of the versions up to 0.21.11 are not built any more; an install made from one of them does not update itself, so install the AppImage once). Allow it to run, then open it:
 ```bash
 chmod +x pullwave-x.y.z.AppImage
 ./pullwave-x.y.z.AppImage
 ```
-Ubuntu 22.04 and newer need FUSE 2 for AppImages (`sudo apt install libfuse2`, or `libfuse2t64` on Ubuntu 24.04). If it does not open on Ubuntu 24.04, run it with `--no-sandbox`; the `.deb` does not have this problem.
+Ubuntu 22.04 and newer need FUSE 2 for AppImages (`sudo apt install libfuse2`, or `libfuse2t64` on Ubuntu 24.04). If it does not open on Ubuntu 24.04, run it with `--no-sandbox`.
 
 **The first time it opens** the app downloads the programs it runs (yt-dlp, deno and ffmpeg for the video downloader, plus ani-cli, busybox and curl for the anime section; about 200 MB in all) into its own folder, so the package stays small and none of your programs is touched. The header shows how it goes, and the video downloader and the anime section wait for their programs with a bar for each one; if one fails (no connection, for example) it says why and has **TRY AGAIN**, and what is ready is kept. You need a connection that first time only; the same boxes **Status of the programs** in the settings (ffmpeg in the global ones, yt-dlp in those of the video downloader, ani-cli in those of the anime) keep them up to date afterwards.
 
@@ -222,7 +213,7 @@ The ⚙ of each part has the settings of that part. The app adapts to the size o
 ## Development
 More documentation is in [`docs/`](docs/README.md); how to publish a version is in [`docs/RELEASING.md`](docs/RELEASING.md).
 
-You need Node.js 22 or newer. To build the Linux packages you also need `rpm`, `libarchive-tools` and `zstd` (`npm run check:tools` tells you what is missing). The app downloads yt-dlp, deno, ffmpeg, ani-cli, busybox and curl itself the first time it opens (they are not in the package); `npm run fetch-binaries` downloads real copies of them for the end-to-end tests.
+You need Node.js 22 or newer. The app downloads yt-dlp, deno, ffmpeg, ani-cli, busybox and curl itself the first time it opens (they are not in the package); `npm run fetch-binaries` downloads real copies of them for the end-to-end tests.
 
 | Command | What it does |
 |---|---|
@@ -233,6 +224,6 @@ You need Node.js 22 or newer. To build the Linux packages you also need `rpm`, `
 | `npm run typecheck` | Type check |
 | `npm run lint` | Lint (no warnings allowed) |
 | `npm run fetch-binaries` | Download the programs the end-to-end tests run for real (`-- --force` to refresh); they are not shipped |
-| `npm run dist` | Linux: build and package AppImage, deb, rpm and pacman into `dist/` (never publishes) |
+| `npm run dist` | Linux: build and package the AppImage into `dist/` (never publishes) |
 | `npm run dist:win` | Windows: build the installer |
 | `npm run release` / `npm run release:win` | Same as `dist` / `dist:win`, then upload to a draft GitHub Release (needs `GH_TOKEN`) |

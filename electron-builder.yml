@@ -20,17 +20,11 @@ linux:
       to: ani-scripts
     - from: resources/THIRD_PARTY_NOTICES.md
       to: THIRD_PARTY_NOTICES.md
-  # One build must produce every Linux package: latest-linux.yml has to list all of them so that the
-  # in-app updater finds its own file type (AppImage, deb, rpm for Fedora, pacman for Arch).
+  # The AppImage is the only Linux package: latest-linux.yml lists it, which is what the in-app updater looks for.
   target:
     - AppImage
-    - deb
-    - rpm
-    - pacman
   category: Network
   syncDesktopName: true
-  maintainer: monothread <realrukasu@proton.me>
-  synopsis: Cyberpunk yt-dlp GUI and video downloader
 win:
   extraResources:
     - from: resources/ani-scripts

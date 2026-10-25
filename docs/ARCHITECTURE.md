@@ -54,7 +54,7 @@ src/
     store/ (zustand): appStore.ts, animeStore.ts
 test/            # unit tests mirroring src
 test/e2e/        # Playwright-Electron (fake yt-dlp via stub)
-scripts/         # fetch-binaries.mjs (per platform), check-linux-tools.mjs (rpm/pacman prerequisites)
+scripts/         # fetch-binaries.mjs (per platform), check-linux-tools.mjs (no longer used: it checked the rpm/pacman prerequisites)
 .github/workflows/  # release-linux.yml, release-windows.yml (manual, build and attach packages to the draft Release)
 resources/       # icon.png, THIRD_PARTY_NOTICES.md, ani-scripts/pullwave-run.sh (runs ani-cli with a menu, a player and tput defined as functions), bin/ (git-ignored)
 docs/
@@ -137,10 +137,7 @@ yt-dlp, deno, ffmpeg, ani-cli, busybox and curl are **not in the package**: `Pro
 ## Platforms
 | OS | Package | Built by | Auto-update |
 |---|---|---|---|
-| Ubuntu/Debian and derivatives | `.deb` | `npm run release` locally or the "Release Linux" workflow | yes (package manager, asks for a password) |
-| Fedora | `.rpm` | same as above | yes (same mechanism) |
-| Arch Linux | `.pacman` | same as above | yes (same mechanism) |
-| Any Linux | `.AppImage` | same as above | yes (replaces its own file) |
+| Linux | `.AppImage` (the only package; `.deb`, `.rpm` and `.pacman` were built up to 0.21.11) | `npm run release` locally or the "Release Linux" workflow | yes (replaces its own file) |
 | Windows 10/11 x64 | NSIS `…-setup.exe` (per-user, one click) | the "Release Windows" workflow (`npm run release:win` on a Windows machine) | yes (electron-updater, `latest.yml`) |
 
 Platform differences live in small, injectable spots: `executableName`/`spawnEnv` in `binaryResolver.ts` (`.exe`, `Path` key), the yt-dlp asset name in `updater.ts`, and `checkTraySupport` (the D-Bus check only runs on Linux).
