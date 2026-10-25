@@ -114,6 +114,22 @@ describe('MangaDetail', () => {
         });
     });
 
+    it('shows the chapters as cards in a grid, with the name on top and the state and the buttons together at the bottom', () => {
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ remoteId: 11, status: 'done' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'error' })])] });
+        open();
+        render(<MangaDetail />);
+        const rows = screen.getAllByTestId('manga-chapter');
+        rows.forEach((row) => {
+            expect(row.parentElement).toHaveClass('episode-cards', 'manga__chapters');
+            expect(row.parentElement?.tagName).toBe('UL');
+            expect(row.firstElementChild).toHaveClass('history__main');
+            expect(row.lastElementChild).toHaveClass('anime__actions');
+            expect(row.children).toHaveLength(2);
+        });
+        expect(within(rows[0]!.querySelector('.anime__actions') as HTMLElement).getByText('Downloaded')).toHaveClass('badge--done');
+        expect(within(rows[1]!.querySelector('.anime__actions') as HTMLElement).getByText('Failed')).toHaveClass('badge--error');
+    });
+
     it('shows the state of the chapters the library already has', () => {
         useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ remoteId: 11, status: 'done' }), makeChapterRecord({ id: 2, remoteId: 12, status: 'error' })])] });
         open();

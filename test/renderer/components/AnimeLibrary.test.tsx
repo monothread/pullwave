@@ -98,7 +98,7 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByRole('list', { name: 'Seasons of Big' })).not.toBeInTheDocument();
         });
 
-        it('shows the cover of the series at the top of its screen, looked up like the one of its card', async () => {
+        it('has no small cover at the top of the screen of the series, since each season has its own big cover on its card', async () => {
             const user = userEvent.setup();
             mock.api.findAnimeCover.mockResolvedValue('https://s4.anilist.co/cover/frieren.jpg');
             useAnimeStore.setState({ library: SERIES_LIBRARY });
@@ -107,10 +107,14 @@ describe('AnimeLibrary', () => {
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
 
             const view = screen.getByTestId('series-view');
+            expect(view.querySelector('.series__cover')).toBeNull();
             await waitFor(() => {
-                expect(view.querySelector('.series__cover img.cover')).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
+                expect(view.querySelectorAll('img.cover')).toHaveLength(2);
             });
-            expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Frieren');
+            view.querySelectorAll('img.cover').forEach((cover) => {
+                expect(cover).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
+                expect(cover.closest('[data-testid="anime-season-cover"]')).not.toBeNull();
+            });
         });
 
         it('shows the cover of each season in its row, looked up by the title of that season', async () => {
@@ -212,6 +216,10 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
             await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
             expect(screen.getAllByTestId('anime-episode')).toHaveLength(1);
+            expect(screen.getByTestId('season-view')).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'EDIT SEASON: Naruto' })).not.toBeInTheDocument();
+            await user.click(screen.getByRole('button', { name: 'BACK' }));
+            expect(screen.getByTestId('series-view')).toBeInTheDocument();
             await user.click(screen.getByRole('button', { name: 'BACK TO LIBRARY' }));
             expect(screen.getAllByTestId('anime-card')).toHaveLength(2);
         });
@@ -297,7 +305,7 @@ describe('AnimeLibrary', () => {
             expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => { return heading.textContent; })).toEqual(['Árvore', 'Attack on Titan', 'Bleach', 'cowboy bebop', 'Zero no Tsukaima']);
         });
 
-        it('has the episodes of each season on its row, and the folder is on the screen of the series, not on a season', async () => {
+        it('has the episodes of each season on the screen of the season, and the folder is on the screen of the series, not on a season', async () => {
             const user = userEvent.setup();
             useAnimeStore.setState({ library: SERIES_LIBRARY });
             render(<AnimeLibrary />);
@@ -306,11 +314,18 @@ describe('AnimeLibrary', () => {
 
             expect(within(second as HTMLElement).queryByRole('button', { name: 'OPEN FOLDER: Frieren Season 2' })).not.toBeInTheDocument();
             await user.click(within(second as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
-            expect(within(second as HTMLElement).queryByRole('button', { name: /^OPEN FOLDER/ })).not.toBeInTheDocument();
-            expect(within(first as HTMLElement).queryByRole('button', { name: /^OPEN FOLDER/ })).not.toBeInTheDocument();
-            await user.click(within(first as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
-            expect(within(first as HTMLElement).getAllByTestId('anime-episode')).toHaveLength(1);
-            expect(within(second as HTMLElement).getAllByTestId('anime-episode')).toHaveLength(2);
+            const secondView = screen.getByTestId('season-view');
+            expect(secondView).toHaveAccessibleName('Frieren Season 2');
+            expect(within(secondView).queryByRole('button', { name: /^OPEN FOLDER/ })).not.toBeInTheDocument();
+            expect(within(secondView).getAllByTestId('anime-episode')).toHaveLength(2);
+            await user.click(within(secondView).getByRole('button', { name: 'BACK' }));
+            expect(screen.queryByTestId('season-view')).not.toBeInTheDocument();
+
+            expect(within(screen.getAllByTestId('anime-season')[0] as HTMLElement).queryByRole('button', { name: /^OPEN FOLDER/ })).not.toBeInTheDocument();
+            await user.click(within(screen.getAllByTestId('anime-season')[0] as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
+            expect(screen.getByTestId('season-view')).toHaveAccessibleName('Frieren');
+            expect(within(screen.getByTestId('season-view')).getAllByTestId('anime-episode')).toHaveLength(1);
+            expect(first).not.toBeNull();
             expect(mock.api.openAnimeFolder).not.toHaveBeenCalled();
         });
 
@@ -326,8 +341,10 @@ describe('AnimeLibrary', () => {
             expect(within(first as HTMLElement).queryByRole('button', { name: /^REMOVE ANIME/ })).not.toBeInTheDocument();
             expect(within(first as HTMLElement).queryByRole('button', { name: /^GET MORE EPISODES/ })).not.toBeInTheDocument();
             await user.click(within(first as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
-            expect(within(first as HTMLElement).getByRole('button', { name: 'EDIT SEASON: Frieren' })).toBeInTheDocument();
-            expect(within(first as HTMLElement).getByRole('button', { name: 'REMOVE ANIME: Frieren' })).toBeInTheDocument();
+            const view = screen.getByTestId('season-view');
+            expect(within(view).getByRole('button', { name: 'EDIT SEASON: Frieren' })).toBeInTheDocument();
+            expect(within(view).getByRole('button', { name: 'REMOVE ANIME: Frieren' })).toBeInTheDocument();
+            expect(within(view).getByRole('button', { name: 'GO TO SOURCE: Frieren' })).toBeInTheDocument();
         });
 
         it('opens the screen of the series, with the season in view and every season closed, when it comes from the search', () => {
@@ -339,8 +356,9 @@ describe('AnimeLibrary', () => {
             expect(screen.getAllByTestId('anime-season')).toHaveLength(2);
             expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
             screen.getAllByRole('button', { name: /^SHOW EPISODES: / }).forEach((button) => {
-                expect(button).toHaveAttribute('aria-expanded', 'false');
+                expect(button).not.toHaveAttribute('aria-expanded');
             });
+            expect(screen.queryByTestId('season-view')).not.toBeInTheDocument();
             expect(scrollIntoView).toHaveBeenCalledTimes(1);
         });
 
@@ -365,8 +383,9 @@ describe('AnimeLibrary', () => {
             const seasons = screen.getAllByTestId('anime-season');
             const chosen = seasons[season - 1] as HTMLElement;
             await user.click(within(chosen).getByRole('button', { name: /^SHOW EPISODES: / }));
-            await user.click(within(chosen).getByRole('button', { name: /^EDIT SEASON: / }));
-            return within(chosen).getByRole('group', { name: /^EDIT SEASON: / });
+            const view = screen.getByTestId('season-view');
+            await user.click(within(view).getByRole('button', { name: /^EDIT SEASON: / }));
+            return within(view).getByRole('group', { name: /^EDIT SEASON: / });
         }
 
         it('edits the season of an anime in a series: it starts with the order and the name it has, and saves them', async () => {
@@ -533,6 +552,8 @@ describe('AnimeLibrary', () => {
             await user.click(screen.getByRole('button', { name: 'REMOVE ANIME: Frieren Season 2' }));
             await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
             expect(removeAnime.mock.calls).toEqual([[40]]);
+            // The season that was open is gone (the mock does not take it out of the library), so the way back is the series.
+            await user.click(screen.getByRole('button', { name: 'BACK' }));
 
             await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
             await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Frieren' }));
@@ -751,7 +772,8 @@ describe('AnimeLibrary', () => {
             expect(screen.getByTestId('series-view')).toBeInTheDocument();
             expect(screen.getByRole('heading', { level: 3, name: 'Naruto' })).toBeInTheDocument();
             expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
-            expect(screen.getByRole('button', { name: /^SHOW EPISODES: / })).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.getByRole('button', { name: /^SHOW EPISODES: / })).not.toHaveAttribute('aria-expanded');
+            expect(screen.queryByTestId('season-view')).not.toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'BACK TO LIBRARY' })).toBeInTheDocument();
             expect(scrollIntoView).toHaveBeenCalledTimes(1);
             expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
@@ -887,24 +909,28 @@ describe('AnimeLibrary', () => {
         });
     });
 
-    it('shows and hides the episodes', async () => {
+    it('shows the episodes on the screen of the season, and goes back to the series from it', async () => {
         const user = userEvent.setup();
         useAnimeStore.setState({ library: [LIBRARY[0] as (typeof LIBRARY)[number]] });
         render(<AnimeLibrary />);
 
-        // On the card there are no episodes: the button takes to the screen of the anime, where they are shown.
+        // On the card there are no episodes: the button takes to the screen of the anime, where the season is a card.
         expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
-        // Even the only season of a series opens closed.
+        // Even the only season of a series is a card that is opened.
         expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^SHOW EPISODES: / })).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' })).not.toHaveAttribute('aria-expanded');
 
-        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+        await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
+        expect(screen.getByTestId('season-view')).toBeInTheDocument();
         expect(screen.getAllByTestId('anime-episode')).toHaveLength(6);
-        expect(screen.getByRole('button', { name: /^HIDE EPISODES: / })).toHaveAttribute('aria-expanded', 'true');
+        expect(screen.queryByTestId('series-view')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^SHOW EPISODES: / })).not.toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: /^HIDE EPISODES: / }));
+        await user.click(screen.getByRole('button', { name: 'BACK' }));
         expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('season-view')).not.toBeInTheDocument();
+        expect(screen.getByTestId('series-view')).toBeInTheDocument();
     });
 
     describe('episodes', () => {
@@ -962,8 +988,11 @@ describe('AnimeLibrary', () => {
         });
 
         it('has no button to show the file of an episode, which is what the button of the anime is for', async () => {
-            await expand();
+            const { user } = await expand();
             expect(screen.queryByRole('button', { name: /^SHOW FILE/ })).not.toBeInTheDocument();
+            // The folder is on the screen of the series, one back from the season.
+            expect(screen.queryByRole('button', { name: 'OPEN FOLDER: Naruto' })).not.toBeInTheDocument();
+            await user.click(screen.getByRole('button', { name: 'BACK' }));
             expect(screen.getAllByRole('button', { name: 'OPEN FOLDER: Naruto' })).toHaveLength(1);
         });
 
@@ -1032,31 +1061,74 @@ describe('AnimeLibrary', () => {
             expect(screen.getByTestId('series-view')).toBeInTheDocument();
         });
 
-        it('shows and hides the episodes of a season from its row, with no SHOW EPISODES button of its own', async () => {
+        it('opens the screen of a season from its card, with no SHOW EPISODES button of its own', async () => {
             const user = userEvent.setup();
             useAnimeStore.setState({ library: [LIBRARY[0] as (typeof LIBRARY)[number]] });
             render(<AnimeLibrary />);
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
             const season = screen.getByTestId('anime-season');
-            const row = season.querySelector('.season__row') as HTMLElement;
-            expect(row).toHaveClass('row--link');
+            expect(season).toHaveClass('row--link');
+            expect(season).toHaveClass('cover-card');
+            expect(season.parentElement).toHaveClass('cover-grid');
             expect(within(season).queryByText('SHOW EPISODES')).not.toBeInTheDocument();
             expect(within(season).queryByText('HIDE EPISODES')).not.toBeInTheDocument();
 
             // The only season of a series starts closed too.
-            const toggle = within(row).getByRole('button', { name: 'SHOW EPISODES: Naruto' });
-            expect(toggle).toHaveAttribute('aria-expanded', 'false');
+            const toggle = within(season).getByRole('button', { name: 'SHOW EPISODES: Naruto' });
             expect(toggle).toHaveClass('row-link');
             expect(toggle).toHaveTextContent('Naruto');
-            expect(within(season).queryByTestId('anime-episode')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('season-view')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
 
             await user.click(toggle);
-            expect(within(row).getByRole('button', { name: 'HIDE EPISODES: Naruto' })).toHaveAttribute('aria-expanded', 'true');
-            expect(within(season).getAllByTestId('anime-episode')).toHaveLength(6);
+            const view = screen.getByTestId('season-view');
+            expect(within(view).getAllByTestId('anime-episode')).toHaveLength(6);
+            expect(view.querySelector('.episode-cards')).toContainElement(within(view).getAllByTestId('anime-episode')[0] as HTMLElement);
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('anime-season')).not.toBeInTheDocument();
 
-            await user.click(within(row).getByRole('button', { name: 'HIDE EPISODES: Naruto' }));
-            expect(within(row).getByRole('button', { name: 'SHOW EPISODES: Naruto' })).toHaveAttribute('aria-expanded', 'false');
-            expect(within(season).queryByTestId('anime-episode')).not.toBeInTheDocument();
+            await user.click(within(view).getByRole('button', { name: 'BACK' }));
+            expect(screen.queryByTestId('season-view')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' })).toBeInTheDocument();
+            expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
+        });
+
+        it('puts the audio on the line of the chip of the season, at its right, and not with the progress', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1 })], { id: 10, title: 'Naruto', audio: 'dub' })] });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+            const season = screen.getByTestId('anime-season');
+            const top = season.querySelector('.season-card__top') as HTMLElement;
+            expect(Array.from(top.children).map((child) => {
+                return child.textContent;
+            })).toEqual(['SEASON 1', 'DUBBED']);
+            expect(top.firstElementChild).toHaveClass('season__chip');
+            expect(top.lastElementChild).toHaveClass('badge');
+            expect(season.querySelector('.cover-card__footer')).not.toContainElement(top.lastElementChild as HTMLElement);
+            expect(within(season.querySelector('.cover-card__footer') as HTMLElement).getByText('1/1 DOWNLOADED')).toBeInTheDocument();
+        });
+
+        it('shows on the screen of a season its name, the series it is of, its season, its progress and its audio, with the buttons of the season', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({
+                library: [
+                    makeAnime([makeEpisode({ id: 1 })], { id: 41, title: 'Frieren', series: 'Frieren', season: 1 }),
+                    makeAnime([makeEpisode({ id: 2 }), makeEpisode({ id: 3, number: '2', status: 'idle', filePath: null, sizeBytes: null })], { id: 40, title: 'Frieren Season 2', series: 'Frieren', season: 2 })
+                ]
+            });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+            await user.click(within(screen.getAllByTestId('anime-season')[1] as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
+
+            const view = screen.getByTestId('season-view');
+            expect(within(view).getByRole('heading', { level: 3, name: 'Frieren Season 2' })).toBeInTheDocument();
+            expect(within(view).getByText('Frieren')).toHaveClass('section-label');
+            expect(view.querySelector('.season__chip')).toHaveTextContent('SEASON 2');
+            expect(within(view).getByText('SUBTITLED')).toHaveClass('badge');
+            expect(within(view).getByText('1/2 DOWNLOADED')).toBeInTheDocument();
+            expect(within(view).getByRole('button', { name: 'GO TO SOURCE: Frieren Season 2' })).toBeInTheDocument();
+            expect(within(view).getByRole('button', { name: 'EDIT SEASON: Frieren Season 2' })).toBeInTheDocument();
         });
 
         it('keeps GO TO SOURCE on the row of a season without opening it', async () => {
@@ -1200,18 +1272,23 @@ describe('AnimeLibrary anime that cannot be removed alone', () => {
             ],
             'Frieren'
         );
-        const [first, second] = screen.getAllByTestId('anime-season');
+        const [first] = screen.getAllByTestId('anime-season');
         await user.click(within(first as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
-        await user.click(within(second as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
 
-        const blocked = within(first as HTMLElement).getByRole('button', { name: 'REMOVE ANIME: Frieren' });
+        const firstView = screen.getByTestId('season-view');
+        const blocked = within(firstView).getByRole('button', { name: 'REMOVE ANIME: Frieren' });
         expect(blocked).toBeDisabled();
         expect(blocked).toHaveAttribute('title', 'This anime gives its name to the series. To remove it, remove the whole series.');
         await user.click(blocked);
-        expect(within(first as HTMLElement).queryByRole('button', { name: 'CONFIRM' })).not.toBeInTheDocument();
+        expect(within(firstView).queryByRole('button', { name: 'CONFIRM' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(mock.api.removeAnime).not.toHaveBeenCalled();
-        expect(within(second as HTMLElement).getByRole('button', { name: 'REMOVE ANIME: Frieren Season 2' })).toBeEnabled();
-        expect(within(second as HTMLElement).getByRole('button', { name: 'REMOVE ANIME: Frieren Season 2' })).not.toHaveAttribute('title');
+        await user.click(within(firstView).getByRole('button', { name: 'BACK' }));
+
+        await user.click(within(screen.getAllByTestId('anime-season')[1] as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
+        const secondView = screen.getByTestId('season-view');
+        expect(within(secondView).getByRole('button', { name: 'REMOVE ANIME: Frieren Season 2' })).toBeEnabled();
+        expect(within(secondView).getByRole('button', { name: 'REMOVE ANIME: Frieren Season 2' })).not.toHaveAttribute('title');
     });
 
     it('compares the title with the name of the series without the case, the accents or the spaces', async () => {
@@ -1222,18 +1299,20 @@ describe('AnimeLibrary anime that cannot be removed alone', () => {
             ],
             'Pokemon Journeys'
         );
-        const [first, second] = screen.getAllByTestId('anime-season');
+        const [first] = screen.getAllByTestId('anime-season');
         await user.click(within(first as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
-        await user.click(within(second as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
-        expect(within(first as HTMLElement).getByRole('button', { name: /^REMOVE ANIME: / })).toBeDisabled();
-        expect(within(second as HTMLElement).getByRole('button', { name: /^REMOVE ANIME: / })).toBeEnabled();
+        expect(screen.getByRole('button', { name: /^REMOVE ANIME: / })).toBeDisabled();
+        await user.click(screen.getByRole('button', { name: 'BACK' }));
+        await user.click(within(screen.getAllByTestId('anime-season')[1] as HTMLElement).getByRole('button', { name: /^SHOW EPISODES: / }));
+        expect(screen.getByRole('button', { name: /^REMOVE ANIME: / })).toBeEnabled();
     });
 
     it('turns it off for an anime on its own too, whose series is its title', async () => {
         const user = await openSeries([makeAnime([makeEpisode({ id: 1 })], { id: 10, title: 'Naruto' })], 'Naruto');
         await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
         expect(screen.getByRole('button', { name: 'REMOVE ANIME: Naruto' })).toBeDisabled();
-        // The series is removed whole from the gear, which takes the anime with it.
+        // The series is removed whole from the gear of its screen, which takes the anime with it.
+        await user.click(screen.getByRole('button', { name: 'BACK' }));
         await user.click(screen.getByRole('button', { name: 'Series options: Naruto' }));
         await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Naruto' }));
         await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
@@ -1616,8 +1695,8 @@ describe('AnimeLibrary downloading the episodes of one season', () => {
         const first = season('Frieren');
         const button = within(first).getByRole('button', { name: 'DOWNLOAD SEASON: Frieren' });
         expect(button).toHaveTextContent('DOWNLOAD SEASON');
-        expect(first.querySelector('.season__row')).toContainElement(button);
-        expect(within(first.querySelector('.season__actions') as HTMLElement).getAllByRole('button').map((action) => {
+        expect(first.querySelector('.cover-card__footer')).toContainElement(button);
+        expect(within(first.querySelector('.library__footer') as HTMLElement).getAllByRole('button').map((action) => {
             return action.textContent;
         })).toEqual(['DOWNLOAD SEASON', 'GO TO SOURCE']);
         expect(within(season('Frieren Season 2')).getByRole('button', { name: 'DOWNLOAD SEASON: Frieren Season 2' })).toBeInTheDocument();
@@ -1646,7 +1725,8 @@ describe('AnimeLibrary downloading the episodes of one season', () => {
 
         expect(mock.api.downloadMissingAnime).toHaveBeenCalledWith([41]);
         expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
-        expect(within(season('Frieren')).getByRole('button', { name: 'SHOW EPISODES: Frieren' })).toHaveAttribute('aria-expanded', 'false');
+        expect(within(season('Frieren')).getByRole('button', { name: 'SHOW EPISODES: Frieren' })).not.toHaveAttribute('aria-expanded');
+        expect(screen.queryByTestId('season-view')).not.toBeInTheDocument();
     });
 
     it('is on the only season of a series too, next to DOWNLOAD ALL of the series, with names that tell them apart', async () => {
@@ -1719,8 +1799,11 @@ describe('AnimeLibrary episodes that are not downloaded', () => {
     });
 
     it('counts only the downloaded ones in the progress of the anime', async () => {
-        await openSeries();
-        expect(screen.getByText('1/3 DOWNLOADED')).toBeInTheDocument();
+        const { user } = await openSeries();
+        // The progress is on the screen of the season and, going back, on its card.
+        expect(within(screen.getByTestId('season-view')).getByText('1/3 DOWNLOADED')).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'BACK' }));
+        expect(within(screen.getByTestId('anime-season')).getByText('1/3 DOWNLOADED')).toBeInTheDocument();
     });
 
     it('has a DOWNLOAD button on each one, which queues that episode by its id', async () => {
@@ -1762,9 +1845,9 @@ describe('AnimeLibrary translating the subtitles of a season', () => {
         const user = await openSeason([DOWNLOADED]);
         expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
-        const panel = screen.getByTestId('anime-season').querySelector('.season__panel') as HTMLElement;
-        expect(panel.querySelector('.job__actions')).toContainElement(within(panel).getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
-        await user.click(screen.getByRole('button', { name: 'HIDE EPISODES: Naruto' }));
+        const view = screen.getByTestId('season-view');
+        expect(view.querySelector('.job__actions')).toContainElement(within(view).getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+        await user.click(screen.getByRole('button', { name: 'BACK' }));
         expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
     });
 

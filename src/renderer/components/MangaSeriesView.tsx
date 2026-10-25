@@ -119,9 +119,6 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                 <span className="section-label">{name}</span>
             </div>
             <article className="job job--done series" data-testid="manga-series-view">
-                <div className="series__cover" data-testid="manga-series-cover">
-                    <MangaCover url={group.entries[0]?.thumbnailUrl ?? null} />
-                </div>
                 <header className="job__head">
                     <h3 className="series__title" title={name}>
                         {name}
@@ -179,45 +176,51 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
                         }}
                     />
                 )}
-                {group.entries.map((manga) => {
-                    return (
-                        <section key={manga.id} className="series__season" data-testid="manga-season">
-                            <div className="season__row row--link">
+                <div className="cover-grid season-grid">
+                    {group.entries.map((manga) => {
+                        return (
+                            <section key={manga.id} className="series__season season-card cover-card row--link" data-testid="manga-season">
                                 <span className="season__cover" data-testid="manga-season-cover">
                                     <MangaCover url={manga.thumbnailUrl} />
                                 </span>
-                                <span className="season__chip" title={seasonLabel(manga, t)}>
-                                    {seasonLabel(manga, t)}
-                                </span>
-                                <h4 className="season__title">
-                                    <RowLink
-                                        label={`${t('manga.browse.open')}: ${manga.title}`}
-                                        title={manga.title}
-                                        onClick={() => {
-                                            void openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
-                                        }}
-                                    >
-                                        {manga.title}
-                                    </RowLink>
-                                </h4>
-                                <span className="season__meta">{t('manga.library.progress', { done: downloadedCount(manga), total: manga.chapters.length })}</span>
-                                <NewChaptersBadge count={newChapterCount([manga])} />
-                                <span className="season__actions">
-                                    <ConfirmButton
-                                        className="btn btn--small btn--ghost"
-                                        ariaLabel={`${t('manga.series.removeFrom')}: ${manga.title}`}
-                                        dialog={{ title: t('confirm.removeFromSeries.title', { name: manga.title }), message: t('confirm.removeFromSeries.message'), confirmLabel: t('manga.series.removeFrom') }}
-                                        onConfirm={() => {
-                                            void takeOutOfSeries(manga);
-                                        }}
-                                    >
-                                        {t('manga.series.removeFrom')}
-                                    </ConfirmButton>
-                                </span>
-                            </div>
-                        </section>
-                    );
-                })}
+                                <div className="cover-card__body">
+                                    <span className="season__chip" title={seasonLabel(manga, t)}>
+                                        {seasonLabel(manga, t)}
+                                    </span>
+                                    <h4 className="season__title">
+                                        <RowLink
+                                            label={`${t('manga.browse.open')}: ${manga.title}`}
+                                            title={manga.title}
+                                            onClick={() => {
+                                                void openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
+                                            }}
+                                        >
+                                            {manga.title}
+                                        </RowLink>
+                                    </h4>
+                                    <div className="cover-card__footer">
+                                        <span className="job__badges">
+                                            <span className="season__meta">{t('manga.library.progress', { done: downloadedCount(manga), total: manga.chapters.length })}</span>
+                                            <NewChaptersBadge count={newChapterCount([manga])} />
+                                        </span>
+                                        <div className="job__actions library__footer">
+                                            <ConfirmButton
+                                                className="btn btn--small btn--ghost"
+                                                ariaLabel={`${t('manga.series.removeFrom')}: ${manga.title}`}
+                                                dialog={{ title: t('confirm.removeFromSeries.title', { name: manga.title }), message: t('confirm.removeFromSeries.message'), confirmLabel: t('manga.series.removeFrom') }}
+                                                onConfirm={() => {
+                                                    void takeOutOfSeries(manga);
+                                                }}
+                                            >
+                                                {t('manga.series.removeFrom')}
+                                            </ConfirmButton>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                        );
+                    })}
+                </div>
             </article>
         </section>
     );

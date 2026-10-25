@@ -499,7 +499,7 @@ export function MangaDetail() {
                             }}
                         />
                     )}
-                    <ul className="history__list manga__chapters">
+                    <ul className="episode-cards manga__chapters">
                         {chapters.map((chapter) => {
                             const state = chapterState(saved, chapter.remoteId);
                             const label = chapterLabel(chapter.name, chapter.number);
@@ -531,94 +531,96 @@ export function MangaDetail() {
                                             {[chapter.scanlator, formatDate(chapter.dateUploaded), pageLeftOn > 0 && !read ? t('manga.detail.leftOn', { page: pageLeftOn + 1 }) : null].filter(Boolean).join(' · ')}
                                         </span>
                                     </div>
-                                    {state && isNewChapter(state) && <span className="badge badge--new">{t('manga.detail.new')}</span>}
-                                    {state && <span className={`badge badge--${state.status}`}>{t(chapterStatusKey(state.status))}</span>}
-                                    {inLibraryPage && (
-                                        <button
-                                            type="button"
-                                            className="btn btn--small"
-                                            aria-pressed={read}
-                                            aria-label={`${read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}: ${label}`}
-                                            onClick={() => {
-                                                markRead([progressKey(shown.title, chapter.remoteId)], !read);
-                                            }}
-                                        >
-                                            {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}
-                                        </button>
-                                    )}
-                                    {inLibraryPage && canDownload(state) && state?.status !== 'error' && state?.status !== 'cancelled' && (
-                                        <button
-                                            type="button"
-                                            className="btn btn--small"
-                                            aria-label={`${t('manga.detail.downloadChapter')}: ${label}`}
-                                            onClick={() => {
-                                                void downloadChapter(chapter.remoteId);
-                                            }}
-                                        >
-                                            {t('manga.detail.downloadChapter')}
-                                        </button>
-                                    )}
-                                    {inLibraryPage && state && (state.status === 'error' || state.status === 'cancelled') && (
-                                        <button
-                                            type="button"
-                                            className="btn btn--small btn--primary"
-                                            aria-label={`${t('manga.jobs.retry')}: ${label}`}
-                                            onClick={() => {
-                                                void retryJob(state.id);
-                                            }}
-                                        >
-                                            {t('manga.jobs.retry')}
-                                        </button>
-                                    )}
-                                    {inLibraryPage && state && state.status === 'paused' && (
-                                        <>
+                                    <span className="anime__actions">
+                                        {state && isNewChapter(state) && <span className="badge badge--new">{t('manga.detail.new')}</span>}
+                                        {state && <span className={`badge badge--${state.status}`}>{t(chapterStatusKey(state.status))}</span>}
+                                        {inLibraryPage && (
+                                            <button
+                                                type="button"
+                                                className="btn btn--small"
+                                                aria-pressed={read}
+                                                aria-label={`${read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}: ${label}`}
+                                                onClick={() => {
+                                                    markRead([progressKey(shown.title, chapter.remoteId)], !read);
+                                                }}
+                                            >
+                                                {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}
+                                            </button>
+                                        )}
+                                        {inLibraryPage && canDownload(state) && state?.status !== 'error' && state?.status !== 'cancelled' && (
+                                            <button
+                                                type="button"
+                                                className="btn btn--small"
+                                                aria-label={`${t('manga.detail.downloadChapter')}: ${label}`}
+                                                onClick={() => {
+                                                    void downloadChapter(chapter.remoteId);
+                                                }}
+                                            >
+                                                {t('manga.detail.downloadChapter')}
+                                            </button>
+                                        )}
+                                        {inLibraryPage && state && (state.status === 'error' || state.status === 'cancelled') && (
                                             <button
                                                 type="button"
                                                 className="btn btn--small btn--primary"
-                                                aria-label={`${t('manga.jobs.resume')}: ${label}`}
+                                                aria-label={`${t('manga.jobs.retry')}: ${label}`}
                                                 onClick={() => {
-                                                    void resumeJob(state.id);
+                                                    void retryJob(state.id);
                                                 }}
                                             >
-                                                {t('manga.jobs.resume')}
+                                                {t('manga.jobs.retry')}
                                             </button>
-                                            <ConfirmButton
-                                                className="btn btn--small btn--hot"
-                                                ariaLabel={`${t('manga.jobs.cancel')}: ${label}`}
-                                                dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('manga.jobs.cancel'), cancelLabel: t('confirm.back') }}
-                                                onConfirm={() => {
-                                                    void cancelJob(state.id);
+                                        )}
+                                        {inLibraryPage && state && state.status === 'paused' && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn--small btn--primary"
+                                                    aria-label={`${t('manga.jobs.resume')}: ${label}`}
+                                                    onClick={() => {
+                                                        void resumeJob(state.id);
+                                                    }}
+                                                >
+                                                    {t('manga.jobs.resume')}
+                                                </button>
+                                                <ConfirmButton
+                                                    className="btn btn--small btn--hot"
+                                                    ariaLabel={`${t('manga.jobs.cancel')}: ${label}`}
+                                                    dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('manga.jobs.cancel'), cancelLabel: t('confirm.back') }}
+                                                    onConfirm={() => {
+                                                        void cancelJob(state.id);
+                                                    }}
+                                                >
+                                                    {t('manga.jobs.cancel')}
+                                                </ConfirmButton>
+                                            </>
+                                        )}
+                                        {inLibraryPage && state && state.status === 'incomplete' && (
+                                            <button
+                                                type="button"
+                                                className="btn btn--small btn--primary"
+                                                disabled={repairingIds.includes(state.id)}
+                                                aria-label={`${t('manga.jobs.retry')}: ${label}`}
+                                                onClick={() => {
+                                                    void repairIncomplete(state.id);
                                                 }}
                                             >
-                                                {t('manga.jobs.cancel')}
+                                                {t('manga.jobs.retry')}
+                                            </button>
+                                        )}
+                                        {inLibraryPage && state && hasChapterFile(state.status) && (
+                                            <ConfirmButton
+                                                className="btn btn--small btn--ghost"
+                                                ariaLabel={`${t('manga.library.removeDownload')}: ${label}`}
+                                                dialog={{ title: t('confirm.removeDownload.title', { name: label }), message: t('confirm.removeDownload.message'), confirmLabel: t('manga.remove.confirm') }}
+                                                onConfirm={() => {
+                                                    void removeDownload(state.id);
+                                                }}
+                                            >
+                                                {t('manga.library.removeDownload')}
                                             </ConfirmButton>
-                                        </>
-                                    )}
-                                    {inLibraryPage && state && state.status === 'incomplete' && (
-                                        <button
-                                            type="button"
-                                            className="btn btn--small btn--primary"
-                                            disabled={repairingIds.includes(state.id)}
-                                            aria-label={`${t('manga.jobs.retry')}: ${label}`}
-                                            onClick={() => {
-                                                void repairIncomplete(state.id);
-                                            }}
-                                        >
-                                            {t('manga.jobs.retry')}
-                                        </button>
-                                    )}
-                                    {inLibraryPage && state && hasChapterFile(state.status) && (
-                                        <ConfirmButton
-                                            className="btn btn--small btn--ghost"
-                                            ariaLabel={`${t('manga.library.removeDownload')}: ${label}`}
-                                            dialog={{ title: t('confirm.removeDownload.title', { name: label }), message: t('confirm.removeDownload.message'), confirmLabel: t('manga.remove.confirm') }}
-                                            onConfirm={() => {
-                                                void removeDownload(state.id);
-                                            }}
-                                        >
-                                            {t('manga.library.removeDownload')}
-                                        </ConfirmButton>
-                                    )}
+                                        )}
+                                    </span>
                                 </li>
                             );
                         })}

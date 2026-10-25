@@ -1464,3 +1464,27 @@ html[data-theme-style='neon'] .player__stage:fullscreen .player__controls[data-p
 .reader__zone-title { color: var(--text); font-size: 18px; overflow-wrap: anywhere; }
 .reader__zone-hint, .reader__zone-none { margin: 0; font-size: 12px; line-height: 1.45; max-width: 420px; }
 .reader__zone-bar { width: min(420px, 80%); }
+
+/* The seasons of a series are cards, like the series of the library; a season of an anime opens its own screen with its episodes. */
+.season-grid { margin-top: 10px; align-items: stretch; }
+.season-card { margin-top: 0; padding: 8px; border-top: 0; border: 1px solid var(--line); background: var(--panel); }
+.season-card .season__cover { width: 100%; }
+/* The chip with the season is at the left and the audio (subtitled or dubbed) at the right, in the same line. */
+.season-card__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.season-card .season__chip { flex: none; min-width: 0; }
+.season-card__top .badge { flex: none; margin-left: auto; }
+/* The title always takes the room of two lines, so what is under it starts at the same height in every card of the row. */
+.season-card .season__title { flex: none; min-height: 2.6em; font-size: 15px; line-height: 1.3; color: var(--text); white-space: normal; }
+.season-card .cover-card__footer { gap: 8px; }
+.season-card .job__badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.season-card .library__footer { align-items: center; }
+/* The episodes (and the chapters) of a season are cards, bigger than a row: the name and its state on top, what can be done with it in
+   a line of its own at the bottom, the same in every card of the row. */
+.episode-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; align-items: stretch; }
+.episode-cards .history__item { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 10px; min-height: 110px; padding: 12px; border-left-width: 1px; border-top: 3px solid var(--green); }
+.episode-cards .history__item--error { border-top-color: var(--red); }
+.episode-cards .history__main { flex: 1; gap: 4px; }
+.episode-cards .history__title { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.episode-cards .anime__actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-start; gap: 6px 8px; margin-top: auto; }
+/* The state of a chapter is the first thing of its line of buttons, and it is not squeezed by them. */
+.episode-cards .anime__actions .badge { flex: none; }

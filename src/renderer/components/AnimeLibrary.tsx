@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
 import type { Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
@@ -220,47 +220,15 @@ function SeasonEditor({ anime, series, t, onClose }: { anime: LibraryAnime; seri
     );
 }
 
-// An anime of the library, as a season of its series: a row that opens to show what can be done with it.
-function AnimeEntry({ anime, seriesName, t }: { anime: LibraryAnime; seriesName: string; t: Translator }) {
-    const removeAnime = useAnimeStore((state) => {
-        return state.removeAnime;
-    });
-    const openLibraryAnime = useAnimeStore((state) => {
-        return state.openLibraryAnime;
-    });
+// What the anime of a season has to download: only what is missing in this season, the other seasons of the series are left alone.
+function DownloadSeasonButton({ anime, t }: { anime: LibraryAnime; t: Translator }) {
     const downloadMissing = useAnimeStore((state) => {
         return state.downloadMissing;
     });
-    // Coming from a redirect (the search, the schedule) the season is brought into view. Every season starts closed, always.
-    const focused = useAnimeStore((state) => {
-        return state.libraryFocus === anime.id;
-    });
-    const [expanded, setExpanded] = useState(false);
-    const [editing, setEditing] = useState(false);
-    const card = useRef<HTMLElement | null>(null);
-
-    useEffect(() => {
-        if (focused) {
-            card.current?.scrollIntoView?.({ block: 'center' });
-        }
-    }, [focused]);
-
-    const audio = <span className="badge">{anime.audio === 'dub' ? t('anime.audio.dub') : t('anime.audio.sub')}</span>;
-    const progress = t('anime.library.progress', { done: downloadedCount(anime), total: anime.episodes.length });
-    const source = (
-        <button
-            type="button"
-            className="btn btn--small btn--primary"
-            aria-label={`${t('anime.library.source')}: ${anime.title}`}
-            onClick={() => {
-                void openLibraryAnime(anime);
-            }}
-        >
-            {t('anime.library.source')}
-        </button>
-    );
-    // Only what is missing in this season: the other seasons of the series are left alone.
-    const downloadSeason = hasMissingInAnime(anime) && (
+    if (!hasMissingInAnime(anime)) {
+        return null;
+    }
+    return (
         <button
             type="button"
             className="btn btn--small"
@@ -272,6 +240,86 @@ function AnimeEntry({ anime, seriesName, t }: { anime: LibraryAnime; seriesName:
             {t('anime.season.downloadAll')}
         </button>
     );
+}
+
+function SourceButton({ anime, t }: { anime: LibraryAnime; t: Translator }) {
+    const openLibraryAnime = useAnimeStore((state) => {
+        return state.openLibraryAnime;
+    });
+    return (
+        <button
+            type="button"
+            className="btn btn--small btn--primary"
+            aria-label={`${t('anime.library.source')}: ${anime.title}`}
+            onClick={() => {
+                void openLibraryAnime(anime);
+            }}
+        >
+            {t('anime.library.source')}
+        </button>
+    );
+}
+
+function audioBadge(anime: LibraryAnime, t: Translator): ReactNode {
+    return <span className="badge">{anime.audio === 'dub' ? t('anime.audio.dub') : t('anime.audio.sub')}</span>;
+}
+
+function seasonProgress(anime: LibraryAnime, t: Translator): string {
+    return t('anime.library.progress', { done: downloadedCount(anime), total: anime.episodes.length });
+}
+
+// An anime of the library, as a season of its series: a card with its cover that opens the screen of the season.
+function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; onOpen: () => void }) {
+    // Coming from a redirect (the search, the schedule) the season is brought into view. Every season starts closed, always.
+    const focused = useAnimeStore((state) => {
+        return state.libraryFocus === anime.id;
+    });
+    const card = useRef<HTMLElement | null>(null);
+
+    useEffect(() => {
+        if (focused) {
+            card.current?.scrollIntoView?.({ block: 'center' });
+        }
+    }, [focused]);
+
+    return (
+        <section ref={card} className="series__season season-card cover-card row--link" data-testid="anime-season">
+            <span className="season__cover" data-testid="anime-season-cover">
+                <AnimeCover title={anime.title} />
+            </span>
+            <div className="cover-card__body">
+                <div className="season-card__top">
+                    <span className="season__chip" title={seasonLabel(anime, t)}>
+                        {seasonLabel(anime, t)}
+                    </span>
+                    {audioBadge(anime, t)}
+                </div>
+                <h4 className="season__title">
+                    <RowLink label={`${t('anime.library.show')}: ${anime.title}`} title={anime.title} onClick={onOpen}>
+                        {anime.title}
+                    </RowLink>
+                </h4>
+                <div className="cover-card__footer">
+                    <span className="job__badges">
+                        <span className="season__meta">{seasonProgress(anime, t)}</span>
+                    </span>
+                    <div className="job__actions library__footer">
+                        <DownloadSeasonButton anime={anime} t={t} />
+                        <SourceButton anime={anime} t={t} />
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+}
+
+// The screen of one season: what can be done with it and its episodes, as cards. The way back goes to the screen of the series.
+function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; seriesName: string; t: Translator; onBack: () => void }) {
+    const removeAnime = useAnimeStore((state) => {
+        return state.removeAnime;
+    });
+    const [editing, setEditing] = useState(false);
+
     // An anime on its own has nothing to order; one in a series has its season to edit (the series itself cannot change).
     const edit = anime.series !== null && (
         <button
@@ -286,76 +334,61 @@ function AnimeEntry({ anime, seriesName, t }: { anime: LibraryAnime; seriesName:
             {t('anime.season.edit')}
         </button>
     );
-    // The anime that gives its name to the series is not removed alone: to remove it, the whole series goes.
-    const remove = (
-        <AnimeRemove
-            label={t('anime.remove.anime')}
-            ariaLabel={`${t('anime.remove.anime')}: ${anime.title}`}
-            title={t('confirm.animeRemove.title', { name: anime.title })}
-            message={t('confirm.animeRemove.message')}
-            blocked={sameSeries(anime.title, seriesName) ? t('anime.remove.blocked') : undefined}
-            onRemove={() => {
-                void removeAnime(anime.id);
-            }}
-        />
-    );
-    const editor = editing && anime.series !== null && (
-        <SeasonEditor
-            anime={anime}
-            series={anime.series}
-            t={t}
-            onClose={() => {
-                setEditing(false);
-            }}
-        />
-    );
-    const episodes = expanded && (
-        <ul className="history__list">
-            {anime.episodes.map((episode) => {
-                return <EpisodeRow key={episode.id} anime={anime} episode={episode} t={t} />;
-            })}
-        </ul>
-    );
 
     return (
-        <section ref={card} className="series__season" data-testid="anime-season">
-            <div className="season__row row--link">
-                <span className="season__cover" data-testid="anime-season-cover">
-                    <AnimeCover title={anime.title} />
-                </span>
-                <span className="season__chip" title={seasonLabel(anime, t)}>
-                    {seasonLabel(anime, t)}
-                </span>
-                <h4 className="season__title">
-                    <RowLink
-                        label={`${expanded ? t('anime.library.hide') : t('anime.library.show')}: ${anime.title}`}
-                        expanded={expanded}
-                        title={anime.title}
-                        onClick={() => {
-                            setExpanded(!expanded);
-                        }}
-                    >
-                        {anime.title}
-                    </RowLink>
-                </h4>
-                <span className="season__meta">{progress}</span>
-                {audio}
-                <span className="season__actions">
-                    {downloadSeason}
-                    {source}
-                </span>
+        <section className="library__view" aria-label={anime.title} data-testid="season-view">
+            <div className="queue__toolbar">
+                <button type="button" className="btn btn--small btn--ghost" onClick={onBack}>
+                    {t('anime.back')}
+                </button>
+                <span className="section-label">{seriesName}</span>
             </div>
-            {expanded && (
-                <div className="season__panel">
-                    <div className="job__actions">
-                        {edit}
-                        <SeasonTranslation anime={anime} />
-                        {remove}
-                    </div>
-                    {editor}
-                    {episodes}
+            <article className="job job--done series">
+                <header className="job__head">
+                    <h3 className="series__title" title={anime.title}>
+                        {anime.title}
+                    </h3>
+                    <span className="job__badges">
+                        <span className="season__chip" title={seasonLabel(anime, t)}>
+                            {seasonLabel(anime, t)}
+                        </span>
+                        <span className="season__meta">{seasonProgress(anime, t)}</span>
+                        {audioBadge(anime, t)}
+                        <DownloadSeasonButton anime={anime} t={t} />
+                        <SourceButton anime={anime} t={t} />
+                    </span>
+                </header>
+                <div className="job__actions">
+                    {edit}
+                    <SeasonTranslation anime={anime} />
+                    {/* The anime that gives its name to the series is not removed alone: to remove it, the whole series goes. */}
+                    <AnimeRemove
+                        label={t('anime.remove.anime')}
+                        ariaLabel={`${t('anime.remove.anime')}: ${anime.title}`}
+                        title={t('confirm.animeRemove.title', { name: anime.title })}
+                        message={t('confirm.animeRemove.message')}
+                        blocked={sameSeries(anime.title, seriesName) ? t('anime.remove.blocked') : undefined}
+                        onRemove={() => {
+                            void removeAnime(anime.id);
+                        }}
+                    />
                 </div>
-            )}
+                {editing && anime.series !== null && (
+                    <SeasonEditor
+                        anime={anime}
+                        series={anime.series}
+                        t={t}
+                        onClose={() => {
+                            setEditing(false);
+                        }}
+                    />
+                )}
+                <ul className="episode-cards">
+                    {anime.episodes.map((episode) => {
+                        return <EpisodeRow key={episode.id} anime={anime} episode={episode} t={t} />;
+                    })}
+                </ul>
+            </article>
         </section>
     );
 }
@@ -486,11 +519,28 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
         return state.downloadMissing;
     });
     const [renaming, setRenaming] = useState(false);
+    // The season that is open: its own screen replaces the one of the series until the way back, or until the season is removed.
+    const [openSeasonId, setOpenSeasonId] = useState<number | null>(null);
     const name = group.series;
+    const openSeason = group.entries.find((anime) => {
+        return anime.id === openSeasonId;
+    });
     // The folder of the series is opened through an anime of it that has something downloaded.
     const downloaded = group.entries.find((anime) => {
         return downloadedCount(anime) > 0;
     });
+    if (openSeason) {
+        return (
+            <SeasonView
+                anime={openSeason}
+                seriesName={name}
+                t={t}
+                onBack={() => {
+                    setOpenSeasonId(null);
+                }}
+            />
+        );
+    }
     return (
         <section className="library__view" aria-label={name}>
             <div className="queue__toolbar">
@@ -500,9 +550,6 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                 <span className="section-label">{name}</span>
             </div>
             <article className="job job--done series" data-testid="series-view">
-                <div className="series__cover">
-                    <AnimeCover title={group.entries[0]?.title ?? name} />
-                </div>
                 <header className="job__head">
                     <h3 className="series__title" title={name}>
                         {name}
@@ -565,9 +612,20 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                         }}
                     />
                 )}
-                {group.entries.map((anime) => {
-                    return <AnimeEntry key={anime.id} anime={anime} seriesName={name} t={t} />;
-                })}
+                <div className="cover-grid season-grid">
+                    {group.entries.map((anime) => {
+                        return (
+                            <SeasonCard
+                                key={anime.id}
+                                anime={anime}
+                                t={t}
+                                onOpen={() => {
+                                    setOpenSeasonId(anime.id);
+                                }}
+                            />
+                        );
+                    })}
+                </div>
             </article>
         </section>
     );

@@ -1537,8 +1537,9 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'Open series: Pirates' }).click();
         await expect(session.page.getByTestId('manga-season')).toHaveCount(2);
         await expect(session.page.getByTestId('manga-season').first()).toContainText('SEASON 1');
-        // The series shows a cover at the top and one in the row of each season.
-        await expect(session.page.getByTestId('manga-series-cover').locator('.cover')).toHaveCount(1);
+        // The series has no small cover at the top: each season is a card with its own big cover.
+        await expect(session.page.getByTestId('manga-series-cover')).toHaveCount(0);
+        await expect(session.page.getByTestId('manga-season').first()).toHaveClass(/cover-card/);
         await expect(session.page.getByTestId('manga-season-cover')).toHaveCount(2);
         await expect(session.page.getByTestId('manga-season').first().getByTestId('manga-season-cover').locator('.cover')).toHaveCount(1);
         // The groups of a series are behind its gear.

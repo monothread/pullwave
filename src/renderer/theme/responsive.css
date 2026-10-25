@@ -15,8 +15,21 @@
     :root { --app-max: 1400px; }
 }
 
+/* The page is as wide as the window, so the mouse wheel scrolls it anywhere under the header, and the scrollbar is at the edge of the window.
+   What is shown stays inside --app-max, in the middle: the sides are the margin of the header and the tabs and the padding of the page.
+   The container of the page (below) is measured without its padding, so the columns of the lists do not change. */
 .app {
-    max-width: var(--app-max);
+    --gutter: max(20px, calc((100% - var(--app-max)) / 2 + 20px));
+    max-width: none;
+    padding-inline: 0;
+}
+
+.app > :not(.app__main) {
+    margin-inline: var(--gutter);
+}
+
+.app__main {
+    padding-inline: calc(var(--gutter) + 4px);
 }
 
 /* --- More columns when there is room (measured on the page, not on the window) ---------------------------------------------- */
@@ -117,7 +130,8 @@
 /* --- Less room: the controls stack ------------------------------------------------------------------------------------------- */
 @media (max-width: 760px) {
     .app {
-        padding: 12px 12px;
+        --gutter: 12px;
+        padding: 12px 0;
     }
 
     .logo {
@@ -126,7 +140,7 @@
     }
 
     .app__main {
-        padding: 12px 0 20px;
+        padding: 12px var(--gutter) 20px;
     }
 
     .tabs {

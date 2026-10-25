@@ -648,26 +648,30 @@ test('opens a series, shows its episodes and plays one by clicking on the rows, 
     await clickOnRow(page, page.getByTestId('anime-card').locator('.badge'));
     await expect(page.getByTestId('series-view')).toBeVisible();
 
-    // The season starts closed (even the only one); a click on its row shows the episodes and another hides them again.
+    // The season is a card (even the only one); a click on it opens the screen of the season with its episodes as cards, and BACK returns.
     const season = page.getByTestId('anime-season');
-    await expect(season.getByTestId('anime-episode')).toHaveCount(0);
-    await expect(season.getByRole('button', { name: /^SHOW EPISODES: / })).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('anime-episode')).toHaveCount(0);
+    await expect(season.getByRole('button', { name: /^SHOW EPISODES: / })).toBeVisible();
+    await expect(season.locator('.cover')).toHaveCount(1);
     await clickOnRow(page, season.locator('.season__meta'));
-    await expect(season.getByTestId('anime-episode')).toHaveCount(3);
+    await expect(page.getByTestId('season-view')).toBeVisible();
+    await expect(page.getByTestId('series-view')).toHaveCount(0);
+    await expect(page.getByTestId('anime-episode')).toHaveCount(3);
+    await page.getByRole('button', { name: 'BACK', exact: true }).click();
+    await expect(page.getByTestId('season-view')).toHaveCount(0);
+    await expect(page.getByTestId('anime-episode')).toHaveCount(0);
     await clickOnRow(page, season.locator('.season__meta'));
-    await expect(season.getByTestId('anime-episode')).toHaveCount(0);
-    await clickOnRow(page, season.locator('.season__meta'));
-    await expect(season.getByTestId('anime-episode')).toHaveCount(3);
+    await expect(page.getByTestId('anime-episode')).toHaveCount(3);
 
     // A button of the row works on its own: it does not close the season, nor play the episode.
     await page.getByRole('button', { name: 'MARK AS WATCHED: Fake Anime EP 1' }).click();
     await expect(page.getByRole('button', { name: 'MARK AS UNWATCHED: Fake Anime EP 1' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(season.getByTestId('anime-episode')).toHaveCount(3);
+    await expect(page.getByTestId('anime-episode')).toHaveCount(3);
 
     // A click on the row of the episode (its meta line) plays it.
     await expect(page.getByRole('button', { name: 'PLAY', exact: true })).toHaveCount(0);
-    await clickOnRow(page, season.getByTestId('anime-episode').locator('.history__meta').first());
+    await clickOnRow(page, page.getByTestId('anime-episode').locator('.history__meta').first());
     await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 1' })).toBeVisible();
 });
 
@@ -1387,7 +1391,8 @@ test.describe('library and folder in sync', () => {
         await expect(page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' })).toHaveCount(0);
         await expect(page.getByTestId('anime-episode').first()).not.toHaveClass(/row--link/);
 
-        // The import is on the cards: the screen of the anime has a way back.
+        // The import is on the cards: the screen of the season goes back to the series, and this one to the library.
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
         await page.getByRole('button', { name: 'BACK TO LIBRARY', exact: true }).click();
         await page.getByRole('button', { name: 'IMPORT LIBRARY' }).click();
         await expect(page.locator('.toast__message', { hasText: 'IMPORT DONE' })).toHaveText('IMPORT DONE: 0 ADDED · 1 POINTED TO A NEW PLACE · 0 ALREADY IN THE LIBRARY · 0 NOT RECOGNIZED');
@@ -1605,23 +1610,24 @@ test.describe('series and seasons', () => {
         await expect(page.getByTestId('anime-card').getByText('2 SEASONS')).toBeVisible();
         await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
 
-        // The order of a season is edited in its row, and a taken one is refused with the next one recommended.
-        const second = page.getByTestId('anime-season').last();
+        // The anime that gives its name to the series cannot be removed alone (it is told on the screen of its season); the other one can.
         await page.getByTestId('anime-season').first().getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
-        await second.getByRole('button', { name: 'SHOW EPISODES: Fake Anime 2', exact: true }).click();
-        await second.getByRole('button', { name: 'EDIT SEASON: Fake Anime 2' }).click();
+        const blocked = page.getByTestId('season-view').getByRole('button', { name: 'REMOVE ANIME: Fake Anime' });
+        await expect(blocked).toBeDisabled();
+        await expect(blocked).toHaveAttribute('title', 'This anime gives its name to the series. To remove it, remove the whole series.');
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+
+        // The order of a season is edited on its screen, and a taken one is refused with the next one recommended.
+        await page.getByTestId('anime-season').last().getByRole('button', { name: 'SHOW EPISODES: Fake Anime 2', exact: true }).click();
+        await page.getByRole('button', { name: 'EDIT SEASON: Fake Anime 2' }).click();
         await page.getByRole('spinbutton', { name: 'Order' }).fill('1');
         await page.getByRole('button', { name: 'SAVE' }).click();
         await expect(page.getByRole('alert')).toHaveText('Order 1 is already used by another anime of the series. Use 2, the next one.');
         await page.getByRole('button', { name: 'CANCEL' }).click();
-
-        // The anime that gives its name to the series cannot be removed alone; the other one can.
-        const first = page.getByTestId('anime-season').first();
-        const blocked = first.getByRole('button', { name: 'REMOVE ANIME: Fake Anime' });
-        await expect(blocked).toBeDisabled();
-        await expect(blocked).toHaveAttribute('title', 'This anime gives its name to the series. To remove it, remove the whole series.');
-        await second.getByRole('button', { name: 'REMOVE ANIME: Fake Anime 2' }).click();
+        await page.getByRole('button', { name: 'REMOVE ANIME: Fake Anime 2' }).click();
         await answerConfirm(page, 'Remove "Fake Anime 2"?', 'REMOVE');
+        // The season that was open is gone: the screen goes back to the series, which has one season now.
+        await expect(page.getByTestId('season-view')).toHaveCount(0);
         await expect(page.getByTestId('anime-season')).toHaveCount(1);
         await page.getByRole('button', { name: 'BACK TO LIBRARY', exact: true }).click();
         await expect(page.getByTestId('anime-card')).toHaveCount(1);
@@ -1663,15 +1669,24 @@ test.describe('layout for every size of window @resize', () => {
         await expect(page.getByTestId('anime-job')).toHaveCount(3);
     }
 
-    // How the page is laid out at a size: the scale of the interface (never changed), the widest the page may be and the columns of a list.
-    async function layout(page: Page, width: number, height: number): Promise<{ zoom: string; appMaxWidth: string; columns: number; overflow: boolean }> {
+    // How the page is laid out at a size: the scale of the interface (never changed), the widest the content may be (--app-max), the width of
+    // the header (the content, in the middle), the width of the part that scrolls (the whole window, so the wheel works on the sides too) and
+    // the columns of a list.
+    async function layout(
+        page: Page,
+        width: number,
+        height: number
+    ): Promise<{ zoom: string; appMax: string; contentWidth: number; scrollerWidth: number; windowWidth: number; columns: number; overflow: boolean }> {
         await page.setViewportSize({ width, height });
         return page.evaluate(() => {
             const list = document.querySelector('.queue') as HTMLElement;
             const tracks = getComputedStyle(list).gridTemplateColumns;
             return {
                 zoom: getComputedStyle(document.documentElement).zoom,
-                appMaxWidth: getComputedStyle(document.querySelector('.app') as HTMLElement).maxWidth,
+                appMax: getComputedStyle(document.documentElement).getPropertyValue('--app-max').trim(),
+                contentWidth: Math.round((document.querySelector('.app__header') as HTMLElement).getBoundingClientRect().width),
+                scrollerWidth: Math.round((document.querySelector('.app__main') as HTMLElement).getBoundingClientRect().width),
+                windowWidth: window.innerWidth,
                 columns: getComputedStyle(list).display === 'grid' ? tracks.split(' ').length : 1,
                 overflow: document.documentElement.scrollWidth > window.innerWidth
             };
@@ -1689,12 +1704,20 @@ test.describe('layout for every size of window @resize', () => {
         const { page } = session;
         await threeDownloads(page);
 
-        expect(await layout(page, 1100, 780)).toMatchObject({ zoom: '1', appMaxWidth: '1000px', columns: 1 });
-        expect(await layout(page, 1366, 768)).toMatchObject({ zoom: '1', appMaxWidth: '1240px', columns: 2 });
-        expect(await layout(page, 1920, 1080)).toMatchObject({ zoom: '1', appMaxWidth: '1400px', columns: 2 });
-        // Bigger screens are not a target: nothing changes there.
-        expect(await layout(page, 2560, 1440)).toMatchObject({ zoom: '1', appMaxWidth: '1400px', columns: 2 });
-        expect(await layout(page, 3440, 1440)).toMatchObject({ zoom: '1', appMaxWidth: '1400px', columns: 2 });
+        // The content is as wide as --app-max less the 20 pixels of each side, in the middle; the part that scrolls is as wide as the window.
+        const sizes: Array<[number, number, string, number, number]> = [
+            [1100, 780, '1000px', 960, 1],
+            [1366, 768, '1240px', 1200, 2],
+            [1920, 1080, '1400px', 1360, 2],
+            // Bigger screens are not a target: nothing changes there.
+            [2560, 1440, '1400px', 1360, 2],
+            [3440, 1440, '1400px', 1360, 2]
+        ];
+        for (const [width, height, appMax, contentWidth, columns] of sizes) {
+            const measured = await layout(page, width, height);
+            expect(measured).toMatchObject({ zoom: '1', appMax, contentWidth, columns });
+            expect(measured.scrollerWidth).toBe(measured.windowWidth);
+        }
     });
 
     test('never needs to scroll sideways, from the smallest window up', async () => {
@@ -2681,7 +2704,7 @@ test.describe('library of the search', () => {
         await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
 
         // The gear is the last element of the row, and holds the two buttons that act on the whole series.
-        const badges = page.getByTestId('series-view').locator('.job__badges');
+        const badges = page.getByTestId('series-view').locator('> .job__head > .job__badges');
         await expect(badges.locator('> *').last().getByRole('button', { name: 'Series options: Fake Anime' })).toBeVisible();
         await page.getByRole('button', { name: 'Series options: Fake Anime' }).click();
         await expect(page.getByRole('group', { name: 'Series options: Fake Anime' }).getByRole('button')).toHaveText(['RENAME SERIES', 'REMOVE SERIES']);

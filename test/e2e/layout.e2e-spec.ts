@@ -233,11 +233,14 @@ test('nothing is cut, misaligned or out of its box on any screen, at any size fr
     await sweep('library-series-screen');
     await page.getByTestId('anime-season').first().getByRole('button', { name: 'SHOW EPISODES' }).click();
     await page.getByRole('button', { name: /^EDIT SEASON/ }).first().click();
-    await sweep('library-series-screen-open');
-    await page.getByRole('button', { name: 'BACK' }).click();
+    await sweep('library-season-screen-edit');
+    // The screen of the season goes back to the one of the series, and this one to the cards.
+    await page.getByRole('button', { name: 'BACK', exact: true }).click();
+    await page.getByRole('button', { name: 'BACK TO LIBRARY', exact: true }).click();
     await page.getByRole('button', { name: 'OPEN SERIES: Zeta On Its Own' }).click();
     await sweep('library-anime-screen');
     await page.getByRole('button', { name: 'SHOW EPISODES: Zeta On Its Own', exact: true }).click();
+    await sweep('library-season-screen');
     await page.getByRole('button', { name: /^PLAY/ }).first().click();
     await sweep('player');
     await app.close();

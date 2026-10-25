@@ -49,16 +49,14 @@ describe('MangaSeriesView', () => {
             render(<MangaSeriesView group={groupLibrary(library)[0]!} onBack={vi.fn()} onRenamed={vi.fn()} />);
         }
 
-        it('shows the cover of the first season at the top of the series', () => {
+        it('has no small cover at the top of the series, since the cover of each season is big on its card', () => {
             renderWithCovers(COVER_ONE, COVER_TWO);
-            const cover = screen.getByTestId('manga-series-cover');
-            expect(cover).toHaveClass('series__cover');
-            expect(cover.querySelectorAll('img')).toHaveLength(1);
-            expect(cover.querySelector('img')).toHaveAttribute('src', COVER_ONE);
-            expect(screen.getByTestId('manga-series-view').firstElementChild).toBe(cover);
+            expect(screen.queryByTestId('manga-series-cover')).not.toBeInTheDocument();
+            expect(screen.getByTestId('manga-series-view').querySelector('.series__cover')).toBeNull();
+            expect(screen.getByTestId('manga-series-view').querySelectorAll('img')).toHaveLength(2);
         });
 
-        it('shows the cover of each season in its row, in the order of the seasons', () => {
+        it('shows the cover of each season on its card, in the order of the seasons', () => {
             renderWithCovers(COVER_ONE, COVER_TWO);
             const covers = screen.getAllByTestId('manga-season-cover');
             expect(covers).toHaveLength(2);
@@ -72,7 +70,6 @@ describe('MangaSeriesView', () => {
             const [first, second] = screen.getAllByTestId('manga-season-cover');
             expect(first!.querySelector('img')).toBeNull();
             expect(first!.querySelector('.cover--none')).not.toBeNull();
-            expect(screen.getByTestId('manga-series-cover').querySelector('.cover--none')).not.toBeNull();
             fireEvent.error(second!.querySelector('img')!);
             expect(second!.querySelector('img')).toBeNull();
             expect(second!.querySelector('.cover--none')).not.toBeNull();
@@ -91,6 +88,20 @@ describe('MangaSeriesView', () => {
         expect(within(seasons[0]!).getByText('1 of 1 downloaded')).toBeInTheDocument();
         expect(within(seasons[1]!).getByText('Beyond Journey')).toBeInTheDocument();
         expect(within(seasons[1]!).getByText('1 of 2 downloaded')).toBeInTheDocument();
+    });
+
+    it('shows the seasons as cards in a grid, with the cover on top and the chip, the title, the progress and the button at the bottom', () => {
+        renderView();
+        const seasons = screen.getAllByTestId('manga-season');
+        seasons.forEach((season) => {
+            expect(season).toHaveClass('cover-card');
+            expect(season).toHaveClass('season-card');
+            expect(season).toHaveClass('row--link');
+            expect(season.parentElement).toHaveClass('cover-grid');
+            expect(season.firstElementChild).toBe(within(season).getByTestId('manga-season-cover'));
+            expect(season.querySelector('.cover-card__footer')).toContainElement(within(season).getByRole('button', { name: /^REMOVE FROM SERIES: / }));
+        });
+        expect(seasons[0]!.parentElement).toBe(seasons[1]!.parentElement);
     });
 
     it('says one season in the singular', () => {
