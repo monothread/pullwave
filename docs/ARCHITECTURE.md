@@ -54,7 +54,7 @@ src/
     store/ (zustand): appStore.ts, animeStore.ts
 test/            # unit tests mirroring src
 test/e2e/        # Playwright-Electron (fake yt-dlp via stub)
-scripts/         # fetch-binaries.mjs (per platform), check-linux-tools.mjs (no longer used: it checked the rpm/pacman prerequisites)
+scripts/         # fetch-binaries.mjs (per platform)
 .github/workflows/  # release-linux.yml, release-windows.yml (manual, build and attach packages to the draft Release)
 resources/       # icon.png, THIRD_PARTY_NOTICES.md, ani-scripts/pullwave-run.sh (runs ani-cli with a menu, a player and tput defined as functions), bin/ (git-ignored)
 docs/
