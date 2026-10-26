@@ -12,7 +12,7 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { canDownload, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
+import { canDownload, compareChaptersAscending, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 
 function chapterLabel(name: string, number: number | null): string {
@@ -210,14 +210,12 @@ export function MangaDetail() {
             return chapterState(saved, chapter.remoteId)?.status === 'incomplete';
         }).length;
     const shown = details ?? manga;
-    // The chapters in reading order (the list shows the newest first), each with its place in the library when it is there.
-    const readable = [...chapters]
-        .sort((first, second) => {
-            return first.sourceOrder - second.sourceOrder;
-        })
-        .map((chapter) => {
-            return { remoteId: chapter.remoteId, libraryChapterId: chapterState(saved, chapter.remoteId)?.id ?? null, name: chapter.name, number: chapter.number };
-        });
+    // The chapters of the list (the lowest number first) and the ones the reader takes, in the same order, each with its place in the
+    // library when it is there.
+    const ordered = [...chapters].sort(compareChaptersAscending);
+    const readable = ordered.map((chapter) => {
+        return { remoteId: chapter.remoteId, libraryChapterId: chapterState(saved, chapter.remoteId)?.id ?? null, name: chapter.name, number: chapter.number };
+    });
 
     // Which of the genres, the author and the artist the source can search with its filters.
     const searchable = (term: string, kind: TermKind): boolean => {
@@ -500,7 +498,7 @@ export function MangaDetail() {
                         />
                     )}
                     <ul className="episode-cards manga__chapters">
-                        {chapters.map((chapter) => {
+                        {ordered.map((chapter) => {
                             const state = chapterState(saved, chapter.remoteId);
                             const label = chapterLabel(chapter.name, chapter.number);
                             const read = isRead(chapter.remoteId);

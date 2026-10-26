@@ -1159,6 +1159,8 @@ test.describe('manga section', () => {
         await openOnePiece(session.page);
         await expect(session.page.getByText(/^Author:/)).toHaveText('Author: Oda');
         await expect(session.page.getByText('Chapters (2)')).toBeVisible();
+        // The chapters are listed from the lowest number up.
+        await expect(session.page.getByTestId('manga-chapter')).toContainText(['Romance Dawn', 'The Great Race']);
         // The page of the browse only reads and adds: nothing to pick or download there.
         await expect(session.page.getByRole('checkbox')).toHaveCount(0);
         await expect(session.page.getByRole('button', { name: /^DOWNLOAD (SELECTED|MISSING)/ })).toHaveCount(0);

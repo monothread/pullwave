@@ -1,7 +1,7 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
 import { hasChapterFile } from '@shared/manga';
-import type { LibraryManga, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
+import type { LibraryManga, MangaChapter, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
 import type { ToolErrorCode } from '@shared/tools';
 import type { MangaReaderState, ReaderChapter } from '../store/mangaStore';
 
@@ -530,6 +530,18 @@ export function checksForSource(checks: readonly MangaCloudflareActivity[], scop
         const known = sources.get(siteOf(check.host));
         return known === undefined ? scope.loading : known === scope.sourceId;
     });
+}
+
+// The order of the list of chapters: the ones with no number first (by the order of their source, then by their id), then the
+// numbered ones by number. The order of the source is not trusted for them, because a source that lists a collection numbers them its own way.
+export function compareChaptersAscending(first: Pick<MangaChapter, 'remoteId' | 'number' | 'sourceOrder'>, second: Pick<MangaChapter, 'remoteId' | 'number' | 'sourceOrder'>): number {
+    if (first.number !== null && second.number !== null && first.number !== second.number) {
+        return first.number - second.number;
+    }
+    if ((first.number === null) !== (second.number === null)) {
+        return first.number === null ? -1 : 1;
+    }
+    return first.sourceOrder - second.sourceOrder || first.remoteId - second.remoteId;
 }
 
 // The chapters of a manga of the library in reading order (the oldest first), as the reader takes them.

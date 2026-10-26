@@ -17,7 +17,7 @@ const initialManga = useMangaStore.getState();
 const CHAPTERS = [
     makeChapter({ remoteId: 11, name: 'Romance Dawn', number: 1, scanlator: 'Group A', dateUploaded: Date.UTC(2023, 10, 14, 12) }),
     makeChapter({ remoteId: 12, name: '', number: 2, scanlator: null, dateUploaded: null }),
-    makeChapter({ remoteId: 13, name: '', number: null, scanlator: null, dateUploaded: null })
+    makeChapter({ remoteId: 13, name: '', number: 3, scanlator: null, dateUploaded: null })
 ];
 
 function open(overrides: Partial<MangaSelection> = {}): void {
@@ -112,6 +112,36 @@ describe('MangaDetail', () => {
         rows.forEach((row) => {
             expect(row.querySelector('input')).toBeNull();
         });
+    });
+
+    it('lists the chapters from the lowest number up, whatever the order the source gave them', () => {
+        open({
+            chapters: [
+                makeChapter({ remoteId: 15, name: 'Six', number: 6, sourceOrder: 7 }),
+                makeChapter({ remoteId: 14, name: 'Five', number: 5, sourceOrder: 6 }),
+                makeChapter({ remoteId: 13, name: 'Four point one', number: 4.1, sourceOrder: 5 }),
+                makeChapter({ remoteId: 12, name: 'Four', number: 4, sourceOrder: 4 }),
+                makeChapter({ remoteId: 11, name: 'One', number: 1, sourceOrder: 1 })
+            ]
+        });
+        render(<MangaDetail />);
+        const names = screen.getAllByTestId('manga-chapter').map((row) => {
+            return row.textContent?.match(/One|Four point one|Four|Five|Six/)?.[0];
+        });
+        expect(names).toEqual(['One', 'Four', 'Four point one', 'Five', 'Six']);
+    });
+
+    it('lists the chapters with no number before the numbered ones', () => {
+        open({
+            chapters: [
+                makeChapter({ remoteId: 11, name: 'Numbered', number: 1, sourceOrder: 1 }),
+                makeChapter({ remoteId: 12, name: 'Unnumbered', number: null, sourceOrder: 2 })
+            ]
+        });
+        render(<MangaDetail />);
+        const rows = screen.getAllByTestId('manga-chapter');
+        expect(rows[0]).toHaveTextContent('Unnumbered');
+        expect(rows[1]).toHaveTextContent('Numbered');
     });
 
     it('shows the chapters as cards in a grid, with the name on top and the state and the buttons together at the bottom', () => {
@@ -305,6 +335,25 @@ describe('MangaDetail reading', () => {
         makeChapter({ remoteId: 12, name: 'Second', number: 2, sourceOrder: 2 }),
         makeChapter({ remoteId: 11, name: 'First', number: 1, sourceOrder: 1 })
     ];
+
+    it('hands the reader the chapters in the order of the list, by number and not by the order of the source', async () => {
+        const user = userEvent.setup();
+        open({
+            chapters: [
+                makeChapter({ remoteId: 11, name: 'Late', number: 9, sourceOrder: 1 }),
+                makeChapter({ remoteId: 12, name: 'Early', number: 2, sourceOrder: 5 })
+            ]
+        });
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'READ: Late' }));
+        expect(useMangaStore.getState().reader).toMatchObject({
+            index: 1,
+            chapters: [
+                { remoteId: 12, libraryChapterId: null, name: 'Early', number: 2 },
+                { remoteId: 11, libraryChapterId: null, name: 'Late', number: 9 }
+            ]
+        });
+    });
 
     it('reads a chapter from the source, among the chapters in reading order', async () => {
         const user = userEvent.setup();

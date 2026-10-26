@@ -29,6 +29,7 @@ import {
     matchesManga,
     searchMatchesByTab,
     readerChapters,
+    compareChaptersAscending,
     adjacentSeason,
     neighbourChapter,
     seasonLabel,
@@ -790,6 +791,57 @@ describe('readerChapters', () => {
             { remoteId: 21, libraryChapterId: 1, name: 'One', number: null },
             { remoteId: 22, libraryChapterId: 2, name: 'Two', number: 2 }
         ]);
+    });
+});
+
+describe('compareChaptersAscending', () => {
+    const chapter = (remoteId: number, number: number | null, sourceOrder: number) => {
+        return { remoteId, number, sourceOrder };
+    };
+
+    const numberOf = (item: { number: number | null }) => {
+        return item.number;
+    };
+    const idOf = (item: { remoteId: number }) => {
+        return item.remoteId;
+    };
+
+    it('orders the numbered chapters by number, whatever the order of the source', () => {
+        const chapters = [chapter(1, 3, 1), chapter(2, 1, 3), chapter(3, 2, 2)];
+        expect(chapters.sort(compareChaptersAscending).map(numberOf)).toEqual([1, 2, 3]);
+    });
+
+    it('puts a decimal number between its neighbours', () => {
+        const chapters = [chapter(1, 5, 6), chapter(2, 4.1, 5), chapter(3, 4, 4), chapter(4, 6, 7), chapter(5, 1, 1)];
+        expect(chapters.sort(compareChaptersAscending).map(numberOf)).toEqual([1, 4, 4.1, 5, 6]);
+    });
+
+    it('puts the chapters with no number before the numbered ones', () => {
+        const chapters = [chapter(1, 1, 1), chapter(2, null, 5), chapter(3, 0, 2)];
+        expect(chapters.sort(compareChaptersAscending).map(idOf)).toEqual([2, 3, 1]);
+    });
+
+    it('orders the chapters with no number by the order of the source, then by id', () => {
+        const chapters = [chapter(9, null, 2), chapter(8, null, 2), chapter(7, null, 1)];
+        expect(chapters.sort(compareChaptersAscending).map(idOf)).toEqual([7, 8, 9]);
+    });
+
+    it('orders the chapters with the same number by the order of the source, then by id', () => {
+        const chapters = [chapter(4, 2, 3), chapter(3, 2, 3), chapter(2, 2, 1)];
+        expect(chapters.sort(compareChaptersAscending).map(idOf)).toEqual([2, 3, 4]);
+    });
+
+    it('gives a negative, positive or zero result as a comparison does', () => {
+        expect(compareChaptersAscending(chapter(1, 1, 1), chapter(2, 2, 2))).toBeLessThan(0);
+        expect(compareChaptersAscending(chapter(1, 2, 2), chapter(2, 1, 1))).toBeGreaterThan(0);
+        expect(compareChaptersAscending(chapter(1, null, 1), chapter(2, 1, 2))).toBe(-1);
+        expect(compareChaptersAscending(chapter(1, 1, 1), chapter(2, null, 2))).toBe(1);
+        expect(compareChaptersAscending(chapter(1, 1, 1), chapter(1, 1, 1))).toBe(0);
+    });
+
+    it('keeps an empty list and a list with one chapter as they are', () => {
+        expect([].sort(compareChaptersAscending)).toEqual([]);
+        expect([chapter(1, 7, 1)].sort(compareChaptersAscending)).toEqual([chapter(1, 7, 1)]);
     });
 });
 
