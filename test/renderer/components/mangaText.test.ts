@@ -24,6 +24,7 @@ import {
     canDownload,
     downloadablePicks,
     localDetails,
+    withLibraryChapters,
     newChapterCount,
     matchesSearch,
     matchesManga,
@@ -437,6 +438,49 @@ describe('localDetails', () => {
 
     it('gives a manga with no chapters an empty list', () => {
         expect(localDetails(makeLibraryManga([])).chapters).toEqual([]);
+    });
+});
+
+describe('withLibraryChapters', () => {
+    const LISTED = [
+        { remoteId: 11, name: 'One', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 },
+        { remoteId: 12, name: 'Two', number: 2, dateUploaded: 1700000000000, scanlator: 'Group', sourceOrder: 2 }
+    ];
+
+    it('gives what the source lists when the manga is not in the library', () => {
+        const result = withLibraryChapters(LISTED, null);
+        expect(result).toEqual(LISTED);
+        expect(result).not.toBe(LISTED);
+    });
+
+    it('gives what the source lists when the library has no other chapter', () => {
+        const saved = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, name: 'One' }), makeChapterRecord({ id: 2, remoteId: 12, name: 'Two' })]);
+        expect(withLibraryChapters(LISTED, saved)).toEqual(LISTED);
+    });
+
+    it('adds the chapters of the library that the source no longer lists, in the shape the source gives', () => {
+        const saved = makeLibraryManga([
+            makeChapterRecord({ id: 1, remoteId: 11, name: 'One' }),
+            makeChapterRecord({ id: 3, remoteId: 99, name: 'Chapter', number: null, dateUploaded: 1600000000000, scanlator: 'Old group', sourceOrder: 1, status: 'done', filePath: '/m/Chapter.cbz' })
+        ]);
+        expect(withLibraryChapters(LISTED, saved)).toEqual([...LISTED, { remoteId: 99, name: 'Chapter', number: null, dateUploaded: 1600000000000, scanlator: 'Old group', sourceOrder: 1 }]);
+    });
+
+    it('gives every chapter of the library when the source lists none', () => {
+        const saved = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, name: 'One', number: 1, sourceOrder: 4 })]);
+        expect(withLibraryChapters([], saved)).toEqual([{ remoteId: 11, name: 'One', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 4 }]);
+    });
+
+    it('gives an empty list when there is nothing in the source and nothing in the library', () => {
+        expect(withLibraryChapters([], makeLibraryManga([]))).toEqual([]);
+        expect(withLibraryChapters([], null)).toEqual([]);
+    });
+
+    it('does not change the list of the source', () => {
+        const saved = makeLibraryManga([makeChapterRecord({ id: 3, remoteId: 99, name: 'Chapter' })]);
+        const source = [...LISTED];
+        withLibraryChapters(source, saved);
+        expect(source).toEqual(LISTED);
     });
 });
 

@@ -131,6 +131,60 @@ describe('MangaDetail', () => {
         expect(names).toEqual(['One', 'Four', 'Four point one', 'Five', 'Six']);
     });
 
+    it('keeps listing a chapter of the library that the source no longer lists, in its place and in the count', () => {
+        useMangaStore.setState({
+            library: [makeLibraryManga([makeChapterRecord({ id: 5, remoteId: 99, name: 'Old format', number: null, sourceOrder: 1, status: 'done' })])]
+        });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByText('Chapters (4)')).toBeInTheDocument();
+        const rows = screen.getAllByTestId('manga-chapter');
+        expect(rows).toHaveLength(4);
+        expect(rows[0]).toHaveTextContent('Old format');
+        expect(rows[0]).toHaveTextContent('Downloaded');
+        expect(rows[1]).toHaveTextContent('Romance Dawn');
+        expect(rows[2]).toHaveTextContent('#2');
+        expect(rows[3]).toHaveTextContent('#3');
+    });
+
+    it('opens the reader on a chapter that only the library has, among the chapters of the list', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({
+            library: [makeLibraryManga([makeChapterRecord({ id: 5, remoteId: 99, name: 'Old format', number: null, sourceOrder: 1, status: 'done' })])]
+        });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'READ: Old format' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 99, libraryChapterId: 5 });
+        expect(useMangaStore.getState().reader).toMatchObject({
+            index: 0,
+            chapters: [
+                { remoteId: 99, libraryChapterId: 5, name: 'Old format', number: null },
+                { remoteId: 11, libraryChapterId: null, name: 'Romance Dawn', number: 1 },
+                { remoteId: 12, libraryChapterId: null, name: '', number: 2 },
+                { remoteId: 13, libraryChapterId: null, name: '', number: 3 }
+            ]
+        });
+    });
+
+    it('has no DOWNLOAD button for a chapter that only the library has and is not downloaded', () => {
+        useMangaStore.setState({
+            library: [makeLibraryManga([makeChapterRecord({ id: 5, remoteId: 99, name: 'Old format', number: null, sourceOrder: 1, status: 'idle', filePath: null })])]
+        });
+        open();
+        render(<MangaDetail />);
+        const row = screen.getAllByTestId('manga-chapter')[0]!;
+        expect(row).toHaveTextContent('Old format');
+        expect(within(row).queryByRole('button', { name: /^DOWNLOAD:/ })).not.toBeInTheDocument();
+    });
+
+    it('lists only what the source lists for a manga that is not in the library', () => {
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByText('Chapters (3)')).toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-chapter')).toHaveLength(3);
+    });
+
     it('lists the chapters with no number before the numbered ones', () => {
         open({
             chapters: [

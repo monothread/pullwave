@@ -54,6 +54,8 @@ class FakeSuwayomi {
     otherChapters = [1, 2, 3];
     // Chapters the source has published after the first two (their numbers on the server).
     laterChapters: number[] = [];
+    // Chapters (by their number on the server) the source stops listing.
+    unlistedChapters = new Set<number>();
     extensionLib = '1.4';
     // The server cannot get the manga from its source (a site behind Cloudflare).
     failDetails = false;
@@ -201,7 +203,9 @@ class FakeSuwayomi {
                         ...this.laterChapters.map((chapterId, index) => {
                             return { id: chapterId, name: `Chapter ${index + 3}`, chapterNumber: index + 3, uploadDate: String(Date.now()), scanlator: null, sourceOrder: index + 3 };
                         })
-                    ]
+                    ].filter((chapter) => {
+                        return !this.unlistedChapters.has(chapter.id);
+                    })
                 }
             };
         }
@@ -2364,6 +2368,23 @@ test.describe('manga section', () => {
         expect(kept).toHaveLength(1);
         expect(readFileSync(join(session.userData, 'manga', 'covers', kept[0]!)).subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
         expect(fake.requests.filter((item) => {return item.path === '/api/v1/manga/7/thumbnail'}).length).toBeGreaterThan(0);
+    });
+
+    test('keeps listing a chapter of the library that the source stops listing, in its place, and counts it', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        fake.unlistedChapters = new Set([101]);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        await expect(session.page.getByRole('button', { name: 'READ: The Great Race', exact: true })).toBeVisible();
+        await expect(session.page.getByText('LOADING CHAPTERS…')).toHaveCount(0);
+        await expect(session.page.getByText('Chapters (2)')).toBeVisible();
+        await expect(session.page.getByTestId('manga-chapter')).toContainText(['Romance Dawn', 'The Great Race']);
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
+        fake.unlistedChapters = new Set();
     });
 
     test('opens a manga of the library with its saved chapters even when the source cannot be reached', async () => {

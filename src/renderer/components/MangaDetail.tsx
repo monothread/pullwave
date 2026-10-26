@@ -12,7 +12,7 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { canDownload, compareChaptersAscending, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
+import { canDownload, compareChaptersAscending, withLibraryChapters, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 
 function chapterLabel(name: string, number: number | null): string {
@@ -212,7 +212,14 @@ export function MangaDetail() {
     const shown = details ?? manga;
     // The chapters of the list (the lowest number first) and the ones the reader takes, in the same order, each with its place in the
     // library when it is there.
-    const ordered = [...chapters].sort(compareChaptersAscending);
+    const listed = withLibraryChapters(chapters, saved);
+    const ordered = [...listed].sort(compareChaptersAscending);
+    // The chapters the source lists: the others are only in the library, and the source has nothing to download for them.
+    const fromSource = new Set(
+        chapters.map((chapter) => {
+            return chapter.remoteId;
+        })
+    );
     const readable = ordered.map((chapter) => {
         return { remoteId: chapter.remoteId, libraryChapterId: chapterState(saved, chapter.remoteId)?.id ?? null, name: chapter.name, number: chapter.number };
     });
@@ -382,7 +389,7 @@ export function MangaDetail() {
                     </div>
                     )}
                     <div className="queue__toolbar">
-                        <span className="section-label">{t('manga.detail.chapters', { count: chapters.length })}</span>
+                        <span className="section-label">{t('manga.detail.chapters', { count: listed.length })}</span>
                     </div>
                     <div className="job__actions">
                         {inLibraryPage ? (
@@ -545,7 +552,7 @@ export function MangaDetail() {
                                                 {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}
                                             </button>
                                         )}
-                                        {inLibraryPage && canDownload(state) && state?.status !== 'error' && state?.status !== 'cancelled' && (
+                                        {inLibraryPage && fromSource.has(chapter.remoteId) && canDownload(state) && state?.status !== 'error' && state?.status !== 'cancelled' && (
                                             <button
                                                 type="button"
                                                 className="btn btn--small"

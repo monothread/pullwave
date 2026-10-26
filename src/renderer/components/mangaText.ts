@@ -117,10 +117,31 @@ export function localDetails(manga: LibraryManga): MangaDetailsWithChapters {
             genres: manga.genres,
             status: manga.status
         },
-        chapters: manga.chapters.map((chapter) => {
-            return { remoteId: chapter.remoteId, name: chapter.name, number: chapter.number, dateUploaded: chapter.dateUploaded, scanlator: chapter.scanlator, sourceOrder: chapter.sourceOrder };
-        })
+        chapters: manga.chapters.map(toSourceChapter)
     };
+}
+
+function toSourceChapter(chapter: MangaChapterRecord): MangaChapter {
+    return { remoteId: chapter.remoteId, name: chapter.name, number: chapter.number, dateUploaded: chapter.dateUploaded, scanlator: chapter.scanlator, sourceOrder: chapter.sourceOrder };
+}
+
+// What the source lists now, plus the chapters of the library that it no longer lists (a source can renumber its chapters; the ones that
+// were downloaded stay in the library and on the disk, so the page of the manga keeps showing them).
+export function withLibraryChapters(chapters: readonly MangaChapter[], saved: Pick<LibraryManga, 'chapters'> | null): MangaChapter[] {
+    if (saved === null) {
+        return [...chapters];
+    }
+    const listed = new Set(
+        chapters.map((chapter) => {
+            return chapter.remoteId;
+        })
+    );
+    const unlisted = saved.chapters
+        .filter((chapter) => {
+            return !listed.has(chapter.remoteId);
+        })
+        .map(toSourceChapter);
+    return [...chapters, ...unlisted];
 }
 
 export function libraryEntry(library: readonly LibraryManga[], sourceId: string, remoteId: number): LibraryManga | null {
