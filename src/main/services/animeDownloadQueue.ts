@@ -114,6 +114,19 @@ export class AnimeDownloadQueue {
         this.pump();
     }
 
+    // Queues these episodes of an anime of the library (the ones already downloaded or already waiting are left as they are).
+    downloadEpisodes(animeId: number, numbers: readonly string[]): void {
+        const anime = this.deps.db.getAnime(animeId);
+        if (!anime) {
+            return;
+        }
+        numbers.forEach((number) => {
+            this.queueEpisode(anime, this.deps.db.ensureEpisode(anime.id, number));
+        });
+        this.deps.onLibraryChanged();
+        this.pump();
+    }
+
     // Queues an episode of the library again (after an error or a cancellation, also after the app was restarted).
     retry(episodeId: number): void {
         const episode = this.deps.db.getEpisode(episodeId);

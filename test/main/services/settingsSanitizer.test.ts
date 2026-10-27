@@ -52,6 +52,8 @@ describe('sanitizeSettings', () => {
             animeQuality: '720p',
             animeAudio: 'dub',
             animeSubtitles: 'Portuguese',
+            animeCheckNewEpisodes: false,
+            animeAutoDownloadNew: true,
             mangaDirectory: '/media/manga',
             mangaFormat: 'folder',
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
@@ -100,6 +102,32 @@ describe('sanitizeSettings', () => {
 
     it.each(['yes', 0, null, []])('falls back to looking for new chapters for the invalid value %j', (mangaCheckNewChapters) => {
         expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(true);
+    });
+
+    it('looks for new episodes every hour by default', () => {
+        expect(DEFAULT_SETTINGS.animeCheckNewEpisodes).toBe(true);
+        expect(sanitizeSettings({}).animeCheckNewEpisodes).toBe(true);
+    });
+
+    it.each([true, false])('keeps the choice of looking for new episodes (%j)', (animeCheckNewEpisodes) => {
+        expect(sanitizeSettings({ animeCheckNewEpisodes }).animeCheckNewEpisodes).toBe(animeCheckNewEpisodes);
+    });
+
+    it.each(['yes', 0, null, []])('falls back to looking for new episodes for the invalid value %j', (animeCheckNewEpisodes) => {
+        expect(sanitizeSettings({ animeCheckNewEpisodes }).animeCheckNewEpisodes).toBe(true);
+    });
+
+    it('does not download the new episodes by default', () => {
+        expect(DEFAULT_SETTINGS.animeAutoDownloadNew).toBe(false);
+        expect(sanitizeSettings({}).animeAutoDownloadNew).toBe(false);
+    });
+
+    it.each([true, false])('keeps the choice of downloading the new episodes (%j)', (animeAutoDownloadNew) => {
+        expect(sanitizeSettings({ animeAutoDownloadNew }).animeAutoDownloadNew).toBe(animeAutoDownloadNew);
+    });
+
+    it.each(['yes', 1, null, []])('falls back to not downloading the new episodes for the invalid value %j', (animeAutoDownloadNew) => {
+        expect(sanitizeSettings({ animeAutoDownloadNew }).animeAutoDownloadNew).toBe(false);
     });
 
     it('drops the limit of manga downloads saved by an older version (it is fixed now), touching nothing else', () => {

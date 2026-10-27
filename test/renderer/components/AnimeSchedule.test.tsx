@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeScheduleEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -269,127 +269,69 @@ describe('AnimeSchedule', () => {
         expect(screen.getByText('AIRING [1]')).toBeInTheDocument();
     });
 
-    describe('availability in the source', () => {
-        it('asks which of the anime of the day the source has, by their ids and their two names', async () => {
+    describe('without a check of the source', () => {
+        it('lists the day once and asks the source about nothing by itself', async () => {
             render(<AnimeSchedule />);
             await screen.findByText('Sousou no Frieren');
 
-            await vi.waitFor(() => {
-                expect(mock.api.checkAnimeAvailability).toHaveBeenCalledTimes(1);
-            });
-            expect(mock.api.checkAnimeAvailability).toHaveBeenCalledWith([
-                { anilistId: 1, english: 'Frieren: Beyond Journey\'s End', romaji: 'Sousou no Frieren' },
-                { anilistId: 2, english: 'Dandadan', romaji: 'Dan Da Dan' }
-            ]);
+            expect(mock.api.listAnimeSchedule).toHaveBeenCalledTimes(1);
+            expect(mock.api.searchAnime).not.toHaveBeenCalled();
         });
 
-        it('says CHECKING… on each card while the source is being asked, and the cards can be clicked meanwhile', async () => {
+        it('shows every card as a button with no badge about the source, faded or disabled', async () => {
             render(<AnimeSchedule />);
             await screen.findByText('Sousou no Frieren');
 
             const items = screen.getAllByRole('listitem');
+            expect(items).toHaveLength(2);
             items.forEach((item) => {
-                expect(within(item).getByText('CHECKING…')).toBeInTheDocument();
                 expect(within(item).getAllByRole('button')).toHaveLength(1);
+                expect(item).toHaveClass('row--link');
+                expect(item).not.toHaveClass('cover-card--unavailable');
                 expect(item).not.toHaveAttribute('aria-disabled');
+                expect(item).not.toHaveAttribute('title');
             });
+            expect(screen.queryByText('CHECKING…')).not.toBeInTheDocument();
+            expect(screen.queryByText('AVAILABLE')).not.toBeInTheDocument();
+            expect(screen.queryByText('NOT AVAILABLE')).not.toBeInTheDocument();
         });
 
-        it('marks the anime the source has as AVAILABLE, keeping the card a button', async () => {
-            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 1, state: 'available', query: 'Frieren: Beyond Journey\'s End', index: 1, title: 'Frieren: Beyond Journey\'s End' }]);
-            render(<AnimeSchedule />);
-            await screen.findByText('Sousou no Frieren');
-
-            const first = screen.getAllByRole('listitem')[0] as HTMLElement;
-            expect(await within(first).findByText('AVAILABLE')).toHaveClass('badge', 'badge--done');
-            expect(within(first).getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' })).toBeEnabled();
-            expect(first).toHaveClass('row--link');
-            expect(first).not.toHaveClass('cover-card--unavailable');
-        });
-
-        it('shows the anime the source does not have faded, as NOT AVAILABLE, without a button and with the reason on hover', async () => {
-            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 2, state: 'unavailable' }]);
-            render(<AnimeSchedule />);
-            await screen.findByText('Sousou no Frieren');
-
-            const second = screen.getAllByRole('listitem')[1] as HTMLElement;
-            expect(await within(second).findByText('NOT AVAILABLE')).toHaveClass('badge');
-            expect(second).toHaveClass('cover-card--unavailable');
-            expect(second).not.toHaveClass('row--link');
-            expect(second).toHaveAttribute('aria-disabled', 'true');
-            expect(second).toHaveAttribute('title', 'The source does not have this anime.');
-            expect(within(second).queryByRole('button')).not.toBeInTheDocument();
-            expect(within(second).getByText('Dandadan')).toBeInTheDocument();
-            // The other card keeps being a button.
-            expect(within(screen.getAllByRole('listitem')[0] as HTMLElement).getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' })).toBeInTheDocument();
-        });
-
-        it('does nothing when a card that is not available is clicked', async () => {
+        it('opens the search by the first name of the anime when a card is clicked', async () => {
             const user = userEvent.setup();
-            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 2, state: 'unavailable' }]);
-            render(<AnimeSchedule />);
-            await screen.findByText('Dandadan');
-            await screen.findByText('NOT AVAILABLE');
-
-            await user.click(screen.getByText('Dandadan'));
-
-            expect(mock.api.searchAnime).not.toHaveBeenCalled();
-            expect(useAnimeStore.getState().view).toBe('schedule');
-        });
-
-        it('shows no badge, and a card that can be clicked, when it could not be checked', async () => {
-            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 1, state: 'unknown' }]);
+            mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Sousou no Frieren' }] });
             render(<AnimeSchedule />);
             await screen.findByText('Sousou no Frieren');
-
-            const first = screen.getAllByRole('listitem')[0] as HTMLElement;
-            await vi.waitFor(() => {
-                expect(within(first).queryByText('CHECKING…')).not.toBeInTheDocument();
-            });
-            expect(within(first).queryByText('AVAILABLE')).not.toBeInTheDocument();
-            expect(within(first).queryByText('NOT AVAILABLE')).not.toBeInTheDocument();
-            expect(within(first).getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' })).toBeEnabled();
-        });
-
-        it('updates a card when the answer comes later', async () => {
-            render(<AnimeSchedule />);
-            await screen.findByText('Sousou no Frieren');
-            const second = screen.getAllByRole('listitem')[1] as HTMLElement;
-            expect(within(second).getByText('CHECKING…')).toBeInTheDocument();
-
-            act(() => {
-                // What the store does with the event of the main process.
-                useAnimeStore.setState({ availability: { 2: { anilistId: 2, state: 'unavailable' } } });
-            });
-
-            expect(within(second).getByText('NOT AVAILABLE')).toBeInTheDocument();
-            expect(second).toHaveClass('cover-card--unavailable');
-        });
-
-        it('opens the search by the name that found the anime when an available card is clicked', async () => {
-            const user = userEvent.setup();
-            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 1, state: 'available', query: 'Frieren: Beyond Journey\'s End', index: 1, title: 'Frieren: Beyond Journey\'s End' }]);
-            mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Frieren: Beyond Journey\'s End' }] });
-            render(<AnimeSchedule />);
-            await screen.findByText('AVAILABLE');
 
             await user.click(screen.getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' }));
 
             expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-            expect(mock.api.searchAnime).toHaveBeenCalledWith('Frieren: Beyond Journey\'s End', 'sub');
+            expect(mock.api.searchAnime).toHaveBeenCalledWith('Sousou no Frieren', 'sub');
+            expect(useAnimeStore.getState().view).toBe('search');
         });
 
-        it('also marks the cards of the search when the schedule is narrowed', async () => {
-            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 2, state: 'unavailable' }]);
+        it('tries the next name of the anime when the first one finds nothing', async () => {
+            const user = userEvent.setup();
+            mock.api.searchAnime.mockResolvedValueOnce({ ok: true, results: [] }).mockResolvedValueOnce({ ok: true, results: [{ index: 1, title: 'Frieren: Beyond Journey\'s End' }] });
+            render(<AnimeSchedule />);
+            await screen.findByText('Sousou no Frieren');
+
+            await user.click(screen.getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' }));
+
+            expect(mock.api.searchAnime).toHaveBeenCalledTimes(2);
+            expect(mock.api.searchAnime).toHaveBeenNthCalledWith(1, 'Sousou no Frieren', 'sub');
+            expect(mock.api.searchAnime).toHaveBeenNthCalledWith(2, 'Frieren: Beyond Journey\'s End', 'sub');
+        });
+
+        it('keeps the cards of the search clickable when the schedule is narrowed', async () => {
             const user = userEvent.setup();
             render(<AnimeSchedule />);
-            await screen.findByText('NOT AVAILABLE');
+            await screen.findByText('Sousou no Frieren');
 
             await user.type(screen.getByRole('textbox', { name: 'Search the schedule' }), 'dandadan');
 
             const items = screen.getAllByRole('listitem');
             expect(items).toHaveLength(1);
-            expect(within(items[0] as HTMLElement).getByText('NOT AVAILABLE')).toBeInTheDocument();
+            expect(within(items[0] as HTMLElement).getByRole('button', { name: 'OPEN: Dandadan, EP 3' })).toBeEnabled();
         });
     });
 

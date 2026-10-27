@@ -16,14 +16,6 @@ function viewLabel(view: AnimeScheduleView, t: Translator): string {
     return view === 'week' ? t('anime.schedule.view.week') : t('anime.schedule.view.day');
 }
 
-// What the badge of a card says about the anime in the source; nothing is known yet while it is being checked.
-function availabilityLabel(state: 'available' | 'unavailable' | undefined, t: Translator): string {
-    if (state === undefined) {
-        return t('anime.schedule.checking');
-    }
-    return t(state === 'available' ? 'anime.schedule.available' : 'anime.schedule.unavailable');
-}
-
 function dayHeading(startOfDay: number, timeZone: string, language: string): string {
     return new Intl.DateTimeFormat(language, { timeZone, weekday: 'long', day: 'numeric', month: 'short' }).format(new Date(startOfDay * 1000));
 }
@@ -56,9 +48,6 @@ export function AnimeSchedule() {
     });
     const openEntry = useAnimeStore((state) => {
         return state.openScheduleEntry;
-    });
-    const availability = useAnimeStore((state) => {
-        return state.availability;
     });
     const { view, timeZone, limits, status } = schedule;
     const [query, setQuery] = useState('');
@@ -143,39 +132,25 @@ export function AnimeSchedule() {
                             {day.entries.length === 0 && <p className="field__hint">{t('anime.schedule.emptyDay')}</p>}
                             <ul className="cover-grid">
                                 {day.entries.map((entry) => {
-                                    const known = availability[entry.anilistId];
-                                    const unavailable = known?.state === 'unavailable';
                                     return (
-                                        <li
-                                            key={`${entry.anilistId}-${entry.episode}`}
-                                            className={`history__item cover-card cover-card--bottom-meta${unavailable ? ' cover-card--unavailable' : ' row--link'}`}
-                                            aria-disabled={unavailable ? true : undefined}
-                                            title={unavailable ? t('anime.schedule.unavailable.hint') : undefined}
-                                        >
+                                        <li key={`${entry.anilistId}-${entry.episode}`} className="history__item cover-card cover-card--bottom-meta row--link">
                                             <AnimeCover title={entry.title} url={entry.coverUrl} />
                                             <div className="history__main">
                                                 <span className="history__title">
-                                                    {unavailable ? (
-                                                        <span className="row-link__text">{entry.title}</span>
-                                                    ) : (
-                                                        <RowLink
-                                                            label={t('anime.schedule.open', { title: entry.title, episode: entry.episode })}
-                                                            title={entry.title}
-                                                            onClick={() => {
-                                                                void openEntry(entry);
-                                                            }}
-                                                        >
-                                                            {entry.title}
-                                                        </RowLink>
-                                                    )}
+                                                    <RowLink
+                                                        label={t('anime.schedule.open', { title: entry.title, episode: entry.episode })}
+                                                        title={entry.title}
+                                                        onClick={() => {
+                                                            void openEntry(entry);
+                                                        }}
+                                                    >
+                                                        {entry.title}
+                                                    </RowLink>
                                                 </span>
                                                 <span className="history__meta">
                                                     {t('anime.schedule.episode', { episode: entry.episode })} · {searching ? `${airingDate(entry, timeZone, language)} · ` : ''}
                                                     {airingTime(entry, timeZone, language)}
                                                 </span>
-                                                {known?.state !== 'unknown' && (
-                                                    <span className={`badge${known?.state === 'available' ? ' badge--done' : ''}`}>{availabilityLabel(known?.state, t)}</span>
-                                                )}
                                             </div>
                                         </li>
                                     );

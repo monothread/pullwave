@@ -9,13 +9,15 @@ import { AnimePlayer } from './AnimePlayer';
 import { AnimeSchedule } from './AnimeSchedule';
 import { AnimeSearch } from './AnimeSearch';
 import { AnimeStreamPlayer } from './AnimeStreamPlayer';
+import { AnimeUpdates } from './AnimeUpdates';
 import { ProgramsGate } from './ProgramsSetup';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
 import { TabMenu } from './TabMenu';
 
-const VIEWS: ReadonlyArray<{ id: AnimeBrowseView; label: 'anime.nav.schedule' | 'anime.nav.search' | 'anime.nav.library' | 'anime.nav.history' | 'anime.nav.settings'; icon?: string }> = [
+const VIEWS: ReadonlyArray<{ id: AnimeBrowseView; label: 'anime.nav.schedule' | 'anime.nav.search' | 'anime.nav.library' | 'anime.nav.updates' | 'anime.nav.history' | 'anime.nav.settings'; icon?: string }> = [
     { id: 'schedule', label: 'anime.nav.schedule' },
+    { id: 'updates', label: 'anime.nav.updates' },
     { id: 'search', label: 'anime.nav.search' },
     { id: 'library', label: 'anime.nav.library' },
     { id: 'history', label: 'anime.nav.history' },
@@ -96,6 +98,7 @@ export function AnimePanel() {
                     {view === 'schedule' && <AnimeSchedule />}
                     {view === 'search' && <AnimeSearch />}
                     {view === 'library' && <AnimeLibrary />}
+                    {view === 'updates' && <AnimeUpdates />}
                     {view === 'history' && <AnimeHistory />}
                 </ProgramsGate>
             )}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
+import { nextFreeOrder, orderFor } from './animeText';
 import { SeriesFields } from './SeriesFields';
 import type { SeriesChoice } from '@shared/series';
 
@@ -21,14 +22,21 @@ interface AddToLibraryDialogProps {
 // fields to fill in, and the way to confirm or to give up.
 export function AddToLibraryDialog({ initial, suggestions, usedOrders, onConfirm, onClose }: AddToLibraryDialogProps) {
     const t = useTranslator();
+    // The orders a series already uses (none for a name that is empty).
+    const usedIn = (name: string): readonly number[] => {
+        return name.trim().length > 0 ? usedOrders(name) : [];
+    };
     const [series, setSeries] = useState(initial.series);
-    const [season, setSeason] = useState(initial.season);
+    // The order the title suggests, or the next one when the series it suggests already uses it.
+    const [season, setSeason] = useState(() => {
+        return orderFor(usedIn(initial.series), initial.season);
+    });
     const [seasonName, setSeasonName] = useState(initial.seasonName ?? '');
     const [busy, setBusy] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
-    const used = series.trim().length > 0 ? usedOrders(series) : [];
+    const used = usedIn(series);
     const taken = used.includes(season);
-    const suggestedOrder = Math.max(0, ...used) + 1;
+    const suggestedOrder = nextFreeOrder(used);
 
     useEffect(() => {
         const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -37,6 +45,12 @@ export function AddToLibraryDialog({ initial, suggestions, usedOrders, onConfirm
             opener?.focus();
         };
     }, []);
+
+    // Choosing a series that uses the order in the field already puts the next one there.
+    function changeSeries(value: string): void {
+        setSeries(value);
+        setSeason(orderFor(usedIn(value), season));
+    }
 
     async function confirm(): Promise<void> {
         if (taken) {
@@ -96,7 +110,7 @@ export function AddToLibraryDialog({ initial, suggestions, usedOrders, onConfirm
                     season={season}
                     seasonName={seasonName}
                     suggestions={suggestions}
-                    onSeriesChange={setSeries}
+                    onSeriesChange={changeSeries}
                     onSeasonChange={setSeason}
                     onSeasonNameChange={setSeasonName}
                 />

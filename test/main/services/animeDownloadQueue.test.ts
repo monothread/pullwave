@@ -1483,3 +1483,129 @@ describe('AnimeDownloadQueue.downloadMissing', () => {
         expect(downloads).toEqual([]);
     });
 });
+
+describe('AnimeDownloadQueue.downloadEpisodes', () => {
+    function library(settings: Partial<Settings> = {}, files: Record<string, number> = {}) {
+        const context = setup(settings, files);
+        context.queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, audio: 'sub', episodes: ['1', '2', '3', '4'], series: null, season: null, seasonName: null });
+        return context;
+    }
+
+    it('queues only the episodes given, and starts as many as the limit allows', () => {
+        const { queue, downloads, updates, state } = library({ maxConcurrent: 1 });
+        const changes = state.libraryChanges;
+
+        queue.downloadEpisodes(1, ['3', '4']);
+
+        expect(
+            queue.list().map((job) => {
+                return [job.animeTitle, job.episode, job.status];
+            })
+        ).toEqual([
+            ['Naruto', '3', 'running'],
+            ['Naruto', '4', 'queued']
+        ]);
+        expect(
+            downloads.map((download) => {
+                return download.options.episode;
+            })
+        ).toEqual(['3']);
+        expect(
+            updates.filter((job) => {
+                return job.status === 'queued';
+            })
+        ).toHaveLength(2);
+        // Once for the episodes that were queued and once more when the first one starts.
+        expect(state.libraryChanges).toBe(changes + 2);
+    });
+
+    it('tells the library it changed once, when nothing starts', () => {
+        const { queue, state } = library({ maxConcurrent: 0 });
+        const changes = state.libraryChanges;
+
+        queue.downloadEpisodes(1, ['3', '4']);
+
+        expect(state.libraryChanges).toBe(changes + 1);
+    });
+
+    it('asks ani-cli for the search and the audio the anime was found by', () => {
+        const { queue, downloads } = library({ maxConcurrent: 1 });
+
+        queue.downloadEpisodes(1, ['4']);
+
+        expect(downloads[0]?.options).toMatchObject({ query: 'naruto', index: 2, audio: 'sub', episode: '4' });
+    });
+
+    it('leaves the library episodes that were not given as they are', () => {
+        const { queue, db } = library({ maxConcurrent: 0 });
+
+        queue.downloadEpisodes(1, ['2']);
+
+        expect(db.getEpisode(2)).toMatchObject({ number: '2', status: 'queued' });
+        expect(db.getEpisode(1)).toMatchObject({ number: '1', status: 'idle' });
+        expect(db.getEpisode(3)).toMatchObject({ number: '3', status: 'idle' });
+    });
+
+    it('adds an episode the library does not have yet, as queued', () => {
+        const { queue, db } = library({ maxConcurrent: 0 });
+
+        queue.downloadEpisodes(1, ['5']);
+
+        expect(db.getEpisodeByNumber(1, '5')).toMatchObject({ status: 'queued' });
+        expect(
+            queue.list().map((job) => {
+                return job.episode;
+            })
+        ).toEqual(['5']);
+    });
+
+    it('leaves out an episode that is downloaded and one that is already waiting or downloading', async () => {
+        const { queue, downloads } = library({ maxConcurrent: 1 }, { '/a/1.mp4': 10 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.finish(doneAt('/a/1.mp4'));
+        await settleResults();
+        queue.enqueue({ ...REQUEST, episodes: ['3'] });
+        const started = downloads.length;
+
+        queue.downloadEpisodes(1, ['1', '3', '4']);
+
+        expect(
+            queue.list().map((job) => {
+                return [job.episode, job.status];
+            })
+        ).toEqual([
+            ['3', 'running'],
+            ['4', 'queued']
+        ]);
+        expect(downloads).toHaveLength(started);
+    });
+
+    it('ignores an anime that is not in the library, and says nothing changed', () => {
+        const { queue, downloads, state } = library({ maxConcurrent: 0 });
+        const changes = state.libraryChanges;
+
+        queue.downloadEpisodes(99, ['1']);
+
+        expect(queue.list()).toEqual([]);
+        expect(downloads).toEqual([]);
+        expect(state.libraryChanges).toBe(changes);
+    });
+
+    it('queues nothing for an empty list', () => {
+        const { queue, downloads } = library({ maxConcurrent: 2 });
+
+        queue.downloadEpisodes(1, []);
+
+        expect(queue.list()).toEqual([]);
+        expect(downloads).toEqual([]);
+    });
+
+    it('does not start anything once the app is closing', async () => {
+        const { queue, downloads } = library({ maxConcurrent: 2 });
+        await queue.shutdown();
+
+        queue.downloadEpisodes(1, ['1']);
+
+        expect(downloads).toEqual([]);
+    });
+});

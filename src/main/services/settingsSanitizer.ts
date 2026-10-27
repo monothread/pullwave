@@ -103,6 +103,8 @@ export function sanitizeSettings(input: unknown): Settings {
         animeQuality: pickEnum(raw.animeQuality, ANIME_QUALITIES, defaults.animeQuality),
         animeAudio: pickEnum(raw.animeAudio, ANIME_AUDIOS, defaults.animeAudio),
         animeSubtitles: pickEnum(raw.animeSubtitles, ANIME_SUBTITLE_SETTINGS, defaults.animeSubtitles),
+        animeCheckNewEpisodes: pickBoolean(raw.animeCheckNewEpisodes, defaults.animeCheckNewEpisodes),
+        animeAutoDownloadNew: pickBoolean(raw.animeAutoDownloadNew, defaults.animeAutoDownloadNew),
         mangaDirectory: pickString(raw.mangaDirectory, defaults.mangaDirectory),
         mangaFormat: pickEnum(raw.mangaFormat, MANGA_OUTPUT_FORMATS, defaults.mangaFormat),
         mangaFlaresolverrUrl: pickHttpAddress(raw.mangaFlaresolverrUrl),

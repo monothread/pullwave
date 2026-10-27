@@ -70,14 +70,14 @@ describe('AnimePanel', () => {
                 .map((option) => {
                     return option.textContent;
                 })
-        ).toEqual(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY']);
+        ).toEqual(['SCHEDULE', 'UPDATES', 'SEARCH', 'LIBRARY', 'HISTORY']);
         expect(menu).toHaveValue('schedule');
         await user.selectOptions(menu, 'library');
         expect(useAnimeStore.getState().view).toBe('library');
         expect(screen.getByRole('combobox', { name: 'Anime' })).toHaveValue('library');
     });
 
-    it('opens on the schedule, the first tab, to the left of the search', () => {
+    it('opens on the schedule, the first tab, with the updates and the search after it', () => {
         useAnimeStore.setState({ view: initialAnime.view });
         render(<AnimePanel />);
         expect(
@@ -86,8 +86,8 @@ describe('AnimePanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-                .slice(0, 2)
-        ).toEqual(['SCHEDULE', 'SEARCH']);
+                .slice(0, 3)
+        ).toEqual(['SCHEDULE', 'UPDATES', 'SEARCH']);
         expect(within(subNav()).getByRole('button', { name: 'SCHEDULE' })).toHaveAttribute('aria-current', 'page');
         expect(within(subNav()).getByRole('button', { name: 'SEARCH' })).not.toHaveAttribute('aria-current');
         expect(screen.getByRole('region', { name: 'Anime schedule' })).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe('AnimePanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY', 'DOWNLOADS (0)', 'SETTINGS']);
+        ).toEqual(['SCHEDULE', 'UPDATES', 'SEARCH', 'LIBRARY', 'HISTORY', 'DOWNLOADS (0)', 'SETTINGS']);
         // The settings are a gear at the right end of the bar, not a word.
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');
@@ -156,6 +156,24 @@ describe('AnimePanel', () => {
         expect(screen.getByText('Naruto')).toBeInTheDocument();
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
         expect(useAnimeStore.getState()).toMatchObject({ view: 'history', returnView: 'history' });
+    });
+
+    it('has the updates to the left of the search, and shows them in place of the search', async () => {
+        const user = userEvent.setup();
+        const installed = installMockApi();
+        installed.api.listAnimeUpdates.mockResolvedValue([
+            { id: 1, animeId: 1, animeTitle: 'Naruto', audio: 'sub', episodeId: 7, episodeNumber: '3', foundAt: 1_700_000_000_000, origin: 'auto', status: 'idle' }
+        ]);
+        render(<AnimePanel />);
+
+        await user.click(within(subNav()).getByRole('button', { name: 'UPDATES' }));
+
+        expect(within(subNav()).getByRole('button', { name: 'UPDATES' })).toHaveAttribute('aria-current', 'page');
+        expect(await screen.findByRole('region', { name: 'UPDATES' })).toBeInTheDocument();
+        expect(await screen.findByTestId('anime-update')).toHaveTextContent('Naruto');
+        expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
+        expect(installed.api.listAnimeUpdates).toHaveBeenCalledTimes(1);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'updates', returnView: 'updates' });
     });
 
     it('shows the settings of the anime section, and only them, in place of the search', async () => {

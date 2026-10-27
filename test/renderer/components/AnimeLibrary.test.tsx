@@ -1870,3 +1870,78 @@ describe('AnimeLibrary translating the subtitles of a season', () => {
         expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
     });
 });
+
+describe('AnimeLibrary episodes that the check for new episodes put in the library', () => {
+    // Noon of a Wednesday in the time zone of the machine.
+    const NOON = new Date(2026, 9, 7, 12, 0, 0).getTime();
+    const DAY = 24 * 60 * 60 * 1000;
+
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(NOON);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    function idle(id: number, number: string, addedAt: number | null) {
+        return makeEpisode({ id, number, status: 'idle', filePath: null, sizeBytes: null, addedAt });
+    }
+
+    const NARUTO = makeAnime([idle(1, '1', null), idle(2, '2', NOON - 1000)], { id: 10, title: 'Naruto', audio: 'sub' });
+
+    it('says on the card of the anime that one episode is new, today', () => {
+        useAnimeStore.setState({ library: [NARUTO] });
+        render(<AnimeLibrary />);
+
+        const card = screen.getByTestId('anime-card');
+        expect(within(card).getByTestId('anime-new-episodes')).toHaveTextContent('NEW EPISODE');
+        expect(within(card).getByTestId('anime-new-episodes')).toHaveClass('badge', 'badge--new');
+    });
+
+    it('says how many are new when there are several', () => {
+        const frieren = makeAnime([idle(1, '1', NOON - 1000), idle(2, '2', NOON - 2000), idle(3, '3', null)], { id: 11, title: 'Frieren', audio: 'sub' });
+        useAnimeStore.setState({ library: [frieren] });
+        render(<AnimeLibrary />);
+
+        expect(screen.getByTestId('anime-new-episodes')).toHaveTextContent('2 NEW EPISODES');
+    });
+
+    it('adds up the new episodes of all the seasons on the card of the series, and shows each season its own', async () => {
+        const user = userEvent.setup();
+        const first = makeAnime([idle(1, '1', NOON - 1000)], { id: 40, title: 'Frieren', series: 'Frieren', season: 1 });
+        const second = makeAnime([idle(2, '1', NOON - 1000), idle(3, '2', NOON - 2000), idle(4, '3', null)], { id: 41, title: 'Frieren Season 2', series: 'Frieren', season: 2 });
+        useAnimeStore.setState({ library: [first, second] });
+        render(<AnimeLibrary />);
+
+        expect(within(screen.getByTestId('anime-card')).getByTestId('anime-new-episodes')).toHaveTextContent('3 NEW EPISODES');
+        await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+
+        const seasons = screen.getAllByTestId('anime-season');
+        expect(within(seasons[0] as HTMLElement).getByTestId('anime-new-episodes')).toHaveTextContent('NEW EPISODE');
+        expect(within(seasons[1] as HTMLElement).getByTestId('anime-new-episodes')).toHaveTextContent('2 NEW EPISODES');
+    });
+
+    it('says nothing when the episodes came with the library or arrived before today', () => {
+        const old = makeAnime([idle(1, '1', null), idle(2, '2', NOON - DAY), idle(3, '3', NOON - 5 * DAY)], { id: 12, title: 'Bleach', audio: 'sub' });
+        useAnimeStore.setState({ library: [old] });
+        render(<AnimeLibrary />);
+
+        expect(screen.queryByTestId('anime-new-episodes')).not.toBeInTheDocument();
+    });
+
+    it('marks the new episodes of a season with NEW, and only them', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ library: [NARUTO] });
+        render(<AnimeLibrary />);
+        await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+
+        const rows = screen.getAllByTestId('anime-episode');
+
+        expect(rows).toHaveLength(2);
+        expect(within(rows[0] as HTMLElement).queryByTestId('anime-episode-new')).not.toBeInTheDocument();
+        expect(within(rows[1] as HTMLElement).getByTestId('anime-episode-new')).toHaveTextContent('NEW');
+    });
+});

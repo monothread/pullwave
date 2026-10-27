@@ -164,11 +164,11 @@ test('adds the anime tab and opens its search', async () => {
     await expect(page.getByLabel('Audio')).toHaveValue('sub');
 });
 
-test('opens on the schedule, the first tab, to the left of the search', async () => {
+test('opens on the schedule, the first tab, with the updates and the search after it', async () => {
     const { page } = session;
     await openAnimeToday(page);
     const subNav = page.getByRole('navigation', { name: 'Anime' });
-    await expect(subNav.getByRole('button')).toHaveText(['SCHEDULE', 'SEARCH', 'LIBRARY', 'HISTORY', 'DOWNLOADS (0)', '\u2699\uFE0E']);
+    await expect(subNav.getByRole('button')).toHaveText(['SCHEDULE', 'UPDATES', 'SEARCH', 'LIBRARY', 'HISTORY', 'DOWNLOADS (0)', '\u2699\uFE0E']);
     await expect(subNav.getByRole('button', { name: 'SCHEDULE', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(subNav.getByRole('button', { name: 'SEARCH', exact: true })).not.toHaveAttribute('aria-current');
     await expect(page.getByRole('region', { name: 'Anime schedule' })).toBeVisible();
@@ -304,45 +304,22 @@ test.describe('the schedule', () => {
         expect([day?.page, day?.perPage]).toEqual([1, 50]);
     });
 
-    test('checks which anime of the day the source has: the ones it has stay open, the others are faded and cannot be clicked', async () => {
+    test('shows every anime of the day as a card that can be clicked, with no badge about the source, and asks ani-cli for nothing by itself', async () => {
         const page = await openSchedule(ITEMS);
         const items = page.getByRole('region', { name: 'Anime schedule' }).getByRole('listitem');
         await expect(page.getByText('AIRING [2]')).toBeVisible();
 
-        await expect(items.nth(0).locator('.badge')).toHaveText('AVAILABLE');
-        await expect(items.nth(1).locator('.badge')).toHaveText('NOT AVAILABLE');
+        await expect(items.locator('.badge')).toHaveCount(0);
         await expect(items.nth(0).getByRole('button', { name: 'OPEN: Fake Anime, EP 2', exact: true })).toBeVisible();
-        await expect(items.nth(0)).not.toHaveClass(/cover-card--unavailable/);
-        await expect(items.nth(1)).toHaveClass(/cover-card--unavailable/);
-        await expect(items.nth(1)).toHaveAttribute('aria-disabled', 'true');
-        await expect(items.nth(1)).toHaveAttribute('title', 'The source does not have this anime.');
-        await expect(items.nth(1).getByRole('button')).toHaveCount(0);
-        expect(await items.nth(1).evaluate((element) => {
-            return Number(getComputedStyle(element).opacity);
-        })).toBeLessThan(1);
-
-        // Each anime is looked up in the source by its names (here only the romaji one, which is the title), as the day is listed.
-        await expect.poll(() => {
-            return calls().sort();
-        }).toEqual(['sub | Dandadan', 'sub | Fake Anime']);
-
-        // Clicking the one that is not available does nothing: the schedule stays on the screen.
-        await items.nth(1).locator('.history__title').click({ force: true });
-        await expect(page.getByRole('region', { name: 'Anime schedule' })).toBeVisible();
-        await expect(page.getByLabel('Anime name')).toHaveCount(0);
-    });
-
-    test('keeps what it found out about the source for an hour: the app opened again does not look the same anime up again', async () => {
-        const first = await openSchedule(ITEMS);
-        await expect(first.locator('.badge').filter({ hasText: /^(NOT )?AVAILABLE$/ })).toHaveCount(2);
-        const before = calls().sort();
-        expect(before).toEqual(['sub | Dandadan', 'sub | Fake Anime']);
-
-        const second = await openSchedule(ITEMS);
-
-        await expect(second.locator('.badge').filter({ hasText: /^(NOT )?AVAILABLE$/ })).toHaveCount(2);
-        await expect(second.getByRole('listitem').nth(1)).toHaveClass(/cover-card--unavailable/);
-        expect(calls().sort()).toEqual(before);
+        await expect(items.nth(1).getByRole('button', { name: 'OPEN: Dandadan, EP 3', exact: true })).toBeVisible();
+        for (const position of [0, 1]) {
+            await expect(items.nth(position)).not.toHaveClass(/cover-card--unavailable/);
+            await expect(items.nth(position)).not.toHaveAttribute('aria-disabled');
+            await expect(items.nth(position)).not.toHaveAttribute('title');
+        }
+        // Give the app the time it would have taken to look the anime up, before saying that it did not.
+        await page.waitForTimeout(1500);
+        expect(existsSync(session.callsLog) ? calls() : []).toEqual([]);
     });
 
     test('opens on the day, whatever view was picked before: the view is not kept', async () => {
@@ -357,17 +334,17 @@ test.describe('the schedule', () => {
         await expect(second.locator('.schedule__day')).toHaveCount(1);
     });
 
-    test('checks the anime of the week too once the week is shown', async () => {
+    test('asks ani-cli about the anime of the week no more than about the ones of the day: about none', async () => {
         const page = await openSchedule(ITEMS);
-        await expect(page.locator('.badge').filter({ hasText: /^(NOT )?AVAILABLE$/ })).toHaveCount(2);
+        await expect(page.getByText('AIRING [2]')).toBeVisible();
 
         await page.getByLabel('View').selectOption('week');
 
         await expect(page.getByText('AIRING [3]')).toBeVisible();
-        await expect(page.locator('.schedule__day').nth(1).locator('.badge')).toHaveText('NOT AVAILABLE');
-        await expect.poll(() => {
-            return calls().sort();
-        }).toEqual(['sub | Blue Lock', 'sub | Dandadan', 'sub | Fake Anime']);
+        await expect(page.locator('.schedule__day').nth(1).getByRole('button', { name: 'OPEN: Blue Lock, EP 5', exact: true })).toBeVisible();
+        await expect(page.locator('.schedule__day .badge')).toHaveCount(0);
+        await page.waitForTimeout(1500);
+        expect(existsSync(session.callsLog) ? calls() : []).toEqual([]);
     });
 
     test('shows the week divided by days and goes back to the day', async () => {
@@ -487,7 +464,8 @@ test.describe('the schedule', () => {
 
     test('goes to the search and looks the anime up when its card is clicked', async () => {
         const page = await openSchedule(ITEMS);
-        await expect(page.getByText('AVAILABLE', { exact: true })).toBeVisible();
+        await expect(page.getByText('AIRING [2]')).toBeVisible();
+        expect(existsSync(session.callsLog) ? calls() : []).toEqual([]);
 
         await page.getByRole('button', { name: 'OPEN: Fake Anime, EP 2', exact: true }).click();
 
@@ -496,11 +474,11 @@ test.describe('the schedule', () => {
         await expect(page.getByLabel('Anime name')).toHaveValue('Fake Anime');
         await expect(page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true })).toBeVisible();
-        // The two looks-up of the day, and the search that the click made.
-        expect(calls().sort()).toEqual(['sub | Dandadan', 'sub | Fake Anime', 'sub | Fake Anime']);
+        // Only the search that the click made.
+        expect(calls()).toEqual(['sub | Fake Anime']);
     });
 
-    test('looks the english name up first, then the romaji one, and opens the search by the one that found the anime', async () => {
+    test('looks the english name up first, then the romaji one, when its card is clicked, and stops at the one that finds the anime', async () => {
         aniList.removeAllListeners('request');
         aniList.on('request', (_request, response) => {
             response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -526,15 +504,15 @@ test.describe('the schedule', () => {
         const { page } = session;
         await openAnimeToday(page);
 
-        await expect(page.getByText('AVAILABLE', { exact: true })).toBeVisible();
-        // The english name finds nothing, the romaji one does: that is the name the card opens the search by.
-        expect(calls()).toEqual(['sub | Nothing zzz', 'sub | Fake Anime']);
+        await expect(page.getByRole('button', { name: 'OPEN: Nothing zzz, EP 4', exact: true })).toBeVisible();
+        expect(existsSync(session.callsLog) ? calls() : []).toEqual([]);
 
         await page.getByRole('button', { name: 'OPEN: Nothing zzz, EP 4', exact: true }).click();
 
+        // The english name finds nothing, the romaji one does: that is where the search stops.
         await expect(page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true })).toBeVisible();
         await expect(page.getByLabel('Anime name')).toHaveValue('Fake Anime');
-        expect(calls()).toEqual(['sub | Nothing zzz', 'sub | Fake Anime', 'sub | Fake Anime']);
+        expect(calls()).toEqual(['sub | Nothing zzz', 'sub | Fake Anime']);
     });
 
     test('says nothing airs when the day is empty', async () => {
@@ -1590,8 +1568,12 @@ test.describe('series and seasons', () => {
         await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
         const dialog = await openAddDialog(page);
         await dialog.getByRole('textbox', { name: 'Series' }).fill('Fake Anime');
+        // The series uses order 1 already: the next one is put in the field, and the anime can be confirmed as it is.
+        await expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue('2');
+        await expect(dialog.getByRole('alert')).toHaveCount(0);
+        await expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
         await dialog.getByRole('spinbutton', { name: 'Order' }).fill('1');
-        // An order the series already uses is not allowed: the window says so, with the next one, and cannot be confirmed.
+        // An order the series already uses typed by hand is not allowed: the window says so, with the next one, and cannot be confirmed.
         await expect(dialog.getByRole('alert')).toHaveText('Order 1 is already used by another anime of the series. Use 2, the next one.');
         await expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeDisabled();
         await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toHaveCount(0);
@@ -3531,5 +3513,267 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await expect(create.getByText('This video has no audio to transcribe.')).toBeVisible();
         await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeDisabled();
         expect(received).toEqual([]);
+    });
+});
+
+test.describe('the look for new episodes', () => {
+    const CHECK_EVERY_MS = '1500';
+
+    function historyFolder(): string {
+        return join(session.userData, 'anime', 'history');
+    }
+
+    // How many times the episodes of the anime of the search were listed: the look for new episodes does it for each anime of the library.
+    function episodeListings(): number {
+        return existsSync(session.callsLog)
+            ? calls().filter((line) => {
+                  return line === 'sub | -S 1 fake';
+              }).length
+            : 0;
+    }
+
+    function savedSettings(): Record<string, unknown> {
+        return JSON.parse(readFileSync(join(session.userData, 'settings.json'), 'utf-8')) as Record<string, unknown>;
+    }
+
+    async function relaunch(settings: Record<string, unknown>, env: Record<string, string>): Promise<Page> {
+        await session.app.close();
+        session = await launch(join(workDir, 'user-data'), settings, env);
+        return session.page;
+    }
+
+    async function addFakeAnime(page: Page): Promise<void> {
+        await openAnimeTab(page);
+        await openFirstResult(page);
+        await confirmAdd(page);
+        await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+    }
+
+    async function openUpdates(page: Page): Promise<void> {
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'UPDATES', exact: true }).click();
+        await expect(page.getByRole('region', { name: 'UPDATES' })).toBeVisible();
+    }
+
+    // The first look at the anime of the library only reads its episodes, so it is waited for before the source gets a new one.
+    async function waitForTheFirstReading(): Promise<void> {
+        const before = episodeListings();
+        await expect.poll(episodeListings, { timeout: 20000 }).toBeGreaterThan(before);
+    }
+
+    function sourceGetsAFourthEpisode(): void {
+        writeFileSync(join(historyFolder(), 'more-episodes'), '');
+    }
+
+    const EMPTY = 'No new episodes yet. The check that runs every hour, and the buttons that look for new episodes, list here what they find.';
+
+    test('finds the episode the source got after the anime was added, puts it in the library without downloading it, lists it and tells the screen', async () => {
+        const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await addFakeAnime(page);
+        await waitForTheFirstReading();
+        // What the source listed at the first reading is not new.
+        await openUpdates(page);
+        await expect(page.getByText(EMPTY)).toBeVisible();
+        await expect(page.getByTestId('anime-update')).toHaveCount(0);
+        await expect(page.locator('.toast').filter({ hasText: 'new episode(s) added to the library' })).toHaveCount(0);
+
+        sourceGetsAFourthEpisode();
+
+        await expect(page.locator('.toast').filter({ hasText: '1 new episode(s) added to the library: Fake Anime' }).first()).toBeVisible({ timeout: 20000 });
+        const update = page.getByTestId('anime-update');
+        await expect(update).toHaveCount(1);
+        await expect(update.getByRole('button', { name: 'SHOW EPISODES: Fake Anime EP 4', exact: true })).toBeVisible();
+        await expect(update.locator('.history__meta')).toHaveText(/^EP 4 · Found at \d{1,2}:\d{2}( [AP]M)?$/);
+        await expect(update.locator('.badge')).toHaveText(['AUTOMATIC', 'NOT DOWNLOADED']);
+        await expect(page.getByTestId('anime-update-day')).toHaveAttribute('aria-label', 'Today');
+        // Nothing was downloaded.
+        expect(
+            calls().filter((line) => {
+                return line.includes('-d ');
+            })
+        ).toEqual([]);
+        expect(existsSync(join(session.animeDir, 'Fake Anime'))).toBe(false);
+        await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible();
+    });
+
+    test('says on the card of the anime in the library, and on the episode, that it is new', async () => {
+        const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await addFakeAnime(page);
+        await waitForTheFirstReading();
+        sourceGetsAFourthEpisode();
+        await expect(page.locator('.toast').filter({ hasText: '1 new episode(s) added to the library: Fake Anime' }).first()).toBeVisible({ timeout: 20000 });
+
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
+
+        await expect(page.getByTestId('anime-card').getByTestId('anime-new-episodes')).toHaveText('NEW EPISODE');
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime', exact: true }).click();
+        await expect(page.getByTestId('anime-season').getByTestId('anime-new-episodes')).toHaveText('NEW EPISODE');
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await expect(page.getByText('0/4 DOWNLOADED')).toBeVisible();
+        const rows = page.getByTestId('anime-episode');
+        await expect(rows).toHaveCount(4);
+        await expect(page.getByTestId('anime-episode-new')).toHaveCount(1);
+        await expect(rows.nth(3).getByTestId('anime-episode-new')).toHaveText('NEW');
+        await expect(rows.nth(3).locator('.history__meta')).toHaveText('NOT DOWNLOADED');
+    });
+
+    test('opens the anime in the library when its name is clicked in the updates', async () => {
+        const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await addFakeAnime(page);
+        await waitForTheFirstReading();
+        sourceGetsAFourthEpisode();
+        await openUpdates(page);
+        await expect(page.getByTestId('anime-update')).toHaveCount(1, { timeout: 20000 });
+
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime EP 4', exact: true }).click();
+
+        await expect(page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');
+        await expect(page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true })).toBeVisible();
+    });
+
+    test('downloads the new episode by itself when the setting asks for it, and the list shows it as downloaded', async () => {
+        const page = await relaunch({ animeAutoDownloadNew: true }, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await addFakeAnime(page);
+        await waitForTheFirstReading();
+        // The episodes of the first reading are not downloaded.
+        expect(
+            calls().filter((line) => {
+                return line.includes('-d ');
+            })
+        ).toEqual([]);
+
+        sourceGetsAFourthEpisode();
+
+        await waitForDownloaded(page);
+        expect(
+            calls().filter((line) => {
+                return line.includes('-d ');
+            })
+        ).toEqual(['sub | -d -S 1 -e 4 -q 720p fake']);
+        expect(readFileSync(join(session.animeDir, 'Fake Anime', 'Season 1', 'Episode 4', 'Fake Anime Episode 4.mp4'), 'utf-8')).toBe('FAKEVIDEO0123456789');
+        await openUpdates(page);
+        await expect(page.getByTestId('anime-update')).toHaveCount(1);
+        await expect(page.getByTestId('anime-update').locator('.badge')).toHaveText(['AUTOMATIC', 'DOWNLOADED']);
+    });
+
+    test('does not look by itself when the setting is off, and the button looks anyway, as a manual look', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false }, { PULLWAVE_ANIME_CHECK_MS: '700' });
+        await addFakeAnime(page);
+        const before = episodeListings();
+        await page.waitForTimeout(3000);
+        expect(episodeListings()).toBe(before);
+
+        await openUpdates(page);
+        // The first look reads the episodes the anime has.
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect.poll(episodeListings).toBe(before + 1);
+        await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled();
+        await expect(page.getByText(EMPTY)).toBeVisible();
+        await expect(page.locator('.toast').filter({ hasText: 'No new episodes.' }).first()).toBeVisible();
+
+        sourceGetsAFourthEpisode();
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+
+        await expect(page.getByTestId('anime-update')).toHaveCount(1);
+        await expect(page.getByTestId('anime-update').locator('.badge')).toHaveText(['MANUAL', 'NOT DOWNLOADED']);
+        await expect(page.getByTestId('anime-update').getByRole('button', { name: 'SHOW EPISODES: Fake Anime EP 4', exact: true })).toBeVisible();
+    });
+
+    test('clears the list after asking, leaving the episode in the library', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await addFakeAnime(page);
+        await openUpdates(page);
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled();
+        sourceGetsAFourthEpisode();
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect(page.getByTestId('anime-update')).toHaveCount(1);
+
+        await page.getByRole('button', { name: 'CLEAR LIST', exact: true }).click();
+        await answerConfirm(page, 'Clear the list of new episodes?', 'KEEP');
+        await expect(page.getByTestId('anime-update')).toHaveCount(1);
+        await page.getByRole('button', { name: 'CLEAR LIST', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Clear the list of new episodes?' })).toContainText('Only the list goes. Nothing is removed from the library or from the disk.');
+        await answerConfirm(page, 'Clear the list of new episodes?', 'CLEAR LIST');
+
+        await expect(page.getByTestId('anime-update')).toHaveCount(0);
+        await expect(page.getByText(EMPTY)).toBeVisible();
+        await expect(page.getByRole('button', { name: 'CLEAR LIST', exact: true })).toHaveCount(0);
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime', exact: true }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await expect(page.getByText('0/4 DOWNLOADED')).toBeVisible();
+    });
+
+    test('keeps the list when the app is opened again', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await addFakeAnime(page);
+        await openUpdates(page);
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled();
+        sourceGetsAFourthEpisode();
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect(page.getByTestId('anime-update')).toHaveCount(1);
+
+        const reopened = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await openAnimeToday(reopened);
+        await openUpdates(reopened);
+
+        await expect(reopened.getByTestId('anime-update')).toHaveCount(1);
+        await expect(reopened.getByRole('button', { name: 'SHOW EPISODES: Fake Anime EP 4', exact: true })).toBeVisible();
+    });
+
+    test('says there is nothing new, and does not list anything, when the source has no episode the library lacks', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await addFakeAnime(page);
+        const before = episodeListings();
+        await openUpdates(page);
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+        await expect.poll(episodeListings).toBe(before + 1);
+        await expect(page.locator('.toast').filter({ hasText: 'No new episodes.' }).first()).toBeVisible();
+        await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled();
+
+        await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+
+        await expect.poll(episodeListings).toBe(before + 2);
+        await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled();
+        await expect(page.getByTestId('anime-update')).toHaveCount(0);
+        await expect(page.getByText(EMPTY)).toBeVisible();
+    });
+
+    test('has the two options in the settings of the anime, the first on and the second off, and saves them at once', async () => {
+        const { page } = session;
+        await openAnimeSettings(page);
+        const look = page.getByRole('switch', { name: 'Look for new episodes every hour' });
+        const download = page.getByRole('switch', { name: 'Download the new episodes found' });
+        await expect(look).toBeChecked();
+        await expect(download).not.toBeChecked();
+        await expect(page.getByText('Asks the source about the anime of the library and adds the new episodes to it. They are not downloaded.')).toBeVisible();
+        await expect(page.getByText('The new episodes that the check (every hour, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeVisible();
+
+        await look.click();
+        await download.click();
+
+        await expect.poll(() => {
+            return [savedSettings().animeCheckNewEpisodes, savedSettings().animeAutoDownloadNew];
+        }).toEqual([false, true]);
+        await expect(look).not.toBeChecked();
+        await expect(download).toBeChecked();
+    });
+
+    test('shows the options the settings had when the app is opened again', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false, animeAutoDownloadNew: true }, {});
+        await openAnimeSettings(page);
+
+        await expect(page.getByRole('switch', { name: 'Look for new episodes every hour' })).not.toBeChecked();
+        await expect(page.getByRole('switch', { name: 'Download the new episodes found' })).toBeChecked();
+    });
+
+    test('does not show the availability of the anime of the schedule in the source any more', async () => {
+        const { page } = session;
+        await openAnimeToday(page);
+
+        await expect(page.getByText('AVAILABLE', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('NOT AVAILABLE', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('CHECKING…', { exact: true })).toHaveCount(0);
     });
 });

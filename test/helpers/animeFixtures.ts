@@ -13,6 +13,7 @@ export function makeEpisode(overrides: Partial<AnimeEpisodeRecord> = {}): AnimeE
         durationSeconds: 0,
         watched: false,
         downloadedAt: 1,
+        addedAt: null,
         fileMissing: false,
         ...overrides
     };

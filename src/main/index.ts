@@ -384,6 +384,9 @@ function bootstrap(): BootstrapResult {
         },
         // PULLWAVE_ANILIST_URL replaces the address of the schedule of the day (used by the end-to-end tests).
         scheduleUrl: process.env.PULLWAVE_ANILIST_URL,
+        // PULLWAVE_ANIME_CHECK_MS makes the look for new episodes happen that many milliseconds after the app opens, and again that often
+        // (used by the end-to-end tests).
+        checkTimes: Number(process.env.PULLWAVE_ANIME_CHECK_MS) > 0 ? { firstMs: Number(process.env.PULLWAVE_ANIME_CHECK_MS), everyMs: Number(process.env.PULLWAVE_ANIME_CHECK_MS) } : undefined,
         // PULLWAVE_IMPORT_DIR answers the question of which folder to import (used by the end-to-end tests).
         chooseLibraryFolder: async (startAt) => {
             if (process.env.PULLWAVE_IMPORT_DIR) {
@@ -571,6 +574,7 @@ function bootstrap(): BootstrapResult {
             return;
         }
         const endAll = (): Promise<unknown> => {
+            anime?.stopBackgroundChecks();
             return Promise.all([queue.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
         };
         if (queue.hasRunsToEnd() || anime?.queue.hasRunsToEnd() || manga?.queue.hasRunsToEnd() || manga?.hasProcessesToEnd()) {
@@ -600,7 +604,7 @@ function bootstrap(): BootstrapResult {
     // The program that runs the manga extensions is downloaded when the app opens (nothing happens when it is there already).
     manga?.prepare();
     registerLlmHandlers(ipcMain, { tokens: llmTokens });
-    // Which anime of today's schedule the source has is looked up in the background, so it is known by the time the screen is opened.
+    // The look for new episodes of the anime of the library starts a while after the app opens, and goes on every hour.
     anime?.startBackgroundChecks();
     registerHandlers({
         ipcMain,

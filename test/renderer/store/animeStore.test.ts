@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, AnimeSearchResult } from '@shared/anime';
+import type { AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, AnimeSearchResult, AnimeUpdateEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { useAppStore } from '@renderer/store/appStore';
@@ -1392,129 +1392,202 @@ describe('the schedule', () => {
 
             expect(mock.api.searchAnime.mock.calls).toEqual([['Dandadan', 'sub']]);
         });
-
-        it('looks the anime up only by the name that found it in the source, when the source is known to have it', async () => {
-            useAnimeStore.setState({ availability: { 2: { anilistId: 2, state: 'available', query: 'Dan Da Dan', index: 4, title: 'Dan Da Dan' } } });
-            mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 4, title: 'Dan Da Dan' }] });
-
-            await useAnimeStore.getState().openScheduleEntry(DANDADAN);
-
-            expect(mock.api.searchAnime.mock.calls).toEqual([['Dan Da Dan', 'sub']]);
-            expect(useAnimeStore.getState().search).toMatchObject({ query: 'Dan Da Dan', status: 'done', results: [{ index: 4, title: 'Dan Da Dan' }] });
-        });
-
-        it.each([['unavailable' as const], ['unknown' as const]])('looks the anime up by its names, as before, when the source answered %s', async (state) => {
-            useAnimeStore.setState({ availability: { 2: { anilistId: 2, state } } });
-            mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Dandadan' }] });
-
-            await useAnimeStore.getState().openScheduleEntry(DANDADAN);
-
-            expect(mock.api.searchAnime.mock.calls).toEqual([['Dandadan', 'sub']]);
-        });
-
-        it('ignores what is known about another anime', async () => {
-            useAnimeStore.setState({ availability: { 9: { anilistId: 9, state: 'available', query: 'Other', index: 1, title: 'Other' } } });
-            mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Dandadan' }] });
-
-            await useAnimeStore.getState().openScheduleEntry(DANDADAN);
-
-            expect(mock.api.searchAnime.mock.calls).toEqual([['Dandadan', 'sub']]);
-        });
     });
 
-    describe('availability in the source', () => {
+    describe('updates', () => {
+        const ENTRY: AnimeUpdateEntry = {
+            id: 1,
+            animeId: 1,
+            animeTitle: 'Naruto',
+            audio: 'sub',
+            episodeId: 7,
+            episodeNumber: '3',
+            foundAt: 1_700_000_000_000,
+            origin: 'auto',
+            status: 'idle'
+        };
+
         beforeEach(() => {
-            useAnimeStore.setState({ availability: {} });
+            useAnimeStore.setState({ updates: [], checkingNew: null, library: [], view: 'updates', returnView: 'updates' });
+            useAppStore.setState({ toasts: [] });
             mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
         });
 
-        it('starts with nothing known', () => {
-            expect(initialAnime.availability).toEqual({});
+        function toasts(): string[] {
+            return useAppStore.getState().toasts.map((toast) => {
+                return toast.message;
+            });
+        }
+
+        it('starts with no updates and nothing being checked', () => {
+            expect(initialAnime.updates).toEqual([]);
+            expect(initialAnime.checkingNew).toBeNull();
         });
 
-        it('asks for the anime that were listed, by their ids and their two names, once the listing is in', async () => {
-            setSchedule();
-            const dandadan = makeScheduleEntry({ anilistId: 2, title: 'Dandadan', english: 'Dandadan', romaji: null, names: ['Dandadan'] });
-            mock.api.listAnimeSchedule.mockResolvedValue({ ok: true, entries: [FRIEREN, dandadan] });
+        it('keeps the list the main process gives', async () => {
+            mock.api.listAnimeUpdates.mockResolvedValue([ENTRY]);
 
-            await useAnimeStore.getState().loadSchedule();
+            await useAnimeStore.getState().loadUpdates();
 
-            expect(mock.api.checkAnimeAvailability).toHaveBeenCalledTimes(1);
-            expect(mock.api.checkAnimeAvailability).toHaveBeenCalledWith([
-                { anilistId: 154587, english: 'Frieren: Beyond Journey\'s End', romaji: 'Sousou no Frieren' },
-                { anilistId: 2, english: 'Dandadan', romaji: null }
-            ]);
+            expect(mock.api.listAnimeUpdates).toHaveBeenCalledTimes(1);
+            expect(useAnimeStore.getState().updates).toEqual([ENTRY]);
         });
 
-        it('keeps what was already known when the answer comes', async () => {
-            setSchedule();
-            mock.api.listAnimeSchedule.mockResolvedValue({ ok: true, entries: [FRIEREN] });
-            mock.api.checkAnimeAvailability.mockResolvedValue([{ anilistId: 154587, state: 'unavailable' }]);
+        it('empties the list after asking the main process to clear it', async () => {
+            useAnimeStore.setState({ updates: [ENTRY] });
 
-            await useAnimeStore.getState().loadSchedule();
+            await useAnimeStore.getState().clearUpdates();
 
-            expect(useAnimeStore.getState().availability).toEqual({ 154587: { anilistId: 154587, state: 'unavailable' } });
+            expect(mock.api.clearAnimeUpdates).toHaveBeenCalledTimes(1);
+            expect(useAnimeStore.getState().updates).toEqual([]);
         });
 
-        it('does not ask when the listing failed', async () => {
-            setSchedule();
-            mock.api.listAnimeSchedule.mockResolvedValue({ ok: false, error: { code: 'NETWORK', raw: 'down' } });
+        it('goes to the anime of an update in the library, opened on its card', () => {
+            const naruto = makeAnime([makeEpisode({ id: 7, animeId: 1, number: '3' })], { id: 1, title: 'Naruto' });
+            useAnimeStore.setState({ library: [naruto] });
 
-            await useAnimeStore.getState().loadSchedule();
+            useAnimeStore.getState().openFromUpdate(ENTRY);
 
-            expect(mock.api.checkAnimeAvailability).not.toHaveBeenCalled();
+            expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', selection: null, libraryFocus: 1, librarySeries: 'anime-1' });
         });
 
-        it('keeps each answer that comes later, one at a time, next to the others', () => {
-            useAnimeStore.setState({ availability: { 1: { anilistId: 1, state: 'unavailable' } } });
-            return useAnimeStore.getState().init().then((dispose) => {
-                mock.emitAnimeAvailability({ anilistId: 2, state: 'available', query: 'Dandadan', index: 1, title: 'Dandadan' });
-                mock.emitAnimeAvailability({ anilistId: 3, state: 'unknown' });
-
-                expect(useAnimeStore.getState().availability).toEqual({
-                    1: { anilistId: 1, state: 'unavailable' },
-                    2: { anilistId: 2, state: 'available', query: 'Dandadan', index: 1, title: 'Dandadan' },
-                    3: { anilistId: 3, state: 'unknown' }
+        describe('checkNewEpisodes', () => {
+            it('asks for every anime when none is given, shows it is looking meanwhile, and reloads the library and the list', async () => {
+                let seenWhileAsking: unknown = null;
+                mock.api.checkNewAnimeEpisodes.mockImplementation(async () => {
+                    seenWhileAsking = useAnimeStore.getState().checkingNew;
+                    return { ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 0 };
                 });
+                mock.api.listAnimeUpdates.mockResolvedValue([ENTRY]);
+                mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([makeEpisode()])]);
+
+                await useAnimeStore.getState().checkNewEpisodes(null);
+
+                expect(mock.api.checkNewAnimeEpisodes).toHaveBeenCalledTimes(1);
+                expect(mock.api.checkNewAnimeEpisodes).toHaveBeenCalledWith(null);
+                expect(seenWhileAsking).toBe('all');
+                expect(useAnimeStore.getState().checkingNew).toBeNull();
+                expect(useAnimeStore.getState().library).toHaveLength(1);
+                expect(useAnimeStore.getState().updates).toEqual([ENTRY]);
+                expect(toasts()).toEqual([]);
+            });
+
+            it('asks for one anime when its id is given', async () => {
+                let seenWhileAsking: unknown = null;
+                mock.api.checkNewAnimeEpisodes.mockImplementation(async () => {
+                    seenWhileAsking = useAnimeStore.getState().checkingNew;
+                    return { ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 0 };
+                });
+
+                await useAnimeStore.getState().checkNewEpisodes(4);
+
+                expect(mock.api.checkNewAnimeEpisodes).toHaveBeenCalledWith(4);
+                expect(seenWhileAsking).toBe(4);
+                expect(useAnimeStore.getState().checkingNew).toBeNull();
+            });
+
+            it('does not reload the list when the updates are not on the screen', async () => {
+                useAnimeStore.setState({ view: 'library' });
+                mock.api.checkNewAnimeEpisodes.mockResolvedValue({ ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 0 });
+
+                await useAnimeStore.getState().checkNewEpisodes(null);
+
+                expect(mock.api.listAnimeUpdates).not.toHaveBeenCalled();
+                expect(mock.api.listAnimeLibrary).toHaveBeenCalledTimes(1);
+            });
+
+            it('says there is nothing new when nothing was found and nothing failed', async () => {
+                mock.api.checkNewAnimeEpisodes.mockResolvedValue({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 });
+
+                await useAnimeStore.getState().checkNewEpisodes(null);
+
+                expect(toasts()).toEqual(['No new episodes.']);
+            });
+
+            it('says how many anime could not be reached when nothing was found and some failed', async () => {
+                mock.api.checkNewAnimeEpisodes.mockResolvedValue({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 2, skipped: 0 });
+
+                await useAnimeStore.getState().checkNewEpisodes(null);
+
+                expect(toasts()).toEqual(['No new episodes; the source could not be reached for 2 anime.']);
+            });
+
+            it('says how many anime were left for the next check, whether or not something was found', async () => {
+                mock.api.checkNewAnimeEpisodes.mockResolvedValue({ ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 3 });
+
+                await useAnimeStore.getState().checkNewEpisodes(null);
+
+                expect(toasts()).toEqual(['3 anime were left for the next check.']);
+            });
+
+            it('says what went wrong when the check could not be made, and goes on to reload', async () => {
+                mock.api.checkNewAnimeEpisodes.mockResolvedValue({ ok: false, error: { code: 'NOT_FOUND', message: 'The anime is not in the library.' } });
+
+                await useAnimeStore.getState().checkNewEpisodes(9);
+
+                expect(toasts()).toEqual(['Could not look for new episodes: The anime is not in the library.']);
+                expect(mock.api.listAnimeLibrary).toHaveBeenCalledTimes(1);
+                expect(useAnimeStore.getState().checkingNew).toBeNull();
+            });
+
+            it('stops showing it is looking even when the call to the main process fails', async () => {
+                mock.api.checkNewAnimeEpisodes.mockRejectedValue(new Error('ipc failed'));
+
+                await expect(useAnimeStore.getState().checkNewEpisodes(null)).rejects.toThrow('ipc failed');
+
+                expect(useAnimeStore.getState().checkingNew).toBeNull();
+            });
+        });
+
+        describe('events of the main process', () => {
+            it('says how many episodes were added and to which anime', async () => {
+                const dispose = await useAnimeStore.getState().init();
+
+                mock.emitAnimeNewEpisodes({ count: 3, titles: ['Naruto', 'Bleach'], notDownloaded: [] });
+
+                expect(toasts()).toEqual(['3 new episode(s) added to the library: Naruto, Bleach']);
                 dispose();
             });
-        });
 
-        it('replaces what was known about an anime when it is told again', async () => {
-            const dispose = await useAnimeStore.getState().init();
-            mock.emitAnimeAvailability({ anilistId: 2, state: 'unavailable' });
-            mock.emitAnimeAvailability({ anilistId: 2, state: 'available', query: 'Dandadan', index: 1, title: 'Dandadan' });
+            it('also says which anime had too many new episodes to download them by themselves', async () => {
+                const dispose = await useAnimeStore.getState().init();
 
-            expect(useAnimeStore.getState().availability).toEqual({ 2: { anilistId: 2, state: 'available', query: 'Dandadan', index: 1, title: 'Dandadan' } });
-            dispose();
-        });
+                mock.emitAnimeNewEpisodes({ count: 30, titles: ['One Piece'], notDownloaded: ['One Piece'] });
 
-        it('asks again for what could not be checked the last time, and keeps what was found', async () => {
-            useAnimeStore.setState({
-                availability: {
-                    154587: { anilistId: 154587, state: 'unknown' },
-                    2: { anilistId: 2, state: 'unavailable' }
-                }
-            });
-            let seenWhileAsking: unknown = null;
-            mock.api.checkAnimeAvailability.mockImplementation(async () => {
-                seenWhileAsking = { ...useAnimeStore.getState().availability };
-                return [];
+                expect(toasts()).toEqual([
+                    '30 new episode(s) added to the library: One Piece',
+                    'Too many new episodes at once to download them by themselves: One Piece. They are in the library.'
+                ]);
+                dispose();
             });
 
-            await useAnimeStore.getState().checkAvailability([FRIEREN, DANDADAN]);
+            it('reloads the list of updates when the library changes while the updates are on the screen', async () => {
+                mock.api.listAnimeUpdates.mockResolvedValue([ENTRY]);
+                const dispose = await useAnimeStore.getState().init();
+                mock.api.listAnimeUpdates.mockClear();
 
-            expect(seenWhileAsking).toEqual({ 2: { anilistId: 2, state: 'unavailable' } });
-            expect(useAnimeStore.getState().availability).toEqual({ 2: { anilistId: 2, state: 'unavailable' } });
-        });
+                mock.emitAnimeLibraryChanged();
 
-        it('leaves the cards as they are when the answer cannot be had', async () => {
-            useAnimeStore.setState({ availability: { 2: { anilistId: 2, state: 'unavailable' } } });
-            mock.api.checkAnimeAvailability.mockRejectedValue(new Error('ipc failed'));
+                await vi.waitFor(() => {
+                    expect(useAnimeStore.getState().updates).toEqual([ENTRY]);
+                });
+                expect(mock.api.listAnimeUpdates).toHaveBeenCalledTimes(1);
+                dispose();
+            });
 
-            await expect(useAnimeStore.getState().checkAvailability([DANDADAN])).resolves.toBeUndefined();
+            it('does not reload the list of updates when the library changes on another screen', async () => {
+                useAnimeStore.setState({ view: 'library' });
+                const dispose = await useAnimeStore.getState().init();
+                mock.api.listAnimeUpdates.mockClear();
 
-            expect(useAnimeStore.getState().availability).toEqual({ 2: { anilistId: 2, state: 'unavailable' } });
+                mock.emitAnimeLibraryChanged();
+                await vi.waitFor(() => {
+                    expect(mock.api.listAnimeLibrary).toHaveBeenCalled();
+                });
+
+                expect(mock.api.listAnimeUpdates).not.toHaveBeenCalled();
+                dispose();
+            });
         });
     });
 });

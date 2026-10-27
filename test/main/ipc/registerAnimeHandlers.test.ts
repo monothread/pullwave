@@ -1,9 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AniRunResult, AnimeAvailability, AnimeAvailabilityTarget, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleTranslateResponse } from '@shared/anime';
+import type { AniRunResult, AnimeCheckResponse, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleTranslateResponse } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
-import { MAX_AVAILABILITY_TARGETS, MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseAvailabilityTargets, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
+import { MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
 import type { IpcMainLike } from '@main/ipc/registerHandlers';
 import { AnimeDb } from '@main/services/animeDb';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
@@ -37,8 +37,8 @@ function makeIpc(): { ipcMain: IpcMainLike; call: (channel: string, ...args: unk
 
 const ANIME_CHANNELS = [
     IPC.animeAddToLibrary,
-    IPC.animeAvailability,
     IPC.animeCancel,
+    IPC.animeCheckNew,
     IPC.animeClearFinished,
     IPC.animeCover,
     IPC.animePause,
@@ -76,7 +76,9 @@ const ANIME_CHANNELS = [
     IPC.animeSubtitleTranslateEstimate,
     IPC.animeSubtitleTranslateMany,
     IPC.animeSubtitles,
-    IPC.animeSubtitlesCheck
+    IPC.animeSubtitlesCheck,
+    IPC.animeUpdates,
+    IPC.animeUpdatesClear
 ].sort();
 
 function setup(available = true) {
@@ -95,9 +97,12 @@ function setup(available = true) {
             return { ok: true, entries: [] };
         })
     };
-    const availability = {
-        request: vi.fn((): AnimeAvailability[] => {
-            return [];
+    const updates = {
+        checkNow: vi.fn(async (): Promise<AnimeCheckResponse> => {
+            return { ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 };
+        }),
+        checkAnime: vi.fn(async (): Promise<AnimeCheckResponse> => {
+            return { ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 };
         })
     };
     const covers = {
@@ -181,7 +186,7 @@ function setup(available = true) {
         service: { isAvailable: vi.fn(() => { return available; }), info: vi.fn(() => { return aniCliInfo; }), search, episodes, resolveStream },
         schedule,
         covers,
-        availability,
+        updates,
         streams,
         streamQuality: () => {
             return '720p';
@@ -206,7 +211,7 @@ function setup(available = true) {
         subtitles
     } as unknown as AnimeHandlerDependencies;
     registerAnimeHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, availability, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, migrateFolder, missing, onLibraryChanged, subtitles, deps };
+    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, updates, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, migrateFolder, missing, onLibraryChanged, subtitles, deps };
 }
 
 describe('registerAnimeHandlers', () => {
@@ -1552,84 +1557,72 @@ describe('registerAnimeHandlers', () => {
     });
 });
 
-describe('parseAvailabilityTargets', () => {
-    it('keeps the id and the two names of each anime', () => {
-        expect(parseAvailabilityTargets([{ anilistId: 7, english: 'Dandadan', romaji: 'Dan Da Dan' }])).toEqual([{ anilistId: 7, english: 'Dandadan', romaji: 'Dan Da Dan' }]);
-    });
+describe('registerAnimeHandlers updates', () => {
+    const FOUND: AnimeCheckResponse = { ok: true, count: 2, titles: ['Naruto'], notDownloaded: [], failed: 1, skipped: 0 };
 
-    it('trims the names and turns an empty or missing one into null', () => {
-        expect(
-            parseAvailabilityTargets([
-                { anilistId: 1, english: '  Bleach ', romaji: '   ' },
-                { anilistId: 2, english: 'Naruto' },
-                { anilistId: 3, english: 5, romaji: 'Kimetsu no Yaiba' }
-            ])
-        ).toEqual([
-            { anilistId: 1, english: 'Bleach', romaji: null },
-            { anilistId: 2, english: 'Naruto', romaji: null },
-            { anilistId: 3, english: null, romaji: 'Kimetsu no Yaiba' }
+    it('lists the episodes that arrived, the newest first, from the library', () => {
+        const { call, db } = setup();
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+        db.registerEpisodesBaseline(anime.id, ['1']);
+        db.registerNewEpisodes(anime.id, ['1', '2'], 'manual');
+
+        expect(call(IPC.animeUpdates)).toEqual([
+            { id: 1, animeId: anime.id, animeTitle: 'Naruto', audio: 'sub', episodeId: db.getEpisodeByNumber(anime.id, '2')?.id, episodeNumber: '2', foundAt: 5, origin: 'manual', status: 'idle' }
         ]);
     });
 
-    it('cuts a name that is too long', () => {
-        expect(parseAvailabilityTargets([{ anilistId: 1, english: 'x'.repeat(MAX_TEXT_LENGTH + 50), romaji: null }])[0]?.english).toHaveLength(MAX_TEXT_LENGTH);
+    it('lists nothing when nothing arrived', () => {
+        expect(setup().call(IPC.animeUpdates)).toEqual([]);
+    });
+
+    it('clears the list and leaves the episodes in the library', () => {
+        const { call, db } = setup();
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+        db.registerEpisodesBaseline(anime.id, []);
+        db.registerNewEpisodes(anime.id, ['1'], 'auto');
+
+        expect(call(IPC.animeUpdatesClear)).toBeUndefined();
+
+        expect(db.updates()).toEqual([]);
+        expect(db.getLibraryAnime(anime.id)?.episodes).toHaveLength(1);
+    });
+
+    it('checks every anime of the library, as the user asking for it, when no anime is given', async () => {
+        const { call, updates } = setup();
+        updates.checkNow.mockResolvedValueOnce(FOUND);
+
+        expect(await call(IPC.animeCheckNew, null)).toEqual(FOUND);
+
+        expect(updates.checkNow).toHaveBeenCalledTimes(1);
+        expect(updates.checkNow).toHaveBeenCalledWith('manual');
+        expect(updates.checkAnime).not.toHaveBeenCalled();
+    });
+
+    it('checks one anime when its id is given', async () => {
+        const { call, updates } = setup();
+        updates.checkAnime.mockResolvedValueOnce(FOUND);
+
+        expect(await call(IPC.animeCheckNew, 7)).toEqual(FOUND);
+
+        expect(updates.checkAnime).toHaveBeenCalledTimes(1);
+        expect(updates.checkAnime).toHaveBeenCalledWith(7);
+        expect(updates.checkNow).not.toHaveBeenCalled();
     });
 
     it.each([
-        ['an id that is not a number', { anilistId: '7', english: 'A', romaji: 'B' }],
-        ['an id that is not an integer', { anilistId: 7.5, english: 'A', romaji: 'B' }],
-        ['an id below 1', { anilistId: 0, english: 'A', romaji: 'B' }],
-        ['an anime with no name', { anilistId: 7, english: null, romaji: '' }],
-        ['something that is not an object', 'Dandadan'],
-        ['null', null]
-    ])('leaves out %s', (_label, item) => {
-        expect(parseAvailabilityTargets([item, { anilistId: 1, english: 'Kept', romaji: null }])).toEqual([{ anilistId: 1, english: 'Kept', romaji: null }]);
-    });
+        ['zero', 0],
+        ['a negative number', -3],
+        ['a number that is not an integer', 1.5],
+        ['text', '7'],
+        ['nothing', undefined],
+        ['an object', { id: 7 }]
+    ])('refuses %s as the anime to check, and asks the source about nothing', async (_label, input) => {
+        const { call, updates } = setup();
 
-    it('gives none when what came is not a list', () => {
-        expect(parseAvailabilityTargets(undefined)).toEqual([]);
-        expect(parseAvailabilityTargets({ anilistId: 1, english: 'A' })).toEqual([]);
-        expect(parseAvailabilityTargets('x')).toEqual([]);
-    });
+        expect(await call(IPC.animeCheckNew, input)).toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'The anime is invalid.' } });
 
-    it('takes no more anime than the limit', () => {
-        const many = Array.from({ length: MAX_AVAILABILITY_TARGETS + 20 }, (_value, position) => {
-            return { anilistId: position + 1, english: `Anime ${position + 1}`, romaji: null };
-        });
-        expect(parseAvailabilityTargets(many)).toHaveLength(MAX_AVAILABILITY_TARGETS);
-    });
-});
-
-describe('registerAnimeHandlers availability', () => {
-    const targets: AnimeAvailabilityTarget[] = [
-        { anilistId: 7, english: 'Dandadan', romaji: 'Dan Da Dan' },
-        { anilistId: 8, english: null, romaji: 'Blue Lock' }
-    ];
-
-    it('asks the service about the anime that came and gives back what it already knows', () => {
-        const { call, availability } = setup();
-        const known: AnimeAvailability[] = [{ anilistId: 7, state: 'available', query: 'Dandadan', index: 1, title: 'Dandadan' }];
-        availability.request.mockReturnValueOnce(known);
-
-        expect(call(IPC.animeAvailability, targets)).toEqual(known);
-        expect(availability.request).toHaveBeenCalledTimes(1);
-        expect(availability.request).toHaveBeenCalledWith(targets);
-    });
-
-    it('only passes on what is shaped as an anime of the schedule', () => {
-        const { call, availability } = setup();
-
-        call(IPC.animeAvailability, [{ anilistId: 'x', english: 'Bad' }, ...targets]);
-
-        expect(availability.request).toHaveBeenCalledWith(targets);
-    });
-
-    it('asks for nothing when the request is not a list', () => {
-        const { call, availability } = setup();
-
-        expect(call(IPC.animeAvailability, 'nope')).toEqual([]);
-
-        expect(availability.request).toHaveBeenCalledWith([]);
+        expect(updates.checkNow).not.toHaveBeenCalled();
+        expect(updates.checkAnime).not.toHaveBeenCalled();
     });
 });
 
@@ -1778,7 +1771,9 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeDownload, {})).toEqual({ ok: false, message: unsupported.raw });
         expect(ipc.call(IPC.animeSchedule, { from: 1, to: 2, refresh: false })).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeCover, 'Naruto')).toBeNull();
-        expect(ipc.call(IPC.animeAvailability, [{ anilistId: 1, english: 'Naruto', romaji: null }])).toEqual([]);
+        expect(ipc.call(IPC.animeUpdates)).toEqual([]);
+        expect(ipc.call(IPC.animeUpdatesClear)).toBeUndefined();
+        expect(ipc.call(IPC.animeCheckNew, null)).toEqual({ ok: false, error: { code: 'UNKNOWN', message: unsupported.raw } });
         expect(ipc.call(IPC.animeLibrary)).toEqual([]);
         expect(ipc.call(IPC.animeJobs)).toEqual([]);
         expect(ipc.call(IPC.animeHistoryList)).toEqual([]);

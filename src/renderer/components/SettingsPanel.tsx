@@ -827,6 +827,22 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             change('animeSubtitles', value);
                         }}
                     />
+                    <ToggleField
+                        label={t('settings.animeCheckNewEpisodes')}
+                        checked={draft.animeCheckNewEpisodes}
+                        hint={t('settings.animeCheckNewEpisodes.hint')}
+                        onChange={(value) => {
+                            change('animeCheckNewEpisodes', value);
+                        }}
+                    />
+                    <ToggleField
+                        label={t('settings.animeAutoDownloadNew')}
+                        checked={draft.animeAutoDownloadNew}
+                        hint={t('settings.animeAutoDownloadNew.hint')}
+                        onChange={(value) => {
+                            change('animeAutoDownloadNew', value);
+                        }}
+                    />
                     <TranslationSettings draft={draft} change={change} edit={edit} changeMany={changeMany} />
                 </fieldset>
             )}

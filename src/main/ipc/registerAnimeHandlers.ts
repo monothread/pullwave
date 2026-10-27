@@ -2,8 +2,7 @@ import {
     ANIME_AUDIOS,
     type AniError,
     type AnimeAudio,
-    type AnimeAvailability,
-    type AnimeAvailabilityTarget,
+    type AnimeCheckResponse,
     type AnimeEpisodeRecord,
     type AnimeHistoryEntry,
     type AnimeHistoryRequest,
@@ -19,6 +18,7 @@ import {
     type AnimeSubtitleCheckResponse,
     type AnimeSubtitleImportResponse,
     type AnimeSubtitleTrack,
+    type AnimeUpdateEntry,
     type SubtitleEstimateRequest,
     type SubtitleGenerateEstimateResponse,
     type SubtitleGenerateRequest,
@@ -37,6 +37,7 @@ import type { AnimeAddResponse, AnimeRenameSeriesResponse, AnimeStatus } from '@
 import type { AnimeDb } from '../services/animeDb';
 import { animeFolderOf, animeFoldersToRemove, episodeFolderOf, filesOfEpisode, foldersWithoutOthers, seriesFolderOf } from '../services/animeFiles';
 import type { AnimeDownloadQueue } from '../services/animeDownloadQueue';
+import type { AnimeUpdateChecker } from '../services/animeUpdateChecker';
 import { isValidEpisode, isValidIndex, sanitizeQuery } from '../services/aniArgsBuilder';
 import type { AniCliService } from '../services/aniCliService';
 import type { StreamSessions } from '../services/streamProxy';
@@ -44,8 +45,6 @@ import type { IpcMainLike } from './registerHandlers';
 
 export const MAX_TEXT_LENGTH = 200;
 export const MAX_EPISODES_PER_REQUEST = 2000;
-// How many anime of the schedule can be asked about at once: a week has a few hundred at most.
-export const MAX_AVAILABILITY_TARGETS = 500;
 // The longest stretch that can be listed: a week, which is seven days (of 23 to 25 hours where the clock changes) and some more.
 export const MAX_SCHEDULE_SPAN_SECONDS = 8 * 24 * 60 * 60;
 
@@ -53,8 +52,8 @@ export interface AnimeHandlerDependencies {
     service: Pick<AniCliService, 'isAvailable' | 'info' | 'search' | 'episodes' | 'resolveStream'>;
     // The cover of an anime by its title (null when there is none).
     covers: { find: (title: string) => Promise<string | null> };
-    // Which anime of the schedule the source has: what is known is answered, the rest is checked in the background.
-    availability: { request: (targets: AnimeAvailabilityTarget[]) => AnimeAvailability[] };
+    // The check for new episodes: of all the anime of the library, or of one.
+    updates: Pick<AnimeUpdateChecker, 'checkNow' | 'checkAnime'>;
     // The episodes that air in a stretch of time.
     schedule: { list: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse> };
     streams: Pick<StreamSessions, 'create' | 'close'>;
@@ -232,31 +231,6 @@ export function parseScheduleRequest(input: unknown): AnimeScheduleRequest | nul
     return { from, to, refresh: raw.refresh === true };
 }
 
-function nameOrNull(value: unknown): string | null {
-    return typeof value === 'string' && value.trim().length > 0 ? value.trim().slice(0, MAX_TEXT_LENGTH) : null;
-}
-
-// Checks the anime the screen asks the availability of: a list of ids with their two names; what is not shaped so is left out.
-export function parseAvailabilityTargets(input: unknown): AnimeAvailabilityTarget[] {
-    if (!Array.isArray(input)) {
-        return [];
-    }
-    const targets: AnimeAvailabilityTarget[] = [];
-    input.slice(0, MAX_AVAILABILITY_TARGETS).forEach((item: unknown) => {
-        const raw = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
-        const anilistId = raw.anilistId;
-        if (typeof anilistId !== 'number' || !Number.isInteger(anilistId) || anilistId < 1) {
-            return;
-        }
-        const english = nameOrNull(raw.english);
-        const romaji = nameOrNull(raw.romaji);
-        if (english !== null || romaji !== null) {
-            targets.push({ anilistId, english, romaji });
-        }
-    });
-    return targets;
-}
-
 export function parseProgress(input: unknown): AnimeProgressUpdate | null {
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const episodeId = asId(raw.episodeId);
@@ -328,8 +302,14 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeCover, (): null => {
         return null;
     });
-    ipcMain.handle(IPC.animeAvailability, (): AnimeAvailability[] => {
+    ipcMain.handle(IPC.animeUpdates, (): AnimeUpdateEntry[] => {
         return [];
+    });
+    ipcMain.handle(IPC.animeUpdatesClear, (): void => {
+        return undefined;
+    });
+    ipcMain.handle(IPC.animeCheckNew, (): AnimeCheckResponse => {
+        return { ok: false, error: { code: 'UNKNOWN', message: UNSUPPORTED.raw } };
     });
     ipcMain.handle(IPC.animeLibrary, () => {
         return [];
@@ -422,8 +402,21 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         const cleaned = asText(title).trim().slice(0, MAX_TEXT_LENGTH);
         return cleaned.length === 0 ? Promise.resolve(null) : deps.covers.find(cleaned);
     });
-    ipcMain.handle(IPC.animeAvailability, (_event, input): AnimeAvailability[] => {
-        return deps.availability.request(parseAvailabilityTargets(input));
+    ipcMain.handle(IPC.animeUpdates, (): AnimeUpdateEntry[] => {
+        return db.updates();
+    });
+    ipcMain.handle(IPC.animeUpdatesClear, (): void => {
+        db.clearUpdates();
+    });
+    ipcMain.handle(IPC.animeCheckNew, (_event, animeId): Promise<AnimeCheckResponse> | AnimeCheckResponse => {
+        if (animeId === null) {
+            return deps.updates.checkNow('manual');
+        }
+        const id = asId(animeId);
+        if (id === null) {
+            return { ok: false, error: { code: 'UNKNOWN', message: 'The anime is invalid.' } };
+        }
+        return deps.updates.checkAnime(id);
     });
     ipcMain.handle(IPC.animeSchedule, (_event, input): Promise<AnimeScheduleResponse> | AnimeScheduleResponse => {
         const request = parseScheduleRequest(input);

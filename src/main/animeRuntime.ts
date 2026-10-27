@@ -4,17 +4,16 @@ import { isAnimeSupported, type AnimeScheduleRequest, type SubtitleGenerateRespo
 import { IPC } from '@shared/constants';
 import { resolveLanguage } from '@shared/i18n';
 import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechTokenSlot, speechTranslatesTo, type LlmTokenSlot } from '@shared/llm';
-import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import type { Settings } from '@shared/types';
 import type { AnimeHandlerDependencies } from './ipc/registerAnimeHandlers';
 import { AniCliLocator, type AniPrograms } from './services/aniCliLocator';
 import { AniCliService } from './services/aniCliService';
 import { subtitleLabels } from './services/aniSubtitles';
 import { AnimeDb } from './services/animeDb';
-import { AnimeAvailabilityService } from './services/animeAvailability';
 import { AnimeCoverService } from './services/animeCovers';
 import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
+import { AnimeUpdateChecker } from './services/animeUpdateChecker';
 import { animeBaseDirectory, isInsideDirectory, removeDirectories, removeEmptyDirectories } from './services/animeFiles';
 import { migrateAnimeFolder, type MigrationFileSystem } from './services/animeMigration';
 import { executableName, type BinaryResolver } from './services/binaryResolver';
@@ -92,6 +91,10 @@ export interface AnimeRuntimeOptions {
     translationSleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
     // The address the schedule of the day is asked at, instead of AniList's (used by the end-to-end tests).
     scheduleUrl?: string;
+    // When the look for new episodes happens: that long after the app opens, and again that often (used by the end-to-end tests).
+    checkTimes?: { firstMs: number; everyMs: number };
+    // How the look for new episodes waits between one anime and the next (the tests replace it).
+    checkSleep?: (milliseconds: number) => Promise<void>;
     send: (channel: string, payload?: unknown) => void;
 }
 
@@ -102,8 +105,9 @@ export interface AnimeRuntime {
     media: MediaSource;
     // Answers the requests of the player for a stream that is being watched without downloading it.
     streamHandler: (request: Request) => Promise<Response>;
-    // Starts, in the background, to check which anime of today's schedule the source has (it is not started by creating the runtime).
+    // Starts the hourly look for new episodes of the anime of the library (it is not started by creating the runtime), and ends it.
     startBackgroundChecks: () => void;
+    stopBackgroundChecks: () => void;
 }
 
 function fileSize(path: string): number | null {
@@ -327,6 +331,38 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             return kind === 'episode' ? filePath : resolveSubtitlePath(filePath, trackId, options.subtitleFiles);
         }
     };
+    // The anime folder is being migrated: the files are moving, so nothing is downloaded into it meanwhile.
+    let migrating = false;
+    // Looks, once an hour, for episodes the source has listed for the anime of the library, and puts them in the library.
+    const checker = new AnimeUpdateChecker({
+        db,
+        search: (query, audio) => {
+            return service.search(query, audio);
+        },
+        episodes: (query, index, audio) => {
+            return service.episodes(query, index, audio);
+        },
+        isEnabled: () => {
+            return options.getSettings().animeCheckNewEpisodes;
+        },
+        autoDownload: () => {
+            return options.getSettings().animeAutoDownloadNew;
+        },
+        download: (animeId, episodes) => {
+            if (!migrating) {
+                queue.downloadEpisodes(animeId, episodes);
+            }
+        },
+        onNewEpisodes: (news) => {
+            options.send(IPC.eventAnimeNewEpisodes, news);
+        },
+        onLibraryChanged: () => {
+            options.send(IPC.eventAnimeLibrary);
+        },
+        firstDelayMs: options.checkTimes?.firstMs,
+        intervalMs: options.checkTimes?.everyMs,
+        sleep: options.checkSleep
+    });
     const streams = new StreamSessions();
     const covers = new AnimeCoverService({
         url: options.scheduleUrl,
@@ -355,51 +391,21 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             }
         });
     };
-    const availability = new AnimeAvailabilityService({
-        search: (query, audio) => {
-            return service.search(query, audio);
-        },
-        store: {
-            find: (anilistId, audio, since) => {
-                return db.findAvailability(anilistId, audio, since);
-            },
-            save: (result, audio) => {
-                db.saveAvailability(result, audio);
-            },
-            forgetBefore: (since) => {
-                db.forgetAvailabilityBefore(since);
-            }
-        },
-        audio: () => {
-            return options.getSettings().animeAudio;
-        },
-        onResult: (result) => {
-            options.send(IPC.eventAnimeAvailability, result);
-        }
-    });
     return {
         db,
         queue,
         media,
         streamHandler: createStreamHandler(streams),
         startBackgroundChecks: () => {
-            // Today's schedule, in the time zone of the machine, is the one the screen opens on: its anime are checked before it is shown.
-            const limits = zonedDayLimits(Date.now(), machineTimeZone(), 1);
-            void listSchedule({ from: limits[0] as number, to: limits[1] as number, refresh: false })
-                .then((response) => {
-                    if (response.ok) {
-                        availability.request(response.entries);
-                    }
-                    return undefined;
-                })
-                .catch(() => {
-                    return undefined;
-                });
+            checker.start();
+        },
+        stopBackgroundChecks: () => {
+            checker.stop();
         },
         handlers: {
             service,
             covers,
-            availability,
+            updates: checker,
             schedule: {
                 list: listSchedule
             },
@@ -456,20 +462,25 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 if (chosen === null) {
                     return { ok: false, reason: 'cancelled' };
                 }
-                const outcome = await migrateAnimeFolder({
-                    db,
-                    files: options.migrationFiles,
-                    platform: options.platform,
-                    currentDirectory,
-                    newDirectory: chosen,
-                    saveDirectory: (directory) => {
-                        options.saveAnimeDirectory?.(directory);
-                    },
-                    onProgress: (progress) => {
-                        options.send(IPC.eventAnimeMigration, progress);
-                    }
-                });
-                return outcome.ok ? { ...outcome, destination: chosen } : outcome;
+                migrating = true;
+                try {
+                    const outcome = await migrateAnimeFolder({
+                        db,
+                        files: options.migrationFiles,
+                        platform: options.platform,
+                        currentDirectory,
+                        newDirectory: chosen,
+                        saveDirectory: (directory) => {
+                            options.saveAnimeDirectory?.(directory);
+                        },
+                        onProgress: (progress) => {
+                            options.send(IPC.eventAnimeMigration, progress);
+                        }
+                    });
+                    return outcome.ok ? { ...outcome, destination: chosen } : outcome;
+                } finally {
+                    migrating = false;
+                }
             },
             openFolder: (path) => {
                 options.openFolder?.(path);

@@ -63,6 +63,7 @@ describe('importLibrary', () => {
                 durationSeconds: 0,
                 watched: false,
                 downloadedAt: 5000,
+                addedAt: null,
                 fileMissing: false
             },
             {
@@ -77,6 +78,7 @@ describe('importLibrary', () => {
                 durationSeconds: 0,
                 watched: false,
                 downloadedAt: 5000,
+                addedAt: null,
                 fileMissing: false
             }
         ]);

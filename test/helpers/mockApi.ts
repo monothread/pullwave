@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeAddResponse, AnimeAvailability, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeAddResponse, AnimeCheckResponse, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
@@ -53,7 +53,7 @@ export interface MockApiHandle {
     emitAnimeLibraryChanged: () => void;
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
     emitAnimeCover: (update: AnimeCoverUpdate) => void;
-    emitAnimeAvailability: (availability: AnimeAvailability) => void;
+    emitAnimeNewEpisodes: (news: AnimeNewEpisodes) => void;
     emitSubtitleTranslation: (job: SubtitleTranslationJob) => void;
     emitSubtitleGeneration: (job: SubtitleGenerationJob) => void;
     unsubscribers: Array<ReturnType<typeof vi.fn>>;
@@ -70,7 +70,7 @@ export function createMockApi(): MockApiHandle {
     const animeLibraryListeners: Array<() => void> = [];
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
     const animeCoverListeners: Array<(update: AnimeCoverUpdate) => void> = [];
-    const animeAvailabilityListeners: Array<(availability: AnimeAvailability) => void> = [];
+    const animeNewEpisodesListeners: Array<(news: AnimeNewEpisodes) => void> = [];
     const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
     const programToolListeners: Array<(state: ToolState) => void> = [];
@@ -491,11 +491,17 @@ export function createMockApi(): MockApiHandle {
         listAnimeSchedule: vi.fn(async (): Promise<AnimeScheduleResponse> => {
             return { ok: true, entries: [] };
         }),
-        checkAnimeAvailability: vi.fn(async (): Promise<AnimeAvailability[]> => {
+        listAnimeUpdates: vi.fn(async (): Promise<AnimeUpdateEntry[]> => {
             return [];
         }),
-        onAnimeAvailability: vi.fn((listener: (availability: AnimeAvailability) => void) => {
-            return subscribe(animeAvailabilityListeners, listener);
+        clearAnimeUpdates: vi.fn(async (): Promise<void> => {
+            return undefined;
+        }),
+        checkNewAnimeEpisodes: vi.fn(async (): Promise<AnimeCheckResponse> => {
+            return { ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 };
+        }),
+        onAnimeNewEpisodes: vi.fn((listener: (news: AnimeNewEpisodes) => void) => {
+            return subscribe(animeNewEpisodesListeners, listener);
         }),
         onAnimeJobUpdate: vi.fn((listener: (job: AnimeJob) => void) => {
             return subscribe(animeJobListeners, listener);
@@ -617,9 +623,9 @@ export function createMockApi(): MockApiHandle {
                 listener(job);
             });
         },
-        emitAnimeAvailability: (availability) => {
-            animeAvailabilityListeners.forEach((listener) => {
-                listener(availability);
+        emitAnimeNewEpisodes: (news) => {
+            animeNewEpisodesListeners.forEach((listener) => {
+                listener(news);
             });
         },
         emitAnimeCover: (update) => {

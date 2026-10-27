@@ -1,6 +1,5 @@
 import type {
-    AnimeAvailability,
-    AnimeAvailabilityTarget,
+    AnimeCheckResponse,
     AnimeCoverUpdate,
     AnimeDownloadRequest,
     AnimeDownloadResponse,
@@ -10,6 +9,7 @@ import type {
     AnimeImportResponse,
     AnimeJob,
     AnimeMigrationProgress,
+    AnimeNewEpisodes,
     AnimeMigrationResponse,
     AnimeProgressUpdate,
     AnimeScheduleRequest,
@@ -36,6 +36,7 @@ import type {
     AnimeSubtitleTrack,
     AnimeStreamRequest,
     AnimeStreamResponse,
+    AnimeUpdateEntry,
     AnimeAudio,
     AnimeQuality,
     AnimeSubtitleSetting,
@@ -147,6 +148,10 @@ export interface Settings {
     animeQuality: AnimeQuality;
     animeAudio: AnimeAudio;
     animeSubtitles: AnimeSubtitleSetting;
+    // Whether, once an hour, the anime of the library are checked for new episodes (which are added to the library, not downloaded).
+    animeCheckNewEpisodes: boolean;
+    // Whether the new episodes found by the check are downloaded too (off: they are only added to the library).
+    animeAutoDownloadNew: boolean;
     // Manga section (Linux and Windows): where the mangas are kept (empty is a folder inside the downloads folder) and whether a
     // chapter is made a CBZ file or a folder of images.
     mangaDirectory: string;
@@ -436,15 +441,18 @@ export interface CyberApi {
     listAnimeSchedule: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse>;
     // The address of the cover of an anime, found by its title; null when there is none.
     findAnimeCover: (title: string) => Promise<string | null>;
-    // Asks for the availability in the source of the anime of the schedule: what was checked less than an hour ago is answered at once, the rest
-    // is checked in the background and told one by one (`onAnimeAvailability`).
-    checkAnimeAvailability: (targets: AnimeAvailabilityTarget[]) => Promise<AnimeAvailability[]>;
+    // The episodes that arrived in the library after their anime was in it, the newest first.
+    listAnimeUpdates: () => Promise<AnimeUpdateEntry[]>;
+    clearAnimeUpdates: () => Promise<void>;
+    // Asks the source for new episodes: of one anime of the library, or of all of them (null).
+    checkNewAnimeEpisodes: (animeId: number | null) => Promise<AnimeCheckResponse>;
     onAnimeJobUpdate: (listener: (job: AnimeJob) => void) => () => void;
     onAnimeLibraryChanged: (listener: () => void) => () => void;
     onAnimeMigrationProgress: (listener: (progress: AnimeMigrationProgress) => void) => () => void;
     // A cover that was checked again and changed.
     onAnimeCoverUpdate: (listener: (update: AnimeCoverUpdate) => void) => () => void;
-    onAnimeAvailability: (listener: (availability: AnimeAvailability) => void) => () => void;
+    // The check for new episodes added some to the library.
+    onAnimeNewEpisodes: (listener: (news: AnimeNewEpisodes) => void) => () => void;
     onJobUpdate: (listener: (job: DownloadJob) => void) => () => void;
     onJobRemoved: (listener: (id: string) => void) => () => void;
     onHistoryChanged: (listener: () => void) => () => void;

@@ -770,6 +770,101 @@ describe('AnimeDetail', () => {
                 expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
             });
 
+            it('is put in the field already as the next one, when the series typed uses the order that is there, so the anime can be confirmed', async () => {
+                const user = userEvent.setup();
+                mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: makeAnime([makeEpisode({ id: 1, status: 'idle' })], { title: 'Cyberpunk: Edgerunners', series: 'Frieren', season: 4 }) });
+                open(['1']);
+                useAnimeStore.setState({ library: IN_SERIES });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+                expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(1);
+
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Frieren');
+
+                // The series uses 1 and 3 (the 7 is of the dubbed one): the next is 4.
+                expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(4);
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+                expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
+                await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+                expect(mock.api.addAnimeToLibrary).toHaveBeenCalledWith({
+                    title: 'Cyberpunk: Edgerunners',
+                    query: 'cyberpunk',
+                    index: 1,
+                    audio: 'sub',
+                    episodes: ['1'],
+                    series: 'Frieren',
+                    season: 4,
+                    seasonName: null
+                });
+            });
+
+            it('is put in the field as the next one when the series is picked from the ones of the library', async () => {
+                const user = userEvent.setup();
+                open(['1']);
+                useAnimeStore.setState({ library: IN_SERIES });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+
+                await user.click(screen.getByRole('option', { name: 'Frieren' }));
+
+                expect(dialog.getByRole('textbox', { name: 'Series' })).toHaveValue('Frieren');
+                expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(4);
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+            });
+
+            it('is left as it is when the series typed does not use the order that is there', async () => {
+                const user = userEvent.setup();
+                open(['1']);
+                useAnimeStore.setState({ library: [makeAnime([], { id: 5, title: 'Naruto Season 2', series: 'Naruto', season: 2 })] });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Naruto');
+
+                expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(1);
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+            });
+
+            it('is left as it was typed when the name of the series goes on to one that no series has', async () => {
+                const user = userEvent.setup();
+                open(['1']);
+                useAnimeStore.setState({ library: IN_SERIES });
+                render(<AnimeSearch />);
+                const dialog = await openDialog(user);
+                await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Frieren');
+                await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
+                await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '2');
+
+                await user.type(dialog.getByRole('textbox', { name: 'Series' }), ' 2');
+
+                expect(dialog.getByRole('textbox', { name: 'Series' })).toHaveValue('Frieren 2');
+                expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(2);
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+            });
+
+            it('starts as the next one when the title suggests a series that uses the order it suggests', async () => {
+                const user = userEvent.setup();
+                useAnimeStore.setState({
+                    search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'frieren' },
+                    selection: { result: { index: 3, title: 'Frieren: Beyond Journey\'s End Season 2' }, query: 'frieren', audio: 'sub', status: 'ready', episodes: ['1'], error: null },
+                    library: [
+                        makeAnime([], { id: 1, title: 'Frieren: Beyond Journey\'s End', series: 'Frieren: Beyond Journey\'s End', season: 1 }),
+                        makeAnime([], { id: 2, title: 'Frieren: Beyond Journey\'s End 2', series: 'Frieren: Beyond Journey\'s End', season: 2 })
+                    ]
+                });
+                render(<AnimeSearch />);
+
+                const dialog = await openDialog(user);
+
+                expect(dialog.getByRole('textbox', { name: 'Series' })).toHaveValue('Frieren: Beyond Journey\'s End');
+                expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(3);
+                expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+            });
+
             it('is not checked when the anime stays on its own', async () => {
                 const user = userEvent.setup();
                 open(['1']);

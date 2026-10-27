@@ -4,8 +4,8 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type {
     AniError,
     AniErrorCode,
+    AnimeArrivalOrigin,
     AnimeAudio,
-    AnimeAvailability,
     AnimeEpisodeRecord,
     AnimeEpisodeStatus,
     AnimeHistoryEntry,
@@ -13,6 +13,7 @@ import type {
     AnimeProgressUpdate,
     AnimeRecord,
     AnimeScheduleEntry,
+    AnimeUpdateEntry,
     LibraryAnime
 } from '@shared/anime';
 import { sameSeries } from '@shared/series';
@@ -86,11 +87,28 @@ const MIGRATIONS: readonly string[] = [
         result_title TEXT,
         checked_at INTEGER NOT NULL,
         PRIMARY KEY (anilist_id, audio)
-    );`
+    );`,
+    // The availability of the schedule is not checked by itself any more: the user looks an anime up when they want it.
+    `DROP TABLE anime_availability;`,
+    // The check for new episodes: when the list of episodes of an anime was first read (what it lists then is not new), when an episode
+    // got into the library by the check, and a line for each one that did (what the screen of updates lists).
+    `ALTER TABLE anime ADD COLUMN episodes_baseline_at INTEGER;
+    ALTER TABLE episode ADD COLUMN added_at INTEGER;
+    CREATE TABLE episode_update (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        anime_id INTEGER NOT NULL REFERENCES anime (id) ON DELETE CASCADE,
+        episode_id INTEGER NOT NULL REFERENCES episode (id) ON DELETE CASCADE,
+        found_at INTEGER NOT NULL,
+        origin TEXT NOT NULL
+    );
+    CREATE INDEX episode_update_found ON episode_update (found_at DESC, id DESC);`
 ];
 
 // The history keeps the most recent anime only.
 export const MAX_HISTORY_ENTRIES = 50;
+// The list of updates keeps the most recent episodes only.
+export const MAX_UPDATES_KEPT = 1000;
+const ARRIVAL_ORIGINS: readonly AnimeArrivalOrigin[] = ['auto', 'manual'];
 
 const EPISODE_STATUSES: readonly AnimeEpisodeStatus[] = ['idle', 'queued', 'downloading', 'paused', 'done', 'error', 'cancelled'];
 const ERROR_CODES: readonly AniErrorCode[] = [
@@ -180,6 +198,7 @@ function toEpisode(row: Row): AnimeEpisodeRecord {
         durationSeconds: numeric(row, 'duration_seconds'),
         watched: numeric(row, 'watched') === 1,
         downloadedAt: nullableNumeric(row, 'downloaded_at'),
+        addedAt: nullableNumeric(row, 'added_at'),
         fileMissing: false
     };
 }
@@ -365,6 +384,89 @@ export class AnimeDb {
             this.db.exec('ROLLBACK');
             throw error;
         }
+    }
+
+    // Whether the list of episodes of the anime was read before by the check for new episodes: what a first reading lists is not new.
+    hasEpisodesBaseline(animeId: number): boolean {
+        return nullableNumeric(this.one('SELECT episodes_baseline_at FROM anime WHERE id = ?', animeId) ?? {}, 'episodes_baseline_at') !== null;
+    }
+
+    // The first reading of the episodes an anime has: they are put in the library as `idle`, none of them counts as new, and from then on
+    // what the source lists beyond them does.
+    registerEpisodesBaseline(animeId: number, numbers: readonly string[]): void {
+        this.db.exec('BEGIN');
+        try {
+            numbers.forEach((number) => {
+                this.run(`INSERT INTO episode (anime_id, number, status) VALUES (?, ?, 'idle') ON CONFLICT (anime_id, number) DO NOTHING`, animeId, number);
+            });
+            this.run('UPDATE anime SET episodes_baseline_at = ? WHERE id = ?', this.now(), animeId);
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+    }
+
+    // The episodes the source lists that the anime does not have yet are put in the library as `idle`, each with the time it arrived and a
+    // line in the list of updates. Gives back the numbers of the ones that were new, in the order they were given.
+    registerNewEpisodes(animeId: number, numbers: readonly string[], origin: AnimeArrivalOrigin): string[] {
+        const arrived: string[] = [];
+        this.db.exec('BEGIN');
+        try {
+            const foundAt = this.now();
+            numbers.forEach((number) => {
+                const row = this.one(
+                    `INSERT INTO episode (anime_id, number, status, added_at) VALUES (?, ?, 'idle', ?) ON CONFLICT (anime_id, number) DO NOTHING RETURNING id`,
+                    animeId,
+                    number,
+                    foundAt
+                );
+                if (row !== null) {
+                    arrived.push(number);
+                    this.run('INSERT INTO episode_update (anime_id, episode_id, found_at, origin) VALUES (?, ?, ?, ?)', animeId, numeric(row, 'id'), foundAt, origin);
+                }
+            });
+            this.run('DELETE FROM episode_update WHERE id NOT IN (SELECT id FROM episode_update ORDER BY found_at DESC, id DESC LIMIT ?)', MAX_UPDATES_KEPT);
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+        return arrived;
+    }
+
+    // The place of the anime in the search of its name, when the source lists it somewhere else now.
+    updateSearchIndex(animeId: number, searchIndex: number): void {
+        this.run('UPDATE anime SET search_index = ? WHERE id = ?', searchIndex, animeId);
+    }
+
+    // The episodes that arrived in the library after their anime was in it, the newest first.
+    updates(limit = 200): AnimeUpdateEntry[] {
+        return this.all(
+            `SELECT u.id AS id, u.anime_id AS anime_id, u.episode_id AS episode_id, u.found_at AS found_at, u.origin AS origin,
+                    a.title AS title, a.audio AS audio, e.number AS number, e.status AS status
+             FROM episode_update u
+             JOIN anime a ON a.id = u.anime_id
+             JOIN episode e ON e.id = u.episode_id
+             ORDER BY u.found_at DESC, u.id DESC LIMIT ?`,
+            limit
+        ).map((row) => {
+            return {
+                id: numeric(row, 'id'),
+                animeId: numeric(row, 'anime_id'),
+                animeTitle: text(row, 'title'),
+                audio: text(row, 'audio') === 'dub' ? 'dub' : 'sub',
+                episodeId: numeric(row, 'episode_id'),
+                episodeNumber: text(row, 'number'),
+                foundAt: numeric(row, 'found_at'),
+                origin: pick(text(row, 'origin'), ARRIVAL_ORIGINS, 'auto'),
+                status: pick(text(row, 'status'), EPISODE_STATUSES, 'error')
+            };
+        });
+    }
+
+    clearUpdates(): void {
+        this.run('DELETE FROM episode_update');
     }
 
     // The seasons a series has for an audio, without counting the anime in `exceptAnimeIds`.
@@ -589,42 +691,6 @@ export class AnimeDb {
             JSON.stringify(entries)
         );
         this.run('DELETE FROM anime_schedule_cache WHERE fetched_at < ?', since);
-    }
-
-    // What was found out about an anime of the schedule for an audio, if it was checked at `since` or later (in milliseconds).
-    findAvailability(anilistId: number, audio: AnimeAudio, since: number): AnimeAvailability | null {
-        const row = this.one('SELECT * FROM anime_availability WHERE anilist_id = ? AND audio = ? AND checked_at >= ?', anilistId, audio, since);
-        if (!row) {
-            return null;
-        }
-        const query = nullableText(row, 'query');
-        const title = nullableText(row, 'result_title');
-        const index = row.result_index;
-        if (numeric(row, 'available') === 1 && query !== null && title !== null && typeof index === 'number') {
-            return { anilistId, state: 'available', query, index, title };
-        }
-        return { anilistId, state: 'unavailable' };
-    }
-
-    saveAvailability(availability: AnimeAvailability, audio: AnimeAudio): void {
-        const found = availability.state === 'available' ? availability : null;
-        this.run(
-            `INSERT INTO anime_availability (anilist_id, audio, available, query, result_index, result_title, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (anilist_id, audio) DO UPDATE SET available = excluded.available, query = excluded.query, result_index = excluded.result_index,
-             result_title = excluded.result_title, checked_at = excluded.checked_at`,
-            availability.anilistId,
-            audio,
-            found === null ? 0 : 1,
-            found?.query ?? null,
-            found?.index ?? null,
-            found?.title ?? null,
-            this.now()
-        );
-    }
-
-    // Forgets what was checked before `since` (in milliseconds).
-    forgetAvailabilityBefore(since: number): void {
-        this.run('DELETE FROM anime_availability WHERE checked_at < ?', since);
     }
 
     getCover(key: string): StoredCover | null {

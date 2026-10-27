@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AnimeJob } from '@shared/anime';
 import { DEFAULT_SETTINGS, IPC } from '@shared/constants';
-import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createAnimeRuntime, fetchSubtitleText, REMOVE_RETRY_MS, SUBTITLE_FETCH_TIMEOUT_MS, type AnimeRuntime, type AnimeRuntimeOptions } from '@main/animeRuntime';
@@ -1469,135 +1468,100 @@ describe('createAnimeRuntime schedule', () => {
     });
 });
 
-describe('createAnimeRuntime availability', () => {
-    it('answers at once with what was checked in the last hour, from the library file, and says nothing', () => {
-        const { send, options: given } = options();
-        const runtime = open(given) as AnimeRuntime;
-        runtime.db.saveAvailability({ anilistId: 7, state: 'available', query: 'Dandadan', index: 2, title: 'Dandadan' }, 'sub');
-        runtime.db.saveAvailability({ anilistId: 8, state: 'unavailable' }, 'sub');
-
-        const known = runtime.handlers.availability.request([
-            { anilistId: 7, english: 'Dandadan', romaji: null },
-            { anilistId: 8, english: 'Blue Lock', romaji: null }
-        ]);
-
-        expect(known).toEqual([
-            { anilistId: 7, state: 'available', query: 'Dandadan', index: 2, title: 'Dandadan' },
-            { anilistId: 8, state: 'unavailable' }
-        ]);
-        expect(send).not.toHaveBeenCalled();
-    });
-
-    it('uses the audio of the settings: what was checked for the other audio is not an answer', () => {
-        const { options: given } = options({
-            getSettings: () => {
-                return { ...DEFAULT_SETTINGS, animeAudio: 'dub' };
-            }
-        });
-        const runtime = open(given) as AnimeRuntime;
-        runtime.db.saveAvailability({ anilistId: 7, state: 'unavailable' }, 'sub');
-
-        expect(runtime.handlers.availability.request([])).toEqual([]);
-        expect(runtime.db.findAvailability(7, 'dub', 0)).toBeNull();
-        expect(runtime.db.findAvailability(7, 'sub', 0)).toEqual({ anilistId: 7, state: 'unavailable' });
-    });
-
-    it('tells each answer to the screen as it is known, and says unknown (keeping nothing) when ani-cli cannot be run', async () => {
-        const { send, options: given } = options();
-        const runtime = open(given) as AnimeRuntime;
-
-        runtime.handlers.availability.request([{ anilistId: 7, english: 'Dandadan', romaji: 'Dan Da Dan' }]);
-        await vi.waitFor(() => {
-            expect(send).toHaveBeenCalledTimes(1);
-        });
-
-        expect(send).toHaveBeenCalledWith(IPC.eventAnimeAvailability, { anilistId: 7, state: 'unknown' });
-        expect(runtime.db.findAvailability(7, 'sub', 0)).toBeNull();
-    });
-});
-
-describe('createAnimeRuntime background checks', () => {
-    let server: Server;
-    let origin: string;
-    let bodies: Array<{ variables: { start: number; end: number } }>;
-
-    beforeEach(async () => {
-        bodies = [];
-        server = createServer((request, response) => {
-            const chunks: Buffer[] = [];
-            request.on('data', (chunk: Buffer) => {
-                chunks.push(chunk);
-            });
-            request.on('end', () => {
-                const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { variables: { start: number; end: number } };
-                bodies.push(body);
-                const airingAt = body.variables.start + 3600;
-                response.writeHead(200, { 'Content-Type': 'application/json' });
-                response.end(
-                    JSON.stringify({
-                        data: {
-                            Page: {
-                                pageInfo: { hasNextPage: false },
-                                airingSchedules: [
-                                    { episode: 3, airingAt, media: { id: 7, format: 'TV', countryOfOrigin: 'JP', isAdult: false, title: { romaji: 'Dan Da Dan', english: 'Dandadan' }, synonyms: [], coverImage: { large: null } } }
-                                ]
-                            }
-                        }
-                    })
-                );
-            });
-        });
-        await new Promise<void>((resolve) => {
-            server.listen(0, '127.0.0.1', resolve);
-        });
-        origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    });
-
-    afterEach(async () => {
-        server.closeAllConnections();
-        await new Promise<void>((resolve) => {
-            server.close(() => {
-                resolve();
-            });
-        });
-    });
+describe('createAnimeRuntime new episodes', () => {
+    const NARUTO = { title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' } as const;
+    const BLEACH = { title: 'Bleach', query: 'bleach', searchIndex: 2, audio: 'sub' } as const;
 
     it('does nothing by itself when the runtime is created', async () => {
-        const { send, options: given } = options({ scheduleUrl: origin });
-        open(given);
+        const { send, options: given } = options({ checkTimes: { firstMs: 1, everyMs: 1 } });
+        const runtime = open(given) as AnimeRuntime;
+        runtime.db.upsertAnime(NARUTO);
         await flush();
 
-        expect(bodies).toEqual([]);
         expect(send).not.toHaveBeenCalled();
     });
 
-    it('lists today in the time zone of the machine and checks the anime that air in it, telling each answer', async () => {
-        const { send, options: given } = options({ scheduleUrl: origin });
-        const runtime = open(given) as AnimeRuntime;
-
-        runtime.startBackgroundChecks();
-        await vi.waitFor(() => {
-            expect(send).toHaveBeenCalledTimes(1);
-        });
-
-        const limits = zonedDayLimits(Date.now(), machineTimeZone(), 1);
-        expect(bodies).toHaveLength(1);
-        // AniList's limits are exclusive: the first moment of the day is asked from one second before.
-        expect(bodies[0]?.variables).toMatchObject({ start: (limits[0] as number) - 1, end: limits[1] });
-        // No ani-cli runs in this test, so the look-up fails: it is told as unknown.
-        expect(send).toHaveBeenCalledWith(IPC.eventAnimeAvailability, { anilistId: 7, state: 'unknown' });
-    });
-
-    it('is quiet when the schedule cannot be had', async () => {
-        const { send, options: given } = options({ scheduleUrl: 'http://127.0.0.1:1/graphql' });
+    it('starts the hourly look when asked, and stays quiet where nothing is new, and can be ended', async () => {
+        const { send, options: given } = options({ checkTimes: { firstMs: 1, everyMs: 60_000 } });
         const runtime = open(given) as AnimeRuntime;
 
         expect(() => {
             runtime.startBackgroundChecks();
         }).not.toThrow();
         await flush();
+        expect(() => {
+            runtime.stopBackgroundChecks();
+        }).not.toThrow();
 
         expect(send).not.toHaveBeenCalled();
+    });
+
+    it('asks about every anime of the library when the user asks, with a pause between them, and counts the ones ani-cli could not be run for', async () => {
+        const sleep = vi.fn((): Promise<void> => {
+            return Promise.resolve();
+        });
+        const { send, options: given } = options({ checkSleep: sleep });
+        const runtime = open(given) as AnimeRuntime;
+        runtime.db.upsertAnime(NARUTO);
+        runtime.db.upsertAnime(BLEACH);
+
+        const response = await runtime.handlers.updates.checkNow('manual');
+
+        expect(response).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 2, skipped: 0 });
+        expect(sleep).toHaveBeenCalledTimes(1);
+        const [pause] = sleep.mock.calls[0] as unknown as [number];
+        expect(pause).toBeGreaterThanOrEqual(2000);
+        expect(pause).toBeLessThanOrEqual(4000);
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it('does not run the hourly check when it is turned off in the settings, and still runs the one the user asks for', async () => {
+        const { options: given } = options({
+            getSettings: () => {
+                return { ...DEFAULT_SETTINGS, animeCheckNewEpisodes: false };
+            }
+        });
+        const runtime = open(given) as AnimeRuntime;
+        runtime.db.upsertAnime(NARUTO);
+
+        expect(await runtime.handlers.updates.checkNow('auto')).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 });
+        expect(await runtime.handlers.updates.checkNow('manual')).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 1, skipped: 0 });
+    });
+
+    it('runs the hourly check when it is turned on', async () => {
+        const { options: given } = options({
+            getSettings: () => {
+                return { ...DEFAULT_SETTINGS, animeCheckNewEpisodes: true };
+            }
+        });
+        const runtime = open(given) as AnimeRuntime;
+        runtime.db.upsertAnime(NARUTO);
+
+        expect(await runtime.handlers.updates.checkNow('auto')).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 1, skipped: 0 });
+    });
+
+    it('says an anime that is not in the library is not', async () => {
+        const runtime = open(options().options) as AnimeRuntime;
+
+        expect(await runtime.handlers.updates.checkAnime(999)).toEqual({ ok: false, error: { code: 'NOT_FOUND', message: 'The anime is not in the library.' } });
+    });
+
+    it('says why one anime could not be asked about when ani-cli is not installed', async () => {
+        const runtime = open(options().options) as AnimeRuntime;
+        const anime = runtime.db.upsertAnime(NARUTO);
+
+        expect(await runtime.handlers.updates.checkAnime(anime.id)).toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'ani-cli is not installed.' } });
+    });
+
+    it('lists and clears the updates of the library file', () => {
+        const runtime = open(options().options) as AnimeRuntime;
+        const anime = runtime.db.upsertAnime(NARUTO);
+        runtime.db.registerEpisodesBaseline(anime.id, ['1']);
+        runtime.db.registerNewEpisodes(anime.id, ['1', '2'], 'auto');
+
+        expect(runtime.db.updates()).toHaveLength(1);
+        runtime.db.clearUpdates();
+        expect(runtime.db.updates()).toEqual([]);
     });
 });
 

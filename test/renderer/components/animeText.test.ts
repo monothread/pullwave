@@ -6,16 +6,22 @@ import {
     downloadedCount,
     END_MARGIN_SECONDS,
     compareNames,
+    groupByDay,
     groupLibrary,
+    isNewEpisode,
     isWatched,
     libraryEntry,
     matchesSearch,
     MIN_RESUME_SECONDS,
+    newEpisodeCount,
     nextDownloadedEpisode,
+    nextFreeOrder,
+    orderFor,
     previousDownloadedEpisode,
     resumePosition,
     seasonLabel,
     seriesNames,
+    startOfDay,
     WATCHED_RATIO
 } from '@renderer/components/animeText';
 import type { AnimeEpisodeRecord } from '@shared/anime';
@@ -375,5 +381,161 @@ describe('activeJobCount', () => {
             ])
         ).toBe(2);
         expect(activeJobCount([])).toBe(0);
+    });
+});
+
+describe('startOfDay', () => {
+    it('gives the first moment of the day of the computer, whatever the time of day', () => {
+        const first = new Date(2026, 9, 7, 0, 0, 0, 0).getTime();
+
+        expect(startOfDay(new Date(2026, 9, 7, 0, 0, 0, 0).getTime())).toBe(first);
+        expect(startOfDay(new Date(2026, 9, 7, 13, 45, 30, 500).getTime())).toBe(first);
+        expect(startOfDay(new Date(2026, 9, 7, 23, 59, 59, 999).getTime())).toBe(first);
+        expect(startOfDay(new Date(2026, 9, 8, 0, 0, 0, 0).getTime())).toBe(new Date(2026, 9, 8, 0, 0, 0, 0).getTime());
+    });
+});
+
+describe('groupByDay', () => {
+    const MORNING = new Date(2026, 9, 7, 9, 0, 0).getTime();
+    const EVENING = new Date(2026, 9, 7, 21, 0, 0).getTime();
+    const NEXT_DAY = new Date(2026, 9, 8, 8, 0, 0).getTime();
+
+    it('splits a list by the day of each time, keeping the order and the entries of a day together', () => {
+        const entries = [
+            { name: 'a', at: EVENING },
+            { name: 'b', at: MORNING },
+            { name: 'c', at: NEXT_DAY }
+        ];
+
+        expect(
+            groupByDay(entries, (entry) => {
+                return entry.at;
+            })
+        ).toEqual([
+            { day: startOfDay(MORNING), entries: [entries[0], entries[1]] },
+            { day: startOfDay(NEXT_DAY), entries: [entries[2]] }
+        ]);
+    });
+
+    it('makes a new group when a day comes back, as the list is only split where the day changes', () => {
+        const entries = [
+            { name: 'a', at: MORNING },
+            { name: 'b', at: NEXT_DAY },
+            { name: 'c', at: EVENING }
+        ];
+
+        expect(
+            groupByDay(entries, (entry) => {
+                return entry.at;
+            }).map((group) => {
+                return group.entries.map((entry) => {
+                    return entry.name;
+                });
+            })
+        ).toEqual([['a'], ['b'], ['c']]);
+    });
+
+    it('gives no group for an empty list', () => {
+        expect(
+            groupByDay([], () => {
+                return 0;
+            })
+        ).toEqual([]);
+    });
+});
+
+describe('isNewEpisode', () => {
+    const NOW = new Date(2026, 9, 7, 12, 0, 0).getTime();
+
+    it('is new when the check put it in the library today, at any time of the day', () => {
+        expect(isNewEpisode({ addedAt: new Date(2026, 9, 7, 0, 0, 0).getTime() }, NOW)).toBe(true);
+        expect(isNewEpisode({ addedAt: NOW }, NOW)).toBe(true);
+        expect(isNewEpisode({ addedAt: new Date(2026, 9, 7, 23, 59, 59).getTime() }, NOW)).toBe(true);
+    });
+
+    it('is not new from the day after the one it arrived on', () => {
+        expect(isNewEpisode({ addedAt: new Date(2026, 9, 6, 23, 59, 59).getTime() }, NOW)).toBe(false);
+        expect(isNewEpisode({ addedAt: NOW - 3 * 24 * 60 * 60 * 1000 }, NOW)).toBe(false);
+        expect(isNewEpisode({ addedAt: new Date(2026, 9, 8, 0, 0, 0).getTime() }, NOW)).toBe(false);
+    });
+
+    it('is not new when the library came with it', () => {
+        expect(isNewEpisode({ addedAt: null }, NOW)).toBe(false);
+    });
+
+    it('takes today from the clock when no time is given', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(NOW);
+        try {
+            expect(isNewEpisode({ addedAt: NOW - 60 * 1000 })).toBe(true);
+            expect(isNewEpisode({ addedAt: NOW - 24 * 60 * 60 * 1000 })).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('newEpisodeCount', () => {
+    const NOW = new Date(2026, 9, 7, 12, 0, 0).getTime();
+
+    it('counts the episodes of the anime that arrived today', () => {
+        const anime = makeAnime([
+            makeEpisode({ id: 1, number: '1', addedAt: null }),
+            makeEpisode({ id: 2, number: '2', addedAt: NOW - 1000 }),
+            makeEpisode({ id: 3, number: '3', addedAt: NOW }),
+            makeEpisode({ id: 4, number: '4', addedAt: NOW - 2 * 24 * 60 * 60 * 1000 })
+        ]);
+
+        expect(newEpisodeCount(anime, NOW)).toBe(2);
+    });
+
+    it('is zero for an anime with no new episode or no episode at all', () => {
+        expect(newEpisodeCount(makeAnime([makeEpisode({ addedAt: null })]), NOW)).toBe(0);
+        expect(newEpisodeCount(makeAnime([]), NOW)).toBe(0);
+    });
+
+    it('takes today from the clock when no time is given', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(NOW);
+        try {
+            expect(newEpisodeCount(makeAnime([makeEpisode({ addedAt: NOW - 1000 })]))).toBe(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('nextFreeOrder', () => {
+    it('is 1 for a series that uses none', () => {
+        expect(nextFreeOrder([])).toBe(1);
+    });
+
+    it('is the order after the last one the series uses, whatever the order they come in', () => {
+        expect(nextFreeOrder([1])).toBe(2);
+        expect(nextFreeOrder([3, 1, 2])).toBe(4);
+    });
+
+    it('does not fill a gap: it goes after the last one', () => {
+        expect(nextFreeOrder([1, 3])).toBe(4);
+        expect(nextFreeOrder([5])).toBe(6);
+    });
+});
+
+describe('orderFor', () => {
+    it('keeps the order wanted when the series does not use it', () => {
+        expect(orderFor([1, 3], 2)).toBe(2);
+        expect(orderFor([], 1)).toBe(1);
+        expect(orderFor([2], 1)).toBe(1);
+    });
+
+    it('gives the next order when the series uses the one wanted', () => {
+        expect(orderFor([1], 1)).toBe(2);
+        expect(orderFor([1, 3], 1)).toBe(4);
+        expect(orderFor([1, 2, 3], 2)).toBe(4);
+    });
+
+    it('keeps the order wanted when there is no next one to give (the last order is the largest there is)', () => {
+        expect(orderFor([99], 99)).toBe(99);
+        expect(orderFor([98], 98)).toBe(99);
     });
 });

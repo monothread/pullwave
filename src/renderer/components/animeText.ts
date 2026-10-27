@@ -1,6 +1,6 @@
 import type { AniErrorCode, AnimeAudio, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
-import { foldSeries } from '@shared/series';
+import { foldSeries, MAX_SEASON } from '@shared/series';
 
 // An episode is only offered to resume when a bit was watched and it is not about to end.
 export const MIN_RESUME_SECONDS = 5;
@@ -221,4 +221,50 @@ export function activeJobCount(jobs: readonly AnimeJob[]): number {
     return jobs.filter((job) => {
         return job.status === 'queued' || job.status === 'running';
     }).length;
+}
+
+// The entries of a list in the order they come, split by the day (of the computer) of the time each one has: `day` is the start of that
+// day, in milliseconds.
+export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number): Array<{ day: number; entries: T[] }> {
+    const groups: Array<{ day: number; entries: T[] }> = [];
+    entries.forEach((entry) => {
+        const date = new Date(timeOf(entry));
+        const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+        const last = groups.at(-1);
+        if (last !== undefined && last.day === day) {
+            last.entries.push(entry);
+        } else {
+            groups.push({ day, entries: [entry] });
+        }
+    });
+    return groups;
+}
+
+// The start of the day (of the computer) of a time, in milliseconds.
+export function startOfDay(time: number): number {
+    const date = new Date(time);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+// Whether the check for new episodes put the episode in the library today.
+export function isNewEpisode(episode: Pick<AnimeEpisodeRecord, 'addedAt'>, now: number = Date.now()): boolean {
+    return episode.addedAt !== null && startOfDay(episode.addedAt) === startOfDay(now);
+}
+
+// How many episodes of the anime got into the library today.
+export function newEpisodeCount(anime: Pick<LibraryAnime, 'episodes'>, now: number = Date.now()): number {
+    return anime.episodes.filter((episode) => {
+        return isNewEpisode(episode, now);
+    }).length;
+}
+
+// The order after the last one a series uses (the one offered when the order wanted is taken).
+export function nextFreeOrder(used: readonly number[]): number {
+    return Math.max(0, ...used) + 1;
+}
+
+// The order to put in the field for a series: the one wanted, or the next free one when the series uses it already (and there is one).
+export function orderFor(used: readonly number[], wanted: number): number {
+    const next = nextFreeOrder(used);
+    return used.includes(wanted) && next <= MAX_SEASON ? next : wanted;
 }

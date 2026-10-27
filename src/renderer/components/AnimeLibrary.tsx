@@ -3,7 +3,7 @@ import type { AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
 import type { Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
-import { animeErrorKey, animeStatusKey, downloadedCount, groupLibrary, matchesSearch, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
+import { animeErrorKey, animeStatusKey, downloadedCount, groupLibrary, isNewEpisode, matchesSearch, newEpisodeCount, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { AnimeRemove } from './AnimeRemove';
 import { ConfirmButton } from './ConfirmButton';
@@ -13,6 +13,15 @@ import { formatBytes, formatDuration } from './jobStatus';
 import { RowLink } from './RowLink';
 import { SeasonTranslation } from './SeasonTranslation';
 import { SeriesMenu } from './SeriesMenu';
+
+// What says that episodes got into the library today (the check for new episodes put them there).
+function NewEpisodesBadge({ count, t }: { count: number; t: Translator }) {
+    return (
+        <span className="badge badge--new" data-testid="anime-new-episodes">
+            {count === 1 ? t('anime.library.newEpisode') : t('anime.library.newEpisodes', { count })}
+        </span>
+    );
+}
 
 interface EpisodeRowProps {
     anime: LibraryAnime;
@@ -75,6 +84,11 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                         </RowLink>
                     ) : (
                         label
+                    )}
+                    {isNewEpisode(episode) && (
+                        <span className="badge badge--new" data-testid="anime-episode-new">
+                            {t('anime.episode.new')}
+                        </span>
                     )}
                     {episode.fileMissing && (
                         <span className="missing-mark" role="img" aria-label={t('anime.fileMissing')} title={t('anime.fileMissing.hint')}>
@@ -275,6 +289,7 @@ function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; 
         return state.libraryFocus === anime.id;
     });
     const card = useRef<HTMLElement | null>(null);
+    const newCount = newEpisodeCount(anime);
 
     useEffect(() => {
         if (focused) {
@@ -302,6 +317,7 @@ function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; 
                 <div className="cover-card__footer">
                     <span className="job__badges">
                         <span className="season__meta">{seasonProgress(anime, t)}</span>
+                        {newCount > 0 && <NewEpisodesBadge count={newCount} t={t} />}
                     </span>
                     <div className="job__actions library__footer">
                         <DownloadSeasonButton anime={anime} t={t} />
@@ -410,6 +426,13 @@ function hasMissingEpisodes(group: LibraryGroup): boolean {
     return group.entries.some(hasMissingInAnime);
 }
 
+// How many episodes of all the seasons of a series got into the library today.
+function newEpisodesOf(group: LibraryGroup): number {
+    return group.entries.reduce((total, anime) => {
+        return total + newEpisodeCount(anime);
+    }, 0);
+}
+
 // The card of a series: its name, how many seasons it has and the way into its own screen.
 function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; onOpen: () => void }) {
     const removeAnime = useAnimeStore((state) => {
@@ -431,6 +454,7 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
                 <div className="cover-card__footer">
                     <span className="job__badges">
                         <span className="badge">{seasonsText(group, t)}</span>
+                        {newEpisodesOf(group) > 0 && <NewEpisodesBadge count={newEpisodesOf(group)} t={t} />}
                     </span>
                     <div className="job__actions library__footer">
                         <AnimeRemove

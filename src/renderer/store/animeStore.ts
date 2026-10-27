@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AniError, AnimeAudio, AnimeAvailability, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, LibraryAnime } from '@shared/anime';
+import type { AniError, AnimeAudio, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { readScheduleChoice, saveScheduleTimeZone, type AnimeScheduleView } from './scheduleChoice';
@@ -8,7 +8,7 @@ import { resolveAppLanguage } from '../i18n/language';
 import { groupLibrary, libraryEntry } from '../components/animeText';
 import { useAppStore } from './appStore';
 
-export type AnimeView = 'schedule' | 'search' | 'library' | 'history' | 'settings' | 'downloads';
+export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads';
 // The views the downloads screen can go back to.
 export type AnimeBrowseView = Exclude<AnimeView, 'downloads'>;
 
@@ -82,8 +82,10 @@ export interface AnimeState {
     schedule: AnimeScheduleState;
     // What is known so far about the cover of each anime, by its title (see `coverKey`).
     covers: Record<string, AnimeCoverState>;
-    // Whether the source has each anime of the schedule, by its id: what is not here yet is still being checked.
-    availability: Record<number, AnimeAvailability>;
+    // The episodes that arrived in the library after their anime was in it, the newest first.
+    updates: AnimeUpdateEntry[];
+    // What the check for new episodes that was asked for is looking at: one anime (its id), all of them, or none.
+    checkingNew: number | 'all' | null;
     selection: AnimeSelection | null;
     playing: PlayingEpisode | null;
     streaming: StreamingEpisode | null;
@@ -109,8 +111,6 @@ export interface AnimeState {
     // Lists the episodes of the day (or of the week) in the time zone that is set.
     // `refresh` asks AniList again instead of using what was listed in the last day.
     loadSchedule: (refresh?: boolean) => Promise<void>;
-    // Asks which of the anime of the schedule the source has: what is known is kept at once, the rest as it is checked (an event).
-    checkAvailability: (entries: readonly AnimeScheduleEntry[]) => Promise<void>;
     setScheduleView: (view: AnimeScheduleView) => void;
     setScheduleTimeZone: (timeZone: string) => void;
     // Goes to the search and looks the anime of an episode of the schedule up by its names.
@@ -154,6 +154,12 @@ export interface AnimeState {
     // Marks an episode of the library as watched (or not), keeping the position it was left at.
     setWatched: (episodeId: number, watched: boolean) => Promise<void>;
     refreshLibrary: () => Promise<void>;
+    loadUpdates: () => Promise<void>;
+    clearUpdates: () => Promise<void>;
+    // Asks the source for new episodes of one anime of the library, or of all of them (null), then says what it found.
+    checkNewEpisodes: (animeId: number | null) => Promise<void>;
+    // Goes to the anime of an update in the library.
+    openFromUpdate: (entry: AnimeUpdateEntry) => void;
     refreshHistory: () => Promise<void>;
     removeHistoryEntry: (id: number) => Promise<void>;
     clearHistory: () => Promise<void>;
@@ -255,7 +261,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         search: INITIAL_SEARCH,
         schedule: initialSchedule(),
         covers: {},
-        availability: {},
+        updates: [],
+        checkingNew: null,
         selection: null,
         playing: null,
         streaming: null,
@@ -293,6 +300,9 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 }),
                 api.onAnimeLibraryChanged(() => {
                     void get().refreshLibrary();
+                    if (get().view === 'updates') {
+                        void get().loadUpdates();
+                    }
                 }),
                 api.onAnimeMigrationProgress((migration) => {
                     set({ migration });
@@ -302,10 +312,11 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                         return { covers: { ...state.covers, [coverKey(update.title)]: { status: 'found', url: update.url } } };
                     });
                 }),
-                api.onAnimeAvailability((availability) => {
-                    set((state) => {
-                        return { availability: { ...state.availability, [availability.anilistId]: availability } };
-                    });
+                api.onAnimeNewEpisodes((news) => {
+                    useAppStore.getState().pushToast(translateNow('anime.notice.newEpisodes', { count: news.count, titles: news.titles.join(', ') }));
+                    if (news.notDownloaded.length > 0) {
+                        useAppStore.getState().pushToast(translateNow('anime.notice.newEpisodesNotDownloaded', { titles: news.notDownloaded.join(', ') }));
+                    }
                 })
             ];
             return (): void => {
@@ -406,38 +417,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 }
                 return { schedule: { ...state.schedule, status: 'error', entries: [], error: response.error } };
             });
-            if (response.ok) {
-                await get().checkAvailability(response.entries);
-            }
-        },
-
-        checkAvailability: async (entries) => {
-            const targets = entries.map(({ anilistId, english, romaji }) => {
-                return { anilistId, english, romaji };
-            });
-            // What could not be checked the last time is checked again: it goes back to being waited for.
-            set((state) => {
-                const kept = { ...state.availability };
-                targets.forEach((target) => {
-                    if (kept[target.anilistId]?.state === 'unknown') {
-                        delete kept[target.anilistId];
-                    }
-                });
-                return { availability: kept };
-            });
-            try {
-                const known = await window.api.checkAnimeAvailability(targets);
-                set((state) => {
-                    const merged = { ...state.availability };
-                    known.forEach((availability) => {
-                        merged[availability.anilistId] = availability;
-                    });
-                    return { availability: merged };
-                });
-            } catch {
-                // Without an answer the cards stay as they are, and can still be clicked.
-                return;
-            }
         },
 
         loadCover: async (title) => {
@@ -479,9 +458,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         openScheduleEntry: async (entry) => {
-            // When the source is known to have the anime, it is looked up by the name that found it (the english one when both did).
-            const found = get().availability[entry.anilistId];
-            const names = found?.state === 'available' ? [found.query] : (entry.names.length > 0 ? entry.names : [entry.title]).slice(0, MAX_SCHEDULE_SEARCH_NAMES);
+            const names = (entry.names.length > 0 ? entry.names : [entry.title]).slice(0, MAX_SCHEDULE_SEARCH_NAMES);
             set((state) => {
                 return { view: 'search', returnView: 'search', selection: null, search: { ...state.search, query: names[0] as string, status: 'idle', error: null, results: [] } };
             });
@@ -793,6 +770,43 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         refreshLibrary: async () => {
             set({ library: await window.api.listAnimeLibrary() });
+        },
+
+        loadUpdates: async () => {
+            set({ updates: await window.api.listAnimeUpdates() });
+        },
+
+        clearUpdates: async () => {
+            await window.api.clearAnimeUpdates();
+            set({ updates: [] });
+        },
+
+        checkNewEpisodes: async (animeId) => {
+            set({ checkingNew: animeId ?? 'all' });
+            try {
+                const response = await window.api.checkNewAnimeEpisodes(animeId);
+                if (!response.ok) {
+                    useAppStore.getState().pushToast(translateNow('anime.notice.checkFailed', { message: response.error.message }));
+                } else {
+                    if (response.count === 0) {
+                        useAppStore.getState().pushToast(translateNow(response.failed > 0 ? 'anime.notice.checkUnreached' : 'anime.notice.checkNone', { failed: response.failed }));
+                    }
+                    // The anime that were not asked about, whether or not there is something new in the others.
+                    if (response.skipped > 0) {
+                        useAppStore.getState().pushToast(translateNow('anime.notice.checkSkipped', { skipped: response.skipped }));
+                    }
+                }
+                await get().refreshLibrary();
+                if (get().view === 'updates') {
+                    await get().loadUpdates();
+                }
+            } finally {
+                set({ checkingNew: null });
+            }
+        },
+
+        openFromUpdate: (entry) => {
+            get().showInLibrary(entry.animeId);
         },
 
         refreshHistory: async () => {

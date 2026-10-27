@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
-import type { AnimeAvailability, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
 import type { MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
@@ -449,8 +449,14 @@ const api: CyberApi = {
     findAnimeCover: (title) => {
         return ipcRenderer.invoke(IPC.animeCover, title);
     },
-    checkAnimeAvailability: (targets) => {
-        return ipcRenderer.invoke(IPC.animeAvailability, targets);
+    listAnimeUpdates: () => {
+        return ipcRenderer.invoke(IPC.animeUpdates);
+    },
+    clearAnimeUpdates: () => {
+        return ipcRenderer.invoke(IPC.animeUpdatesClear);
+    },
+    checkNewAnimeEpisodes: (animeId) => {
+        return ipcRenderer.invoke(IPC.animeCheckNew, animeId);
     },
     onSubtitleGenerationUpdate: (listener) => {
         return subscribe<SubtitleGenerationJob>(IPC.eventSubtitleGeneration, listener);
@@ -472,8 +478,8 @@ const api: CyberApi = {
     onAnimeCoverUpdate: (listener) => {
         return subscribe<AnimeCoverUpdate>(IPC.eventAnimeCover, listener);
     },
-    onAnimeAvailability: (listener) => {
-        return subscribe<AnimeAvailability>(IPC.eventAnimeAvailability, listener);
+    onAnimeNewEpisodes: (listener) => {
+        return subscribe<AnimeNewEpisodes>(IPC.eventAnimeNewEpisodes, listener);
     },
     onJobUpdate: (listener) => {
         return subscribe<DownloadJob>(IPC.eventJobUpdate, listener);

@@ -50,7 +50,7 @@ The top bar has **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the set
 | Part | Screens |
 |---|---|
 | VIDEO DOWNLOADER | QUEUE · HISTORY · ⚙ |
-| ANIME | SCHEDULE · SEARCH · LIBRARY · HISTORY · ⚙ (and a DOWNLOADS button) |
+| ANIME | SCHEDULE · UPDATES · SEARCH · LIBRARY · HISTORY · ⚙ (and a DOWNLOADS button) |
 | MANGA | BROWSE · LIBRARY · EXTENSIONS · ⚙ (and a DOWNLOADS button) |
 
 The back and forward buttons of the mouse take you through the screens you have been to.
@@ -102,7 +102,7 @@ The first tab of ANIME shows the episodes that air, as [AniList](https://anilist
 - **TIME ZONE** decides where each day starts and the time shown on the cards.
 - Click a card to go to the **SEARCH** tab, which looks the anime up by its name (and by its other names, if the first finds nothing); from there you choose the anime and download its episodes as usual.
 
-What AniList says is kept for a day, so showing the same day again (or a day of a week you already looked at) does not ask it again, and it is still there when you open the app again; **REFRESH** asks again. The anime of the day are also looked up in the source, in the background (and when the app starts), by their english name and then by their romaji one: a card whose title is found there says **AVAILABLE**, and clicking it opens the search by the name that found it (the english one when both did); one the source does not have is faded, says **NOT AVAILABLE** and cannot be clicked; while it is being checked a card says CHECKING…, and one that could not be checked (no network, for instance) is shown as before. What is found is kept for an hour. Only the day that is shown is checked (the week is checked when you pick it).
+What AniList says is kept for a day, so showing the same day again (or a day of a week you already looked at) does not ask it again, and it is still there when you open the app again; **REFRESH** asks again. The source is not asked about the anime of the schedule by itself (that was many requests for something you may never use): every card can be clicked, and if the source does not have the anime the search says so.
 
 ### Search and download
 ![Search](docs/screenshots/anime-search.png)
@@ -124,6 +124,13 @@ Everything you downloaded, with sizes, where you stopped watching and what faile
 - Search the library by title, open the folder of an anime, and mark episodes as watched (an episode is also marked once you have watched most of it).
 - Go from the search to the library, and back, for the same anime (VIEW IN LIBRARY / GO TO SOURCE). The series always opens with every season closed (the one you came for in view when you came from a redirect).
 - Removing an anime or a series also deletes its files; an episode cannot be removed alone, and the anime that gives its name to the series is only removed with the whole series.
+
+### Updates
+- **UPDATES** lists the episodes that arrived in the library after their anime was in it, the newest first and split by day (today, yesterday, then the date), each with the anime, the episode, the time it was found, how it was found (**AUTOMATIC**: the look every hour; **MANUAL**: the button) and whether it is downloaded. Clicking the name opens the anime in the library. **CLEAR LIST** empties the list (it asks first; nothing is removed from the library or from the disk).
+- **Looking for new episodes:** once an hour (the first time two minutes after the app opens) the app asks the source about every anime of the library, one after the other with a pause of about three seconds between them so the source and Cloudflare do not see a burst of requests. **LOOK FOR NEW EPISODES** does it now, whatever the setting says. The first time an anime is looked at its episodes are only put in the library: they are not new. After that, the episodes the source lists that the library lacks are added as not downloaded, the screen says how many and of which anime, and the card of the anime (and the episode) says **NEW EPISODE** for the rest of the day.
+- If every anime of a look fails (the source is down or refuses), the next hourly look waits twice as long, and so on up to six hours; if the source refuses (Cloudflare) the look ends at once. An anime the source does not list any more (or lists twice under its title) is left alone until you open it.
+- The place of an anime in the results of its search is checked by its title at each look, so it is found again when a new anime is listed before it.
+- Two options in the settings of the anime: **Look for new episodes every hour** (on) and **Download the new episodes found** (off). With the second on, the new episodes are downloaded at once, up to 24 of one anime in one look; if more than 24 arrive at once (the list of the source probably changed) they are all put in the library but none is downloaded by itself.
 
 ### Series and seasons
 ![A series with its episodes](docs/screenshots/anime-series.png)

@@ -80,6 +80,8 @@ export interface AnimeEpisodeRecord {
     durationSeconds: number;
     watched: boolean;
     downloadedAt: number | null;
+    // When the check for new episodes put it in the library (in milliseconds); null for the ones the library came with.
+    addedAt: number | null;
     // The episode is in the library as downloaded but its file is not on the disk any more (filled in when the library is listed).
     fileMissing: boolean;
 }
@@ -160,7 +162,7 @@ export interface AnimeDownloadRequest {
 export interface AnimeScheduleEntry {
     anilistId: number;
     title: string;
-    // The two names AniList gives the anime (either can be missing): the availability in the source is checked by both, the english first.
+    // The two names AniList gives the anime (either can be missing).
     english: string | null;
     romaji: string | null;
     // Every name the anime is known by, without repeating any (the title first): they are what the anime is looked up by in the search.
@@ -170,15 +172,6 @@ export interface AnimeScheduleEntry {
     airingAt: number;
     coverUrl: string | null;
 }
-
-// What the availability of an anime of the schedule is checked by: its id and its two names.
-export type AnimeAvailabilityTarget = Pick<AnimeScheduleEntry, 'anilistId' | 'english' | 'romaji'>;
-
-// Whether the source has the anime of the schedule: `available` with the name that found it (the english one when both do), the number of
-// the result and its title; `unavailable` when no name found it; `unknown` when it could not be checked (nothing was kept of it).
-export type AnimeAvailability =
-    | { anilistId: number; state: 'available'; query: string; index: number; title: string }
-    | { anilistId: number; state: 'unavailable' | 'unknown' };
 
 // The stretch of time to list, in seconds since the epoch: from its first moment up to (not including) the end. What was listed in the
 // last day is answered from what is kept, unless `refresh` asks AniList again.
@@ -225,6 +218,51 @@ export type AnimeRenameSeriesResponse =
     | { ok: false; reason: 'season-taken'; anime: string; season: number; suggested: number };
 
 export type AnimeDownloadResponse = { ok: true; anime: LibraryAnime } | { ok: false; message: string };
+
+// The most episodes of one anime that the check for new episodes downloads by itself in one go. When it finds more, all of them are put in
+// the library but none is downloaded: so many at once means the list of the source changed, not that a season came out.
+export const MAX_AUTO_DOWNLOAD_EPISODES = 24;
+
+// How an episode got into the library after its anime was in it: found by the check every hour, or by a button the user pressed (the check
+// of all the anime, or of one).
+export const ANIME_ARRIVAL_ORIGINS = ['auto', 'manual'] as const;
+export type AnimeArrivalOrigin = (typeof ANIME_ARRIVAL_ORIGINS)[number];
+
+// An episode that arrived in the library after its anime was in it, for the screen of updates.
+export interface AnimeUpdateEntry {
+    id: number;
+    animeId: number;
+    animeTitle: string;
+    audio: AnimeAudio;
+    episodeId: number;
+    episodeNumber: string;
+    // In milliseconds.
+    foundAt: number;
+    origin: AnimeArrivalOrigin;
+    status: AnimeEpisodeStatus;
+}
+
+// New episodes that a check found in the anime of the library.
+export interface AnimeNewEpisodes {
+    // How many episodes were added to the library, and the titles of the anime that got them.
+    count: number;
+    titles: string[];
+    // The titles of the anime whose new episodes were not downloaded although the setting asks for it, because there were more than
+    // `MAX_AUTO_DOWNLOAD_EPISODES` of them.
+    notDownloaded: string[];
+}
+
+export interface AnimeCheckError {
+    code: 'NOT_FOUND' | 'UNKNOWN';
+    message: string;
+}
+
+// What a check for new episodes found: how many episodes, in which anime, the anime whose new episodes were left undownloaded because
+// there were too many, in how many anime the source could not be reached, and how many anime were not asked about (the check stopped
+// because the source refused it, or the anime has no place in the search to be found by).
+export type AnimeCheckResponse =
+    | { ok: true; count: number; titles: string[]; notDownloaded: string[]; failed: number; skipped: number }
+    | { ok: false; error: AnimeCheckError };
 
 export interface AnimeProgressUpdate {
     episodeId: number;
