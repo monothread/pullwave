@@ -241,19 +241,32 @@ export class AnimeDb {
         }
     }
 
+    // A database that exists is brought up one migration at a time, each one undone alone if it fails. A new one has nothing to keep, so
+    // all of them go in one transaction: it is written to the disk once, not once for each (slow where the disk is, as on Windows).
     private migrate(): void {
         const current = numeric(this.one('PRAGMA user_version') ?? {}, 'user_version');
+        if (current === 0) {
+            this.applyMigrations(MIGRATIONS, 0);
+            return;
+        }
         MIGRATIONS.slice(current).forEach((migration, offset) => {
-            this.db.exec('BEGIN');
-            try {
-                this.db.exec(migration);
-                this.db.exec(`PRAGMA user_version = ${current + offset + 1}`);
-                this.db.exec('COMMIT');
-            } catch (error) {
-                this.db.exec('ROLLBACK');
-                throw error;
-            }
+            this.applyMigrations([migration], current + offset);
         });
+    }
+
+    // Runs the migrations, which start at the version `from`, in one transaction that also sets the version they end at.
+    private applyMigrations(migrations: readonly string[], from: number): void {
+        this.db.exec('BEGIN');
+        try {
+            migrations.forEach((migration) => {
+                this.db.exec(migration);
+            });
+            this.db.exec(`PRAGMA user_version = ${from + migrations.length}`);
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
     }
 
     private one(sql: string, ...params: SQLInputValue[]): Row | null {

@@ -82,6 +82,32 @@ describe('AnimeDb schema', () => {
         check.close();
     });
 
+    it('rolls a new database back whole when its last migration fails, so no table of the earlier ones is left', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        const raw = new DatabaseSync(path);
+        // Something in the way of the table of the last migration.
+        raw.exec('CREATE TABLE episode_update (leftover TEXT)');
+        raw.close();
+
+        expect(() => {
+            return new AnimeDb(path);
+        }).toThrow(/already exists/);
+
+        const check = new DatabaseSync(path);
+        expect(check.prepare('PRAGMA user_version').get()).toEqual({ user_version: 0 });
+        expect(check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()).toEqual([{ name: 'episode_update' }]);
+        check.close();
+    });
+
+    it('applies all the migrations of a new database in one go and leaves the version at the last one', () => {
+        const path = join(makeTempDir(), 'anime.db');
+
+        new AnimeDb(path).close();
+
+        expect(versionOf(path)).toBe(8);
+        expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode', 'episode_update']);
+    });
+
     it('uses the default clock when none is given', () => {
         const db = new AnimeDb(':memory:');
         const before = Date.now();
