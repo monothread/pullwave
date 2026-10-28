@@ -65,7 +65,7 @@ describe('AnimeUpdates', () => {
         });
 
         expect(screen.getByRole('region', { name: 'UPDATES' })).toBeInTheDocument();
-        expect(screen.getByText('No new episodes yet. The check that runs every hour, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
+        expect(screen.getByText('No new episodes yet. The check that runs once a day, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'LOOK FOR NEW EPISODES' })).toBeEnabled();
         expect(screen.queryByRole('button', { name: 'CLEAR LIST' })).not.toBeInTheDocument();
         expect(screen.queryByTestId('anime-update')).not.toBeInTheDocument();
@@ -212,7 +212,7 @@ describe('AnimeUpdates', () => {
             expect(useAnimeStore.getState().updates).toEqual([]);
             expect(screen.queryByTestId('anime-update')).not.toBeInTheDocument();
             expect(screen.queryByRole('button', { name: 'CLEAR LIST' })).not.toBeInTheDocument();
-            expect(screen.getByText('No new episodes yet. The check that runs every hour, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
+            expect(screen.getByText('No new episodes yet. The check that runs once a day, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
         });
 
         it('keeps the list when the user keeps it', async () => {
@@ -243,20 +243,20 @@ describe('AnimeUpdates while a check is going on', () => {
         expect(screen.queryByTestId('anime-check-current')).not.toBeInTheDocument();
     });
 
-    it('turns the button off and says the hourly look is going on, how far it is and which anime it asks about', () => {
+    it('turns the button off and says the daily look is going on, how far it is and which anime it asks about', () => {
         useAnimeStore.setState({ checkState: AUTO });
         render(<AnimeUpdates />);
 
         const button = screen.getByRole('button', { name: 'AUTOMATIC LOOK… 12/200' });
         expect(button).toBeDisabled();
-        expect(button).toHaveAttribute('title', 'The look every hour is going on. Wait for it to end.');
+        expect(button).toHaveAttribute('title', 'The daily look is going on. Wait for it to end.');
         const current = screen.getByTestId('anime-check-current');
         expect(current).toHaveTextContent('Now: Frieren: Beyond Journey\'s End');
         expect(current).toHaveAttribute('role', 'status');
         expect(current).toHaveAttribute('title', 'Frieren: Beyond Journey\'s End');
     });
 
-    it('turns the button off too for the look the user asked for, with its progress and no explanation of the hourly one', () => {
+    it('turns the button off too for the look the user asked for, with its progress and no explanation of the daily one', () => {
         useAnimeStore.setState({ checkState: MANUAL });
         render(<AnimeUpdates />);
 

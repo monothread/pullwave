@@ -14,6 +14,7 @@ import { AnimeCoverService } from './services/animeCovers';
 import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
 import { AnimeUpdateChecker } from './services/animeUpdateChecker';
+import { JsonStore } from './services/jsonStore';
 import { animeBaseDirectory, isInsideDirectory, removeDirectories, removeEmptyDirectories } from './services/animeFiles';
 import { migrateAnimeFolder, type MigrationFileSystem } from './services/animeMigration';
 import { executableName, type BinaryResolver } from './services/binaryResolver';
@@ -105,7 +106,7 @@ export interface AnimeRuntime {
     media: MediaSource;
     // Answers the requests of the player for a stream that is being watched without downloading it.
     streamHandler: (request: Request) => Promise<Response>;
-    // Starts the hourly look for new episodes of the anime of the library (it is not started by creating the runtime), and ends it.
+    // Starts the daily look for new episodes of the anime of the library (it is not started by creating the runtime), and ends it.
     startBackgroundChecks: () => void;
     stopBackgroundChecks: () => void;
 }
@@ -333,9 +334,20 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     };
     // The anime folder is being migrated: the files are moving, so nothing is downloaded into it meanwhile.
     let migrating = false;
-    // Looks, once an hour, for episodes the source has listed for the anime of the library, and puts them in the library.
+    // When the last look for new episodes was made: kept apart from the library, so the app opened again the same day does not look again.
+    const lastCheck = new JsonStore<{ lastCheckAt: number | null }>(join(animeDir, 'update-check.json'), { lastCheckAt: null });
+    // Looks, once a day, for episodes the source has listed for the anime of the library, and puts them in the library.
     const checker = new AnimeUpdateChecker({
         db,
+        lastCheck: {
+            read: () => {
+                const stored = lastCheck.read().lastCheckAt;
+                return typeof stored === 'number' ? stored : null;
+            },
+            write: (time) => {
+                lastCheck.write({ lastCheckAt: time });
+            }
+        },
         search: (query, audio) => {
             return service.search(query, audio);
         },

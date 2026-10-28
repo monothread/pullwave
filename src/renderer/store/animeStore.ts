@@ -789,7 +789,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         checkNewEpisodes: async (animeId) => {
-            // One check at a time: while one is going on (here or by itself, every hour) another is not started.
+            // One check at a time: while one is going on (here or by itself, every day) another is not started.
             if (get().checkingNew !== null || get().checkState.running) {
                 return;
             }

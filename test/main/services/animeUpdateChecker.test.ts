@@ -833,6 +833,8 @@ describe('AnimeUpdateChecker.checkAnime', () => {
 });
 
 describe('AnimeUpdateChecker schedule', () => {
+    const HOUR = 60 * 60 * 1000;
+
     beforeEach(() => {
         vi.useFakeTimers();
     });
@@ -847,6 +849,24 @@ describe('AnimeUpdateChecker schedule', () => {
         return context;
     }
 
+    // The place where the time of the last look is kept: what it says, and every time it was written.
+    function lastCheckAt(read: () => number | null) {
+        const written: number[] = [];
+        return {
+            written,
+            lastCheck: {
+                read,
+                write: (time: number) => {
+                    written.push(time);
+                }
+            }
+        };
+    }
+
+    it('looks once a day', () => {
+        expect(CHECK_INTERVAL_MS).toBe(24 * HOUR);
+    });
+
     it('does nothing by itself until it is started', async () => {
         const context = scheduled();
 
@@ -855,7 +875,7 @@ describe('AnimeUpdateChecker schedule', () => {
         expect(context.search).not.toHaveBeenCalled();
     });
 
-    it('makes the first check two minutes after it is started, not before', async () => {
+    it('makes the first check two minutes after it is started, not before, when no look was made in the last day', async () => {
         const context = scheduled();
         context.checker.start();
 
@@ -867,13 +887,15 @@ describe('AnimeUpdateChecker schedule', () => {
         context.checker.stop();
     });
 
-    it('checks again every hour after the first check', async () => {
+    it('checks again a day after the first check, not every hour', async () => {
         const context = scheduled();
         context.checker.start();
         await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
         expect(context.search).toHaveBeenCalledTimes(1);
 
-        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS - 1);
+        await vi.advanceTimersByTimeAsync(23 * HOUR);
+        expect(context.search).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(HOUR - 1);
         expect(context.search).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(1);
         expect(context.search).toHaveBeenCalledTimes(2);
@@ -946,26 +968,223 @@ describe('AnimeUpdateChecker schedule', () => {
         expect(context.search).toHaveBeenCalledTimes(1);
     });
 
-    it('goes on with the timer when the hourly check is turned off, asking about nothing', async () => {
+    it('goes on with the timer when the daily check is turned off, asking about nothing, and reads the setting again every hour', async () => {
         const context = scheduled();
         context.flags.enabled = false;
         context.checker.start();
 
-        await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS + CHECK_INTERVAL_MS);
+        await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS + 3 * HOUR);
         expect(context.search).not.toHaveBeenCalled();
         context.flags.enabled = true;
-        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+        await vi.advanceTimersByTimeAsync(HOUR - 1);
+        expect(context.search).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
 
         expect(context.search).toHaveBeenCalledTimes(1);
         context.checker.stop();
     });
 
+    describe('the look of the day, kept between runs of the app', () => {
+        it('is made two minutes after the app opens when none is known', async () => {
+            const { lastCheck } = lastCheckAt(() => {
+                return null;
+            });
+            const context = scheduled({ lastCheck });
+            context.checker.start();
+
+            await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS - 1);
+            expect(context.search).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1);
+
+            expect(context.search).toHaveBeenCalledTimes(1);
+            context.checker.stop();
+        });
+
+        it('waits for what is left of the day when the last look was made 3 hours ago', async () => {
+            const { lastCheck } = lastCheckAt(() => {
+                return Date.now() - 3 * HOUR;
+            });
+            const context = scheduled({ lastCheck });
+            context.checker.start();
+
+            await vi.advanceTimersByTimeAsync(21 * HOUR - 1);
+            expect(context.search).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1);
+
+            expect(context.search).toHaveBeenCalledTimes(1);
+            context.checker.stop();
+        });
+
+        it('is made two minutes after the app opens when the last look was made a day ago or more', async () => {
+            const { lastCheck } = lastCheckAt(() => {
+                return Date.now() - 25 * HOUR;
+            });
+            const context = scheduled({ lastCheck });
+            context.checker.start();
+
+            await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
+
+            expect(context.search).toHaveBeenCalledTimes(1);
+            context.checker.stop();
+        });
+
+        it('does not come sooner than two minutes after the app opens, even when the day ends sooner', async () => {
+            const { lastCheck } = lastCheckAt(() => {
+                return Date.now() - CHECK_INTERVAL_MS + 30_000;
+            });
+            const context = scheduled({ lastCheck });
+            context.checker.start();
+
+            await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS - 1);
+            expect(context.search).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1);
+
+            expect(context.search).toHaveBeenCalledTimes(1);
+            context.checker.stop();
+        });
+
+        it.each([
+            ['in the future (the clock went back)', () => {
+                return Date.now() + 5 * HOUR;
+            }],
+            ['not a number', () => {
+                return Number.NaN;
+            }],
+            ['infinite', () => {
+                return Number.POSITIVE_INFINITY;
+            }]
+        ])('is ignored when the time kept is %s', async (_label, read) => {
+            const { lastCheck } = lastCheckAt(read);
+            const context = scheduled({ lastCheck });
+            context.checker.start();
+
+            await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
+
+            expect(context.search).toHaveBeenCalledTimes(1);
+            context.checker.stop();
+        });
+
+        it('counts from the interval it was given', async () => {
+            const { lastCheck } = lastCheckAt(() => {
+                return Date.now() - 100;
+            });
+            const context = scheduled({ lastCheck, firstDelayMs: 50, intervalMs: 200 });
+            context.checker.start();
+
+            await vi.advanceTimersByTimeAsync(99);
+            expect(context.search).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1);
+
+            expect(context.search).toHaveBeenCalledTimes(1);
+            context.checker.stop();
+        });
+
+        it('is kept when a look got answers: the time it ended', async () => {
+            const { lastCheck, written } = lastCheckAt(() => {
+                return null;
+            });
+            const context = scheduled({ lastCheck });
+            const before = Date.now();
+
+            await context.checker.checkNow('auto');
+
+            expect(written).toEqual([before]);
+        });
+
+        it('is kept when only some of the anime answered', async () => {
+            const { lastCheck, written } = lastCheckAt(() => {
+                return null;
+            });
+            const context = scheduled({ lastCheck });
+            readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+            context.search.mockImplementation(async (query) => {
+                return query === 'naruto' ? failed<AnimeSearchResult[]>(NETWORK) : done([{ index: 2, title: 'Bleach' }]);
+            });
+
+            await context.checker.checkNow('auto');
+
+            expect(written).toHaveLength(1);
+        });
+
+        it.each([
+            [
+                'no anime answered',
+                () => {
+                    return failed<AnimeSearchResult[]>(NETWORK);
+                }
+            ],
+            [
+                'the source refused',
+                () => {
+                    return failed<AnimeSearchResult[]>(BLOCKED);
+                }
+            ]
+        ])('is not kept when %s, so the look is tried again sooner', async (_label, answer) => {
+            const { lastCheck, written } = lastCheckAt(() => {
+                return null;
+            });
+            const context = scheduled({ lastCheck });
+            context.search.mockResolvedValue(answer());
+
+            await context.checker.checkNow('auto');
+
+            expect(written).toEqual([]);
+        });
+
+        it('is not kept for a look the user asked for, for a library with no anime or for a check that is off', async () => {
+            const { lastCheck, written } = lastCheckAt(() => {
+                return null;
+            });
+            const empty = setup({ lastCheck });
+            await empty.checker.checkNow('auto');
+            const context = scheduled({ lastCheck });
+            await context.checker.checkNow('manual');
+            context.flags.enabled = false;
+            await context.checker.checkNow('auto');
+
+            expect(written).toEqual([]);
+        });
+
+        it('is not kept when the checker is stopped in the middle of the look', async () => {
+            const { lastCheck, written } = lastCheckAt(() => {
+                return null;
+            });
+            const context = scheduled({ lastCheck });
+            context.search.mockImplementation(async () => {
+                context.checker.stop();
+                return done([{ index: 1, title: 'Naruto' }]);
+            });
+
+            await context.checker.checkNow('auto');
+
+            expect(written).toEqual([]);
+        });
+
+        it('makes the next look a day after the one that was kept', async () => {
+            const { lastCheck, written } = lastCheckAt(() => {
+                return null;
+            });
+            const context = scheduled({ lastCheck });
+            context.checker.start();
+            await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
+            expect(written).toHaveLength(1);
+
+            await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS - 1);
+            expect(context.search).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(1);
+
+            expect(context.search).toHaveBeenCalledTimes(2);
+            expect(written).toHaveLength(2);
+            context.checker.stop();
+        });
+    });
+
     describe('when the source cannot be reached', () => {
-        it('waits the usual time while nothing has failed', () => {
+        it('waits the interval while nothing has failed', () => {
             expect(scheduled().checker.nextDelayMs()).toBe(CHECK_INTERVAL_MS);
         });
 
-        it('doubles the wait for each check in a row where no anime could be asked about, up to a limit', async () => {
+        it('tries again after an hour, then after twice as long each time, up to six hours', async () => {
             const context = scheduled();
             context.search.mockResolvedValue(failed(NETWORK));
             const waits: number[] = [];
@@ -975,22 +1194,22 @@ describe('AnimeUpdateChecker schedule', () => {
                 waits.push(context.checker.nextDelayMs());
             }
 
-            expect(waits).toEqual([2 * CHECK_INTERVAL_MS, 4 * CHECK_INTERVAL_MS, BACKOFF_LIMIT_MS, BACKOFF_LIMIT_MS, BACKOFF_LIMIT_MS]);
+            expect(waits).toEqual([HOUR, 2 * HOUR, 4 * HOUR, BACKOFF_LIMIT_MS, BACKOFF_LIMIT_MS]);
         });
 
-        it('goes back to the usual time at the first check where the source answers', async () => {
+        it('goes back to the interval at the first check where the source answers', async () => {
             const context = scheduled();
             context.search.mockResolvedValueOnce(failed(NETWORK)).mockResolvedValueOnce(failed(NETWORK));
             await context.checker.checkNow('auto');
             await context.checker.checkNow('auto');
-            expect(context.checker.nextDelayMs()).toBe(4 * CHECK_INTERVAL_MS);
+            expect(context.checker.nextDelayMs()).toBe(2 * HOUR);
 
             await context.checker.checkNow('auto');
 
             expect(context.checker.nextDelayMs()).toBe(CHECK_INTERVAL_MS);
         });
 
-        it('does not wait longer when only some of the anime failed', async () => {
+        it('does not try again sooner when only some of the anime failed', async () => {
             const context = scheduled();
             readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
             context.search.mockImplementation(async (query) => {
@@ -1002,7 +1221,7 @@ describe('AnimeUpdateChecker schedule', () => {
             expect(context.checker.nextDelayMs()).toBe(CHECK_INTERVAL_MS);
         });
 
-        it('waits longer when the source refused, even if it had answered for some', async () => {
+        it('tries again sooner when the source refused, even if it had answered for some', async () => {
             const context = scheduled();
             readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
             context.search.mockImplementation(async (query) => {
@@ -1011,10 +1230,10 @@ describe('AnimeUpdateChecker schedule', () => {
 
             await context.checker.checkNow('auto');
 
-            expect(context.checker.nextDelayMs()).toBe(2 * CHECK_INTERVAL_MS);
+            expect(context.checker.nextDelayMs()).toBe(HOUR);
         });
 
-        it('does not wait longer when a check did not ask about anything', async () => {
+        it('does not try again sooner when a check did not ask about anything', async () => {
             const context = setup();
 
             await context.checker.checkNow('auto');
@@ -1022,22 +1241,42 @@ describe('AnimeUpdateChecker schedule', () => {
             expect(context.checker.nextDelayMs()).toBe(CHECK_INTERVAL_MS);
         });
 
-        it('waits the longer time before the next hourly check, with the timers', async () => {
+        it('makes the retry an hour after the look that failed, with the timers', async () => {
             const context = scheduled();
             context.search.mockResolvedValue(failed(NETWORK));
             context.checker.start();
 
             await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
             expect(context.search).toHaveBeenCalledTimes(1);
-            await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+            await vi.advanceTimersByTimeAsync(HOUR - 1);
             expect(context.search).toHaveBeenCalledTimes(1);
-            await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+            await vi.advanceTimersByTimeAsync(1);
 
             expect(context.search).toHaveBeenCalledTimes(2);
             context.checker.stop();
         });
 
-        it('keeps the usual time as the limit when the interval is longer than the limit', () => {
+        it('never waits longer than the interval, also for a retry', async () => {
+            const context = scheduled({ intervalMs: 30 * 60 * 1000 });
+            context.search.mockResolvedValue(failed(NETWORK));
+
+            await context.checker.checkNow('auto');
+
+            expect(context.checker.nextDelayMs()).toBe(30 * 60 * 1000);
+        });
+
+        it('waits the time it is given for the first retry, and twice as long for the next one', async () => {
+            const context = scheduled({ intervalMs: 1000, retryMs: 100 });
+            context.search.mockResolvedValue(failed(NETWORK));
+
+            await context.checker.checkNow('auto');
+            expect(context.checker.nextDelayMs()).toBe(100);
+            await context.checker.checkNow('auto');
+
+            expect(context.checker.nextDelayMs()).toBe(200);
+        });
+
+        it('keeps the interval as the limit when it is longer than the limit of the retries', () => {
             const context = scheduled({ intervalMs: BACKOFF_LIMIT_MS * 2 });
 
             expect(context.checker.nextDelayMs()).toBe(BACKOFF_LIMIT_MS * 2);

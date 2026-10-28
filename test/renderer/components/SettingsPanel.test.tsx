@@ -1107,9 +1107,9 @@ describe('SettingsPanel anime section', () => {
             expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, animeSubtitles: 'Portuguese' });
         });
 
-        it('has a switch to look for new episodes every hour, on by default, with its hint, and saves it right away', async () => {
+        it('has a switch to look for new episodes once a day, on by default, with its hint, and saves it right away', async () => {
             render(<SettingsPanel scope="anime" />);
-            const toggle = screen.getByRole('switch', { name: 'Look for new episodes every hour' });
+            const toggle = screen.getByRole('switch', { name: 'Look for new episodes once a day' });
             expect(toggle).toBeChecked();
             expect(screen.getByText('Asks the source about the anime of the library and adds the new episodes to it. They are not downloaded.')).toBeInTheDocument();
             fireEvent.click(toggle);
@@ -1121,14 +1121,14 @@ describe('SettingsPanel anime section', () => {
         it('shows the stored choice of looking for new episodes', () => {
             useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeCheckNewEpisodes: false } });
             render(<SettingsPanel scope="anime" />);
-            expect(screen.getByRole('switch', { name: 'Look for new episodes every hour' })).not.toBeChecked();
+            expect(screen.getByRole('switch', { name: 'Look for new episodes once a day' })).not.toBeChecked();
         });
 
         it('has a switch to download the new episodes, off by default, with its hint, and saves it right away', async () => {
             render(<SettingsPanel scope="anime" />);
             const toggle = screen.getByRole('switch', { name: 'Download the new episodes found' });
             expect(toggle).not.toBeChecked();
-            expect(screen.getByText('The new episodes that the check (every hour, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeInTheDocument();
+            expect(screen.getByText('The new episodes that the check (once a day, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeInTheDocument();
             fireEvent.click(toggle);
             await flushPromises();
             expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
@@ -1143,7 +1143,7 @@ describe('SettingsPanel anime section', () => {
 
         it('has neither switch in the manga settings', () => {
             render(<SettingsPanel scope="manga" />);
-            expect(screen.queryByRole('switch', { name: 'Look for new episodes every hour' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('switch', { name: 'Look for new episodes once a day' })).not.toBeInTheDocument();
             expect(screen.queryByRole('switch', { name: 'Download the new episodes found' })).not.toBeInTheDocument();
         });
 

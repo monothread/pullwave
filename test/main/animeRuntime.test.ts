@@ -1584,6 +1584,80 @@ describe('createAnimeRuntime new episodes', () => {
         expect(send).not.toHaveBeenCalled();
     });
 
+    describe('the look of the day, kept in the data folder', () => {
+        function checkStates(send: ReturnType<typeof vi.fn>): unknown[] {
+            return send.mock.calls
+                .filter(([channel]) => {
+                    return channel === IPC.eventAnimeCheckState;
+                })
+                .map(([, state]) => {
+                    return state;
+                });
+        }
+
+        function writeLastCheck(root: string, content: string): void {
+            mkdirSync(join(root, 'data', 'anime'), { recursive: true });
+            writeFileSync(join(root, 'data', 'anime', 'update-check.json'), content);
+        }
+
+        it('looks soon after the app opens when no look was kept', async () => {
+            const { send, options: given } = options({ checkTimes: { firstMs: 20, everyMs: 60_000 } });
+            const runtime = open(given) as AnimeRuntime;
+            runtime.db.upsertAnime(NARUTO);
+
+            runtime.startBackgroundChecks();
+
+            await vi.waitFor(() => {
+                expect(checkStates(send)[0]).toEqual({ running: true, origin: 'auto', done: 0, total: 1, current: 'Naruto' });
+            });
+            runtime.stopBackgroundChecks();
+        });
+
+        it('does not look when the app is opened again less than a day after the last look', async () => {
+            const { root, send, options: given } = options({ checkTimes: { firstMs: 20, everyMs: 60_000 } });
+            writeLastCheck(root, JSON.stringify({ lastCheckAt: Date.now() }));
+            const runtime = open(given) as AnimeRuntime;
+            runtime.db.upsertAnime(NARUTO);
+
+            runtime.startBackgroundChecks();
+            await new Promise((resolve) => {
+                setTimeout(resolve, 200);
+            });
+
+            expect(checkStates(send)).toEqual([]);
+            runtime.stopBackgroundChecks();
+        });
+
+        it.each([
+            ['is not valid JSON', 'not json'],
+            ['has no time', JSON.stringify({})],
+            ['has a time that is not a number', JSON.stringify({ lastCheckAt: 'yesterday' })],
+            ['has a time of the future', JSON.stringify({ lastCheckAt: Date.now() + 10 * 24 * 60 * 60 * 1000 })]
+        ])('looks soon after the app opens when the file of the last look %s', async (_label, content) => {
+            const { root, send, options: given } = options({ checkTimes: { firstMs: 20, everyMs: 60_000 } });
+            writeLastCheck(root, content);
+            const runtime = open(given) as AnimeRuntime;
+            runtime.db.upsertAnime(NARUTO);
+
+            runtime.startBackgroundChecks();
+
+            await vi.waitFor(() => {
+                expect(checkStates(send)[0]).toEqual({ running: true, origin: 'auto', done: 0, total: 1, current: 'Naruto' });
+            });
+            runtime.stopBackgroundChecks();
+        });
+
+        it('does not keep the time of a look in which ani-cli could not be run', async () => {
+            const { root, options: given } = options({ checkTimes: { firstMs: 20, everyMs: 60_000 } });
+            const runtime = open(given) as AnimeRuntime;
+            runtime.db.upsertAnime(NARUTO);
+
+            await runtime.handlers.updates.checkNow('auto');
+
+            expect(existsSync(join(root, 'data', 'anime', 'update-check.json'))).toBe(false);
+        });
+    });
+
     it('says an anime that is not in the library is not', async () => {
         const runtime = open(options().options) as AnimeRuntime;
 

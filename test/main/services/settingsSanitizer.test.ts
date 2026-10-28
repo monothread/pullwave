@@ -104,7 +104,7 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(true);
     });
 
-    it('looks for new episodes every hour by default', () => {
+    it('looks for new episodes once a day by default', () => {
         expect(DEFAULT_SETTINGS.animeCheckNewEpisodes).toBe(true);
         expect(sanitizeSettings({}).animeCheckNewEpisodes).toBe(true);
     });

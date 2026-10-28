@@ -13,15 +13,18 @@ import {
 import type { AnimeDb } from './animeDb';
 import { resolveResult } from './animeSourceMatch';
 
-// How often the anime of the library are asked about, and how long after the app opens the first check is made (so opening the app is not
-// slowed by it).
-export const CHECK_INTERVAL_MS = 60 * 60 * 1000;
+// How often the anime of the library are asked about (once a day: the library is long and every look is a few requests for each anime), and
+// how long after the app opens the first check is made when none was made in the last day (so opening the app is not slowed by it).
+export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
+// When a look fails for every anime it is tried again after this long, then after twice as long and so on up to the limit below, and while
+// the hourly look is off the setting is read again this often.
+export const RETRY_BASE_MS = 60 * 60 * 1000;
 // How long the check waits between one anime and the next (a little more or less each time), so the source does not see a burst of
 // requests and refuse them.
 export const DELAY_BETWEEN_ANIME_MS = 3000;
 export const DELAY_JITTER_MS = 1000;
-// When every anime of a check failed the next hourly check waits twice as long, and so on, up to this long.
+// The longest the retries wait.
 export const BACKOFF_LIMIT_MS = 6 * 60 * 60 * 1000;
 
 export interface AnimeUpdateCheckerDependencies {
@@ -38,9 +41,14 @@ export interface AnimeUpdateCheckerDependencies {
     onLibraryChanged: () => void;
     // The check of all the anime began, moved on by one anime or ended (see `state`).
     onProgress?: (state: AnimeCheckState) => void;
+    // When the last look that asked about the anime and got an answer was made (in milliseconds), kept between runs of the app: opening the
+    // app again the same day does not look again. Null: none is known. Without it, a look is made after each start.
+    lastCheck?: { read: () => number | null; write: (time: number) => void };
     // The times and the waiting, when they are not the usual ones (used by the tests).
+    now?: () => number;
     firstDelayMs?: number;
     intervalMs?: number;
+    retryMs?: number;
     sleep?: (milliseconds: number) => Promise<void>;
     random?: () => number;
 }
@@ -96,7 +104,26 @@ export class AnimeUpdateChecker {
         this.first = setTimeout(() => {
             this.first = null;
             void this.runScheduled();
-        }, this.deps.firstDelayMs ?? FIRST_CHECK_DELAY_MS);
+        }, this.firstDelayMs());
+    }
+
+    private interval(): number {
+        return this.deps.intervalMs ?? CHECK_INTERVAL_MS;
+    }
+
+    private now(): number {
+        return (this.deps.now ?? Date.now)();
+    }
+
+    // How long after the app opens the first look is made: the usual time, or what is left of the interval since the last look when that was
+    // made less than an interval ago.
+    private firstDelayMs(): number {
+        const usual = this.deps.firstDelayMs ?? FIRST_CHECK_DELAY_MS;
+        const last = this.deps.lastCheck?.read() ?? null;
+        if (last === null || !Number.isFinite(last) || last > this.now()) {
+            return usual;
+        }
+        return Math.max(usual, last + this.interval() - this.now());
     }
 
     stop(): void {
@@ -121,11 +148,13 @@ export class AnimeUpdateChecker {
         this.deps.onProgress?.(state);
     }
 
-    // How long the check after the one that just ended waits: the usual time, doubled for each check in a row where the source could not be
-    // reached for any anime, up to a limit.
+    // How long the check after the one that just ended waits: the interval, or, after checks in a row where the source could not be reached
+    // for any anime, a retry that waits twice as long each time (never longer than the limit or than the interval).
     nextDelayMs(): number {
-        const interval = this.deps.intervalMs ?? CHECK_INTERVAL_MS;
-        return Math.min(interval * 2 ** this.failedRuns, Math.max(BACKOFF_LIMIT_MS, interval));
+        if (this.failedRuns === 0) {
+            return this.interval();
+        }
+        return Math.min((this.deps.retryMs ?? RETRY_BASE_MS) * 2 ** (this.failedRuns - 1), BACKOFF_LIMIT_MS, this.interval());
     }
 
     private async runScheduled(): Promise<void> {
@@ -134,7 +163,7 @@ export class AnimeUpdateChecker {
             this.next = setTimeout(() => {
                 this.next = null;
                 void this.runScheduled();
-            }, this.nextDelayMs());
+            }, this.deps.isEnabled() ? this.nextDelayMs() : Math.min(this.deps.retryMs ?? RETRY_BASE_MS, this.interval()));
         }
     }
 
@@ -208,7 +237,12 @@ export class AnimeUpdateChecker {
                 this.report(IDLE_CHECK_STATE);
             }
         }
-        this.failedRuns = blocked || (asked > 0 && failed === asked) ? this.failedRuns + 1 : 0;
+        const unanswered = blocked || (asked > 0 && failed === asked);
+        this.failedRuns = unanswered ? this.failedRuns + 1 : 0;
+        // A look that got answers counts as the look of the day (one the app was closed in the middle of, or that nobody answered, does not).
+        if (origin === 'auto' && asked > 0 && !unanswered && !this.stopped) {
+            this.deps.lastCheck?.write(this.now());
+        }
         this.tell(news);
         return { ok: true, count: news.count, titles: news.titles, notDownloaded: news.notDownloaded, failed, skipped };
     }
