@@ -13,6 +13,7 @@ import { AnimeDb } from './services/animeDb';
 import { AnimeCoverService } from './services/animeCovers';
 import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
+import { AnimeAiringService } from './services/animeAiring';
 import { AnimeUpdateChecker } from './services/animeUpdateChecker';
 import { JsonStore } from './services/jsonStore';
 import { animeBaseDirectory, isInsideDirectory, removeDirectories, removeEmptyDirectories } from './services/animeFiles';
@@ -94,8 +95,6 @@ export interface AnimeRuntimeOptions {
     scheduleUrl?: string;
     // When the look for new episodes happens: that long after the app opens, and again that often (used by the end-to-end tests).
     checkTimes?: { firstMs: number; everyMs: number };
-    // How the look for new episodes waits between one anime and the next (the tests replace it).
-    checkSleep?: (milliseconds: number) => Promise<void>;
     send: (channel: string, payload?: unknown) => void;
 }
 
@@ -334,6 +333,15 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     };
     // The anime folder is being migrated: the files are moving, so nothing is downloaded into it meanwhile.
     let migrating = false;
+    // Which anime have ended, from AniList: they are not looked at for new episodes. Brought up to date at the start of each look.
+    const airing = new AnimeAiringService({
+        db,
+        url: options.scheduleUrl,
+        // The screen of the library shows which ones ended: it reads the library again when that is learned.
+        onChange: () => {
+            options.send(IPC.eventAnimeLibrary);
+        }
+    });
     // When the last look for new episodes was made: kept apart from the library, so the app opened again soon after a look does not look again.
     const lastCheck = new JsonStore<{ lastCheckAt: number | null }>(join(animeDir, 'update-check.json'), { lastCheckAt: null });
     // Looks, every 6 hours, for episodes the source has listed for the anime of the library, and puts them in the library.
@@ -374,9 +382,11 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         onProgress: (state) => {
             options.send(IPC.eventAnimeCheckState, state);
         },
+        beforeCheck: () => {
+            return airing.sync();
+        },
         firstDelayMs: options.checkTimes?.firstMs,
-        intervalMs: options.checkTimes?.everyMs,
-        sleep: options.checkSleep
+        intervalMs: options.checkTimes?.everyMs
     });
     const streams = new StreamSessions();
     const covers = new AnimeCoverService({

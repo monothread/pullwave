@@ -20,10 +20,6 @@ export const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
 // When a look fails for every anime it is tried again after this long, then after twice as long and so on up to the limit below, and while
 // the automatic look is off the setting is read again this often.
 export const RETRY_BASE_MS = 60 * 60 * 1000;
-// How long the check waits between one anime and the next (a little more or less each time), so the source does not see a burst of
-// requests and refuse them.
-export const DELAY_BETWEEN_ANIME_MS = 3000;
-export const DELAY_JITTER_MS = 1000;
 // The longest the retries wait.
 export const BACKOFF_LIMIT_MS = 6 * 60 * 60 * 1000;
 
@@ -41,6 +37,9 @@ export interface AnimeUpdateCheckerDependencies {
     onLibraryChanged: () => void;
     // The check of all the anime began, moved on by one anime or ended (see `state`).
     onProgress?: (state: AnimeCheckState) => void;
+    // Done at the start of each check of all the anime, before the anime to ask about are chosen: it brings up to date what is known about
+    // which ones have ended. When it fails the check goes on with what was known.
+    beforeCheck?: () => Promise<void>;
     // When the last look that asked about the anime and got an answer was made (in milliseconds), kept between runs of the app: opening the
     // app again the same day does not look again. Null: none is known. Without it, a look is made after each start.
     lastCheck?: { read: () => number | null; write: (time: number) => void };
@@ -49,19 +48,11 @@ export interface AnimeUpdateCheckerDependencies {
     firstDelayMs?: number;
     intervalMs?: number;
     retryMs?: number;
-    sleep?: (milliseconds: number) => Promise<void>;
-    random?: () => number;
 }
 
 // What came of the check of one anime: it was read, it cannot be told apart in the source (it is left until the user opens it), or the
 // source could not be asked (`blocked` when it refused, which ends the whole check).
 type Outcome = { kind: 'checked' } | { kind: 'skipped' } | { kind: 'failed'; blocked: boolean; message: string };
-
-function wait(milliseconds: number): Promise<void> {
-    return new Promise((resolve) => {
-        setTimeout(resolve, milliseconds);
-    });
-}
 
 type Answer<T> = { ok: true; value: T } | { ok: false; outcome: Outcome };
 
@@ -85,7 +76,7 @@ function messageOf(error: unknown): string {
 }
 
 // Looks, once an hour, for episodes the source has listed for the anime of the library, and puts them in the library (they are only
-// downloaded when the user wants that). It asks about one anime at a time, with a pause between them.
+// downloaded when the user wants that). It asks about one anime at a time.
 export class AnimeUpdateChecker {
     private first: ReturnType<typeof setTimeout> | null = null;
     private next: ReturnType<typeof setTimeout> | null = null;
@@ -167,7 +158,7 @@ export class AnimeUpdateChecker {
         }
     }
 
-    // Checks every anime of the library, one after the other with a pause between them. A check that is going on is not started again.
+    // Checks every anime of the library that is not complete, one after the other. A check that is going on is not started again.
     // An anime that cannot be reached is left for the next time. The hourly check only runs when it is turned on; the one the user asks
     // for runs whatever that setting says.
     checkNow(origin: AnimeArrivalOrigin = 'auto'): Promise<AnimeCheckResponse> {
@@ -201,21 +192,29 @@ export class AnimeUpdateChecker {
         if (origin === 'auto' && !this.deps.isEnabled()) {
             return { ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 };
         }
-        const library = this.deps.db.list();
         let asked = 0;
         let failed = 0;
         let skipped = 0;
         let blocked = false;
-        if (library.length > 0) {
-            this.report({ running: true, origin, done: 0, total: library.length, current: (library[0] as LibraryAnime).title });
-        }
         try {
+            if (this.deps.beforeCheck !== undefined) {
+                this.report({ running: true, origin, done: 0, total: 0, current: null });
+                await this.deps.beforeCheck().catch(() => {
+                    return undefined;
+                });
+            }
+            // An anime whose releases are over has no new episodes to find: it is not asked about.
+            const library = this.deps.db.list().filter((anime) => {
+                return !anime.airing.complete;
+            });
+            if (library.length > 0) {
+                this.report({ running: true, origin, done: 0, total: library.length, current: (library[0] as LibraryAnime).title });
+            }
             for (const [position, anime] of library.entries()) {
                 if (this.stopped) {
                     break;
                 }
                 if (asked > 0) {
-                    await this.pause();
                     this.report({ running: true, origin, done: position, total: library.length, current: anime.title });
                 }
                 asked += 1;
@@ -239,17 +238,12 @@ export class AnimeUpdateChecker {
         }
         const unanswered = blocked || (asked > 0 && failed === asked);
         this.failedRuns = unanswered ? this.failedRuns + 1 : 0;
-        // A look that got answers counts as the look of the day (one the app was closed in the middle of, or that nobody answered, does not).
+        // A look that got answers counts as the last look (one the app was closed in the middle of, or that nobody answered, does not).
         if (origin === 'auto' && asked > 0 && !unanswered && !this.stopped) {
             this.deps.lastCheck?.write(this.now());
         }
         this.tell(news);
         return { ok: true, count: news.count, titles: news.titles, notDownloaded: news.notDownloaded, failed, skipped };
-    }
-
-    private pause(): Promise<void> {
-        const jitter = ((this.deps.random ?? Math.random)() * 2 - 1) * DELAY_JITTER_MS;
-        return (this.deps.sleep ?? wait)(Math.max(0, DELAY_BETWEEN_ANIME_MS + jitter));
     }
 
     // Checks one anime, whatever goes wrong with it: that is a failure of that anime and the others are still asked about.

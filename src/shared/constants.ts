@@ -77,6 +77,7 @@ export const IPC = {
     animeUpdatesClear: 'anime:updates-clear',
     animeCheckNew: 'anime:check-new',
     animeCheckState: 'anime:check-state',
+    animeSetAiring: 'anime:set-airing',
     mangaStatus: 'manga:status',
     mangaInstall: 'manga:install',
     mangaHelperInstall: 'manga:helper-install',

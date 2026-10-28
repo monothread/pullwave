@@ -464,6 +464,9 @@ const api: CyberApi = {
     checkNewAnimeEpisodes: (animeId) => {
         return ipcRenderer.invoke(IPC.animeCheckNew, animeId);
     },
+    setAnimeAiring: (animeId, override) => {
+        return ipcRenderer.invoke(IPC.animeSetAiring, animeId, override);
+    },
     getAnimeCheckState: () => {
         return ipcRenderer.invoke(IPC.animeCheckState);
     },

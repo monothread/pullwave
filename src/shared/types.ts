@@ -1,4 +1,5 @@
 import type {
+    AnimeAiringOverride,
     AnimeCheckResponse,
     AnimeCheckState,
     AnimeCoverUpdate,
@@ -447,6 +448,8 @@ export interface CyberApi {
     clearAnimeUpdates: () => Promise<void>;
     // Asks the source for new episodes: of one anime of the library, or of all of them (null).
     checkNewAnimeEpisodes: (animeId: number | null) => Promise<AnimeCheckResponse>;
+    // Says that the releases of an anime are over (`complete`) or not (`ongoing`), whatever AniList says; null goes back to following AniList.
+    setAnimeAiring: (animeId: number, override: AnimeAiringOverride | null) => Promise<void>;
     // Whether a check for new episodes of all the anime is going on now (the hourly one or a button), to show it when the screen is opened.
     getAnimeCheckState: () => Promise<AnimeCheckState>;
     onAnimeJobUpdate: (listener: (job: AnimeJob) => void) => () => void;

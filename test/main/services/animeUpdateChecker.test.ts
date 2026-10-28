@@ -5,8 +5,6 @@ import {
     AnimeUpdateChecker,
     BACKOFF_LIMIT_MS,
     CHECK_INTERVAL_MS,
-    DELAY_BETWEEN_ANIME_MS,
-    DELAY_JITTER_MS,
     FIRST_CHECK_DELAY_MS,
     type AnimeUpdateCheckerDependencies
 } from '@main/services/animeUpdateChecker';
@@ -41,7 +39,6 @@ interface Setup {
     download: ReturnType<typeof vi.fn<NonNullable<AnimeUpdateCheckerDependencies['download']>>>;
     onNewEpisodes: ReturnType<typeof vi.fn<(news: AnimeNewEpisodes) => void>>;
     onLibraryChanged: ReturnType<typeof vi.fn<() => void>>;
-    sleep: ReturnType<typeof vi.fn<(milliseconds: number) => Promise<void>>>;
     flags: { enabled: boolean; autoDownload: boolean };
     addAnime: (title: string, query: string, searchIndex: number, audio?: AnimeAudio) => number;
 }
@@ -64,9 +61,6 @@ function setup(overrides: Partial<AnimeUpdateCheckerDependencies> = {}): Setup {
     const download = vi.fn<NonNullable<AnimeUpdateCheckerDependencies['download']>>();
     const onNewEpisodes = vi.fn<(news: AnimeNewEpisodes) => void>();
     const onLibraryChanged = vi.fn<() => void>();
-    const sleep = vi.fn<(milliseconds: number) => Promise<void>>(async () => {
-        return undefined;
-    });
     const checker = new AnimeUpdateChecker({
         db,
         search,
@@ -80,10 +74,6 @@ function setup(overrides: Partial<AnimeUpdateCheckerDependencies> = {}): Setup {
         download,
         onNewEpisodes,
         onLibraryChanged,
-        sleep,
-        random: () => {
-            return 0.5;
-        },
         ...overrides
     });
     return {
@@ -96,7 +86,6 @@ function setup(overrides: Partial<AnimeUpdateCheckerDependencies> = {}): Setup {
         download,
         onNewEpisodes,
         onLibraryChanged,
-        sleep,
         flags,
         addAnime: (title, query, searchIndex, audio = 'sub') => {
             return db.upsertAnime({ title, query, searchIndex, audio }).id;
@@ -374,7 +363,6 @@ describe('AnimeUpdateChecker.checkNow', () => {
             expect(response).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 });
             expect(context.search).not.toHaveBeenCalled();
             expect(context.episodes).not.toHaveBeenCalled();
-            expect(context.sleep).not.toHaveBeenCalled();
         });
 
         it('asks anyway when the user asks for the check, whatever the setting says', async () => {
@@ -401,92 +389,29 @@ describe('AnimeUpdateChecker.checkNow', () => {
         });
     });
 
-    describe('the pause between anime', () => {
-        it('waits between one anime and the next, but not before the first nor after the last', async () => {
-            const context = setup();
-            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
-            readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
-            readOnce(context, 'Gintama', 'gintama', 3, ['1'], ['1']);
-            const order: string[] = [];
-            context.sleep.mockImplementation(async () => {
-                order.push('pause');
-            });
-            context.search.mockImplementation(async (query) => {
-                order.push(`search ${query}`);
-                return done([{ index: ['naruto', 'bleach', 'gintama'].indexOf(query) + 1, title: query }]);
-            });
-
-            await context.checker.checkNow('auto');
-
-            expect(context.sleep).toHaveBeenCalledTimes(2);
-            expect(order).toEqual(['search bleach', 'pause', 'search gintama', 'pause', 'search naruto']);
-        });
-
-        it('waits the usual time when the variation is in the middle', async () => {
-            const context = setup();
-            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
-            readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
-
-            await context.checker.checkNow('auto');
-
-            expect(context.sleep).toHaveBeenCalledTimes(1);
-            expect(context.sleep).toHaveBeenCalledWith(DELAY_BETWEEN_ANIME_MS);
-        });
-
-        it.each([
-            ['the shortest', 0, DELAY_BETWEEN_ANIME_MS - DELAY_JITTER_MS],
-            ['a little shorter', 0.25, DELAY_BETWEEN_ANIME_MS - DELAY_JITTER_MS / 2],
-            ['a little longer', 0.75, DELAY_BETWEEN_ANIME_MS + DELAY_JITTER_MS / 2],
-            ['the longest', 1, DELAY_BETWEEN_ANIME_MS + DELAY_JITTER_MS]
-        ])('waits %s when the variation says so', async (_label, random, expected) => {
-            const context = setup({
-                random: () => {
-                    return random;
-                }
-            });
-            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
-            readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
-
-            await context.checker.checkNow('auto');
-
-            expect(context.sleep).toHaveBeenCalledWith(expected);
-        });
-
-        it('does not wait when there is a single anime or none', async () => {
-            const context = setup();
-            await context.checker.checkNow('auto');
-            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
-            await context.checker.checkNow('auto');
-
-            expect(context.sleep).not.toHaveBeenCalled();
-        });
-
-        it('waits between the anime that could not be asked about too: the source sees the same requests', async () => {
-            const context = setup();
-            context.addAnime('Naruto', 'naruto', 1);
-            context.addAnime('Bleach', 'bleach', 2);
-
-            await context.checker.checkNow('auto');
-
-            expect(context.sleep).toHaveBeenCalledTimes(1);
-        });
-
-        it('really waits, with the timers, when no way to wait is given', async () => {
+    describe('the order of the questions', () => {
+        it('asks about one anime right after the other, in the order of the library, with nothing waited for in between', async () => {
             vi.useFakeTimers();
             try {
-                const context = setup({ sleep: undefined, random: () => {
-                    return 0.5;
-                } });
+                const context = setup();
                 readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
                 readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+                readOnce(context, 'Gintama', 'gintama', 3, ['1'], ['1']);
+                const order: string[] = [];
+                context.search.mockImplementation(async (query) => {
+                    order.push(`search ${query}`);
+                    return done([{ index: ['naruto', 'bleach', 'gintama'].indexOf(query) + 1, title: query }]);
+                });
+                context.episodes.mockImplementation(async (query, index) => {
+                    order.push(`episodes ${query}`);
+                    return done(context.lists[`${query}:${index}`] ?? []);
+                });
 
-                const pending = context.checker.checkNow('auto');
-                await vi.advanceTimersByTimeAsync(DELAY_BETWEEN_ANIME_MS - 1);
-                expect(context.search).toHaveBeenCalledTimes(1);
-                await vi.advanceTimersByTimeAsync(1);
-                await pending;
+                // No timer is moved: a look that waited for one would never end here.
+                await context.checker.checkNow('auto');
 
-                expect(context.search).toHaveBeenCalledTimes(2);
+                expect(order).toEqual(['search bleach', 'episodes bleach', 'search gintama', 'episodes gintama', 'search naruto', 'episodes naruto']);
+                expect(vi.getTimerCount()).toBe(0);
             } finally {
                 vi.useRealTimers();
             }
@@ -770,7 +695,6 @@ describe('AnimeUpdateChecker.checkAnime', () => {
         expect(response).toEqual({ ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 0 });
         expect(context.search).toHaveBeenCalledTimes(1);
         expect(context.search).toHaveBeenCalledWith('naruto', 'sub');
-        expect(context.sleep).not.toHaveBeenCalled();
         expect(context.db.updates()[0]).toMatchObject({ episodeNumber: '2', origin: 'manual' });
         expect(context.download).toHaveBeenCalledWith(id, ['2']);
         expect(context.onNewEpisodes).toHaveBeenCalledWith({ count: 1, titles: ['Naruto'], notDownloaded: [] });
@@ -1399,18 +1323,6 @@ describe('AnimeUpdateChecker progress', () => {
         expect(context.checker.state()).toEqual(IDLE);
     });
 
-    it('ends when the way of waiting between two anime fails, and the failure goes on to who asked', async () => {
-        const { context, onProgress } = withProgress();
-        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
-        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
-        context.sleep.mockRejectedValue(new Error('timer failed'));
-
-        await expect(context.checker.checkNow('auto')).rejects.toThrow('timer failed');
-
-        expect(onProgress.mock.calls.at(-1)).toEqual([IDLE]);
-        expect(context.checker.state()).toEqual(IDLE);
-    });
-
     it('tells nothing when the hourly check is off, or when the library is empty', async () => {
         const { context, onProgress } = withProgress();
         await context.checker.checkNow('auto');
@@ -1525,5 +1437,238 @@ describe('AnimeUpdateChecker a check that takes longer than the interval', () =>
 
         expect(context.search).toHaveBeenCalledTimes(2);
         context.checker.stop();
+    });
+});
+
+describe('AnimeUpdateChecker the anime whose releases are over', () => {
+    const IDLE = { running: false, origin: null, done: 0, total: 0, current: null };
+
+    it('does not ask about an anime that AniList says ended, and asks about the others', async () => {
+        const context = setup();
+        const ended = readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1', '2']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+        context.db.saveAiring(ended, 20, 'finished');
+
+        const response = await context.checker.checkNow('auto');
+
+        expect(response).toEqual({ ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 0 });
+        expect(context.search).toHaveBeenCalledTimes(1);
+        expect(context.search).toHaveBeenCalledWith('naruto', 'sub');
+        expect(context.db.getEpisodeByNumber(ended, '2')).toBeNull();
+    });
+
+    it('asks about an anime that AniList says is still going on', async () => {
+        const context = setup();
+        const going = readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+        context.db.saveAiring(going, 20, 'ongoing');
+
+        await expect(context.checker.checkNow('auto')).resolves.toMatchObject({ count: 1 });
+    });
+
+    it('asks about the anime that have no status yet, as before', async () => {
+        const context = setup();
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1', '2']);
+
+        const response = await context.checker.checkNow('auto');
+
+        expect(response).toMatchObject({ count: 2, titles: ['Bleach', 'Naruto'] });
+        expect(context.search).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not ask about an anime the user says is complete, even if AniList says it is going on', async () => {
+        const context = setup();
+        const id = readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+        context.db.saveAiring(id, 20, 'ongoing');
+        context.db.setAiringOverride(id, 'complete');
+
+        const response = await context.checker.checkNow('auto');
+
+        expect(response).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 });
+        expect(context.search).not.toHaveBeenCalled();
+    });
+
+    it('asks about an anime the user says is going on, even if AniList says it ended', async () => {
+        const context = setup();
+        const id = readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+        context.db.saveAiring(id, 20, 'finished');
+        context.db.setAiringOverride(id, 'ongoing');
+
+        await expect(context.checker.checkNow('auto')).resolves.toMatchObject({ count: 1 });
+    });
+
+    it('leaves out the same anime in the check the user asks for', async () => {
+        const context = setup();
+        const ended = readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1', '2']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+        context.db.saveAiring(ended, 20, 'finished');
+
+        await context.checker.checkNow('manual');
+
+        expect(context.search).toHaveBeenCalledTimes(1);
+        expect(context.search).toHaveBeenCalledWith('naruto', 'sub');
+    });
+
+    it('still asks about an anime that ended when the user asks about that one only', async () => {
+        const context = setup();
+        const ended = readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1', '2']);
+        context.db.saveAiring(ended, 20, 'finished');
+
+        const response = await context.checker.checkAnime(ended);
+
+        expect(response).toMatchObject({ ok: true, count: 1, titles: ['Bleach'] });
+    });
+
+    it('does nothing, and does not keep a look, when every anime ended', async () => {
+        const writes: number[] = [];
+        const context = setup({
+            lastCheck: {
+                read: () => {
+                    return null;
+                },
+                write: (time) => {
+                    writes.push(time);
+                }
+            }
+        });
+        const id = readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+        context.db.saveAiring(id, 20, 'finished');
+
+        const response = await context.checker.checkNow('auto');
+
+        expect(response).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 });
+        expect(context.search).not.toHaveBeenCalled();
+        expect(writes).toEqual([]);
+    });
+
+    it('counts only the anime it asks about in the progress, and never names the ones that ended', async () => {
+        const onProgress = vi.fn<(state: AnimeCheckState) => void>();
+        const context = setup({ onProgress });
+        const ended = readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+        readOnce(context, 'One Piece', 'one piece', 3, ['1'], ['1']);
+        context.db.saveAiring(ended, 20, 'finished');
+
+        await context.checker.checkNow('auto');
+
+        expect(onProgress.mock.calls).toEqual([
+            [{ running: true, origin: 'auto', done: 0, total: 2, current: 'Naruto' }],
+            [{ running: true, origin: 'auto', done: 1, total: 2, current: 'One Piece' }],
+            [IDLE]
+        ]);
+    });
+
+    describe('what is known about them, brought up to date before each check', () => {
+        it('is done once at the start of each check of all the anime, before the anime are chosen, so what it learns counts in that check', async () => {
+            const order: string[] = [];
+            const holder: { context?: Setup } = {};
+            const context = setup({
+                beforeCheck: async () => {
+                    order.push('before');
+                    (holder.context as Setup).db.saveAiring(1, 20, 'finished');
+                }
+            });
+            holder.context = context;
+            const ended = readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1', '2']);
+            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+            expect(ended).toBe(1);
+            context.search.mockImplementation(async (query) => {
+                order.push(`search ${query}`);
+                return done([{ index: 1, title: query }]);
+            });
+
+            const response = await context.checker.checkNow('auto');
+
+            expect(order).toEqual(['before', 'search naruto']);
+            expect(response).toMatchObject({ count: 1, titles: ['Naruto'] });
+        });
+
+        it('is done for the check the user asks for too, and again for each check', async () => {
+            const beforeCheck = vi.fn(async (): Promise<void> => {
+                return undefined;
+            });
+            const context = setup({ beforeCheck });
+            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+            await context.checker.checkNow('manual');
+            await context.checker.checkNow('auto');
+
+            expect(beforeCheck).toHaveBeenCalledTimes(2);
+        });
+
+        it('is not done when the automatic check is off, nor for the check of a single anime', async () => {
+            const beforeCheck = vi.fn(async (): Promise<void> => {
+                return undefined;
+            });
+            const context = setup({ beforeCheck });
+            const id = readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+            context.flags.enabled = false;
+
+            await context.checker.checkNow('auto');
+            await context.checker.checkAnime(id);
+
+            expect(beforeCheck).not.toHaveBeenCalled();
+        });
+
+        it('tells the screen a check is going on while it is done, before there is a number of anime', async () => {
+            const seen: AnimeCheckState[] = [];
+            const holder: { context?: Setup } = {};
+            const context = setup({
+                beforeCheck: async () => {
+                    seen.push((holder.context as Setup).checker.state());
+                }
+            });
+            holder.context = context;
+            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+            await context.checker.checkNow('manual');
+
+            expect(seen).toEqual([{ running: true, origin: 'manual', done: 0, total: 0, current: null }]);
+        });
+
+        it('goes on with all the anime that are not known to have ended when it fails', async () => {
+            const context = setup({
+                beforeCheck: async () => {
+                    throw new Error('AniList is down');
+                }
+            });
+            readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1', '2']);
+            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1', '2']);
+
+            const response = await context.checker.checkNow('auto');
+
+            expect(response).toMatchObject({ ok: true, count: 2, failed: 0 });
+        });
+
+        it('ends the state when there is nothing to ask about after it', async () => {
+            const onProgress = vi.fn<(state: AnimeCheckState) => void>();
+            const context = setup({
+                onProgress,
+                beforeCheck: async () => {
+                    return undefined;
+                }
+            });
+
+            await context.checker.checkNow('auto');
+
+            expect(onProgress.mock.calls).toEqual([[{ running: true, origin: 'auto', done: 0, total: 0, current: null }], [IDLE]]);
+            expect(context.checker.state()).toEqual(IDLE);
+        });
+
+        it('ends the state when the checker is stopped while it is done', async () => {
+            const holder: { context?: Setup } = {};
+            const context = setup({
+                beforeCheck: async () => {
+                    (holder.context as Setup).checker.stop();
+                }
+            });
+            holder.context = context;
+            readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+            await context.checker.checkNow('auto');
+
+            expect(context.search).not.toHaveBeenCalled();
+            expect(context.checker.state()).toEqual(IDLE);
+        });
     });
 });

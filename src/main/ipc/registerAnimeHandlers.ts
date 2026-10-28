@@ -1,4 +1,5 @@
 import {
+    ANIME_AIRING_OVERRIDES,
     ANIME_AUDIOS,
     IDLE_CHECK_STATE,
     type AniError,
@@ -316,6 +317,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeCheckState, (): AnimeCheckState => {
         return IDLE_CHECK_STATE;
     });
+    ipcMain.handle(IPC.animeSetAiring, (): void => {
+        return undefined;
+    });
     ipcMain.handle(IPC.animeLibrary, () => {
         return [];
     });
@@ -425,6 +429,18 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     });
     ipcMain.handle(IPC.animeCheckState, (): AnimeCheckState => {
         return deps.updates.state();
+    });
+    ipcMain.handle(IPC.animeSetAiring, (_event, animeId, override): void => {
+        const id = asId(animeId);
+        const chosen = override === null ? null : (ANIME_AIRING_OVERRIDES.find((candidate) => {
+            return candidate === override;
+        }) ?? undefined);
+        // An anime that is not in the library, or a choice that is neither one of the two nor null, changes nothing.
+        if (id === null || chosen === undefined || db.getAnime(id) === null) {
+            return;
+        }
+        db.setAiringOverride(id, chosen);
+        deps.onLibraryChanged();
     });
     ipcMain.handle(IPC.animeSchedule, (_event, input): Promise<AnimeScheduleResponse> | AnimeScheduleResponse => {
         const request = parseScheduleRequest(input);

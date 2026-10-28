@@ -54,6 +54,8 @@ function options(overrides: Partial<AnimeRuntimeOptions> = {}) {
         getSettings: () => {
             return DEFAULT_SETTINGS;
         },
+        // Nothing answers where AniList would: the look for the anime that ended cannot be made, and the check goes on without it.
+        scheduleUrl: 'http://127.0.0.1:1/graphql',
         send
     };
     return { root, send, options: { ...base, ...overrides } };
@@ -1493,14 +1495,19 @@ describe('createAnimeRuntime new episodes', () => {
             runtime.stopBackgroundChecks();
         }).not.toThrow();
 
-        expect(send).not.toHaveBeenCalled();
+        // The library is empty: the check only brings up to date what is known about the anime that ended, and ends.
+        expect(
+            send.mock.calls.map(([channel, state]) => {
+                return [channel, state];
+            })
+        ).toEqual([
+            [IPC.eventAnimeCheckState, { running: true, origin: 'auto', done: 0, total: 0, current: null }],
+            [IPC.eventAnimeCheckState, { running: false, origin: null, done: 0, total: 0, current: null }]
+        ]);
     });
 
-    it('asks about every anime of the library when the user asks, with a pause between them, and counts the ones ani-cli could not be run for', async () => {
-        const sleep = vi.fn((): Promise<void> => {
-            return Promise.resolve();
-        });
-        const { send, options: given } = options({ checkSleep: sleep });
+    it('asks about every anime of the library when the user asks, one right after the other, and counts the ones ani-cli could not be run for', async () => {
+        const { send, options: given } = options();
         const runtime = open(given) as AnimeRuntime;
         runtime.db.upsertAnime(NARUTO);
         runtime.db.upsertAnime(BLEACH);
@@ -1508,16 +1515,12 @@ describe('createAnimeRuntime new episodes', () => {
         const response = await runtime.handlers.updates.checkNow('manual');
 
         expect(response).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 2, skipped: 0 });
-        expect(sleep).toHaveBeenCalledTimes(1);
-        const [pause] = sleep.mock.calls[0] as unknown as [number];
-        expect(pause).toBeGreaterThanOrEqual(2000);
-        expect(pause).toBeLessThanOrEqual(4000);
         // Only the state of the check is told: nothing was added to the library.
         expect(
             send.mock.calls.map(([channel]) => {
                 return channel;
             })
-        ).toEqual([IPC.eventAnimeCheckState, IPC.eventAnimeCheckState, IPC.eventAnimeCheckState]);
+        ).toEqual([IPC.eventAnimeCheckState, IPC.eventAnimeCheckState, IPC.eventAnimeCheckState, IPC.eventAnimeCheckState]);
     });
 
     it('does not run the hourly check when it is turned off in the settings, and still runs the one the user asks for', async () => {
@@ -1545,13 +1548,8 @@ describe('createAnimeRuntime new episodes', () => {
         expect(await runtime.handlers.updates.checkNow('auto')).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 1, skipped: 0 });
     });
 
-    it('tells the screen when the check begins, after each anime and when it ends, and gives the state of the one going on', async () => {
-        let seenInTheMiddle: unknown = null;
-        const { send, options: given } = options({
-            checkSleep: async () => {
-                seenInTheMiddle = runtime.handlers.updates.state();
-            }
-        });
+    it('tells the screen when the check begins, each time it moves on to another anime and when it ends', async () => {
+        const { send, options: given } = options();
         const runtime = open(given) as AnimeRuntime;
         runtime.db.upsertAnime(NARUTO);
         runtime.db.upsertAnime(BLEACH);
@@ -1566,22 +1564,24 @@ describe('createAnimeRuntime new episodes', () => {
                 return state;
             });
         expect(states).toEqual([
+            { running: true, origin: 'manual', done: 0, total: 0, current: null },
             { running: true, origin: 'manual', done: 0, total: 2, current: 'Bleach' },
             { running: true, origin: 'manual', done: 1, total: 2, current: 'Naruto' },
             { running: false, origin: null, done: 0, total: 0, current: null }
         ]);
-        // The pause between the two anime: the first is the one being asked about until it ends.
-        expect(seenInTheMiddle).toEqual({ running: true, origin: 'manual', done: 0, total: 2, current: 'Bleach' });
         expect(runtime.handlers.updates.state()).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
     });
 
-    it('tells the screen nothing about the check when the library is empty', async () => {
+    it('tells the screen only that the check began and ended when the library is empty', async () => {
         const { send, options: given } = options();
         const runtime = open(given) as AnimeRuntime;
 
         await runtime.handlers.updates.checkNow('manual');
 
-        expect(send).not.toHaveBeenCalled();
+        expect(send.mock.calls).toEqual([
+            [IPC.eventAnimeCheckState, { running: true, origin: 'manual', done: 0, total: 0, current: null }],
+            [IPC.eventAnimeCheckState, { running: false, origin: null, done: 0, total: 0, current: null }]
+        ]);
     });
 
     describe('the last look, kept in the data folder', () => {
@@ -1608,7 +1608,7 @@ describe('createAnimeRuntime new episodes', () => {
             runtime.startBackgroundChecks();
 
             await vi.waitFor(() => {
-                expect(checkStates(send)[0]).toEqual({ running: true, origin: 'auto', done: 0, total: 1, current: 'Naruto' });
+                expect(checkStates(send)).toContainEqual({ running: true, origin: 'auto', done: 0, total: 1, current: 'Naruto' });
             });
             runtime.stopBackgroundChecks();
         });
@@ -1642,7 +1642,7 @@ describe('createAnimeRuntime new episodes', () => {
             runtime.startBackgroundChecks();
 
             await vi.waitFor(() => {
-                expect(checkStates(send)[0]).toEqual({ running: true, origin: 'auto', done: 0, total: 1, current: 'Naruto' });
+                expect(checkStates(send)).toContainEqual({ running: true, origin: 'auto', done: 0, total: 1, current: 'Naruto' });
             });
             runtime.stopBackgroundChecks();
         });

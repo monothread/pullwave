@@ -1394,6 +1394,25 @@ describe('the schedule', () => {
         });
     });
 
+    describe('the releases of an anime', () => {
+        it('says it to the main process and reads the library again', async () => {
+            const anime = makeAnime([makeEpisode()], { id: 4, airing: { status: 'finished', override: 'ongoing', complete: false } });
+            mock.api.listAnimeLibrary.mockResolvedValue([anime]);
+
+            await useAnimeStore.getState().setAiring(4, 'ongoing');
+
+            expect(mock.api.setAnimeAiring).toHaveBeenCalledTimes(1);
+            expect(mock.api.setAnimeAiring).toHaveBeenCalledWith(4, 'ongoing');
+            expect(useAnimeStore.getState().library).toEqual([anime]);
+        });
+
+        it('goes back to following AniList when null is given', async () => {
+            await useAnimeStore.getState().setAiring(4, null);
+
+            expect(mock.api.setAnimeAiring).toHaveBeenCalledWith(4, null);
+        });
+    });
+
     describe('updates', () => {
         const ENTRY: AnimeUpdateEntry = {
             id: 1,

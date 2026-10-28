@@ -4,6 +4,8 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import type {
     AniError,
     AniErrorCode,
+    AnimeAiringOverride,
+    AnimeAiringStatus,
     AnimeArrivalOrigin,
     AnimeAudio,
     AnimeEpisodeRecord,
@@ -16,6 +18,7 @@ import type {
     AnimeUpdateEntry,
     LibraryAnime
 } from '@shared/anime';
+import { ANIME_AIRING_OVERRIDES, ANIME_AIRING_STATUSES, isAnimeComplete } from '@shared/anime';
 import { sameSeries } from '@shared/series';
 
 export const INTERRUPTED_MESSAGE = 'The app was closed before the download finished.';
@@ -101,7 +104,13 @@ const MIGRATIONS: readonly string[] = [
         found_at INTEGER NOT NULL,
         origin TEXT NOT NULL
     );
-    CREATE INDEX episode_update_found ON episode_update (found_at DESC, id DESC);`
+    CREATE INDEX episode_update_found ON episode_update (found_at DESC, id DESC);`,
+    // Whether the releases of an anime are over: the anime of AniList it was matched to, what AniList said about its releases and when it was
+    // asked (all empty until the first look for new episodes), and what the user said about it, which wins over AniList.
+    `ALTER TABLE anime ADD COLUMN anilist_id INTEGER;
+    ALTER TABLE anime ADD COLUMN airing_status TEXT;
+    ALTER TABLE anime ADD COLUMN airing_checked_at INTEGER;
+    ALTER TABLE anime ADD COLUMN airing_override TEXT;`
 ];
 
 // The history keeps the most recent anime only.
@@ -121,6 +130,15 @@ const ERROR_CODES: readonly AniErrorCode[] = [
     'BINARY_MISSING',
     'UNKNOWN'
 ];
+
+// What the library knows about the releases of an anime and when AniList was last asked about it.
+export interface AnimeAiringState {
+    id: number;
+    title: string;
+    anilistId: number | null;
+    status: AnimeAiringStatus | null;
+    checkedAt: number | null;
+}
 
 export interface NewAnime {
     title: string;
@@ -157,13 +175,15 @@ function nullableNumeric(row: Row, column: string): number | null {
     return typeof value === 'number' ? value : null;
 }
 
-function pick<T extends string>(value: string, allowed: readonly T[], fallback: T): T {
+function pick<T extends string, F extends T | null = T>(value: string, allowed: readonly T[], fallback: F): T | F {
     return allowed.find((candidate) => {
         return candidate === value;
     }) ?? fallback;
 }
 
 function toAnime(row: Row): AnimeRecord {
+    const status = pick(text(row, 'airing_status'), ANIME_AIRING_STATUSES, null);
+    const override = pick(text(row, 'airing_override'), ANIME_AIRING_OVERRIDES, null);
     return {
         id: numeric(row, 'id'),
         title: text(row, 'title'),
@@ -173,7 +193,8 @@ function toAnime(row: Row): AnimeRecord {
         createdAt: numeric(row, 'created_at'),
         series: nullableText(row, 'series'),
         season: nullableNumeric(row, 'season'),
-        seasonName: nullableText(row, 'season_name')
+        seasonName: nullableText(row, 'season_name'),
+        airing: { status, override, complete: isAnimeComplete(status, override) }
     };
 }
 
@@ -446,6 +467,29 @@ export class AnimeDb {
             throw error;
         }
         return arrived;
+    }
+
+    // What is known about the releases of the anime of the library, to keep it up to date with AniList (see animeAiring.ts).
+    airingStates(): AnimeAiringState[] {
+        return this.all('SELECT id, title, anilist_id, airing_status, airing_checked_at FROM anime ORDER BY id').map((row) => {
+            return {
+                id: numeric(row, 'id'),
+                title: text(row, 'title'),
+                anilistId: nullableNumeric(row, 'anilist_id'),
+                status: pick(text(row, 'airing_status'), ANIME_AIRING_STATUSES, null),
+                checkedAt: nullableNumeric(row, 'airing_checked_at')
+            };
+        });
+    }
+
+    // What AniList said about the releases of an anime now: the anime it was matched to (null: none) and the status (null: not sure).
+    saveAiring(animeId: number, anilistId: number | null, status: AnimeAiringStatus | null): void {
+        this.run('UPDATE anime SET anilist_id = ?, airing_status = ?, airing_checked_at = ? WHERE id = ?', anilistId, status, this.now(), animeId);
+    }
+
+    // What the user says about the releases of the anime, which wins over AniList (null: follow AniList).
+    setAiringOverride(animeId: number, override: AnimeAiringOverride | null): void {
+        this.run('UPDATE anime SET airing_override = ? WHERE id = ?', override, animeId);
     }
 
     // The place of the anime in the search of its name, when the source lists it somewhere else now.

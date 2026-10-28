@@ -510,6 +510,9 @@ export function createMockApi(): MockApiHandle {
         checkNewAnimeEpisodes: vi.fn(async (): Promise<AnimeCheckResponse> => {
             return { ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 };
         }),
+        setAnimeAiring: vi.fn(async (): Promise<void> => {
+            return undefined;
+        }),
         getAnimeCheckState: vi.fn(async (): Promise<AnimeCheckState> => {
             return { running: false, origin: null, done: 0, total: 0, current: null };
         }),

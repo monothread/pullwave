@@ -64,6 +64,7 @@ const ANIME_CHANNELS = [
     IPC.animeRetry,
     IPC.animeSchedule,
     IPC.animeSearch,
+    IPC.animeSetAiring,
     IPC.animeSetSeries,
     IPC.animeStatus,
     IPC.animeStreamClose,
@@ -1561,6 +1562,60 @@ describe('registerAnimeHandlers', () => {
     });
 });
 
+describe('registerAnimeHandlers the releases of an anime', () => {
+    function addAnime(context: ReturnType<typeof setup>): number {
+        return context.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id;
+    }
+
+    it.each([['complete' as const], ['ongoing' as const]])('keeps what the user says: %s, and tells the library changed', (override) => {
+        const context = setup();
+        const id = addAnime(context);
+
+        expect(context.call(IPC.animeSetAiring, id, override)).toBeUndefined();
+
+        expect(context.db.getAnime(id)?.airing).toEqual({ status: null, override, complete: override === 'complete' });
+        expect(context.onLibraryChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it('goes back to following AniList when null is given', () => {
+        const context = setup();
+        const id = addAnime(context);
+        context.db.saveAiring(id, 20, 'finished');
+        context.db.setAiringOverride(id, 'ongoing');
+
+        context.call(IPC.animeSetAiring, id, null);
+
+        expect(context.db.getAnime(id)?.airing).toEqual({ status: 'finished', override: null, complete: true });
+        expect(context.onLibraryChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['an id that is not a number', '1', 'complete'],
+        ['an id below 1', 0, 'complete'],
+        ['an id that is not an integer', 1.5, 'complete'],
+        ['no id', undefined, 'complete'],
+        ['a choice that is not one of the two', 1, 'done'],
+        ['a choice that is not text', 1, 5],
+        ['no choice', 1, undefined]
+    ])('changes nothing for %s', (_label, id, override) => {
+        const context = setup();
+        addAnime(context);
+
+        context.call(IPC.animeSetAiring, id, override);
+
+        expect(context.db.getAnime(1)?.airing).toEqual({ status: null, override: null, complete: false });
+        expect(context.onLibraryChanged).not.toHaveBeenCalled();
+    });
+
+    it('changes nothing for an anime that is not in the library', () => {
+        const context = setup();
+
+        context.call(IPC.animeSetAiring, 99, 'complete');
+
+        expect(context.onLibraryChanged).not.toHaveBeenCalled();
+    });
+});
+
 describe('registerAnimeHandlers updates', () => {
     const FOUND: AnimeCheckResponse = { ok: true, count: 2, titles: ['Naruto'], notDownloaded: [], failed: 1, skipped: 0 };
 
@@ -1791,6 +1846,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeCover, 'Naruto')).toBeNull();
         expect(ipc.call(IPC.animeUpdates)).toEqual([]);
         expect(ipc.call(IPC.animeUpdatesClear)).toBeUndefined();
+        expect(ipc.call(IPC.animeSetAiring, 1, 'complete')).toBeUndefined();
         expect(ipc.call(IPC.animeCheckState)).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
         expect(ipc.call(IPC.animeCheckNew, null)).toEqual({ ok: false, error: { code: 'UNKNOWN', message: unsupported.raw } });
         expect(ipc.call(IPC.animeLibrary)).toEqual([]);

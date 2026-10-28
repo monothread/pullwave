@@ -50,6 +50,25 @@ export type AnimeSubtitleSetting = (typeof ANIME_SUBTITLE_SETTINGS)[number];
 // `idle` is an episode the anime has in the library that was not downloaded (yet).
 export type AnimeEpisodeStatus = 'idle' | 'queued' | 'downloading' | 'paused' | 'done' | 'error' | 'cancelled';
 
+// What AniList says about the releases of an anime: `finished` (it ended or was cancelled) or `ongoing` (it airs, is about to air or is on a
+// break). The user can correct it: `complete` or `ongoing` (null: follow AniList).
+export const ANIME_AIRING_STATUSES = ['finished', 'ongoing'] as const;
+export type AnimeAiringStatus = (typeof ANIME_AIRING_STATUSES)[number];
+export const ANIME_AIRING_OVERRIDES = ['complete', 'ongoing'] as const;
+export type AnimeAiringOverride = (typeof ANIME_AIRING_OVERRIDES)[number];
+
+// Whether the releases of an anime are over: what the user said, or else what AniList says. An anime AniList said nothing sure about
+// (`status` null) is not complete, so it keeps being looked at for new episodes.
+export interface AnimeAiring {
+    status: AnimeAiringStatus | null;
+    override: AnimeAiringOverride | null;
+    complete: boolean;
+}
+
+export function isAnimeComplete(status: AnimeAiringStatus | null, override: AnimeAiringOverride | null): boolean {
+    return override === null ? status === 'finished' : override === 'complete';
+}
+
 export interface AnimeRecord {
     id: number;
     title: string;
@@ -65,6 +84,8 @@ export interface AnimeRecord {
     season: number | null;
     // The name the anime is shown with inside its series, instead of "SEASON N"; it is not used to order.
     seasonName: string | null;
+    // Whether its releases are over (an anime that is is not looked at for new episodes).
+    airing: AnimeAiring;
 }
 
 export interface AnimeEpisodeRecord {

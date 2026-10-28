@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AniError, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
+import type { AniError, AnimeAiringOverride, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
 import { IDLE_CHECK_STATE } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
@@ -163,6 +163,8 @@ export interface AnimeState {
     checkNewEpisodes: (animeId: number | null) => Promise<void>;
     // Goes to the anime of an update in the library.
     openFromUpdate: (entry: AnimeUpdateEntry) => void;
+    // Says that the releases of an anime are over (`complete`) or not (`ongoing`), whatever AniList says; null goes back to following AniList.
+    setAiring: (animeId: number, override: AnimeAiringOverride | null) => Promise<void>;
     refreshHistory: () => Promise<void>;
     removeHistoryEntry: (id: number) => Promise<void>;
     clearHistory: () => Promise<void>;
@@ -818,6 +820,11 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         openFromUpdate: (entry) => {
             get().showInLibrary(entry.animeId);
+        },
+
+        setAiring: async (animeId, override) => {
+            await window.api.setAnimeAiring(animeId, override);
+            set({ library: await window.api.listAnimeLibrary() });
         },
 
         refreshHistory: async () => {

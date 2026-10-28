@@ -3770,14 +3770,15 @@ test.describe('the look for new episodes', () => {
 
     test('blocks the button while the automatic look goes on, saying how far it is and which anime it asks about, and gives it back when it ends', async () => {
         const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
-        await addFakeAnime(page);
-        // A second anime: with the pause between the two, a look lasts long enough to be seen.
-        await page.getByRole('button', { name: 'BACK' }).click();
-        await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
+        // An anime found by a search whose answers take two seconds each: a look for new episodes lasts long enough to be seen.
+        await openAnimeTab(page);
+        await search(page, 'fake turtle');
+        await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible({ timeout: 15000 });
         await confirmAdd(page);
         await openUpdates(page);
 
-        const button = page.getByRole('button', { name: /^AUTOMATIC LOOK… \d\/2$/ });
+        const button = page.getByRole('button', { name: /^AUTOMATIC LOOK… \d\/1$/ });
         await expect(button).toBeDisabled({ timeout: 30000 });
         await expect(button).toHaveAttribute('title', 'The automatic look is going on. Wait for it to end.');
         await expect(page.getByTestId('anime-check-current')).toHaveText(/^Now: Fake Anime( 2)?$/);
@@ -3786,6 +3787,170 @@ test.describe('the look for new episodes', () => {
         // It ends: the button is ready and the indicator is gone (the next look comes an interval after).
         await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled({ timeout: 30000 });
         await expect(page.getByTestId('anime-check-current')).toHaveCount(0);
+    });
+
+    // An AniList that says the status it is given for 'Fake Anime' (no other title is found), and counts what it was asked about the releases.
+    interface FakeAniList {
+        url: string;
+        searched: () => string[];
+        refreshes: () => number;
+        close: () => Promise<void>;
+    }
+
+    async function startAniList(status: string): Promise<FakeAniList> {
+        const searched: string[] = [];
+        let refreshes = 0;
+        const server = createServer((request, response) => {
+            const chunks: Buffer[] = [];
+            request.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            request.on('end', () => {
+                const { query, variables } = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { query: string; variables: Record<string, unknown> };
+                const data: Record<string, unknown> = {};
+                if (query.includes('SEARCH_MATCH')) {
+                    Object.entries(variables).forEach(([key, value]) => {
+                        searched.push(String(value));
+                        data[`m${key.slice(1)}`] = {
+                            media: value === 'Fake Anime' ? [{ id: 900, status, title: { romaji: 'Fake Anime', english: 'Fake Anime', native: null }, synonyms: [] }] : []
+                        };
+                    });
+                } else if (query.includes('id_in')) {
+                    refreshes += 1;
+                    data.Page = {
+                        media: (variables.ids as number[]).map((id) => {
+                            return { id, status };
+                        })
+                    };
+                } else {
+                    // The schedule and the covers, which the screens ask AniList for too: nothing airs and nothing has a cover.
+                    data.Page = { pageInfo: { hasNextPage: false }, airingSchedules: [] };
+                    data.Media = null;
+                }
+                response.writeHead(200, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ data }));
+            });
+        });
+        await new Promise<void>((resolveListening) => {
+            server.listen(0, '127.0.0.1', resolveListening);
+        });
+        return {
+            url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/graphql`,
+            searched: () => {
+                return [...searched];
+            },
+            refreshes: () => {
+                return refreshes;
+            },
+            close: () => {
+                server.closeAllConnections();
+                return new Promise<void>((resolveClosed) => {
+                    server.close(() => {
+                        resolveClosed();
+                    });
+                });
+            }
+        };
+    }
+
+    async function openFakeAnimeSeason(page: Page): Promise<void> {
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime', exact: true }).click();
+    }
+
+    test('learns from AniList that the anime ended, marks it complete and stops asking the source about it', async () => {
+        const aniList = await startAniList('FINISHED');
+        try {
+            const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS, PULLWAVE_ANILIST_URL: aniList.url });
+            await addFakeAnime(page);
+            await expect.poll(() => {
+                return aniList.searched();
+            }, { timeout: 20000 }).toContain('Fake Anime');
+
+            await openFakeAnimeSeason(page);
+
+            await expect(page.getByTestId('anime-season').getByTestId('anime-complete')).toHaveText('COMPLETE', { timeout: 20000 });
+            // The look goes on every 1.5 s here and never asks the source about it any more; and AniList is not asked again about an anime that ended.
+            const asked = episodeListings();
+            await page.waitForTimeout(4500);
+            expect(episodeListings()).toBe(asked);
+            expect(aniList.refreshes()).toBe(0);
+        } finally {
+            await aniList.close();
+        }
+    });
+
+    test('keeps looking at an anime that AniList says is still going on, and asks AniList about it again', async () => {
+        const aniList = await startAniList('RELEASING');
+        try {
+            const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS, PULLWAVE_ANILIST_URL: aniList.url });
+            await addFakeAnime(page);
+            await expect.poll(() => {
+                return aniList.searched();
+            }, { timeout: 20000 }).toContain('Fake Anime');
+            const asked = episodeListings();
+
+            await expect.poll(episodeListings, { timeout: 20000 }).toBeGreaterThan(asked);
+
+            await openFakeAnimeSeason(page);
+            await expect(page.getByTestId('anime-season')).toBeVisible();
+            await expect(page.getByTestId('anime-complete')).toHaveCount(0);
+        } finally {
+            await aniList.close();
+        }
+    });
+
+    test('looks at the anime that have no status when AniList cannot be reached, as before', async () => {
+        const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await addFakeAnime(page);
+        const asked = episodeListings();
+
+        await expect.poll(episodeListings, { timeout: 20000 }).toBeGreaterThan(asked);
+
+        await openFakeAnimeSeason(page);
+        await expect(page.getByTestId('anime-complete')).toHaveCount(0);
+    });
+
+    test('follows what the user says about the releases: complete stops the look for that anime, ongoing brings it back', async () => {
+        const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await addFakeAnime(page);
+        await openFakeAnimeSeason(page);
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        const releases = page.getByRole('combobox', { name: 'Releases' });
+        await expect(releases).toHaveValue('auto');
+        await expect(releases.locator('option')).toHaveText(['AUTOMATIC · AniList has nothing sure about it', 'COMPLETE · no more episodes', 'ONGOING · still has episodes to come']);
+
+        await releases.selectOption('complete');
+
+        await expect(releases).toHaveValue('complete');
+        await page.getByRole('button', { name: 'BACK' }).click();
+        await expect(page.getByTestId('anime-season').getByTestId('anime-complete')).toHaveText('COMPLETE');
+        const asked = episodeListings();
+        await page.waitForTimeout(4500);
+        expect(episodeListings()).toBe(asked);
+
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('combobox', { name: 'Releases' }).selectOption('ongoing');
+        await expect(page.getByRole('combobox', { name: 'Releases' })).toHaveValue('ongoing');
+
+        await expect.poll(episodeListings, { timeout: 20000 }).toBeGreaterThan(asked);
+        await page.getByRole('button', { name: 'BACK' }).click();
+        await expect(page.getByTestId('anime-complete')).toHaveCount(0);
+    });
+
+    test('keeps what the user said about the releases when the app is opened again', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await addFakeAnime(page);
+        await openFakeAnimeSeason(page);
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('combobox', { name: 'Releases' }).selectOption('complete');
+        await expect(page.getByRole('combobox', { name: 'Releases' })).toHaveValue('complete');
+
+        const reopened = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await openAnimeToday(reopened);
+        await openFakeAnimeSeason(reopened);
+
+        await expect(reopened.getByTestId('anime-season').getByTestId('anime-complete')).toHaveText('COMPLETE');
     });
 
     test('does not show the availability of the anime of the schedule in the source any more', async () => {

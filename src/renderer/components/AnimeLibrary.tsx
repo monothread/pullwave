@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
+import type { AnimeAiringOverride, AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
 import type { Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
@@ -8,7 +8,7 @@ import { AnimeCover } from './AnimeCover';
 import { AnimeRemove } from './AnimeRemove';
 import { ConfirmButton } from './ConfirmButton';
 import { cleanSeasonName, cleanSeriesName, foldSeries, isValidSeason, MAX_SEASON, MAX_SEASON_NAME_LENGTH, sameSeries } from '@shared/series';
-import { NumberField, TextField } from './fields';
+import { NumberField, SelectField, TextField } from './fields';
 import { formatBytes, formatDuration } from './jobStatus';
 import { RowLink } from './RowLink';
 import { SeasonTranslation } from './SeasonTranslation';
@@ -317,6 +317,11 @@ function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; 
                 <div className="cover-card__footer">
                     <span className="job__badges">
                         <span className="season__meta">{seasonProgress(anime, t)}</span>
+                        {anime.airing.complete && (
+                            <span className="badge badge--done" data-testid="anime-complete" title={t('anime.airing.badge.hint')}>
+                                {t('anime.airing.badge')}
+                            </span>
+                        )}
                         {newCount > 0 && <NewEpisodesBadge count={newCount} t={t} />}
                     </span>
                     <div className="job__actions library__footer">
@@ -330,6 +335,33 @@ function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; 
 }
 
 // The screen of one season: what can be done with it and its episodes, as cards. The way back goes to the screen of the series.
+type AiringChoice = 'auto' | AnimeAiringOverride;
+const AIRING_CHOICES: readonly AiringChoice[] = ['auto', 'complete', 'ongoing'];
+
+// Whether the releases of the anime are over: AniList says it by itself, and here the user can say otherwise (an anime that is complete is not
+// looked at for new episodes).
+function AiringField({ anime, t }: { anime: LibraryAnime; t: Translator }) {
+    const setAiring = useAnimeStore((state) => {
+        return state.setAiring;
+    });
+    const automatic = t(anime.airing.status === null ? 'anime.airing.auto.unknown' : anime.airing.status === 'finished' ? 'anime.airing.auto.finished' : 'anime.airing.auto.ongoing');
+    const labels: Record<AiringChoice, string> = { auto: automatic, complete: t('anime.airing.complete'), ongoing: t('anime.airing.ongoing') };
+    return (
+        <SelectField
+            label={t('anime.airing.label')}
+            value={anime.airing.override ?? 'auto'}
+            options={AIRING_CHOICES}
+            formatOption={(choice) => {
+                return labels[choice];
+            }}
+            hint={t('anime.airing.hint')}
+            onChange={(choice) => {
+                void setAiring(anime.id, choice === 'auto' ? null : choice);
+            }}
+        />
+    );
+}
+
 function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; seriesName: string; t: Translator; onBack: () => void }) {
     const removeAnime = useAnimeStore((state) => {
         return state.removeAnime;
@@ -374,6 +406,7 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
                         <SourceButton anime={anime} t={t} />
                     </span>
                 </header>
+                <AiringField anime={anime} t={t} />
                 <div className="job__actions">
                     {edit}
                     <SeasonTranslation anime={anime} />

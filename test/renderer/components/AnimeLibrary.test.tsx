@@ -1945,3 +1945,104 @@ describe('AnimeLibrary episodes that the check for new episodes put in the libra
         expect(within(rows[1] as HTMLElement).getByTestId('anime-episode-new')).toHaveTextContent('NEW');
     });
 });
+
+describe('AnimeLibrary the releases of an anime', () => {
+    const ENDED = { status: 'finished', override: null, complete: true } as const;
+    const GOING = { status: 'ongoing', override: null, complete: false } as const;
+    const UNKNOWN = { status: null, override: null, complete: false } as const;
+
+    function season(airing: { status: 'finished' | 'ongoing' | null; override: 'complete' | 'ongoing' | null; complete: boolean }) {
+        return makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 10, title: 'Naruto', audio: 'sub', series: 'Naruto', season: 1, airing });
+    }
+
+    async function openSeason(airing: Parameters<typeof season>[0]) {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ library: [season(airing)] });
+        render(<AnimeLibrary />);
+        await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+        return user;
+    }
+
+    it('marks the season as complete on its card when its releases are over', async () => {
+        await openSeason(ENDED);
+
+        const badge = within(screen.getByTestId('anime-season')).getByTestId('anime-complete');
+        expect(badge).toHaveTextContent('COMPLETE');
+        expect(badge).toHaveClass('badge', 'badge--done');
+        expect(badge).toHaveAttribute('title', 'The releases are over: it is not looked at for new episodes.');
+    });
+
+    it.each([
+        ['AniList says it is going on', GOING],
+        ['AniList has nothing sure about it', UNKNOWN]
+    ])('marks nothing when %s', async (_label, airing) => {
+        await openSeason(airing);
+
+        expect(screen.queryByTestId('anime-complete')).not.toBeInTheDocument();
+    });
+
+    it('marks the season as complete when the user says so, whatever AniList says', async () => {
+        await openSeason({ status: 'ongoing', override: 'complete', complete: true });
+
+        expect(screen.getByTestId('anime-complete')).toBeInTheDocument();
+    });
+
+    it('does not mark the season when the user says it is going on, whatever AniList says', async () => {
+        await openSeason({ status: 'finished', override: 'ongoing', complete: false });
+
+        expect(screen.queryByTestId('anime-complete')).not.toBeInTheDocument();
+    });
+
+    it.each([
+        ['AniList says it ended', ENDED, 'AUTOMATIC · AniList says it ended'],
+        ['AniList says it is not over', GOING, 'AUTOMATIC · AniList says it is not over'],
+        ['AniList has nothing sure about it', UNKNOWN, 'AUTOMATIC · AniList has nothing sure about it']
+    ])('offers the releases on the screen of the season, following AniList: %s', async (_label, airing, automatic) => {
+        const user = await openSeason(airing);
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+
+        const select = screen.getByRole('combobox', { name: 'Releases' });
+        expect(select).toHaveValue('auto');
+        expect(
+            within(select)
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.textContent;
+                })
+        ).toEqual([automatic, 'COMPLETE · no more episodes', 'ONGOING · still has episodes to come']);
+        expect(screen.getByText('An anime that is complete is not looked at for new episodes. By default this follows AniList; choose another option if it is wrong.')).toBeInTheDocument();
+    });
+
+    it('shows what the user chose', async () => {
+        const user = await openSeason({ status: 'finished', override: 'ongoing', complete: false });
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+
+        expect(screen.getByRole('combobox', { name: 'Releases' })).toHaveValue('ongoing');
+    });
+
+    it.each([
+        ['complete', 'complete'],
+        ['ongoing', 'ongoing'],
+        ['auto', null]
+    ] as const)('says %s to the main process when it is chosen', async (choice, expected) => {
+        const user = await openSeason(choice === 'auto' ? { status: 'finished', override: 'ongoing', complete: false } : UNKNOWN);
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Releases' }), choice);
+
+        expect(mock.api.setAnimeAiring).toHaveBeenCalledTimes(1);
+        expect(mock.api.setAnimeAiring).toHaveBeenCalledWith(10, expected);
+    });
+
+    it('reads the library again after the choice, so the season shows it', async () => {
+        const user = await openSeason(UNKNOWN);
+        mock.api.listAnimeLibrary.mockResolvedValue([season({ status: null, override: 'complete', complete: true })]);
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Releases' }), 'complete');
+
+        await vi.waitFor(() => {
+            expect(screen.getByRole('combobox', { name: 'Releases' })).toHaveValue('complete');
+        });
+    });
+});
