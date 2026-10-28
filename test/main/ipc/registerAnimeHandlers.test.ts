@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AniRunResult, AnimeCheckResponse, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleTranslateResponse } from '@shared/anime';
+import type { AniRunResult, AnimeCheckResponse, AnimeCheckState, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleTranslateResponse } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
 import { MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
@@ -39,6 +39,7 @@ const ANIME_CHANNELS = [
     IPC.animeAddToLibrary,
     IPC.animeCancel,
     IPC.animeCheckNew,
+    IPC.animeCheckState,
     IPC.animeClearFinished,
     IPC.animeCover,
     IPC.animePause,
@@ -103,6 +104,9 @@ function setup(available = true) {
         }),
         checkAnime: vi.fn(async (): Promise<AnimeCheckResponse> => {
             return { ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 };
+        }),
+        state: vi.fn((): AnimeCheckState => {
+            return { running: false, origin: null, done: 0, total: 0, current: null };
         })
     };
     const covers = {
@@ -1609,6 +1613,20 @@ describe('registerAnimeHandlers updates', () => {
         expect(updates.checkNow).not.toHaveBeenCalled();
     });
 
+    it('says no check is going on when none is', () => {
+        const { call, updates } = setup();
+
+        expect(call(IPC.animeCheckState)).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
+        expect(updates.state).toHaveBeenCalledTimes(1);
+    });
+
+    it('says how far the check that is going on is', () => {
+        const { call, updates } = setup();
+        updates.state.mockReturnValue({ running: true, origin: 'auto', done: 12, total: 200, current: 'Naruto' });
+
+        expect(call(IPC.animeCheckState)).toEqual({ running: true, origin: 'auto', done: 12, total: 200, current: 'Naruto' });
+    });
+
     it.each([
         ['zero', 0],
         ['a negative number', -3],
@@ -1773,6 +1791,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeCover, 'Naruto')).toBeNull();
         expect(ipc.call(IPC.animeUpdates)).toEqual([]);
         expect(ipc.call(IPC.animeUpdatesClear)).toBeUndefined();
+        expect(ipc.call(IPC.animeCheckState)).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
         expect(ipc.call(IPC.animeCheckNew, null)).toEqual({ ok: false, error: { code: 'UNKNOWN', message: unsupported.raw } });
         expect(ipc.call(IPC.animeLibrary)).toEqual([]);
         expect(ipc.call(IPC.animeJobs)).toEqual([]);

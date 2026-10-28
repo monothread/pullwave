@@ -122,6 +122,9 @@ export function MangaDetail() {
     const checkingNew = useMangaStore((state) => {
         return state.checkingNew;
     });
+    const checkRunning = useMangaStore((state) => {
+        return state.checkState.running;
+    });
     const termFilters = useMangaStore((state) => {
         return state.termFilters;
     });
@@ -437,7 +440,7 @@ export function MangaDetail() {
                                     <button
                                         type="button"
                                         className="btn"
-                                        disabled={checkingNew !== null}
+                                        disabled={checkingNew !== null || checkRunning}
                                         onClick={() => {
                                             void checkNewChapters(saved.id);
                                         }}

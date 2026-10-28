@@ -1,4 +1,4 @@
-import type { MangaChapter, MangaDetails, MangaNewChapters } from '@shared/manga';
+import { IDLE_MANGA_CHECK_STATE, type MangaChapter, type MangaCheckState, type MangaDetails, type MangaNewChapters } from '@shared/manga';
 import { MangaDb } from '@main/services/manga/mangaDb';
 import { CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS, MangaUpdateChecker, newChaptersOf } from '@main/services/manga/mangaUpdateChecker';
 
@@ -20,9 +20,12 @@ interface Setup {
     enabled: { value: boolean };
     // The ids of the sources that are installed (null: not known), and whether asking for them fails.
     installed: { value: ReadonlySet<string> | null; fails: boolean; asked: number };
+    // Every state of the check that was told.
+    progress: MangaCheckState[];
 }
 
-function setup(): Setup {
+// `gate` makes each answer of the source wait until it is let go (to have a check that takes long).
+function setup(gate?: () => Promise<void>): Setup {
     const db = new MangaDb(':memory:', () => {return 1});
     const news: MangaNewChapters[] = [];
     const changes = { count: 0 };
@@ -30,15 +33,17 @@ function setup(): Setup {
     const answers = new Map<number, { details: MangaDetails; chapters: MangaChapter[] } | Error>();
     const enabled = { value: true };
     const installed: { value: ReadonlySet<string> | null; fails: boolean; asked: number } = { value: null, fails: false, asked: 0 };
+    const progress: MangaCheckState[] = [];
     const checker = new MangaUpdateChecker({
         db,
-        fetchManga: (remoteId) => {
+        fetchManga: async (remoteId) => {
             fetched.push(remoteId);
+            await gate?.();
             const answer = answers.get(remoteId);
             if (answer === undefined || answer instanceof Error) {
-                return Promise.reject(answer ?? new Error('not reachable'));
+                throw answer ?? new Error('not reachable');
             }
-            return Promise.resolve(answer);
+            return answer;
         },
         installedSourceIds: () => {
             installed.asked += 1;
@@ -52,9 +57,12 @@ function setup(): Setup {
         },
         onLibraryChanged: () => {
             changes.count += 1;
+        },
+        onProgress: (state) => {
+            progress.push(state);
         }
     });
-    return { db, checker, news, changes, fetched, answers, enabled, installed };
+    return { db, checker, news, changes, fetched, answers, enabled, installed, progress };
 }
 
 function addManga(context: Setup, remoteId: number, title: string, chapters: number[], sourceId = 's'): number {
@@ -565,3 +573,229 @@ describe('MangaUpdateChecker downloading what it finds', () => {
         expect(context.db.chaptersOf(one)).toHaveLength(2);
     });
 });
+
+describe('MangaUpdateChecker progress', () => {
+    const IDLE = { running: false, origin: null, done: 0, total: 0, current: null };
+
+    function threeMangas(context: Setup): void {
+        addManga(context, 7, 'One Piece', [1]);
+        addManga(context, 8, 'Bleach', [1]);
+        addManga(context, 9, 'Naruto', [1]);
+        [7, 8, 9].forEach((remoteId) => {
+            context.answers.set(remoteId, { details: details(remoteId), chapters: [chapter(1)] });
+        });
+    }
+
+    it('is idle until a check begins', () => {
+        const context = setup();
+
+        expect(context.checker.state()).toEqual(IDLE);
+        expect(context.checker.state()).toBe(IDLE_MANGA_CHECK_STATE);
+        expect(context.progress).toEqual([]);
+    });
+
+    it('tells when the check begins, each time it moves on to another manga, with its title, and when it ends', async () => {
+        const context = setup();
+        threeMangas(context);
+
+        await context.checker.checkNow('auto');
+
+        expect(context.progress).toEqual([
+            { running: true, origin: 'auto', done: 0, total: 3, current: 'Bleach' },
+            { running: true, origin: 'auto', done: 1, total: 3, current: 'Naruto' },
+            { running: true, origin: 'auto', done: 2, total: 3, current: 'One Piece' },
+            IDLE
+        ]);
+        expect(context.checker.state()).toEqual(IDLE);
+    });
+
+    it('says the check was asked for by the user when it was', async () => {
+        const context = setup();
+        context.enabled.value = false;
+        addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1)] });
+
+        await context.checker.checkNow('manual');
+
+        expect(context.progress).toEqual([{ running: true, origin: 'manual', done: 0, total: 1, current: 'One Piece' }, IDLE]);
+    });
+
+    it('gives the state of the check that is going on, to who asks meanwhile', async () => {
+        const seen: MangaCheckState[] = [];
+        const holder: { context?: Setup } = {};
+        const context = setup(async () => {
+            seen.push((holder.context as Setup).checker.state());
+        });
+        holder.context = context;
+        addManga(context, 8, 'Bleach', [1]);
+        addManga(context, 9, 'Naruto', [1]);
+        context.answers.set(8, { details: details(8), chapters: [chapter(1)] });
+        context.answers.set(9, { details: details(9), chapters: [chapter(1)] });
+
+        await context.checker.checkNow('auto');
+
+        expect(seen).toEqual([
+            { running: true, origin: 'auto', done: 0, total: 2, current: 'Bleach' },
+            { running: true, origin: 'auto', done: 1, total: 2, current: 'Naruto' }
+        ]);
+    });
+
+    it('counts only the mangas it asks about: the ones of a source that is not installed are left out and never named', async () => {
+        const context = setup();
+        addManga(context, 7, 'One Piece', [1], 'dex');
+        addManga(context, 8, 'Bleach', [1], 'gone');
+        addManga(context, 9, 'Naruto', [1], 'dex');
+        context.answers.set(7, { details: details(7), chapters: [chapter(1)] });
+        context.answers.set(9, { details: details(9), chapters: [chapter(1)] });
+        context.installed.value = new Set(['dex']);
+
+        await expect(context.checker.checkNow('auto')).resolves.toMatchObject({ failed: 0, skipped: 1 });
+
+        expect(context.progress).toEqual([
+            { running: true, origin: 'auto', done: 0, total: 2, current: 'Naruto' },
+            { running: true, origin: 'auto', done: 1, total: 2, current: 'One Piece' },
+            IDLE
+        ]);
+    });
+
+    it('tells nothing when no manga is asked about: no extension is installed, the library is empty or the hourly check is off', async () => {
+        const context = setup();
+        await context.checker.checkNow('auto');
+        addManga(context, 8, 'Bleach', [1], 'gone');
+        context.installed.value = new Set(['dex']);
+        await context.checker.checkNow('auto');
+        context.installed.value = null;
+        context.enabled.value = false;
+        await context.checker.checkNow('auto');
+
+        expect(context.progress).toEqual([]);
+        expect(context.checker.state()).toEqual(IDLE);
+    });
+
+    it('moves on to the next manga whether the one before could be reached or not', async () => {
+        const context = setup();
+        threeMangas(context);
+        context.answers.set(8, new Error('offline'));
+
+        await expect(context.checker.checkNow('auto')).resolves.toMatchObject({ failed: 1 });
+
+        expect(
+            context.progress.map((state) => {
+                return [state.done, state.current];
+            })
+        ).toEqual([
+            [0, 'Bleach'],
+            [1, 'Naruto'],
+            [2, 'One Piece'],
+            [0, null]
+        ]);
+    });
+
+    it('ends when the checker is stopped in the middle of the check', async () => {
+        const holder: { context?: Setup } = {};
+        const context = setup(async () => {
+            (holder.context as Setup).checker.stop();
+        });
+        holder.context = context;
+        threeMangas(context);
+
+        await context.checker.checkNow('auto');
+
+        expect(context.progress.at(-1)).toEqual(IDLE);
+        expect(context.checker.state()).toEqual(IDLE);
+        expect(context.fetched).toEqual([8]);
+    });
+
+    it('tells nothing for the check of a single manga', async () => {
+        const context = setup();
+        const id = addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1)] });
+
+        await context.checker.checkManga(id);
+
+        expect(context.progress).toEqual([]);
+    });
+
+    it('does not start a second check while one is going on: who asks meanwhile gets the same answer and no new state', async () => {
+        const context = setup();
+        threeMangas(context);
+
+        const first = context.checker.checkNow('auto');
+        const second = context.checker.checkNow('manual');
+        const answers = await Promise.all([first, second]);
+
+        expect(answers[0]).toBe(answers[1]);
+        expect(context.fetched).toEqual([8, 9, 7]);
+        expect(
+            context.progress.filter((state) => {
+                return state.running && state.done === 0;
+            })
+        ).toEqual([{ running: true, origin: 'auto', done: 0, total: 3, current: 'Bleach' }]);
+    });
+});
+
+describe('MangaUpdateChecker a check that takes longer than the interval', () => {
+    function slow() {
+        let release: () => void = () => {
+            return undefined;
+        };
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let first = true;
+        const context = setup(async () => {
+            if (first) {
+                first = false;
+                await gate;
+            }
+        });
+        addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7), chapters: [chapter(1)] });
+        return { context, release };
+    }
+
+    it('does not start another check over it when the hour passes, not even several hours later', async () => {
+        const { context, release } = slow();
+        context.checker.start();
+        await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
+        expect(context.fetched).toEqual([7]);
+        expect(context.checker.state().running).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS * 3);
+
+        expect(context.fetched).toEqual([7]);
+        expect(context.checker.state().running).toBe(true);
+        release();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(context.checker.state().running).toBe(false);
+        context.checker.stop();
+    });
+
+    it('answers a check asked for meanwhile with the one that is going on', async () => {
+        const { context, release } = slow();
+        const first = context.checker.checkNow('auto');
+        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS * 2);
+
+        const second = context.checker.checkNow('manual');
+        release();
+        const answers = await Promise.all([first, second]);
+
+        expect(answers[0]).toBe(answers[1]);
+        expect(context.fetched).toEqual([7]);
+    });
+
+    it('checks again at the next hour once the long check has ended', async () => {
+        const { context, release } = slow();
+        context.checker.start();
+        await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS + CHECK_INTERVAL_MS * 2);
+        release();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(context.fetched).toEqual([7]);
+
+        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+
+        expect(context.fetched).toEqual([7, 7]);
+        context.checker.stop();
+    });
+});
+

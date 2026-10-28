@@ -1,5 +1,5 @@
-import type { AniError, AniRunResult, AnimeAudio, AnimeNewEpisodes, AnimeSearchResult } from '@shared/anime';
-import { MAX_AUTO_DOWNLOAD_EPISODES } from '@shared/anime';
+import type { AniError, AniRunResult, AnimeAudio, AnimeCheckState, AnimeNewEpisodes, AnimeSearchResult } from '@shared/anime';
+import { IDLE_CHECK_STATE, MAX_AUTO_DOWNLOAD_EPISODES } from '@shared/anime';
 import { AnimeDb } from '@main/services/animeDb';
 import {
     AnimeUpdateChecker,
@@ -1042,5 +1042,249 @@ describe('AnimeUpdateChecker schedule', () => {
 
             expect(context.checker.nextDelayMs()).toBe(BACKOFF_LIMIT_MS * 2);
         });
+    });
+});
+
+describe('AnimeUpdateChecker progress', () => {
+    const IDLE = { running: false, origin: null, done: 0, total: 0, current: null };
+
+    function withProgress() {
+        const onProgress = vi.fn<(state: AnimeCheckState) => void>();
+        const context = setup({ onProgress });
+        return { context, onProgress };
+    }
+
+    it('is idle until a check begins', () => {
+        const { context, onProgress } = withProgress();
+
+        expect(context.checker.state()).toEqual(IDLE);
+        expect(context.checker.state()).toBe(IDLE_CHECK_STATE);
+        expect(onProgress).not.toHaveBeenCalled();
+    });
+
+    it('tells when the check begins, each time it moves on to another anime, with the title of the one it asks about, and when it ends', async () => {
+        const { context, onProgress } = withProgress();
+        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+        readOnce(context, 'Gintama', 'gintama', 3, ['1'], ['1']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+        await context.checker.checkNow('auto');
+
+        expect(onProgress.mock.calls).toEqual([
+            [{ running: true, origin: 'auto', done: 0, total: 3, current: 'Bleach' }],
+            [{ running: true, origin: 'auto', done: 1, total: 3, current: 'Gintama' }],
+            [{ running: true, origin: 'auto', done: 2, total: 3, current: 'Naruto' }],
+            [IDLE]
+        ]);
+        expect(context.checker.state()).toEqual(IDLE);
+    });
+
+    it('says the check was asked for by the user when it was', async () => {
+        const { context, onProgress } = withProgress();
+        context.flags.enabled = false;
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+        await context.checker.checkNow('manual');
+
+        expect(onProgress.mock.calls).toEqual([[{ running: true, origin: 'manual', done: 0, total: 1, current: 'Naruto' }], [IDLE]]);
+    });
+
+    it('gives the state of the check that is going on, to who asks meanwhile', async () => {
+        const { context } = withProgress();
+        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+        const seen: AnimeCheckState[] = [];
+        context.search.mockImplementation(async (query) => {
+            seen.push(context.checker.state());
+            return done([{ index: query === 'bleach' ? 2 : 1, title: query }]);
+        });
+
+        await context.checker.checkNow('auto');
+
+        expect(seen).toEqual([
+            { running: true, origin: 'auto', done: 0, total: 2, current: 'Bleach' },
+            { running: true, origin: 'auto', done: 1, total: 2, current: 'Naruto' }
+        ]);
+    });
+
+    it('moves on to the next anime whether the one before failed, was skipped or was read', async () => {
+        const { context, onProgress } = withProgress();
+        context.addAnime('Gintama', 'gintama', 3);
+        context.addAnime('Naruto', 'naruto', 1);
+        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+        context.search.mockImplementation(async (query) => {
+            if (query === 'gintama') {
+                return failed<AnimeSearchResult[]>(NETWORK);
+            }
+            return query === 'naruto' ? failed<AnimeSearchResult[]>(NO_RESULTS) : done([{ index: 2, title: 'Bleach' }]);
+        });
+
+        await context.checker.checkNow('auto');
+
+        expect(
+            onProgress.mock.calls.map(([state]) => {
+                return [state.done, state.current];
+            })
+        ).toEqual([
+            [0, 'Bleach'],
+            [1, 'Gintama'],
+            [2, 'Naruto'],
+            [0, null]
+        ]);
+    });
+
+    it('ends when the source refuses, and does not name the anime that were not asked about', async () => {
+        const { context, onProgress } = withProgress();
+        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+        readOnce(context, 'Gintama', 'gintama', 3, ['1'], ['1']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+        context.search.mockResolvedValue(failed(BLOCKED));
+
+        await context.checker.checkNow('auto');
+
+        expect(onProgress.mock.calls).toEqual([[{ running: true, origin: 'auto', done: 0, total: 3, current: 'Bleach' }], [IDLE]]);
+    });
+
+    it('ends when the checker is stopped in the middle of the check', async () => {
+        const { context, onProgress } = withProgress();
+        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+        context.search.mockImplementation(async () => {
+            context.checker.stop();
+            return done([{ index: 2, title: 'Bleach' }]);
+        });
+
+        await context.checker.checkNow('auto');
+
+        expect(onProgress.mock.calls.at(-1)).toEqual([IDLE]);
+        expect(context.checker.state()).toEqual(IDLE);
+    });
+
+    it('ends when the way of waiting between two anime fails, and the failure goes on to who asked', async () => {
+        const { context, onProgress } = withProgress();
+        readOnce(context, 'Bleach', 'bleach', 2, ['1'], ['1']);
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+        context.sleep.mockRejectedValue(new Error('timer failed'));
+
+        await expect(context.checker.checkNow('auto')).rejects.toThrow('timer failed');
+
+        expect(onProgress.mock.calls.at(-1)).toEqual([IDLE]);
+        expect(context.checker.state()).toEqual(IDLE);
+    });
+
+    it('tells nothing when the hourly check is off, or when the library is empty', async () => {
+        const { context, onProgress } = withProgress();
+        await context.checker.checkNow('auto');
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+        context.flags.enabled = false;
+        await context.checker.checkNow('auto');
+
+        expect(onProgress).not.toHaveBeenCalled();
+        expect(context.checker.state()).toEqual(IDLE);
+    });
+
+    it('tells nothing for the check of a single anime', async () => {
+        const { context, onProgress } = withProgress();
+        const id = readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+        await context.checker.checkAnime(id);
+
+        expect(onProgress).not.toHaveBeenCalled();
+    });
+
+    it('does not need anyone to listen', async () => {
+        const context = setup({ onProgress: undefined });
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+        await expect(context.checker.checkNow('auto')).resolves.toMatchObject({ ok: true });
+        expect(context.checker.state()).toEqual(IDLE);
+    });
+
+    it('does not start a second check while one is going on: who asks meanwhile gets the same answer and no new state', async () => {
+        const { context, onProgress } = withProgress();
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+
+        const first = context.checker.checkNow('auto');
+        const second = context.checker.checkNow('manual');
+        await Promise.all([first, second]);
+
+        expect(onProgress.mock.calls).toEqual([[{ running: true, origin: 'auto', done: 0, total: 1, current: 'Naruto' }], [IDLE]]);
+    });
+});
+
+describe('AnimeUpdateChecker a check that takes longer than the interval', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    // A look whose first search waits until the test lets it go.
+    function slow() {
+        const context = setup();
+        readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);
+        let release: () => void = () => {
+            return undefined;
+        };
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let first = true;
+        context.search.mockImplementation(async () => {
+            if (first) {
+                first = false;
+                await gate;
+            }
+            return done([{ index: 1, title: 'Naruto' }]);
+        });
+        return { context, release };
+    }
+
+    it('does not start another check over it when the hour passes, not even several hours later', async () => {
+        const { context, release } = slow();
+        context.checker.start();
+        await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
+        expect(context.search).toHaveBeenCalledTimes(1);
+        expect(context.checker.state().running).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS * 3);
+
+        expect(context.search).toHaveBeenCalledTimes(1);
+        expect(context.checker.state().running).toBe(true);
+        release();
+        await vi.advanceTimersByTimeAsync(0);
+        context.checker.stop();
+    });
+
+    it('answers a check asked for meanwhile with the one that is going on', async () => {
+        const { context, release } = slow();
+        const first = context.checker.checkNow('auto');
+        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS * 2);
+
+        const second = context.checker.checkNow('manual');
+        release();
+        const answers = await Promise.all([first, second]);
+
+        expect(answers[0]).toBe(answers[1]);
+        expect(context.search).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits the whole interval after the long check ends before the next one, counted from its end', async () => {
+        const { context, release } = slow();
+        context.checker.start();
+        await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS + CHECK_INTERVAL_MS * 2);
+        expect(context.search).toHaveBeenCalledTimes(1);
+
+        release();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(context.checker.state().running).toBe(false);
+        await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS - 1);
+        expect(context.search).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(context.search).toHaveBeenCalledTimes(2);
+        context.checker.stop();
     });
 });

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeCheckResponse, AnimeUpdateEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -227,5 +227,85 @@ describe('AnimeUpdates', () => {
             expect(mock.api.clearAnimeUpdates).not.toHaveBeenCalled();
             expect(screen.getByTestId('anime-update')).toBeInTheDocument();
         });
+    });
+});
+
+describe('AnimeUpdates while a check is going on', () => {
+    const AUTO = { running: true, origin: 'auto', done: 12, total: 200, current: 'Frieren: Beyond Journey\'s End' } as const;
+    const MANUAL = { running: true, origin: 'manual', done: 3, total: 10, current: 'Naruto' } as const;
+    const IDLE = { running: false, origin: null, done: 0, total: 0, current: null } as const;
+
+    it('shows nothing about a check, and has the button ready, when none is going on', () => {
+        render(<AnimeUpdates />);
+
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW EPISODES' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW EPISODES' })).not.toHaveAttribute('title');
+        expect(screen.queryByTestId('anime-check-current')).not.toBeInTheDocument();
+    });
+
+    it('turns the button off and says the hourly look is going on, how far it is and which anime it asks about', () => {
+        useAnimeStore.setState({ checkState: AUTO });
+        render(<AnimeUpdates />);
+
+        const button = screen.getByRole('button', { name: 'AUTOMATIC LOOK… 12/200' });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'The look every hour is going on. Wait for it to end.');
+        const current = screen.getByTestId('anime-check-current');
+        expect(current).toHaveTextContent('Now: Frieren: Beyond Journey\'s End');
+        expect(current).toHaveAttribute('role', 'status');
+        expect(current).toHaveAttribute('title', 'Frieren: Beyond Journey\'s End');
+    });
+
+    it('turns the button off too for the look the user asked for, with its progress and no explanation of the hourly one', () => {
+        useAnimeStore.setState({ checkState: MANUAL });
+        render(<AnimeUpdates />);
+
+        const button = screen.getByRole('button', { name: 'LOOKING… 3/10' });
+        expect(button).toBeDisabled();
+        expect(button).not.toHaveAttribute('title');
+        expect(screen.getByTestId('anime-check-current')).toHaveTextContent('Now: Naruto');
+    });
+
+    it('says only that it is looking while the main process has not said how many anime there are', () => {
+        useAnimeStore.setState({ checkState: { running: true, origin: 'auto', done: 0, total: 0, current: null } });
+        render(<AnimeUpdates />);
+
+        expect(screen.getByRole('button', { name: 'LOOKING…' })).toBeDisabled();
+        expect(screen.queryByTestId('anime-check-current')).not.toBeInTheDocument();
+    });
+
+    it('does not ask for another check when the button is pressed meanwhile', () => {
+        useAnimeStore.setState({ checkState: AUTO });
+        render(<AnimeUpdates />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'AUTOMATIC LOOK… 12/200' }));
+
+        expect(mock.api.checkNewAnimeEpisodes).not.toHaveBeenCalled();
+    });
+
+    it('follows the check: the anime changes, and when it ends the button is ready and the indicator is gone', () => {
+        useAnimeStore.setState({ checkState: AUTO });
+        render(<AnimeUpdates />);
+
+        act(() => {
+            useAnimeStore.setState({ checkState: { ...AUTO, done: 13, current: 'Bleach' } });
+        });
+        expect(screen.getByRole('button', { name: 'AUTOMATIC LOOK… 13/200' })).toBeDisabled();
+        expect(screen.getByTestId('anime-check-current')).toHaveTextContent('Now: Bleach');
+
+        act(() => {
+            useAnimeStore.setState({ checkState: IDLE });
+        });
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW EPISODES' })).toBeEnabled();
+        expect(screen.queryByTestId('anime-check-current')).not.toBeInTheDocument();
+    });
+
+    it('keeps the list and the button to clear it while a check is going on', async () => {
+        mock.api.listAnimeUpdates.mockResolvedValue([entry()]);
+        useAnimeStore.setState({ checkState: AUTO });
+        render(<AnimeUpdates />);
+
+        expect(await screen.findByTestId('anime-update')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'CLEAR LIST' })).toBeEnabled();
     });
 });

@@ -481,6 +481,19 @@ export interface MangaUpdateEntry {
 
 // What a check for new chapters found: how many chapters, in which mangas, in how many mangas the source could not be reached, and how many
 // mangas were not even asked about because the extension of their source is not installed.
+// Whether a check for new chapters of all the mangas is going on, who started it (the hourly look or a button), how far it is (the mangas that
+// were asked about out of the ones that are asked about) and the title of the manga it asks about now. When none is going on, `origin` and
+// `current` are null and both numbers are 0.
+export interface MangaCheckState {
+    running: boolean;
+    origin: ArrivalOrigin | null;
+    done: number;
+    total: number;
+    current: string | null;
+}
+
+export const IDLE_MANGA_CHECK_STATE: MangaCheckState = { running: false, origin: null, done: 0, total: 0, current: null };
+
 export type MangaCheckResponse = { ok: true; count: number; titles: string[]; failed: number; skipped: number } | { ok: false; error: MangaError };
 
 // Where a manga was left: the chapter and the page. It is kept for the mangas of the library and for the ones that are only read.
@@ -558,6 +571,8 @@ export interface MangaApi {
     clearUpdates: () => Promise<void>;
     // Asks the source for new chapters: of one manga of the library, or of all of them (null).
     checkNewChapters: (mangaId: number | null) => Promise<MangaCheckResponse>;
+    // Whether a check of all the mangas is going on now (the hourly one or a button), to show it when the screen is opened.
+    checkState: () => Promise<MangaCheckState>;
     // Where the user is in a chapter, for the history of reading.
     recordReading: (record: ReadingRecord) => Promise<void>;
     readingHistory: () => Promise<ReadingEntry[]>;
@@ -593,6 +608,8 @@ export interface MangaApi {
     onMigrationProgress: (listener: (progress: MangaMigrationProgress) => void) => () => void;
     // The hourly check added chapters to the library.
     onNewChapters: (listener: (news: MangaNewChapters) => void) => () => void;
+    // The check for new chapters began, moved on to another manga or ended.
+    onCheckState: (listener: (state: MangaCheckState) => void) => () => void;
     onToolState: (listener: (state: ToolState) => void) => () => void;
     onServerStatus: (listener: (status: MangaServerStatus) => void) => () => void;
     // The checks of Cloudflare that are going on, every time they change (an empty list when none is).

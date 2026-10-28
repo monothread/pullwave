@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import { hasChapterFile } from '@shared/manga';
+import { hasChapterFile, IDLE_MANGA_CHECK_STATE } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
 import type {
     ExtensionAction,
     LibraryManga,
     MangaChapter,
+    MangaCheckState,
     MangaCloudflareActivity,
     MangaDetails,
     MangaError,
@@ -245,6 +246,8 @@ interface MangaState {
     history: ReadingEntry[];
     // What is being asked for new chapters: one manga of the library (its id), all of them, or nothing.
     checkingNew: number | 'all' | null;
+    // Whether a check of all the mangas is going on in the main process (the hourly one or a button) and how far it is.
+    checkState: MangaCheckState;
 
     loadUpdates: () => Promise<void>;
     clearUpdates: () => Promise<void>;
@@ -480,6 +483,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         updates: [],
         history: [],
         checkingNew: null,
+        checkState: IDLE_MANGA_CHECK_STATE,
         extensions: { ...EMPTY_EXTENSIONS, filter: { ...EMPTY_EXTENSIONS.filter, lang: initialPrefs.extensionLanguage, onlyInstalled: initialPrefs.onlyInstalled } },
         cloudflare: [],
 
@@ -492,8 +496,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     return undefined;
                 };
             }
-            const [library, jobs, groups, queueHeld] = await Promise.all([api.library(), api.jobs(), api.groups(), api.queueHeld()]);
-            set({ library, jobs, groups, queueHeld });
+            const [library, jobs, groups, queueHeld, checkState] = await Promise.all([api.library(), api.jobs(), api.groups(), api.queueHeld(), api.checkState()]);
+            set({ library, jobs, groups, queueHeld, checkState });
             const unsubscribers = [
                 api.onToolState((tool) => {
                     // Two programs are downloaded: the one that runs the extensions, and the one that gets past Cloudflare.
@@ -562,6 +566,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 api.onMigrationProgress((migration) => {
                     set({ migration });
                 }),
+                api.onCheckState((checkState) => {
+                    set({ checkState });
+                }),
                 api.onNewChapters((news) => {
                     toast('manga.notice.newChapters', { count: news.count, titles: news.titles.join(', ') });
                 })
@@ -583,6 +590,10 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         checkNewChapters: async (mangaId) => {
+            // One check at a time: while one is going on (here or by itself, every hour) another is not started.
+            if (get().checkingNew !== null || get().checkState.running) {
+                return;
+            }
             set({ checkingNew: mangaId ?? 'all' });
             try {
                 const response = await window.api.manga.checkNewChapters(mangaId);

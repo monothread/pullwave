@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { AniError, AnimeAudio, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
+import type { AniError, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
+import { IDLE_CHECK_STATE } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { readScheduleChoice, saveScheduleTimeZone, type AnimeScheduleView } from './scheduleChoice';
@@ -86,6 +87,8 @@ export interface AnimeState {
     updates: AnimeUpdateEntry[];
     // What the check for new episodes that was asked for is looking at: one anime (its id), all of them, or none.
     checkingNew: number | 'all' | null;
+    // Whether a check of all the anime is going on in the main process (the hourly one or a button) and how far it is.
+    checkState: AnimeCheckState;
     selection: AnimeSelection | null;
     playing: PlayingEpisode | null;
     streaming: StreamingEpisode | null;
@@ -263,6 +266,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         covers: {},
         updates: [],
         checkingNew: null,
+        checkState: IDLE_CHECK_STATE,
         selection: null,
         playing: null,
         streaming: null,
@@ -278,8 +282,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     return undefined;
                 };
             }
-            const [library, jobs, history] = await Promise.all([api.listAnimeLibrary(), api.listAnimeJobs(), api.listAnimeHistory()]);
-            set({ library, jobs, history });
+            const [library, jobs, history, checkState] = await Promise.all([api.listAnimeLibrary(), api.listAnimeJobs(), api.listAnimeHistory(), api.getAnimeCheckState()]);
+            set({ library, jobs, history, checkState });
             const unsubscribers = [
                 api.onAnimeJobUpdate((job) => {
                     if (job.status === 'done') {
@@ -311,6 +315,9 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     set((state) => {
                         return { covers: { ...state.covers, [coverKey(update.title)]: { status: 'found', url: update.url } } };
                     });
+                }),
+                api.onAnimeCheckState((checkState) => {
+                    set({ checkState });
                 }),
                 api.onAnimeNewEpisodes((news) => {
                     useAppStore.getState().pushToast(translateNow('anime.notice.newEpisodes', { count: news.count, titles: news.titles.join(', ') }));
@@ -782,6 +789,10 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         checkNewEpisodes: async (animeId) => {
+            // One check at a time: while one is going on (here or by itself, every hour) another is not started.
+            if (get().checkingNew !== null || get().checkState.running) {
+                return;
+            }
             set({ checkingNew: animeId ?? 'all' });
             try {
                 const response = await window.api.checkNewAnimeEpisodes(animeId);

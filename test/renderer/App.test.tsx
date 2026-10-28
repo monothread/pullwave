@@ -381,7 +381,7 @@ describe('App anime section', () => {
         const { unmount } = render(<App />);
         await screen.findByRole('button', { name: 'ANIME' });
         unmount();
-        expect(mock.unsubscribers).toHaveLength(11);
+        expect(mock.unsubscribers).toHaveLength(12);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
@@ -469,7 +469,7 @@ describe('App manga section', () => {
         await screen.findByRole('button', { name: 'MANGA' });
         const before = mock.unsubscribers.length;
         unmount();
-        expect(before).toBe(15);
+        expect(before).toBe(16);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

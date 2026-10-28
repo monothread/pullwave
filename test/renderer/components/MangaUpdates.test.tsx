@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaUpdateEntry } from '@shared/manga';
@@ -141,3 +141,75 @@ describe('MangaUpdates', () => {
         expect(screen.getByRole('region', { name: 'UPDATES' })).toBeInTheDocument();
     });
 });
+
+describe('MangaUpdates while a check is going on', () => {
+    const AUTO = { running: true, origin: 'auto', done: 7, total: 40, current: 'Dr. STONE' } as const;
+    const MANUAL = { running: true, origin: 'manual', done: 2, total: 5, current: 'One Piece' } as const;
+    const IDLE = { running: false, origin: null, done: 0, total: 0, current: null } as const;
+
+    it('shows nothing about a check, and has the button ready, when none is going on', () => {
+        render(<MangaUpdates />);
+
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).not.toHaveAttribute('title');
+        expect(screen.queryByTestId('manga-check-current')).not.toBeInTheDocument();
+    });
+
+    it('turns the button off and says the hourly look is going on, how far it is and which manga it asks about', () => {
+        useMangaStore.setState({ checkState: AUTO });
+        render(<MangaUpdates />);
+
+        const button = screen.getByRole('button', { name: 'AUTOMATIC LOOK… 7/40' });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'The look every hour is going on. Wait for it to end.');
+        const current = screen.getByTestId('manga-check-current');
+        expect(current).toHaveTextContent('Now: Dr. STONE');
+        expect(current).toHaveAttribute('role', 'status');
+        expect(current).toHaveAttribute('title', 'Dr. STONE');
+    });
+
+    it('turns the button off too for the look the user asked for, with its progress and no explanation of the hourly one', () => {
+        useMangaStore.setState({ checkState: MANUAL });
+        render(<MangaUpdates />);
+
+        const button = screen.getByRole('button', { name: 'LOOKING… 2/5' });
+        expect(button).toBeDisabled();
+        expect(button).not.toHaveAttribute('title');
+        expect(screen.getByTestId('manga-check-current')).toHaveTextContent('Now: One Piece');
+    });
+
+    it('says only that it is looking while the main process has not said how many mangas there are', () => {
+        useMangaStore.setState({ checkState: { running: true, origin: 'auto', done: 0, total: 0, current: null } });
+        render(<MangaUpdates />);
+
+        expect(screen.getByRole('button', { name: 'LOOKING…' })).toBeDisabled();
+        expect(screen.queryByTestId('manga-check-current')).not.toBeInTheDocument();
+    });
+
+    it('does not ask for another check when the button is pressed meanwhile', () => {
+        useMangaStore.setState({ checkState: AUTO });
+        render(<MangaUpdates />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'AUTOMATIC LOOK… 7/40' }));
+
+        expect(mock.api.manga.checkNewChapters).not.toHaveBeenCalled();
+    });
+
+    it('follows the check: the manga changes, and when it ends the button is ready and the indicator is gone', () => {
+        useMangaStore.setState({ checkState: AUTO });
+        render(<MangaUpdates />);
+
+        act(() => {
+            useMangaStore.setState({ checkState: { ...AUTO, done: 8, current: 'Bleach' } });
+        });
+        expect(screen.getByRole('button', { name: 'AUTOMATIC LOOK… 8/40' })).toBeDisabled();
+        expect(screen.getByTestId('manga-check-current')).toHaveTextContent('Now: Bleach');
+
+        act(() => {
+            useMangaStore.setState({ checkState: IDLE });
+        });
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeEnabled();
+        expect(screen.queryByTestId('manga-check-current')).not.toBeInTheDocument();
+    });
+});
+

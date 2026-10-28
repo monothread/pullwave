@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeAddResponse, AnimeCheckResponse, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeAddResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { LlmStatus } from '@shared/llm';
-import type { MangaApi, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
+import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
 import { PROGRAM_IDS, type ProgramId, type ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
@@ -45,6 +45,7 @@ export interface MockApiHandle {
     emitMangaMigration: (progress: MangaMigrationProgress) => void;
     emitMangaServerUpdate: (state: ToolState) => void;
     emitMangaNewChapters: (news: MangaNewChapters) => void;
+    emitMangaCheckState: (state: MangaCheckState) => void;
     emitJobUpdate: (job: DownloadJob) => void;
     emitJobRemoved: (id: string) => void;
     emitHistoryChanged: () => void;
@@ -54,6 +55,7 @@ export interface MockApiHandle {
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
     emitAnimeCover: (update: AnimeCoverUpdate) => void;
     emitAnimeNewEpisodes: (news: AnimeNewEpisodes) => void;
+    emitAnimeCheckState: (state: AnimeCheckState) => void;
     emitSubtitleTranslation: (job: SubtitleTranslationJob) => void;
     emitSubtitleGeneration: (job: SubtitleGenerationJob) => void;
     unsubscribers: Array<ReturnType<typeof vi.fn>>;
@@ -71,6 +73,7 @@ export function createMockApi(): MockApiHandle {
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
     const animeCoverListeners: Array<(update: AnimeCoverUpdate) => void> = [];
     const animeNewEpisodesListeners: Array<(news: AnimeNewEpisodes) => void> = [];
+    const animeCheckStateListeners: Array<(state: AnimeCheckState) => void> = [];
     const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
     const programToolListeners: Array<(state: ToolState) => void> = [];
@@ -84,6 +87,7 @@ export function createMockApi(): MockApiHandle {
     const mangaLibraryListeners: Array<() => void> = [];
     const mangaMigrationListeners: Array<(progress: MangaMigrationProgress) => void> = [];
     const mangaNewChaptersListeners: Array<(news: MangaNewChapters) => void> = [];
+    const mangaCheckStateListeners: Array<(state: MangaCheckState) => void> = [];
     const unsubscribers: Array<ReturnType<typeof vi.fn>> = [];
 
     function subscribe<T>(listeners: T[], listener: T): () => void {
@@ -214,6 +218,9 @@ export function createMockApi(): MockApiHandle {
         checkNewChapters: vi.fn(async () => {
             return { ok: true, count: 0, titles: [], failed: 0, skipped: 0 };
         }),
+        checkState: vi.fn(async () => {
+            return { running: false, origin: null, done: 0, total: 0, current: null } as MangaCheckState;
+        }),
         recordReading: vi.fn(async () => {return undefined}),
         readingHistory: vi.fn(async () => {
             return [];
@@ -266,6 +273,9 @@ export function createMockApi(): MockApiHandle {
         }),
         onNewChapters: vi.fn((listener: (news: MangaNewChapters) => void) => {
             return subscribe(mangaNewChaptersListeners, listener);
+        }),
+        onCheckState: vi.fn((listener: (state: MangaCheckState) => void) => {
+            return subscribe(mangaCheckStateListeners, listener);
         }),
         onToolState: vi.fn((listener: (state: ToolState) => void) => {
             return subscribe(mangaToolListeners, listener);
@@ -500,8 +510,14 @@ export function createMockApi(): MockApiHandle {
         checkNewAnimeEpisodes: vi.fn(async (): Promise<AnimeCheckResponse> => {
             return { ok: true, count: 0, titles: [], notDownloaded: [], failed: 0, skipped: 0 };
         }),
+        getAnimeCheckState: vi.fn(async (): Promise<AnimeCheckState> => {
+            return { running: false, origin: null, done: 0, total: 0, current: null };
+        }),
         onAnimeNewEpisodes: vi.fn((listener: (news: AnimeNewEpisodes) => void) => {
             return subscribe(animeNewEpisodesListeners, listener);
+        }),
+        onAnimeCheckState: vi.fn((listener: (state: AnimeCheckState) => void) => {
+            return subscribe(animeCheckStateListeners, listener);
         }),
         onAnimeJobUpdate: vi.fn((listener: (job: AnimeJob) => void) => {
             return subscribe(animeJobListeners, listener);
@@ -593,6 +609,11 @@ export function createMockApi(): MockApiHandle {
                 listener(news);
             });
         },
+        emitMangaCheckState: (state) => {
+            mangaCheckStateListeners.forEach((listener) => {
+                listener(state);
+            });
+        },
         emitJobUpdate: (job) => {
             jobListeners.forEach((listener) => {
                 listener(job);
@@ -626,6 +647,11 @@ export function createMockApi(): MockApiHandle {
         emitAnimeNewEpisodes: (news) => {
             animeNewEpisodesListeners.forEach((listener) => {
                 listener(news);
+            });
+        },
+        emitAnimeCheckState: (state) => {
+            animeCheckStateListeners.forEach((listener) => {
+                listener(state);
             });
         },
         emitAnimeCover: (update) => {

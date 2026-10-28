@@ -1,4 +1,4 @@
-import type { ArrivalOrigin, LibraryManga, MangaChapter, MangaCheckResponse, MangaDetails, MangaNewChapters } from '@shared/manga';
+import { IDLE_MANGA_CHECK_STATE, type ArrivalOrigin, type LibraryManga, type MangaChapter, type MangaCheckResponse, type MangaCheckState, type MangaDetails, type MangaNewChapters } from '@shared/manga';
 import type { MangaDb } from './mangaDb';
 
 // How often the mangas of the library are asked about, and how long after the app opens the first check is made (so opening the app is
@@ -20,6 +20,8 @@ export interface MangaUpdateCheckerDependencies {
     autoDownload?: () => boolean;
     download?: (mangaId: number, chapterRemoteIds: number[]) => void;
     onLibraryChanged: () => void;
+    // The check of all the mangas began, moved on to another manga or ended (see `state`).
+    onProgress?: (state: MangaCheckState) => void;
     // The times, when they are not the usual ones (used by the end-to-end tests).
     firstDelayMs?: number;
     intervalMs?: number;
@@ -44,8 +46,19 @@ export class MangaUpdateChecker {
     private every: ReturnType<typeof setInterval> | null = null;
     private running: Promise<MangaCheckResponse> | null = null;
     private stopped = false;
+    private progress: MangaCheckState = IDLE_MANGA_CHECK_STATE;
 
     constructor(private readonly deps: MangaUpdateCheckerDependencies) {}
+
+    // Whether a check of all the mangas is going on and how far it is (a check of one manga is too short to be told).
+    state(): MangaCheckState {
+        return this.progress;
+    }
+
+    private report(state: MangaCheckState): void {
+        this.progress = state;
+        this.deps.onProgress?.(state);
+    }
 
     start(): void {
         this.stopped = false;
@@ -125,18 +138,37 @@ export class MangaUpdateChecker {
             return { ok: true, count: 0, titles: [], failed: 0, skipped: 0 };
         }
         const installed = this.deps.installedSourceIds === undefined ? null : await this.installedSources();
-        for (const manga of this.deps.db.list()) {
-            if (this.stopped) {
-                break;
+        const library = this.deps.db.list();
+        // The mangas that are asked about: the ones of a source whose extension is not installed are left out.
+        const asked = library.filter((manga) => {
+            return installed === null || installed.has(manga.sourceId);
+        });
+        let done = 0;
+        if (asked.length > 0) {
+            this.report({ running: true, origin, done: 0, total: asked.length, current: (asked[0] as LibraryManga).title });
+        }
+        try {
+            for (const manga of library) {
+                if (this.stopped) {
+                    break;
+                }
+                if (installed !== null && !installed.has(manga.sourceId)) {
+                    skipped += 1;
+                    continue;
+                }
+                if (done > 0) {
+                    this.report({ running: true, origin, done, total: asked.length, current: manga.title });
+                }
+                try {
+                    await this.check(manga, origin, news);
+                } catch {
+                    failed += 1;
+                }
+                done += 1;
             }
-            if (installed !== null && !installed.has(manga.sourceId)) {
-                skipped += 1;
-                continue;
-            }
-            try {
-                await this.check(manga, origin, news);
-            } catch {
-                failed += 1;
+        } finally {
+            if (this.progress.running) {
+                this.report(IDLE_MANGA_CHECK_STATE);
             }
         }
         this.tell(news);

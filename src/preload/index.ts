@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
-import type { AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
-import type { MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
+import type { AnimeCheckState, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
+import type { MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
 
@@ -130,6 +130,9 @@ const manga: CyberApi['manga'] = {
     checkNewChapters: (mangaId) => {
         return ipcRenderer.invoke(IPC.mangaCheckNew, mangaId);
     },
+    checkState: () => {
+        return ipcRenderer.invoke(IPC.mangaCheckState);
+    },
     recordReading: (record) => {
         return ipcRenderer.invoke(IPC.mangaRecordReading, record);
     },
@@ -198,6 +201,9 @@ const manga: CyberApi['manga'] = {
     },
     onNewChapters: (listener) => {
         return subscribe<MangaNewChapters>(IPC.eventMangaNewChapters, listener);
+    },
+    onCheckState: (listener) => {
+        return subscribe<MangaCheckState>(IPC.eventMangaCheckState, listener);
     },
     onToolState: (listener) => {
         return subscribe<ToolState>(IPC.eventMangaTool, listener);
@@ -458,6 +464,9 @@ const api: CyberApi = {
     checkNewAnimeEpisodes: (animeId) => {
         return ipcRenderer.invoke(IPC.animeCheckNew, animeId);
     },
+    getAnimeCheckState: () => {
+        return ipcRenderer.invoke(IPC.animeCheckState);
+    },
     onSubtitleGenerationUpdate: (listener) => {
         return subscribe<SubtitleGenerationJob>(IPC.eventSubtitleGeneration, listener);
     },
@@ -480,6 +489,9 @@ const api: CyberApi = {
     },
     onAnimeNewEpisodes: (listener) => {
         return subscribe<AnimeNewEpisodes>(IPC.eventAnimeNewEpisodes, listener);
+    },
+    onAnimeCheckState: (listener) => {
+        return subscribe<AnimeCheckState>(IPC.eventAnimeCheckState, listener);
     },
     onJobUpdate: (listener) => {
         return subscribe<DownloadJob>(IPC.eventJobUpdate, listener);

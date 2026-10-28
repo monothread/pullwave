@@ -1,4 +1,4 @@
-import type { LibraryManga, MangaChapter, MangaCheckResponse, MangaSource, MangaUpdateEntry, ReadingEntry, MangaDetails, MangaDetailsWithChapters, MangaJob, MangaMigrationResponse, MangaResult, MangaStatusInfo } from '@shared/manga';
+import type { LibraryManga, MangaChapter, MangaCheckResponse, MangaCheckState, MangaSource, MangaUpdateEntry, ReadingEntry, MangaDetails, MangaDetailsWithChapters, MangaJob, MangaMigrationResponse, MangaResult, MangaStatusInfo } from '@shared/manga';
 import { IPC } from '@shared/constants';
 import { registerMangaHandlers, type MangaHandlerDependencies } from '@main/ipc/registerMangaHandlers';
 import type { IpcMainLike } from '@main/ipc/registerHandlers';
@@ -88,6 +88,7 @@ const MANGA_CHANNELS = [
     IPC.mangaUpdates,
     IPC.mangaClearUpdates,
     IPC.mangaCheckNew,
+    IPC.mangaCheckState,
     IPC.mangaRecordReading,
     IPC.mangaReadingHistory,
     IPC.mangaRemoveReading,
@@ -107,7 +108,7 @@ const REQUEST = {
     chapters: [chapter(1), chapter(2)]
 };
 
-function setup(options: { baseUrl?: string | null; folder?: string | null; migrate?: () => Promise<MangaMigrationResponse>; coverFetch?: (url: string) => Promise<Response>; checkResponse?: MangaCheckResponse } = {}) {
+function setup(options: { baseUrl?: string | null; folder?: string | null; migrate?: () => Promise<MangaMigrationResponse>; coverFetch?: (url: string) => Promise<Response>; checkResponse?: MangaCheckResponse; checkState?: MangaCheckState } = {}) {
     const db = new MangaDb(':memory:', () => {
         return 1000;
     });
@@ -255,6 +256,9 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
             checks.push(mangaId);
             return Promise.resolve(options.checkResponse ?? { ok: true as const, count: 0, titles: [], failed: 0, skipped: 0 });
         },
+        checkState: () => {
+            return options.checkState ?? { running: false, origin: null, done: 0, total: 0, current: null };
+        },
         restartApp: () => {
             restarts.count += 1;
         },
@@ -316,6 +320,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaUpdates)).toEqual([]);
         expect(ipc.call(IPC.mangaReadingHistory)).toEqual([]);
         expect(ipc.call(IPC.mangaCheckNew)).toEqual(unsupported);
+        expect(ipc.call(IPC.mangaCheckState)).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
         [IPC.mangaClearUpdates, IPC.mangaRecordReading, IPC.mangaRemoveReading, IPC.mangaClearReading].forEach((channel) => {
             expect(ipc.call(channel)).toBeUndefined();
         });
@@ -1326,6 +1331,18 @@ describe('the channels of the new chapters', () => {
         await expect(context.call(IPC.mangaCheckNew, null)).resolves.toEqual(found);
         await expect(context.call(IPC.mangaCheckNew, 5)).resolves.toEqual(found);
         expect(context.checks).toEqual([null, 5]);
+    });
+
+    it('says no check is going on when none is', () => {
+        const context = setup();
+
+        expect(context.call(IPC.mangaCheckState)).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
+    });
+
+    it('says how far the check that is going on is, and which manga it asks about', () => {
+        const context = setup({ checkState: { running: true, origin: 'auto', done: 4, total: 30, current: 'One Piece' } });
+
+        expect(context.call(IPC.mangaCheckState)).toEqual({ running: true, origin: 'auto', done: 4, total: 30, current: 'One Piece' });
     });
 
     it('refuses the check of a manga that is not a valid one', () => {

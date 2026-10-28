@@ -3768,6 +3768,26 @@ test.describe('the look for new episodes', () => {
         await expect(page.getByRole('switch', { name: 'Download the new episodes found' })).toBeChecked();
     });
 
+    test('blocks the button while the look every hour goes on, saying how far it is and which anime it asks about, and gives it back when it ends', async () => {
+        const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await addFakeAnime(page);
+        // A second anime: with the pause between the two, a look lasts long enough to be seen.
+        await page.getByRole('button', { name: 'BACK' }).click();
+        await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
+        await confirmAdd(page);
+        await openUpdates(page);
+
+        const button = page.getByRole('button', { name: /^AUTOMATIC LOOK… \d\/2$/ });
+        await expect(button).toBeDisabled({ timeout: 30000 });
+        await expect(button).toHaveAttribute('title', 'The look every hour is going on. Wait for it to end.');
+        await expect(page.getByTestId('anime-check-current')).toHaveText(/^Now: Fake Anime( 2)?$/);
+        await expect(page.getByTestId('anime-check-current')).toHaveAttribute('role', 'status');
+
+        // It ends: the button is ready and the indicator is gone (the next look comes an interval after).
+        await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled({ timeout: 30000 });
+        await expect(page.getByTestId('anime-check-current')).toHaveCount(0);
+    });
+
     test('does not show the availability of the anime of the schedule in the source any more', async () => {
         const { page } = session;
         await openAnimeToday(page);

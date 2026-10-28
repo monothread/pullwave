@@ -326,6 +326,9 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         checkNewChapters: (mangaId) => {
             return mangaId === null ? checker.checkNow('manual') : checker.checkManga(mangaId);
         },
+        checkState: () => {
+            return checker.state();
+        },
         restartApp: () => {
             options.restartApp?.();
         },
@@ -411,6 +414,9 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         onLibraryChanged: () => {
             send(IPC.eventMangaLibrary);
+        },
+        onProgress: (state) => {
+            send(IPC.eventMangaCheckState, state);
         }
     });
     return {

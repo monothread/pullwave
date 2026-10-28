@@ -1512,7 +1512,12 @@ describe('createAnimeRuntime new episodes', () => {
         const [pause] = sleep.mock.calls[0] as unknown as [number];
         expect(pause).toBeGreaterThanOrEqual(2000);
         expect(pause).toBeLessThanOrEqual(4000);
-        expect(send).not.toHaveBeenCalled();
+        // Only the state of the check is told: nothing was added to the library.
+        expect(
+            send.mock.calls.map(([channel]) => {
+                return channel;
+            })
+        ).toEqual([IPC.eventAnimeCheckState, IPC.eventAnimeCheckState, IPC.eventAnimeCheckState]);
     });
 
     it('does not run the hourly check when it is turned off in the settings, and still runs the one the user asks for', async () => {
@@ -1538,6 +1543,45 @@ describe('createAnimeRuntime new episodes', () => {
         runtime.db.upsertAnime(NARUTO);
 
         expect(await runtime.handlers.updates.checkNow('auto')).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 1, skipped: 0 });
+    });
+
+    it('tells the screen when the check begins, after each anime and when it ends, and gives the state of the one going on', async () => {
+        let seenInTheMiddle: unknown = null;
+        const { send, options: given } = options({
+            checkSleep: async () => {
+                seenInTheMiddle = runtime.handlers.updates.state();
+            }
+        });
+        const runtime = open(given) as AnimeRuntime;
+        runtime.db.upsertAnime(NARUTO);
+        runtime.db.upsertAnime(BLEACH);
+
+        await runtime.handlers.updates.checkNow('manual');
+
+        const states = send.mock.calls
+            .filter(([channel]) => {
+                return channel === IPC.eventAnimeCheckState;
+            })
+            .map(([, state]) => {
+                return state;
+            });
+        expect(states).toEqual([
+            { running: true, origin: 'manual', done: 0, total: 2, current: 'Bleach' },
+            { running: true, origin: 'manual', done: 1, total: 2, current: 'Naruto' },
+            { running: false, origin: null, done: 0, total: 0, current: null }
+        ]);
+        // The pause between the two anime: the first is the one being asked about until it ends.
+        expect(seenInTheMiddle).toEqual({ running: true, origin: 'manual', done: 0, total: 2, current: 'Bleach' });
+        expect(runtime.handlers.updates.state()).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
+    });
+
+    it('tells the screen nothing about the check when the library is empty', async () => {
+        const { send, options: given } = options();
+        const runtime = open(given) as AnimeRuntime;
+
+        await runtime.handlers.updates.checkNow('manual');
+
+        expect(send).not.toHaveBeenCalled();
     });
 
     it('says an anime that is not in the library is not', async () => {

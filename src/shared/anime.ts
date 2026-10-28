@@ -257,6 +257,19 @@ export interface AnimeCheckError {
     message: string;
 }
 
+// Whether a check for new episodes of all the anime is going on, who started it (the hourly look or a button), how far it is (the anime that
+// were asked about out of all of them) and the title of the anime it is asking about now. When none is going on, `origin` and `current` are
+// null and both numbers are 0.
+export interface AnimeCheckState {
+    running: boolean;
+    origin: AnimeArrivalOrigin | null;
+    done: number;
+    total: number;
+    current: string | null;
+}
+
+export const IDLE_CHECK_STATE: AnimeCheckState = { running: false, origin: null, done: 0, total: 0, current: null };
+
 // What a check for new episodes found: how many episodes, in which anime, the anime whose new episodes were left undownloaded because
 // there were too many, in how many anime the source could not be reached, and how many anime were not asked about (the check stopped
 // because the source refused it, or the anime has no place in the search to be found by).

@@ -720,9 +720,36 @@ describe('createMangaRuntime looking for new chapters', () => {
         expect(runtime!.db.chaptersOf(id).map((chapter) => {return [chapter.remoteId, chapter.status]}).sort()).toEqual([[1, 'idle'], [2, 'idle'], [3, 'idle']]);
         expect(runtime!.db.getManga(id)).toMatchObject({ url: 'https://dex.example/one-piece', author: 'Oda', genres: ['Action'], status: 'ongoing' });
         expect(sent).toEqual([
+            { channel: IPC.eventMangaCheckState, payload: { running: true, origin: 'auto', done: 0, total: 1, current: 'One Piece' } },
+            { channel: IPC.eventMangaCheckState, payload: { running: false, origin: null, done: 0, total: 0, current: null } },
             { channel: IPC.eventMangaLibrary, payload: undefined },
             { channel: IPC.eventMangaNewChapters, payload: { count: 2, titles: ['One Piece'] } }
         ]);
+    });
+
+    it('tells the screen how far the check is, manga by manga, and says there is none going on once it ends', async () => {
+        const { runtime, sent } = setup({ fetchImpl: fetchWithChapters([1]) });
+        addManga(runtime!);
+        const second = runtime!.db.upsertManga({ remoteId: 8, sourceId: '123', title: 'Bleach', thumbnailUrl: null });
+        runtime!.db.registerChapters(second.id, [{ remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 }]);
+        expect(runtime!.handlers.checkState()).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
+
+        await runtime!.handlers.checkNewChapters(null);
+
+        expect(
+            sent
+                .filter((item) => {
+                    return item.channel === IPC.eventMangaCheckState;
+                })
+                .map((item) => {
+                    return item.payload;
+                })
+        ).toEqual([
+            { running: true, origin: 'manual', done: 0, total: 2, current: 'Bleach' },
+            { running: true, origin: 'manual', done: 1, total: 2, current: 'One Piece' },
+            { running: false, origin: null, done: 0, total: 0, current: null }
+        ]);
+        expect(runtime!.handlers.checkState()).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
     });
 
     it('does not look when the setting is off', async () => {
@@ -776,7 +803,11 @@ describe('createMangaRuntime looking for new chapters', () => {
         const id = addManga(runtime!);
         await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 1, skipped: 0 });
         expect(runtime!.db.chaptersOf(id)).toHaveLength(1);
-        expect(sent).toEqual([]);
+        // Only the state of the check is told: nothing was added to the library.
+        expect(sent).toEqual([
+            { channel: IPC.eventMangaCheckState, payload: { running: true, origin: 'auto', done: 0, total: 1, current: 'One Piece' } },
+            { channel: IPC.eventMangaCheckState, payload: { running: false, origin: null, done: 0, total: 0, current: null } }
+        ]);
     });
 
     describe('with the sources the server has', () => {

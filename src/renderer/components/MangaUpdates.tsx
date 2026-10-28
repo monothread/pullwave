@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { ArrivalOrigin, MangaUpdateEntry } from '@shared/manga';
-import type { MessageKey } from '@shared/i18n';
+import type { ArrivalOrigin, MangaCheckState, MangaUpdateEntry } from '@shared/manga';
+import type { MessageKey, Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { MangaCover } from './MangaCover';
@@ -16,6 +16,14 @@ const ORIGIN_KEYS: Record<ArrivalOrigin, MessageKey> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// What the button says: what it does, or how far the check that is going on is (and that it is the hourly one, when it is).
+function checkButtonLabel(asked: boolean, state: MangaCheckState, t: Translator): string {
+    if (state.running && state.total > 0) {
+        return t(state.origin === 'auto' ? 'manga.recent.checking.auto' : 'manga.recent.checking.progress', { done: state.done, total: state.total });
+    }
+    return asked || state.running ? t('manga.recent.checking') : t('manga.recent.check');
+}
+
 function startOfDay(time: number): number {
     const date = new Date(time);
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
@@ -30,6 +38,9 @@ export function MangaUpdates() {
     });
     const checking = useMangaStore((state) => {
         return state.checkingNew;
+    });
+    const checkState = useMangaStore((state) => {
+        return state.checkState;
     });
     const loadUpdates = useMangaStore((state) => {
         return state.loadUpdates;
@@ -68,13 +79,19 @@ export function MangaUpdates() {
                 <button
                     type="button"
                     className="btn btn--small btn--primary"
-                    disabled={checking !== null}
+                    disabled={checking !== null || checkState.running}
+                    title={checkState.running && checkState.origin === 'auto' ? t('manga.recent.checking.autoHint') : undefined}
                     onClick={() => {
                         void checkNewChapters(null);
                     }}
                 >
-                    {checking === 'all' ? t('manga.recent.checking') : t('manga.recent.check')}
+                    {checkButtonLabel(checking === 'all', checkState, t)}
                 </button>
+                {checkState.running && checkState.current !== null && (
+                    <span className="check-current" role="status" title={checkState.current} data-testid="manga-check-current">
+                        {t('manga.recent.current', { title: checkState.current })}
+                    </span>
+                )}
                 {updates.length > 0 && (
                     <MangaRemove
                         label={t('manga.recent.clear')}

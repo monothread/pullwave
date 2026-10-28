@@ -525,6 +525,18 @@ describe('MangaDetail in the library page', () => {
         expect(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeDisabled();
     });
 
+    it('disables the button while the look every hour is going on, and enables it when it ends', () => {
+        useMangaStore.setState({ library: [SAVED], checkState: { running: true, origin: 'auto', done: 3, total: 40, current: 'Bleach' } });
+        open();
+        render(<MangaDetail />);
+
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeDisabled();
+        act(() => {
+            useMangaStore.setState({ checkState: { running: false, origin: null, done: 0, total: 0, current: null } });
+        });
+        expect(screen.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' })).toBeEnabled();
+    });
+
     it('does not have the button on the page of the browse, or for a manga that is not in the library', () => {
         useMangaStore.setState({ library: [SAVED], selectionFrom: 'browse', view: 'browse' });
         open();

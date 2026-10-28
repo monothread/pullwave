@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { AnimeArrivalOrigin, AnimeUpdateEntry } from '@shared/anime';
-import type { MessageKey } from '@shared/i18n';
+import type { AnimeArrivalOrigin, AnimeCheckState, AnimeUpdateEntry } from '@shared/anime';
+import type { MessageKey, Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { animeStatusKey, groupByDay, startOfDay } from './animeText';
@@ -15,6 +15,14 @@ const ORIGIN_KEYS: Record<AnimeArrivalOrigin, MessageKey> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// What the button says: what it does, or how far the check that is going on is (and that it is the hourly one, when it is).
+function checkButtonLabel(asked: boolean, state: AnimeCheckState, progress: { done: number; total: number }, t: Translator): string {
+    if (state.running && state.total > 0) {
+        return t(state.origin === 'auto' ? 'anime.recent.checking.auto' : 'anime.recent.checking.progress', progress);
+    }
+    return asked || state.running ? t('anime.recent.checking') : t('anime.recent.check');
+}
+
 // The episodes that arrived in the library after their anime was in it, newest first and split by day: what the check every hour found,
 // and what the buttons that look for new episodes found. A click opens the anime in the library.
 export function AnimeUpdates() {
@@ -24,6 +32,9 @@ export function AnimeUpdates() {
     });
     const checking = useAnimeStore((state) => {
         return state.checkingNew;
+    });
+    const checkState = useAnimeStore((state) => {
+        return state.checkState;
     });
     const loadUpdates = useAnimeStore((state) => {
         return state.loadUpdates;
@@ -55,6 +66,9 @@ export function AnimeUpdates() {
     const days = groupByDay<AnimeUpdateEntry>(updates, (entry) => {
         return entry.foundAt;
     });
+    // One check at a time: the button is off while one is going on, whether the button started it or the hourly look did.
+    const busy = checking !== null || checkState.running;
+    const progress = { done: checkState.done, total: checkState.total };
 
     return (
         <section className="anime__updates" aria-label={t('anime.nav.updates')}>
@@ -62,13 +76,19 @@ export function AnimeUpdates() {
                 <button
                     type="button"
                     className="btn btn--small btn--primary"
-                    disabled={checking !== null}
+                    disabled={busy}
+                    title={checkState.running && checkState.origin === 'auto' ? t('anime.recent.checking.autoHint') : undefined}
                     onClick={() => {
                         void checkNewEpisodes(null);
                     }}
                 >
-                    {checking === 'all' ? t('anime.recent.checking') : t('anime.recent.check')}
+                    {checkButtonLabel(checking === 'all', checkState, progress, t)}
                 </button>
+                {checkState.running && checkState.current !== null && (
+                    <span className="check-current" role="status" title={checkState.current} data-testid="anime-check-current">
+                        {t('anime.recent.current', { title: checkState.current })}
+                    </span>
+                )}
                 {updates.length > 0 && (
                     <ConfirmButton
                         className="btn btn--small btn--ghost"

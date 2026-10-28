@@ -1,5 +1,6 @@
 import type {
     AnimeCheckResponse,
+    AnimeCheckState,
     AnimeCoverUpdate,
     AnimeDownloadRequest,
     AnimeDownloadResponse,
@@ -446,6 +447,8 @@ export interface CyberApi {
     clearAnimeUpdates: () => Promise<void>;
     // Asks the source for new episodes: of one anime of the library, or of all of them (null).
     checkNewAnimeEpisodes: (animeId: number | null) => Promise<AnimeCheckResponse>;
+    // Whether a check for new episodes of all the anime is going on now (the hourly one or a button), to show it when the screen is opened.
+    getAnimeCheckState: () => Promise<AnimeCheckState>;
     onAnimeJobUpdate: (listener: (job: AnimeJob) => void) => () => void;
     onAnimeLibraryChanged: (listener: () => void) => () => void;
     onAnimeMigrationProgress: (listener: (progress: AnimeMigrationProgress) => void) => () => void;
@@ -453,6 +456,8 @@ export interface CyberApi {
     onAnimeCoverUpdate: (listener: (update: AnimeCoverUpdate) => void) => () => void;
     // The check for new episodes added some to the library.
     onAnimeNewEpisodes: (listener: (news: AnimeNewEpisodes) => void) => () => void;
+    // The check for new episodes began, moved on by one anime or ended.
+    onAnimeCheckState: (listener: (state: AnimeCheckState) => void) => () => void;
     onJobUpdate: (listener: (job: DownloadJob) => void) => () => void;
     onJobRemoved: (listener: (id: string) => void) => () => void;
     onHistoryChanged: (listener: () => void) => () => void;

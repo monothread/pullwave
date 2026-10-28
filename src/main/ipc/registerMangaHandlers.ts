@@ -1,6 +1,6 @@
 import { IPC } from '@shared/constants';
-import { hasChapterFile } from '@shared/manga';
-import type { ComponentHealth, LibraryManga, MangaCheckResponse, MangaUpdateEntry, ReadingEntry, MangaGroup, MangaHealth, MangaToolUpdateResult, MangaToolVersions, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
+import { hasChapterFile, IDLE_MANGA_CHECK_STATE } from '@shared/manga';
+import type { ComponentHealth, LibraryManga, MangaCheckResponse, MangaCheckState, MangaUpdateEntry, ReadingEntry, MangaGroup, MangaHealth, MangaToolUpdateResult, MangaToolVersions, MangaGroupResponse, MangaJob, MangaMigrationResponse, MangaRenameSeriesResponse, MangaResult, MangaSeriesResponse, MangaSourceMigrationResponse, MangaStatusInfo } from '@shared/manga';
 import type { MangaDb } from '../services/manga/mangaDb';
 import type { MangaCovers } from '../services/manga/mangaCovers';
 import type { MangaIcons } from '../services/manga/mangaIcons';
@@ -24,6 +24,8 @@ export interface MangaHandlerDependencies {
     updates: Pick<MangaToolUpdates, 'check' | 'updateServer' | 'resetServer' | 'updateHelper'>;
     // Looks for new chapters, in one manga of the library or in all of them (null).
     checkNewChapters: (mangaId: number | null) => Promise<MangaCheckResponse>;
+    // Whether a check of all the mangas is going on and how far it is.
+    checkState: () => MangaCheckState;
     // The icons of the sources that are kept in the data folder.
     icons: Pick<MangaIcons, 'present'>;
     // The covers of the library that are kept in the data folder.
@@ -74,6 +76,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     });
     ipcMain.handle(IPC.mangaCheckNew, (): MangaCheckResponse => {
         return unsupported;
+    });
+    ipcMain.handle(IPC.mangaCheckState, (): MangaCheckState => {
+        return IDLE_MANGA_CHECK_STATE;
     });
     [IPC.mangaClearUpdates, IPC.mangaRecordReading, IPC.mangaRemoveReading, IPC.mangaClearReading].forEach((channel) => {
         ipcMain.handle(channel, () => {
@@ -171,7 +176,7 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         registerUnsupported(ipcMain);
         return;
     }
-    const { service, queue, db, reader, repair, removeChapterFiles, covers, icons, onLibraryChanged, checkNewChapters } = deps;
+    const { service, queue, db, reader, repair, removeChapterFiles, covers, icons, onLibraryChanged, checkNewChapters, checkState } = deps;
     let migrating = false;
 
     // The cover the app keeps is shown when there is one. Otherwise it is the one of the source, kept as a path of the server (its port
@@ -547,6 +552,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         }
         const id = asId(mangaId);
         return id === null ? failure('INVALID_REQUEST', 'The manga is not valid.') : checkNewChapters(id);
+    });
+    ipcMain.handle(IPC.mangaCheckState, (): MangaCheckState => {
+        return checkState();
     });
     ipcMain.handle(IPC.mangaRecordReading, (_event, record) => {
         const checked = asReadingRecord(record);

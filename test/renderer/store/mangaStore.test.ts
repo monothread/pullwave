@@ -64,8 +64,9 @@ describe('mangaStore init', () => {
         expect(state().jobs).toEqual(jobs);
         expect(mock.api.manga.queueHeld).toHaveBeenCalledTimes(1);
         expect(state().queueHeld).toBe(true);
+        expect(mock.api.manga.checkState).toHaveBeenCalledTimes(1);
         unsubscribe();
-        expect(mock.unsubscribers).toHaveLength(9);
+        expect(mock.unsubscribers).toHaveLength(10);
         mock.unsubscribers.forEach((fn) => {
             expect(fn).toHaveBeenCalledTimes(1);
         });
@@ -1997,6 +1998,75 @@ describe('mangaStore the list of new chapters', () => {
         await vi.waitFor(() => {
             expect(mock.api.manga.updates).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe('mangaStore the check that is going on in the main process', () => {
+    const GOING = { running: true, origin: 'auto', done: 4, total: 30, current: 'One Piece' } as const;
+    const IDLE = { running: false, origin: null, done: 0, total: 0, current: null } as const;
+
+    beforeEach(() => {
+        useMangaStore.setState({ checkState: IDLE, checkingNew: null });
+        mock.api.manga.status.mockResolvedValue({ ...initialManga.status, supported: true });
+    });
+
+    it('starts with none going on', () => {
+        expect(initialManga.checkState).toEqual(IDLE);
+    });
+
+    it('reads the one that is going on when the section opens, which began before the screen did', async () => {
+        mock.api.manga.checkState.mockResolvedValue(GOING);
+
+        const dispose = await state().init();
+
+        expect(mock.api.manga.checkState).toHaveBeenCalledTimes(1);
+        expect(state().checkState).toEqual(GOING);
+        dispose();
+    });
+
+    it('follows it: how far it is and which manga it asks about, until it ends', async () => {
+        const dispose = await state().init();
+
+        mock.emitMangaCheckState(GOING);
+        expect(state().checkState).toEqual(GOING);
+        mock.emitMangaCheckState({ ...GOING, done: 5, current: 'Bleach' });
+        expect(state().checkState).toEqual({ running: true, origin: 'auto', done: 5, total: 30, current: 'Bleach' });
+        mock.emitMangaCheckState(IDLE);
+
+        expect(state().checkState).toEqual(IDLE);
+        dispose();
+    });
+
+    it('does not start another check while one is going on in the main process', async () => {
+        useMangaStore.setState({ checkState: GOING });
+
+        await state().checkNewChapters(null);
+        await state().checkNewChapters(9);
+
+        expect(mock.api.manga.checkNewChapters).not.toHaveBeenCalled();
+        expect(mock.api.manga.library).not.toHaveBeenCalled();
+        expect(state().checkingNew).toBeNull();
+    });
+
+    it('does not start another check while one asked for here is going on', async () => {
+        useMangaStore.setState({ checkingNew: 'all' });
+
+        await state().checkNewChapters(9);
+
+        expect(mock.api.manga.checkNewChapters).not.toHaveBeenCalled();
+        expect(state().checkingNew).toBe('all');
+    });
+
+    it('starts one again once the one that was going on ends', async () => {
+        useMangaStore.setState({ checkState: GOING });
+        await state().checkNewChapters(null);
+        expect(mock.api.manga.checkNewChapters).not.toHaveBeenCalled();
+
+        useMangaStore.setState({ checkState: IDLE });
+        await state().checkNewChapters(null);
+
+        expect(mock.api.manga.checkNewChapters).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.checkNewChapters).toHaveBeenCalledWith(null);
     });
 });
 

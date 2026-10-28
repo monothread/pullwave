@@ -889,6 +889,9 @@ body::after {
 .anime__updates { display: flex; flex-direction: column; gap: 12px; }
 .anime__updates-day { display: flex; flex-direction: column; gap: 8px; }
 .anime__updates .cover { width: 56px; }
+/* The title of the anime or manga a look for new ones is asking about, beside its button: one line, cut with an ellipsis. */
+.anime__updates .queue__toolbar { gap: 10px; }
+.check-current { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
 .manga__description { margin: 4px 0 0; white-space: pre-line; }
 .manga__chapters { margin-top: 6px; }
 .anime__search, .anime__detail { display: flex; flex-direction: column; gap: 12px; }

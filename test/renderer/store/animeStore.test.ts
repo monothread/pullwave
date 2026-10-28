@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, AnimeSearchResult, AnimeUpdateEntry } from '@shared/anime';
+import type { AnimeCheckState, AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, AnimeSearchResult, AnimeUpdateEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { useAppStore } from '@renderer/store/appStore';
@@ -85,7 +85,7 @@ describe('init', () => {
         });
 
         dispose();
-        expect(mock.unsubscribers).toHaveLength(5);
+        expect(mock.unsubscribers).toHaveLength(6);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
@@ -1536,6 +1536,75 @@ describe('the schedule', () => {
                 await expect(useAnimeStore.getState().checkNewEpisodes(null)).rejects.toThrow('ipc failed');
 
                 expect(useAnimeStore.getState().checkingNew).toBeNull();
+            });
+        });
+
+        describe('the check that is going on in the main process', () => {
+            const GOING: AnimeCheckState = { running: true, origin: 'auto', done: 12, total: 200, current: 'Naruto' };
+            const IDLE: AnimeCheckState = { running: false, origin: null, done: 0, total: 0, current: null };
+
+            beforeEach(() => {
+                useAnimeStore.setState({ checkState: IDLE });
+            });
+
+            it('starts with none going on', () => {
+                expect(initialAnime.checkState).toEqual(IDLE);
+            });
+
+            it('reads the one that is going on when the section opens, which began before the screen did', async () => {
+                mock.api.getAnimeCheckState.mockResolvedValue(GOING);
+
+                const dispose = await useAnimeStore.getState().init();
+
+                expect(mock.api.getAnimeCheckState).toHaveBeenCalledTimes(1);
+                expect(useAnimeStore.getState().checkState).toEqual(GOING);
+                dispose();
+            });
+
+            it('follows it: how far it is and which anime it asks about, until it ends', async () => {
+                const dispose = await useAnimeStore.getState().init();
+
+                mock.emitAnimeCheckState(GOING);
+                expect(useAnimeStore.getState().checkState).toEqual(GOING);
+                mock.emitAnimeCheckState({ ...GOING, done: 13, current: 'Bleach' });
+                expect(useAnimeStore.getState().checkState).toEqual({ running: true, origin: 'auto', done: 13, total: 200, current: 'Bleach' });
+                mock.emitAnimeCheckState(IDLE);
+
+                expect(useAnimeStore.getState().checkState).toEqual(IDLE);
+                dispose();
+            });
+
+            it('does not start another check while one is going on in the main process', async () => {
+                useAnimeStore.setState({ checkState: GOING });
+
+                await useAnimeStore.getState().checkNewEpisodes(null);
+                await useAnimeStore.getState().checkNewEpisodes(4);
+
+                expect(mock.api.checkNewAnimeEpisodes).not.toHaveBeenCalled();
+                expect(mock.api.listAnimeLibrary).not.toHaveBeenCalled();
+                expect(useAnimeStore.getState().checkingNew).toBeNull();
+                expect(toasts()).toEqual([]);
+            });
+
+            it('does not start another check while one asked for here is going on', async () => {
+                useAnimeStore.setState({ checkingNew: 'all' });
+
+                await useAnimeStore.getState().checkNewEpisodes(null);
+
+                expect(mock.api.checkNewAnimeEpisodes).not.toHaveBeenCalled();
+                expect(useAnimeStore.getState().checkingNew).toBe('all');
+            });
+
+            it('starts one again once the one that was going on ends', async () => {
+                useAnimeStore.setState({ checkState: GOING });
+                await useAnimeStore.getState().checkNewEpisodes(null);
+                expect(mock.api.checkNewAnimeEpisodes).not.toHaveBeenCalled();
+
+                useAnimeStore.setState({ checkState: IDLE });
+                await useAnimeStore.getState().checkNewEpisodes(null);
+
+                expect(mock.api.checkNewAnimeEpisodes).toHaveBeenCalledTimes(1);
+                expect(mock.api.checkNewAnimeEpisodes).toHaveBeenCalledWith(null);
             });
         });
 

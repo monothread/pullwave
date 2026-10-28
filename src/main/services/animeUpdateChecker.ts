@@ -1,4 +1,15 @@
-import { MAX_AUTO_DOWNLOAD_EPISODES, type AniRunResult, type AnimeArrivalOrigin, type AnimeAudio, type AnimeCheckResponse, type AnimeNewEpisodes, type AnimeSearchResult, type LibraryAnime } from '@shared/anime';
+import {
+    IDLE_CHECK_STATE,
+    MAX_AUTO_DOWNLOAD_EPISODES,
+    type AniRunResult,
+    type AnimeArrivalOrigin,
+    type AnimeAudio,
+    type AnimeCheckResponse,
+    type AnimeCheckState,
+    type AnimeNewEpisodes,
+    type AnimeSearchResult,
+    type LibraryAnime
+} from '@shared/anime';
 import type { AnimeDb } from './animeDb';
 import { resolveResult } from './animeSourceMatch';
 
@@ -25,6 +36,8 @@ export interface AnimeUpdateCheckerDependencies {
     download?: (animeId: number, episodes: string[]) => void;
     onNewEpisodes: (news: AnimeNewEpisodes) => void;
     onLibraryChanged: () => void;
+    // The check of all the anime began, moved on by one anime or ended (see `state`).
+    onProgress?: (state: AnimeCheckState) => void;
     // The times and the waiting, when they are not the usual ones (used by the tests).
     firstDelayMs?: number;
     intervalMs?: number;
@@ -71,6 +84,7 @@ export class AnimeUpdateChecker {
     private running: Promise<AnimeCheckResponse> | null = null;
     private stopped = false;
     private failedRuns = 0;
+    private progress: AnimeCheckState = IDLE_CHECK_STATE;
 
     constructor(private readonly deps: AnimeUpdateCheckerDependencies) {}
 
@@ -95,6 +109,16 @@ export class AnimeUpdateChecker {
             clearTimeout(this.next);
             this.next = null;
         }
+    }
+
+    // Whether a check of all the anime is going on and how far it is (a check of one anime is too short to be told).
+    state(): AnimeCheckState {
+        return this.progress;
+    }
+
+    private report(state: AnimeCheckState): void {
+        this.progress = state;
+        this.deps.onProgress?.(state);
     }
 
     // How long the check after the one that just ended waits: the usual time, doubled for each check in a row where the source could not be
@@ -153,25 +177,35 @@ export class AnimeUpdateChecker {
         let failed = 0;
         let skipped = 0;
         let blocked = false;
-        for (const [position, anime] of library.entries()) {
-            if (this.stopped) {
-                break;
-            }
-            if (asked > 0) {
-                await this.pause();
-            }
-            asked += 1;
-            const outcome = await this.attempt(anime, origin, news);
-            if (outcome.kind === 'skipped') {
-                skipped += 1;
-            } else if (outcome.kind === 'failed') {
-                failed += 1;
-                // The source refused: asking about the rest would only make it worse.
-                if (outcome.blocked) {
-                    blocked = true;
-                    skipped += library.length - position - 1;
+        if (library.length > 0) {
+            this.report({ running: true, origin, done: 0, total: library.length, current: (library[0] as LibraryAnime).title });
+        }
+        try {
+            for (const [position, anime] of library.entries()) {
+                if (this.stopped) {
                     break;
                 }
+                if (asked > 0) {
+                    await this.pause();
+                    this.report({ running: true, origin, done: position, total: library.length, current: anime.title });
+                }
+                asked += 1;
+                const outcome = await this.attempt(anime, origin, news);
+                if (outcome.kind === 'skipped') {
+                    skipped += 1;
+                } else if (outcome.kind === 'failed') {
+                    failed += 1;
+                    // The source refused: asking about the rest would only make it worse.
+                    if (outcome.blocked) {
+                        blocked = true;
+                        skipped += library.length - position - 1;
+                        break;
+                    }
+                }
+            }
+        } finally {
+            if (this.progress.running) {
+                this.report(IDLE_CHECK_STATE);
             }
         }
         this.failedRuns = blocked || (asked > 0 && failed === asked) ? this.failedRuns + 1 : 0;

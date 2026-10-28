@@ -1,8 +1,10 @@
 import {
     ANIME_AUDIOS,
+    IDLE_CHECK_STATE,
     type AniError,
     type AnimeAudio,
     type AnimeCheckResponse,
+    type AnimeCheckState,
     type AnimeEpisodeRecord,
     type AnimeHistoryEntry,
     type AnimeHistoryRequest,
@@ -53,7 +55,7 @@ export interface AnimeHandlerDependencies {
     // The cover of an anime by its title (null when there is none).
     covers: { find: (title: string) => Promise<string | null> };
     // The check for new episodes: of all the anime of the library, or of one.
-    updates: Pick<AnimeUpdateChecker, 'checkNow' | 'checkAnime'>;
+    updates: Pick<AnimeUpdateChecker, 'checkNow' | 'checkAnime' | 'state'>;
     // The episodes that air in a stretch of time.
     schedule: { list: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse> };
     streams: Pick<StreamSessions, 'create' | 'close'>;
@@ -311,6 +313,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeCheckNew, (): AnimeCheckResponse => {
         return { ok: false, error: { code: 'UNKNOWN', message: UNSUPPORTED.raw } };
     });
+    ipcMain.handle(IPC.animeCheckState, (): AnimeCheckState => {
+        return IDLE_CHECK_STATE;
+    });
     ipcMain.handle(IPC.animeLibrary, () => {
         return [];
     });
@@ -417,6 +422,9 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             return { ok: false, error: { code: 'UNKNOWN', message: 'The anime is invalid.' } };
         }
         return deps.updates.checkAnime(id);
+    });
+    ipcMain.handle(IPC.animeCheckState, (): AnimeCheckState => {
+        return deps.updates.state();
     });
     ipcMain.handle(IPC.animeSchedule, (_event, input): Promise<AnimeScheduleResponse> | AnimeScheduleResponse => {
         const request = parseScheduleRequest(input);

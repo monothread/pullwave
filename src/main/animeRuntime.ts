@@ -359,6 +359,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         onLibraryChanged: () => {
             options.send(IPC.eventAnimeLibrary);
         },
+        onProgress: (state) => {
+            options.send(IPC.eventAnimeCheckState, state);
+        },
         firstDelayMs: options.checkTimes?.firstMs,
         intervalMs: options.checkTimes?.everyMs,
         sleep: options.checkSleep
