@@ -23,7 +23,7 @@ function checkButtonLabel(asked: boolean, state: AnimeCheckState, progress: { do
     return asked || state.running ? t('anime.recent.checking') : t('anime.recent.check');
 }
 
-// The episodes that arrived in the library after their anime was in it, newest first and split by day: what the check every day found,
+// The episodes that arrived in the library after their anime was in it, newest first and split by day: what the check every 6 hours found,
 // and what the buttons that look for new episodes found. A click opens the anime in the library.
 export function AnimeUpdates() {
     const t = useTranslator();

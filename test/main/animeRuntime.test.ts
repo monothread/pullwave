@@ -1584,7 +1584,7 @@ describe('createAnimeRuntime new episodes', () => {
         expect(send).not.toHaveBeenCalled();
     });
 
-    describe('the look of the day, kept in the data folder', () => {
+    describe('the last look, kept in the data folder', () => {
         function checkStates(send: ReturnType<typeof vi.fn>): unknown[] {
             return send.mock.calls
                 .filter(([channel]) => {
@@ -1613,7 +1613,7 @@ describe('createAnimeRuntime new episodes', () => {
             runtime.stopBackgroundChecks();
         });
 
-        it('does not look when the app is opened again less than a day after the last look', async () => {
+        it('does not look when the app is opened again less than the interval after the last look', async () => {
             const { root, send, options: given } = options({ checkTimes: { firstMs: 20, everyMs: 60_000 } });
             writeLastCheck(root, JSON.stringify({ lastCheckAt: Date.now() }));
             const runtime = open(given) as AnimeRuntime;

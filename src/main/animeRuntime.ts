@@ -106,7 +106,7 @@ export interface AnimeRuntime {
     media: MediaSource;
     // Answers the requests of the player for a stream that is being watched without downloading it.
     streamHandler: (request: Request) => Promise<Response>;
-    // Starts the daily look for new episodes of the anime of the library (it is not started by creating the runtime), and ends it.
+    // Starts the automatic look for new episodes of the anime of the library (it is not started by creating the runtime), and ends it.
     startBackgroundChecks: () => void;
     stopBackgroundChecks: () => void;
 }
@@ -334,9 +334,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     };
     // The anime folder is being migrated: the files are moving, so nothing is downloaded into it meanwhile.
     let migrating = false;
-    // When the last look for new episodes was made: kept apart from the library, so the app opened again the same day does not look again.
+    // When the last look for new episodes was made: kept apart from the library, so the app opened again soon after a look does not look again.
     const lastCheck = new JsonStore<{ lastCheckAt: number | null }>(join(animeDir, 'update-check.json'), { lastCheckAt: null });
-    // Looks, once a day, for episodes the source has listed for the anime of the library, and puts them in the library.
+    // Looks, every 6 hours, for episodes the source has listed for the anime of the library, and puts them in the library.
     const checker = new AnimeUpdateChecker({
         db,
         lastCheck: {

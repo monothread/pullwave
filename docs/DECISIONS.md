@@ -773,3 +773,9 @@ New setting `jsRuntime` → `--js-runtimes <value>` (YouTube needs a JS runtime 
 - **Texts:** "every hour" became "once a day" in the settings, the hints and the empty list of UPDATES of the anime, in the five languages (the manga ones did not change).
 - Replaces the interval of D-114 (one hour) and its doubling of the wait after a look in a row where every anime failed (now a retry that starts at an hour).
 
+## D-118 · 2026-10-27 — The look for new episodes of the anime is made every 6 hours (the manga one stays hourly)
+- **Why:** once a day (D-117) was too far apart for the episodes that come out during the day. Every 6 hours asks the source four times a day, 600 requests each time for 200 anime, instead of 24 times.
+- **What:** `CHECK_INTERVAL_MS` of `AnimeUpdateChecker` is 6 h, and everything else of D-117 stays: the time of the last look that got answers is kept in `anime/update-check.json`, the first look after the app opens waits for what is left of the interval (never less than 2 minutes), a look in which nobody answered or the source refused is tried again after 1 h, 2 h, 4 h and up to 6 h (the limit is now the interval itself), and the timer reads the setting again every hour while it is off.
+- **Texts:** "once a day" became "every 6 hours" in the settings, the hints and the empty list of UPDATES of the anime, in the five languages; the hint of the button that is off says "the automatic look is going on".
+- Replaces the interval of D-117 (one day).
+

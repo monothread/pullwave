@@ -604,7 +604,7 @@ function bootstrap(): BootstrapResult {
     // The program that runs the manga extensions is downloaded when the app opens (nothing happens when it is there already).
     manga?.prepare();
     registerLlmHandlers(ipcMain, { tokens: llmTokens });
-    // The look for new episodes of the anime of the library starts a while after the app opens (unless it was made in the last day) and goes on every day.
+    // The look for new episodes of the anime of the library starts a while after the app opens (unless it was made in the last 6 hours) and goes on every 6 hours.
     anime?.startBackgroundChecks();
     registerHandlers({
         ipcMain,

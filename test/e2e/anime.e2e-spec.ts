@@ -3564,7 +3564,7 @@ test.describe('the look for new episodes', () => {
         writeFileSync(join(historyFolder(), 'more-episodes'), '');
     }
 
-    const EMPTY = 'No new episodes yet. The check that runs once a day, and the buttons that look for new episodes, list here what they find.';
+    const EMPTY = 'No new episodes yet. The check that runs every 6 hours, and the buttons that look for new episodes, list here what they find.';
 
     test('finds the episode the source got after the anime was added, puts it in the library without downloading it, lists it and tells the screen', async () => {
         const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
@@ -3743,12 +3743,12 @@ test.describe('the look for new episodes', () => {
     test('has the two options in the settings of the anime, the first on and the second off, and saves them at once', async () => {
         const { page } = session;
         await openAnimeSettings(page);
-        const look = page.getByRole('switch', { name: 'Look for new episodes once a day' });
+        const look = page.getByRole('switch', { name: 'Look for new episodes every 6 hours' });
         const download = page.getByRole('switch', { name: 'Download the new episodes found' });
         await expect(look).toBeChecked();
         await expect(download).not.toBeChecked();
         await expect(page.getByText('Asks the source about the anime of the library and adds the new episodes to it. They are not downloaded.')).toBeVisible();
-        await expect(page.getByText('The new episodes that the check (once a day, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeVisible();
+        await expect(page.getByText('The new episodes that the check (every 6 hours, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeVisible();
 
         await look.click();
         await download.click();
@@ -3764,11 +3764,11 @@ test.describe('the look for new episodes', () => {
         const page = await relaunch({ animeCheckNewEpisodes: false, animeAutoDownloadNew: true }, {});
         await openAnimeSettings(page);
 
-        await expect(page.getByRole('switch', { name: 'Look for new episodes once a day' })).not.toBeChecked();
+        await expect(page.getByRole('switch', { name: 'Look for new episodes every 6 hours' })).not.toBeChecked();
         await expect(page.getByRole('switch', { name: 'Download the new episodes found' })).toBeChecked();
     });
 
-    test('blocks the button while the daily look goes on, saying how far it is and which anime it asks about, and gives it back when it ends', async () => {
+    test('blocks the button while the automatic look goes on, saying how far it is and which anime it asks about, and gives it back when it ends', async () => {
         const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
         await addFakeAnime(page);
         // A second anime: with the pause between the two, a look lasts long enough to be seen.
@@ -3779,7 +3779,7 @@ test.describe('the look for new episodes', () => {
 
         const button = page.getByRole('button', { name: /^AUTOMATIC LOOK… \d\/2$/ });
         await expect(button).toBeDisabled({ timeout: 30000 });
-        await expect(button).toHaveAttribute('title', 'The daily look is going on. Wait for it to end.');
+        await expect(button).toHaveAttribute('title', 'The automatic look is going on. Wait for it to end.');
         await expect(page.getByTestId('anime-check-current')).toHaveText(/^Now: Fake Anime( 2)?$/);
         await expect(page.getByTestId('anime-check-current')).toHaveAttribute('role', 'status');
 
