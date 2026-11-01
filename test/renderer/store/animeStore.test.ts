@@ -165,6 +165,14 @@ describe('addToLibrary', () => {
         );
     }
 
+    it('sends the id the source gave the anime, so a season with the same title is not taken for another', async () => {
+        mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: added() });
+        const selected = useAnimeStore.getState().selection;
+        useAnimeStore.setState({ selection: { ...selected!, result: { index: 2, title: 'Naruto (season 2)', sourceId: 'naruto-season-2-605' } } });
+        await useAnimeStore.getState().addToLibrary(null);
+        expect(mock.api.addAnimeToLibrary).toHaveBeenCalledWith(expect.objectContaining({ title: 'Naruto (season 2)', index: 2, sourceId: 'naruto-season-2-605' }));
+    });
+
     it('sends the opened anime with all its episodes and the series it goes under', async () => {
         mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: added() });
         expect(await useAnimeStore.getState().addToLibrary({ series: '  Naruto  Series ', season: 2, seasonName: ' The  Second ' })).toBe(true);
@@ -584,6 +592,23 @@ describe('openLibraryAnime', () => {
     });
 });
 
+describe('openLibraryAnime for an anime that has the id of the source', () => {
+    it('opens it as the result with its id, so it is told from the anime that has the same title', async () => {
+        mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1'] });
+        const anime = makeAnime([], { id: 8, title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, audio: 'sub', sourceId: 'nisekoi-false-love-season-2-605' });
+        await useAnimeStore.getState().openLibraryAnime(anime);
+        const result = { index: 2, title: 'Nisekoi: False Love (season 2)', sourceId: 'nisekoi-false-love-season-2-605' };
+        expect(useAnimeStore.getState().search.results).toEqual([result]);
+        expect(useAnimeStore.getState().selection).toMatchObject({ result, query: 'nisekoi', audio: 'sub' });
+    });
+
+    it('opens an anime with no id as before, without one in the result', async () => {
+        mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1'] });
+        await useAnimeStore.getState().openLibraryAnime(makeAnime([], { id: 9, title: 'Naruto', query: 'naruto', searchIndex: 1, sourceId: null }));
+        expect(useAnimeStore.getState().search.results).toEqual([{ index: 1, title: 'Naruto' }]);
+    });
+});
+
 describe('openLibraryAnime for an anime whose place in the search is not known', () => {
     const FOUND = makeAnime([], { id: 8, title: 'Re_Zero', query: 'Re_Zero', searchIndex: 0, audio: 'dub' });
 
@@ -800,6 +825,13 @@ describe('downloadEpisodes', () => {
         useAnimeStore.setState({ selection });
         await useAnimeStore.getState().downloadEpisodes([]);
         expect(mock.api.downloadAnime).not.toHaveBeenCalled();
+    });
+
+    it('queues the episodes with the id of the source when the result has one', async () => {
+        mock.api.downloadAnime.mockResolvedValue({ ok: true, anime: makeAnime([], { title: 'Naruto' }) });
+        useAnimeStore.setState({ selection: { ...selection, result: { index: 2, title: 'Naruto', sourceId: 'naruto-12' } } });
+        await useAnimeStore.getState().downloadEpisodes(['1']);
+        expect(mock.api.downloadAnime).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, sourceId: 'naruto-12', audio: 'dub', episodes: ['1'] });
     });
 
     it('queues the episodes and says so', async () => {

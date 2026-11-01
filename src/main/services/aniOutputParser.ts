@@ -1,5 +1,6 @@
 import type { ErrorDetails } from '@shared/errorDetails';
 import type { AniDownloadProgress, AniError, AniErrorCode, AnimeSearchResult } from '@shared/anime';
+import { SOURCE_ID_MARKER } from './aniMenuIds';
 import { describeError } from './errorDetails';
 
 // Prefix of every choice that `pullwave_menu` (the stand-in for fzf, see pullwave-run.sh) reports on stderr: PULLWAVE_MENU<TAB>prompt<TAB>line.
@@ -74,13 +75,19 @@ export function parseMenuLine(line: string): { prompt: string; choice: string } 
     return { prompt: prompt.trim(), choice: rest.join('\t') };
 }
 
-// A search result is shown as "<index> <title>".
+// A search result is shown as "<index> <title>", or "<index> pwid:<id> <title>" when the script lets the id of the source through (see
+// aniMenuIds.ts): the marker tells the id from the first word of a title, whatever the id looks like.
 export function parseAnimeChoice(choice: string): AnimeSearchResult | null {
     const match = /^(\d+) (.+)$/.exec(choice.trim());
     if (!match) {
         return null;
     }
-    return { index: Number(match[1]), title: (match[2] ?? '').trim() };
+    const rest = (match[2] ?? '').trim();
+    const marked = new RegExp(`^${SOURCE_ID_MARKER}(\\S+) (.+)$`).exec(rest);
+    if (marked) {
+        return { index: Number(match[1]), title: (marked[2] ?? '').trim(), sourceId: marked[1] as string };
+    }
+    return { index: Number(match[1]), title: rest };
 }
 
 export function parseProgressLine(line: string): AniDownloadProgress | null {

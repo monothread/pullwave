@@ -879,6 +879,14 @@ describe('registerAnimeHandlers', () => {
             expect(queue.enqueue).not.toHaveBeenCalled();
         });
 
+        it('sends the id of the source with the anime when it came, and nothing when it did not', () => {
+            const { call, queue, } = setup();
+            call(IPC.animeAddToLibrary, { ...REQUEST, sourceId: 'naruto-12' });
+            call(IPC.animeAddToLibrary, { ...REQUEST, sourceId: 'not an id' });
+            expect(queue.addToLibrary.mock.calls[0]?.[0]).toMatchObject({ title: 'Naruto', sourceId: 'naruto-12' });
+            expect('sourceId' in (queue.addToLibrary.mock.calls[1]?.[0] ?? {})).toBe(false);
+        });
+
         it('sends the series, the season and the name shown, cleaned, and null for what was not given', () => {
             const { call, queue } = setup();
             call(IPC.animeAddToLibrary, { ...REQUEST, series: '  Naruto   Series ', season: 2, seasonName: '  The   Second ' });
@@ -1874,6 +1882,14 @@ describe('registerAnimeHandlers where the section does not exist', () => {
 
 describe('parseDownloadRequest', () => {
     const valid = { title: 'Naruto', query: 'naruto', index: 1, audio: 'sub', episodes: ['1'] };
+
+    it('keeps the id of the source when it is one, and leaves it out otherwise', () => {
+        expect(parseDownloadRequest({ ...valid, sourceId: 'nisekoi-false-love-season-2-605' })).toEqual({ ...valid, sourceId: 'nisekoi-false-love-season-2-605' });
+        expect(parseDownloadRequest({ ...valid, sourceId: 'naruto_1' })).toMatchObject({ sourceId: 'naruto_1' });
+        ['', 5, null, undefined, {}, '-bad-1', 'has space-1', 'x'.repeat(250), '../../etc'].forEach((sourceId) => {
+            expect(parseDownloadRequest({ ...valid, sourceId })).toEqual(valid);
+        });
+    });
 
     it('accepts a valid request and cleans it', () => {
         expect(parseDownloadRequest(valid)).toEqual({ title: 'Naruto', query: 'naruto', index: 1, audio: 'sub', episodes: ['1'] });

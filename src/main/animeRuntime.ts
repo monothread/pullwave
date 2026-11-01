@@ -190,6 +190,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     });
     const queue = new AnimeDownloadQueue({
         db,
+        sourceProvider: () => {
+            return service.provider;
+        },
         download: (request) => {
             return service.download(request);
         },

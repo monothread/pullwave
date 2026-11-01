@@ -10,6 +10,7 @@ import {
     type AniDownloadRequest
 } from './aniArgsBuilder';
 import { buildStreamArgs, parseStreamOutput, parseSubtitleList, type ResolvedStream, type ResolvedSubtitles } from './aniStream';
+import { tellResultsApart } from '@shared/animeSource';
 import { ANIME_PROMPT, EPISODE_PROMPT, mapAniError, parseAnimeChoice } from './aniOutputParser';
 import { asDownloadResult, runAniCli, type AniRunHandle, type AniRunOptions, type AniRunOutcome, type MenuChoice } from './aniCliRunner';
 
@@ -93,6 +94,11 @@ export class AniCliService {
         });
     }
 
+    // The site ani-cli reads the anime from, as the last run found it.
+    get provider(): string | null {
+        return this.deps.locator.provider;
+    }
+
     async search(query: string, audio: AnimeAudio): Promise<AniRunResult<AnimeSearchResult[]>> {
         if (sanitizeQuery(query).length === 0) {
             return failure('The search is empty.');
@@ -111,7 +117,8 @@ export class AniCliService {
                 return entry !== null;
             });
         if (results.length > 0) {
-            return { status: 'done', value: results };
+            // The results that share a title are told apart by what the id of the source says (see tellResultsApart).
+            return { status: 'done', value: tellResultsApart(results) };
         }
         // A single result is picked by ani-cli itself, without asking, so all that shows is the list of its episodes (or,
         // when it has just one, nothing at all: ani-cli goes on to fetch it and ends cleanly).

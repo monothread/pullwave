@@ -724,33 +724,57 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
         await page.mouse.move(300, 300);
         await page.mouse.move(320, 320);
         return page.evaluate((state) => {
-            const seek = document.querySelector('.player__seek') as HTMLElement;
-            seek.style.setProperty('--progress', '40%');
+            const box = document.querySelector('.player__timeline') as HTMLElement;
+            const bar = box.querySelector('.progress__bar') as HTMLElement;
+            const track = box.querySelector('.progress') as HTMLElement;
+            const slider = box.querySelector('.player__seek') as HTMLElement;
+            bar.style.transition = 'none';
+            bar.style.width = '40%';
             (document.querySelector('.player__controls') as HTMLElement).setAttribute('data-playing', state);
-            const style = getComputedStyle(seek);
+            const barStyle = getComputedStyle(bar);
+            const trackStyle = getComputedStyle(track);
+            const sliderStyle = getComputedStyle(slider);
+            const boxRect = box.getBoundingClientRect();
+            const sliderRect = slider.getBoundingClientRect();
             return {
-                backgroundSize: style.backgroundSize,
-                boxShadow: style.boxShadow,
-                borderColor: style.borderTopColor,
-                animationName: style.animationName,
-                animationPlayState: style.animationPlayState,
-                filter: style.filter
+                barWidthRatio: Math.round((bar.getBoundingClientRect().width / (track.getBoundingClientRect().width - 2)) * 100),
+                barBackgroundSize: barStyle.backgroundSize,
+                barAnimationName: barStyle.animationName,
+                barAnimationDuration: barStyle.animationDuration,
+                barAnimationPlayState: barStyle.animationPlayState,
+                barHasGlow: barStyle.boxShadow !== 'none' && barStyle.boxShadow.includes('rgb'),
+                trackHeight: trackStyle.height,
+                trackBorder: trackStyle.borderTopWidth,
+                trackStyle: trackStyle.borderTopStyle,
+                sliderBackground: sliderStyle.backgroundColor,
+                sliderBorder: sliderStyle.borderTopWidth,
+                sliderShadow: sliderStyle.boxShadow,
+                sliderOverBar: Math.round(sliderRect.width) === Math.round(boxRect.width) && Math.round(sliderRect.height) === Math.round(boxRect.height)
             };
         }, playing);
     };
 
     const playing = await timeline('true');
-    // The wave is a layer as wide as what was watched, then a faint layer as wide as what is loaded (none here); the rest of the timeline is a plain track, and nothing glows around the whole bar.
-    expect(playing.backgroundSize).toBe('40% 100%, 0% 100%, auto');
-    expect(playing.boxShadow).toBe('none');
-    expect(playing.borderColor).toBe('rgba(0, 0, 0, 0)');
-    expect(playing.animationName).toBe('player-wave-phase, player-wave-glow-filter');
-    expect(playing.animationPlayState).toBe('running');
-    expect(playing.filter).toMatch(/^drop-shadow\(/);
+    // The timeline is the bar of a download under a transparent slider: 8px with a 1px line, the fill as wide as what was watched, the wave of colours flowing and the neon glow of every bar.
+    expect(playing).toEqual({
+        barWidthRatio: 40,
+        barBackgroundSize: '160px 100%',
+        barAnimationName: 'bar-wave-flow',
+        barAnimationDuration: '1.4s',
+        barAnimationPlayState: 'running',
+        barHasGlow: true,
+        trackHeight: '8px',
+        trackBorder: '1px',
+        trackStyle: 'solid',
+        sliderBackground: 'rgba(0, 0, 0, 0)',
+        sliderBorder: '0px',
+        sliderShadow: 'none',
+        sliderOverBar: true
+    });
 
+    // The wave flows also when the video is paused, like the bar of a download that goes on.
     const paused = await timeline('false');
-    expect(paused.backgroundSize).toBe('40% 100%, 0% 100%, auto');
-    expect(paused.animationPlayState).toBe('paused');
+    expect(paused).toEqual(playing);
 
     // The bar floats over the video in every theme: it takes no room, has no background and is out of the layout of the stage.
     const controls = dialog.locator('.player__controls');
@@ -781,6 +805,38 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
     }).toBe('1');
 });
 }
+
+test('tells two anime that have the same title apart by the id of the source, and keeps each one with its own episodes', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await search(page, 'twin');
+    // The source lists "Twin Anime" twice: the second is told by what its id says.
+    await expect(page.locator('.history__title')).toHaveText(['Twin Anime', 'Twin Anime (season 2)']);
+
+    await page.getByRole('button', { name: 'OPEN: Twin Anime', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+    await confirmAdd(page);
+    await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'BACK', exact: true }).click();
+    await expect(page.locator('.history__title')).toHaveText(['Twin Anime', 'Twin Anime (season 2)']);
+    await page.getByRole('button', { name: 'OPEN: Twin Anime (season 2)', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'EP 2', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toHaveCount(0);
+    await confirmAdd(page);
+    await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+
+    // Both are in the library, as two anime: the second one did not take the place of the first, and each has its own episodes.
+    await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+    await expect(page.getByTestId('anime-card')).toHaveCount(2);
+    await page.getByRole('button', { name: 'OPEN SERIES: Twin Anime', exact: true }).click();
+    await page.getByRole('button', { name: 'SHOW EPISODES: Twin Anime', exact: true }).click();
+    await expect(page.getByTestId('anime-episode')).toHaveCount(3);
+    await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+    await page.getByRole('button', { name: 'OPEN SERIES: Twin Anime (season 2)', exact: true }).click();
+    await page.getByRole('button', { name: 'SHOW EPISODES: Twin Anime (season 2)', exact: true }).click();
+    await expect(page.getByTestId('anime-episode')).toHaveCount(2);
+});
 
 test('searches an anime, lists the results and reports when nothing is found', async () => {
     const { page } = session;
@@ -2462,13 +2518,6 @@ test.describe('watching without downloading', () => {
         await page.mouse.move(x + width / 2, y - 200);
         await expect(page.getByRole('dialog').getByRole('tooltip')).toHaveCount(0);
 
-        // The timeline shows how much of the episode is loaded.
-        await expect.poll(async () => {
-            return seek.evaluate((element: HTMLInputElement) => {
-                return Number.parseFloat(element.style.getPropertyValue('--buffered'));
-            });
-        }).toBeGreaterThan(0);
-
         await seek.fill('5');
         await expect.poll(() => {
             return seen.some((request) => {
@@ -2480,6 +2529,13 @@ test.describe('watching without downloading', () => {
                 return element.currentTime;
             });
         }, { timeout: 15000 }).toBeGreaterThan(5);
+
+        // The bar under the slider, the one of a download, is as wide as the part of the episode already watched.
+        await expect.poll(async () => {
+            return page.getByRole('dialog').locator('.player__timeline .progress__bar').evaluate((element: HTMLElement) => {
+                return Number.parseFloat(element.style.width);
+            });
+        }).toBeGreaterThan(50);
     });
 
     test('closes with Escape and the stream is no longer served', async () => {

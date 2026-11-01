@@ -819,6 +819,7 @@ export const zh: Messages = {
     'tools.patch.subtitleSelection': '字幕选择',
     'tools.patch.allSubtitles': '保存全部字幕',
     'tools.patch.debugReferer': '视频流地址',
+    'tools.patch.menuIds': '区分同名的动画',
     'tools.hint.downloads': 'yt-dlp 和 deno 由应用下载到其专用文件夹，因此不会误用系统中的程序。更新会在可用版本旁下载最新版，检查通过后才使用。',
     'tools.hint.anime': 'ani-cli、busybox 和 curl 由应用下载到其专用文件夹，因此不会误用系统中的程序。busybox 和 curl 保持应用自带版本。',
     'tools.hint.global': 'ffmpeg 用于合并和转换视频下载器与动漫部分下载的内容。应用会将其下载到专用文件夹，更新会获取最新构建。',

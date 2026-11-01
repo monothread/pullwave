@@ -22,6 +22,31 @@ describe('comparableTitle', () => {
     });
 });
 
+describe('resolveResult with the id of the source', () => {
+    const TWINS: AnimeSearchResult[] = [
+        { index: 1, title: 'Nisekoi: False Love', sourceId: 'nisekoi-false-love-603' },
+        { index: 2, title: 'Nisekoi: False Love (season 2)', sourceId: 'nisekoi-false-love-season-2-605' },
+        { index: 3, title: 'Nisekoi OVA', sourceId: 'nisekoi-ova-604' }
+    ];
+
+    it('finds the anime by its id, wherever it is listed now', () => {
+        expect(resolveResult({ title: 'Nisekoi: False Love (season 2)', searchIndex: 1, sourceId: 'nisekoi-false-love-season-2-605' }, TWINS)).toBe(2);
+        expect(resolveResult({ title: 'Nisekoi: False Love', searchIndex: 2, sourceId: 'nisekoi-false-love-603' }, TWINS)).toBe(1);
+    });
+
+    it('tells apart two anime with the same title, which the title alone cannot do', () => {
+        const without = resolveResult({ title: 'Nisekoi: False Love', searchIndex: 5 }, TWINS);
+        expect(without).toBeNull();
+        expect(resolveResult({ title: 'Nisekoi: False Love', searchIndex: 5, sourceId: 'nisekoi-false-love-season-2-605' }, TWINS)).toBe(2);
+    });
+
+    it('goes on by the title and the place when the id is not listed (any more) or not known', () => {
+        expect(resolveResult({ title: 'Nisekoi OVA', searchIndex: 3, sourceId: 'another-id-1' }, TWINS)).toBe(3);
+        expect(resolveResult({ title: 'Nisekoi OVA', searchIndex: 3, sourceId: null }, TWINS)).toBe(3);
+        expect(resolveResult({ title: 'Nisekoi OVA', searchIndex: 9 }, TWINS)).toBe(3);
+    });
+});
+
 describe('resolveResult', () => {
     const RESULTS: AnimeSearchResult[] = [
         { index: 1, title: 'One Piece (1180 episodes)' },

@@ -16,7 +16,7 @@ import {
     type LatestDependencies
 } from '@main/services/tools/programLatest';
 import { FFMPEG_RELEASE_API } from '@main/services/tools/programSpecs';
-import { ALL_SUBTITLES_PART, aniCliScript, aniCliScriptWithout, DEBUG_PART, SELECTION_PART } from '../../../helpers/aniCliScripts';
+import { ALL_SUBTITLES_PART, aniCliScript, aniCliScriptWithout, DEBUG_PART, MENU_PART, SELECTION_PART } from '../../../helpers/aniCliScripts';
 
 const SHA = 'cd'.repeat(32);
 const OTHER_SHA = 'ef'.repeat(32);
@@ -362,6 +362,8 @@ describe('the scripts of ani-cli', () => {
         // The change that saves every subtitle builds on the one that chooses them, so without that one neither fits.
         expect(unfitPatches(aniCliScriptWithout('5.2.0', SELECTION_PART))).toEqual(['subtitleSelection', 'allSubtitles']);
         expect(unfitPatches(aniCliScriptWithout('5.2.0', ALL_SUBTITLES_PART, DEBUG_PART)).sort()).toEqual(['allSubtitles', 'debugReferer']);
+        // The ids of the source in the lists only tell apart the anime that have the same name.
+        expect(unfitPatches(aniCliScriptWithout('5.2.0', MENU_PART))).toEqual(['menuIds']);
     });
 });
 
@@ -400,6 +402,12 @@ describe('latestAniCli', () => {
         const result = await latestAniCli(deps(table('', { [RAW]: bytes })).deps);
         expect(result.spec.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
         expect(result.spec.sizeBytes).toBe(bytes.length);
+    });
+
+    it('tells that the ids of the source do not fit, and still gives the script', async () => {
+        const result = await latestAniCli(deps(table(aniCliScriptWithout('5.2.0', MENU_PART))).deps);
+        expect(result.unfit).toEqual(['menuIds']);
+        expect(result.version).toBe('5.2.0');
     });
 
     it('tells the changes that do not fit but are not essential, and still gives the script', async () => {

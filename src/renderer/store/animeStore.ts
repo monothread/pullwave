@@ -120,7 +120,7 @@ export interface AnimeState {
     openScheduleEntry: (entry: AnimeScheduleEntry) => Promise<void>;
     openResult: (result: AnimeSearchResult) => Promise<void>;
     // Opens an anime of the library in the search, as if it had been found there, so more episodes can be downloaded.
-    openLibraryAnime: (anime: Pick<AnimeRecord, 'title' | 'query' | 'searchIndex' | 'audio'>) => Promise<void>;
+    openLibraryAnime: (anime: Pick<AnimeRecord, 'title' | 'query' | 'searchIndex' | 'audio'> & Partial<Pick<AnimeRecord, 'sourceId'>>) => Promise<void>;
     // Opens an anime of the history: in the library, on its series, when it is there; otherwise in the search, with its episodes.
     openHistoryEntry: (entry: AnimeHistoryEntry) => Promise<void>;
     // Asks for a folder of anime and puts what is in it into the library, then says what it did.
@@ -206,6 +206,11 @@ export const UNSUPPORTED_STATUS: AnimeStatus = { supported: false, available: fa
 // The audio in use: the one picked on the screen or, if none, the one in the settings.
 export function effectiveAudio(search: AnimeSearchState, settingsAudio: AnimeAudio): AnimeAudio {
     return search.audio ?? settingsAudio;
+}
+
+// The id the source gave the result, for the requests that put the anime in the library (nothing when it is not known).
+function sourceIdOf(result: AnimeSearchResult): { sourceId?: string } {
+    return result.sourceId === undefined ? {} : { sourceId: result.sourceId };
 }
 
 function translateNow(key: MessageKey, params?: MessageParams): string {
@@ -548,7 +553,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 await get().runSearch();
                 return;
             }
-            const result: AnimeSearchResult = { index: anime.searchIndex, title: anime.title };
+            const result: AnimeSearchResult = { index: anime.searchIndex, title: anime.title, ...(anime.sourceId === undefined || anime.sourceId === null ? {} : { sourceId: anime.sourceId }) };
             set((state) => {
                 return {
                     view: 'search',
@@ -606,6 +611,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 title: selection.result.title,
                 query: selection.query,
                 index: selection.result.index,
+                ...sourceIdOf(selection.result),
                 audio: selection.audio,
                 episodes,
                 ...(joined ? { series: cleanSeriesName(joined.series) as string, season: joined.season, seasonName: name as string | null } : {})
@@ -631,6 +637,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 title: selection.result.title,
                 query: selection.query,
                 index: selection.result.index,
+                ...sourceIdOf(selection.result),
                 audio: selection.audio,
                 episodes: selection.episodes,
                 series: joined ? (cleanSeriesName(joined.series) as string) : null,

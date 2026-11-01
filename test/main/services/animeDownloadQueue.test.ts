@@ -21,7 +21,8 @@ const REQUEST: AnimeDownloadRequest = { title: 'Naruto', query: 'naruto', index:
 function setup(
     settings: Partial<Settings> = {},
     files: Record<string, number> = {},
-    system: { platform?: NodeJS.Platform; downloads?: string; directories?: string[] } = {}
+    system: { platform?: NodeJS.Platform; downloads?: string; directories?: string[] } = {},
+    site: { provider: string | null } = { provider: null }
 ) {
     const db = new AnimeDb(':memory:', () => {
         return 1000;
@@ -51,6 +52,9 @@ function setup(
         },
         defaultDownloadDir: system.downloads ?? DOWNLOADS,
         platform: system.platform,
+        sourceProvider: () => {
+            return site.provider;
+        },
         ensureDirectory,
         removeDirectory,
         fileSize: (path) => {
@@ -69,7 +73,7 @@ function setup(
             state.libraryChanges += 1;
         }
     });
-    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory };
+    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory, site };
 }
 
 async function settleResults(): Promise<void> {
@@ -1239,6 +1243,104 @@ describe('AnimeDownloadQueue downloads that are complete', () => {
         downloads[0]?.finish(doneAt('/a/missing.mp4'));
         await settleResults();
         expect(queue.list()).toMatchObject([{ episodeId: 1, status: 'error' }]);
+    });
+});
+
+describe('AnimeDownloadQueue with the id of the source', () => {
+    const FIRST = { title: 'Nisekoi: False Love', query: 'nisekoi', index: 1, audio: 'sub' as const, sourceId: 'nisekoi-false-love-603' };
+    const SECOND = { title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', index: 2, audio: 'sub' as const, sourceId: 'nisekoi-false-love-season-2-605' };
+
+    it('queues the episodes of two anime that have the same title as two anime, each with its own', () => {
+        const { queue, db } = setup({ maxConcurrent: 1 });
+        const first = queue.enqueue({ ...FIRST, episodes: ['1', '2'] });
+        const second = queue.enqueue({ ...SECOND, episodes: ['1'] });
+        expect(first?.id).not.toBe(second?.id);
+        expect(
+            db.list().map((anime) => {
+                return [anime.title, anime.sourceId, anime.searchIndex, anime.episodes.length];
+            })
+        ).toEqual([
+            ['Nisekoi: False Love', 'nisekoi-false-love-603', 1, 2],
+            ['Nisekoi: False Love (season 2)', 'nisekoi-false-love-season-2-605', 2, 1]
+        ]);
+    });
+
+    it('asks ani-cli for the place of each anime in the search, so the episode of the second season is the one of the second season', () => {
+        const { queue, downloads } = setup({ maxConcurrent: 2 });
+        queue.enqueue({ ...FIRST, episodes: ['1'] });
+        queue.enqueue({ ...SECOND, episodes: ['1'] });
+        expect(
+            downloads.map((download) => {
+                return [download.options.index, download.options.episode];
+            })
+        ).toEqual([[1, '1'], [2, '1']]);
+    });
+
+    it('adds the two anime that have the same title to the library as two, with the series and the seasons each asked for', () => {
+        const { queue, db } = setup();
+        const request = { query: 'nisekoi', audio: 'sub' as const, episodes: ['1', '2'], seasonName: null };
+        expect(queue.addToLibrary({ ...request, title: FIRST.title, index: 1, sourceId: FIRST.sourceId, series: 'Nisekoi', season: 1 }).ok).toBe(true);
+        expect(queue.addToLibrary({ ...request, title: SECOND.title, index: 2, sourceId: SECOND.sourceId, series: 'Nisekoi', season: 2 }).ok).toBe(true);
+        expect(
+            db.list().map((anime) => {
+                return [anime.title, anime.series, anime.season];
+            })
+        ).toEqual([
+            ['Nisekoi: False Love', 'Nisekoi', 1],
+            ['Nisekoi: False Love (season 2)', 'Nisekoi', 2]
+        ]);
+    });
+
+    it('does not take a season that is taken for the season of the other anime with the same title', () => {
+        const { queue, db } = setup();
+        const request = { query: 'nisekoi', audio: 'sub' as const, episodes: ['1'], seasonName: null };
+        queue.addToLibrary({ ...request, title: FIRST.title, index: 1, sourceId: FIRST.sourceId, series: 'Nisekoi', season: 1 });
+        const response = queue.addToLibrary({ ...request, title: FIRST.title, index: 2, sourceId: SECOND.sourceId, series: 'Nisekoi', season: 1 });
+        expect(response).toEqual({ ok: false, reason: 'season-taken', suggested: 2 });
+        expect(db.list()).toHaveLength(1);
+    });
+
+    it('keeps the anime when ani-cli moves to another site: it is added again with the new id and is still one, with its episodes and its series', () => {
+        const { queue, db, site } = setup();
+        const request = { query: 'nisekoi', audio: 'sub' as const, seasonName: null };
+        site.provider = 'hianime.at';
+        queue.addToLibrary({ ...request, title: 'Nisekoi: False Love', index: 1, sourceId: 'nisekoi-false-love-603', episodes: ['1', '2'], series: 'Nisekoi', season: 1 });
+        site.provider = 'allanime.day';
+        const again = queue.addToLibrary({ ...request, title: 'Nisekoi: False Love', index: 4, sourceId: 'ReooPAxPMsHM4KPMY', episodes: ['1', '2', '3'], series: 'Other', season: 7 });
+        expect(again.ok).toBe(true);
+        expect(
+            db.list().map((anime) => {
+                return [anime.title, anime.sourceId, anime.searchIndex, anime.series, anime.season, anime.episodes.length];
+            })
+        ).toEqual([['Nisekoi: False Love', 'ReooPAxPMsHM4KPMY', 4, 'Nisekoi', 1, 3]]);
+    });
+
+    it('queues the episodes of an anime of the old site on the same anime when ani-cli moved', () => {
+        const { queue, db, site } = setup({ maxConcurrent: 1 });
+        site.provider = 'hianime.at';
+        queue.enqueue({ ...FIRST, episodes: ['1'] });
+        site.provider = 'allanime.day';
+        queue.enqueue({ ...FIRST, index: 2, sourceId: 'ReooPAxPMsHM4KPMY', episodes: ['2'] });
+        expect(db.list()).toHaveLength(1);
+        expect(db.list()[0]).toMatchObject({ sourceId: 'ReooPAxPMsHM4KPMY', searchIndex: 2 });
+    });
+
+    it('does not take the second season for the first one on the same site', () => {
+        const { queue, db, site } = setup();
+        site.provider = 'hianime.at';
+        queue.enqueue({ ...FIRST, episodes: ['1'] });
+        queue.enqueue({ ...SECOND, title: FIRST.title, episodes: ['1'] });
+        expect(db.list()).toHaveLength(2);
+    });
+
+    it('is the same anime when it is added again with the same id, and goes on with its series', () => {
+        const { queue, db } = setup();
+        const request = { query: 'nisekoi', audio: 'sub' as const, episodes: ['1'], seasonName: null };
+        queue.addToLibrary({ ...request, title: SECOND.title, index: 2, sourceId: SECOND.sourceId, series: 'Nisekoi', season: 2 });
+        const again = queue.addToLibrary({ ...request, title: SECOND.title, index: 5, sourceId: SECOND.sourceId, series: 'Other', season: 9 });
+        expect(again.ok).toBe(true);
+        expect(db.list()).toHaveLength(1);
+        expect(db.list()[0]).toMatchObject({ series: 'Nisekoi', season: 2, searchIndex: 5 });
     });
 });
 

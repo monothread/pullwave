@@ -484,6 +484,32 @@ describe('AnimeUpdateChecker.checkNow', () => {
             expect(context.db.hasEpisodesBaseline(lost)).toBe(false);
         });
 
+        it('tells the seasons that have the same title by the id of the source, and follows each one to its place', async () => {
+            const context = setup();
+            const first = context.db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1, audio: 'sub', sourceId: 'nisekoi-false-love-603' }).id;
+            const second = context.db.upsertAnime({ title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, audio: 'sub', sourceId: 'nisekoi-false-love-season-2-605' }).id;
+            context.db.registerEpisodesBaseline(first, ['1']);
+            context.db.registerEpisodesBaseline(second, ['1']);
+            // A new anime was listed first: both moved down by one, and the two of them still have the same title.
+            context.results.nisekoi = [
+                { index: 1, title: 'Nisekoi (new)', sourceId: 'nisekoi-new-1' },
+                { index: 2, title: 'Nisekoi: False Love', sourceId: 'nisekoi-false-love-603' },
+                { index: 3, title: 'Nisekoi: False Love (season 2)', sourceId: 'nisekoi-false-love-season-2-605' }
+            ];
+            context.lists['nisekoi:2'] = ['1', '2'];
+            context.lists['nisekoi:3'] = ['1', '2', '3'];
+
+            const response = await context.checker.checkNow('auto');
+
+            expect(response).toMatchObject({ failed: 0, skipped: 0 });
+            expect(context.episodes).toHaveBeenCalledWith('nisekoi', 2, 'sub');
+            expect(context.episodes).toHaveBeenCalledWith('nisekoi', 3, 'sub');
+            expect(context.db.getAnime(first)?.searchIndex).toBe(2);
+            expect(context.db.getAnime(second)?.searchIndex).toBe(3);
+            expect(context.db.getLibraryAnime(first)?.episodes).toHaveLength(2);
+            expect(context.db.getLibraryAnime(second)?.episodes).toHaveLength(3);
+        });
+
         it('leaves the anime for the user when more than one result has its title and none is at its place', async () => {
             const context = setup();
             context.addAnime('Bleach', 'bleach', 3);

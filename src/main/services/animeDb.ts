@@ -20,6 +20,7 @@ import type {
 } from '@shared/anime';
 import { ANIME_AIRING_OVERRIDES, ANIME_AIRING_STATUSES, isAnimeComplete } from '@shared/anime';
 import { sameSeries } from '@shared/series';
+import { sourceIdNumber, sourceQualifier } from '@shared/animeSource';
 import { parseErrorDetails, serializeErrorDetails } from './errorDetails';
 
 export const INTERRUPTED_MESSAGE = 'The app was closed before the download finished.';
@@ -113,7 +114,12 @@ const MIGRATIONS: readonly string[] = [
     ALTER TABLE anime ADD COLUMN airing_checked_at INTEGER;
     ALTER TABLE anime ADD COLUMN airing_override TEXT;`,
     // Everything known about the error of an episode (the exit code, the stack...), as JSON.
-    `ALTER TABLE episode ADD COLUMN error_details TEXT;`
+    `ALTER TABLE episode ADD COLUMN error_details TEXT;`,
+    // The id the source gives an anime (the seasons of an anime can have the same title and only differ by it) and the site that gave it: when
+    // ani-cli moves to another site the ids are not comparable any more, and an anime with the same title is the same anime.
+    `ALTER TABLE anime ADD COLUMN source_id TEXT;
+    ALTER TABLE anime ADD COLUMN source_provider TEXT;
+    CREATE INDEX anime_source_id ON anime (source_id, audio);`
 ];
 
 // The history keeps the most recent anime only.
@@ -148,6 +154,9 @@ export interface NewAnime {
     query: string;
     searchIndex: number;
     audio: AnimeAudio;
+    // The id the source gives it, when it is known, and the site that gave it.
+    sourceId?: string | null;
+    sourceProvider?: string | null;
 }
 
 // What is kept of the cover of an anime: its address (null where AniList has none) and when it was last checked, in milliseconds.
@@ -192,6 +201,7 @@ function toAnime(row: Row): AnimeRecord {
         title: text(row, 'title'),
         query: text(row, 'query'),
         searchIndex: numeric(row, 'search_index'),
+        sourceId: nullableText(row, 'source_id'),
         audio: text(row, 'audio') === 'dub' ? 'dub' : 'sub',
         createdAt: numeric(row, 'created_at'),
         series: nullableText(row, 'series'),
@@ -316,6 +326,9 @@ export class AnimeDb {
 
     // The same title and audio is the same anime: its search data is refreshed, because the position can change.
     upsertAnime(input: NewAnime): AnimeRecord {
+        if (input.sourceId !== undefined && input.sourceId !== null && input.sourceId !== '') {
+            return this.upsertBySourceId(input, input.sourceId);
+        }
         const row = this.one(
             `INSERT INTO anime (title, query, search_index, audio, created_at) VALUES (?, ?, ?, ?, ?)
              ON CONFLICT (title, audio) DO UPDATE SET query = excluded.query, search_index = excluded.search_index
@@ -327,6 +340,86 @@ export class AnimeDb {
             this.now()
         );
         return toAnime(row ?? {});
+    }
+
+    // An anime whose source id is known is the one that has that id, whatever it is called: another anime with the same title is another
+    // anime (the second season of the same name). When ani-cli has moved to another site, the ids it gave before are not comparable with the
+    // new ones: the anime that has the title and an id of another site is this one, and takes the new id, with nothing to do for the user.
+    // One added before the ids were known, with its title and at the place it has now, is this one and gets the id. A title that is taken by
+    // another anime of the same site is made different by what the id says.
+    private upsertBySourceId(input: NewAnime, sourceId: string): AnimeRecord {
+        const provider = input.sourceProvider ?? null;
+        const known = this.one(
+            `UPDATE anime SET query = ?, search_index = ?, source_provider = COALESCE(source_provider, ?)
+             WHERE source_id = ? AND audio = ? AND (source_provider IS NULL OR ? IS NULL OR source_provider = ?) RETURNING *`,
+            input.query,
+            input.searchIndex,
+            provider,
+            sourceId,
+            input.audio,
+            provider,
+            provider
+        );
+        if (known) {
+            return toAnime(known);
+        }
+        const legacy = this.one(
+            'UPDATE anime SET source_id = ?, source_provider = ?, query = ? WHERE title = ? AND audio = ? AND source_id IS NULL AND search_index = ? RETURNING *',
+            sourceId,
+            provider,
+            input.query,
+            input.title,
+            input.audio,
+            input.searchIndex
+        );
+        if (legacy) {
+            return toAnime(legacy);
+        }
+        if (provider !== null) {
+            const moved = this.one(
+                `UPDATE anime SET source_id = ?, source_provider = ?, query = ?, search_index = ?
+                 WHERE title = ? AND audio = ? AND source_provider IS NOT NULL AND source_provider != ? RETURNING *`,
+                sourceId,
+                provider,
+                input.query,
+                input.searchIndex,
+                input.title,
+                input.audio,
+                provider
+            );
+            if (moved) {
+                return toAnime(moved);
+            }
+        }
+        const title = this.freeTitle(input.title, input.audio, sourceId);
+        const row = this.one(
+            'INSERT INTO anime (title, query, search_index, audio, created_at, source_id, source_provider) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *',
+            title,
+            input.query,
+            input.searchIndex,
+            input.audio,
+            this.now(),
+            sourceId,
+            provider
+        );
+        return toAnime(row ?? {});
+    }
+
+    // The title when no anime of that audio has it; otherwise the title with what the id says (and, if that is taken too, its number).
+    private freeTitle(title: string, audio: AnimeAudio, sourceId: string): string {
+        const taken = (candidate: string): boolean => {
+            return this.one('SELECT 1 AS found FROM anime WHERE title = ? AND audio = ?', candidate, audio) !== null;
+        };
+        if (!taken(title)) {
+            return title;
+        }
+        const qualifier = sourceQualifier(title, sourceId);
+        const qualified = qualifier === null ? title : `${title} (${qualifier})`;
+        if (!taken(qualified)) {
+            return qualified;
+        }
+        const numbered = `${qualified} (${sourceIdNumber(sourceId)})`;
+        return taken(numbered) ? `${numbered} (${this.now()})` : numbered;
     }
 
     // An anime found on the disk: it is added, or kept as it is when it is already there, except that search data that is not
@@ -596,7 +689,30 @@ export class AnimeDb {
         return toEpisode(row ?? {});
     }
 
-    findAnime(title: string, audio: AnimeAudio): AnimeRecord | null {
+    // The anime of that audio with that source id when it is given, or else with that title. With an id, the title only finds an anime that
+    // has no id yet (one added before the ids were known) or whose id is from another site (ani-cli moved): an anime with the same title and
+    // another id of the same site is another anime.
+    findAnime(title: string, audio: AnimeAudio, sourceId?: string | null, sourceProvider?: string | null): AnimeRecord | null {
+        if (sourceId !== undefined && sourceId !== null && sourceId !== '') {
+            const provider = sourceProvider ?? null;
+            const row = this.one(
+                `SELECT * FROM anime WHERE audio = ? AND (
+                    (source_id = ? AND (source_provider IS NULL OR ? IS NULL OR source_provider = ?))
+                    OR (title = ? AND source_id IS NULL)
+                    OR (title = ? AND ? IS NOT NULL AND source_provider IS NOT NULL AND source_provider != ?)
+                 ) ORDER BY (source_id = ?) DESC LIMIT 1`,
+                audio,
+                sourceId,
+                provider,
+                provider,
+                title,
+                title,
+                provider,
+                provider,
+                sourceId
+            );
+            return row ? toAnime(row) : null;
+        }
         const row = this.one('SELECT * FROM anime WHERE title = ? AND audio = ?', title, audio);
         return row ? toAnime(row) : null;
     }

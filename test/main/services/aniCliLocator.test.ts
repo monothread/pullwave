@@ -300,6 +300,31 @@ describe('AniCliLocator.withPatches', () => {
         expect(directories).toEqual(['/data/anime']);
     });
 
+    it('learns the site the script reads the anime from, also for a script it does not patch and a script the user chose', () => {
+        const script = '#!/bin/sh\nbase_api="https://HiAnime.at"\n# nothing to patch';
+        const { fs } = makeFs([], {}, { [installed.path]: script });
+        const locator = newLinuxLocator(LOCATIONS, fs);
+        expect(locator.provider).toBeNull();
+        locator.withPatches(installed);
+        expect(locator.provider).toBe('hianime.at');
+        const chosen = makeFs([], {}, { '/home/me/ani-cli': 'allanime_api="https://api.allanime.day"' });
+        const other = newLinuxLocator(LOCATIONS, chosen.fs);
+        other.withPatches({ path: '/home/me/ani-cli', source: 'custom' });
+        expect(other.provider).toBe('api.allanime.day');
+    });
+
+    it('does not know the site of a script that does not say it, and keeps what it knew when the script cannot be read', () => {
+        const { fs } = makeFs([], {}, { [installed.path]: 'base_api="https://hianime.at"' });
+        const locator = newLinuxLocator(LOCATIONS, fs);
+        locator.withPatches(installed);
+        locator.withPatches({ path: '/missing/ani-cli', source: 'installed' });
+        expect(locator.provider).toBe('hianime.at');
+        const bare = makeFs([], {}, { [installed.path]: '#!/bin/sh\necho hi' });
+        const second = newLinuxLocator(LOCATIONS, bare.fs);
+        second.withPatches(installed);
+        expect(second.provider).toBeNull();
+    });
+
     it('also patches the debug output of the script', () => {
         const debug = 'x\n        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;';
         const { fs, writes } = makeFs([], {}, { [installed.path]: debug });

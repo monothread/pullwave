@@ -34,6 +34,8 @@ export interface AnimeQueueDependencies {
     removeDirectory?: (path: string) => void;
     // The system the files are on (decides the rules of file names); this one by default.
     platform?: NodeJS.Platform;
+    // The site ani-cli reads the anime from: the ids it gives them are the ones of that site (null when it is not known).
+    sourceProvider?: () => string | null;
 }
 
 // How long closing the app waits for the downloads to end before it deletes what they left behind.
@@ -66,7 +68,7 @@ export class AnimeDownloadQueue {
 
     // Queues the episodes (the ones already downloaded or already waiting are left as they are) and returns the anime.
     enqueue(request: AnimeDownloadRequest): LibraryAnime | null {
-        const anime = this.deps.db.upsertAnime({ title: request.title, query: request.query, searchIndex: request.index, audio: request.audio });
+        const anime = this.deps.db.upsertAnime({ title: request.title, query: request.query, searchIndex: request.index, audio: request.audio, sourceId: request.sourceId ?? null, sourceProvider: this.deps.sourceProvider?.() ?? null });
         if (request.series && request.season) {
             this.deps.db.setSeries(anime.id, request.series, request.season, request.seasonName === undefined ? anime.seasonName : request.seasonName);
         }
@@ -82,12 +84,12 @@ export class AnimeDownloadQueue {
     // are). The series it goes under is only set when it is new to the library: an anime that is in it already keeps the one it has. A
     // season the series already has is refused, with the one it could take.
     addToLibrary(request: AnimeAddRequest): AnimeAddResponse {
-        const known = this.deps.db.findAnime(request.title, request.audio);
+        const known = this.deps.db.findAnime(request.title, request.audio, request.sourceId, this.deps.sourceProvider?.() ?? null);
         const joins = known === null && request.series !== null && request.season !== null;
         if (joins && this.deps.db.seasonTaken(request.series as string, request.season as number, request.audio, 0)) {
             return { ok: false, reason: 'season-taken', suggested: this.deps.db.firstFreeSeason(request.series as string, request.audio) };
         }
-        const anime = this.deps.db.upsertAnime({ title: request.title, query: request.query, searchIndex: request.index, audio: request.audio });
+        const anime = this.deps.db.upsertAnime({ title: request.title, query: request.query, searchIndex: request.index, audio: request.audio, sourceId: request.sourceId ?? null, sourceProvider: this.deps.sourceProvider?.() ?? null });
         if (joins) {
             this.deps.db.setSeries(anime.id, request.series, request.season, request.seasonName);
         }

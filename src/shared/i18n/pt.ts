@@ -825,6 +825,7 @@ export const pt: Messages = {
     'tools.patch.subtitleSelection': 'a escolha da legenda',
     'tools.patch.allSubtitles': 'salvar todas as legendas',
     'tools.patch.debugReferer': 'o endereço do vídeo',
+    'tools.patch.menuIds': 'distinguir os animes que têm o mesmo nome',
     'tools.hint.downloads': 'O yt-dlp e o deno são baixados pelo app na pasta dele, então os programas do seu sistema nunca são usados por engano. ATUALIZAR traz a versão mais recente ao lado da que funciona, confere e só então a usa.',
     'tools.hint.anime': 'O ani-cli, o busybox e o curl são baixados pelo app na pasta dele, então os programas do seu sistema nunca são usados por engano. O busybox e o curl ficam na versão com que o app foi feito.',
     'tools.hint.global': 'O ffmpeg junta e converte o que o baixador de vídeos e a seção de animes baixam. O app o baixa na pasta dele, e ATUALIZAR traz a build mais recente.',

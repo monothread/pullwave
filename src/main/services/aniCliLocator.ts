@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync,
 import { posix, win32 } from 'node:path';
 import type { AniCliInfo, AnimeAudio } from '@shared/anime';
 import { patchAniCli } from './aniPatches';
+import { providerOf } from './aniProvider';
 import { parseAniCliVersion } from './aniVersion';
 import { SUBTITLE_LABELS_VARIABLE } from './aniSubtitles';
 import type { ResolvedBinary } from './binaryResolver';
@@ -240,6 +241,13 @@ export class AniCliLocator {
         });
     }
 
+    // The site the script that was run last reads the anime from (null before any run, or when the script does not say).
+    private scriptProvider: string | null = null;
+
+    get provider(): string | null {
+        return this.scriptProvider;
+    }
+
     get patchedScriptPath(): string {
         return this.path.join(this.locations.dataDir, 'ani-cli.patched');
     }
@@ -247,10 +255,11 @@ export class AniCliLocator {
     // The script with Pullwave's changes (see aniPatches.ts), saved next to the tools. A script the user chose is never
     // changed, and one this cannot patch is used as it is.
     withPatches(script: ResolvedBinary): ResolvedBinary {
+        const source = this.fs.readText(script.path);
+        this.scriptProvider = source === null ? this.scriptProvider : providerOf(source);
         if (script.source === 'custom') {
             return script;
         }
-        const source = this.fs.readText(script.path);
         const patched = source === null ? null : patchAniCli(source);
         if (patched === null) {
             return script;

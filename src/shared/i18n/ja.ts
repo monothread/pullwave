@@ -820,6 +820,7 @@ export const ja: Messages = {
     'tools.patch.subtitleSelection': '字幕の選択',
     'tools.patch.allSubtitles': 'すべての字幕の保存',
     'tools.patch.debugReferer': 'ストリームのアドレス',
+    'tools.patch.menuIds': '同じ名前のアニメの区別',
     'tools.hint.downloads': 'yt-dlpとdenoはアプリが専用のフォルダーにダウンロードするため、システムのプログラムが誤って使われることはありません。更新は、動作中のものの隣に最新版を取得して確認し、その後に使用します。',
     'tools.hint.anime': 'ani-cli、busybox、curlはアプリが専用のフォルダーにダウンロードするため、システムのプログラムが誤って使われることはありません。busyboxとcurlはアプリが作られたバージョンのままです。',
     'tools.hint.global': 'ffmpegは、動画ダウンローダーとアニメセクションがダウンロードしたものを結合・変換します。アプリが専用フォルダーにダウンロードし、更新で最新ビルドを取得します。',

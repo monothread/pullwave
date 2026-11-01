@@ -310,6 +310,13 @@ describe('AniCliService.search', () => {
         });
     });
 
+    it('knows the site ani-cli reads the anime from once it has run the script, and not before', async () => {
+        const { service } = setup([done(outcome({ menuChoices: animeChoices('Naruto') }))], [true], { scriptText: '#!/bin/sh\nbase_api="https://hianime.at"' });
+        expect(service.provider).toBeNull();
+        await service.search('naruto', 'sub');
+        expect(service.provider).toBe('hianime.at');
+    });
+
     it('returns the results in the order ani-cli listed them', async () => {
         const { service } = setup([done(outcome({ menuChoices: animeChoices('Cyberpunk: Edgerunners', 'Cyberpunk: Edgerunners 2') }))]);
         expect(await service.search('cyberpunk', 'sub')).toEqual({
@@ -317,6 +324,34 @@ describe('AniCliService.search', () => {
             value: [
                 { index: 1, title: 'Cyberpunk: Edgerunners' },
                 { index: 2, title: 'Cyberpunk: Edgerunners 2' }
+            ]
+        });
+    });
+
+    it('tells apart the results that have the same title by what the id of the source says', async () => {
+        const choices: MenuChoice[] = [
+            { prompt: 'Select anime:', choice: '1 pwid:nisekoi-false-love-603 Nisekoi: False Love' },
+            { prompt: 'Select anime:', choice: '2 pwid:nisekoi-false-love-season-2-605 Nisekoi: False Love' },
+            { prompt: 'Select anime:', choice: '3 pwid:nisekoi-ova-604 Nisekoi OVA' }
+        ];
+        const { service } = setup([done(outcome({ menuChoices: choices }))]);
+        expect(await service.search('nisekoi', 'sub')).toEqual({
+            status: 'done',
+            value: [
+                { index: 1, title: 'Nisekoi: False Love', sourceId: 'nisekoi-false-love-603' },
+                { index: 2, title: 'Nisekoi: False Love (season 2)', sourceId: 'nisekoi-false-love-season-2-605' },
+                { index: 3, title: 'Nisekoi OVA', sourceId: 'nisekoi-ova-604' }
+            ]
+        });
+    });
+
+    it('leaves the results with the same title as they are when the script gives no ids', async () => {
+        const { service } = setup([done(outcome({ menuChoices: animeChoices('Nisekoi: False Love', 'Nisekoi: False Love') }))]);
+        expect(await service.search('nisekoi', 'sub')).toEqual({
+            status: 'done',
+            value: [
+                { index: 1, title: 'Nisekoi: False Love' },
+                { index: 2, title: 'Nisekoi: False Love' }
             ]
         });
     });

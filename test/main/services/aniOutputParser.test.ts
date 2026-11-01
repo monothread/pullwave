@@ -151,6 +151,31 @@ describe('parseAnimeChoice', () => {
         expect(parseAnimeChoice('  10 One Piece  ')).toEqual({ index: 10, title: 'One Piece' });
     });
 
+    it('reads the id of the source when the script lets it through, marked, between the position and the title', () => {
+        expect(parseAnimeChoice('2 pwid:nisekoi-false-love-season-2-605 Nisekoi: False Love')).toEqual({
+            index: 2,
+            title: 'Nisekoi: False Love',
+            sourceId: 'nisekoi-false-love-season-2-605'
+        });
+        expect(parseAnimeChoice('1 pwid:naruto-12 Naruto')).toEqual({ index: 1, title: 'Naruto', sourceId: 'naruto-12' });
+    });
+
+    it('reads an id of any look, since it is the marker that tells it: another source can write its ids another way', () => {
+        expect(parseAnimeChoice('3 pwid:ReooPAxPMsHM4KPMY One Piece')).toEqual({ index: 3, title: 'One Piece', sourceId: 'ReooPAxPMsHM4KPMY' });
+        expect(parseAnimeChoice('4 pwid:603 Nisekoi')).toEqual({ index: 4, title: 'Nisekoi', sourceId: '603' });
+    });
+
+    it('does not take the first word of a title for an id, whatever it looks like: only the marker makes an id', () => {
+        expect(parseAnimeChoice('3 Black Clover Season 2')).toEqual({ index: 3, title: 'Black Clover Season 2' });
+        expect(parseAnimeChoice('4 86-1 Eighty-Six')).toEqual({ index: 4, title: '86-1 Eighty-Six' });
+        expect(parseAnimeChoice('5 naruto-12 Shippuden')).toEqual({ index: 5, title: 'naruto-12 Shippuden' });
+        expect(parseAnimeChoice('6 one-piece Film')).toEqual({ index: 6, title: 'one-piece Film' });
+    });
+
+    it('does not take a marker for an id when nothing follows it', () => {
+        expect(parseAnimeChoice('7 pwid:naruto-12')).toEqual({ index: 7, title: 'pwid:naruto-12' });
+    });
+
     it('rejects lines that are not a numbered title', () => {
         expect(parseAnimeChoice('Cyberpunk')).toBeNull();
         expect(parseAnimeChoice('3')).toBeNull();

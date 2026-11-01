@@ -155,6 +155,11 @@ function validQuery(value: unknown): string | null {
     return query.length > 0 ? query : null;
 }
 
+// The id the source gives an anime, when what came is one (letters, numbers and dashes, as the source writes it).
+export function asSourceId(value: unknown): string | null {
+    return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,200}$/.test(value) ? value : null;
+}
+
 // Checks what came from the screen before it reaches ani-cli or the library.
 export function parseDownloadRequest(input: unknown): AnimeDownloadRequest | string {
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
@@ -180,7 +185,8 @@ export function parseDownloadRequest(input: unknown): AnimeDownloadRequest | str
     if (joined === 'invalid') {
         return 'The series, the order or the name is invalid.';
     }
-    return { title, query, index, audio, episodes: numbers, ...(joined ?? {}) };
+    const sourceId = asSourceId(raw.sourceId);
+    return { title, query, index, audio, episodes: numbers, ...(sourceId === null ? {} : { sourceId }), ...(joined ?? {}) };
 }
 
 // The series and the season that came with a request: none, both valid, or "invalid" (one without the other, a name that cannot be
@@ -475,6 +481,7 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             title: request.title,
             query: request.query,
             index: request.index,
+            ...(request.sourceId === undefined ? {} : { sourceId: request.sourceId }),
             audio: request.audio,
             episodes: request.episodes,
             series: request.series ?? null,

@@ -841,6 +841,7 @@ export const en = {
     'tools.patch.subtitleSelection': 'the choice of the subtitle',
     'tools.patch.allSubtitles': 'saving every subtitle',
     'tools.patch.debugReferer': 'the address of the stream',
+    'tools.patch.menuIds': 'telling apart the anime that have the same name',
     'tools.hint.downloads': 'yt-dlp and deno are downloaded by the app into its own folder, so the programs of your system are never used by mistake. UPDATE brings the latest version beside the one that works, checks it, and only then uses it.',
     'tools.hint.anime': 'ani-cli, busybox and curl are downloaded by the app into its own folder, so the programs of your system are never used by mistake. busybox and curl stay at the version the app was made with.',
     'tools.hint.global': 'ffmpeg joins and converts what the video downloader and the anime section download. The app downloads it into its own folder, and UPDATE brings the latest build.',

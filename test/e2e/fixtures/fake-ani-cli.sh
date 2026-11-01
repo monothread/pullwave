@@ -2,7 +2,9 @@
 version_number="0.0.0-fake"
 # Stands in for ani-cli in the end-to-end tests. It is run by the busybox that ships with the app, with the same PATH,
 # menu program and environment ani-cli would get.
-#   search:    <words>                       lists "1 Fake Anime" and "2 Fake Anime 2" (words with "zzz": nothing found; with "turtle": two seconds before it answers, here and in the episodes)
+#   search:    <words>                       lists "1 Fake Anime" and "2 Fake Anime 2" (words with "zzz": nothing found; with "turtle": two seconds before it answers, here and in the episodes;
+#                                            with "twin": two anime with the same title that only differ by the id the source gives them, as the patched ani-cli lists them,
+#                                            "1 pwid:twin-anime-10 Twin Anime" and "2 pwid:twin-anime-season-2-11 Twin Anime", the first with 3 episodes and the second with 2)
 #   episodes:  -S <n> <words>                lists episodes 1 to 3, or 1 to 4 once a test wrote more-episodes in the history folder (words with "single": the one episode is picked silently)
 #   stream:    -S <n> -e <ep> -q <q> ...     (with the debug player) prints the address of the episode, the subtitle and the list of subtitles
 #   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists)
@@ -83,6 +85,10 @@ esac
 if [ -n "$index" ]; then
     case "$query" in
         *single*) exit 0 ;;
+        *twin*)
+            if [ "$index" = 2 ]; then printf '1\n2\n' | "$ANI_CLI_MENU" 'Select episode: '; else printf '1\n2\n3\n' | "$ANI_CLI_MENU" 'Select episode: '; fi
+            exit 1
+            ;;
     esac
     if [ -f "$ANI_CLI_HIST_DIR/more-episodes" ]; then
         printf '1\n2\n3\n4\n' | "$ANI_CLI_MENU" 'Select episode: '
@@ -91,6 +97,13 @@ if [ -n "$index" ]; then
     printf '1\n2\n3\n' | "$ANI_CLI_MENU" 'Select episode: '
     exit 1
 fi
+
+case "$query" in
+    *twin*)
+        printf '1 pwid:twin-anime-10 Twin Anime\n2 pwid:twin-anime-season-2-11 Twin Anime\n' | "$ANI_CLI_MENU" 'Select anime: '
+        exit 1
+        ;;
+esac
 
 printf '1 Fake Anime\n2 Fake Anime 2\n' | "$ANI_CLI_MENU" 'Select anime: '
 exit 1

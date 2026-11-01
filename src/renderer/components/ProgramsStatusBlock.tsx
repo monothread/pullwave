@@ -13,7 +13,8 @@ import { ConfirmButton } from './ConfirmButton';
 const PATCH_KEYS: Record<string, MessageKey> = {
     subtitleSelection: 'tools.patch.subtitleSelection',
     allSubtitles: 'tools.patch.allSubtitles',
-    debugReferer: 'tools.patch.debugReferer'
+    debugReferer: 'tools.patch.debugReferer',
+    menuIds: 'tools.patch.menuIds'
 };
 
 const HINTS: Record<ProgramPlace, MessageKey> = {

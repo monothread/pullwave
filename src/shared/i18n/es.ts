@@ -825,6 +825,7 @@ export const es: Messages = {
     'tools.patch.subtitleSelection': 'la elección del subtítulo',
     'tools.patch.allSubtitles': 'guardar todos los subtítulos',
     'tools.patch.debugReferer': 'la dirección del vídeo',
+    'tools.patch.menuIds': 'distinguir los anime que tienen el mismo nombre',
     'tools.hint.downloads': 'yt-dlp y deno los descarga la aplicación en su propia carpeta, así que los programas de tu sistema nunca se usan por error. ACTUALIZAR trae la última versión junto a la que funciona, la comprueba y solo entonces la usa.',
     'tools.hint.anime': 'ani-cli, busybox y curl los descarga la aplicación en su propia carpeta, así que los programas de tu sistema nunca se usan por error. busybox y curl se quedan en la versión con la que se hizo la aplicación.',
     'tools.hint.global': 'ffmpeg une y convierte lo que descargan el descargador de vídeos y la sección de anime. La aplicación lo descarga en su propia carpeta, y ACTUALIZAR trae la última compilación.',

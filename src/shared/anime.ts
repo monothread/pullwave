@@ -8,6 +8,9 @@ export interface AnimeSearchResult {
     // Position in the result list of that exact search: ani-cli selects an entry by it (`-S <index>`).
     index: number;
     title: string;
+    // The id the source gives the anime (absent when this copy of ani-cli does not report it): unlike the position it does not change when
+    // the source lists another anime before it, and unlike the title it is not shared by the seasons of an anime.
+    sourceId?: string;
 }
 
 export type AniErrorCode =
@@ -77,6 +80,8 @@ export interface AnimeRecord {
     // What was searched and the position of the anime in that search: they are how ani-cli finds it again.
     query: string;
     searchIndex: number;
+    // The id the source gives it, when it was known as it was added (null for the ones added before, which are told by their title).
+    sourceId: string | null;
     audio: AnimeAudio;
     createdAt: number;
     // The seasons of one anime are separate entries in the source: the user joins them with a series name and a season number
@@ -172,6 +177,8 @@ export interface AnimeDownloadRequest {
     title: string;
     query: string;
     index: number;
+    // The id the source gives the anime, when it is known.
+    sourceId?: string | null;
     audio: AnimeAudio;
     episodes: string[];
     // The series and season the anime is saved under; null leaves it as it is.
@@ -220,6 +227,7 @@ export interface AnimeAddRequest {
     title: string;
     query: string;
     index: number;
+    sourceId?: string | null;
     audio: AnimeAudio;
     // Every episode the source lists for it.
     episodes: string[];
