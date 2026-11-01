@@ -421,10 +421,11 @@ test('a paused download frees its place in the queue for the next one', async ()
     await submitUrl(page, 'https://example.com/slow-first');
     await expect(page.getByTestId('job-card').locator('.badge')).toHaveText('DOWNLOADING');
     // Each link is sent once the card of the one before is there, so none is lost while the field is being cleared.
+    // The cards can take a moment to come while other tests run beside this one.
     await submitUrl(page, 'https://example.com/slow-second');
-    await expect(page.getByTestId('job-card')).toHaveCount(2);
+    await expect(page.getByTestId('job-card')).toHaveCount(2, { timeout: 15000 });
     await submitUrl(page, 'https://example.com/slow-third');
-    await expect(page.getByTestId('job-card')).toHaveCount(3);
+    await expect(page.getByTestId('job-card')).toHaveCount(3, { timeout: 15000 });
     await submitUrl(page, 'https://example.com/slow-fourth');
     await expect(page.getByTestId('job-card')).toHaveCount(4);
     const badges = page.getByTestId('job-card').locator('.badge');
@@ -548,7 +549,8 @@ test.describe('closing the app with downloads going on', () => {
 
             await own.app.close();
 
-            expect(present(own.downloadDir, PARTIAL_NAMES)).toEqual([]);
+            // The process of the download that runs is ended as the app closes, and its files go a moment later on a busy machine.
+            await expect.poll(() => { return present(own.downloadDir, PARTIAL_NAMES); }, { timeout: 10000 }).toEqual([]);
             const kept = JSON.parse(readFileSync(join(own.userData, 'paused.json'), 'utf-8')) as Array<{ job: { url: string; status: string } }>;
             expect(kept).toHaveLength(1);
             expect(kept[0]?.job).toMatchObject({ url: 'https://example.com/slow-paused', status: 'paused' });
@@ -741,10 +743,11 @@ test('the gear of the settings is at the bottom of the menu of the sections, and
     const gear = sections.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true });
     await expect(gear.locator('svg.section-icon--settings')).toHaveCount(1);
     // The gear is drawn like the pictures of the sections, on the same vertical line as them.
-    const centres = await sections.locator('.section-icon').evaluateAll((icons) => {
-        return icons.map((icon) => {
-            const box = icon.getBoundingClientRect();
-            return { centre: Math.round(box.left + box.width / 2), width: Math.round(box.width) };
+    // Measured on the layout (the box of each picture in its tab), not on the screen: the picture of the active section hops when it is chosen.
+    const centres = await sections.locator('.tab__decoration').evaluateAll((pictures) => {
+        return pictures.map((picture) => {
+            const box = picture as HTMLElement;
+            return { centre: Math.round(box.offsetLeft + box.offsetWidth / 2), width: box.offsetWidth };
         });
     });
     expect(centres).toHaveLength(5);

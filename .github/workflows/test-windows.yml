@@ -44,7 +44,8 @@ jobs:
         run: npm run build
 
       - name: End-to-end tests of the anime section
-        run: npx playwright test test/e2e/anime.e2e-spec.ts test/e2e/buttons.e2e-spec.ts test/e2e/anime-live.e2e-spec.ts
+        # One at a time: the tests in fullscreen lose it when another window opens (D-133).
+        run: npx playwright test --workers=1 test/e2e/anime.e2e-spec.ts test/e2e/buttons.e2e-spec.ts test/e2e/anime-live.e2e-spec.ts
 
       - name: Keep the results when something failed
         if: failure()
