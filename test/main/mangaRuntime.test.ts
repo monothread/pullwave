@@ -443,7 +443,20 @@ describe('createMangaRuntime downloading a chapter', () => {
         const library = runtime!.queue.enqueue(REQUEST) as LibraryManga;
         await untilIdle(runtime!);
         const chapter = runtime!.db.chaptersOf(library.id)[0]!;
-        await expect(runtime!.handlers.repair.repair(chapter.id, null)).resolves.toEqual({ ok: false, error: { code: 'IMAGE', message: 'The page is not on the server of the app' } });
+        await expect(runtime!.handlers.repair.repair(chapter.id, null)).resolves.toEqual({
+            ok: false,
+            error: {
+                code: 'IMAGE',
+                message: 'The page is not on the server of the app',
+                details: {
+                    occurredAt: expect.any(Number),
+                    errorName: 'Error',
+                    stack: expect.stringContaining('Error: The page is not on the server of the app'),
+                    operation: 'Downloading a page of the chapter',
+                    url: 'http://elsewhere.example/page/1'
+                }
+            }
+        });
         expect(runtime!.db.getChapter(chapter.id)).toMatchObject({ status: 'incomplete', filePath: chapter.filePath });
     });
 

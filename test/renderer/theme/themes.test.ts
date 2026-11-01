@@ -126,8 +126,9 @@ describe('the style of each theme', () => {
         expect(THEMES_CSS).not.toMatch(/data-theme='(dark|light)'\] \./);
     });
 
-    it('gives the neon rules of the player to the neon themes by their style, with the colors of the theme', () => {
-        expect(CYBERPUNK_CSS).toContain("html[data-theme-style='neon'] .player__stage:fullscreen .player__controls .player__seek {");
+    it('gives the rules of the player in fullscreen to every theme, not only the neon ones, with the colors of the theme', () => {
+        expect(CYBERPUNK_CSS).toContain('.player__stage:fullscreen .player__controls .player__seek {');
+        expect(CYBERPUNK_CSS).not.toMatch(/data-theme-style='neon'\]\s*\.player/);
         expect(CYBERPUNK_CSS).not.toContain("html[data-theme='cyberpunk']");
         const player = CYBERPUNK_CSS.slice(CYBERPUNK_CSS.indexOf('@keyframes player-wave'));
         expect(player).not.toContain('0, 240, 255');

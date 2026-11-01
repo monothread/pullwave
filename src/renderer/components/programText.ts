@@ -1,6 +1,7 @@
-import type { MessageKey } from '@shared/i18n';
+import type { MessageKey, Translator } from '@shared/i18n';
 import type { ProgramLookupReason } from '@shared/programs';
-import type { ProgramId, ToolErrorCode, ToolState, ToolStatus } from '@shared/tools';
+import type { ProgramId, ToolError, ToolErrorCode, ToolState, ToolStatus } from '@shared/tools';
+import { codedErrorReport, type ErrorReport } from './errorReport';
 
 const ERROR_KEYS: Record<ToolErrorCode, MessageKey> = {
     UNSUPPORTED_PLATFORM: 'tools.error.UNSUPPORTED_PLATFORM',
@@ -31,6 +32,11 @@ const PROGRESS_KEYS: Record<Exclude<ToolStatus, 'ready' | 'error'>, MessageKey> 
 
 export function programErrorKey(code: ToolErrorCode): MessageKey {
     return ERROR_KEYS[code];
+}
+
+// The failure of a program to be installed, in words for the user and with what the app knows about it.
+export function programErrorReport(t: Translator, error: ToolError): ErrorReport {
+    return codedErrorReport(t(programErrorKey(error.code)), error, error.message);
 }
 
 export function lookupReasonKey(reason: ProgramLookupReason): MessageKey {

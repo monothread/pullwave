@@ -1,5 +1,6 @@
 import type { AniDownloadProgress, AniRunResult } from '@shared/anime';
 import { mapAniError, mapAniSpawnError, parseDestinationLine, parseMenuLine, parseProgressLine, stripAnsi } from './aniOutputParser';
+import { commandLine } from './errorDetails';
 import { killProcessTree, type GroupKill } from './processTree';
 import { createLineSplitter, defaultSpawn, EXIT_GRACE_MS, KILL_ESCALATION_MS, type SpawnFn } from './ytdlpRunner';
 
@@ -93,7 +94,7 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
             resolve(outcome);
         };
         child.once('error', (error: NodeJS.ErrnoException) => {
-            settle({ status: 'error', error: mapAniSpawnError(error) });
+            settle({ status: 'error', error: mapAniSpawnError(error, { operation: 'Running ani-cli', command: commandLine(options.binary, options.args) }) });
         });
         const finish = (code: number | null): void => {
             stdoutSplitter.flush();
@@ -140,5 +141,5 @@ export function asDownloadResult(outcome: AniRunOutcome): AniRunResult<AniRunOut
     if (outcome.exitCode === 0) {
         return { status: 'done', value: outcome };
     }
-    return { status: 'error', error: mapAniError(outcome.output, outcome.exitCode) };
+    return { status: 'error', error: mapAniError(outcome.output, outcome.exitCode, { operation: 'Downloading an episode with ani-cli' }) };
 }

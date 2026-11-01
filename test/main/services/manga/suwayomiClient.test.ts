@@ -1,5 +1,5 @@
 import type { MangaFilter, MangaPreferenceValue } from '@shared/manga';
-import { CHALLENGE_RETRIES, CHALLENGE_RETRY_DELAY_MS, filterChanges, QUERIES, REQUEST_TIMEOUT_MS, SOURCE_TIMEOUT_MS, SuwayomiApiError, SuwayomiClient } from '@main/services/manga/suwayomiClient';
+import { CHALLENGE_RETRIES, CHALLENGE_RETRY_DELAY_MS, filterChanges, operationOf, QUERIES, REQUEST_TIMEOUT_MS, SOURCE_TIMEOUT_MS, SuwayomiApiError, SuwayomiClient } from '@main/services/manga/suwayomiClient';
 
 const BASE = 'http://127.0.0.1:4321';
 
@@ -95,6 +95,85 @@ describe('SuwayomiClient requests', () => {
             spy.mockRestore();
         }
         expect(timeouts).toEqual([REQUEST_TIMEOUT_MS, SOURCE_TIMEOUT_MS]);
+    });
+});
+
+describe('SuwayomiClient what it knows about a failed request', () => {
+    const URL = `${BASE}/api/graphql`;
+    const OPERATION = 'GraphQL extensionStores';
+
+    async function failureOf(answers: Array<Response | Error>, baseUrl?: () => Promise<string>): Promise<SuwayomiApiError> {
+        const { client } = setup(answers, baseUrl);
+        const failure = await client.stores().then(
+            () => {
+                return null;
+            },
+            (error: unknown) => {
+                return error;
+            }
+        );
+        expect(failure).toBeInstanceOf(SuwayomiApiError);
+        return failure as SuwayomiApiError;
+    }
+
+    it('names the operation and the address, and the cause, for a server that cannot be reached', async () => {
+        const reset = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET', errno: -104, syscall: 'read' });
+        const failure = await failureOf([reset]);
+        expect(failure.known).toEqual({
+            occurredAt: expect.any(Number),
+            errorName: 'Error',
+            stack: reset.stack,
+            systemCode: 'ECONNRESET',
+            operation: OPERATION,
+            url: URL
+        });
+    });
+
+    it('names the operation for a server that cannot be started', async () => {
+        const failure = await failureOf([data({})], () => {
+            return Promise.reject(new Error('The server did not become ready in time'));
+        });
+        expect(failure.known).toEqual({ operation: `Starting the manga server for ${OPERATION}` });
+    });
+
+    it('gives the HTTP status of an answer that is not a success', async () => {
+        const failure = await failureOf([new Response('nope', { status: 502 })]);
+        expect(failure.known).toEqual({ operation: OPERATION, url: URL, httpStatus: 502 });
+    });
+
+    it('gives the HTTP status of an answer that is not JSON', async () => {
+        const failure = await failureOf([new Response('<html>', { status: 200 })]);
+        expect(failure.known).toEqual({ operation: OPERATION, url: URL, httpStatus: 200 });
+    });
+
+    it('gives the HTTP status of the error the server gives', async () => {
+        const failure = await failureOf([new Response(JSON.stringify({ errors: [{ message: 'Source not found' }] }), { status: 200 })]);
+        expect(failure.known).toEqual({ operation: OPERATION, url: URL, httpStatus: 200 });
+    });
+
+    it('gives the HTTP status of an answer without data', async () => {
+        const failure = await failureOf([new Response('{}', { status: 200 })]);
+        expect(failure.known).toEqual({ operation: OPERATION, url: URL, httpStatus: 200 });
+    });
+
+    it('has nothing known for an error made without it', () => {
+        expect(new SuwayomiApiError('API_ERROR', 'x').known).toEqual({});
+    });
+});
+
+describe('operationOf', () => {
+    it('gives the first field of a query', () => {
+        expect(operationOf(QUERIES.stores)).toBe('extensionStores');
+        expect(operationOf(QUERIES.about)).toBe('aboutServer');
+    });
+
+    it('skips the variables of a mutation', () => {
+        expect(operationOf(QUERIES.addStore)).toBe('addExtensionStore');
+        expect(operationOf(QUERIES.refreshExtensions)).toBe('fetchExtensions');
+    });
+
+    it('says it has no name for a text that is not a query', () => {
+        expect(operationOf('nothing here')).toBe('unnamed request');
     });
 });
 

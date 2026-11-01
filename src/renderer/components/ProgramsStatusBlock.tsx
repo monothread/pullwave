@@ -5,7 +5,9 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { PROGRAM_NAMES, useProgramsStore, type ProgramResult } from '../store/programsStore';
-import { displayVersion, isWorking, lookupReasonKey, programErrorKey } from './programText';
+import { displayVersion, isWorking, lookupReasonKey, programErrorReport } from './programText';
+import { ErrorNotice } from './ErrorNotice';
+import { plainErrorReport } from './errorReport';
 import { ConfirmButton } from './ConfirmButton';
 
 const PATCH_KEYS: Record<string, MessageKey> = {
@@ -117,8 +119,8 @@ function ProgramRow({ program, version, runs, customPath, info, result }: Progra
                     </div>
                 )}
                 {!program.custom && state.status === 'error' && state.error && (
-                    <span className="field__warning" role="alert" title={state.error.message}>
-                        {t(programErrorKey(state.error.code))}
+                    <span className="field__warning" role="alert">
+                        <ErrorNotice report={programErrorReport(t, state.error)} />
                     </span>
                 )}
                 {notRunning && (
@@ -154,8 +156,8 @@ function ProgramRow({ program, version, runs, customPath, info, result }: Progra
                             <div className="progress__bar progress__bar--smooth" style={{ width: `${String(download.percent)}%` }} />
                         </div>
                         {download.status === 'error' && download.error ? (
-                            <span className="field__warning" role="alert" title={download.error.message}>
-                                {t(programErrorKey(download.error.code))}
+                            <span className="field__warning" role="alert">
+                                <ErrorNotice report={programErrorReport(t, download.error)} />
                             </span>
                         ) : (
                             <span className="history__meta">{t('tools.updateDownloading', { percent: Math.round(download.percent) })}</span>
@@ -163,8 +165,8 @@ function ProgramRow({ program, version, runs, customPath, info, result }: Progra
                     </>
                 )}
                 {result && (
-                    <span className={`history__meta${result.ok ? '' : ' field__warning'}`} role={result.ok ? undefined : 'alert'} title={result.ok ? undefined : result.message}>
-                        {resultText(result, t)}
+                    <span className={`history__meta${result.ok ? '' : ' field__warning'}`} role={result.ok ? undefined : 'alert'}>
+                        {result.ok ? resultText(result, t) : <ErrorNotice report={plainErrorReport(resultText(result, t), result.message)} />}
                     </span>
                 )}
             </div>

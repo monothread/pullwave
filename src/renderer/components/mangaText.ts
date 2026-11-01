@@ -2,8 +2,9 @@ import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
 import { hasChapterFile } from '@shared/manga';
 import type { LibraryManga, MangaChapter, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
-import type { ToolErrorCode } from '@shared/tools';
+import type { ToolError, ToolErrorCode } from '@shared/tools';
 import type { MangaReaderState, ReaderChapter } from '../store/mangaStore';
+import { codedErrorReport, type ErrorReport } from './errorReport';
 
 // The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
 // Shown in the field of the address of a store, as an example of one (the user is the one who adds stores).
@@ -74,13 +75,18 @@ export function mangaErrorTextKey(error: MangaError): MessageKey {
     return ERROR_KEYS[error.code];
 }
 
-// Everything the backend said about the error, to be pasted where it is debugged.
-export function technicalErrorText(error: MangaError): string {
-    return `${error.code}\n${error.message}`;
-}
-
 export function toolErrorKey(code: ToolErrorCode): MessageKey {
     return TOOL_ERROR_KEYS[code];
+}
+
+// The failure of a program of the manga section (the server, the helper) to be installed, in words for the user and with what the app knows.
+export function toolErrorReport(t: Translator, error: ToolError): ErrorReport {
+    return codedErrorReport(t(toolErrorKey(error.code)), error, error.message);
+}
+
+// An error of the manga section, in words for the user and with what the backend said about it.
+export function mangaErrorReport(t: Translator, error: MangaError, summary: string = t(mangaErrorTextKey(error))): ErrorReport {
+    return codedErrorReport(summary, error, error.message);
 }
 
 // Whether the server says the site is behind Cloudflare (what it answers when its bypass is off, or when the bypass does not get through).
@@ -269,6 +275,39 @@ export interface ExtensionFilter {
 }
 
 export const ALL_LANGUAGES = 'all-languages';
+
+// The code among `available` that stands for `wanted`: the same code, or the same language in another form ("pt" for "pt-BR" and the other way).
+function matchLanguage(wanted: string, available: readonly string[]): string | null {
+    const lowered = wanted.toLowerCase();
+    const primaryOf = (code: string): string => {
+        return code.toLowerCase().split(/[-_]/)[0] ?? '';
+    };
+    const exact = available.find((code) => {
+        return code.toLowerCase() === lowered;
+    });
+    if (exact !== undefined) {
+        return exact;
+    }
+    const primary = primaryOf(wanted);
+    return (
+        available.find((code) => {
+            return primaryOf(code) === primary;
+        }) ?? null
+    );
+}
+
+// The language the manga section works in. The choice of the settings is used when something is in it ("all-languages" is every language);
+// when the settings follow the computer (empty), it is the language of the computer, then English. When nothing is in the language (the
+// sources are not loaded yet, or there is none in it) it is every language.
+export function resolveMangaLanguage(setting: string, available: readonly string[], locale: string): string {
+    if (setting === ALL_LANGUAGES) {
+        return ALL_LANGUAGES;
+    }
+    if (setting !== '') {
+        return matchLanguage(setting, available) ?? ALL_LANGUAGES;
+    }
+    return (locale === '' ? null : matchLanguage(locale, available)) ?? matchLanguage('en', available) ?? ALL_LANGUAGES;
+}
 
 // The id of the local source of the server, which is not an extension and is not listed.
 const LOCAL_SOURCE_ID = '0';

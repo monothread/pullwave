@@ -28,9 +28,13 @@ function listed(items = [makeSummary({ remoteId: 1, title: 'One Piece', sourceId
 beforeEach(() => {
     mock = installMockApi();
     window.localStorage.clear();
-    useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
-    useMangaStore.setState({ ...initialManga, library: [], selection: null, selectionFrom: 'browse', view: 'search', search: initialManga.search, browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready', sourceLanguage: 'all-languages' } });
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'all-languages' }, toasts: [] });
+    useMangaStore.setState({ ...initialManga, library: [], selection: null, selectionFrom: 'browse', view: 'search', search: initialManga.search, browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready' } });
     mock.api.manga.list.mockResolvedValue(listed());
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
 });
 
 async function searchFor(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
@@ -39,11 +43,10 @@ async function searchFor(user: ReturnType<typeof userEvent.setup>, name: string)
 }
 
 describe('MangaSearch', () => {
-    it('has the language and the name, and cannot search without a name', async () => {
+    it('has the name, and cannot search without a name', async () => {
         const user = userEvent.setup();
         render(<MangaSearch />);
         expect(screen.getByRole('region', { name: 'SEARCH' })).toBeInTheDocument();
-        expect(screen.getByLabelText('Language')).toHaveValue('all-languages');
         expect(screen.getByLabelText('Manga name')).toHaveValue('');
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeDisabled();
         await user.type(screen.getByLabelText('Manga name'), '   ');
@@ -51,17 +54,6 @@ describe('MangaSearch', () => {
         await user.type(screen.getByLabelText('Manga name'), 'one');
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeEnabled();
         expect(mock.api.manga.list).not.toHaveBeenCalled();
-    });
-
-    it('lists the languages of the sources that are shown', () => {
-        render(<MangaSearch />);
-        expect(
-            within(screen.getByLabelText('Language'))
-                .getAllByRole('option')
-                .map((option) => {
-                    return option.textContent;
-                })
-        ).toEqual(['All languages', 'EN', 'PT']);
     });
 
     it('reads the sources when they are not read yet', async () => {
@@ -152,21 +144,73 @@ describe('MangaSearch', () => {
         expect(mock.api.manga.list).toHaveBeenCalledTimes(4);
     });
 
-    it('limits the search to the language chosen, and remembers the choice', async () => {
-        const user = userEvent.setup();
+    it('has no field to pick the language, and a switch beside SEARCH to search every language, off by default', () => {
         render(<MangaSearch />);
-        await user.selectOptions(screen.getByLabelText('Language'), 'pt');
-        expect(useMangaStore.getState().browse.sourceLanguage).toBe('pt');
+        expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
+        const toggle = screen.getByRole('switch', { name: 'Search every language' });
+        expect(toggle).not.toBeChecked();
+        const button = screen.getByRole('button', { name: 'SEARCH' });
+        expect(button.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(button.closest('form')).toContainElement(toggle);
+    });
+
+    it('limits the search to the language of the settings', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'pt' } });
+        render(<MangaSearch />);
         await searchFor(user, 'naruto');
         await screen.findByText('"naruto": found in 1 of 1 sources');
         expect(mock.api.manga.list).toHaveBeenCalledTimes(1);
         expect(mock.api.manga.list).toHaveBeenCalledWith({ sourceId: '8', kind: 'search', page: 1, query: 'naruto' });
-        expect(JSON.parse(window.localStorage.getItem(Object.keys(window.localStorage)[0]!)!)).toMatchObject({ sourceLanguage: 'pt' });
+    });
+
+    it('searches every language when the switch is on, whatever the language of the settings', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'pt' } });
+        render(<MangaSearch />);
+        await user.click(screen.getByRole('switch', { name: 'Search every language' }));
+        expect(screen.getByRole('switch', { name: 'Search every language' })).toBeChecked();
+        expect(useMangaStore.getState().search.allLanguages).toBe(true);
+        await searchFor(user, 'naruto');
+        await screen.findByText('"naruto": found in 4 of 4 sources');
+        expect(mock.api.manga.list).toHaveBeenCalledTimes(4);
+    });
+
+    it('goes back to the language of the settings when the switch is turned off', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'pt' } });
+        render(<MangaSearch />);
+        await user.click(screen.getByRole('switch', { name: 'Search every language' }));
+        await user.click(screen.getByRole('switch', { name: 'Search every language' }));
+        expect(useMangaStore.getState().search.allLanguages).toBe(false);
+        await searchFor(user, 'naruto');
+        await screen.findByText('"naruto": found in 1 of 1 sources');
+    });
+
+    it('keeps the switch when the name is erased and the results are cleared', async () => {
+        const user = userEvent.setup();
+        render(<MangaSearch />);
+        await user.click(screen.getByRole('switch', { name: 'Search every language' }));
+        await searchFor(user, 'naruto');
+        await screen.findByText(/^"naruto"/);
+        await user.clear(screen.getByLabelText('Manga name'));
+        expect(screen.queryAllByTestId('manga-search-source')).toHaveLength(0);
+        expect(screen.getByRole('switch', { name: 'Search every language' })).toBeChecked();
+    });
+
+    it('searches the language of the computer when the settings are on automatic', async () => {
+        const user = userEvent.setup();
+        vi.spyOn(navigator, 'language', 'get').mockReturnValue('pt-BR');
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: '', language: 'en' } });
+        render(<MangaSearch />);
+        await searchFor(user, 'naruto');
+        await screen.findByText('"naruto": found in 1 of 1 sources');
+        expect(mock.api.manga.list).toHaveBeenCalledWith({ sourceId: '8', kind: 'search', page: 1, query: 'naruto' });
     });
 
     it('searches the sources for adults when they are asked for', async () => {
         const user = userEvent.setup();
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: 'all-languages' } });
         render(<MangaSearch />);
         await searchFor(user, 'naruto');
         await screen.findByText('"naruto": found in 5 of 5 sources');

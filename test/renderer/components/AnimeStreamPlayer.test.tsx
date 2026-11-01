@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeStream } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -8,6 +8,7 @@ import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/sto
 import { useAppStore } from '@renderer/store/appStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openedSubtitleMenu } from '../../helpers/playerSettings';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 const hls = vi.hoisted(() => {
     type Listener = (event: string, data: { fatal: boolean }) => void;
@@ -105,13 +106,17 @@ describe('AnimeStreamPlayer', () => {
         expect(document.querySelector('video')).toBeNull();
     });
 
-    it('explains why the video could not be found and keeps the raw text as a tooltip', () => {
+    it('explains why the video could not be found, and opens the window with the raw text when it is clicked', async () => {
+        const user = userEvent.setup();
         stream({ status: 'error', stream: null, error: { code: 'NO_SOURCES', raw: 'No sources found for sub!' } });
         render(<AnimeStreamPlayer />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('No video source was found for this episode.');
-        expect(alert).toHaveAttribute('title', 'No sources found for sub!');
+        expect(alert).not.toHaveAttribute('title');
         expect(document.querySelector('video')).toBeNull();
+        const dialog = await openErrorDialog(user, 'No video source was found for this episode.');
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('No sources found for sub!');
+        expect(within(dialog).getByText('NO_SOURCES')).toBeInTheDocument();
     });
 
     it('does not show an error without one', () => {

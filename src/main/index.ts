@@ -8,7 +8,9 @@ import { IPC } from '@shared/constants';
 import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerMangaHandlers } from './ipc/registerMangaHandlers';
+import { registerCutHandlers } from './ipc/registerCutHandlers';
 import { registerProgramHandlers } from './ipc/registerProgramHandlers';
+import { CutService, createFfmpegRunner } from './services/cutService';
 import { removeLegacyBinaries } from './services/tools/legacyBinaries';
 import { ProgramTools } from './services/tools/programTools';
 import { createMangaRuntime } from './mangaRuntime';
@@ -574,6 +576,7 @@ function bootstrap(): BootstrapResult {
             return;
         }
         const endAll = (): Promise<unknown> => {
+            cutter.cancel();
             anime?.stopBackgroundChecks();
             return Promise.all([queue.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
         };
@@ -596,6 +599,36 @@ function bootstrap(): BootstrapResult {
     // The yt-dlp and ani-cli that updates of older versions saved are not used any more.
     removeLegacyBinaries(dataDir, [settingsStore.get().ytdlpPath, settingsStore.get().ffmpegPath, process.env.PULLWAVE_ANI_CLI ?? '']);
     registerProgramHandlers(ipcMain, { programs });
+    // The cutter of the video downloader. PULLWAVE_CUT_FILE answers the question of which file to cut (used by the end-to-end tests).
+    const cutter = new CutService({
+        runFfmpeg: () => {
+            return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
+        },
+        chooseFile: async () => {
+            if (process.env.PULLWAVE_CUT_FILE) {
+                return process.env.PULLWAVE_CUT_FILE;
+            }
+            const options = {
+                properties: ['openFile'] as Array<'openFile'>,
+                filters: [
+                    { name: 'Video and audio', extensions: ['mp4', 'm4v', 'mov', 'mkv', 'webm', 'avi', 'flv', 'ts', 'wmv', 'mp3', 'm4a', 'aac', 'opus', 'ogg', 'oga', 'flac', 'wav'] },
+                    { name: 'All files', extensions: ['*'] }
+                ]
+            };
+            const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+            return result.canceled ? null : (result.filePaths[0] ?? null);
+        },
+        outputRoot: () => {
+            return settingsStore.get().downloadDir;
+        },
+        audioFormat: () => {
+            return settingsStore.get().audioFormat;
+        },
+        send: (run) => {
+            sendToRenderer(IPC.eventCutProgress, run);
+        }
+    });
+    registerCutHandlers(ipcMain, cutter);
     // The programs are downloaded when the app opens (nothing happens for the ones that are there already). PULLWAVE_NO_TOOLS leaves it for
     // later (used by the end-to-end tests that need none of them).
     if (process.env.PULLWAVE_NO_TOOLS !== '1') {
@@ -604,7 +637,7 @@ function bootstrap(): BootstrapResult {
     // The program that runs the manga extensions is downloaded when the app opens (nothing happens when it is there already).
     manga?.prepare();
     registerLlmHandlers(ipcMain, { tokens: llmTokens });
-    // The look for new episodes of the anime of the library starts a while after the app opens (unless it was made in the last 6 hours) and goes on every 6 hours.
+    // The look for new episodes of the anime of the library starts a while after the app opens (unless it was made in the last 3 hours) and goes on every 3 hours.
     anime?.startBackgroundChecks();
     registerHandlers({
         ipcMain,

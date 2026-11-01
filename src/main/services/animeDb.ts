@@ -20,6 +20,7 @@ import type {
 } from '@shared/anime';
 import { ANIME_AIRING_OVERRIDES, ANIME_AIRING_STATUSES, isAnimeComplete } from '@shared/anime';
 import { sameSeries } from '@shared/series';
+import { parseErrorDetails, serializeErrorDetails } from './errorDetails';
 
 export const INTERRUPTED_MESSAGE = 'The app was closed before the download finished.';
 
@@ -110,7 +111,9 @@ const MIGRATIONS: readonly string[] = [
     `ALTER TABLE anime ADD COLUMN anilist_id INTEGER;
     ALTER TABLE anime ADD COLUMN airing_status TEXT;
     ALTER TABLE anime ADD COLUMN airing_checked_at INTEGER;
-    ALTER TABLE anime ADD COLUMN airing_override TEXT;`
+    ALTER TABLE anime ADD COLUMN airing_override TEXT;`,
+    // Everything known about the error of an episode (the exit code, the stack...), as JSON.
+    `ALTER TABLE episode ADD COLUMN error_details TEXT;`
 ];
 
 // The history keeps the most recent anime only.
@@ -203,7 +206,8 @@ function toError(row: Row): AniError | null {
     if (raw === null) {
         return null;
     }
-    return { code: pick(text(row, 'error_code'), ERROR_CODES, 'UNKNOWN'), raw };
+    const details = parseErrorDetails(nullableText(row, 'error_details'));
+    return { code: pick(text(row, 'error_code'), ERROR_CODES, 'UNKNOWN'), raw, ...(details === undefined ? {} : { details }) };
 }
 
 function toEpisode(row: Row): AnimeEpisodeRecord {
@@ -583,7 +587,8 @@ export class AnimeDb {
              ON CONFLICT (anime_id, number) DO UPDATE SET
                 status = CASE WHEN status = 'done' THEN status ELSE 'queued' END,
                 error_code = CASE WHEN status = 'done' THEN error_code ELSE NULL END,
-                error_raw = CASE WHEN status = 'done' THEN error_raw ELSE NULL END
+                error_raw = CASE WHEN status = 'done' THEN error_raw ELSE NULL END,
+                error_details = CASE WHEN status = 'done' THEN error_details ELSE NULL END
              RETURNING *`,
             animeId,
             number
@@ -623,18 +628,18 @@ export class AnimeDb {
     }
 
     markDownloading(episodeId: number): void {
-        this.run(`UPDATE episode SET status = 'downloading', error_code = NULL, error_raw = NULL WHERE id = ?`, episodeId);
+        this.run(`UPDATE episode SET status = 'downloading', error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, episodeId);
     }
 
     // A paused episode keeps its partial file and goes on from it when resumed; unlike the ones that were waiting or downloading it is not
     // failed when the app is closed.
     markPaused(episodeId: number): void {
-        this.run(`UPDATE episode SET status = 'paused', error_code = NULL, error_raw = NULL WHERE id = ?`, episodeId);
+        this.run(`UPDATE episode SET status = 'paused', error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, episodeId);
     }
 
     markDone(episodeId: number, filePath: string, sizeBytes: number | null): void {
         this.run(
-            `UPDATE episode SET status = 'done', file_path = ?, size_bytes = ?, error_code = NULL, error_raw = NULL, downloaded_at = ? WHERE id = ?`,
+            `UPDATE episode SET status = 'done', file_path = ?, size_bytes = ?, error_code = NULL, error_raw = NULL, error_details = NULL, downloaded_at = ? WHERE id = ?`,
             filePath,
             sizeBytes,
             this.now(),
@@ -643,7 +648,14 @@ export class AnimeDb {
     }
 
     markFailed(episodeId: number, status: 'error' | 'cancelled', error: AniError | null): void {
-        this.run(`UPDATE episode SET status = ?, error_code = ?, error_raw = ? WHERE id = ?`, status, error?.code ?? null, error?.raw ?? null, episodeId);
+        this.run(
+            `UPDATE episode SET status = ?, error_code = ?, error_raw = ?, error_details = ? WHERE id = ?`,
+            status,
+            error?.code ?? null,
+            error?.raw ?? null,
+            serializeErrorDetails(error?.details),
+            episodeId
+        );
     }
 
     // The episodes that are paused, anime by anime, in the order they were put in the library.
@@ -654,7 +666,7 @@ export class AnimeDb {
     // The queue lives in memory: whatever was waiting or downloading when the app closed will not continue by itself.
     failInterrupted(): void {
         this.run(
-            `UPDATE episode SET status = 'error', error_code = 'UNKNOWN', error_raw = ? WHERE status IN ('queued', 'downloading')`,
+            `UPDATE episode SET status = 'error', error_code = 'UNKNOWN', error_raw = ?, error_details = NULL WHERE status IN ('queued', 'downloading')`,
             INTERRUPTED_MESSAGE
         );
     }

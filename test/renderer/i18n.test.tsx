@@ -275,8 +275,11 @@ describe('components in another language', () => {
         expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'ストリームを探す' })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: '詳細を表示' }));
-        expect(screen.getByText('raw output')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: '詳細を隠す' })).toBeInTheDocument();
+        const dialog = screen.getByRole('dialog', { name: 'エラーの詳細' });
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('raw output');
+        expect(within(dialog).getByText('ネットワークエラー')).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'コピー' })).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: '閉じる' })).toBeInTheDocument();
     });
 
     it('translates the queue label, the empty state and the clear button', () => {

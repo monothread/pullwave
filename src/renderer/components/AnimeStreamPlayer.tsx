@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { AnimeStream } from '@shared/anime';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore, type StreamingEpisode } from '../store/animeStore';
-import { animeErrorKey } from './animeText';
+import { animeErrorReport } from './animeText';
 import { streamOptionsOf, streamTracks } from './subtitleChoice';
 import { VideoControls } from './VideoControls';
+import { ErrorNotice } from './ErrorNotice';
 
 // How much of the episode hls.js loads ahead of what is playing (its default is 30 seconds), so a jump to somewhere near is answered
 // from what is already loaded.
@@ -94,8 +95,8 @@ function StreamView({ streaming }: { streaming: StreamingEpisode }) {
                 </header>
                 {streaming.status === 'loading' && <p className="empty">{t('anime.stream.loading')}</p>}
                 {streaming.status === 'error' && streaming.error && (
-                    <p className="field__warning" role="alert" title={streaming.error.raw}>
-                        {t(animeErrorKey(streaming.error.code))}
+                    <p className="field__warning" role="alert">
+                        <ErrorNotice report={animeErrorReport(t, streaming.error)} />
                     </p>
                 )}
                 {streaming.status === 'ready' && streaming.stream && <StreamVideo key={streaming.stream.sessionId} stream={streaming.stream} />}

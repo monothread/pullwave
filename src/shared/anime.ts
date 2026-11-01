@@ -1,5 +1,6 @@
 // Types of the anime section (ani-cli). It exists on Linux and Windows.
 import type { LlmError } from './llm';
+import type { ErrorDetails } from './errorDetails';
 
 export type AnimeAudio = 'sub' | 'dub';
 
@@ -23,6 +24,7 @@ export interface AniError {
     code: AniErrorCode;
     // What ani-cli (or the system) reported, without terminal control codes.
     raw: string;
+    details?: ErrorDetails;
 }
 
 export interface AniDownloadProgress {

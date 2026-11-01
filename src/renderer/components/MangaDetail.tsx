@@ -12,8 +12,9 @@ import { MangaSeriesSettings } from './MangaSeriesSettings';
 import { loadAllProgress, loadLastChapter, progressKey } from './readerPrefs';
 import { RowLink } from './RowLink';
 import { SETTINGS_ICON } from './TabButton';
-import { canDownload, compareChaptersAscending, withLibraryChapters, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
+import { canDownload, compareChaptersAscending, withLibraryChapters, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaErrorReport, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
+import { ErrorNotice } from './ErrorNotice';
 
 function chapterLabel(name: string, number: number | null): string {
     if (name.length > 0) {
@@ -356,8 +357,8 @@ export function MangaDetail() {
             {selection.status === 'error' && selection.error && isCloudflareError(selection.error) && <p className="field__hint">{t('manga.source.cloudflareHint')}</p>}
             {selection.status === 'ready' && refresh.loading && <p className="field__hint">{t('manga.detail.refreshing')}</p>}
             {selection.status === 'ready' && refresh.error && (
-                <p className="field__warning" role="alert" title={refresh.error.message}>
-                    {t('manga.detail.refreshFailed')}
+                <p className="field__warning" role="alert">
+                    <ErrorNotice report={mangaErrorReport(t, refresh.error, t('manga.detail.refreshFailed'))} />
                 </p>
             )}
             {selection.status === 'ready' && refresh.error && isCloudflareError(refresh.error) && <p className="field__hint">{t('manga.source.cloudflareHint')}</p>}

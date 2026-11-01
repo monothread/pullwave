@@ -4,6 +4,8 @@ import type { ComponentHealth, HealthState, MangaToolUpdateResult, ToolVersionIn
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { ConfirmButton } from './ConfirmButton';
+import { ErrorNotice } from './ErrorNotice';
+import { plainErrorReport } from './errorReport';
 
 const BADGES: Record<HealthState, string> = {
     healthy: 'badge--done',
@@ -70,8 +72,8 @@ function HealthRow({ name, health, unused, testId, info, result, children, extra
                 )}
                 {extra}
                 {result && (
-                    <span className={`history__meta${result.ok ? '' : ' field__warning'}`} role={result.ok ? undefined : 'alert'} title={result.ok ? undefined : (result.message ?? undefined)}>
-                        {t(resultKey(result), { version: result.ok ? result.version : '' })}
+                    <span className={`history__meta${result.ok ? '' : ' field__warning'}`} role={result.ok ? undefined : 'alert'}>
+                        {result.ok ? t(resultKey(result), { version: result.version }) : <ErrorNotice report={plainErrorReport(t(resultKey(result), { version: '' }), result.message ?? '')} />}
                     </span>
                 )}
             </div>

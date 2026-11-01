@@ -1,4 +1,6 @@
+import type { ErrorDetails } from '@shared/errorDetails';
 import type { AniDownloadProgress, AniError, AniErrorCode, AnimeSearchResult } from '@shared/anime';
+import { describeError } from './errorDetails';
 
 // Prefix of every choice that `pullwave_menu` (the stand-in for fzf, see pullwave-run.sh) reports on stderr: PULLWAVE_MENU<TAB>prompt<TAB>line.
 export const MENU_PREFIX = 'PULLWAVE_MENU';
@@ -45,21 +47,22 @@ function truncateRaw(text: string): string {
     return trimmed.length > RAW_LIMIT ? trimmed.slice(-RAW_LIMIT) : trimmed;
 }
 
-export function mapAniError(output: string, exitCode: number | null): AniError {
+export function mapAniError(output: string, exitCode: number | null, known: Partial<ErrorDetails> = {}): AniError {
     const raw = truncateRaw(stripAnsi(output));
+    const details: ErrorDetails = { occurredAt: Date.now(), ...(exitCode === null ? {} : { exitCode }), ...known };
     const matchedRule = ERROR_RULES.find((rule) => {
         return rule.patterns.some((pattern) => {
             return pattern.test(raw);
         });
     });
     if (matchedRule) {
-        return { code: matchedRule.code, raw };
+        return { code: matchedRule.code, raw, details };
     }
-    return { code: 'UNKNOWN', raw: raw.length > 0 ? raw : `ani-cli exited with code ${exitCode ?? 'unknown'}` };
+    return { code: 'UNKNOWN', raw: raw.length > 0 ? raw : `ani-cli exited with code ${exitCode ?? 'unknown'}`, details };
 }
 
-export function mapAniSpawnError(error: NodeJS.ErrnoException): AniError {
-    return { code: error.code === 'ENOENT' ? 'BINARY_MISSING' : 'UNKNOWN', raw: error.message };
+export function mapAniSpawnError(error: NodeJS.ErrnoException, known: Partial<ErrorDetails> = {}): AniError {
+    return { code: error.code === 'ENOENT' ? 'BINARY_MISSING' : 'UNKNOWN', raw: error.message, details: describeError(error, known) };
 }
 
 // One choice reported by `pullwave-menu`, or null when the line is anything else ani-cli printed.

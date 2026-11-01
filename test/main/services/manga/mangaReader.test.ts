@@ -1,6 +1,16 @@
 import { MangaReader } from '@main/services/manga/mangaReader';
 import { SuwayomiApiError } from '@main/services/manga/suwayomiClient';
 
+const NOW = 1_700_000_000_000;
+
+beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
 function setup(options: { file?: string | null; count?: number | Error; remote?: string[] | Error; exists?: boolean; incompletePageCount?: number | null; missing?: number[] } = {}) {
     const fileOf = vi.fn(() => {
         return options.file === undefined ? '/manga/One Piece/Chapter 1.cbz' : options.file;
@@ -60,10 +70,22 @@ describe('MangaReader', () => {
     });
 
     it('gives the error of the source, in the shape the screen takes', async () => {
-        const { reader } = setup({ remote: new SuwayomiApiError('API_ERROR', 'Cloudflare bypass currently disabled') });
-        await expect(reader.pages({ chapterRemoteId: 11, libraryChapterId: null })).resolves.toEqual({ ok: false, error: { code: 'API_ERROR', message: 'Cloudflare bypass currently disabled' } });
-        const other = setup({ remote: new Error('offline') });
-        await expect(other.reader.pages({ chapterRemoteId: 11, libraryChapterId: null })).resolves.toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'offline' } });
+        const sourceFailure = new SuwayomiApiError('API_ERROR', 'Cloudflare bypass currently disabled', { operation: 'GraphQL chapterPages' });
+        const { reader } = setup({ remote: sourceFailure });
+        await expect(reader.pages({ chapterRemoteId: 11, libraryChapterId: null })).resolves.toEqual({
+            ok: false,
+            error: {
+                code: 'API_ERROR',
+                message: 'Cloudflare bypass currently disabled',
+                details: { occurredAt: NOW, errorName: 'Error', stack: sourceFailure.stack, operation: 'GraphQL chapterPages' }
+            }
+        });
+        const offline = new Error('offline');
+        const other = setup({ remote: offline });
+        await expect(other.reader.pages({ chapterRemoteId: 11, libraryChapterId: null })).resolves.toEqual({
+            ok: false,
+            error: { code: 'UNKNOWN', message: 'offline', details: { occurredAt: NOW, errorName: 'Error', stack: offline.stack } }
+        });
     });
 
     it('checks the file on the disk by default', async () => {

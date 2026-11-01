@@ -1,4 +1,5 @@
 // Programs the app downloads for itself (a download of a few hundred megabytes, so it shows what it is doing).
+import type { ErrorDetails } from './errorDetails';
 
 export type ToolId = 'suwayomi' | 'flaresolverr' | ProgramId;
 
@@ -14,6 +15,7 @@ export type ToolErrorCode = 'UNSUPPORTED_PLATFORM' | 'DOWNLOAD_FAILED' | 'HASH_M
 export interface ToolError {
     code: ToolErrorCode;
     message: string;
+    details?: ErrorDetails;
 }
 
 export interface ToolState {

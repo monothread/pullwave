@@ -344,7 +344,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     });
     // When the last look for new episodes was made: kept apart from the library, so the app opened again soon after a look does not look again.
     const lastCheck = new JsonStore<{ lastCheckAt: number | null }>(join(animeDir, 'update-check.json'), { lastCheckAt: null });
-    // Looks, every 6 hours, for episodes the source has listed for the anime of the library, and puts them in the library.
+    // Looks, every 3 hours, for episodes the source has listed for the anime of the library, and puts them in the library.
     const checker = new AnimeUpdateChecker({
         db,
         lastCheck: {

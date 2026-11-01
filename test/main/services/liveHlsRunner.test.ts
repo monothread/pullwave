@@ -247,7 +247,11 @@ describe('runYtdlpLiveAware a live HLS stream', () => {
         await settle();
         recordings[0]?.startSucceeded();
         recordings[0]?.finish({ status: 'error', message: 'ffmpeg could not copy the recording into the final file' });
-        await expect(handle.result).resolves.toEqual({ status: 'error', error: mapDownloadError('ffmpeg could not copy the recording into the final file', 1) });
+        vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+        const result = await handle.result;
+        expect(result).toEqual({ status: 'error', error: mapDownloadError('ffmpeg could not copy the recording into the final file', 1, { operation: 'Recording a live stream', exitCode: undefined }) });
+        expect(result.status === 'error' ? result.error.details : null).toEqual({ occurredAt: 1_700_000_000_000, operation: 'Recording a live stream' });
+        vi.restoreAllMocks();
     });
 
     it('tells it was cancelled when the recording is', async () => {

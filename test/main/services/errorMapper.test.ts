@@ -2,6 +2,21 @@ import type { ErrorCode } from '@shared/types';
 import { mapDownloadError, mapSpawnError } from '@main/services/errorMapper';
 import { applyLanguage } from '@main/services/language';
 
+const NOW = 1_700_000_000_000;
+
+beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+});
+
+afterEach(() => {
+    vi.useRealTimers();
+});
+
+function spawnFailure(message: string, code: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(message), { code, errno: -2, syscall: 'spawn yt-dlp' });
+}
+
 describe('mapDownloadError', () => {
     const cases: Array<[ErrorCode, string, string]> = [
         ['FILENAME_TOO_LONG', 'OSError: [Errno 36] File name too long', 'Title too long'],
@@ -36,8 +51,22 @@ describe('mapDownloadError', () => {
             code: 'UNAVAILABLE',
             title: 'Video unavailable',
             hint: 'The video may be private, removed or blocked in your region.',
-            raw: 'ERROR: Video unavailable'
+            raw: 'ERROR: Video unavailable',
+            details: { occurredAt: NOW, exitCode: 1 }
         });
+    });
+
+    it('keeps what the caller knows about the failure in the details, over what the exit code says', () => {
+        expect(mapDownloadError('ERROR: Video unavailable', 1, { operation: 'Running yt-dlp', command: 'yt-dlp --newline "https://x.test/a b"', exitCode: undefined }).details).toEqual({
+            occurredAt: NOW,
+            operation: 'Running yt-dlp',
+            command: 'yt-dlp --newline "https://x.test/a b"',
+            exitCode: undefined
+        });
+    });
+
+    it('leaves the exit code out of the details when the process gave none', () => {
+        expect(mapDownloadError('boom', null).details).toEqual({ occurredAt: NOW });
     });
 
     it('falls back to UNKNOWN with the raw stderr', () => {
@@ -45,7 +74,8 @@ describe('mapDownloadError', () => {
             code: 'UNKNOWN',
             title: 'Download failed',
             hint: 'See the details below.',
-            raw: 'something odd happened'
+            raw: 'something odd happened',
+            details: { occurredAt: NOW, exitCode: 2 }
         });
     });
 
@@ -64,22 +94,24 @@ describe('mapDownloadError', () => {
 
 describe('mapSpawnError', () => {
     it('maps ENOENT to BINARY_MISSING', () => {
-        const error = Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' });
-        expect(mapSpawnError(error)).toEqual({
+        const error = spawnFailure('spawn yt-dlp ENOENT', 'ENOENT');
+        expect(mapSpawnError(error, { operation: 'Running yt-dlp', command: 'yt-dlp' })).toEqual({
             code: 'BINARY_MISSING',
             title: 'yt-dlp not found',
             hint: 'Install yt-dlp or set its path in the settings.',
-            raw: 'spawn yt-dlp ENOENT'
+            raw: 'spawn yt-dlp ENOENT',
+            details: { occurredAt: NOW, errorName: 'Error', stack: error.stack, systemCode: 'ENOENT', operation: 'Running yt-dlp', command: 'yt-dlp' }
         });
     });
 
     it('maps other errors to UNKNOWN', () => {
-        const error = Object.assign(new Error('spawn EACCES'), { code: 'EACCES' });
+        const error = spawnFailure('spawn EACCES', 'EACCES');
         expect(mapSpawnError(error)).toEqual({
             code: 'UNKNOWN',
             title: 'Could not start yt-dlp',
             hint: 'See the details below.',
-            raw: 'spawn EACCES'
+            raw: 'spawn EACCES',
+            details: { occurredAt: NOW, errorName: 'Error', stack: error.stack, systemCode: 'EACCES' }
         });
     });
 });
@@ -93,7 +125,8 @@ describe('mapDownloadError for refused requests', () => {
             code: 'FORBIDDEN',
             title: 'Access refused by the server',
             hint: 'The server refused the request (HTTP 401/403/410). The link may have expired or may only work for the original session, network or browser, which is common for temporary addresses. Try again from the page, or enable browser cookies in the settings.',
-            raw: FORBIDDEN_STDERR
+            raw: FORBIDDEN_STDERR,
+            details: { occurredAt: NOW, exitCode: 1 }
         });
     });
 
@@ -119,7 +152,8 @@ describe('error messages in other languages', () => {
             code: 'UNAVAILABLE',
             title: 'Vídeo indisponível',
             hint: 'O vídeo pode ser privado, ter sido removido ou estar bloqueado na sua região.',
-            raw: 'ERROR: Video unavailable'
+            raw: 'ERROR: Video unavailable',
+            details: { occurredAt: NOW, exitCode: 1 }
         });
     });
 
@@ -129,26 +163,29 @@ describe('error messages in other languages', () => {
             code: 'UNKNOWN',
             title: 'La descarga falló',
             hint: 'Consulta los detalles a continuación.',
-            raw: 'yt-dlp terminó con el código 7'
+            raw: 'yt-dlp terminó con el código 7',
+            details: { occurredAt: NOW, exitCode: 7 }
         });
         expect(mapDownloadError('', null).raw).toBe('yt-dlp terminó con el código desconocido');
     });
 
     it('translates the spawn errors', () => {
         applyLanguage('ja', 'en-US');
-        const missing = Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' });
+        const missing = spawnFailure('spawn yt-dlp ENOENT', 'ENOENT');
         expect(mapSpawnError(missing)).toEqual({
             code: 'BINARY_MISSING',
             title: 'yt-dlp が見つかりません',
             hint: 'yt-dlp をインストールするか、設定でパスを指定してください。',
-            raw: 'spawn yt-dlp ENOENT'
+            raw: 'spawn yt-dlp ENOENT',
+            details: { occurredAt: NOW, errorName: 'Error', stack: missing.stack, systemCode: 'ENOENT' }
         });
-        const denied = Object.assign(new Error('spawn EACCES'), { code: 'EACCES' });
+        const denied = spawnFailure('spawn EACCES', 'EACCES');
         expect(mapSpawnError(denied)).toEqual({
             code: 'UNKNOWN',
             title: 'yt-dlp を起動できませんでした',
             hint: '詳細は以下をご覧ください。',
-            raw: 'spawn EACCES'
+            raw: 'spawn EACCES',
+            details: { occurredAt: NOW, errorName: 'Error', stack: denied.stack, systemCode: 'EACCES' }
         });
     });
 });

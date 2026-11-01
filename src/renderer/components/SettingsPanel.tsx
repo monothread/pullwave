@@ -24,6 +24,7 @@ import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
 import { MangaHealthSettings } from './MangaHealthSettings';
+import { MangaLanguageSetting } from './MangaLanguageSetting';
 import { ProgramsStatusBlock } from './ProgramsStatusBlock';
 import { MangaHelperSettings } from './MangaHelperSettings';
 import { MangaStoreSettings } from './MangaStoreSettings';
@@ -708,6 +709,12 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         hint={t('settings.mangaShowAdult.hint')}
                         onChange={(value) => {
                             change('mangaShowAdult', value);
+                        }}
+                    />
+                    <MangaLanguageSetting
+                        value={draft.mangaLanguage}
+                        onChange={(value) => {
+                            change('mangaLanguage', value);
                         }}
                     />
                     <ToggleField

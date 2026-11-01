@@ -342,7 +342,14 @@ test('shows a friendly error banner with details and retries the download', asyn
     await expect(page.getByTestId('job-card').locator('.badge')).toHaveText('FAILED');
 
     await banner.getByRole('button', { name: 'SHOW DETAILS' }).click();
-    await expect(banner.locator('.error-banner__raw')).toHaveText('ERROR: [youtube] abc: Video unavailable');
+    const dialog = page.getByRole('dialog', { name: 'ERROR DETAILS' });
+    await expect(dialog.getByTestId('error-message')).toHaveText('ERROR: [youtube] abc: Video unavailable');
+    await expect(dialog.locator('.error-details__row').filter({ hasText: /^Code/ }).locator('dd')).toHaveText('UNAVAILABLE');
+    await expect(dialog.locator('.error-details__row').filter({ hasText: 'What was being done' }).locator('dd')).toHaveText('Running yt-dlp');
+    await expect(dialog.locator('.error-details__row').filter({ hasText: 'Exit code' }).locator('dd')).toHaveText('1');
+    await expect(dialog.locator('.error-details__row').filter({ hasText: 'Command' }).locator('dd')).toContainText('https://example.com/fail');
+    await dialog.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(dialog).toHaveCount(0);
 
     await banner.getByRole('button', { name: 'RETRY' }).click();
     await expect(page.getByTestId('job-card').locator('.badge')).toHaveText('FAILED');
@@ -568,7 +575,7 @@ test('explains an HTTP 403 in plain words, keeps the raw error on demand and doe
     await expect(page.locator('.badge', { hasText: 'FAILED' })).toBeVisible();
     await expect(banner.getByRole('button', { name: 'FIND STREAM' })).toHaveCount(0);
     await banner.getByRole('button', { name: 'SHOW DETAILS' }).click();
-    await expect(banner.locator('.error-banner__raw')).toContainText('HTTP Error 403: Forbidden');
+    await expect(page.getByRole('dialog', { name: 'ERROR DETAILS' }).getByTestId('error-message')).toContainText('HTTP Error 403: Forbidden');
 });
 
 test('asks for a link when every row is empty', async () => {

@@ -1,5 +1,6 @@
 import { PROGRAM_IDS, type ToolState } from '@shared/tools';
-import { displayVersion, isWorking, lookupReasonKey, programErrorKey, programProgressKey } from '@renderer/components/programText';
+import { createTranslator } from '@shared/i18n';
+import { displayVersion, isWorking, lookupReasonKey, programErrorKey, programErrorReport, programProgressKey } from '@renderer/components/programText';
 
 function stateWith(status: ToolState['status']): ToolState {
     return { id: 'ytdlp', status, version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: null };
@@ -74,6 +75,29 @@ describe('displayVersion', () => {
             return id !== 'anicli' && id !== 'ffmpeg';
         }).forEach((id) => {
             expect(displayVersion(id, '2026.08.19')).toBe('2026.08.19');
+        });
+    });
+});
+
+describe('programErrorReport', () => {
+    it('gives the words for the code, the code, and the message of the failure as the technical text', () => {
+        expect(programErrorReport(createTranslator('en'), { code: 'DOWNLOAD_FAILED', message: 'getaddrinfo ENOTFOUND github.com' })).toEqual({
+            summary: 'The download failed. Check your connection and try again.',
+            code: 'DOWNLOAD_FAILED',
+            message: 'getaddrinfo ENOTFOUND github.com',
+            hint: null,
+            details: null
+        });
+    });
+
+    it('carries everything known about the failure', () => {
+        const details = { occurredAt: 1700000000000, operation: 'Downloading ytdlp 2025.01.01', url: 'https://example.test/yt-dlp' };
+        expect(programErrorReport(createTranslator('es'), { code: 'HASH_MISMATCH', message: 'sha mismatch', details })).toEqual({
+            summary: createTranslator('es')('tools.error.HASH_MISMATCH'),
+            code: 'HASH_MISMATCH',
+            message: 'sha mismatch',
+            hint: null,
+            details
         });
     });
 });

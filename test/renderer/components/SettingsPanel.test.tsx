@@ -8,7 +8,7 @@ import { INITIAL_APP_UPDATE, useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { useProgramsStore } from '@renderer/store/programsStore';
 import { makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
-import { makeChapterRecord, makeLibraryManga } from '../../helpers/mangaFixtures';
+import { makeChapterRecord, makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { APP_UPDATE_IDLE, installMockApi, makeProgramsStatus, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -1107,9 +1107,9 @@ describe('SettingsPanel anime section', () => {
             expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, animeSubtitles: 'Portuguese' });
         });
 
-        it('has a switch to look for new episodes every 6 hours, on by default, with its hint, and saves it right away', async () => {
+        it('has a switch to look for new episodes every 3 hours, on by default, with its hint, and saves it right away', async () => {
             render(<SettingsPanel scope="anime" />);
-            const toggle = screen.getByRole('switch', { name: 'Look for new episodes every 6 hours' });
+            const toggle = screen.getByRole('switch', { name: 'Look for new episodes every 3 hours' });
             expect(toggle).toBeChecked();
             expect(screen.getByText('Asks the source about the anime of the library and adds the new episodes to it. They are not downloaded.')).toBeInTheDocument();
             fireEvent.click(toggle);
@@ -1121,14 +1121,14 @@ describe('SettingsPanel anime section', () => {
         it('shows the stored choice of looking for new episodes', () => {
             useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeCheckNewEpisodes: false } });
             render(<SettingsPanel scope="anime" />);
-            expect(screen.getByRole('switch', { name: 'Look for new episodes every 6 hours' })).not.toBeChecked();
+            expect(screen.getByRole('switch', { name: 'Look for new episodes every 3 hours' })).not.toBeChecked();
         });
 
         it('has a switch to download the new episodes, off by default, with its hint, and saves it right away', async () => {
             render(<SettingsPanel scope="anime" />);
             const toggle = screen.getByRole('switch', { name: 'Download the new episodes found' });
             expect(toggle).not.toBeChecked();
-            expect(screen.getByText('The new episodes that the check (every 6 hours, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeInTheDocument();
+            expect(screen.getByText('The new episodes that the check (every 3 hours, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeInTheDocument();
             fireEvent.click(toggle);
             await flushPromises();
             expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
@@ -1143,7 +1143,7 @@ describe('SettingsPanel anime section', () => {
 
         it('has neither switch in the manga settings', () => {
             render(<SettingsPanel scope="manga" />);
-            expect(screen.queryByRole('switch', { name: 'Look for new episodes every 6 hours' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('switch', { name: 'Look for new episodes every 3 hours' })).not.toBeInTheDocument();
             expect(screen.queryByRole('switch', { name: 'Download the new episodes found' })).not.toBeInTheDocument();
         });
 
@@ -1358,6 +1358,45 @@ describe('SettingsPanel manga section', () => {
         await flushPromises();
         expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaShowAdult: true });
+    });
+
+    it('has a field for the language of the manga section, on automatic by default, with its hint, only in the settings of the manga', () => {
+        const { unmount } = render(<SettingsPanel scope="manga" />);
+        const field = screen.getByLabelText('Language of the sources');
+        expect(field).toHaveValue('');
+        expect(screen.getByRole('option', { name: 'Automatic (the language of the computer)' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'All languages' })).toBeInTheDocument();
+        expect(
+            screen.getByText('The sources, the search, the extensions and the move of a manga to another source are limited to this language. Automatic uses the language of the computer, or English when there is no source in it.')
+        ).toBeInTheDocument();
+        unmount();
+        render(<SettingsPanel scope="downloads" />);
+        expect(screen.queryByLabelText('Language of the sources')).not.toBeInTheDocument();
+    });
+
+    it('offers the languages of the sources that are loaded in the language field, and saves the choice right away', async () => {
+        useMangaStore.setState({
+            browse: { ...useMangaStore.getState().browse, sources: [makeSource({ id: '1', lang: 'pt' }), makeSource({ id: '2', lang: 'en' })], sourcesStatus: 'ready' }
+        });
+        render(<SettingsPanel scope="manga" />);
+        expect(
+            within(screen.getByLabelText('Language of the sources'))
+                .getAllByRole('option')
+                .map((option) => {
+                    return option.getAttribute('value');
+                })
+        ).toEqual(['', 'all-languages', 'en', 'pt']);
+        fireEvent.change(screen.getByLabelText('Language of the sources'), { target: { value: 'pt' } });
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaLanguage: 'pt' });
+        useMangaStore.setState({ browse: useMangaStore.getInitialState().browse });
+    });
+
+    it('shows the language that is saved in the language field', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'all-languages' } });
+        render(<SettingsPanel scope="manga" />);
+        expect(screen.getByLabelText('Language of the sources')).toHaveValue('all-languages');
     });
 
     it('has the stores and the helper for Cloudflare in the settings of the manga, and not in the others', () => {

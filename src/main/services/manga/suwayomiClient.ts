@@ -1,3 +1,4 @@
+import type { ErrorDetails } from '@shared/errorDetails';
 import type {
     MangaChapter,
     MangaDetails,
@@ -12,6 +13,7 @@ import type {
     MangaSource,
     MangaSourcePreference
 } from '@shared/manga';
+import { describeError } from '../errorDetails';
 import {
     list,
     ParseError,
@@ -34,10 +36,18 @@ export const SOURCE_TIMEOUT_MS = 180_000;
 export class SuwayomiApiError extends Error {
     constructor(
         readonly code: MangaErrorCode,
-        message: string
+        message: string,
+        // What the place that failed knows about it (the operation, the address, the HTTP status).
+        readonly known: Partial<ErrorDetails> = {}
     ) {
         super(message);
     }
+}
+
+// What a request asks for, to tell the user which one failed: the first field of the query (`{ extensionStores { ... } }`, or
+// `mutation ($id: Int!) { updateExtension(...) { ... } }`).
+export function operationOf(query: string): string {
+    return /\{\s*(\w+)/.exec(query)?.[1] ?? 'unnamed request';
 }
 
 export interface SuwayomiClientDependencies {
@@ -314,38 +324,41 @@ export class SuwayomiClient {
     }
 
     private async requestOnce(query: string, variables: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+        const operation = `GraphQL ${operationOf(query)}`;
         let baseUrl: string;
         try {
             baseUrl = await this.deps.baseUrl();
         } catch (error) {
-            throw new SuwayomiApiError('SERVER_UNAVAILABLE', error instanceof Error ? error.message : String(error));
+            throw new SuwayomiApiError('SERVER_UNAVAILABLE', error instanceof Error ? error.message : String(error), { operation: `Starting the manga server for ${operation}` });
         }
+        const url = `${baseUrl}/api/graphql`;
+        const known: Partial<ErrorDetails> = { operation, url };
         let response: Response;
         try {
-            response = await (this.deps.fetchImpl ?? fetch)(`${baseUrl}/api/graphql`, {
+            response = await (this.deps.fetchImpl ?? fetch)(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query, variables }),
                 signal: AbortSignal.timeout(timeoutMs)
             });
         } catch (error) {
-            throw new SuwayomiApiError('REQUEST_FAILED', error instanceof Error ? error.message : String(error));
+            throw new SuwayomiApiError('REQUEST_FAILED', error instanceof Error ? error.message : String(error), { ...describeError(error), ...known });
         }
         if (!response.ok) {
-            throw new SuwayomiApiError('REQUEST_FAILED', `The server answered ${response.status}`);
+            throw new SuwayomiApiError('REQUEST_FAILED', `The server answered ${response.status}`, { ...known, httpStatus: response.status });
         }
         let answer: GraphqlAnswer;
         try {
             answer = (await response.json()) as GraphqlAnswer;
         } catch {
-            throw new SuwayomiApiError('INVALID_RESPONSE', 'The server did not answer with JSON');
+            throw new SuwayomiApiError('INVALID_RESPONSE', 'The server did not answer with JSON', { ...known, httpStatus: response.status });
         }
         if (Array.isArray(answer.errors) && answer.errors.length > 0) {
             const first = answer.errors[0]?.message;
-            throw new SuwayomiApiError('API_ERROR', typeof first === 'string' ? first : 'The server reported an error');
+            throw new SuwayomiApiError('API_ERROR', typeof first === 'string' ? first : 'The server reported an error', { ...known, httpStatus: response.status });
         }
         if (answer.data === undefined || answer.data === null) {
-            throw new SuwayomiApiError('INVALID_RESPONSE', 'The server answered without data');
+            throw new SuwayomiApiError('INVALID_RESPONSE', 'The server answered without data', { ...known, httpStatus: response.status });
         }
         return answer.data;
     }

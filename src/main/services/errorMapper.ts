@@ -1,5 +1,7 @@
 import type { MessageKey } from '@shared/i18n';
+import type { ErrorDetails } from '@shared/errorDetails';
 import type { DownloadError, ErrorCode } from '@shared/types';
+import { describeError } from './errorDetails';
 import { translateMain } from './language';
 
 type RuleCode = Exclude<ErrorCode, 'UNKNOWN' | 'BINARY_MISSING'>;
@@ -63,32 +65,40 @@ function truncateRaw(text: string): string {
     return trimmed.length > RAW_LIMIT ? trimmed.slice(-RAW_LIMIT) : trimmed;
 }
 
-export function mapDownloadError(stderr: string, exitCode: number | null): DownloadError {
+function detailsOf(exitCode: number | null, known: Partial<ErrorDetails>): ErrorDetails {
+    return { occurredAt: Date.now(), ...(exitCode === null ? {} : { exitCode }), ...known };
+}
+
+export function mapDownloadError(stderr: string, exitCode: number | null, known: Partial<ErrorDetails> = {}): DownloadError {
     const raw = truncateRaw(stderr);
+    const details = detailsOf(exitCode, known);
     const matchedRule = ERROR_RULES.find((rule) => {
         return rule.patterns.some((pattern) => {
             return pattern.test(raw);
         });
     });
     if (matchedRule) {
-        return { code: matchedRule.code, title: translateMain(titleKey(matchedRule.code)), hint: translateMain(hintKey(matchedRule.code)), raw };
+        return { code: matchedRule.code, title: translateMain(titleKey(matchedRule.code)), hint: translateMain(hintKey(matchedRule.code)), raw, details };
     }
     return {
         code: 'UNKNOWN',
         title: translateMain(titleKey('UNKNOWN')),
         hint: translateMain(hintKey('UNKNOWN')),
-        raw: raw.length > 0 ? raw : translateMain('error.exitCode', { code: exitCode ?? translateMain('error.exitCodeUnknown') })
+        raw: raw.length > 0 ? raw : translateMain('error.exitCode', { code: exitCode ?? translateMain('error.exitCodeUnknown') }),
+        details
     };
 }
 
-export function mapSpawnError(error: NodeJS.ErrnoException): DownloadError {
+export function mapSpawnError(error: NodeJS.ErrnoException, known: Partial<ErrorDetails> = {}): DownloadError {
+    const details = describeError(error, known);
     if (error.code === 'ENOENT') {
         return {
             code: 'BINARY_MISSING',
             title: translateMain(titleKey('BINARY_MISSING')),
             hint: translateMain(hintKey('BINARY_MISSING')),
-            raw: error.message
+            raw: error.message,
+            details
         };
     }
-    return { code: 'UNKNOWN', title: translateMain('error.spawn.title'), hint: translateMain(hintKey('UNKNOWN')), raw: error.message };
+    return { code: 'UNKNOWN', title: translateMain('error.spawn.title'), hint: translateMain(hintKey('UNKNOWN')), raw: error.message, details };
 }

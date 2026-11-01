@@ -115,7 +115,7 @@ export function runYtdlpLiveAware(options: LiveAwareRunOptions): RunHandle {
         if (result.status === 'cancelled') {
             return { status: 'cancelled' };
         }
-        return { status: 'error', error: mapDownloadError(result.message, 1) };
+        return { status: 'error', error: mapDownloadError(result.message, 1, { operation: 'Recording a live stream', exitCode: undefined }) };
     };
 
     const run = async (): Promise<RunResult> => {

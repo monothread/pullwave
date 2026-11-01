@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { ConfirmButton } from './ConfirmButton';
-import { toolErrorKey } from './mangaText';
+import { toolErrorReport } from './mangaText';
+import { ErrorNotice } from './ErrorNotice';
 
 interface MangaHelperSettingsProps {
     // Whether the user installed the helper, and whether they gave the address of a FlareSolverr of their own (the helper is not needed then).
@@ -53,8 +54,8 @@ export function MangaHelperSettings({ enabled, external, onEnabledChange }: Mang
                 <>
                     <p className="field__hint">{t(ready ? 'settings.mangaHelper.installed' : 'settings.mangaHelper.notInstalled')}</p>
                     {enabled && helper?.status === 'error' && helper.error && (
-                        <p className="field__warning" role="alert" title={helper.error.message}>
-                            {t(toolErrorKey(helper.error.code))}
+                        <p className="field__warning" role="alert">
+                            <ErrorNotice report={toolErrorReport(t, helper.error)} />
                         </p>
                     )}
                     {installing && (

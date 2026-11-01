@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ToolErrorCode } from '@shared/tools';
 import { MangaSetup } from '@renderer/components/MangaSetup';
@@ -8,6 +8,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { makeMangaStatus, makeTool } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -69,13 +70,19 @@ describe('MangaSetup', () => {
         ['EXTRACT_FAILED', 'The file could not be unpacked.'],
         ['INCOMPLETE', 'The file is missing parts the server needs.'],
         ['DISK', 'There is no room or permission to save the file.']
-    ] as Array<[ToolErrorCode, string]>)('explains the failure %s and keeps the details a hover away', (code, text) => {
-        setTool(makeTool({ status: 'error', error: { code, message: 'raw detail' } }));
+    ] as Array<[ToolErrorCode, string]>)('explains the failure %s and opens the window with the details when it is clicked', async (code, text) => {
+        const user = userEvent.setup();
+        setTool(makeTool({ status: 'error', error: { code, message: 'raw detail', details: { occurredAt: 1700000000000, operation: 'Installing suwayomi v1', url: 'https://example.com/suwayomi.tar.gz' } } }));
         render(<MangaSetup />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent(text);
-        expect(alert).toHaveAttribute('title', 'raw detail');
+        expect(alert).not.toHaveAttribute('title');
         expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        const dialog = await openErrorDialog(user, text);
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('raw detail');
+        expect(within(dialog).getByText(code)).toBeInTheDocument();
+        expect(within(dialog).getByText('Installing suwayomi v1')).toBeInTheDocument();
+        expect(within(dialog).getByText('https://example.com/suwayomi.tar.gz')).toBeInTheDocument();
     });
 
     it('tries the download again from the button', async () => {

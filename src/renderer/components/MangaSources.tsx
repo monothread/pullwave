@@ -1,27 +1,15 @@
 import { useState } from 'react';
 import type { Translator } from '@shared/i18n';
 import type { MangaExtensionStore, MangaSource } from '@shared/manga';
+import { useMangaLanguage } from '../hooks/useMangaLanguage';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
-import { SelectField, TextField } from './fields';
-import { SEVERAL_LANGUAGES } from './mangaSearchSources';
+import { TextField } from './fields';
+import { SEVERAL_LANGUAGES, sourceLanguages } from './mangaSearchSources';
 import { ALL_LANGUAGES, listedSources } from './mangaText';
 import { RowLink } from './RowLink';
 
-
-// The languages of the sources, each once; the sources of several languages go last, the others by code.
-export function sourceLanguages(sources: readonly MangaSource[]): string[] {
-    return [
-        ...new Set(
-            sources.map((source) => {
-                return source.lang;
-            })
-        )
-    ].sort((first, second) => {
-        return Number(first === SEVERAL_LANGUAGES) - Number(second === SEVERAL_LANGUAGES) || first.localeCompare(second);
-    });
-}
 
 // The sources whose name has the text in it (no text lists them all), by name.
 export function searchedSources(sources: readonly MangaSource[], text: string): MangaSource[] {
@@ -74,6 +62,8 @@ export function sourceLanguageLabel(language: string, t: Translator): string {
     return language === SEVERAL_LANGUAGES ? t('manga.sources.multiLanguage') : language.toUpperCase();
 }
 
+export { sourceLanguages };
+
 // The sources of the installed extensions, by language: a source is what has the mangas, so it is what is picked here.
 export function MangaSources() {
     const t = useTranslator();
@@ -82,9 +72,6 @@ export function MangaSources() {
     });
     const openSource = useMangaStore((state) => {
         return state.openSource;
-    });
-    const setSourceLanguage = useMangaStore((state) => {
-        return state.setSourceLanguage;
     });
     const showAdult = useAppStore((state) => {
         return state.settings.mangaShowAdult;
@@ -96,8 +83,8 @@ export function MangaSources() {
     const sources = listedSources(browse.sources, showAdult);
 
     const languages = sourceLanguages(sources);
-    // A language that was remembered but is not there any more (its sources are gone or hidden) lists everything.
-    const sourceLanguage = languages.includes(browse.sourceLanguage) ? browse.sourceLanguage : ALL_LANGUAGES;
+    // The language is the one of the settings (every language when nothing is in it).
+    const sourceLanguage = useMangaLanguage(languages);
     const shown = searchedSources(
         sources.filter((source) => {
             return sourceLanguage === ALL_LANGUAGES || source.lang === sourceLanguage;
@@ -124,15 +111,6 @@ export function MangaSources() {
     return (
         <section className="manga__sources" aria-label={t('manga.nav.browse')}>
             <div className="field-row">
-                <SelectField
-                    label={t('manga.sources.language')}
-                    value={sourceLanguage}
-                    options={[ALL_LANGUAGES, ...languages]}
-                    formatOption={(language) => {
-                        return language === ALL_LANGUAGES ? t('manga.sources.allLanguages') : languageLabel(language);
-                    }}
-                    onChange={setSourceLanguage}
-                />
                 <TextField label={t('manga.sources.search')} value={search} placeholder={t('manga.sources.searchPlaceholder')} onChange={setSearch} />
             </div>
             <span className="section-label">{t('manga.sources.count', { count: shown.length })}</span>

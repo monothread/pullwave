@@ -4,6 +4,16 @@ import { MangaService, toMangaError, type HelperControl, type MangaServiceDepend
 import { SuwayomiApiError, type SuwayomiClient } from '@main/services/manga/suwayomiClient';
 import { suwayomiSpec } from '@main/services/tools/suwayomiRelease';
 
+const NOW = 1_700_000_000_000;
+
+beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
 const SPEC: ToolSpec = suwayomiSpec('linux', 'x64')!;
 const BASE = 'http://127.0.0.1:4321';
 const READY: ToolState = { id: 'suwayomi', status: 'ready', version: SPEC.version, bytesDone: 0, bytesTotal: 0, percent: 100, error: null };
@@ -409,12 +419,28 @@ describe('MangaService operations', () => {
 
     it('turns a failure of the client into an answer', async () => {
         const { service, client } = setup();
-        client.sources.mockRejectedValueOnce(new SuwayomiApiError('API_ERROR', 'Source not found'));
-        client.setSourcePreference.mockRejectedValueOnce(new SuwayomiApiError('API_ERROR', 'no such source'));
-        client.stores.mockRejectedValueOnce(new Error('boom'));
-        await expect(service.sources()).resolves.toEqual({ ok: false, error: { code: 'API_ERROR', message: 'Source not found' } });
-        await expect(service.stores()).resolves.toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'boom' } });
-        await expect(service.setSourcePreference({ sourceId: '1', position: 0, type: 'text', value: 'x' })).resolves.toEqual({ ok: false, error: { code: 'API_ERROR', message: 'no such source' } });
+        const sourceFailure = new SuwayomiApiError('API_ERROR', 'Source not found', { operation: 'GraphQL sources', url: 'http://127.0.0.1:4567/api/graphql', httpStatus: 200 });
+        const preferenceFailure = new SuwayomiApiError('API_ERROR', 'no such source');
+        const storeFailure = new Error('boom');
+        client.sources.mockRejectedValueOnce(sourceFailure);
+        client.setSourcePreference.mockRejectedValueOnce(preferenceFailure);
+        client.stores.mockRejectedValueOnce(storeFailure);
+        await expect(service.sources()).resolves.toEqual({
+            ok: false,
+            error: {
+                code: 'API_ERROR',
+                message: 'Source not found',
+                details: { occurredAt: NOW, errorName: 'Error', stack: sourceFailure.stack, operation: 'GraphQL sources', url: 'http://127.0.0.1:4567/api/graphql', httpStatus: 200 }
+            }
+        });
+        await expect(service.stores()).resolves.toEqual({
+            ok: false,
+            error: { code: 'UNKNOWN', message: 'boom', details: { occurredAt: NOW, errorName: 'Error', stack: storeFailure.stack } }
+        });
+        await expect(service.setSourcePreference({ sourceId: '1', position: 0, type: 'text', value: 'x' })).resolves.toEqual({
+            ok: false,
+            error: { code: 'API_ERROR', message: 'no such source', details: { occurredAt: NOW, errorName: 'Error', stack: preferenceFailure.stack } }
+        });
     });
 
     it('gives the pages of a chapter and lets a failure pass for the download to handle', async () => {
@@ -428,12 +454,23 @@ describe('MangaService operations', () => {
 
 describe('toMangaError', () => {
     it('keeps the code of an error of the server', () => {
-        expect(toMangaError(new SuwayomiApiError('REQUEST_FAILED', 'x'))).toEqual({ code: 'REQUEST_FAILED', message: 'x' });
+        const failure = new SuwayomiApiError('REQUEST_FAILED', 'x');
+        expect(toMangaError(failure)).toEqual({ code: 'REQUEST_FAILED', message: 'x', details: { occurredAt: NOW, errorName: 'Error', stack: failure.stack } });
+    });
+
+    it('keeps what the client knew about the request that failed', () => {
+        const failure = new SuwayomiApiError('REQUEST_FAILED', 'The server answered 502', { operation: 'GraphQL fetchChapters', url: 'http://127.0.0.1:4567/api/graphql', httpStatus: 502 });
+        expect(toMangaError(failure)).toEqual({
+            code: 'REQUEST_FAILED',
+            message: 'The server answered 502',
+            details: { occurredAt: NOW, errorName: 'Error', stack: failure.stack, operation: 'GraphQL fetchChapters', url: 'http://127.0.0.1:4567/api/graphql', httpStatus: 502 }
+        });
     });
 
     it('turns anything else into an unknown error', () => {
-        expect(toMangaError(new Error('e'))).toEqual({ code: 'UNKNOWN', message: 'e' });
-        expect(toMangaError('text')).toEqual({ code: 'UNKNOWN', message: 'text' });
+        const failure = new Error('e');
+        expect(toMangaError(failure)).toEqual({ code: 'UNKNOWN', message: 'e', details: { occurredAt: NOW, errorName: 'Error', stack: failure.stack } });
+        expect(toMangaError('text')).toEqual({ code: 'UNKNOWN', message: 'text', details: { occurredAt: NOW } });
     });
 });
 
@@ -466,7 +503,11 @@ describe('MangaService update of every extension', () => {
 
     it('answers with the failure of the server', async () => {
         const { service, client } = withExtensions([{ pkgName: 'a', isInstalled: true, hasUpdate: true }]);
-        client.updateExtensions.mockRejectedValue(new SuwayomiApiError('API_ERROR', 'boom'));
-        await expect(service.updateAllExtensions()).resolves.toEqual({ ok: false, error: { code: 'API_ERROR', message: 'boom' } });
+        const failure = new SuwayomiApiError('API_ERROR', 'boom');
+        client.updateExtensions.mockRejectedValue(failure);
+        await expect(service.updateAllExtensions()).resolves.toEqual({
+            ok: false,
+            error: { code: 'API_ERROR', message: 'boom', details: { occurredAt: NOW, errorName: 'Error', stack: failure.stack } }
+        });
     });
 });

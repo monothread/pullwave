@@ -3,11 +3,12 @@ import type { Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { effectiveAudio, useAnimeStore } from '../store/animeStore';
-import { animeErrorKey, libraryEntry, seasonLabel } from './animeText';
+import { animeErrorReport, libraryEntry, seasonLabel } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { AnimeDetail } from './AnimeDetail';
 import { SelectField, TextField } from './fields';
 import { RowLink } from './RowLink';
+import { ErrorNotice } from './ErrorNotice';
 
 function audioLabel(audio: AnimeAudio, t: Translator): string {
     return audio === 'dub' ? t('anime.audio.dub') : t('anime.audio.sub');
@@ -72,8 +73,8 @@ export function AnimeSearch() {
                 </button>
             </form>
             {search.status === 'error' && search.error && (
-                <p className="field__warning" role="alert" title={search.error.raw}>
-                    {t(animeErrorKey(search.error.code))}
+                <p className="field__warning" role="alert">
+                    <ErrorNotice report={animeErrorReport(t, search.error)} />
                 </p>
             )}
             {search.status === 'done' && search.results.length === 0 && <p className="empty">{t('anime.results.none')}</p>}

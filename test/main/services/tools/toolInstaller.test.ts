@@ -176,6 +176,65 @@ describe('ToolInstaller', () => {
         await expect(installer.install(SPEC)).resolves.toMatchObject({ status: 'error', error: { code: 'DOWNLOAD_FAILED', message: 'The server answered 404' } });
     });
 
+    describe('what it says about the failure', () => {
+        beforeEach(() => {
+            vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+        });
+
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('names the download and the address for a download that failed', async () => {
+            const failure = new ToolDownloadError('The server answered 404');
+            const download: Download = () => {
+                return Promise.reject(failure);
+            };
+            const result = await setup({ download }).installer.install(SPEC);
+            expect(result.error).toEqual({
+                code: 'DOWNLOAD_FAILED',
+                message: 'The server answered 404',
+                details: { occurredAt: 1_700_000_000_000, errorName: 'Error', stack: failure.stack, operation: 'Downloading suwayomi v1', url: SPEC.url }
+            });
+        });
+
+        it('names the unpacking for an archive that cannot be unpacked', async () => {
+            const failure = new Error('unexpected end of archive');
+            const extract: Extract = () => {
+                return Promise.reject(failure);
+            };
+            const result = await setup({ extract }).installer.install(SPEC);
+            expect(result.error).toEqual({
+                code: 'EXTRACT_FAILED',
+                message: 'unexpected end of archive',
+                details: { occurredAt: 1_700_000_000_000, errorName: 'Error', stack: failure.stack, operation: 'Unpacking suwayomi v1', url: SPEC.url }
+            });
+        });
+
+        it('gives the code of the system for a disk problem', async () => {
+            const failure = Object.assign(new Error('no space left on device'), { code: 'ENOSPC', errno: -28, syscall: 'write' });
+            const download: Download = () => {
+                return Promise.reject(failure);
+            };
+            const result = await setup({ download }).installer.install(SPEC);
+            expect(result.error).toEqual({
+                code: 'DISK',
+                message: 'no space left on device',
+                details: { occurredAt: 1_700_000_000_000, errorName: 'Error', stack: failure.stack, systemCode: 'ENOSPC', operation: 'Installing suwayomi v1', url: SPEC.url }
+            });
+        });
+
+        it('names the installation for a download that does not match the checksum', async () => {
+            const { download } = goodDownload({ sha256: 'c'.repeat(64) });
+            const result = await setup({ download }).installer.install(SPEC);
+            expect(result.error).toEqual({
+                code: 'HASH_MISMATCH',
+                message: 'The downloaded file does not match the checksum the app expects',
+                details: { occurredAt: 1_700_000_000_000, errorName: 'Error', stack: expect.stringContaining('Error: The downloaded file does not match the checksum'), operation: 'Installing suwayomi v1', url: SPEC.url }
+            });
+        });
+    });
+
     it('reports an archive that cannot be unpacked and cleans up', async () => {
         const extract: Extract = (_format, _file, options) => {
             mkdirSync(options.destination, { recursive: true });
@@ -412,7 +471,12 @@ describe('ToolInstaller the check of what was unpacked', () => {
         const result = await installer.install(SPEC, undefined, false, () => {
             return Promise.reject(new Error('The new program does not run'));
         });
-        expect(result).toEqual({ id: 'suwayomi', status: 'error', version: 'v1', bytesDone: 0, bytesTotal: 0, percent: 0, error: { code: 'INVALID', message: 'The new program does not run' } });
+        expect(result).toEqual({ id: 'suwayomi', status: 'error', version: 'v1', bytesDone: 0, bytesTotal: 0, percent: 0, error: {
+                code: 'INVALID',
+                message: 'The new program does not run',
+                details: { occurredAt: expect.any(Number), errorName: 'Error', stack: expect.stringContaining('Error: The new program does not run'), operation: 'Installing suwayomi v1', url: SPEC.url }
+            }
+        });
         expect(states.at(-1)).toMatchObject({ status: 'error', error: { code: 'INVALID' } });
         expect(installer.isReady(SPEC)).toBe(false);
         expect(readdirSync(folder)).toEqual([]);

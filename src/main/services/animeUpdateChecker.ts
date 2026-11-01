@@ -13,9 +13,9 @@ import {
 import type { AnimeDb } from './animeDb';
 import { resolveResult } from './animeSourceMatch';
 
-// How often the anime of the library are asked about (every 6 hours: the library is long and every look is a few requests for each anime),
+// How often the anime of the library are asked about (every 3 hours: the library is long and every look is a few requests for each anime),
 // and how long after the app opens the first check is made when none was made in the last interval (so opening the app is not slowed by it).
-export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
 export const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
 // When a look fails for every anime it is tried again after this long, then after twice as long and so on up to the limit below, and while
 // the automatic look is off the setting is read again this often.

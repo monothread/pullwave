@@ -2,7 +2,8 @@ import type { MessageKey } from '@shared/i18n';
 import type { ToolState } from '@shared/tools';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { toolErrorKey } from './mangaText';
+import { toolErrorReport } from './mangaText';
+import { ErrorNotice } from './ErrorNotice';
 
 const PROGRESS_KEYS: Record<Exclude<ToolState['status'], 'ready' | 'error'>, MessageKey> = {
     missing: 'manga.setup.missing',
@@ -29,8 +30,8 @@ export function MangaSetup() {
             <p className="field__hint">{t('manga.setup.hint')}</p>
             {tool.status === 'error' && tool.error ? (
                 <>
-                    <p className="field__warning" role="alert" title={tool.error.message}>
-                        {t(toolErrorKey(tool.error.code))}
+                    <p className="field__warning" role="alert">
+                        <ErrorNotice report={toolErrorReport(t, tool.error)} />
                     </p>
                     <div className="job__actions">
                         <button

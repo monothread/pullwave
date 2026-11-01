@@ -59,6 +59,7 @@ describe('sanitizeSettings', () => {
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
             mangaFlaresolverrEnabled: true,
             mangaShowAdult: true,
+            mangaLanguage: 'pt-BR',
             mangaCheckNewChapters: false,
             mangaAutoDownloadNew: true,
             mangaSiteBrowser: 'firefox',
@@ -104,7 +105,7 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ mangaCheckNewChapters }).mangaCheckNewChapters).toBe(true);
     });
 
-    it('looks for new episodes every 6 hours by default', () => {
+    it('looks for new episodes every 3 hours by default', () => {
         expect(DEFAULT_SETTINGS.animeCheckNewEpisodes).toBe(true);
         expect(sanitizeSettings({}).animeCheckNewEpisodes).toBe(true);
     });
@@ -174,6 +175,23 @@ describe('sanitizeSettings', () => {
 
     it.each(['yes', 1, null, []])('falls back to hiding the sources for adults for the invalid value %j', (mangaShowAdult) => {
         expect(sanitizeSettings({ mangaShowAdult }).mangaShowAdult).toBe(false);
+    });
+
+    it('follows the language of the computer for the manga section by default', () => {
+        expect(DEFAULT_SETTINGS.mangaLanguage).toBe('');
+        expect(sanitizeSettings({}).mangaLanguage).toBe('');
+    });
+
+    it.each(['en', 'pt-BR', 'all', 'all-languages', ''])('keeps the language "%s" of the manga section', (mangaLanguage) => {
+        expect(sanitizeSettings({ mangaLanguage }).mangaLanguage).toBe(mangaLanguage);
+    });
+
+    it('trims the language of the manga section', () => {
+        expect(sanitizeSettings({ mangaLanguage: '  ja ' }).mangaLanguage).toBe('ja');
+    });
+
+    it.each([5, null, true, [], {}])('falls back to the language of the computer for the invalid value %j', (mangaLanguage) => {
+        expect(sanitizeSettings({ mangaLanguage }).mangaLanguage).toBe('');
     });
 
     it.each(['cbz', 'folder'])('keeps the manga format "%s"', (mangaFormat) => {

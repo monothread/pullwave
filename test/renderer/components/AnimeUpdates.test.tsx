@@ -65,7 +65,7 @@ describe('AnimeUpdates', () => {
         });
 
         expect(screen.getByRole('region', { name: 'UPDATES' })).toBeInTheDocument();
-        expect(screen.getByText('No new episodes yet. The check that runs every 6 hours, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
+        expect(screen.getByText('No new episodes yet. The check that runs every 3 hours, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'LOOK FOR NEW EPISODES' })).toBeEnabled();
         expect(screen.queryByRole('button', { name: 'CLEAR LIST' })).not.toBeInTheDocument();
         expect(screen.queryByTestId('anime-update')).not.toBeInTheDocument();
@@ -212,7 +212,7 @@ describe('AnimeUpdates', () => {
             expect(useAnimeStore.getState().updates).toEqual([]);
             expect(screen.queryByTestId('anime-update')).not.toBeInTheDocument();
             expect(screen.queryByRole('button', { name: 'CLEAR LIST' })).not.toBeInTheDocument();
-            expect(screen.getByText('No new episodes yet. The check that runs every 6 hours, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
+            expect(screen.getByText('No new episodes yet. The check that runs every 3 hours, and the buttons that look for new episodes, list here what they find.')).toBeInTheDocument();
         });
 
         it('keeps the list when the user keeps it', async () => {

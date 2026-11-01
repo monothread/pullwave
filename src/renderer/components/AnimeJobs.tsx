@@ -2,8 +2,9 @@ import type { AnimeJob } from '@shared/anime';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { ConfirmButton } from './ConfirmButton';
-import { animeErrorKey, animeStatusKey } from './animeText';
+import { animeErrorReport, animeStatusKey } from './animeText';
 import { formatPercent } from './jobStatus';
+import { ErrorNotice } from './ErrorNotice';
 
 const ORDER: Record<AnimeJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
@@ -84,8 +85,8 @@ export function AnimeJobs() {
                             {job.eta && <span>{t('job.eta', { eta: job.eta })}</span>}
                         </div>
                         {job.error && (
-                            <p className="field__warning" role="alert" title={job.error.raw}>
-                                {t(animeErrorKey(job.error.code))}
+                            <p className="field__warning" role="alert">
+                                <ErrorNotice report={animeErrorReport(t, job.error)} />
                             </p>
                         )}
                         <div className="job__actions">

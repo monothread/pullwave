@@ -1,6 +1,7 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
 import type { AnimeCheckState, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
+import type { CutRun } from '@shared/cut';
 import type { MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
@@ -227,6 +228,30 @@ const manga: CyberApi['manga'] = {
     }
 };
 
+const cut: CyberApi['cut'] = {
+    choose: () => {
+        return ipcRenderer.invoke(IPC.cutChoose);
+    },
+    probe: (path) => {
+        return ipcRenderer.invoke(IPC.cutProbe, path);
+    },
+    pathForFile: (file) => {
+        return webUtils.getPathForFile(file);
+    },
+    start: (request) => {
+        return ipcRenderer.invoke(IPC.cutStart, request);
+    },
+    cancel: () => {
+        return ipcRenderer.invoke(IPC.cutCancel);
+    },
+    current: () => {
+        return ipcRenderer.invoke(IPC.cutCurrent);
+    },
+    onProgress: (listener) => {
+        return subscribe<CutRun>(IPC.eventCutProgress, listener);
+    }
+};
+
 const programs: CyberApi['programs'] = {
     status: () => {
         return ipcRenderer.invoke(IPC.programsStatus);
@@ -302,6 +327,7 @@ const api: CyberApi = {
         return ipcRenderer.invoke(IPC.binariesCheck);
     },
     programs,
+    cut,
     getAppUpdateState: () => {
         return ipcRenderer.invoke(IPC.appUpdateGet);
     },

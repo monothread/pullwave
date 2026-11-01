@@ -82,7 +82,7 @@ describe('MangaReader the bar', () => {
         open({ status: 'error', pages: [], error: { code: 'API_ERROR', message: 'Cloudflare bypass currently disabled' } });
         rerender(<MangaReader />);
         expect(screen.getByRole('alert')).toHaveTextContent('The site or the extension reported an error.');
-        expect(within(screen.getByRole('alert')).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(screen.getByRole('alert')).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
         open({ pages: [] });
         rerender(<MangaReader />);
         expect(screen.getByText('This chapter has no pages.')).toBeInTheDocument();

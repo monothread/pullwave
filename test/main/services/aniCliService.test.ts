@@ -3,6 +3,16 @@ import { AniCliLocator, type AniLocations, type AniPrograms, type AniTools, type
 import { AniCliService, type AniDownloadOptions } from '@main/services/aniCliService';
 import type { AniRunHandle, AniRunOptions, AniRunOutcome, MenuChoice } from '@main/services/aniCliRunner';
 
+const NOW = 1_700_000_000_000;
+
+beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
 const LOCATIONS: AniLocations = {
     scriptsDir: '/app/resources/ani-scripts',
     dataDir: '/data/anime'
@@ -191,7 +201,7 @@ describe('AniCliService.resolveSubtitles', () => {
 
     it('maps what ani-cli reports when the episode cannot be played', async () => {
         const { service } = setup([done(outcome({ exitCode: 1, output: 'No sources found for dub!\n' }))]);
-        expect(await service.resolveSubtitles(request)).toEqual({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for dub!' } });
+        expect(await service.resolveSubtitles(request)).toEqual({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for dub!', details: { occurredAt: NOW, exitCode: 1, operation: 'Asking ani-cli for the stream of an episode' } } });
     });
 
     it('does not trust a list when ani-cli failed, nor one that comes without a stream', async () => {
@@ -199,7 +209,7 @@ describe('AniCliService.resolveSubtitles', () => {
         const noStream = ['Subtitle list:', ENGLISH].join('\n');
         expect(await setup([done(outcome({ exitCode: 0, output: noStream }))]).service.resolveSubtitles(request)).toEqual({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: noStream }
+            error: { code: 'UNKNOWN', raw: noStream, details: { occurredAt: NOW, exitCode: 0, operation: 'Asking ani-cli for the stream of an episode' } }
         });
     });
 
@@ -238,7 +248,7 @@ describe('AniCliService.resolveStream', () => {
 
     it('maps what ani-cli reports when there is no address', async () => {
         const { service } = setup([done(outcome({ exitCode: 1, output: 'No sources found for dub!\n' }))]);
-        expect(await service.resolveStream(request)).toEqual({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for dub!' } });
+        expect(await service.resolveStream(request)).toEqual({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for dub!', details: { occurredAt: NOW, exitCode: 1, operation: 'Asking ani-cli for the stream of an episode' } } });
     });
 
     it('does not trust an address when ani-cli failed', async () => {
@@ -248,7 +258,7 @@ describe('AniCliService.resolveStream', () => {
 
     it('fails when ani-cli ends well but printed no address', async () => {
         const { service } = setup([done(outcome({ exitCode: 0, output: 'nothing useful' }))]);
-        expect(await service.resolveStream(request)).toEqual({ status: 'error', error: { code: 'UNKNOWN', raw: 'nothing useful' } });
+        expect(await service.resolveStream(request)).toEqual({ status: 'error', error: { code: 'UNKNOWN', raw: 'nothing useful', details: { occurredAt: NOW, exitCode: 0, operation: 'Asking ani-cli for the stream of an episode' } } });
     });
 
     it('rejects an invalid request without running anything', async () => {
@@ -333,7 +343,7 @@ describe('AniCliService.search', () => {
 
     it('maps what ani-cli reports when there is nothing to list', async () => {
         const { service } = setup([done(outcome({ output: 'No results found!\n' }))]);
-        expect(await service.search('zzzz', 'sub')).toEqual({ status: 'error', error: { code: 'NO_RESULTS', raw: 'No results found!' } });
+        expect(await service.search('zzzz', 'sub')).toEqual({ status: 'error', error: { code: 'NO_RESULTS', raw: 'No results found!', details: { occurredAt: NOW, exitCode: 1, operation: 'Searching for the anime with ani-cli' } } });
     });
 
     it('does not run anything for an empty search', async () => {
@@ -377,7 +387,7 @@ describe('AniCliService.episodes', () => {
 
     it('fails when ani-cli refuses episode 1 of an unlisted anime', async () => {
         const { service } = setup([done(outcome({ exitCode: 0 })), done(outcome({ exitCode: 1, output: 'Invalid episode!\n' }))]);
-        expect(await service.episodes('x', 1, 'sub')).toEqual({ status: 'error', error: { code: 'INVALID_SELECTION', raw: 'Invalid episode!' } });
+        expect(await service.episodes('x', 1, 'sub')).toEqual({ status: 'error', error: { code: 'INVALID_SELECTION', raw: 'Invalid episode!', details: { occurredAt: NOW, exitCode: 1, operation: 'Listing the episodes of an anime with ani-cli' } } });
     });
 
     it('passes on a cancellation while confirming episode 1', async () => {
@@ -397,7 +407,7 @@ describe('AniCliService.episodes', () => {
         const { service } = setup([done(outcome({ exitCode: 1, output: 'Connection error: could not fetch https://x (curl exit 6)\n' }))]);
         expect(await service.episodes('naruto', 1, 'sub')).toEqual({
             status: 'error',
-            error: { code: 'NETWORK', raw: 'Connection error: could not fetch https://x (curl exit 6)' }
+            error: { code: 'NETWORK', raw: 'Connection error: could not fetch https://x (curl exit 6)', details: { occurredAt: NOW, exitCode: 1, operation: 'Listing the episodes of an anime with ani-cli' } }
         });
     });
 
@@ -450,7 +460,7 @@ describe('AniCliService.download', () => {
 
     it('maps a failed download', async () => {
         const { service } = setup([done(outcome({ exitCode: 1, output: 'No sources found for dub!\n' }))]);
-        expect(await service.download(request).result).toEqual({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for dub!' } });
+        expect(await service.download(request).result).toEqual({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for dub!', details: { occurredAt: NOW, exitCode: 1, operation: 'Downloading an episode with ani-cli' } } });
     });
 
     it('passes on a failure to start and on a cancellation', async () => {

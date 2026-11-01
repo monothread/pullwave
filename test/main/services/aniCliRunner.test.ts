@@ -3,6 +3,8 @@ import { asDownloadResult, runAniCli, type AniRunOutcome } from '@main/services/
 import { EXIT_GRACE_MS, KILL_ESCALATION_MS } from '@main/services/ytdlpRunner';
 import { createFakeChild } from '../../helpers/fakeChild';
 
+const NOW = 1_700_000_000_000;
+const COMMAND = '/app/resources/bin/ani/busybox sh /app/resources/bin/ani/ani-cli naruto';
 const ESC = String.fromCharCode(27);
 const ENV = { PATH: '/data/anime/tools' };
 
@@ -32,8 +34,13 @@ function start(platform: NodeJS.Platform = 'linux') {
     return { fake, spawnFn, killGroup, progress, destinations, handle };
 }
 
+beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
 afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
 });
 
 describe('runAniCli', () => {
@@ -112,8 +119,16 @@ describe('runAniCli', () => {
 
     it('resolves with an error when the program cannot be started', async () => {
         const { fake, handle } = start();
-        fake.emitter.emit('error', Object.assign(new Error('spawn busybox ENOENT'), { code: 'ENOENT' }));
-        expect(await handle.result).toEqual({ status: 'error', error: { code: 'BINARY_MISSING', raw: 'spawn busybox ENOENT' } });
+        const failure = Object.assign(new Error('spawn busybox ENOENT'), { code: 'ENOENT', errno: -2, syscall: 'spawn busybox' });
+        fake.emitter.emit('error', failure);
+        expect(await handle.result).toEqual({
+            status: 'error',
+            error: {
+                code: 'BINARY_MISSING',
+                raw: 'spawn busybox ENOENT',
+                details: { occurredAt: NOW, errorName: 'Error', stack: failure.stack, systemCode: 'ENOENT', operation: 'Running ani-cli', command: COMMAND }
+            }
+        });
     });
 
     it('ignores what happens after it resolved', async () => {
@@ -241,14 +256,14 @@ describe('asDownloadResult', () => {
     it('turns a failed exit into the error ani-cli reported', () => {
         expect(asDownloadResult({ ...outcome, exitCode: 1, output: 'No sources found for sub!\n' })).toEqual({
             status: 'error',
-            error: { code: 'NO_SOURCES', raw: 'No sources found for sub!' }
+            error: { code: 'NO_SOURCES', raw: 'No sources found for sub!', details: { occurredAt: NOW, exitCode: 1, operation: 'Downloading an episode with ani-cli' } }
         });
     });
 
     it('treats a missing exit code as a failure', () => {
         expect(asDownloadResult({ ...outcome, exitCode: null, output: '' })).toEqual({
             status: 'error',
-            error: { code: 'UNKNOWN', raw: 'ani-cli exited with code unknown' }
+            error: { code: 'UNKNOWN', raw: 'ani-cli exited with code unknown', details: { occurredAt: NOW, operation: 'Downloading an episode with ani-cli' } }
         });
     });
 });

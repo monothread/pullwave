@@ -8,6 +8,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { makeAnimeJob } from '../../helpers/animeFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -106,12 +107,18 @@ describe('AnimeJobs', () => {
         expect(screen.getByText('DOWNLOADED')).toHaveClass('badge--done');
     });
 
-    it('explains an error and keeps the raw text as a tooltip', () => {
-        useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for sub!' } })] });
+    it('explains an error, and opens the window with the raw text when it is clicked', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for sub!', details: { occurredAt: 1700000000000, exitCode: 1, operation: 'Downloading an episode with ani-cli' } } })] });
         render(<AnimeJobs />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('No video source was found for this episode.');
-        expect(alert).toHaveAttribute('title', 'No sources found for sub!');
+        expect(alert).not.toHaveAttribute('title');
+        const dialog = await openErrorDialog(user, 'No video source was found for this episode.');
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('No sources found for sub!');
+        expect(within(dialog).getByText('Downloading an episode with ani-cli')).toBeInTheDocument();
+        expect(within(dialog).getByText('NO_SOURCES')).toBeInTheDocument();
+        expect(within(dialog).getByText('1')).toBeInTheDocument();
     });
 
     it('clears the finished downloads only when there are some', async () => {

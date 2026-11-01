@@ -2,6 +2,7 @@
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
+import type { MangaError } from '@shared/manga';
 import { MangaDetail } from '@renderer/components/MangaDetail';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaSelection } from '@renderer/store/mangaStore';
@@ -9,6 +10,7 @@ import { progressKey, saveLastChapter, saveProgress } from '@renderer/components
 import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -78,13 +80,13 @@ describe('MangaDetail', () => {
         render(<MangaDetail />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
     });
 
     it('hints at Cloudflare when the manga could not be opened because of it', () => {
         open({ status: 'error', details: null, chapters: [], error: { code: 'API_ERROR', message: 'Cloudflare bypass currently disabled' } });
         render(<MangaDetail />);
-        expect(within(screen.getByRole('alert')).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(screen.getByRole('alert')).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
         expect(screen.getByText(/This site is protected by Cloudflare\./)).toBeInTheDocument();
     });
 
@@ -1324,7 +1326,7 @@ describe('MangaDetail the chapters that are new today', () => {
 });
 
 describe('MangaDetail looking at the source in the background', () => {
-    function setRefresh(refresh: { loading: boolean; error: { code: 'REQUEST_FAILED'; message: string } | null }): void {
+    function setRefresh(refresh: { loading: boolean; error: MangaError | null }): void {
         useMangaStore.setState({ selectionRefresh: refresh });
     }
 
@@ -1344,13 +1346,20 @@ describe('MangaDetail looking at the source in the background', () => {
         expect(screen.queryByText('Could not reach the source. Showing what is saved.')).not.toBeInTheDocument();
     });
 
-    it('says the source could not be reached and keeps showing the chapters that are saved', () => {
+    it('says the source could not be reached and keeps showing the chapters that are saved, with the details a click away', async () => {
+        const user = userEvent.setup();
         open();
-        setRefresh({ loading: false, error: { code: 'REQUEST_FAILED', message: 'site down' } });
+        setRefresh({ loading: false, error: { code: 'REQUEST_FAILED', message: 'site down', details: { occurredAt: 1700000000000, httpStatus: 502, url: 'http://127.0.0.1:4567/api/graphql' } } });
         render(<MangaDetail />);
         const warning = screen.getByRole('alert');
         expect(warning).toHaveTextContent('Could not reach the source. Showing what is saved.');
-        expect(warning).toHaveAttribute('title', 'site down');
+        expect(warning).not.toHaveAttribute('title');
+        const dialog = await openErrorDialog(user, 'Could not reach the source. Showing what is saved.');
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('site down');
+        expect(within(dialog).getByText('REQUEST_FAILED')).toBeInTheDocument();
+        expect(within(dialog).getByText('502')).toBeInTheDocument();
+        expect(within(dialog).getByText('http://127.0.0.1:4567/api/graphql')).toBeInTheDocument();
+        await user.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
         expect(screen.getAllByTestId('manga-chapter')).toHaveLength(3);
         expect(screen.queryByText(/Cloudflare/)).not.toBeInTheDocument();
     });

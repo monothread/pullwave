@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { AnimeAddResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { CutChooseResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
@@ -8,6 +9,7 @@ import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
 
 export type MockMangaApi = { [K in keyof MangaApi]: ReturnType<typeof vi.fn> };
 export type MockProgramsApi = { [K in keyof CyberApi['programs']]: ReturnType<typeof vi.fn> };
+export type MockCutApi = { [K in keyof CyberApi['cut']]: ReturnType<typeof vi.fn> };
 
 export function makeProgramInfo(id: ProgramId, overrides: Partial<ProgramInfo> = {}): ProgramInfo {
     return { id, state: { id, status: 'ready', version: '1.0.0', bytesDone: 0, bytesTotal: 0, percent: 100, error: null }, custom: false, directory: `/tools/${id}/1.0.0`, ...overrides };
@@ -33,7 +35,8 @@ export function makeProgramVersions(overrides: Partial<ProgramVersions> = {}): P
 }
 
 export interface MockApiHandle {
-    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi; programs: MockProgramsApi };
+    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi; programs: MockProgramsApi; cut: MockCutApi };
+    emitCutProgress: (run: CutRun) => void;
     emitProgramTool: (state: ToolState) => void;
     emitProgramUpdate: (state: ToolState) => void;
     emitMangaTool: (state: ToolState) => void;
@@ -77,6 +80,7 @@ export function createMockApi(): MockApiHandle {
     const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
     const programToolListeners: Array<(state: ToolState) => void> = [];
+    const cutListeners: Array<(run: CutRun) => void> = [];
     const programUpdateListeners: Array<(state: ToolState) => void> = [];
     const mangaToolListeners: Array<(state: ToolState) => void> = [];
     const mangaServerUpdateListeners: Array<(state: ToolState) => void> = [];
@@ -96,6 +100,30 @@ export function createMockApi(): MockApiHandle {
         unsubscribers.push(unsubscribe);
         return unsubscribe;
     }
+
+    const cut: MockCutApi = {
+        choose: vi.fn(async (): Promise<CutChooseResponse> => {
+            return { ok: false, reason: 'cancelled' };
+        }),
+        probe: vi.fn(async (): Promise<CutChooseResponse> => {
+            return { ok: false, reason: 'unreadable' };
+        }),
+        pathForFile: vi.fn((file: File): string => {
+            return `/dropped/${file.name}`;
+        }),
+        start: vi.fn(async (): Promise<CutStartResponse> => {
+            return { ok: false, reason: 'invalid' };
+        }),
+        cancel: vi.fn(async () => {
+            return undefined;
+        }),
+        current: vi.fn(async (): Promise<CutRun | null> => {
+            return null;
+        }),
+        onProgress: vi.fn((listener: (run: CutRun) => void) => {
+            return subscribe(cutListeners, listener);
+        })
+    };
 
     const programs: MockProgramsApi = {
         status: vi.fn(async (): Promise<ProgramsStatus> => {
@@ -300,6 +328,7 @@ export function createMockApi(): MockApiHandle {
     const api: MockApiHandle['api'] = {
         manga,
         programs,
+        cut,
         getSettings: vi.fn(async () => {
             return DEFAULT_SETTINGS;
         }),
@@ -557,6 +586,11 @@ export function createMockApi(): MockApiHandle {
     return {
         api,
         unsubscribers,
+        emitCutProgress: (run) => {
+            cutListeners.forEach((listener) => {
+                listener(run);
+            });
+        },
         emitProgramTool: (state) => {
             programToolListeners.forEach((listener) => {
                 listener(state);

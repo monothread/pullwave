@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { matchChapters, droppedChapters } from '@shared/mangaSourceMigration';
 import { sameSeries } from '@shared/series';
+import { parseErrorDetails, serializeErrorDetails } from '../errorDetails';
 import {
     ARRIVAL_ORIGINS,
     hasChapterFile,
@@ -123,7 +124,9 @@ const MIGRATIONS: readonly string[] = [
             OR (other.name COLLATE NOCASE = manga_group.name COLLATE NOCASE AND other.id < manga_group.id)
     );`,
     // Where a chapter that was started is being made (its pages are kept beside it), so a pause survives the app being closed.
-    `ALTER TABLE chapter ADD COLUMN output_path TEXT;`
+    `ALTER TABLE chapter ADD COLUMN output_path TEXT;`,
+    // Everything known about the error of a chapter (what was being done, the address, the HTTP status, the stack...), as JSON.
+    `ALTER TABLE chapter ADD COLUMN error_details TEXT;`
 ];
 
 type Row = Record<string, unknown>;
@@ -199,7 +202,11 @@ function statusOf(value: string): MangaChapterStatus {
 
 function toError(row: Row): MangaError | null {
     const code = nullableText(row, 'error_code');
-    return code === null ? null : { code: code as MangaErrorCode, message: text(row, 'error_raw') };
+    if (code === null) {
+        return null;
+    }
+    const details = parseErrorDetails(nullableText(row, 'error_details'));
+    return { code: code as MangaErrorCode, message: text(row, 'error_raw'), ...(details === undefined ? {} : { details }) };
 }
 
 function toChapter(row: Row): MangaChapterRecord {
@@ -413,12 +420,12 @@ export class MangaDb {
     }
 
     markQueued(chapterId: number): void {
-        this.run(`UPDATE chapter SET status = 'queued', error_code = NULL, error_raw = NULL WHERE id = ?`, chapterId);
+        this.run(`UPDATE chapter SET status = 'queued', error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, chapterId);
     }
 
     // The chapter starts a run that makes it at this place (remembered until it is downloaded, fails or is cancelled).
     markDownloading(chapterId: number, outputPath: string): void {
-        this.run(`UPDATE chapter SET status = 'downloading', output_path = ?, error_code = NULL, error_raw = NULL WHERE id = ?`, outputPath, chapterId);
+        this.run(`UPDATE chapter SET status = 'downloading', output_path = ?, error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, outputPath, chapterId);
     }
 
     markPaused(chapterId: number): void {
@@ -440,7 +447,7 @@ export class MangaDb {
 
     private markDownloaded(status: 'done' | 'incomplete', chapterId: number, filePath: string, sizeBytes: number | null, pageCount: number): void {
         this.run(
-            `UPDATE chapter SET status = ?, file_path = ?, size_bytes = ?, page_count = ?, output_path = NULL, error_code = NULL, error_raw = NULL, downloaded_at = ? WHERE id = ?`,
+            `UPDATE chapter SET status = ?, file_path = ?, size_bytes = ?, page_count = ?, output_path = NULL, error_code = NULL, error_raw = NULL, error_details = NULL, downloaded_at = ? WHERE id = ?`,
             status,
             filePath,
             sizeBytes,
@@ -451,7 +458,13 @@ export class MangaDb {
     }
 
     markFailed(chapterId: number, status: 'error' | 'cancelled', error: MangaError | null): void {
-        this.run('UPDATE chapter SET status = ?, output_path = NULL, error_code = ?, error_raw = ? WHERE id = ?', status, error?.code ?? null, error?.message ?? null, chapterId);
+        this.run('UPDATE chapter SET status = ?, output_path = NULL, error_code = ?, error_raw = ?, error_details = ? WHERE id = ?',
+            status,
+            error?.code ?? null,
+            error?.message ?? null,
+            serializeErrorDetails(error?.details),
+            chapterId
+        );
     }
 
     // Where the chapter was being made when it was started before; null when it was not, or its pages were deleted.
@@ -476,7 +489,7 @@ export class MangaDb {
 
     // A download that was going on when the app closed did not finish: it is an error that can be retried.
     failInterrupted(): void {
-        this.run(`UPDATE chapter SET status = 'error', error_code = 'UNKNOWN', error_raw = ? WHERE status IN ('queued', 'downloading')`, INTERRUPTED_MESSAGE);
+        this.run(`UPDATE chapter SET status = 'error', error_code = 'UNKNOWN', error_raw = ?, error_details = NULL WHERE status IN ('queued', 'downloading')`, INTERRUPTED_MESSAGE);
     }
 
     // Points chapters at the files they were moved to (the folder of the library changed).
@@ -732,7 +745,7 @@ export class MangaDb {
         if (chapter === null || !hasChapterFile(chapter.status)) {
             return null;
         }
-        this.run(`UPDATE chapter SET status = 'idle', file_path = NULL, size_bytes = NULL, downloaded_at = NULL, error_code = NULL, error_raw = NULL WHERE id = ?`, chapterId);
+        this.run(`UPDATE chapter SET status = 'idle', file_path = NULL, size_bytes = NULL, downloaded_at = NULL, error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, chapterId);
         return chapter.filePath;
     }
 

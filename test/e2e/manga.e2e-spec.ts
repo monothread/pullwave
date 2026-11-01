@@ -425,10 +425,9 @@ test.describe('manga section', () => {
         };
         const row = session.page.locator('.manga__extensions .field-row').first();
         const filter = await centre(row.getByLabel('Filter extensions', { exact: true }));
-        const language = await centre(row.getByLabel('Language', { exact: true }));
         const switchCentre = await centre(row.getByRole('switch', { name: 'Installed only' }));
         expect(Math.abs(switchCentre - filter)).toBeLessThanOrEqual(1.5);
-        expect(Math.abs(switchCentre - language)).toBeLessThanOrEqual(1.5);
+        await expect(row.getByLabel('Language', { exact: true })).toHaveCount(0);
         const refresh = await centre(row.getByRole('button').first());
         expect(Math.abs(switchCentre - refresh)).toBeLessThanOrEqual(1.5);
     });
@@ -554,6 +553,54 @@ test.describe('manga section', () => {
         await installExtension(session.page);
         await goTo(session.page, 'BROWSE');
         await expect(session.page.getByTestId('manga-source')).toContainText('Store: Fake Store');
+    });
+
+    test('keeps one language for the whole manga section, in its settings, with a switch beside SEARCH to search every language', async () => {
+        fake.otherSource = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        const nav = session.page.getByRole('navigation', { name: 'Manga' });
+
+        // The settings offer automatic (the language of the computer), every language and the languages of the sources.
+        await goTo(session.page, 'SETTINGS');
+        const language = session.page.getByLabel('Language of the sources');
+        await expect(language).toHaveValue('');
+        await expect(language.locator('option')).toHaveText(['Automatic (the language of the computer)', 'All languages', 'EN']);
+        await language.selectOption('en');
+        await expect.poll(() => {
+            return JSON.parse(readFileSync(join(session!.userData, 'settings.json'), 'utf8')) as { mangaLanguage?: string };
+        }).toMatchObject({ mangaLanguage: 'en' });
+
+        // BROWSE and SEARCH have no field for the language.
+        await goTo(session.page, 'BROWSE');
+        await expect(session.page.getByLabel('Language', { exact: true })).toHaveCount(0);
+        await expect(session.page.getByTestId('manga-source-group')).toHaveCount(1);
+        await nav.getByRole('button', { name: 'SEARCH', exact: true }).click();
+        await expect(session.page.getByLabel('Language', { exact: true })).toHaveCount(0);
+
+        // The switch is beside the button, off by default.
+        const everyLanguage = session.page.getByRole('switch', { name: 'Search every language' });
+        await expect(everyLanguage).not.toBeChecked();
+        const button = session.page.getByRole('button', { name: 'SEARCH', exact: true }).last();
+        const buttonBox = (await button.boundingBox())!;
+        const switchBox = (await everyLanguage.boundingBox())!;
+        expect(switchBox.x).toBeGreaterThan(buttonBox.x + buttonBox.width - 1);
+        await session.page.getByLabel('Manga name').fill('one piece');
+        await button.click();
+        await expect(session.page.getByText('"one piece": found in 2 of 2 sources')).toBeVisible();
+        await everyLanguage.check();
+        await button.click();
+        await expect(session.page.getByText('"one piece": found in 2 of 2 sources')).toBeVisible();
+
+        // The language of the settings reaches the list of extensions and the migration too.
+        await goTo(session.page, 'EXTENSIONS');
+        await expect(session.page.getByLabel('Language', { exact: true })).toHaveCount(0);
+        await goTo(session.page, 'SETTINGS');
+        await session.page.getByLabel('Language of the sources').selectOption('all-languages');
+        await expect.poll(() => {
+            return JSON.parse(readFileSync(join(session!.userData, 'settings.json'), 'utf8')) as { mangaLanguage?: string };
+        }).toMatchObject({ mangaLanguage: 'all-languages' });
     });
 
     test('searches a manga in all the sources at once, says which ones have it, and keeps the results when the tab is left', async () => {
@@ -1673,9 +1720,8 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' }).click();
         const dialog = session.page.getByRole('dialog', { name: 'MIGRATE TO ANOTHER SOURCE' });
         await expect(dialog).toBeVisible();
-        await expect(dialog.getByLabel('Language').locator('option')).toHaveText(['All languages', 'EN']);
+        await expect(dialog.getByLabel('Language')).toHaveCount(0);
         await expect(dialog.getByLabel('Search in').locator('option')).toHaveText(['All sources', 'Other Dex (en)']);
-        await dialog.getByLabel('Language').selectOption('en');
         await expect(dialog.getByLabel('Search in').locator('option')).toHaveText(['All sources', 'Other Dex (en)']);
         await session.page.getByRole('button', { name: 'SEARCH', exact: true }).last().click();
         await session.page.getByRole('button', { name: 'Pick: One Piece (Other Dex)' }).click();
@@ -1842,15 +1888,28 @@ test.describe('manga section', () => {
         await expect(job.getByText('Failed', { exact: true })).toBeVisible({ timeout: 20000 });
         await expect(job.getByRole('alert')).toHaveText('The site or the extension reported an error.');
         const failure = job.getByRole('alert').getByRole('button', { name: 'The site or the extension reported an error.' });
-        await expect(failure).toHaveAttribute('title', 'Click to copy the technical error');
-        // Clicking the error copies what the backend said about it, to be pasted where it is debugged.
+        await expect(failure).toHaveAttribute('title', 'Click to see the technical error');
+        // Clicking the error opens a window with everything known about it, and a button that copies what the backend said.
         await failure.click();
+        const dialog = session.page.getByRole('dialog', { name: 'ERROR DETAILS' });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByTestId('error-message')).toContainText('The source could not give the pages');
+        await expect(dialog.locator('.error-details__row').filter({ hasText: /^Code/ }).locator('dd')).toHaveText('API_ERROR');
+        await expect(dialog.locator('.error-details__row').filter({ hasText: 'What was being done' }).locator('dd')).toHaveText('GraphQL fetchChapterPages');
+        await expect(dialog.locator('.error-details__row').filter({ hasText: 'Address' }).locator('dd')).toHaveText(/\/api\/graphql$/);
+        await expect(dialog.locator('.error-details__row').filter({ hasText: 'HTTP status' }).locator('dd')).toHaveText('200');
+        await expect(dialog.getByTestId('error-stack')).toBeVisible();
+        await dialog.getByRole('button', { name: 'COPY' }).click();
         await expect(session.page.locator('.toast').filter({ hasText: 'Technical error copied.' })).toBeVisible();
         const copied = await session.app.evaluate(({ clipboard }) => {
             return clipboard.readText();
         });
-        expect(copied).toContain('API_ERROR\n');
         expect(copied).toContain('The source could not give the pages');
+        expect(copied).not.toContain('API_ERROR');
+        // Copying does not close the window: the user does.
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(dialog).toHaveCount(0);
         expect(
             fake.graphqlRequests('fetchChapterPages').filter((item) => {
                 return item.variables?.['chapterId'] === 101;

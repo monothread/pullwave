@@ -3,7 +3,7 @@ import type { AnimeAiringOverride, AnimeEpisodeRecord, LibraryAnime } from '@sha
 import type { Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
-import { animeErrorKey, animeStatusKey, downloadedCount, groupLibrary, isNewEpisode, matchesSearch, newEpisodeCount, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
+import { animeErrorReport, animeStatusKey, downloadedCount, groupLibrary, isNewEpisode, matchesSearch, newEpisodeCount, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { AnimeRemove } from './AnimeRemove';
 import { ConfirmButton } from './ConfirmButton';
@@ -13,6 +13,7 @@ import { formatBytes, formatDuration } from './jobStatus';
 import { RowLink } from './RowLink';
 import { SeasonTranslation } from './SeasonTranslation';
 import { SeriesMenu } from './SeriesMenu';
+import { ErrorNotice } from './ErrorNotice';
 
 // What says that episodes got into the library today (the check for new episodes put them there).
 function NewEpisodesBadge({ count, t }: { count: number; t: Translator }) {
@@ -98,8 +99,8 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                 </span>
                 <span className="history__meta">{episodeMeta(episode, t)}</span>
                 {episode.error && (
-                    <span className="history__meta" title={episode.error.raw}>
-                        {t(animeErrorKey(episode.error.code))}
+                    <span className="history__meta">
+                        <ErrorNotice report={animeErrorReport(t, episode.error)} />
                     </span>
                 )}
             </div>

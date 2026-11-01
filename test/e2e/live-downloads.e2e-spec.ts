@@ -24,6 +24,7 @@ test.setTimeout(240000);
 const SHORT_A = 'https://archive.org/details/Popeye_forPresident';
 const SHORT_B = 'https://archive.org/details/Popeye_Nearlyweds';
 const LONG = 'https://archive.org/details/BigBuckBunny_328';
+const LONG_TOO = 'https://archive.org/details/BigBuckBunny_124';
 // The Internet Archive chooses the format of the file, so the name of the finished one is found by its beginning.
 const SHORT_A_PREFIX = 'Popeye for President [Popeye_forPresident].';
 const ANIME = 'Cyberpunk: Edgerunners';
@@ -231,15 +232,16 @@ test.describe('video downloads with the real yt-dlp', () => {
         await second.app.close();
     });
 
-    test('runs two downloads at a time and keeps the third waiting, and closing the app deletes the files of the two', async () => {
+    test('runs three downloads at a time and keeps the fourth waiting, and closing the app deletes the files of the three', async () => {
         writeSettings({ rateLimit: SLOW });
         const { app, page } = await open();
         await submitUrl(page, SHORT_A);
         await submitUrl(page, SHORT_B);
         await submitUrl(page, LONG);
+        await submitUrl(page, LONG_TOO);
 
         const badges = page.getByTestId('job-card').locator('.badge');
-        await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'QUEUED']);
+        await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'DOWNLOADING', 'QUEUED']);
         await expect
             .poll(
                 () => {
@@ -249,7 +251,7 @@ test.describe('video downloads with the real yt-dlp', () => {
                 },
                 { timeout: 90000, intervals: [500] }
             )
-            .toBe(2);
+            .toBe(3);
 
         await app.close();
 
@@ -300,27 +302,29 @@ test.describe('anime downloads with the real ani-cli', () => {
         await page.getByRole('button', { name: `SHOW EPISODES: ${ANIME}`, exact: true }).click();
     }
 
-    test('runs two downloads at a time, and closing the app cancels them and deletes the folder of each episode', async () => {
+    test('runs three downloads at a time, and closing the app cancels them and deletes the folder of each episode', async () => {
         writeSettings({});
         const { app, page } = await open();
-        await openFirstEpisodes(page, 3);
+        await openFirstEpisodes(page, 4);
 
         const jobs = page.getByTestId('anime-job');
-        await expect(jobs).toHaveCount(3);
-        await expect(jobs.locator('.badge--running')).toHaveCount(2, { timeout: 90000 });
+        await expect(jobs).toHaveCount(4);
+        await expect(jobs.locator('.badge--running')).toHaveCount(3, { timeout: 90000 });
         await expect(jobs.locator('.badge--queued')).toHaveCount(1);
         await waitForAnyBytes(episodeFolder(1));
         await waitForAnyBytes(episodeFolder(2));
+        await waitForAnyBytes(episodeFolder(3));
 
         await app.close();
 
         expect(existsSync(episodeFolder(1))).toBe(false);
         expect(existsSync(episodeFolder(2))).toBe(false);
         expect(existsSync(episodeFolder(3))).toBe(false);
+        expect(existsSync(episodeFolder(4))).toBe(false);
 
         const again = await open();
         await openLibraryEpisode(again.page);
-        await expect(again.page.getByTestId('anime-episode').locator('.history__meta').filter({ hasText: 'CANCELLED' })).toHaveCount(2);
+        await expect(again.page.getByTestId('anime-episode').locator('.history__meta').filter({ hasText: 'CANCELLED' })).toHaveCount(3);
         await again.app.close();
     });
 

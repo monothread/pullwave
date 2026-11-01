@@ -8,6 +8,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeMangaStatus, makeTool } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -98,8 +99,13 @@ describe('MangaHelperSettings', () => {
         useMangaStore.setState({ status: makeMangaStatus({ helper: helper({ status: 'error', error: { code: 'DOCKER_MISSING', message: 'no docker' } }) }) });
         render(<MangaHelperSettings enabled external={false} onEnabledChange={vi.fn()} />);
         const alert = screen.getByRole('alert');
-        expect(alert).toHaveAttribute('title', 'no docker');
-        expect(alert).toHaveTextContent('Docker is not installed or is not running.');
+        expect(alert).not.toHaveAttribute('title');
+        const reason = 'Docker is not installed or is not running. Install it (or start it) and try again.';
+        expect(alert).toHaveTextContent(reason);
+        const dialog = await openErrorDialog(user, reason);
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('no docker');
+        expect(within(dialog).getByText('DOCKER_MISSING')).toBeInTheDocument();
+        await user.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
         await user.click(screen.getByRole('button', { name: 'INSTALL' }));
         expect(mock.api.manga.installHelper).toHaveBeenCalledTimes(1);
     });

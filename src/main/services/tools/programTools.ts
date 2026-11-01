@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { PROGRAM_IDS, type ProgramId, type ToolError, type ToolSpec, type ToolState } from '@shared/tools';
 import type { AniPatchName, ProgramInfo, ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersionInfo, ProgramVersions } from '@shared/programs';
 import type { extractArchive } from './archiveExtract';
+import { describeError } from '../errorDetails';
 import {
     defaultLatestDependencies,
     latestAniCli,
@@ -290,7 +291,8 @@ export class ProgramTools {
         } catch (error) {
             const failure: ToolError = {
                 code: error instanceof LookupError && error.reason !== 'failed' ? 'INVALID' : 'DOWNLOAD_FAILED',
-                message: messageOf(error)
+                message: messageOf(error),
+                details: describeError(error, { operation: `Looking up the latest version of ${id}` })
             };
             this.failures.set(id, failure);
             this.deps.onState?.(this.emptyState(id, 'error', failure));

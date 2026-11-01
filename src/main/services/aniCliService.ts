@@ -118,7 +118,7 @@ export class AniCliService {
         if (choicesFor(outcome.value, EPISODE_PROMPT).length > 0 || outcome.value.exitCode === 0) {
             return { status: 'done', value: [{ index: 1, title: sanitizeQuery(query) }] };
         }
-        return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode) };
+        return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Searching for the anime with ani-cli' }) };
     }
 
     async episodes(query: string, index: number, audio: AnimeAudio): Promise<AniRunResult<string[]>> {
@@ -137,7 +137,7 @@ export class AniCliService {
         if (outcome.value.exitCode === 0) {
             return this.singleEpisode(query, index, audio);
         }
-        return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode) };
+        return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Listing the episodes of an anime with ani-cli' }) };
     }
 
     // An anime with one episode (a film) is not listed: ani-cli picks it on its own. Its number is not shown either, so
@@ -154,7 +154,7 @@ export class AniCliService {
         if (outcome.value.exitCode === 0) {
             return { status: 'done', value: [SINGLE_EPISODE] };
         }
-        return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode) };
+        return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Listing the episodes of an anime with ani-cli' }) };
     }
 
     // What ani-cli prints about an episode instead of playing it (the "debug" player), read by `parse`; null from `parse` is the
@@ -174,7 +174,7 @@ export class AniCliService {
         }
         const answer = outcome.value.exitCode === 0 ? parse(outcome.value.output) : null;
         if (answer === null) {
-            return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode) };
+            return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Asking ani-cli for the stream of an episode' }) };
         }
         return { status: 'done', value: answer };
     }

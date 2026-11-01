@@ -7,6 +7,7 @@ import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/sto
 import { useAppStore } from '@renderer/store/appStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -976,9 +977,12 @@ describe('AnimeLibrary', () => {
         });
 
         it('explains why an episode failed', async () => {
-            const { rows } = await expand();
-            const reason = within(rows[3] as HTMLElement).getByText('No video source was found for this episode.');
-            expect(reason).toHaveAttribute('title', 'No sources found for sub!');
+            const { rows, user } = await expand();
+            const reason = within(rows[3] as HTMLElement).getByRole('button', { name: 'No video source was found for this episode.' });
+            expect(reason).toHaveAttribute('title', 'Click to see the technical error');
+            const dialog = await openErrorDialog(user, 'No video source was found for this episode.');
+            expect(within(dialog).getByTestId('error-message')).toHaveTextContent('No sources found for sub!');
+            expect(within(dialog).getByText('NO_SOURCES')).toBeInTheDocument();
         });
 
         it('plays a downloaded episode', async () => {

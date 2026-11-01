@@ -787,8 +787,8 @@ describe('AnimeUpdateChecker schedule', () => {
         };
     }
 
-    it('looks every 6 hours', () => {
-        expect(CHECK_INTERVAL_MS).toBe(6 * HOUR);
+    it('looks every 3 hours', () => {
+        expect(CHECK_INTERVAL_MS).toBe(3 * HOUR);
     });
 
     it('does nothing by itself until it is started', async () => {
@@ -799,7 +799,7 @@ describe('AnimeUpdateChecker schedule', () => {
         expect(context.search).not.toHaveBeenCalled();
     });
 
-    it('makes the first check two minutes after it is started, not before, when no look was made in the last 6 hours', async () => {
+    it('makes the first check two minutes after it is started, not before, when no look was made in the last 3 hours', async () => {
         const context = scheduled();
         context.checker.start();
 
@@ -811,13 +811,13 @@ describe('AnimeUpdateChecker schedule', () => {
         context.checker.stop();
     });
 
-    it('checks again 6 hours after the first check, not every hour', async () => {
+    it('checks again 3 hours after the first check, not every hour', async () => {
         const context = scheduled();
         context.checker.start();
         await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS);
         expect(context.search).toHaveBeenCalledTimes(1);
 
-        await vi.advanceTimersByTimeAsync(5 * HOUR);
+        await vi.advanceTimersByTimeAsync(2 * HOUR);
         expect(context.search).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(HOUR - 1);
         expect(context.search).toHaveBeenCalledTimes(1);
@@ -931,7 +931,7 @@ describe('AnimeUpdateChecker schedule', () => {
             const context = scheduled({ lastCheck });
             context.checker.start();
 
-            await vi.advanceTimersByTimeAsync(4 * HOUR - 1);
+            await vi.advanceTimersByTimeAsync(HOUR - 1);
             expect(context.search).not.toHaveBeenCalled();
             await vi.advanceTimersByTimeAsync(1);
 
@@ -939,9 +939,9 @@ describe('AnimeUpdateChecker schedule', () => {
             context.checker.stop();
         });
 
-        it('is made two minutes after the app opens when the last look was made 6 hours ago or more', async () => {
+        it('is made two minutes after the app opens when the last look was made 3 hours ago or more', async () => {
             const { lastCheck } = lastCheckAt(() => {
-                return Date.now() - 7 * HOUR;
+                return Date.now() - 4 * HOUR;
             });
             const context = scheduled({ lastCheck });
             context.checker.start();
@@ -1084,7 +1084,7 @@ describe('AnimeUpdateChecker schedule', () => {
             expect(written).toEqual([]);
         });
 
-        it('makes the next look 6 hours after the one that was kept', async () => {
+        it('makes the next look 3 hours after the one that was kept', async () => {
             const { lastCheck, written } = lastCheckAt(() => {
                 return null;
             });
@@ -1108,7 +1108,7 @@ describe('AnimeUpdateChecker schedule', () => {
             expect(scheduled().checker.nextDelayMs()).toBe(CHECK_INTERVAL_MS);
         });
 
-        it('tries again after an hour, then after twice as long each time, up to six hours', async () => {
+        it('tries again after an hour, then after twice as long each time, never later than the next look (three hours)', async () => {
             const context = scheduled();
             context.search.mockResolvedValue(failed(NETWORK));
             const waits: number[] = [];
@@ -1118,7 +1118,8 @@ describe('AnimeUpdateChecker schedule', () => {
                 waits.push(context.checker.nextDelayMs());
             }
 
-            expect(waits).toEqual([HOUR, 2 * HOUR, 4 * HOUR, BACKOFF_LIMIT_MS, BACKOFF_LIMIT_MS]);
+            expect(waits).toEqual([HOUR, 2 * HOUR, CHECK_INTERVAL_MS, CHECK_INTERVAL_MS, CHECK_INTERVAL_MS]);
+            expect(BACKOFF_LIMIT_MS).toBe(6 * HOUR);
         });
 
         it('goes back to the interval at the first check where the source answers', async () => {

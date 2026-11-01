@@ -79,7 +79,7 @@ describe('MangaSourceSettings', () => {
         render(<MangaSourceSettings />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
     });
 
     it('saves a text setting when the user leaves the field, not at every key', async () => {

@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { ErrorDetails } from '@shared/errorDetails';
 import type { MangaChapter, MangaDetails, MangaError, MangaErrorCode, MangaOutputFormat } from '@shared/manga';
+import { describeError } from '../errorDetails';
 import { writeCbz as defaultWriteCbz, type CbzEntry } from './cbzWriter';
 import { buildComicInfo } from './comicInfo';
 import { detectImageType, resolveImageType } from './imageType';
 import { ImageFetchError, type ImageFetcher } from './mangaImages';
+import { SuwayomiApiError } from './suwayomiClient';
 import { extractCbzPages as defaultExtractCbzPages } from './cbzExtractor';
 import { chapterWorkDirectory, COMIC_INFO_FILE, formatOfPath, isCompletePage, missingPageIndexes, pageFileName, TEMPORARY_EXTENSION } from './mangaFiles';
 
@@ -66,12 +69,17 @@ export interface ChapterDownloaderDependencies {
     sleep?: (milliseconds: number) => Promise<void>;
 }
 
+const DOWNLOAD_OPERATION = 'Downloading a chapter';
+const PAGE_OPERATION = 'Downloading a page of the chapter';
+
 class ChapterFailure extends Error {
     constructor(
         readonly code: MangaErrorCode,
         message: string,
         // A failure that asking again will not fix.
-        readonly final = false
+        readonly final = false,
+        // What the place that failed knows about it (the page that was asked, the HTTP status).
+        readonly known: Partial<ErrorDetails> = {}
     ) {
         super(message);
     }
@@ -115,16 +123,18 @@ function isDiskError(error: unknown): boolean {
 
 function toError(error: unknown): MangaError {
     if (error instanceof ChapterFailure) {
-        return { code: error.code, message: error.message };
+        return { code: error.code, message: error.message, details: describeError(error, { operation: DOWNLOAD_OPERATION, ...error.known }) };
     }
+    const known = { operation: DOWNLOAD_OPERATION };
     if (isDiskError(error)) {
-        return { code: 'DISK', message: messageOf(error) };
+        return { code: 'DISK', message: messageOf(error), details: describeError(error, known) };
     }
     const code = (error as { code?: unknown } | null)?.code;
     if (code === 'SERVER_UNAVAILABLE' || code === 'REQUEST_FAILED' || code === 'API_ERROR' || code === 'INVALID_RESPONSE') {
-        return { code, message: messageOf(error) };
+        const apiKnown = error instanceof SuwayomiApiError ? { ...known, ...error.known } : known;
+        return { code, message: messageOf(error), details: describeError(error, apiKnown) };
     }
-    return { code: 'UNKNOWN', message: messageOf(error) };
+    return { code: 'UNKNOWN', message: messageOf(error), details: describeError(error, known) };
 }
 
 // The file of a page that is already there complete (the name without the extension, which is only known once it is downloaded).
@@ -289,7 +299,7 @@ export class MangaChapterDownloader {
                 if (signal.aborted || isAbort(error) || isDiskError(error)) {
                     throw error;
                 }
-                lastFailure = error instanceof ChapterFailure ? error : this.failureOf(error);
+                lastFailure = error instanceof ChapterFailure ? error : this.failureOf(error, address);
                 if (lastFailure.final) {
                     throw lastFailure;
                 }
@@ -298,25 +308,27 @@ export class MangaChapterDownloader {
         throw lastFailure ?? new ChapterFailure('UNKNOWN', 'The page could not be downloaded');
     }
 
-    private failureOf(error: unknown): ChapterFailure {
+    private failureOf(error: unknown, address: string): ChapterFailure {
+        const known = { ...describeError(error), operation: PAGE_OPERATION, url: address };
         if (error instanceof ImageFetchError) {
-            return new ChapterFailure('IMAGE', error.message, true);
+            return new ChapterFailure('IMAGE', error.message, true, known);
         }
         const code = (error as { code?: unknown } | null)?.code;
-        return new ChapterFailure(code === 'SERVER_UNAVAILABLE' ? 'SERVER_UNAVAILABLE' : 'REQUEST_FAILED', messageOf(error));
+        return new ChapterFailure(code === 'SERVER_UNAVAILABLE' ? 'SERVER_UNAVAILABLE' : 'REQUEST_FAILED', messageOf(error), false, known);
     }
 
     private async fetchPage(address: string, basePath: string, signal: AbortSignal): Promise<void> {
         const image = await this.deps.fetchImage(address, signal);
+        const pageKnown: Partial<ErrorDetails> = { operation: PAGE_OPERATION, url: address };
         if (image.status !== 200) {
-            throw new ChapterFailure('REQUEST_FAILED', `The server answered ${image.status} for a page`);
+            throw new ChapterFailure('REQUEST_FAILED', `The server answered ${image.status} for a page`, false, { ...pageKnown, httpStatus: image.status });
         }
         if (image.bytes.byteLength === 0) {
-            throw new ChapterFailure('IMAGE', 'A page came back empty');
+            throw new ChapterFailure('IMAGE', 'A page came back empty', false, { ...pageKnown, httpStatus: image.status });
         }
         const looksLikeImage = detectImageType(image.bytes) !== null || (image.contentType?.toLowerCase().startsWith('image/') ?? false);
         if (!looksLikeImage) {
-            throw new ChapterFailure('IMAGE', 'A page is not an image');
+            throw new ChapterFailure('IMAGE', 'A page is not an image', false, { ...pageKnown, httpStatus: image.status });
         }
         const type = resolveImageType(image.bytes, image.contentType);
         const temporaryPath = `${basePath}${TEMPORARY_EXTENSION}`;

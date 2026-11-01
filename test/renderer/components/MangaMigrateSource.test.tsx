@@ -40,7 +40,7 @@ function renderPanel(onClose = vi.fn()) {
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'all-languages' } });
     useMangaStore.setState({ ...initialManga, library: [MANGA], browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready' } });
     mock.api.manga.library.mockResolvedValue([MANGA]);
     mock.api.manga.list.mockImplementation(async (request: { sourceId: string }) => {
@@ -98,7 +98,7 @@ describe('MangaMigrateSource', () => {
     });
 
     it('offers the sources for adults when the user asked for them', () => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: 'all-languages' } });
         renderPanel();
         expect(within(screen.getByLabelText('Search in')).getAllByRole('option')).toHaveLength(4);
     });
@@ -335,15 +335,7 @@ describe('MangaMigrateSource', () => {
         });
     });
 
-    describe('the language filter', () => {
-        function languageOptions(): Array<string | null> {
-            return within(screen.getByLabelText('Language'))
-                .getAllByRole('option')
-                .map((option) => {
-                    return option.textContent;
-                });
-        }
-
+    describe('the language of the settings', () => {
         function sourceOptions(): Array<string | null> {
             return within(screen.getByLabelText('Search in'))
                 .getAllByRole('option')
@@ -352,34 +344,60 @@ describe('MangaMigrateSource', () => {
                 });
         }
 
-        it('lists all languages first, then the languages of the other sources, without the ones for adults or the one the manga is in alone', () => {
+        const EVERYWHERE = makeSource({ id: '500', name: 'Everywhere', lang: 'all' });
+
+        it('has no field to pick the language: it is a setting of the manga section', () => {
             renderPanel();
-            expect(languageOptions()).toEqual(['All languages', 'EN', 'PT']);
-            expect(screen.getByLabelText('Language')).toHaveValue('all-languages');
+            expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
+            expect(screen.getByLabelText('Search in')).toBeInTheDocument();
         });
 
-        it('puts the sources that read several languages last in the list of languages', () => {
-            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, makeSource({ id: '500', name: 'Everywhere', lang: 'all' })] } });
+        it('lists the sources of every language when the settings ask for every language', () => {
             renderPanel();
-            expect(languageOptions()).toEqual(['All languages', 'EN', 'PT', 'Several languages']);
+            expect(sourceOptions()).toEqual(['All sources', 'Other Dex (en)', 'Third Scans (pt)']);
         });
 
-        it('limits the sources to the ones of the language, plus the ones that read several languages, and starts on all of them again', async () => {
-            const user = userEvent.setup();
-            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, makeSource({ id: '500', name: 'Everywhere', lang: 'all' })] } });
+        it('limits the sources to the ones of the language of the settings, plus the ones that read several languages', () => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'pt' } });
+            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, EVERYWHERE] } });
             renderPanel();
-            await user.selectOptions(screen.getByLabelText('Search in'), '300');
-            await user.selectOptions(screen.getByLabelText('Language'), 'pt');
             expect(sourceOptions()).toEqual(['All sources', 'Everywhere (all)', 'Third Scans (pt)']);
             expect(screen.getByLabelText('Search in')).toHaveValue('all');
-            await user.selectOptions(screen.getByLabelText('Language'), 'en');
+        });
+
+        it('limits the sources to English when the settings are on English', () => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'en' } });
+            useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, EVERYWHERE] } });
+            renderPanel();
             expect(sourceOptions()).toEqual(['All sources', 'Everywhere (all)', 'Other Dex (en)']);
         });
 
-        it('searches only the sources of the language that was chosen', async () => {
-            const user = userEvent.setup();
+        it('follows the language of the computer when the settings are on automatic', () => {
+            vi.spyOn(navigator, 'language', 'get').mockReturnValue('pt-BR');
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: '', language: 'en' } });
             renderPanel();
-            await user.selectOptions(screen.getByLabelText('Language'), 'pt');
+            expect(sourceOptions()).toEqual(['All sources', 'Third Scans (pt)']);
+            vi.restoreAllMocks();
+        });
+
+        it('falls back to English on automatic when no other source is in the language of the computer', () => {
+            vi.spyOn(navigator, 'language', 'get').mockReturnValue('ja-JP');
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: '', language: 'en' } });
+            renderPanel();
+            expect(sourceOptions()).toEqual(['All sources', 'Other Dex (en)']);
+            vi.restoreAllMocks();
+        });
+
+        it('lists every source when the language of the settings has none to move to', () => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'ja' } });
+            renderPanel();
+            expect(sourceOptions()).toEqual(['All sources', 'Other Dex (en)', 'Third Scans (pt)']);
+        });
+
+        it('searches only the sources of the language of the settings', async () => {
+            const user = userEvent.setup();
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'pt' } });
+            renderPanel();
             await user.click(screen.getByRole('button', { name: 'SEARCH' }));
             await screen.findAllByTestId('manga-candidate');
             expect(mock.api.manga.list.mock.calls).toEqual([[{ sourceId: '300', kind: 'search', page: 1, query: 'One Piece' }]]);
@@ -388,25 +406,25 @@ describe('MangaMigrateSource', () => {
 
         it('searches the one source that was picked inside the language', async () => {
             const user = userEvent.setup();
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'en' } });
             renderPanel();
-            await user.selectOptions(screen.getByLabelText('Language'), 'en');
             await user.selectOptions(screen.getByLabelText('Search in'), '200');
             await user.click(screen.getByRole('button', { name: 'SEARCH' }));
             await screen.findAllByTestId('manga-candidate');
             expect(mock.api.manga.list.mock.calls).toEqual([[{ sourceId: '200', kind: 'search', page: 1, query: 'One Piece' }]]);
         });
 
-        it('shows the languages of the sources for adults when the user asked for them', () => {
-            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        it('lists the sources for adults, in their language, when the user asked for them', () => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: 'es' } });
             useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [...SOURCES, makeSource({ id: '600', name: 'Adult Spanish', lang: 'es', contentWarning: 'NSFW' })] } });
             renderPanel();
-            expect(languageOptions()).toEqual(['All languages', 'EN', 'ES', 'PT']);
+            expect(sourceOptions()).toEqual(['All sources', 'Adult Spanish (es)']);
         });
 
-        it('keeps the search from being made when the language has no source', () => {
+        it('keeps the search from being made when there is no other source', () => {
             useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus: 'ready', sources: [SOURCES[0]!, SOURCES[3]!] } });
             renderPanel();
-            expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
+            expect(screen.queryByLabelText('Search in')).not.toBeInTheDocument();
             expect(screen.getByText('There is no other source: install another extension first.')).toBeInTheDocument();
         });
     });

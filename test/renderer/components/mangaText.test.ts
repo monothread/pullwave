@@ -48,10 +48,12 @@ import {
     sourceLabelsOf,
     otherSourceNames,
     mangaErrorKey,
+    mangaErrorReport,
     mangaErrorTextKey,
     mangaStatusKey,
-    technicalErrorText,
-    toolErrorKey
+    resolveMangaLanguage,
+    toolErrorKey,
+    toolErrorReport
 } from '@renderer/components/mangaText';
 import { makeChapterRecord, makeExtension, makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
 
@@ -81,10 +83,6 @@ describe('the keys of the texts', () => {
 
     it('does not take that text for the other codes', () => {
         expect(mangaErrorTextKey({ code: 'REQUEST_FAILED', message: 'Failed to find page list.' })).toBe('manga.error.REQUEST_FAILED');
-    });
-
-    it('puts the code and the whole message of the backend in the technical text', () => {
-        expect(technicalErrorText({ code: 'API_ERROR', message: 'line one\n\tat line two' })).toBe('API_ERROR\nline one\n\tat line two');
     });
 
     it.each(TOOL_CODES)('has a text for the setup error %s', (code) => {
@@ -948,5 +946,101 @@ describe('neighbourChapter', () => {
     it('gives undefined past the last season and before the first one', () => {
         expect(neighbourChapter(library, reading(TWO, 1), 1)).toBeUndefined();
         expect(neighbourChapter(library, reading(ONE, 0), -1)).toBeUndefined();
+    });
+});
+
+describe('mangaErrorReport', () => {
+    it('gives the words for the code, the code, and the message of the backend as the technical text', () => {
+        expect(mangaErrorReport(t, { code: 'API_ERROR', message: 'Exception while fetching data : boom' })).toEqual({
+            summary: 'The site or the extension reported an error.',
+            code: 'API_ERROR',
+            message: 'Exception while fetching data : boom',
+            hint: null,
+            details: null
+        });
+    });
+
+    it('explains that a source handed over no pages', () => {
+        expect(mangaErrorReport(t, { code: 'API_ERROR', message: 'Failed to find page list.' }).summary).toBe(t('manga.error.noPageList'));
+    });
+
+    it('carries everything known about the failure', () => {
+        const details = { occurredAt: 1700000000000, operation: 'GraphQL stores', httpStatus: 502 };
+        expect(mangaErrorReport(t, { code: 'REQUEST_FAILED', message: 'The server answered 502', details }).details).toEqual(details);
+    });
+
+    it('takes the words from the place that shows the error when it has its own', () => {
+        expect(mangaErrorReport(t, { code: 'REQUEST_FAILED', message: 'site down' }, 'Could not reach the source. Showing what is saved.')).toEqual({
+            summary: 'Could not reach the source. Showing what is saved.',
+            code: 'REQUEST_FAILED',
+            message: 'site down',
+            hint: null,
+            details: null
+        });
+    });
+});
+
+describe('toolErrorReport', () => {
+    it('gives the words for the code of the setup, the code, and the message of the failure as the technical text', () => {
+        expect(toolErrorReport(t, { code: 'DISK', message: 'no space left on device' })).toEqual({
+            summary: 'There is no room or permission to save the file.',
+            code: 'DISK',
+            message: 'no space left on device',
+            hint: null,
+            details: null
+        });
+    });
+
+    it('carries everything known about the failure', () => {
+        const details = { occurredAt: 1700000000000, systemCode: 'ENOSPC', operation: 'Installing suwayomi v1' };
+        expect(toolErrorReport(t, { code: 'DISK', message: 'no space left on device', details }).details).toEqual(details);
+    });
+});
+
+describe('resolveMangaLanguage', () => {
+    const available = ['en', 'ja', 'pt-BR', 'all'];
+
+    it('is every language when the settings ask for every language', () => {
+        expect(resolveMangaLanguage(ALL_LANGUAGES, available, 'ja-JP')).toBe(ALL_LANGUAGES);
+    });
+
+    it('is the language of the settings when something is in it', () => {
+        expect(resolveMangaLanguage('ja', available, 'en-US')).toBe('ja');
+        expect(resolveMangaLanguage('all', available, 'en-US')).toBe('all');
+    });
+
+    it('finds the language of the settings in another form: the same language with or without its region, in any case', () => {
+        expect(resolveMangaLanguage('pt', available, 'en-US')).toBe('pt-BR');
+        expect(resolveMangaLanguage('PT-br', available, 'en-US')).toBe('pt-BR');
+        expect(resolveMangaLanguage('pt-PT', available, 'en-US')).toBe('pt-BR');
+        expect(resolveMangaLanguage('EN', available, 'ja-JP')).toBe('en');
+        expect(resolveMangaLanguage('en-GB', available, 'ja-JP')).toBe('en');
+        expect(resolveMangaLanguage('ja', ['ja-JP'], '')).toBe('ja-JP');
+    });
+
+    it('is every language when nothing is in the language of the settings, even if the computer or English would have something', () => {
+        expect(resolveMangaLanguage('zh', available, 'en-US')).toBe(ALL_LANGUAGES);
+    });
+
+    it('follows the language of the computer on automatic', () => {
+        expect(resolveMangaLanguage('', available, 'ja-JP')).toBe('ja');
+        expect(resolveMangaLanguage('', available, 'pt_BR')).toBe('pt-BR');
+        expect(resolveMangaLanguage('', available, 'pt')).toBe('pt-BR');
+        expect(resolveMangaLanguage('', available, 'EN-us')).toBe('en');
+    });
+
+    it('falls back to English on automatic when nothing is in the language of the computer', () => {
+        expect(resolveMangaLanguage('', available, 'fr-FR')).toBe('en');
+        expect(resolveMangaLanguage('', available, '')).toBe('en');
+    });
+
+    it('is every language on automatic when nothing is in the language of the computer nor in English', () => {
+        expect(resolveMangaLanguage('', ['ja', 'pt-BR', 'all'], 'fr-FR')).toBe(ALL_LANGUAGES);
+        expect(resolveMangaLanguage('', ['ja'], '')).toBe(ALL_LANGUAGES);
+    });
+
+    it('is every language while nothing is loaded, whatever the settings say', () => {
+        expect(resolveMangaLanguage('', [], 'en-US')).toBe(ALL_LANGUAGES);
+        expect(resolveMangaLanguage('pt', [], 'en-US')).toBe(ALL_LANGUAGES);
     });
 });

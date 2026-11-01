@@ -18,6 +18,7 @@ import type {
     MangaStatusInfo
 } from '@shared/manga';
 import type { ToolSpec, ToolState } from '@shared/tools';
+import { describeError } from '../errorDetails';
 import { SuwayomiApiError, type SuwayomiClient } from './suwayomiClient';
 
 export interface ServerControl {
@@ -91,9 +92,9 @@ const NOT_AVAILABLE = 'The manga section is not available on this system';
 
 export function toMangaError(error: unknown): MangaError {
     if (error instanceof SuwayomiApiError) {
-        return { code: error.code, message: error.message };
+        return { code: error.code, message: error.message, details: describeError(error, error.known) };
     }
-    return { code: 'UNKNOWN', message: error instanceof Error ? error.message : String(error) };
+    return { code: 'UNKNOWN', message: error instanceof Error ? error.message : String(error), details: describeError(error) };
 }
 
 // What the rest of the app asks of the manga side: it hides whether the program is there, whether the server runs, and turns every

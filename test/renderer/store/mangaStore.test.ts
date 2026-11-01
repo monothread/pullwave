@@ -376,16 +376,20 @@ describe('mangaStore browsing', () => {
         expect(state().extensions.stores).toEqual([{ indexUrl: 'https://a/i.json', name: 'A' }]);
     });
 
-    it('limits the list of sources to a language', () => {
-        state().setSourceLanguage('pt');
-        expect(state().browse.sourceLanguage).toBe('pt');
-        state().setSourceLanguage('all-languages');
-        expect(state().browse.sourceLanguage).toBe('all-languages');
+    it('does not keep a language of its own for the sources: it is a setting of the app', () => {
+        expect('sourceLanguage' in state().browse).toBe(false);
+        expect('setSourceLanguage' in state()).toBe(false);
     });
 
-    it('remembers the language of the sources', () => {
-        state().setSourceLanguage('pt');
-        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toEqual({ sourceLanguage: 'pt', extensionLanguage: 'all-languages', onlyInstalled: true });
+    it('starts the search on the language of the settings, with the switch for every language off', () => {
+        expect(initialManga.search.allLanguages).toBe(false);
+    });
+
+    it('turns the search of every language on and off', () => {
+        state().setSearchAllLanguages(true);
+        expect(state().search.allLanguages).toBe(true);
+        state().setSearchAllLanguages(false);
+        expect(state().search.allLanguages).toBe(false);
     });
 
     it('opens a source on its popular mangas, with nothing left of the one before', () => {
@@ -1073,29 +1077,27 @@ describe('mangaStore extensions', () => {
 
     it('changes the filter a piece at a time', () => {
         state().setExtensionFilter({ query: 'dex' });
-        state().setExtensionFilter({ lang: 'pt' });
+        state().setExtensionFilter({ onlyInstalled: false });
         state().setExtensionFilter({ onlyInstalled: true });
-        expect(state().extensions.filter).toEqual({ query: 'dex', lang: 'pt', onlyInstalled: true });
+        expect(state().extensions.filter).toEqual({ query: 'dex', onlyInstalled: true });
     });
 
     it('lists only the installed extensions until the user says otherwise', () => {
-        expect(initialManga.extensions.filter).toEqual({ query: '', lang: 'all-languages', onlyInstalled: true });
+        expect(initialManga.extensions.filter).toEqual({ query: '', onlyInstalled: true });
     });
 
-    it('remembers the language and the installed-only switch, but not the text typed', () => {
+    it('remembers the installed-only switch, but not the text typed', () => {
         state().setExtensionFilter({ query: 'dex' });
         expect(window.localStorage.getItem('pullwave.manga.ui')).toBeNull();
-        state().setExtensionFilter({ lang: 'ja' });
         state().setExtensionFilter({ onlyInstalled: false });
-        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toEqual({ sourceLanguage: 'all-languages', extensionLanguage: 'ja', onlyInstalled: false });
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toEqual({ onlyInstalled: false });
     });
 
     it('starts from what was remembered', async () => {
         window.localStorage.setItem('pullwave.manga.ui', JSON.stringify({ sourceLanguage: 'pt', extensionLanguage: 'en', onlyInstalled: false }));
         vi.resetModules();
         const fresh = (await import('@renderer/store/mangaStore')).useMangaStore.getState();
-        expect(fresh.browse.sourceLanguage).toBe('pt');
-        expect(fresh.extensions.filter).toEqual({ query: '', lang: 'en', onlyInstalled: false });
+        expect(fresh.extensions.filter).toEqual({ query: '', onlyInstalled: false });
     });
 });
 
@@ -2371,7 +2373,8 @@ describe('mangaStore searching a manga in all the sources', () => {
     ];
 
     beforeEach(() => {
-        useMangaStore.setState({ browse: { ...state().browse, sources: SOURCES, sourcesStatus: 'ready', sourceLanguage: 'en' } });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'en' } });
+        useMangaStore.setState({ browse: { ...state().browse, sources: SOURCES, sourcesStatus: 'ready' } });
         mock.api.manga.list.mockImplementation(async (request) => {
             return { ok: true, value: { items: request.sourceId === '6' ? [] : [makeSummary({ remoteId: 1, sourceId: request.sourceId })], hasNextPage: false } };
         });
@@ -2384,7 +2387,7 @@ describe('mangaStore searching a manga in all the sources', () => {
     }
 
     it('starts without a search', () => {
-        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [], allLanguages: false });
     });
 
     it('keeps the name typed', () => {
@@ -2397,11 +2400,11 @@ describe('mangaStore searching a manga in all the sources', () => {
         await state().runSearch();
         expect(state().search.results).toHaveLength(2);
         state().setSearchQuery('');
-        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [], allLanguages: false });
         state().setSearchQuery('one piece');
         await state().runSearch();
         state().setSearchQuery('   ');
-        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [], allLanguages: false });
     });
 
     it('drops the answers of a search that is still going on when the name is erased', async () => {
@@ -2420,7 +2423,7 @@ describe('mangaStore searching a manga in all the sources', () => {
             answer();
         });
         await running;
-        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [] });
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [], allLanguages: false });
     });
 
     it('searches the sources of the language, with the name trimmed, and says how each one answered', async () => {
@@ -2443,8 +2446,33 @@ describe('mangaStore searching a manga in all the sources', () => {
         })).toEqual(['5', '6', '8']);
     });
 
-    it('searches every language when none is chosen', async () => {
-        useMangaStore.setState({ browse: { ...state().browse, sourceLanguage: 'all-languages' } });
+    it('searches the sources of the language of the computer when the settings are on automatic', async () => {
+        vi.spyOn(navigator, 'language', 'get').mockReturnValue('pt-BR');
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: '' } });
+        state().setSearchQuery('x');
+        await state().runSearch();
+        expect(summary()).toEqual([['7', 'found', 1]]);
+        vi.restoreAllMocks();
+    });
+
+    it('searches every source when the language of the settings is every language', async () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'all-languages' } });
+        state().setSearchQuery('x');
+        await state().runSearch();
+        expect(summary().map((entry) => {
+            return entry[0];
+        })).toEqual(['5', '6', '7']);
+    });
+
+    it('keeps the switch of every language when the name is erased', () => {
+        state().setSearchAllLanguages(true);
+        state().setSearchQuery('x');
+        state().setSearchQuery('');
+        expect(state().search).toEqual({ query: '', searchedFor: '', status: 'idle', results: [], allLanguages: true });
+    });
+
+    it('searches every language when the switch is on, whatever the language of the settings', async () => {
+        state().setSearchAllLanguages(true);
         state().setSearchQuery('x');
         await state().runSearch();
         expect(summary().map((entry) => {
@@ -2473,7 +2501,7 @@ describe('mangaStore searching a manga in all the sources', () => {
     });
 
     it('asks two sources at a time', async () => {
-        useMangaStore.setState({ browse: { ...state().browse, sourceLanguage: 'all-languages' } });
+        state().setSearchAllLanguages(true);
         const answers: Array<() => void> = [];
         mock.api.manga.list.mockImplementation(() => {
             return new Promise((resolve) => {

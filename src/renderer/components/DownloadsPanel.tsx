@@ -1,6 +1,7 @@
 import type { MessageKey } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore, type DownloadsView } from '../store/appStore';
+import { CutPanel } from './CutPanel';
 import { HistoryList } from './HistoryList';
 import { ProgramsGate } from './ProgramsSetup';
 import { QueueList } from './QueueList';
@@ -10,11 +11,12 @@ import { UrlInput } from './UrlInput';
 
 const VIEWS: ReadonlyArray<{ id: DownloadsView; label: MessageKey; icon?: string }> = [
     { id: 'queue', label: 'downloads.nav.queue' },
+    { id: 'cut', label: 'downloads.nav.cut' },
     { id: 'history', label: 'downloads.nav.history' },
     { id: 'settings', label: 'downloads.nav.settings', icon: SETTINGS_ICON }
 ];
 
-// The video downloader: the queue (with the field for links), the history of what was downloaded and its settings.
+// The video downloader: the queue (with the field for links), the cutter of video and audio files, the history of what was downloaded and its settings.
 export function DownloadsPanel() {
     const t = useTranslator();
     const view = useAppStore((state) => {
@@ -45,6 +47,11 @@ export function DownloadsPanel() {
                 <ProgramsGate area="downloads">
                     <UrlInput />
                     <QueueList />
+                </ProgramsGate>
+            )}
+            {view === 'cut' && (
+                <ProgramsGate area="downloads">
+                    <CutPanel />
                 </ProgramsGate>
             )}
             {view === 'history' && <HistoryList />}

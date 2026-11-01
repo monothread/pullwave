@@ -141,7 +141,7 @@ describe('MangaJobs', () => {
         render(<MangaJobs />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent(text);
-        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
     });
 
     it('pauses and cancels a running download', async () => {

@@ -49,7 +49,7 @@ The top bar has **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the set
 
 | Part | Screens |
 |---|---|
-| VIDEO DOWNLOADER | QUEUE · HISTORY · ⚙ |
+| VIDEO DOWNLOADER | QUEUE · CUT · HISTORY · ⚙ |
 | ANIME | SCHEDULE · UPDATES · SEARCH · LIBRARY · HISTORY · ⚙ (and a DOWNLOADS button) |
 | MANGA | BROWSE · LIBRARY · EXTENSIONS · ⚙ (and a DOWNLOADS button) |
 
@@ -67,6 +67,17 @@ The back and forward buttons of the mouse take you through the screens you have 
   ![An error explained in the queue](docs/screenshots/cyberpunk-error.png)
 
 - Failed or cancelled downloads clean up after themselves; live recordings are always kept.
+
+### Cut
+
+The **CUT** tab cuts a video or audio file you already have (any file, not only the ones the app downloaded) into the parts you mark.
+
+- **CHOOSE FILE** reads the file (a ring says it is reading) and shows its name, whether it is a **VIDEO** or an **AUDIO** and its length. You can also **drag the file from your file manager and drop it on the panel** (it lights up while the file is over it); a file dropped while a cut goes on is not taken, and a file dropped outside the panel never makes the window open it.
+- Mark the parts to keep: a **start** and an **end** for each (`m:ss`, `h:mm:ss` or plain seconds, with decimals if you want: `1:34.5`), **+ ADD PART** for more. A part that is wrong says why (the end is not after the start, the end is past the end of the file...) and the cut is not allowed until every part is right. Parts may overlap.
+- **CUT** makes one file for each part, one after the other, in the folder of the downloads, inside `<name> - cuts`, called `<name> - 01 (0m10s-0m14s).mp4`, `<name> - 02 (1m34s-1m43s).mp4`... in the **same format as the original**. A file that is already there is never written over (` (2)` is added to the name).
+- The cut is **exact**: every part is encoded again, so it starts at the moment you wrote and not at the keyframe before it. For that, cutting a video takes a while: each part shows a bar that fills, the ones waiting have a bar of their own, and **CANCEL** ends the cut at once (the part being made is deleted; the ones that were done stay). ffmpeg runs at a low priority and without taking every core of the computer, so the app stays smooth meanwhile.
+- For a **video**, the switch **Only the audio** makes each part an audio file instead, in the audio format of the settings (mp3, m4a or opus).
+- When it is over, **OPEN FOLDER** shows the files.
 
 ### History
 ![History of the video downloader](docs/screenshots/cyberpunk-history.png)
@@ -126,13 +137,13 @@ Everything you downloaded, with sizes, where you stopped watching and what faile
 - Removing an anime or a series also deletes its files; an episode cannot be removed alone, and the anime that gives its name to the series is only removed with the whole series.
 
 ### Updates
-- **UPDATES** lists the episodes that arrived in the library after their anime was in it, the newest first and split by day (today, yesterday, then the date), each with the anime, the episode, the time it was found, how it was found (**AUTOMATIC**: the look every 6 hours; **MANUAL**: the button) and whether it is downloaded. Clicking the name opens the anime in the library. **CLEAR LIST** empties the list (it asks first; nothing is removed from the library or from the disk).
-- **Looking for new episodes:** every 6 hours (the first time two minutes after the app opens, unless a look was made in the last 6 hours: the time of the last one is kept, so opening the app again soon after does not look again) the app asks the source about every anime of the library that is not complete, one after the other, with no wait between them. **LOOK FOR NEW EPISODES** does it now, whatever the setting says. The first time an anime is looked at its episodes are only put in the library: they are not new. After that, the episodes the source lists that the library lacks are added as not downloaded, the screen says how many and of which anime, and the card of the anime (and the episode) says **NEW EPISODE** for the rest of the day.
+- **UPDATES** lists the episodes that arrived in the library after their anime was in it, the newest first and split by day (today, yesterday, then the date), each with the anime, the episode, the time it was found, how it was found (**AUTOMATIC**: the look every 3 hours; **MANUAL**: the button) and whether it is downloaded. Clicking the name opens the anime in the library. **CLEAR LIST** empties the list (it asks first; nothing is removed from the library or from the disk).
+- **Looking for new episodes:** every 3 hours (the first time two minutes after the app opens, unless a look was made in the last 3 hours: the time of the last one is kept, so opening the app again soon after does not look again) the app asks the source about every anime of the library that is not complete, one after the other, with no wait between them. **LOOK FOR NEW EPISODES** does it now, whatever the setting says. The first time an anime is looked at its episodes are only put in the library: they are not new. After that, the episodes the source lists that the library lacks are added as not downloaded, the screen says how many and of which anime, and the card of the anime (and the episode) says **NEW EPISODE** for the rest of the day.
 - **Anime that ended are not looked at.** Before each look the app asks AniList which anime of the library ended (by the title, which has to be one of the names AniList gives, so a season is not taken for another; a request for 15 titles at a time, and then by id for the ones that are still going on). An anime AniList says is finished or cancelled is **COMPLETE**: it gets a badge on its card and is left out of the look, by the hourly one and by the button. An anime AniList has nothing sure about, or that was never asked about, is looked at as before. On the screen of a season the field **Releases** lets you say it yourself: automatic (follows AniList), **COMPLETE** or **ONGOING**, which wins over AniList.
 - While a look goes on (the automatic one or a button) the button **LOOK FOR NEW EPISODES** is off and says how far it is (`AUTOMATIC LOOK… 12/200`), and beside it a line says which anime it is asking about now. The automatic look never starts over one that is still going on, however long it takes. The manga section does the same with **LOOK FOR NEW CHAPTERS**, which it still looks for every hour.
-- If every anime of a look fails (the source is down or refuses), it is tried again after an hour, then after twice as long each time, up to six hours (a look in which nobody answered does not count as the last look); if the source refuses (Cloudflare) the look ends at once. An anime the source does not list any more (or lists twice under its title) is left alone until you open it.
+- If every anime of a look fails (the source is down or refuses), it is tried again after an hour, then after twice as long each time, up to three hours (the time between looks) (a look in which nobody answered does not count as the last look); if the source refuses (Cloudflare) the look ends at once. An anime the source does not list any more (or lists twice under its title) is left alone until you open it.
 - The place of an anime in the results of its search is checked by its title at each look, so it is found again when a new anime is listed before it.
-- Two options in the settings of the anime: **Look for new episodes every 6 hours** (on) and **Download the new episodes found** (off). With the second on, the new episodes are downloaded at once, up to 24 of one anime in one look; if more than 24 arrive at once (the list of the source probably changed) they are all put in the library but none is downloaded by itself.
+- Two options in the settings of the anime: **Look for new episodes every 3 hours** (on) and **Download the new episodes found** (off). With the second on, the new episodes are downloaded at once, up to 24 of one anime in one look; if more than 24 arrive at once (the list of the source probably changed) they are all put in the library but none is downloaded by itself.
 
 ### Series and seasons
 ![A series with its episodes](docs/screenshots/anime-series.png)
@@ -144,7 +155,7 @@ Click a season to show or hide its episodes, and click a downloaded episode to p
 ### Player
 ![The player in fullscreen, cyberpunk theme](docs/screenshots/anime-player.png)
 
-Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show and the size). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In the neon themes (Cyberpunk, Synthwave, Terminal) they float over the video with a glowing progress bar. Escape closes the player.
+Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show and the size). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In every theme they float over the video, taking no room, with a glowing progress bar. Escape closes the player.
 
 ### Subtitles
 - One look for every theme: bold white lettering with a navy outline and no box behind it, like the fansubs.
@@ -187,16 +198,17 @@ Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](http
 
 - **Filters and reader:** the SEARCH of a source has a FILTERS panel with what the source offers (genres, tags, status, order...), like the WebUI of Suwayomi. A chapter is read with READ, from the source or, when it was downloaded, from its file: single page, vertical scroll or webtoon, left to right or right to left, with the size and the background of your choice, and it comes back to the page you left on.
 - **EXTENSIONS:** add a *store* (the address of an `index.min.json`, for instance the [keiyoushi](https://github.com/keiyoushi/extensions) one, which has a button) and install the extensions you want. An extension brings one or more *sources*, the sites that have the manga. Extensions are made by other people: install only the ones you trust.
-- **BROWSE:** the sources of the installed extensions, by language (as in the Suwayomi WebUI). Open one on its **popular** or **latest** manga, search it, open a manga and pick chapters. Some sources need to be set up first (a server address, a mirror, a language): the ⚙ on the page of the source.
+- **LANGUAGE (settings of the manga section):** one language for the whole section: the sources of BROWSE, the SEARCH, the list of EXTENSIONS and the sources a manga can move to are limited to it. The default follows the language of the computer (English when there are no sources in it); **All languages** lists everything.
+- **BROWSE:** the sources of the installed extensions in the language of the settings (as in the Suwayomi WebUI). Open one on its **popular** or **latest** manga, search it, open a manga and pick chapters. Some sources need to be set up first (a server address, a mirror, a language): the ⚙ on the page of the source.
 - **Downloads:** up to three chapters at a time for each site and three sites at once (nine chapters at most), three tries, pause and resume (also after the app is closed and opened again), and a chapter that is cut short goes on from the pages it has. **PAUSE ALL** pauses what is downloading and holds the chapters that wait, which keep waiting until **RESUME ALL**. Each chapter is a **CBZ** (or a folder of images, in the settings) with a `ComicInfo.xml`, in `Pullwave Manga/<manga>/` inside your downloads folder (or the folder you choose).
-- **SEARCH:** look for a name in **all the sources of a language at once** (two at a time). Each source says whether it found it, did not, or failed, and a result opens the manga. A title that you already have from another source is marked *in library (other source)*, and adding it again asks first. The last search is kept when you change tabs.
+- **SEARCH:** look for a name in **all the sources of the language of the settings at once** (two at a time); the switch beside SEARCH (off by default) searches **every language**. Each source says whether it found it, did not, or failed, and a result opens the manga. A title that you already have from another source is marked *in library (other source)*, and adding it again asks first. The last search is kept when you change tabs.
 
   ![The search in all the sources](docs/screenshots/manga-search.png)
 - **LIBRARY:** your mangas as cards, like the anime ones, with how many chapters are downloaded and badges for the seasons of a series, for new chapters and for the **source** each manga comes from (name and language; the page of the manga says it too). When the extension of a source is uninstalled the card says so and the page of the manga has **LINK SOURCE**, which opens the window to move it to a source that works (see below). Inside a manga you download what is missing, read, **open the folder**, look for new chapters, and remove a chapter or the manga with its files. They can be put in groups, which show as tabs, in the order you choose with the arrows (↑ moves a tab to the left, ↓ to the right).
 
   ![The library of the manga](docs/screenshots/manga-library.png)
   ![The page of a manga](docs/screenshots/manga-page.png)
-- **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: pick a **language** to see only the sources in it (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number.
+- **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: the sources are the ones in the language of the settings (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number.
 - **The folder:** as with the anime, once there are mangas in the library the folder is fixed and only **MIGRATE FOLDER** changes it (it moves the files, checks them and then removes the old ones).
 
   ![The settings of the manga, with the folder fixed](docs/screenshots/manga-settings.png)

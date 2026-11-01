@@ -1,4 +1,5 @@
 import type { ToolState } from './tools';
+import type { ErrorDetails } from './errorDetails';
 
 // The manga section: what the extension server (Suwayomi) answers, and what the library and the downloads of chapters report.
 // Shared by the main process and the screen.
@@ -185,6 +186,7 @@ export type MangaErrorCode =
 export interface MangaError {
     code: MangaErrorCode;
     message: string;
+    details?: ErrorDetails;
 }
 
 export type MangaResult<T> = { ok: true; value: T } | { ok: false; error: MangaError };

@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe('AnimeDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(makeDb().schemaVersion).toBe(9);
+        expect(makeDb().schemaVersion).toBe(10);
     });
 
     it('keeps the data and does not migrate again when the file is opened twice', () => {
@@ -32,7 +32,7 @@ describe('AnimeDb schema', () => {
         first.close();
 
         const second = new AnimeDb(path);
-        expect(second.schemaVersion).toBe(9);
+        expect(second.schemaVersion).toBe(10);
         expect(second.list()).toEqual([
             {
                 id: anime.id,
@@ -105,7 +105,7 @@ describe('AnimeDb schema', () => {
 
         new AnimeDb(path).close();
 
-        expect(versionOf(path)).toBe(9);
+        expect(versionOf(path)).toBe(10);
         expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode', 'episode_update']);
     });
 
@@ -248,6 +248,61 @@ describe('AnimeDb status changes', () => {
         const episode = db.ensureEpisode(db.upsertAnime(NARUTO).id, '1');
         db.markFailed(episode.id, 'error', { code: 'NO_SOURCES', raw: 'No sources found for sub!' });
         expect(db.getEpisode(episode.id)).toMatchObject({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for sub!' } });
+    });
+
+    it('keeps everything known about the error of a failure, and no more once the download starts again or the episode is asked for again', () => {
+        const db = makeDb();
+        const episode = db.ensureEpisode(db.upsertAnime(NARUTO).id, '1');
+        const details = { occurredAt: 1700000000123, operation: 'Downloading an episode with ani-cli', exitCode: 1 };
+        db.markFailed(episode.id, 'error', { code: 'NO_SOURCES', raw: 'No sources found for sub!', details });
+        expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'NO_SOURCES', raw: 'No sources found for sub!', details });
+        db.markDownloading(episode.id);
+        expect(db.getEpisode(episode.id)?.error).toBeNull();
+        db.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'offline', details });
+        db.ensureEpisode(db.getEpisode(episode.id)!.animeId, '1');
+        expect(db.getEpisode(episode.id)).toMatchObject({ status: 'queued', error: null });
+        db.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'offline' });
+        expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'NETWORK', raw: 'offline' });
+    });
+
+    it('does not give the details of an old error to the error of a download that was interrupted', () => {
+        const db = makeDb();
+        const episode = db.ensureEpisode(db.upsertAnime(NARUTO).id, '1');
+        db.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'old', details: { occurredAt: 1 } });
+        db.markDownloading(episode.id);
+        db.failInterrupted();
+        expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'UNKNOWN', raw: INTERRUPTED_MESSAGE });
+    });
+
+    it('reads an error whose stored details are damaged as an error without details', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        const first = new AnimeDb(path);
+        const episode = first.ensureEpisode(first.upsertAnime(NARUTO).id, '1');
+        first.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'offline' });
+        first.close();
+        const raw = new DatabaseSync(path);
+        raw.exec(`UPDATE episode SET error_details = '[]'`);
+        raw.close();
+        const db = new AnimeDb(path);
+        expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'NETWORK', raw: 'offline' });
+        db.close();
+    });
+
+    it('adds the column of the error details to a library of the previous version, keeping the errors that were there', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        const first = new AnimeDb(path);
+        const episode = first.ensureEpisode(first.upsertAnime(NARUTO).id, '1');
+        first.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'offline' });
+        first.close();
+        const raw = new DatabaseSync(path);
+        raw.exec('ALTER TABLE episode DROP COLUMN error_details; PRAGMA user_version = 9;');
+        raw.close();
+        const db = new AnimeDb(path);
+        expect(db.schemaVersion).toBe(10);
+        expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'NETWORK', raw: 'offline' });
+        db.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'offline again', details: { occurredAt: 7 } });
+        expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'NETWORK', raw: 'offline again', details: { occurredAt: 7 } });
+        db.close();
     });
 
     it('records a cancellation without an error', () => {
@@ -485,7 +540,7 @@ describe('AnimeDb series and seasons', () => {
         const db = new AnimeDb(path, () => {
             return NOW;
         });
-        expect(db.schemaVersion).toBe(9);
+        expect(db.schemaVersion).toBe(10);
         expect(db.list()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub', createdAt: 5, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false }, episodes: [] }]);
         db.close();
     });
@@ -621,11 +676,11 @@ describe('AnimeDb series and seasons', () => {
         first.setSeries(anime.id, 'Series', 2);
         first.close();
         const raw = new DatabaseSync(path);
-        raw.exec('ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; ALTER TABLE anime DROP COLUMN season_name; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 2;');
+        raw.exec('ALTER TABLE episode DROP COLUMN error_details; ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; ALTER TABLE anime DROP COLUMN season_name; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 2;');
         raw.close();
 
         const db = new AnimeDb(path);
-        expect(db.schemaVersion).toBe(9);
+        expect(db.schemaVersion).toBe(10);
         expect(db.getAnime(anime.id)).toMatchObject({ series: 'Series', season: 2, seasonName: null });
         db.close();
         // Three files are made and one is backed up before the migration: the disk of a Windows machine can take longer than the 5 s of the default.
@@ -757,13 +812,13 @@ describe('AnimeDb history', () => {
         old.ensureEpisode(anime.id, '1');
         old.close();
         const raw = new DatabaseSync(path);
-        raw.exec('ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 3;');
+        raw.exec('ALTER TABLE episode DROP COLUMN error_details; ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 3;');
         raw.close();
 
         const db = new AnimeDb(path, () => {
             return NOW;
         });
-        expect(db.schemaVersion).toBe(9);
+        expect(db.schemaVersion).toBe(10);
         expect(db.listHistory()).toEqual([]);
         expect(db.list()).toHaveLength(1);
         expect(db.list()[0]?.episodes).toHaveLength(1);
@@ -915,7 +970,7 @@ describe('AnimeDb upgrade of the last release', () => {
 
         new AnimeDb(path).close();
 
-        expect(versionOf(path)).toBe(9);
+        expect(versionOf(path)).toBe(10);
         expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode', 'episode_update']);
     });
 
@@ -1020,7 +1075,7 @@ describe('AnimeDb upgrade of the last release', () => {
             return NOW;
         });
 
-        expect(second.schemaVersion).toBe(9);
+        expect(second.schemaVersion).toBe(10);
         expect(second.getCover('naruto')).toEqual({ url: null, checkedAt: NOW });
         second.close();
         expect(schemaOf(path)).toEqual(schema);
@@ -1035,7 +1090,7 @@ describe('AnimeDb upgrade of the last release', () => {
 
         new AnimeDb(upgraded).close();
 
-        expect(versionOf(upgraded)).toBe(9);
+        expect(versionOf(upgraded)).toBe(10);
         expect(schemaOf(upgraded)).toEqual(schemaOf(fresh));
     });
 
@@ -1062,15 +1117,15 @@ describe('AnimeDb upgrade of the last release', () => {
         makeReleasedDatabase(path);
         fillReleasedDatabase(path);
         const raw = new DatabaseSync(path);
-        raw.exec('CREATE TABLE from_the_future (id INTEGER); PRAGMA user_version = 9;');
+        raw.exec('CREATE TABLE from_the_future (id INTEGER); PRAGMA user_version = 11;');
         raw.close();
 
         const db = new AnimeDb(path);
 
-        expect(db.schemaVersion).toBe(9);
+        expect(db.schemaVersion).toBe(11);
         expect(db.list()).toHaveLength(4);
         db.close();
-        expect(versionOf(path)).toBe(9);
+        expect(versionOf(path)).toBe(11);
         expect(tablesOf(path)).toContain('from_the_future');
     });
 });
@@ -1153,7 +1208,7 @@ describe('AnimeDb migrations 7 and 8 on a database of the last release', () => {
 
         new AnimeDb(path).close();
 
-        expect(versionOf(path)).toBe(9);
+        expect(versionOf(path)).toBe(10);
         expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode', 'episode_update']);
         expect(columnsOf(path, 'anime')).toEqual(['id', 'title', 'query', 'search_index', 'audio', 'created_at', 'series', 'season', 'season_name', 'episodes_baseline_at', 'anilist_id', 'airing_status', 'airing_checked_at', 'airing_override']);
         expect(columnsOf(path, 'episode')).toEqual([
@@ -1169,7 +1224,8 @@ describe('AnimeDb migrations 7 and 8 on a database of the last release', () => {
             'duration_seconds',
             'watched',
             'downloaded_at',
-            'added_at'
+            'added_at',
+            'error_details'
         ]);
         expect(columnsOf(path, 'episode_update')).toEqual(['id', 'anime_id', 'episode_id', 'found_at', 'origin']);
         expect(
@@ -2160,6 +2216,7 @@ describe('AnimeDb migration 9 on a database of the last release', () => {
         const raw = new DatabaseSync(path);
         raw.exec(
             `INSERT INTO anime (id, title, query, search_index, audio, created_at) VALUES (1, 'Naruto', 'naruto', 1, 'sub', 1700000000000);
+             ALTER TABLE episode DROP COLUMN error_details;
              ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id;
              PRAGMA user_version = 8;`
         );
@@ -2173,7 +2230,7 @@ describe('AnimeDb migration 9 on a database of the last release', () => {
 
         const db = new AnimeDb(path);
 
-        expect(db.schemaVersion).toBe(9);
+        expect(db.schemaVersion).toBe(10);
         expect(columnsOf(path).slice(-4)).toEqual(['anilist_id', 'airing_status', 'airing_checked_at', 'airing_override']);
         expect(db.list()).toEqual([
             {

@@ -2,6 +2,16 @@ import type { DownloadInfo, PostProcessEvent, ProgressInfo } from '@shared/types
 import { createLineSplitter, defaultSpawn, EXIT_GRACE_MS, KILL_ESCALATION_MS, runYtdlp, STOP_ESCALATION_MS } from '@main/services/ytdlpRunner';
 import { createFakeChild } from '../../helpers/fakeChild';
 
+const NOW = 1_700_000_000_000;
+
+beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
 describe('createLineSplitter', () => {
     it('emits complete lines and buffers partial ones', () => {
         const lines: string[] = [];
@@ -260,7 +270,8 @@ describe('runYtdlp', () => {
                 code: 'UNAVAILABLE',
                 title: 'Video unavailable',
                 hint: 'The video may be private, removed or blocked in your region.',
-                raw: 'ERROR: Video unavailable'
+                raw: 'ERROR: Video unavailable',
+                details: { occurredAt: NOW, exitCode: 1, operation: 'Running yt-dlp', command: 'yt-dlp' }
             }
         });
         expect(events).toEqual([{ status: 'started', processor: 'ExtractAudio' }]);
@@ -316,21 +327,31 @@ describe('runYtdlp', () => {
                 code: 'UNAVAILABLE',
                 title: 'Video unavailable',
                 hint: 'The video may be private, removed or blocked in your region.',
-                raw: 'ERROR: Video unavailable'
+                raw: 'ERROR: Video unavailable',
+                details: { occurredAt: NOW, exitCode: 1, operation: 'Running yt-dlp', command: 'yt-dlp --newline https://x.com/v' }
             }
         });
     });
 
     it('resolves with BINARY_MISSING when spawn fails with ENOENT', async () => {
         const { fake, run } = start();
-        fake.emitter.emit('error', Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' }));
+        const failure = Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT', errno: -2, syscall: 'spawn yt-dlp' });
+        fake.emitter.emit('error', failure);
         await expect(run.result).resolves.toEqual({
             status: 'error',
             error: {
                 code: 'BINARY_MISSING',
                 title: 'yt-dlp not found',
                 hint: 'Install yt-dlp or set its path in the settings.',
-                raw: 'spawn yt-dlp ENOENT'
+                raw: 'spawn yt-dlp ENOENT',
+                details: {
+                    occurredAt: NOW,
+                    errorName: 'Error',
+                    stack: failure.stack,
+                    systemCode: 'ENOENT',
+                    operation: 'Running yt-dlp',
+                    command: 'yt-dlp --newline https://x.com/v'
+                }
             }
         });
     });

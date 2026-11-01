@@ -11,6 +11,7 @@ import { useProgramsStore } from '@renderer/store/programsStore';
 import { ANI_CLI_INFO, makeStatus } from '../../helpers/animeFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, makeProgramInfo, makeProgramsStatus, makeProgramVersions, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -141,13 +142,17 @@ describe('ProgramsStatusBlock states', () => {
         expect(within(row('ytdlp')).getByText('NOT INSTALLED')).toHaveClass('badge--cancelled');
     });
 
-    it('shows a failure with the reason and TRY AGAIN, which installs it again', () => {
+    it('shows a failure with the reason and TRY AGAIN, which installs it again', async () => {
+        const user = userEvent.setup();
         setProgram('ytdlp', { status: 'error', percent: 0, version: null, error: { code: 'DOWNLOAD_FAILED', message: 'getaddrinfo ENOTFOUND github.com' } });
         render(<ProgramsStatusBlock place="downloads" />);
         const failed = within(row('ytdlp'));
         expect(failed.getByText('FAILED')).toHaveClass('badge--error');
         expect(failed.getByRole('alert')).toHaveTextContent('The download failed. Check your connection and try again.');
-        expect(failed.getByRole('alert')).toHaveAttribute('title', 'getaddrinfo ENOTFOUND github.com');
+        expect(failed.getByRole('alert')).not.toHaveAttribute('title');
+        const dialog = await openErrorDialog(user, 'The download failed. Check your connection and try again.');
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('getaddrinfo ENOTFOUND github.com');
+        await user.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
         fireEvent.click(failed.getByRole('button', { name: 'TRY AGAIN' }));
         expect(mock.api.programs.install).toHaveBeenCalledWith('ytdlp');
     });
@@ -280,11 +285,16 @@ describe('ProgramsStatusBlock updates', () => {
         expect(item.getByText('INSTALLED')).toBeInTheDocument();
     });
 
-    it('shows why the download of the update failed', () => {
+    it('shows why the download of the update failed, and opens the window with the details when it is clicked', async () => {
+        const user = userEvent.setup();
         useProgramsStore.setState({ updates: { ytdlp: stateOf('ytdlp', { status: 'error', percent: 0, error: { code: 'HASH_MISMATCH', message: 'sha mismatch' } }) } });
         render(<ProgramsStatusBlock place="downloads" />);
-        expect(within(row('ytdlp')).getByRole('alert')).toHaveTextContent('The downloaded file is not the one the app expects, so it was discarded.');
-        expect(within(row('ytdlp')).getByRole('alert')).toHaveAttribute('title', 'sha mismatch');
+        const reason = 'The downloaded file is not the one the app expects, so it was discarded.';
+        expect(within(row('ytdlp')).getByRole('alert')).toHaveTextContent(reason);
+        expect(within(row('ytdlp')).getByRole('alert')).not.toHaveAttribute('title');
+        const dialog = await openErrorDialog(user, reason);
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('sha mismatch');
+        expect(within(dialog).getByText('HASH_MISMATCH')).toBeInTheDocument();
     });
 
     it.each([

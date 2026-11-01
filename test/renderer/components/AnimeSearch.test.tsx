@@ -8,6 +8,7 @@ import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/sto
 import { useAppStore } from '@renderer/store/appStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -169,12 +170,16 @@ describe('AnimeSearch results', () => {
         expect(screen.getByText('// NOTHING FOUND.')).toBeInTheDocument();
     });
 
-    it('explains an error and keeps the raw text as a tooltip', () => {
+    it('explains an error, and opens the window with the raw text when it is clicked', async () => {
+        const user = userEvent.setup();
         useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'error', error: { code: 'BLOCKED', raw: 'Blocked by cloudflare.' } } });
         render(<AnimeSearch />);
         const alert = screen.getByRole('alert');
         expect(alert).toHaveTextContent('The source blocked the request. Try again later.');
-        expect(alert).toHaveAttribute('title', 'Blocked by cloudflare.');
+        expect(alert).not.toHaveAttribute('title');
+        const dialog = await openErrorDialog(user, 'The source blocked the request. Try again later.');
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('Blocked by cloudflare.');
+        expect(within(dialog).getByText('BLOCKED')).toBeInTheDocument();
     });
 
     it('opens a result and shows its episodes', async () => {

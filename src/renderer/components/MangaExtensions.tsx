@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
+import { useMangaLanguage } from '../hooks/useMangaLanguage';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { UPDATE_ALL_KEY, useMangaStore } from '../store/mangaStore';
 import { ConfirmButton } from './ConfirmButton';
 import { MangaExtensionsAbout } from './MangaExtensionsAbout';
-import { SelectField, TextField, ToggleField } from './fields';
-import { ALL_LANGUAGES, extensionLanguages, filterExtensions, isListed } from './mangaText';
+import { TextField, ToggleField } from './fields';
+import { extensionLanguages, filterExtensions, isListed } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 
 // The stores the extensions come from, and the extensions to install, update or remove.
@@ -43,9 +44,8 @@ export function MangaExtensions() {
     const listedExtensions = extensions.extensions.filter((extension) => {
         return isListed(extension.contentWarning, showAdult);
     });
-    const languages = [ALL_LANGUAGES, ...extensionLanguages(listedExtensions)];
-    // A language that was remembered but is not there any more (its extensions are gone or hidden) lists everything.
-    const lang = languages.includes(filter.lang) ? filter.lang : ALL_LANGUAGES;
+    // The language is the one of the settings (every language when no extension is in it).
+    const lang = useMangaLanguage(extensionLanguages(listedExtensions));
     const shown = filterExtensions(extensions.extensions, { ...filter, lang }, showAdult);
     const updatable = listedExtensions.filter((extension) => {
         return extension.isInstalled && extension.hasUpdate;
@@ -89,17 +89,6 @@ export function MangaExtensions() {
                             value={filter.query}
                             onChange={(query) => {
                                 setExtensionFilter({ query });
-                            }}
-                        />
-                        <SelectField
-                            label={t('manga.ext.lang')}
-                            value={lang}
-                            options={languages}
-                            formatOption={(lang) => {
-                                return lang === ALL_LANGUAGES ? t('manga.ext.allLangs') : lang;
-                            }}
-                            onChange={(lang) => {
-                                setExtensionFilter({ lang });
                             }}
                         />
                         <ToggleField

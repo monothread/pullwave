@@ -1,5 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ErrorDetails } from '@shared/errorDetails';
 import type { DownloadError, DownloadInfo, LiveStreamInfo, PostProcessEvent, ProgressInfo } from '@shared/types';
+import { commandLine } from './errorDetails';
 import { mapDownloadError, mapSpawnError } from './errorMapper';
 import { killProcessTree, type GroupKill, type TaskkillSpawn } from './processTree';
 import { isWaitLine, parseFileLine, parseInfoLine, parsePostProcessLine, parseProgressLine, parseStreamLine, POSTPROCESS_PREFIX } from './progressParser';
@@ -85,6 +87,7 @@ export function runYtdlp(options: RunOptions): RunHandle {
     const spawnFn = options.spawnFn ?? defaultSpawn;
     const child = spawnFn(options.binary, options.args, options.env);
     const platform = options.platform ?? process.platform;
+    const known: Partial<ErrorDetails> = { operation: 'Running yt-dlp', command: commandLine(options.binary, options.args) };
     let cancelled = false;
     let stopped = false;
     let filePath: string | null = null;
@@ -172,13 +175,13 @@ export function runYtdlp(options: RunOptions): RunHandle {
                 resolve({ status: 'done', filePath });
                 return;
             }
-            resolve({ status: 'error', error: mapDownloadError(withoutPostProcessLines(stderr), code) });
+            resolve({ status: 'error', error: mapDownloadError(withoutPostProcessLines(stderr), code, known) });
         };
         child.once('error', (error: NodeJS.ErrnoException) => {
             settled = true;
             timers.forEach(clearTimeout);
             timers.clear();
-            resolve({ status: 'error', error: mapSpawnError(error) });
+            resolve({ status: 'error', error: mapSpawnError(error, known) });
         });
         child.once('exit', (code: number | null) => {
             if (settled) {

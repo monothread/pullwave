@@ -2,14 +2,15 @@ import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { LibraryManga, MangaChapter, MangaDetails, MangaSource, MangaSummary } from '@shared/manga';
 import { droppedChapters, keptUnmatched, matchChapters } from '@shared/mangaSourceMigration';
+import { useMangaLanguage } from '../hooks/useMangaLanguage';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { SelectField, TextField } from './fields';
-import { migrationSources, RESULTS_PER_SOURCE } from './mangaSearchSources';
+import { migrationSources, RESULTS_PER_SOURCE, sourceLanguages } from './mangaSearchSources';
 import { ALL_LANGUAGES, mangaErrorKey } from './mangaText';
-import { sourceLanguageLabel, sourceLanguages } from './MangaSources';
+
 import { RowLink } from './RowLink';
 
 const ALL_SOURCES = 'all';
@@ -32,7 +33,7 @@ interface Chosen {
     errorKey: ReturnType<typeof mangaErrorKey> | null;
 }
 
-// A window to move a manga of the library to the same manga in another source: the sources are limited by language (and can be one only), they
+// A window to move a manga of the library to the same manga in another source: the sources are limited to the language of the settings (and can be one only), they
 // are searched for the title (one of them, or all of them one after the other), the user picks the manga, and what the move does to the
 // chapters is shown before it is done. It is also the way to give a manga whose extension is gone a source that works.
 export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) {
@@ -53,7 +54,6 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
     const showAdult = useAppStore((state) => {
         return state.settings.mangaShowAdult;
     });
-    const [language, setLanguage] = useState(ALL_LANGUAGES);
     const [choice, setChoice] = useState(ALL_SOURCES);
     const [query, setQuery] = useState(manga.title);
     const [searching, setSearching] = useState<{ done: number; total: number; name: string } | null>(null);
@@ -69,10 +69,10 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
         }
     }, [sourcesStatus, loadSources]);
 
-    // The languages of the sources the manga can move to; a chosen language that is not there any more stands for all of them.
+    // The sources the manga can move to are the ones in the language of the settings (every language when none of them is in it).
     const languages = sourceLanguages(migrationSources(allSources, manga.sourceId, ALL_LANGUAGES, showAdult));
-    const shownLanguage = languages.includes(language) ? language : ALL_LANGUAGES;
-    const sources = migrationSources(allSources, manga.sourceId, shownLanguage, showAdult);
+    const language = useMangaLanguage(languages);
+    const sources = migrationSources(allSources, manga.sourceId, language, showAdult);
     const shownChoice = sources.some((source) => {
         return source.id === choice;
     })
@@ -158,18 +158,6 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
                             void search();
                         }}
                     >
-                        <SelectField
-                            label={t('manga.sources.language')}
-                            value={shownLanguage}
-                            options={[ALL_LANGUAGES, ...languages]}
-                            formatOption={(option) => {
-                                return option === ALL_LANGUAGES ? t('manga.sources.allLanguages') : sourceLanguageLabel(option, t);
-                            }}
-                            onChange={(option) => {
-                                setLanguage(option);
-                                setChoice(ALL_SOURCES);
-                            }}
-                        />
                         <SelectField
                             label={t('manga.migrateSource.source')}
                             value={shownChoice}

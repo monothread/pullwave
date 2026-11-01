@@ -9,6 +9,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapterRecord, makeLibraryManga, makeMangaJob, makeMangaStatus, makeSource, makeTool } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -189,12 +190,16 @@ describe('MangaPanel', () => {
         expect(screen.getByText('Starting the manga server…')).toBeInTheDocument();
     });
 
-    it('says the server could not start, keeps the details a hover away and tries again from the button', async () => {
+    it('says the server could not start, opens the window with the details when it is clicked and tries again from the button', async () => {
         const user = userEvent.setup();
         useMangaStore.setState({ status: makeMangaStatus({ server: 'error', serverError: 'port in use' }) });
         render(<MangaPanel />);
-        const alert = await screen.findByText('The manga server could not start.');
-        expect(alert).toHaveAttribute('title', 'port in use');
+        const alert = (await screen.findByRole('button', { name: 'The manga server could not start.' })).closest('[role="alert"]');
+        expect(alert).toHaveClass('field__warning');
+        expect(alert).not.toHaveAttribute('title');
+        const dialog = await openErrorDialog(user, 'The manga server could not start.');
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('port in use');
+        await user.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
         mock.api.manga.status.mockClear();
         mock.api.manga.sources.mockClear();
         await user.click(screen.getByRole('button', { name: 'TRY AGAIN' }));

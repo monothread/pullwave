@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { AREA_PROGRAMS, type ProgramArea, type ProgramInfo } from '@shared/programs';
 import { useTranslator } from '../i18n/useTranslator';
 import { PROGRAM_NAMES, useProgramsStore } from '../store/programsStore';
-import { isWorking, programErrorKey, programProgressKey } from './programText';
+import { isWorking, programErrorReport, programProgressKey } from './programText';
+import { ErrorNotice } from './ErrorNotice';
 
 interface ProgramProgressProps {
     program: ProgramInfo;
@@ -20,8 +21,8 @@ function ProgramProgress({ program, retrying, onRetry }: ProgramProgressProps) {
             <div className="history__main">
                 <span className="history__title">{name}</span>
                 {state.status === 'error' && state.error ? (
-                    <span className="field__warning" role="alert" title={state.error.message}>
-                        {t(programErrorKey(state.error.code))}
+                    <span className="field__warning" role="alert">
+                        <ErrorNotice report={programErrorReport(t, state.error)} />
                     </span>
                 ) : (
                     <>

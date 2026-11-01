@@ -110,6 +110,7 @@ export function sanitizeSettings(input: unknown): Settings {
         mangaFlaresolverrUrl: pickHttpAddress(raw.mangaFlaresolverrUrl),
         mangaFlaresolverrEnabled: pickBoolean(raw.mangaFlaresolverrEnabled, defaults.mangaFlaresolverrEnabled),
         mangaShowAdult: pickBoolean(raw.mangaShowAdult, defaults.mangaShowAdult),
+        mangaLanguage: pickString(raw.mangaLanguage, defaults.mangaLanguage),
         mangaCheckNewChapters: pickBoolean(raw.mangaCheckNewChapters, defaults.mangaCheckNewChapters),
         mangaAutoDownloadNew: pickBoolean(raw.mangaAutoDownloadNew, defaults.mangaAutoDownloadNew),
         mangaSiteBrowser: pickEnum(raw.mangaSiteBrowser, SITE_BROWSERS, defaults.mangaSiteBrowser),

@@ -18,7 +18,7 @@ const TEXT_PREFERENCE = { position: 0, type: 'text', key: 'Server URL Address', 
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'all-languages' }, toasts: [] });
     useMangaStore.setState({ ...initialManga, library: [], selection: null });
     mock.api.manga.sources.mockResolvedValue({ ok: true, value: SOURCES });
     mock.api.manga.list.mockResolvedValue({ ok: true, value: { items: ITEMS, hasNextPage: false } });
@@ -58,7 +58,7 @@ describe('MangaBrowse the list of sources', () => {
         render(<MangaBrowse />);
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The manga server is not ready.');
-        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
     });
 });
 
@@ -162,7 +162,7 @@ describe('MangaBrowse a source', () => {
         await openSourceNamed(user, 'Site A');
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The request to the manga server failed.');
-        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
     });
 
     it('marks the mangas that are in the library', async () => {
@@ -434,7 +434,7 @@ describe('MangaBrowse source settings', () => {
         await openSourceNamed(user, 'Site A');
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('The site or the extension reported an error.');
-        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
         expect(screen.getByText('This source may need to be set up first: open SOURCE SETTINGS.')).toBeInTheDocument();
     });
 
@@ -445,7 +445,7 @@ describe('MangaBrowse source settings', () => {
         render(<MangaBrowse />);
         await openSourceNamed(user, 'Site A');
         const alert = await screen.findByRole('alert');
-        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to copy the technical error');
+        expect(within(alert).getByRole('button')).toHaveAttribute('title', 'Click to see the technical error');
         expect(screen.getByText(/This site is protected by Cloudflare\./)).toBeInTheDocument();
         expect(screen.queryByText(/may need to be set up first/)).not.toBeInTheDocument();
     });

@@ -1,3 +1,4 @@
+import type { ErrorDetails } from './errorDetails';
 import type {
     AnimeAiringOverride,
     AnimeCheckResponse,
@@ -44,6 +45,7 @@ import type {
     AnimeSubtitleSetting,
     LibraryAnime
 } from './anime';
+import type { CutApi } from './cut';
 import type { MangaApi, MangaOutputFormat } from './manga';
 import type { ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersions } from './programs';
 import type { ProgramId, ToolState } from './tools';
@@ -164,6 +166,9 @@ export interface Settings {
     mangaFlaresolverrEnabled: boolean;
     // Whether the sources and the extensions for adults (+18) are listed; hidden by default.
     mangaShowAdult: boolean;
+    // The language of the sources the manga section lists, searches, filters extensions by and moves mangas to: a code ("en", "pt-BR"),
+    // "all-languages" for every language, or empty to follow the language of the computer (English when there are no sources in it).
+    mangaLanguage: string;
     // Whether, once an hour, the mangas of the library are checked for new chapters (which are added to the library, not downloaded).
     mangaCheckNewChapters: boolean;
     // Whether the new chapters found by the check are downloaded too (off: they are only added to the library).
@@ -200,6 +205,7 @@ export interface DownloadError {
     title: string;
     hint: string;
     raw: string;
+    details?: ErrorDetails;
 }
 
 export type JobStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'cancelled';
@@ -372,6 +378,8 @@ export interface CyberApi {
     checkBinaries: () => Promise<BinariesStatus>;
     // The programs the app downloads on its first run (yt-dlp, deno, ffmpeg, ani-cli, busybox and curl).
     programs: ProgramsApi;
+    // The cutter of the video downloader.
+    cut: CutApi;
     getAppUpdateState: () => Promise<AppUpdateState>;
     checkAppUpdate: () => Promise<void>;
     downloadAppUpdate: () => Promise<void>;

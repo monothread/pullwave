@@ -6,6 +6,7 @@ import { MangaHealthSettings } from '@renderer/components/MangaHealthSettings';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeTool } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
+import { openErrorDialog } from '../../helpers/errorDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -271,28 +272,37 @@ describe('MangaHealthSettings updates of the programs', () => {
         [{ ok: false, reason: 'not-installed', message: null }, 'FlareSolverr is not installed.'],
         [{ ok: false, reason: 'unsupported', message: null }, 'There is no program for this system in the latest release.'],
         [{ ok: false, reason: 'failed', message: 'hash' }, 'The update failed. Nothing changed.']
-    ])('says how the update of the server went: %j', (result, text) => {
+    ])('says how the update of the server went: %j', async (result, text) => {
+        const user = userEvent.setup();
         show(versions(), { updateResults: { server: result, helper: null } });
         render(<MangaHealthSettings />);
         const line = within(server()).getByText(text);
         if (result.ok) {
             expect(line).not.toHaveAttribute('role');
             expect(line).not.toHaveAttribute('title');
-        } else {
-            expect(line).toHaveAttribute('role', 'alert');
-            expect(line).toHaveClass('field__warning');
-            if (result.message !== null) {
-                expect(line).toHaveAttribute('title', result.message);
-            }
+            return;
         }
+        const alert = line.closest('[role="alert"]');
+        expect(alert).toHaveClass('field__warning');
+        expect(alert).not.toHaveAttribute('title');
+        if (result.message === null) {
+            expect(line).toBe(alert);
+            expect(within(server()).queryByRole('button', { name: text })).not.toBeInTheDocument();
+            return;
+        }
+        expect(line).toHaveAttribute('title', 'Click to see the technical error');
+        const dialog = await openErrorDialog(user, text);
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent(result.message);
     });
 
-    it('says how the update of the helper went, apart from the server', () => {
+    it('says how the update of the helper went, apart from the server', async () => {
+        const user = userEvent.setup();
         show(versions(), { updateResults: { server: null, helper: { ok: false, reason: 'failed', message: 'manifest unknown' } } });
         render(<MangaHealthSettings />);
-        const line = within(helper()).getByText('The update failed. Nothing changed.');
-        expect(line).toHaveAttribute('role', 'alert');
-        expect(line).toHaveAttribute('title', 'manifest unknown');
+        const line = within(helper()).getByRole('button', { name: 'The update failed. Nothing changed.' });
+        expect(line.closest('[role="alert"]')).toHaveClass('field__warning');
         expect(within(server()).queryByText('The update failed. Nothing changed.')).not.toBeInTheDocument();
+        const dialog = await openErrorDialog(user, 'The update failed. Nothing changed.');
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('manifest unknown');
     });
 });

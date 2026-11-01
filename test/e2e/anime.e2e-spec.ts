@@ -142,6 +142,8 @@ async function openFirstResult(page: Page): Promise<void> {
 
 test.skip(!['linux', 'win32'].includes(process.platform) || !HAS_ANI_TOOLS, 'the anime section exists on Linux and Windows and needs `npm run fetch-binaries`');
 
+const PLAYER_THEMES = ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'];
+
 test.beforeEach(async () => {
     workDir = mkdtempSync(join(tmpdir(), 'pullwave-anime-e2e-'));
     session = await launch(join(workDir, 'user-data'));
@@ -697,11 +699,12 @@ test('the back and forward buttons of the mouse go through the series of the lib
     await expect(page.getByTestId('series-view')).toBeVisible();
 });
 
-test('in fullscreen, in the cyberpunk theme, only the part of the timeline already watched has the wave and the glow @resize', async () => {
+for (const theme of PLAYER_THEMES) {
+test(`in fullscreen, in the ${theme} theme, the controls float over the video and go away when the mouse is still, and only the part of the timeline already watched has the wave and the glow @resize`, async () => {
     await session.app.close();
-    session = await launch(join(workDir, 'user-data'), { theme: 'cyberpunk' });
+    session = await launch(join(workDir, 'user-data'), { theme });
     const { page } = session;
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'cyberpunk');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await downloadFirstEpisode(page);
     await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
     await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
@@ -748,7 +751,36 @@ test('in fullscreen, in the cyberpunk theme, only the part of the timeline alrea
     const paused = await timeline('false');
     expect(paused.backgroundSize).toBe('40% 100%, 0% 100%, auto');
     expect(paused.animationPlayState).toBe('paused');
+
+    // The bar floats over the video in every theme: it takes no room, has no background and is out of the layout of the stage.
+    const controls = dialog.locator('.player__controls');
+    const floating = await controls.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { position: style.position, bottom: style.bottom, backgroundColor: style.backgroundColor, borderTopWidth: style.borderTopWidth };
+    });
+    expect(floating).toEqual({ position: 'absolute', bottom: '0px', backgroundColor: 'rgba(0, 0, 0, 0)', borderTopWidth: '0px' });
+    const video = await dialog.locator('.player__video').boundingBox();
+    const stage = await dialog.locator('.player__stage').boundingBox();
+    // The video fills the stage but for its border: the bar takes no room (it would take about 50 pixels).
+    expect(stage!.height - video!.height).toBeGreaterThanOrEqual(0);
+    expect(stage!.height - video!.height).toBeLessThanOrEqual(4);
+
+    // And it goes away when the mouse stands still, taking the cursor with it, and comes back with the mouse.
+    await expect(controls).toHaveAttribute('data-hidden', 'true', { timeout: 6000 });
+    const hidden = await controls.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { opacity: style.opacity, pointerEvents: style.pointerEvents, cursor: getComputedStyle(document.querySelector('.player__video') as HTMLElement).cursor };
+    });
+    expect(hidden).toEqual({ opacity: '0', pointerEvents: 'none', cursor: 'none' });
+    await page.mouse.move(340, 340);
+    await expect(controls).toHaveAttribute('data-hidden', 'false');
+    await expect.poll(() => {
+        return controls.evaluate((element) => {
+            return getComputedStyle(element).opacity;
+        });
+    }).toBe('1');
 });
+}
 
 test('searches an anime, lists the results and reports when nothing is found', async () => {
     const { page } = session;
@@ -761,7 +793,13 @@ test('searches an anime, lists the results and reports when nothing is found', a
     await search(page, 'zzz');
     const alert = page.getByRole('alert');
     await expect(alert).toHaveText('Nothing was found for this search.');
-    await expect(alert).toHaveAttribute('title', 'No results found!');
+    await expect(alert).not.toHaveAttribute('title');
+    await alert.getByRole('button', { name: 'Nothing was found for this search.' }).click();
+    const details = page.getByRole('dialog', { name: 'ERROR DETAILS' });
+    await expect(details.getByTestId('error-message')).toHaveText('No results found!');
+    await expect(details.locator('.error-details__row').filter({ hasText: /^Code/ }).locator('dd')).toHaveText('NO_RESULTS');
+    await details.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(details).toHaveCount(0);
 });
 
 test('clears the results when the name is emptied', async () => {
@@ -1142,7 +1180,13 @@ test('shows why a download failed and retries it', async () => {
     await expect(job.locator('.badge--error')).toHaveText('FAILED');
     const reason = job.getByRole('alert');
     await expect(reason).toHaveText('No video source was found for this episode.');
-    await expect(reason).toHaveAttribute('title', 'No sources found for sub!');
+    await expect(reason).not.toHaveAttribute('title');
+    await reason.getByRole('button', { name: 'No video source was found for this episode.' }).click();
+    const details = page.getByRole('dialog', { name: 'ERROR DETAILS' });
+    await expect(details.getByTestId('error-message')).toHaveText('No sources found for sub!');
+    await expect(details.locator('.error-details__row').filter({ hasText: /^Code/ }).locator('dd')).toHaveText('NO_SOURCES');
+    await details.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(details).toHaveCount(0);
 
     await job.getByRole('button', { name: 'RETRY' }).click();
     await expect(job.locator('.badge--error')).toHaveText('FAILED');
@@ -2483,7 +2527,12 @@ test.describe('watching without downloading', () => {
 
         const alert = page.getByRole('dialog').getByRole('alert');
         await expect(alert).toHaveText('No video source was found for this episode.');
-        await expect(alert).toHaveAttribute('title', 'No sources found for sub!');
+        await expect(alert).not.toHaveAttribute('title');
+        await alert.getByRole('button', { name: 'No video source was found for this episode.' }).click();
+        const details = page.getByRole('dialog', { name: 'ERROR DETAILS' });
+        await expect(details.getByTestId('error-message')).toHaveText('No sources found for sub!');
+        await details.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(details).toHaveCount(0);
         await page.keyboard.press('Escape');
         await expect(page.getByRole('dialog')).toBeHidden();
     });
@@ -3564,7 +3613,7 @@ test.describe('the look for new episodes', () => {
         writeFileSync(join(historyFolder(), 'more-episodes'), '');
     }
 
-    const EMPTY = 'No new episodes yet. The check that runs every 6 hours, and the buttons that look for new episodes, list here what they find.';
+    const EMPTY = 'No new episodes yet. The check that runs every 3 hours, and the buttons that look for new episodes, list here what they find.';
 
     test('finds the episode the source got after the anime was added, puts it in the library without downloading it, lists it and tells the screen', async () => {
         const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
@@ -3743,12 +3792,12 @@ test.describe('the look for new episodes', () => {
     test('has the two options in the settings of the anime, the first on and the second off, and saves them at once', async () => {
         const { page } = session;
         await openAnimeSettings(page);
-        const look = page.getByRole('switch', { name: 'Look for new episodes every 6 hours' });
+        const look = page.getByRole('switch', { name: 'Look for new episodes every 3 hours' });
         const download = page.getByRole('switch', { name: 'Download the new episodes found' });
         await expect(look).toBeChecked();
         await expect(download).not.toBeChecked();
         await expect(page.getByText('Asks the source about the anime of the library and adds the new episodes to it. They are not downloaded.')).toBeVisible();
-        await expect(page.getByText('The new episodes that the check (every 6 hours, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeVisible();
+        await expect(page.getByText('The new episodes that the check (every 3 hours, or the button that looks for them) finds are downloaded at once, up to 24 of one anime at a time. Off: they are only added to the library.')).toBeVisible();
 
         await look.click();
         await download.click();
@@ -3764,7 +3813,7 @@ test.describe('the look for new episodes', () => {
         const page = await relaunch({ animeCheckNewEpisodes: false, animeAutoDownloadNew: true }, {});
         await openAnimeSettings(page);
 
-        await expect(page.getByRole('switch', { name: 'Look for new episodes every 6 hours' })).not.toBeChecked();
+        await expect(page.getByRole('switch', { name: 'Look for new episodes every 3 hours' })).not.toBeChecked();
         await expect(page.getByRole('switch', { name: 'Download the new episodes found' })).toBeChecked();
     });
 

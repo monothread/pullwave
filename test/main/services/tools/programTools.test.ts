@@ -362,6 +362,20 @@ describe('ProgramTools ffmpeg, which has no version of the app', () => {
         expect(tools.stateOf('ffmpeg').status).toBe('ready');
     });
 
+    it('gives what it knows about a failed look-up: what was asked, and the stack of the failure', async () => {
+        vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+        const { tools, latest } = setup();
+        const failure = new Error('Request failed (503)');
+        latest.value.ffmpeg = failure;
+        const state = await tools.install('ffmpeg');
+        expect(state.error).toEqual({
+            code: 'DOWNLOAD_FAILED',
+            message: 'Request failed (503)',
+            details: { occurredAt: 1_700_000_000_000, errorName: 'Error', stack: failure.stack, operation: 'Looking up the latest version of ffmpeg' }
+        });
+        vi.restoreAllMocks();
+    });
+
     it('looks the build up again when the download of the one it remembered fails, since the builds are rolling', async () => {
         const { tools, latest, failing, register } = setup();
         latest.value.ffmpeg = ffmpegLatest(SHA_A);

@@ -37,10 +37,10 @@ import type {
     MangaStatusInfo,
     MangaSummary
 } from '@shared/manga';
-import { resolveAppLanguage } from '../i18n/language';
-import { adjacentSeason, ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, localDetails, readerChapters, type ExtensionFilter } from '../components/mangaText';
+import { resolveAppLanguage, systemLocale } from '../i18n/language';
+import { adjacentSeason, ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, listedSources, localDetails, readerChapters, resolveMangaLanguage, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter, type TermKind } from '../components/mangaFilterSearch';
-import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources } from '../components/mangaSearchSources';
+import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources, sourceLanguages } from '../components/mangaSearchSources';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
 import { useAppStore } from './appStore';
@@ -66,14 +66,14 @@ export interface MangaSearchState {
     searchedFor: string;
     status: 'idle' | 'searching' | 'done';
     results: MangaSearchSourceResult[];
+    // Whether the search goes through the sources of every language, not only of the language of the settings (off by default).
+    allLanguages: boolean;
 }
 
 export interface MangaBrowseState {
     sources: MangaSource[];
     sourcesStatus: 'idle' | 'loading' | 'ready' | 'error';
     sourcesError: MangaError | null;
-    // The language the list of sources is limited to (all of them by default).
-    sourceLanguage: string;
     // The source that is open (its mangas are listed); null while the list of sources is shown.
     sourceId: string | null;
     mode: MangaListKind;
@@ -109,7 +109,8 @@ export interface MangaExtensionsState {
     error: MangaError | null;
     // What is being installed, updated or removed (the package name), or added or removed (the address of the store).
     busy: string[];
-    filter: ExtensionFilter;
+    // The text and the installed-only choice (the language is the one of the settings).
+    filter: Omit<ExtensionFilter, 'lang'>;
 }
 
 // The settings of the source that is being browsed.
@@ -135,7 +136,6 @@ const EMPTY_BROWSE: MangaBrowseState = {
     sources: [],
     sourcesStatus: 'idle',
     sourcesError: null,
-    sourceLanguage: ALL_LANGUAGES,
     sourceId: null,
     mode: 'popular',
     query: '',
@@ -159,7 +159,7 @@ const EMPTY_EXTENSIONS: MangaExtensionsState = {
     status: 'idle',
     error: null,
     busy: [],
-    filter: { query: '', lang: ALL_LANGUAGES, onlyInstalled: true }
+    filter: { query: '', onlyInstalled: true }
 };
 
 // A chapter that can be read: its number on the server and, when it is in the library, its number there (its file is read when it was
@@ -192,7 +192,7 @@ export interface MangaReaderState {
     entry?: 'start' | 'end';
 }
 
-const EMPTY_SEARCH: MangaSearchState = { query: '', searchedFor: '', status: 'idle', results: [] };
+const EMPTY_SEARCH: MangaSearchState = { query: '', searchedFor: '', status: 'idle', results: [], allLanguages: false };
 
 // Which search is the current one: the answers of an older one are dropped.
 let searchRun = 0;
@@ -280,7 +280,7 @@ interface MangaState {
     closeDownloads: () => void;
 
     loadSources: () => Promise<void>;
-    setSourceLanguage: (language: string) => void;
+    setSearchAllLanguages: (value: boolean) => void;
     setSearchQuery: (query: string) => void;
     // Looks for the name in every source of the language chosen (a few at a time), and shows how each one answered as it does.
     runSearch: () => Promise<void>;
@@ -378,7 +378,7 @@ interface MangaState {
     // Updates every installed extension that has an update.
     updateAllExtensions: () => Promise<void>;
     changeExtension: (pkgName: string, action: ExtensionAction) => Promise<void>;
-    setExtensionFilter: (filter: Partial<ExtensionFilter>) => void;
+    setExtensionFilter: (filter: Partial<Omit<ExtensionFilter, 'lang'>>) => void;
 }
 
 function translateNow(key: MessageKey, params?: MessageParams): string {
@@ -463,7 +463,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         librarySeries: null,
         jobs: [],
         queueHeld: false,
-        browse: { ...EMPTY_BROWSE, sourceLanguage: initialPrefs.sourceLanguage },
+        browse: EMPTY_BROWSE,
         search: EMPTY_SEARCH,
         selection: null,
         selectionRefresh: { loading: false, error: null },
@@ -484,7 +484,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         history: [],
         checkingNew: null,
         checkState: IDLE_MANGA_CHECK_STATE,
-        extensions: { ...EMPTY_EXTENSIONS, filter: { ...EMPTY_EXTENSIONS.filter, lang: initialPrefs.extensionLanguage, onlyInstalled: initialPrefs.onlyInstalled } },
+        extensions: { ...EMPTY_EXTENSIONS, filter: { ...EMPTY_EXTENSIONS.filter, onlyInstalled: initialPrefs.onlyInstalled } },
         cloudflare: [],
 
         init: async () => {
@@ -789,16 +789,19 @@ export const useMangaStore = create<MangaState>((set, get) => {
             }
         },
 
-        setSourceLanguage: (language) => {
-            saveMangaUiPrefs({ sourceLanguage: language });
-            patchBrowse({ sourceLanguage: language });
+        setSearchAllLanguages: (value) => {
+            set((state) => {
+                return { search: { ...state.search, allLanguages: value } };
+            });
         },
 
         setSearchQuery: (query) => {
             if (query.trim().length === 0) {
                 // Clearing the field clears the results too, and the answers of a search that is still going on are dropped.
                 searchRun += 1;
-                set({ search: EMPTY_SEARCH });
+                set((state) => {
+                    return { search: { ...EMPTY_SEARCH, allLanguages: state.search.allLanguages } };
+                });
                 return;
             }
             set((state) => {
@@ -813,7 +816,10 @@ export const useMangaStore = create<MangaState>((set, get) => {
             }
             searchRun += 1;
             const run = searchRun;
-            const targets = searchableSources(get().browse.sources, get().browse.sourceLanguage, useAppStore.getState().settings.mangaShowAdult);
+            const { mangaShowAdult, mangaLanguage } = useAppStore.getState().settings;
+            const { sources } = get().browse;
+            const language = get().search.allLanguages ? ALL_LANGUAGES : resolveMangaLanguage(mangaLanguage, sourceLanguages(listedSources(sources, mangaShowAdult)), systemLocale());
+            const targets = searchableSources(sources, language, mangaShowAdult);
             const patchResult = (sourceId: string, changes: Partial<MangaSearchSourceResult>): void => {
                 if (run !== searchRun) {
                     return;
@@ -1529,9 +1535,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         setExtensionFilter: (filter) => {
-            if (filter.lang !== undefined) {
-                saveMangaUiPrefs({ extensionLanguage: filter.lang });
-            }
             if (filter.onlyInstalled !== undefined) {
                 saveMangaUiPrefs({ onlyInstalled: filter.onlyInstalled });
             }

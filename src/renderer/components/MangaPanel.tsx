@@ -17,6 +17,8 @@ import { MangaUpdates } from './MangaUpdates';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
 import { TabMenu } from './TabMenu';
+import { ErrorNotice } from './ErrorNotice';
+import { plainErrorReport } from './errorReport';
 
 const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'manga.nav.search' | 'manga.nav.updates' | 'manga.nav.library' | 'manga.nav.history' | 'manga.nav.extensions' | 'manga.nav.settings'; icon?: string }> = [
     { id: 'browse', label: 'manga.nav.browse' },
@@ -144,8 +146,8 @@ export function MangaPanel() {
             </div>
             {status.server === 'error' && (
                 <div className="panel">
-                    <p className="field__warning" role="alert" title={status.serverError ?? undefined}>
-                        {t('manga.server.error')}
+                    <p className="field__warning" role="alert">
+                        <ErrorNotice report={plainErrorReport(t('manga.server.error'), status.serverError ?? '')} />
                     </p>
                     <div className="job__actions">
                         <button

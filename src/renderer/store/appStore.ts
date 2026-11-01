@@ -16,7 +16,7 @@ import type {
 
 export type Tab = 'downloads' | 'anime' | 'manga' | 'settings';
 // The screens of the video downloader: the queue with the field for links, what was downloaded, and its settings.
-export type DownloadsView = 'queue' | 'history' | 'settings';
+export type DownloadsView = 'queue' | 'cut' | 'history' | 'settings';
 export type NoticeKind = 'error' | 'info';
 
 export interface Notice {

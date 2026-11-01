@@ -4,6 +4,19 @@ import { ALL_LANGUAGES, listedSources } from './mangaText';
 // The language of a source that reads sites in several languages (the extension says "all").
 export const SEVERAL_LANGUAGES = 'all';
 
+// The languages of the sources, each once; the sources of several languages go last, the others by code.
+export function sourceLanguages(sources: readonly MangaSource[]): string[] {
+    return [
+        ...new Set(
+            sources.map((source) => {
+                return source.lang;
+            })
+        )
+    ].sort((first, second) => {
+        return Number(first === SEVERAL_LANGUAGES) - Number(second === SEVERAL_LANGUAGES) || first.localeCompare(second);
+    });
+}
+
 // How many results of each source are shown.
 export const RESULTS_PER_SOURCE = 12;
 // How many sources are asked at the same time.

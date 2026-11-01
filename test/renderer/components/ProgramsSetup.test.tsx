@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { ProgramId, ToolState } from '@shared/tools';
 import { ProgramsGate } from '@renderer/components/ProgramsSetup';
 import { useAppStore } from '@renderer/store/appStore';
 import { useProgramsStore } from '@renderer/store/programsStore';
 import { installMockApi, makeProgramInfo, makeProgramsStatus, type MockApiHandle } from '../../helpers/mockApi';
+import { openErrorDialog } from '../../helpers/errorDialog';
 
 let mock: MockApiHandle;
 
@@ -107,12 +109,18 @@ describe('ProgramsGate', () => {
         expect(item.getByRole('progressbar', { name: 'deno' })).toHaveAttribute('aria-valuenow', '100');
     });
 
-    it('shows a failure with its reason, TRY AGAIN, and says what is ready is kept', () => {
+    it('shows a failure with its reason, TRY AGAIN, and says what is ready is kept', async () => {
+        const user = userEvent.setup();
         setProgram('ffmpeg', { status: 'error', percent: 0, error: { code: 'EXTRACT_FAILED', message: 'tar: xz: not found' } });
         renderGate('downloads');
         const item = within(screen.getByTestId('program-setup-ffmpeg'));
-        expect(item.getByRole('alert')).toHaveTextContent('The file could not be unpacked. On Linux the tar program of the system has to know xz (the package xz-utils).');
-        expect(item.getByRole('alert')).toHaveAttribute('title', 'tar: xz: not found');
+        const reason = 'The file could not be unpacked. On Linux the tar program of the system has to know xz (the package xz-utils).';
+        expect(item.getByRole('alert')).toHaveTextContent(reason);
+        expect(item.getByRole('alert')).not.toHaveAttribute('title');
+        const dialog = await openErrorDialog(user, reason);
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('tar: xz: not found');
+        expect(within(dialog).getByText('EXTRACT_FAILED')).toBeInTheDocument();
+        await user.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
         expect(item.queryByRole('progressbar')).not.toBeInTheDocument();
         expect(screen.getByText('Some programs could not be downloaded. Check your connection and try again; what is ready is kept.')).toBeInTheDocument();
         fireEvent.click(item.getByRole('button', { name: 'TRY AGAIN' }));

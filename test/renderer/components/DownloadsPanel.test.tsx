@@ -54,6 +54,19 @@ describe('DownloadsPanel', () => {
             expect(mock.api.programs.install).toHaveBeenCalledWith('ytdlp');
         });
 
+        it('shows the cutter once the programs are ready, and how they are downloaded in its place when one failed', async () => {
+            const user = userEvent.setup();
+            const { unmount } = render(<DownloadsPanel />);
+            await user.click(within(subNav()).getByRole('button', { name: 'CUT' }));
+            expect(screen.getByRole('button', { name: 'CHOOSE FILE' })).toBeInTheDocument();
+            expect(screen.queryByTestId('programs-setup-downloads')).not.toBeInTheDocument();
+            unmount();
+            failProgram('ffmpeg');
+            render(<DownloadsPanel />);
+            expect(screen.getByTestId('programs-setup-downloads')).toHaveTextContent('PREPARING THE VIDEO DOWNLOADER');
+            expect(screen.queryByRole('button', { name: 'CHOOSE FILE' })).not.toBeInTheDocument();
+        });
+
         it('does not hold the history or the settings back', async () => {
             failProgram('ffmpeg');
             const user = userEvent.setup();
@@ -66,7 +79,7 @@ describe('DownloadsPanel', () => {
         });
     });
 
-    it('is a region of the video downloader with a QUEUE, a HISTORY and a SETTINGS screen', () => {
+    it('is a region of the video downloader with a QUEUE, a CUT, a HISTORY and a SETTINGS screen', () => {
         render(<DownloadsPanel />);
         expect(screen.getByRole('region', { name: 'Video downloader' })).toBeInTheDocument();
         expect(
@@ -75,7 +88,7 @@ describe('DownloadsPanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['QUEUE', 'HISTORY', 'SETTINGS']);
+        ).toEqual(['QUEUE', 'CUT', 'HISTORY', 'SETTINGS']);
         // The settings are a gear at the right end of the bar, not a word.
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');
@@ -103,6 +116,18 @@ describe('DownloadsPanel', () => {
         expect(within(subNav()).getByRole('button', { name: 'QUEUE' })).not.toHaveAttribute('aria-current');
         expect(screen.getByText('Done Video')).toBeInTheDocument();
         expect(screen.getByText('HISTORY [1]')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
+    });
+
+    it('shows the cutter in place of the queue and keeps the choice in the store', async () => {
+        const user = userEvent.setup();
+        render(<DownloadsPanel />);
+
+        await user.click(within(subNav()).getByRole('button', { name: 'CUT' }));
+        expect(useAppStore.getState().downloadsView).toBe('cut');
+        expect(within(subNav()).getByRole('button', { name: 'CUT' })).toHaveAttribute('aria-current', 'page');
+        expect(within(subNav()).getByRole('button', { name: 'QUEUE' })).not.toHaveAttribute('aria-current');
+        expect(screen.getByRole('region', { name: 'Cut a file' })).toBeInTheDocument();
         expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
     });
 

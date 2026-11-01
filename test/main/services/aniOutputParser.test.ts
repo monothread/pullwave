@@ -11,6 +11,16 @@ import {
     stripAnsi
 } from '@main/services/aniOutputParser';
 
+const NOW = 1_700_000_000_000;
+
+beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
 const ESC = String.fromCharCode(27);
 
 describe('constants', () => {
@@ -53,7 +63,7 @@ describe('mapAniError', () => {
     ];
 
     it.each(cases)('maps %s', (_name, output, code) => {
-        expect(mapAniError(output, 1)).toEqual({ code, raw: stripAnsi(output).trim() });
+        expect(mapAniError(output, 1)).toEqual({ code, raw: stripAnsi(output).trim(), details: { occurredAt: NOW, exitCode: 1 } });
     });
 
     it('prefers the first matching rule', () => {
@@ -61,12 +71,20 @@ describe('mapAniError', () => {
     });
 
     it('falls back to UNKNOWN keeping the output', () => {
-        expect(mapAniError('something odd happened', 3)).toEqual({ code: 'UNKNOWN', raw: 'something odd happened' });
+        expect(mapAniError('something odd happened', 3)).toEqual({ code: 'UNKNOWN', raw: 'something odd happened', details: { occurredAt: NOW, exitCode: 3 } });
     });
 
     it('describes the exit code when there is no output', () => {
-        expect(mapAniError('  \n', 3)).toEqual({ code: 'UNKNOWN', raw: 'ani-cli exited with code 3' });
-        expect(mapAniError('', null)).toEqual({ code: 'UNKNOWN', raw: 'ani-cli exited with code unknown' });
+        expect(mapAniError('  \n', 3)).toEqual({ code: 'UNKNOWN', raw: 'ani-cli exited with code 3', details: { occurredAt: NOW, exitCode: 3 } });
+        expect(mapAniError('', null)).toEqual({ code: 'UNKNOWN', raw: 'ani-cli exited with code unknown', details: { occurredAt: NOW } });
+    });
+
+    it('adds what the caller knows about the failure to the details', () => {
+        expect(mapAniError('No results found!', 1, { operation: 'Searching for the anime with ani-cli' })).toEqual({
+            code: 'NO_RESULTS',
+            raw: 'No results found!',
+            details: { occurredAt: NOW, exitCode: 1, operation: 'Searching for the anime with ani-cli' }
+        });
     });
 
     it('keeps only the end of a very long output', () => {
@@ -79,13 +97,21 @@ describe('mapAniError', () => {
 
 describe('mapAniSpawnError', () => {
     it('maps a missing executable to BINARY_MISSING', () => {
-        const error: NodeJS.ErrnoException = Object.assign(new Error('spawn busybox ENOENT'), { code: 'ENOENT' });
-        expect(mapAniSpawnError(error)).toEqual({ code: 'BINARY_MISSING', raw: 'spawn busybox ENOENT' });
+        const error: NodeJS.ErrnoException = Object.assign(new Error('spawn busybox ENOENT'), { code: 'ENOENT', errno: -2, syscall: 'spawn busybox' });
+        expect(mapAniSpawnError(error, { operation: 'Running ani-cli', command: 'busybox sh ani-cli' })).toEqual({
+            code: 'BINARY_MISSING',
+            raw: 'spawn busybox ENOENT',
+            details: { occurredAt: NOW, errorName: 'Error', stack: error.stack, systemCode: 'ENOENT', operation: 'Running ani-cli', command: 'busybox sh ani-cli' }
+        });
     });
 
     it('maps any other failure to UNKNOWN', () => {
-        const error: NodeJS.ErrnoException = Object.assign(new Error('spawn busybox EACCES'), { code: 'EACCES' });
-        expect(mapAniSpawnError(error)).toEqual({ code: 'UNKNOWN', raw: 'spawn busybox EACCES' });
+        const error: NodeJS.ErrnoException = Object.assign(new Error('spawn busybox EACCES'), { code: 'EACCES', errno: -13, syscall: 'spawn busybox' });
+        expect(mapAniSpawnError(error)).toEqual({
+            code: 'UNKNOWN',
+            raw: 'spawn busybox EACCES',
+            details: { occurredAt: NOW, errorName: 'Error', stack: error.stack, systemCode: 'EACCES' }
+        });
     });
 });
 

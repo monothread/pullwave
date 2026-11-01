@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { MAX_CONSECUTIVE_SERVER_FAILURES, MangaChapterDownloader, PAGE_RETRY_DELAYS_MS, type ChapterDownloadOptions, type ChapterDownloaderDependencies, type ChapterRepairOptions } from '@main/services/manga/mangaChapterDownloader';
 import { ImageFetchError, type FetchedImage } from '@main/services/manga/mangaImages';
 import { buildComicInfo } from '@main/services/manga/comicInfo';
+import type { ErrorDetails } from '@shared/errorDetails';
+import type { MangaErrorCode } from '@shared/manga';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
 import { readZipEntries } from '../../../helpers/zipEntries';
 
@@ -11,6 +13,34 @@ const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9])
 const WEBP = Uint8Array.from([...Buffer.from('RIFF'), 1, 2, 3, 4, ...Buffer.from('WEBP'), 7]);
 const HTML = Uint8Array.from(Buffer.from('<html>blocked</html>'));
 const PAGES = ['http://127.0.0.1:1/p/0', 'http://127.0.0.1:1/p/1', 'http://127.0.0.1:1/p/2'];
+
+const NOW = 1_700_000_000_000;
+const CHAPTER_OPERATION = 'Downloading a chapter';
+const PAGE_OPERATION = 'Downloading a page of the chapter';
+
+beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
+// What the downloader gives when it fails: the code and the text, and everything it knows about the failure.
+function failed(code: MangaErrorCode, message: string, operation: string, known: Partial<ErrorDetails>) {
+    return {
+        status: 'error',
+        error: { code, message, details: { occurredAt: NOW, errorName: 'Error', stack: expect.stringContaining(`Error: ${message}`), operation, ...known } }
+    };
+}
+
+function chapterFailed(code: MangaErrorCode, message: string, known: Partial<ErrorDetails> = {}) {
+    return failed(code, message, CHAPTER_OPERATION, known);
+}
+
+function pageFailed(code: MangaErrorCode, message: string, known: Partial<ErrorDetails>) {
+    return failed(code, message, PAGE_OPERATION, known);
+}
 
 function image(bytes: Uint8Array, contentType: string | null = 'image/jpeg', status = 200): FetchedImage {
     return { status, contentType, bytes };
@@ -170,7 +200,7 @@ describe('MangaChapterDownloader a server that does not answer', () => {
         expect(MAX_CONSECUTIVE_SERVER_FAILURES).toBe(5);
         const context = setup({ pages: MANY, fetchImage: failing([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 503 for a page' } });
+        expect(result).toEqual(pageFailed('REQUEST_FAILED', 'The server answered 503 for a page', { httpStatus: 503, url: MANY[6] }));
         // Two pages that arrived, then five pages with their three tries each; none of the other five was asked for.
         expect(context.fetched).toHaveLength(2 + 5 * (1 + PAGE_RETRY_DELAYS_MS.length));
         expect(context.fetched.at(-1)).toBe(MANY[6]);
@@ -184,7 +214,7 @@ describe('MangaChapterDownloader a server that does not answer', () => {
             return Object.assign(new Error('the server is gone'), { code: 'SERVER_UNAVAILABLE' });
         }) });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'SERVER_UNAVAILABLE', message: 'the server is gone' } });
+        expect(result).toEqual(pageFailed('SERVER_UNAVAILABLE', 'the server is gone', { url: MANY[4] }));
         expect(context.fetched).toHaveLength(5 * (1 + PAGE_RETRY_DELAYS_MS.length));
     });
 
@@ -248,7 +278,7 @@ describe('MangaChapterDownloader into a folder', () => {
         const context = setup({ format: 'folder' });
         mkdirSync(context.outputPath, { recursive: true });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'DISK', message: 'The place for the chapter is taken' } });
+        expect(result).toEqual(chapterFailed('DISK', 'The place for the chapter is taken'));
         expect(existsSync(`${context.outputPath}.part`)).toBe(true);
     });
 });
@@ -335,7 +365,7 @@ describe('MangaChapterDownloader failures', () => {
             return url.endsWith('/2') ? image(new Uint8Array(), null, 503) : image(HTML, 'text/html');
         } });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 503 for a page' } });
+        expect(result).toEqual(pageFailed('REQUEST_FAILED', 'The server answered 503 for a page', { httpStatus: 503, url: PAGES[2] }));
         expect(existsSync(context.outputPath)).toBe(false);
     });
 
@@ -344,7 +374,7 @@ describe('MangaChapterDownloader failures', () => {
             return new Error('ECONNRESET');
         } });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'ECONNRESET' } });
+        expect(result).toEqual(pageFailed('REQUEST_FAILED', 'ECONNRESET', { url: PAGES[0] }));
         expect(context.fetched).toHaveLength(1 + PAGE_RETRY_DELAYS_MS.length);
     });
 
@@ -353,7 +383,7 @@ describe('MangaChapterDownloader failures', () => {
             return image(HTML, 'text/html');
         } });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'IMAGE', message: 'A page is not an image' } });
+        expect(result).toEqual(pageFailed('IMAGE', 'A page is not an image', { httpStatus: 200, url: PAGES[0] }));
         expect(context.fetched).toHaveLength(3);
         expect(readdirSync(`${context.outputPath}.part`)).toEqual([]);
     });
@@ -370,7 +400,7 @@ describe('MangaChapterDownloader failures', () => {
         const context = setup({ pages: [PAGES[0]!], fetchImage: () => {
             return image(new Uint8Array());
         } });
-        expect(await context.downloader.download(context.options()).result).toEqual({ status: 'error', error: { code: 'IMAGE', message: 'A page came back empty' } });
+        expect(await context.downloader.download(context.options()).result).toEqual(pageFailed('IMAGE', 'A page came back empty', { httpStatus: 200, url: PAGES[0] }));
     });
 
     it('does not ask again for a page that the app refuses to fetch', async () => {
@@ -378,7 +408,7 @@ describe('MangaChapterDownloader failures', () => {
             return new ImageFetchError('The page is not on the server of the app');
         } });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'IMAGE', message: 'The page is not on the server of the app' } });
+        expect(result).toEqual(pageFailed('IMAGE', 'The page is not on the server of the app', { url: PAGES[0] }));
         expect(context.fetched).toHaveLength(1);
         expect(context.sleeps).toEqual([]);
     });
@@ -386,7 +416,7 @@ describe('MangaChapterDownloader failures', () => {
     it('fails without asking for anything when the chapter has no pages', async () => {
         const context = setup({ pages: [] });
         const result = await context.downloader.download(context.options()).result;
-        expect(result).toEqual({ status: 'error', error: { code: 'EMPTY_CHAPTER', message: 'The chapter has no pages' } });
+        expect(result).toEqual(chapterFailed('EMPTY_CHAPTER', 'The chapter has no pages'));
         expect(context.fetched).toEqual([]);
         expect(context.pageCounts).toEqual([]);
         expect(existsSync(`${context.outputPath}.part`)).toBe(false);
@@ -394,19 +424,19 @@ describe('MangaChapterDownloader failures', () => {
 
     it.each(['SERVER_UNAVAILABLE', 'REQUEST_FAILED', 'API_ERROR', 'INVALID_RESPONSE'] as const)('keeps the code %s when the list of pages cannot be had', async (code) => {
         const context = setup({ pages: Object.assign(new Error('the server said no'), { code }) });
-        expect(await context.downloader.download(context.options()).result).toEqual({ status: 'error', error: { code, message: 'the server said no' } });
+        expect(await context.downloader.download(context.options()).result).toEqual(chapterFailed(code, 'the server said no'));
     });
 
     it('reports an error it does not know as UNKNOWN', async () => {
         const context = setup({ pages: new Error('something odd') });
-        expect(await context.downloader.download(context.options()).result).toEqual({ status: 'error', error: { code: 'UNKNOWN', message: 'something odd' } });
+        expect(await context.downloader.download(context.options()).result).toEqual(chapterFailed('UNKNOWN', 'something odd'));
     });
 
     it.each(['ENOSPC', 'EACCES', 'EPERM', 'EROFS', 'EDQUOT', 'ENAMETOOLONG'])('reports %s while making the CBZ as a disk problem', async (code) => {
         const context = setup({ writeCbz: () => {
-            return Promise.reject(Object.assign(new Error('disk trouble'), { code }));
+            return Promise.reject(Object.assign(new Error('disk trouble'), { code, errno: -1, syscall: 'write' }));
         } });
-        expect(await context.downloader.download(context.options()).result).toEqual({ status: 'error', error: { code: 'DISK', message: 'disk trouble' } });
+        expect(await context.downloader.download(context.options()).result).toEqual(chapterFailed('DISK', 'disk trouble', { systemCode: code }));
         expect(context.fetched).toEqual(PAGES);
     });
 
@@ -571,7 +601,7 @@ describe('MangaChapterDownloader downloading again the missing pages', () => {
         const { context, repairOptions } = await incompleteChapter([PAGES[1]!]);
         const before = readFileSync(context.outputPath);
         const result = await context.downloader.repair(repairOptions());
-        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+        expect(result).toEqual(pageFailed('REQUEST_FAILED', 'The server answered 500 for a page', { httpStatus: 500, url: PAGES[1] }));
         expect(readFileSync(context.outputPath).equals(before)).toBe(true);
         expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
     });
@@ -628,14 +658,14 @@ describe('MangaChapterDownloader downloading again the missing pages', () => {
     it('fails, leaving the folder as it was, when the page could not be downloaded', async () => {
         const { context, repairOptions } = await incompleteChapter([PAGES[2]!], 'folder');
         const result = await context.downloader.repair(repairOptions({ pageIndex: 2 }));
-        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+        expect(result).toEqual(pageFailed('REQUEST_FAILED', 'The server answered 500 for a page', { httpStatus: 500, url: PAGES[2] }));
         expect(readdirSync(context.outputPath).sort()).toEqual(['001.png', '002.png', 'ComicInfo.xml']);
     });
 
     it('refuses to go on when the source has another number of pages now', async () => {
         const { context, repairOptions } = await incompleteChapter([PAGES[1]!]);
         const result = await context.downloader.repair(repairOptions({ pageCount: 5 }));
-        expect(result).toEqual({ status: 'error', error: { code: 'INVALID_RESPONSE', message: 'The source has another number of pages now' } });
+        expect(result).toEqual(chapterFailed('INVALID_RESPONSE', 'The source has another number of pages now'));
         expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
     });
 
@@ -657,7 +687,7 @@ describe('MangaChapterDownloader downloading again the missing pages', () => {
             pageCount: 3,
             pageIndex: null
         });
-        expect(result).toEqual({ status: 'error', error: { code: 'SERVER_UNAVAILABLE', message: 'the server said no' } });
+        expect(result).toEqual(chapterFailed('SERVER_UNAVAILABLE', 'the server said no'));
     });
 
     it('uses the extractor it is given to open the CBZ', async () => {
@@ -704,7 +734,7 @@ describe('MangaChapterDownloader downloading again the missing pages', () => {
         const before = readFileSync(context.outputPath);
         serverDown.value = true;
         const result = await context.downloader.repair(repairOptions());
-        expect(result).toEqual({ status: 'error', error: { code: 'REQUEST_FAILED', message: 'The server answered 500 for a page' } });
+        expect(result).toEqual(pageFailed('REQUEST_FAILED', 'The server answered 500 for a page', { httpStatus: 500, url: pages[5] }));
         expect(context.fetched.slice(fetchedBefore())).toHaveLength(MAX_CONSECUTIVE_SERVER_FAILURES * (1 + PAGE_RETRY_DELAYS_MS.length));
         expect(readFileSync(context.outputPath).equals(before)).toBe(true);
         expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);

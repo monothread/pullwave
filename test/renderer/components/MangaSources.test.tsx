@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { createTranslator } from '@shared/i18n';
+import { ALL_LANGUAGES } from '@renderer/components/mangaText';
 import { MangaSources, searchedSources, sourceLanguageLabel, sourceLanguages } from '@renderer/components/MangaSources';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
@@ -22,8 +23,12 @@ const SOURCES = [
 beforeEach(() => {
     installMockApi();
     window.localStorage.clear();
-    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true }, toasts: [] });
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: ALL_LANGUAGES }, toasts: [] });
     useMangaStore.setState({ ...initialManga, browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready' } });
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
 });
 
 describe('sourceLanguages', () => {
@@ -125,10 +130,10 @@ describe('MangaSources', () => {
         expect(screen.getAllByTestId('manga-source')).toHaveLength(4);
     });
 
-    it('searches inside the language that is chosen', async () => {
+    it('searches inside the language of the settings', async () => {
         const user = userEvent.setup();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: 'pt' } });
         render(<MangaSources />);
-        await user.selectOptions(screen.getByLabelText('Language'), 'pt');
         await user.type(screen.getByLabelText('Search sources'), 'scans');
         expect(
             screen.getAllByTestId('manga-source').map((row) => {
@@ -195,28 +200,47 @@ describe('MangaSources', () => {
         expect(alpha.querySelector('span.manga__source-icon--none')).not.toBeNull();
     });
 
-    it('limits the list to a language', async () => {
-        const user = userEvent.setup();
+    it('has no field to pick the language: it is a setting of the manga section', () => {
         render(<MangaSources />);
-        expect(
-            within(screen.getByLabelText('Language'))
-                .getAllByRole('option')
-                .map((option) => {
-                    return [option.getAttribute('value'), option.textContent];
-                })
-        ).toEqual([
-            ['all-languages', 'All languages'],
-            ['en', 'EN'],
-            ['pt', 'PT'],
-            ['all', 'Several languages']
-        ]);
-        await user.selectOptions(screen.getByLabelText('Language'), 'pt');
+        expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
+        expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Search sources')).toBeInTheDocument();
+    });
+
+    it.each([
+        ['pt', ['PT'], 'Sources: 1'],
+        ['all', ['Several languages'], 'Sources: 1'],
+        ['en', ['EN'], 'Sources: 2'],
+        ['all-languages', ['EN', 'PT', 'Several languages'], 'Sources: 4']
+    ])('limits the list to the language of the settings: %s', (mangaLanguage, groups, count) => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage } });
+        render(<MangaSources />);
+        expect(groupNames()).toEqual(groups);
+        expect(screen.getByText(count)).toBeInTheDocument();
+    });
+
+    it('follows the language of the computer when the settings are on automatic', () => {
+        vi.spyOn(navigator, 'language', 'get').mockReturnValue('pt-BR');
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: '', language: 'en' } });
+        render(<MangaSources />);
         expect(groupNames()).toEqual(['PT']);
         expect(screen.getByText('Sources: 1')).toBeInTheDocument();
-        await user.selectOptions(screen.getByLabelText('Language'), 'all');
-        expect(groupNames()).toEqual(['Several languages']);
-        await user.selectOptions(screen.getByLabelText('Language'), 'all-languages');
-        expect(groupNames()).toHaveLength(3);
+    });
+
+    it('falls back to English on automatic when no source is in the language of the computer', () => {
+        vi.spyOn(navigator, 'language', 'get').mockReturnValue('ja-JP');
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: '', language: 'en' } });
+        render(<MangaSources />);
+        expect(groupNames()).toEqual(['EN']);
+        expect(screen.getByText('Sources: 2')).toBeInTheDocument();
+    });
+
+    it('lists every language on automatic when no source is in the language of the computer nor in English', () => {
+        vi.spyOn(navigator, 'language', 'get').mockReturnValue('ja-JP');
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true, mangaLanguage: '', language: 'en' } });
+        useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sources: [SOURCES[0]!, SOURCES[2]!] } });
+        render(<MangaSources />);
+        expect(groupNames()).toEqual(['PT', 'Several languages']);
     });
 
     it('opens a source on its popular mangas from its button, and on the latest from the other', async () => {
@@ -243,7 +267,7 @@ describe('MangaSources', () => {
     });
 
     it('hides the sources for adults by default, and the languages only they have', () => {
-        useAppStore.setState({ settings: DEFAULT_SETTINGS });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: ALL_LANGUAGES } });
         render(<MangaSources />);
         expect(screen.getByText('Sources: 3')).toBeInTheDocument();
         expect(screen.queryByText('Beta Scans')).not.toBeInTheDocument();
@@ -255,18 +279,25 @@ describe('MangaSources', () => {
         ).toEqual(['Alpha Scans', 'Zeta Scans', 'Mixed Site']);
     });
 
-    it('lists everything when the language that was remembered has no source left', () => {
-        useAppStore.setState({ settings: DEFAULT_SETTINGS });
-        useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sourceLanguage: 'ja' } });
+    it('lists everything when the language of the settings has no source left', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaLanguage: 'ja' } });
         render(<MangaSources />);
-        expect(screen.getByLabelText('Language')).toHaveValue('all-languages');
+        expect(groupNames()).toEqual(['EN', 'PT', 'Several languages']);
         expect(screen.getByText('Sources: 3')).toBeInTheDocument();
     });
 
-    it('remembers the language that was picked', async () => {
-        const user = userEvent.setup();
+    it('does not keep a language of its own: nothing about it is written in the storage of the window', () => {
         render(<MangaSources />);
-        await user.selectOptions(screen.getByLabelText('Language'), 'pt');
-        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.ui') ?? '{}')).toMatchObject({ sourceLanguage: 'pt' });
+        expect(window.localStorage.getItem('pullwave.manga.ui')).toBeNull();
+    });
+
+    it('takes the language from the sources the settings allow: a source for adults does not make its language appear', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: false, mangaLanguage: '', language: 'en' } });
+        vi.spyOn(navigator, 'language', 'get').mockReturnValue('en-US');
+        useMangaStore.setState({
+            browse: { ...useMangaStore.getState().browse, sources: [makeSource({ id: '9', name: 'Adults Only', lang: 'ja', contentWarning: 'NSFW' }), SOURCES[0]!] }
+        });
+        render(<MangaSources />);
+        expect(groupNames()).toEqual(['PT']);
     });
 });

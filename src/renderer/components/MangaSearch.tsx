@@ -1,15 +1,16 @@
 import { useEffect } from 'react';
 import type { MangaSummary } from '@shared/manga';
+import { useMangaLanguage } from '../hooks/useMangaLanguage';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore, type MangaSearchSourceStatus } from '../store/mangaStore';
-import { SelectField, TextField } from './fields';
+import { TextField, ToggleField } from './fields';
 import { MangaDetail } from './MangaDetail';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { MangaResultCard } from './MangaResultCard';
-import { searchableSources } from './mangaSearchSources';
+import { searchableSources, sourceLanguages } from './mangaSearchSources';
 import { ALL_LANGUAGES, listedSources } from './mangaText';
-import { sourceLanguageLabel, sourceLanguages } from './MangaSources';
+import { sourceLanguageLabel } from './MangaSources';
 
 const STATUS_KEYS: Record<MangaSearchSourceStatus, 'manga.search.status.waiting' | 'manga.search.status.searching' | 'manga.search.status.found' | 'manga.search.status.none' | 'manga.search.status.error'> = {
     waiting: 'manga.search.status.waiting',
@@ -48,8 +49,8 @@ export function MangaSearch() {
     const loadSources = useMangaStore((state) => {
         return state.loadSources;
     });
-    const setSourceLanguage = useMangaStore((state) => {
-        return state.setSourceLanguage;
+    const setSearchAllLanguages = useMangaStore((state) => {
+        return state.setSearchAllLanguages;
     });
     const setSearchQuery = useMangaStore((state) => {
         return state.setSearchQuery;
@@ -71,12 +72,13 @@ export function MangaSearch() {
         }
     }, [sourcesStatus, loadSources]);
 
+    // The language of the settings, unless the switch asks for every language.
+    const settingsLanguage = useMangaLanguage(sourceLanguages(listedSources(sources, showAdult)));
+
     if (selection !== null && selectionFrom === 'search') {
         return <MangaDetail />;
     }
-    const languages = sourceLanguages(listedSources(sources, showAdult));
-    // A language that was remembered but is not there any more (its sources are gone or hidden) searches everything.
-    const language = languages.includes(browse.sourceLanguage) ? browse.sourceLanguage : ALL_LANGUAGES;
+    const language = search.allLanguages ? ALL_LANGUAGES : settingsLanguage;
     const targets = searchableSources(sources, language, showAdult).length;
     const searching = search.status === 'searching';
     const finished = search.results.filter((result) => {
@@ -102,19 +104,11 @@ export function MangaSearch() {
                         void runSearch();
                     }}
                 >
-                    <SelectField
-                        label={t('manga.sources.language')}
-                        value={language}
-                        options={[ALL_LANGUAGES, ...languages]}
-                        formatOption={(option) => {
-                            return option === ALL_LANGUAGES ? t('manga.sources.allLanguages') : sourceLanguageLabel(option, t);
-                        }}
-                        onChange={setSourceLanguage}
-                    />
                     <TextField label={t('manga.search.name')} value={search.query} placeholder={t('manga.search.namePlaceholder')} onChange={setSearchQuery} />
                     <button type="submit" className="btn btn--primary" disabled={search.query.trim().length === 0 || targets === 0 || searching}>
                         {t('manga.search.button')}
                     </button>
+                    <ToggleField label={t('manga.search.allLanguages')} checked={search.allLanguages} onChange={setSearchAllLanguages} />
                 </form>
             )}
             {search.status !== 'idle' && (

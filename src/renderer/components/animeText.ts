@@ -1,6 +1,7 @@
-import type { AniErrorCode, AnimeAudio, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
+import type { AniError, AniErrorCode, AnimeAudio, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries, MAX_SEASON } from '@shared/series';
+import { codedErrorReport, type ErrorReport } from './errorReport';
 
 // An episode is only offered to resume when a bit was watched and it is not about to end.
 export const MIN_RESUME_SECONDS = 5;
@@ -32,6 +33,11 @@ const STATUS_KEYS: Record<AnimeEpisodeStatus | AnimeJob['status'], MessageKey> =
 
 export function animeErrorKey(code: AniErrorCode): MessageKey {
     return ERROR_KEYS[code];
+}
+
+// An error of the anime section, in words for the user and with what ani-cli (or the system) reported.
+export function animeErrorReport(t: Translator, error: AniError): ErrorReport {
+    return codedErrorReport(t(animeErrorKey(error.code)), error, error.raw);
 }
 
 export function animeStatusKey(status: AnimeEpisodeStatus | AnimeJob['status']): MessageKey {

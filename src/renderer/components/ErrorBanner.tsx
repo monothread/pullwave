@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { DownloadError } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
+import { ErrorDetailsDialog } from './ErrorDetailsDialog';
+import { codedErrorReport } from './errorReport';
 
 interface ErrorBannerProps {
     error: DownloadError;
@@ -22,18 +24,23 @@ export function ErrorBanner({ error, onRetry }: ErrorBannerProps) {
                     type="button"
                     className="btn btn--small"
                     onClick={() => {
-                        setShowDetails((previous) => {
-                            return !previous;
-                        });
+                        setShowDetails(true);
                     }}
                 >
-                    {showDetails ? t('errorBanner.hideDetails') : t('errorBanner.showDetails')}
+                    {t('errorBanner.showDetails')}
                 </button>
                 <button type="button" className="btn btn--small btn--hot" onClick={onRetry}>
                     {t('errorBanner.retry')}
                 </button>
             </div>
-            {showDetails && <pre className="error-banner__raw">{error.raw}</pre>}
+            {showDetails && (
+                <ErrorDetailsDialog
+                    report={codedErrorReport(error.title, error, error.raw, error.hint)}
+                    onClose={() => {
+                        setShowDetails(false);
+                    }}
+                />
+            )}
         </div>
     );
 }

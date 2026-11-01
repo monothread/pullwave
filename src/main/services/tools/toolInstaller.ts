@@ -1,6 +1,8 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import type { ErrorDetails } from '@shared/errorDetails';
 import type { ToolError, ToolErrorCode, ToolId, ToolSpec, ToolState } from '@shared/tools';
+import { describeError } from '../errorDetails';
 import { extractArchive } from './archiveExtract';
 import { downloadFile, ToolDownloadError } from './toolDownload';
 
@@ -108,7 +110,7 @@ export class ToolInstaller {
             if (signal?.aborted === true) {
                 return this.publish(spec, 'missing', 0);
             }
-            return this.publish(spec, 'error', 0, this.toToolError(error));
+            return this.publish(spec, 'error', 0, this.toToolError(error, spec));
         }
     }
 
@@ -201,17 +203,18 @@ export class ToolInstaller {
         }
     }
 
-    private toToolError(error: unknown): ToolError {
+    private toToolError(error: unknown, spec: ToolSpec): ToolError {
+        const known: Partial<ErrorDetails> = { operation: `Installing ${spec.id} ${spec.version}`, url: spec.url };
         if (error instanceof InstallFailure) {
-            return { code: error.code, message: error.message };
+            return { code: error.code, message: error.message, details: describeError(error, known) };
         }
         if (error instanceof ToolDownloadError) {
-            return { code: 'DOWNLOAD_FAILED', message: error.message };
+            return { code: 'DOWNLOAD_FAILED', message: error.message, details: describeError(error, { ...known, operation: `Downloading ${spec.id} ${spec.version}` }) };
         }
         if (isDiskError(error)) {
-            return { code: 'DISK', message: messageOf(error) };
+            return { code: 'DISK', message: messageOf(error), details: describeError(error, known) };
         }
-        return { code: 'EXTRACT_FAILED', message: messageOf(error) };
+        return { code: 'EXTRACT_FAILED', message: messageOf(error), details: describeError(error, { ...known, operation: `Unpacking ${spec.id} ${spec.version}` }) };
     }
 
     private baseState(spec: ToolSpec, status: ToolState['status'], percent: number): ToolState {

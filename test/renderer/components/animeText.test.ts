@@ -1,6 +1,7 @@
 import {
     activeJobCount,
     animeErrorKey,
+    animeErrorReport,
     animeStatusKey,
     downloadedAnime,
     downloadedCount,
@@ -33,6 +34,29 @@ describe('constants', () => {
         expect(MIN_RESUME_SECONDS).toBe(5);
         expect(END_MARGIN_SECONDS).toBe(30);
         expect(WATCHED_RATIO).toBe(0.75);
+    });
+});
+
+describe('animeErrorReport', () => {
+    it('gives the words for the code, the code, and what ani-cli reported as the technical text', () => {
+        expect(animeErrorReport(createTranslator('en'), { code: 'NO_SOURCES', raw: 'No sources found for sub!' })).toEqual({
+            summary: 'No video source was found for this episode.',
+            code: 'NO_SOURCES',
+            message: 'No sources found for sub!',
+            hint: null,
+            details: null
+        });
+    });
+
+    it('carries everything known about the failure, and speaks the language of the app', () => {
+        const details = { occurredAt: 1700000000000, exitCode: 1, operation: 'Downloading an episode with ani-cli' };
+        expect(animeErrorReport(createTranslator('pt'), { code: 'NETWORK', raw: 'curl: (6)', details })).toEqual({
+            summary: createTranslator('pt')('anime.error.NETWORK'),
+            code: 'NETWORK',
+            message: 'curl: (6)',
+            hint: null,
+            details
+        });
     });
 });
 
