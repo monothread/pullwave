@@ -1,6 +1,6 @@
 # Pullwave — Documentation
 
-Linux desktop app (Electron + React + TypeScript) that wraps `yt-dlp`, with a cyberpunk theme.
+Desktop app for Linux and Windows (Electron + React + TypeScript) with a cyberpunk look and flat themes: a video downloader (`yt-dlp`, with a queue, a history and a cutter), an anime library and player (`ani-cli`) and a manga reader (Suwayomi-Server and the Mihon/Tachiyomi extensions).
 
 > Every download made with the program is at the user's own risk and responsibility; the authors are not responsible
 > for it. The project-level statement is in [`../DISCLAIMER.md`](../DISCLAIMER.md) and must stay linked from the README

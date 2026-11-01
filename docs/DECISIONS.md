@@ -808,7 +808,7 @@ New setting `jsRuntime` → `--js-runtimes <value>` (YouTube needs a JS runtime 
 - **Output:** `<downloads>/<name> - cuts/<name> - NN (XmYYs-XmYYs)<ext>`, never over a file that is there. A video made audio uses the audio format of the settings; for an audio file the choice is ignored.
 - **Not freezing the window:** ffmpeg is a process of its own at a lower priority (`setPriority`) with `-threads` set to one less than the computer has; the folder is read with the asynchronous calls; the progress reaches the screen at most four times a second and only when the percentage changed; the ring of `LoadingMark` and the bars are turned by the style sheet. Everything that takes a while has a sign (reading the file, starting, each part, cancelling).
 
-## D-123 · 2026-11-01 — The timeline of the player is seen in every theme
+## D-123 · 2026-11-01 — The timeline of the player is seen in every theme (replaced by D-124)
 - **What:** the bar of the player is 10 px high, its wave (a dark trough and a bright crest, so it shows when the two colours of the theme are close) flows over the part already watched with a drop-shadow glow in both colours, and the faint track and the loaded part are made of the colours of the theme (white over the video in fullscreen). The same rules serve the normal bar and the fullscreen one (`--seek-track`, `--seek-buffered`); the old `player-wave` and `player-wave-glow` keyframes are gone.
 - **Why:** the 6 px bar with a thin glow had the movement but it could hardly be seen, in the light themes especially.
 

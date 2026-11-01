@@ -1,6 +1,6 @@
 # Error catalog
 
-Every yt-dlp error is mapped by `errorMapper` into `{ code, title, hint, raw }`. UI: short banner + "show details" (raw) + "retry".
+Every yt-dlp error is mapped by `errorMapper` into `{ code, title, hint, raw }`. UI: short banner + "show details" (raw) + "retry". Clicking the words of any error in the app (the queue, the history, the anime, the manga, the programs) opens a window with all the details of it (`ErrorDetails`: operation, address, HTTP status, command, exit code, system code, cause, stack, version of the app and system) and a COPY button that copies the technical text (D-121).
 
 | code | Detection (stderr/exit) | Title | Hint |
 |---|---|---|---|

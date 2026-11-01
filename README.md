@@ -62,9 +62,11 @@ The back and forward buttons of the mouse take you through the screens you have 
 - Paste a link, or several: **+ ADD LINK** gives you one field per link. **FOLDER** sends that download to another folder, and **OPTIONS** changes the quality, the format and the live-stream behavior for that download only.
 - Every download shows its progress, speed and time left, and can be paused, resumed, cancelled or retried. Up to three downloads run at the same time, the others wait their turn. When one finishes you get a notice, and it moves to the history.
 - **PAUSE** stops a download and keeps what was already downloaded; **RESUME** goes on from there, and a paused download leaves its place in the queue to the next one. A live recording cannot be paused (STOP & SAVE ends it). A paused download is still there, paused, when you open the app again, and RESUME goes on from its partial files. Closing the app while downloads are running cancels them and deletes their unfinished files (paused downloads are kept, with theirs); the app asks before it does.
-- If something goes wrong, a clear message explains what happened, with the details one click away.
+- If something goes wrong, a clear message explains what happened. **SHOW DETAILS** here, and the words of the error everywhere else in the app (the history, the anime, the manga and the programs), open a window that shows everything the app knows about it: what was being done, the address, the HTTP status, the command, the exit code, the cause and the technical text, with a **COPY** button that copies that text (the window stays open).
 
   ![An error explained in the queue](docs/screenshots/cyberpunk-error.png)
+
+  ![The window with the details of an error](docs/screenshots/cyberpunk-error-details.png)
 
 - Failed or cancelled downloads clean up after themselves; live recordings are always kept.
 
@@ -74,6 +76,8 @@ The back and forward buttons of the mouse take you through the screens you have 
 Every download, finished or failed, with the time and a button to show the file.
 
 ### Cut
+
+![The CUT tab with two parts marked](docs/screenshots/cyberpunk-cut.png)
 
 The **CUT** tab cuts a video or audio file you already have (any file, not only the ones the app downloaded) into the parts you mark.
 
@@ -118,7 +122,7 @@ What AniList says is kept for a day, so showing the same day again (or a day of 
 ### Search and download
 ![Search](docs/screenshots/anime-search.png)
 
-- **Search** an anime, subtitled or dubbed, and click a result to see its episodes.
+- **Search** an anime, subtitled or dubbed, and click a result to see its episodes. When the source lists two anime with the same title (the seasons of the same show, for example), the second one is shown with a qualifier taken from the source, such as `(season 2)`, and each one is its own anime in the library, with its own episodes.
 - **ADD TO LIBRARY** opens a window that explains the **series** (the group the anime belongs to, such as all the seasons of the same show) and the **order** (the place of the season in the series; an order the series already uses is not allowed, and the window says which one is next) and asks you to confirm. It then puts the anime in the library with all its episodes, without downloading anything (once added, the search only says the series). It is then replaced by VIEW IN LIBRARY. Downloads are asked for in the library. The DOWNLOADS button at the top shows how many are running or waiting and opens the list, where each download can be **paused** and resumed. A finished download leaves the list and is announced by a toast; toasts stack, newest on top, and each goes away after 5 seconds.
 - **Covers:** every anime in the search, the library, the history and the schedule has its cover, found at AniList by the title (a block that says COVER NOT FOUND shows when there is none). Covers are kept on your computer and checked again the first time each day.
 - **Watch without downloading:** click an episode and the player opens.
@@ -155,7 +159,7 @@ Click a season to show or hide its episodes, and click a downloaded episode to p
 ### Player
 ![The player in fullscreen, cyberpunk theme](docs/screenshots/anime-player.png)
 
-Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show and the size). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In every theme they float over the video, taking no room, with a glowing progress bar. Escape closes the player.
+Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show and the size). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In every theme they float over the video, taking no room. The progress bar is the same as the one of a download: the part already watched is a neon wave that flows (also when the video is paused), and the glow is the one of every bar. Escape closes the player.
 
 ### Subtitles
 - One look for every theme: bold white lettering with a navy outline and no box behind it, like the fansubs.

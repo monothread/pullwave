@@ -86,9 +86,10 @@ Last updated: 2026-11-01 · **v0.24.2 published** (the anime with the same title
 - Windows: the unit tests assume POSIX paths, so CI only type-checks and lints there; making them path-agnostic would allow running them on Windows too.
 - Tray: only Cinnamon was verified on a real desktop; check KDE, XFCE and GNOME (with and without the AppIndicator extension) when possible. The tray menu itself (right-click) cannot be clicked from the e2e tests.
 - Playlist downloads are one job and one history entry: the title and file shown are those of the last item, and the percentage restarts for every item.
-- `scripts/fetch-binaries.mjs` downloads the *latest* yt-dlp/ffmpeg/deno, so two builds of the same version can ship different binaries; pin versions if reproducible builds matter.
+- The programs (yt-dlp, deno, ffmpeg, ani-cli, busybox, curl) are not in the package: the app downloads them (D-099), with the version pinned by the app for each one but ffmpeg (rolling builds, the first install takes the latest); `scripts/fetch-binaries.mjs` only fills `resources/bin` for the end-to-end tests.
 - The maintainer e-mail is in `package.json` and `electron-builder.yml` (the `.deb` needs one) and in the git history.
 - No deduplication of repeated URLs in the queue; no per-video quality selector (uses the global settings).
-- YouTube JS runtime: bundled deno (found through the process PATH); `jsRuntime` in Settings > Advanced is an optional override.
-- The bundled ffmpeg/deno are not updated by the button (only yt-dlp); a new version means running `npm run fetch-binaries -- --force` and rebuilding the package.
-- x86_64 only (binary URLs are fixed to linux-x64).
+- YouTube JS runtime: the deno the app downloads (found through the process PATH); `jsRuntime` in Settings > Advanced is an optional override.
+- yt-dlp, deno, ffmpeg and ani-cli can be updated from the app (the programs block of the settings); busybox and curl never update.
+- x86_64 only (Linux and Windows 64 bits); the manga section needs a 64-bit system.
+- Anime with the same title (D-125): an anime added before 0.24.2 has no id of the source until it is added or found again; a download from the queue uses the position stored; the check for new episodes does not refresh the id and the provider; two seasons with the same title are skipped by the check after the source moved, until they are added again.
