@@ -49,7 +49,7 @@ The top bar has **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the set
 
 | Part | Screens |
 |---|---|
-| VIDEO DOWNLOADER | QUEUE · CUT · HISTORY · ⚙ |
+| VIDEO DOWNLOADER | QUEUE · HISTORY · CUT · ⚙ |
 | ANIME | SCHEDULE · UPDATES · SEARCH · LIBRARY · HISTORY · ⚙ (and a DOWNLOADS button) |
 | MANGA | BROWSE · LIBRARY · EXTENSIONS · ⚙ (and a DOWNLOADS button) |
 
@@ -68,6 +68,11 @@ The back and forward buttons of the mouse take you through the screens you have 
 
 - Failed or cancelled downloads clean up after themselves; live recordings are always kept.
 
+### History
+![History of the video downloader](docs/screenshots/cyberpunk-history.png)
+
+Every download, finished or failed, with the time and a button to show the file.
+
 ### Cut
 
 The **CUT** tab cuts a video or audio file you already have (any file, not only the ones the app downloaded) into the parts you mark.
@@ -78,11 +83,6 @@ The **CUT** tab cuts a video or audio file you already have (any file, not only 
 - The cut is **exact**: every part is encoded again, so it starts at the moment you wrote and not at the keyframe before it. For that, cutting a video takes a while: each part shows a bar that fills, the ones waiting have a bar of their own, and **CANCEL** ends the cut at once (the part being made is deleted; the ones that were done stay). ffmpeg runs at a low priority and without taking every core of the computer, so the app stays smooth meanwhile.
 - For a **video**, the switch **Only the audio** makes each part an audio file instead, in the audio format of the settings (mp3, m4a or opus).
 - When it is over, **OPEN FOLDER** shows the files.
-
-### History
-![History of the video downloader](docs/screenshots/cyberpunk-history.png)
-
-Every download, finished or failed, with the time and a button to show the file.
 
 ### Quality, audio and subtitles
 - The best video and audio available, up to the maximum resolution you choose, as mp4, mkv or webm.

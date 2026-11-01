@@ -79,7 +79,7 @@ describe('DownloadsPanel', () => {
         });
     });
 
-    it('is a region of the video downloader with a QUEUE, a CUT, a HISTORY and a SETTINGS screen', () => {
+    it('is a region of the video downloader with a QUEUE, a HISTORY, a CUT and a SETTINGS screen', () => {
         render(<DownloadsPanel />);
         expect(screen.getByRole('region', { name: 'Video downloader' })).toBeInTheDocument();
         expect(
@@ -88,7 +88,7 @@ describe('DownloadsPanel', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['QUEUE', 'CUT', 'HISTORY', 'SETTINGS']);
+        ).toEqual(['QUEUE', 'HISTORY', 'CUT', 'SETTINGS']);
         // The settings are a gear at the right end of the bar, not a word.
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');

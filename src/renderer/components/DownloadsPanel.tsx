@@ -11,12 +11,12 @@ import { UrlInput } from './UrlInput';
 
 const VIEWS: ReadonlyArray<{ id: DownloadsView; label: MessageKey; icon?: string }> = [
     { id: 'queue', label: 'downloads.nav.queue' },
-    { id: 'cut', label: 'downloads.nav.cut' },
     { id: 'history', label: 'downloads.nav.history' },
+    { id: 'cut', label: 'downloads.nav.cut' },
     { id: 'settings', label: 'downloads.nav.settings', icon: SETTINGS_ICON }
 ];
 
-// The video downloader: the queue (with the field for links), the cutter of video and audio files, the history of what was downloaded and its settings.
+// The video downloader: the queue (with the field for links), the history, the cutter of video and audio files of what was downloaded and its settings.
 export function DownloadsPanel() {
     const t = useTranslator();
     const view = useAppStore((state) => {
