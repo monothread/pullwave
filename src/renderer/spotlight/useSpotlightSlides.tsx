@@ -63,7 +63,8 @@ export function toSlide(item: SpotlightItem, t: Translator, covers: Readonly<Rec
             key: item.key,
             eyebrow: t('home.hero.continueReading'),
             title: item.title,
-            meta: `${entry.chapterName} · ${t('spotlight.page', { page: entry.page + 1, total: entry.pageCount })}`,
+            // A chapter whose pages are not known yet (the next one, not opened) shows only its name.
+            meta: entry.pageCount > 0 ? `${entry.chapterName} · ${t('spotlight.page', { page: entry.page + 1, total: entry.pageCount })}` : entry.chapterName,
             art,
             imageUrl: item.coverUrl,
             progress: item.progress,

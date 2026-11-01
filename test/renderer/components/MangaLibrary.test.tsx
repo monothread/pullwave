@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MangaLibrary } from '@renderer/components/MangaLibrary';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
+import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { makeChapterRecord, makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { makeReading } from '../../helpers/homeFixtures';
@@ -28,6 +29,8 @@ beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
     useMangaStore.setState({ ...initialManga, library: [], hiddenGroupIds: [] });
+    useSortPrefsStore.setState({ library: { ...DEFAULT_SORT_PREFS.library }, list: { ...DEFAULT_SORT_PREFS.list } });
+    window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
 });
 
 describe('MangaLibrary', () => {
@@ -754,6 +757,32 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
         expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
         expect(cardTitles()).toEqual(['Epic', 'Solo Manga']);
+    });
+
+    it('shows the mangas by name from Z when asked', async () => {
+        render(<MangaLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'za');
+        expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
+        expect(cardTitles()).toEqual(['Epic', 'Solo Manga']);
+    });
+
+    it('keeps the order chosen, for the next time the library opens and for the next time the app opens', async () => {
+        const { unmount } = render(<MangaLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: 'recent', manga: 'az' });
+        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'recent', manga: 'az' }, list: { chapters: 'asc', episodes: 'asc' } });
+        unmount();
+        render(<MangaLibrary />);
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('az');
+        expect(cardTitles()).toEqual(['Epic', 'Solo Manga']);
+    });
+
+    it('starts with the order kept', () => {
+        useSortPrefsStore.setState({ library: { anime: 'recent', manga: 'za' } });
+        render(<MangaLibrary />);
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
+        expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
     });
 
     it('shows the mangas read last first', async () => {

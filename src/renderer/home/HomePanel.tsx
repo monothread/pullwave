@@ -1,36 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { MessageKey } from '@shared/i18n';
-import type { StartTab } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
 import { Spotlight } from '../spotlight/Spotlight';
 import { animeSpotlight, mangaSpotlight, mixSpotlight } from '../spotlight/spotlightData';
 import { useSpotlightSlides } from '../spotlight/useSpotlightSlides';
 import { useAnimeStore } from '../store/animeStore';
-import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { HomeWelcome } from './HomeWelcome';
 import { SectionCards } from './SectionCards';
 
-const SECTION_NAME: Readonly<Record<StartTab, MessageKey>> = {
-    downloads: 'tab.downloads',
-    anime: 'tab.anime',
-    manga: 'tab.manga'
-};
-
-// The history of reading is only read by its own screen: the home screen asks for it once the manga server runs.
-function useMangaHistory(mangaReady: boolean): void {
+// The history of reading and the sources of the manga are only read by their own screens: the home screen asks for them once the manga
+// server runs (the highlights show what is being read; the block of the manga goes to the browse once an extension gives a source). The
+// sources are asked for once: the screens of the section keep them up to date.
+function useMangaHomeData(mangaReady: boolean): void {
     const loadHistory = useMangaStore((state) => {
         return state.loadHistory;
     });
+    const loadSources = useMangaStore((state) => {
+        return state.loadSources;
+    });
     useEffect(() => {
-        if (mangaReady) {
-            void loadHistory();
+        if (!mangaReady) {
+            return;
         }
-    }, [mangaReady, loadHistory]);
+        void loadHistory();
+        if (useMangaStore.getState().browse.sourcesStatus === 'idle') {
+            void loadSources();
+        }
+    }, [mangaReady, loadHistory, loadSources]);
 }
 
-// The highlights of both sections, the one of "Open on" first.
-function useHomeSpotlight(startTab: StartTab) {
+// The highlights of both sections, the anime first.
+function useHomeSpotlight() {
     const [openedAt] = useState(() => {
         return Date.now();
     });
@@ -52,29 +52,29 @@ function useHomeSpotlight(startTab: StartTab) {
     const mangaHistory = useMangaStore((state) => {
         return state.history;
     });
+    const mangaReadKeys = useMangaStore((state) => {
+        return state.readKeys;
+    });
     const items = useMemo(() => {
         const anime = animeSupported ? animeSpotlight(animeLibrary, animeHistory, openedAt) : [];
-        const manga = mangaSupported ? mangaSpotlight(mangaLibrary, mangaHistory, openedAt) : [];
-        return mixSpotlight(anime, manga, startTab);
-    }, [animeSupported, animeLibrary, animeHistory, mangaSupported, mangaLibrary, mangaHistory, openedAt, startTab]);
+        const manga = mangaSupported ? mangaSpotlight(mangaLibrary, mangaHistory, mangaReadKeys, openedAt) : [];
+        return mixSpotlight(anime, manga);
+    }, [animeSupported, animeLibrary, animeHistory, mangaSupported, mangaLibrary, mangaHistory, mangaReadKeys, openedAt]);
     return useSpotlightSlides(items);
 }
 
 // The home screen: the highlights (or a welcome when there are none yet), then a big block for each section.
 export function HomePanel() {
     const t = useTranslator();
-    const startTab = useAppStore((state) => {
-        return state.settings.startTab;
-    });
     const mangaReady = useMangaStore((state) => {
         return state.status.supported && state.status.server === 'running';
     });
-    useMangaHistory(mangaReady);
-    const slides = useHomeSpotlight(startTab);
+    useMangaHomeData(mangaReady);
+    const slides = useHomeSpotlight();
 
     return (
         <section className="home" aria-label={t('home.aria')}>
-            {slides.length > 0 ? <Spotlight slides={slides} label={t('spotlight.home')} /> : <HomeWelcome sectionName={t(SECTION_NAME[startTab])} startTab={startTab} />}
+            {slides.length > 0 ? <Spotlight slides={slides} label={t('spotlight.home')} /> : <HomeWelcome />}
             <SectionCards />
         </section>
     );

@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import { SectionCards, sectionOrder } from '@renderer/home/SectionCards';
+import { SectionCards, animeFirstAction, mangaFirstAction, sectionOrder } from '@renderer/home/SectionCards';
+import { makeChapterRecord, makeLibraryManga, makeMangaJob, makeMangaStatus, makeSource } from '../../helpers/mangaFixtures';
 import { useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeAnime, makeAnimeJob, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
-import { makeChapterRecord, makeLibraryManga, makeMangaJob, makeMangaStatus } from '../../helpers/mangaFixtures';
 import { makeJob } from '../../helpers/mockApi';
 
 const actions = vi.hoisted(() => {
@@ -24,7 +24,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 beforeEach(() => {
     vi.clearAllMocks();
-    useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: 'downloads' }, jobs: [] });
+    useAppStore.setState({ settings: { ...DEFAULT_SETTINGS }, jobs: [] });
     useAnimeStore.setState({ status: makeStatus(), library: [], jobs: [] });
     useMangaStore.setState({ status: makeMangaStatus(), library: [], jobs: [] });
 });
@@ -58,8 +58,7 @@ describe('sectionOrder', () => {
 });
 
 describe('SectionCards', () => {
-    it.each(['downloads', 'anime', 'manga'] as const)('is a list of a block per section, in the order of the menu whatever "Open on" says (%s), with a picture each', (startTab) => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab } });
+    it('is a list of a block per section, in the order of the menu, with a picture each', () => {
         render(<SectionCards />);
         const list = screen.getByRole('list', { name: 'Sections' });
         expect(list).toHaveClass('section-cards');
@@ -107,6 +106,8 @@ describe('SectionCards', () => {
     });
 
     it('leads each button where it says, named with its section, the first one the main one', () => {
+        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, animeId: 1 })], { id: 1, title: 'Watched' })] });
+        useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1 })], { id: 1, title: 'Read' })] });
         render(<SectionCards />);
         const paste = screen.getByRole('button', { name: 'PASTE A LINK: VIDEO DOWNLOADER' });
         expect(paste).toHaveClass('btn', 'btn--primary');
@@ -129,6 +130,49 @@ describe('SectionCards', () => {
         expect(actions.openManga.mock.calls).toEqual([['updates'], ['library']]);
     });
 
+    it('offers the search of the anime instead of the updates while the library of the anime is empty', () => {
+        render(<SectionCards />);
+        expect(within(card('ANIME')).getAllByRole('button').map((button) => {
+            return button.textContent;
+        })).toEqual(['SEARCH', 'LIBRARY']);
+        const search = screen.getByRole('button', { name: 'SEARCH: ANIME' });
+        expect(search).toHaveClass('btn', 'btn--primary');
+        fireEvent.click(search);
+        expect(actions.openAnime.mock.calls).toEqual([['search']]);
+    });
+
+    it('offers the extensions instead of the updates while the library of the manga is empty and no extension gives a source', () => {
+        useMangaStore.setState({ browse: { ...initialManga.browse, sources: [], sourcesStatus: 'ready' } });
+        render(<SectionCards />);
+        expect(within(card('MANGA')).getAllByRole('button').map((button) => {
+            return button.textContent;
+        })).toEqual(['EXTENSIONS', 'LIBRARY']);
+        fireEvent.click(screen.getByRole('button', { name: 'EXTENSIONS: MANGA' }));
+        expect(actions.openManga.mock.calls).toEqual([['extensions']]);
+    });
+
+    it('offers the extensions while it is not known yet whether an extension gives a source', () => {
+        useMangaStore.setState({ browse: { ...initialManga.browse, sources: [makeSource()], sourcesStatus: 'loading' } });
+        render(<SectionCards />);
+        expect(screen.getByRole('button', { name: 'EXTENSIONS: MANGA' })).toBeInTheDocument();
+    });
+
+    it('offers the browse instead of the updates while the library of the manga is empty and an extension gives a source', () => {
+        useMangaStore.setState({ browse: { ...initialManga.browse, sources: [makeSource()], sourcesStatus: 'ready' } });
+        render(<SectionCards />);
+        expect(within(card('MANGA')).getAllByRole('button').map((button) => {
+            return button.textContent;
+        })).toEqual(['BROWSE', 'LIBRARY']);
+        fireEvent.click(screen.getByRole('button', { name: 'BROWSE: MANGA' }));
+        expect(actions.openManga.mock.calls).toEqual([['browse']]);
+    });
+
+    it('offers the updates of the manga again once the library has a manga, whatever the sources', () => {
+        useMangaStore.setState({ library: [makeLibraryManga([], { id: 1 })], browse: { ...initialManga.browse, sources: [], sourcesStatus: 'ready' } });
+        render(<SectionCards />);
+        expect(screen.getByRole('button', { name: 'UPDATES: MANGA' })).toBeInTheDocument();
+    });
+
     it('has no block for a section that does not exist here', () => {
         useAnimeStore.setState({ status: makeStatus({ supported: false }) });
         useMangaStore.setState({ status: makeMangaStatus({ supported: false }) });
@@ -136,5 +180,27 @@ describe('SectionCards', () => {
         expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => {
             return heading.textContent;
         })).toEqual(['VIDEO DOWNLOADER']);
+    });
+});
+
+describe('animeFirstAction and mangaFirstAction', () => {
+    it('lead the anime to its updates, or to its search while its library is empty', () => {
+        const updates = animeFirstAction(false);
+        const search = animeFirstAction(true);
+        expect([updates.label, search.label]).toEqual(['anime.nav.updates', 'anime.nav.search']);
+        updates.onClick();
+        search.onClick();
+        expect(actions.openAnime.mock.calls).toEqual([['updates'], ['search']]);
+    });
+
+    it('lead the manga to its updates, or, while its library is empty, to the browse when there is a source and to the extensions otherwise', () => {
+        const cases = [mangaFirstAction(false, false), mangaFirstAction(false, true), mangaFirstAction(true, true), mangaFirstAction(true, false)];
+        expect(cases.map((action) => {
+            return action.label;
+        })).toEqual(['manga.nav.updates', 'manga.nav.updates', 'manga.nav.browse', 'manga.nav.extensions']);
+        cases.forEach((action) => {
+            action.onClick();
+        });
+        expect(actions.openManga.mock.calls).toEqual([['updates'], ['updates'], ['browse'], ['extensions']]);
     });
 });

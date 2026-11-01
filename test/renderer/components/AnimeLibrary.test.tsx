@@ -6,6 +6,7 @@ import { AnimeLibrary } from '@renderer/components/AnimeLibrary';
 import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useBackdropStore } from '@renderer/store/backdropStore';
+import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { makeAnimeHistory } from '../../helpers/homeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -19,6 +20,8 @@ beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
     useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, jobs: [], library: [], search: INITIAL_SEARCH, selection: null, playing: null });
+    useSortPrefsStore.setState({ library: { ...DEFAULT_SORT_PREFS.library }, list: { ...DEFAULT_SORT_PREFS.list } });
+    window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
 });
 
 const LIBRARY = [
@@ -335,6 +338,40 @@ describe('AnimeLibrary', () => {
             expect(within(screen.getByTestId('season-view')).getAllByTestId('anime-episode')).toHaveLength(1);
             expect(first).not.toBeNull();
             expect(mock.api.openAnimeFolder).not.toHaveBeenCalled();
+        });
+
+        it('lists the episodes of the season from the first, or from the last when the user chooses it, and keeps the choice', async () => {
+            const user = userEvent.setup();
+            const anime = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' }), makeEpisode({ id: 3, number: '3' })], { id: 1, title: 'Naruto' });
+            useAnimeStore.setState({ library: [anime] });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+            await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+            const view = screen.getByTestId('season-view');
+            const episodes = (): string[] => {
+                return within(view).getAllByTestId('anime-episode').map((row) => {
+                    return row.textContent?.match(/EP \d+/)?.[0] ?? '';
+                });
+            };
+            const order = within(view).getByRole('combobox', { name: 'Sort by' });
+            expect(order).toHaveValue('asc');
+            expect(order.closest('.list-order-bar')?.nextElementSibling).toHaveClass('episode-cards');
+            expect(episodes()).toEqual(['EP 1', 'EP 2', 'EP 3']);
+            await user.selectOptions(order, 'desc');
+            expect(episodes()).toEqual(['EP 3', 'EP 2', 'EP 1']);
+            expect(useSortPrefsStore.getState().list).toEqual({ chapters: 'asc', episodes: 'desc' });
+        });
+
+        it('starts the episodes of the season from the last one when that is the order kept', async () => {
+            const user = userEvent.setup();
+            useSortPrefsStore.setState({ list: { chapters: 'asc', episodes: 'desc' } });
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' })], { id: 1, title: 'Naruto' })] });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+            await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+            expect(screen.getAllByTestId('anime-episode').map((row) => {
+                return row.textContent?.match(/EP \d+/)?.[0] ?? '';
+            })).toEqual(['EP 2', 'EP 1']);
         });
 
         it('keeps the secondary buttons and the editor of a season inside it, and the main ones on its row', async () => {
@@ -2086,6 +2123,30 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
         render(<AnimeLibrary />);
         expect(cardNames()).toEqual(['Saga', 'Solo', 'Alpha Old']);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
+        expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
+    });
+
+    it('shows the titles by name from Z when asked', async () => {
+        render(<AnimeLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'za');
+        expect(cardNames()).toEqual(['Solo', 'Saga', 'Alpha Old']);
+    });
+
+    it('keeps the order chosen, for the next time the library opens and for the next time the app opens', async () => {
+        const { unmount } = render(<AnimeLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'za');
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: 'za', manga: 'recent' });
+        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'za', manga: 'recent' }, list: { chapters: 'asc', episodes: 'asc' } });
+        unmount();
+        render(<AnimeLibrary />);
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
+        expect(cardNames()).toEqual(['Solo', 'Saga', 'Alpha Old']);
+    });
+
+    it('starts with the order kept', () => {
+        useSortPrefsStore.setState({ library: { anime: 'az', manga: 'recent' } });
+        render(<AnimeLibrary />);
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('az');
         expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
     });
 

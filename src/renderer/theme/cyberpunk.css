@@ -82,9 +82,11 @@ body::after {
 }
 
 .app__main {
+    /* The room above the page, which the bar of the reader reaches up over (see .reader__bar). */
+    --main-pad-top: 16px;
     flex: 1;
     overflow-y: auto;
-    padding: 16px 4px 24px;
+    padding: var(--main-pad-top) 4px 24px;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -999,6 +1001,16 @@ body::after {
 }
 
 .player__button:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: var(--glow); }
+/* The pictures of the buttons are characters the font draws at different sizes: each one is scaled (from the size of the button, so it holds
+   in fullscreen too) to the height of the biggest, the loudspeaker (15 pixels at 12: measured in the app). */
+/* The buttons with a picture are all as wide as each other (the pause, two bars, was wider). */
+.player__button:has(> .player__icon) { width: 44px; padding: 0; letter-spacing: 0; }
+.player__icon { display: inline-block; line-height: 1; vertical-align: middle; }
+.player__icon--play { font-size: 1.5em; }
+.player__icon--pause { font-size: 1.15em; }
+.player__icon--volume, .player__icon--mute { font-size: 1em; }
+.player__icon--settings { font-size: 1.5em; }
+.player__icon--fullscreen { font-size: 1.65em; }
 .player__button:focus-visible, .player__range:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
 
 .player__select {
@@ -1037,6 +1049,28 @@ body::after {
 
 .player__setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .player__setting-label { font-size: 12px; color: var(--muted); }
+.player__switch { width: 18px; height: 18px; margin: 0; accent-color: var(--cyan); cursor: pointer; }
+/* The next episode, over the video once one ended: as the zone between two chapters of the reader, a bar that fills and the two buttons. */
+.player__auto-next {
+    position: absolute;
+    right: 24px;
+    bottom: 72px;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: min(360px, calc(100% - 48px));
+    padding: 16px 18px;
+    background: color-mix(in srgb, var(--panel, var(--bg)) 92%, transparent);
+    border: 1px solid var(--cyan);
+    box-shadow: var(--glow);
+    backdrop-filter: blur(6px);
+}
+.player__auto-next-label { font-size: 12px; letter-spacing: 2px; color: var(--muted); }
+.player__auto-next-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player__auto-next-hint { font-size: 12px; color: var(--muted); }
+.player__auto-next-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .player__settings .player__select { max-width: 180px; }
 
 /* Over the video while it waits for data (after a jump on a stream), and the time under the mouse on the timeline. */
@@ -1320,8 +1354,8 @@ body::after {
 
 /* The reader of a chapter. */
 .manga__reader.reader { gap: 8px; }
-/* The bar stays at the top of the scroll of the page: it reaches up over the padding of the page (16 px), so nothing shows above it. */
-.reader__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; position: sticky; top: -16px; z-index: 2; margin-top: -16px; padding: 22px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+/* The bar stays at the top of the scroll of the page: it reaches up over the padding of the page (--main-pad-top), so nothing shows above it. */
+.reader__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; position: sticky; top: calc(-1 * var(--main-pad-top, 16px)); z-index: 2; margin-top: calc(-1 * var(--main-pad-top, 16px)); padding: 22px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .reader__title { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader__page { color: var(--muted); letter-spacing: 1px; min-width: 64px; text-align: center; }
 .reader__progress { flex: 1 1 100%; order: 10; margin-top: 2px; }
@@ -1339,7 +1373,7 @@ body::after {
 .reader__float { position: fixed; right: 24px; bottom: 24px; z-index: 5; display: flex; align-items: center; gap: 10px; }
 .reader__auto { height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .reader__top { width: 44px; height: 44px; padding: 0; font-size: 22px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
-.reader__stage, .reader__scroll { display: flex; flex-direction: column; align-items: center; min-height: 40vh; padding: 8px; border: 1px solid var(--line); }
+.reader__stage, .reader__scroll { position: relative; display: flex; flex-direction: column; align-items: center; min-height: 40vh; padding: 8px; border: 1px solid var(--line); }
 .reader__stage { cursor: pointer; justify-content: center; }
 .reader__scroll { gap: 8px; }
 .reader__scroll--webtoon { gap: 0; padding: 0; }
@@ -1356,7 +1390,9 @@ body::after {
 .reader__failed { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; }
 /* A page whose picture is still on its way holds its place with a block, and the picture waits beside it (it still loads, but takes no room). */
 .reader__loading-page { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 70vh; box-sizing: border-box; padding: 24px; color: var(--muted); letter-spacing: 2px; background: var(--line); }
-.reader__img--pending { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* Stronger than the sizes of the scales (.reader__stage--width .reader__img and the others): a picture on its way at its full size, out of the
+   flow, made the page scroll for a moment. */
+.reader__img.reader__img--pending { position: absolute; width: 1px; height: 1px; max-width: 1px; max-height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 /* The chapter is opening: the pages are not known yet, the block holds the place of the reading. */
 .reader__chapter-loading { justify-content: center; min-height: 70vh; color: var(--muted); letter-spacing: 2px; cursor: default; }
 
@@ -1390,6 +1426,8 @@ body::after {
 
 /* The zones between chapters in the scroll: the one above the first page (the previous chapter) and the one below the last (the next one). */
 .reader__flow { display: flex; flex-direction: column; gap: 8px; }
+/* The area of the reader in fullscreen (a double click on the pages, in the scroll modes): the background of the theme behind the pages. */
+.app__main:fullscreen { background: var(--bg); }
 .reader__zone { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 16px; text-align: center; border: 1px dashed var(--line); color: var(--muted); }
 .reader__zone-label { color: var(--cyan); font-size: 12px; letter-spacing: 2px; }
 .reader__zone-title { color: var(--text); font-size: 18px; overflow-wrap: anywhere; }

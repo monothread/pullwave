@@ -7,6 +7,7 @@ import { MangaDetail } from '@renderer/components/MangaDetail';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaSelection } from '@renderer/store/mangaStore';
 import { useBackdropStore } from '@renderer/store/backdropStore';
+import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { progressKey, saveLastChapter, saveProgress } from '@renderer/components/readerPrefs';
 import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
@@ -33,6 +34,8 @@ beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
     useMangaStore.setState({ ...initialManga, library: [], selection: null, selectionFrom: 'library', view: 'library' });
+    useSortPrefsStore.setState({ library: { ...DEFAULT_SORT_PREFS.library }, list: { ...DEFAULT_SORT_PREFS.list } });
+    window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
 });
 
 describe('MangaDetail', () => {
@@ -1412,5 +1415,58 @@ describe('MangaDetail: the page of a manga as a hero', () => {
         open({ manga: makeSummary({ thumbnailUrl: null }) });
         render(<MangaDetail />);
         expect(useBackdropStore.getState().url).toBeNull();
+    });
+});
+
+describe('MangaDetail the order of the chapters', () => {
+    function names(): string[] {
+        return screen.getAllByTestId('manga-chapter').map((row) => {
+            return within(row).getAllByRole('button')[0]!.textContent ?? '';
+        });
+    }
+
+    it('has the field of the order over the list, from the first chapter by default', () => {
+        open();
+        render(<MangaDetail />);
+        const order = screen.getByRole('combobox', { name: 'Sort by' });
+        expect(order).toHaveValue('asc');
+        expect(order.closest('.list-order-bar')?.nextElementSibling).toHaveClass('episode-cards', 'manga__chapters');
+        expect(names()).toEqual(['Romance Dawn', '#2', '#3']);
+    });
+
+    it('lists the chapters from the last one when the user chooses it, and keeps the choice', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaDetail />);
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'desc');
+        expect(names()).toEqual(['#3', '#2', 'Romance Dawn']);
+        expect(useSortPrefsStore.getState().list.chapters).toBe('desc');
+        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'recent', manga: 'recent' }, list: { chapters: 'desc', episodes: 'asc' } });
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'asc');
+        expect(names()).toEqual(['Romance Dawn', '#2', '#3']);
+    });
+
+    it('starts from the last chapter when that is the order kept', () => {
+        useSortPrefsStore.setState({ list: { chapters: 'desc', episodes: 'asc' } });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
+        expect(names()).toEqual(['#3', '#2', 'Romance Dawn']);
+    });
+
+    it('gives the reader the chapters from the first to the last whatever the order of the list', async () => {
+        const user = userEvent.setup();
+        useSortPrefsStore.setState({ list: { chapters: 'desc', episodes: 'asc' } });
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'READ: #3' }));
+        expect(useMangaStore.getState().reader).toMatchObject({
+            index: 2,
+            chapters: [
+                { remoteId: 11, libraryChapterId: null, name: 'Romance Dawn', number: 1 },
+                { remoteId: 12, libraryChapterId: null, name: '', number: 2 },
+                { remoteId: 13, libraryChapterId: null, name: '', number: 3 }
+            ]
+        });
     });
 });

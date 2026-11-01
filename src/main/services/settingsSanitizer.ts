@@ -10,7 +10,6 @@ import {
     MIN_LIVE_END_CHECK_SECONDS,
     MIN_TITLE_LENGTH,
     RESOLUTIONS,
-    START_TABS,
     THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
@@ -97,7 +96,6 @@ export function sanitizeSettings(input: unknown): Settings {
         verifyLiveEndSeconds: pickClampedInteger(raw.verifyLiveEndSeconds, MIN_LIVE_END_CHECK_SECONDS, MAX_LIVE_END_CHECK_SECONDS, defaults.verifyLiveEndSeconds),
         theme: pickEnum(raw.theme, THEMES, defaults.theme),
         language: pickEnum(raw.language, LANGUAGE_SETTINGS, defaults.language),
-        startTab: pickEnum(raw.startTab, START_TABS, defaults.startTab),
         extraArgs: pickString(raw.extraArgs, defaults.extraArgs),
         animeDownloadDir: pickString(raw.animeDownloadDir, defaults.animeDownloadDir),
         animeQuality: pickEnum(raw.animeQuality, ANIME_QUALITIES, defaults.animeQuality),

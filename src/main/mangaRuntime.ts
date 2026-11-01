@@ -13,6 +13,7 @@ import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, isCompletePage, mangaDirectory }
 import { createImageFetcher } from './services/manga/mangaImages';
 import { LocalPages } from './services/manga/localPages';
 import { MangaCovers } from './services/manga/mangaCovers';
+import { CoverChain, fallbackProviders } from './services/covers/coverChain';
 import { MangaIcons } from './services/manga/mangaIcons';
 import { createMangaProtocolHandler } from './services/manga/mangaPageProtocol';
 import { MangaReader } from './services/manga/mangaReader';
@@ -52,6 +53,9 @@ export interface MangaRuntimeOptions {
     migrationFiles?: MangaMigrationFileSystem;
     // A server that is already running: nothing is downloaded and nothing is started (used by the end-to-end tests).
     externalBaseUrl?: string | null;
+    // The address that stands in for the services of covers asked when the source gives none (used by the end-to-end tests; see
+    // FallbackOptions).
+    coverFallbackUrl?: string;
     // How the program is downloaded and how the server is started (the tests replace them).
     toolDependencies?: Partial<ToolInstallerDependencies>;
     serverDependencies?: Partial<SuwayomiServerDependencies>;
@@ -274,7 +278,8 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         baseUrl: () => {
             return service.baseUrl;
         },
-        fetchImpl: options.fetchImpl
+        fetchImpl: options.fetchImpl,
+        fallback: new CoverChain('manga', fallbackProviders('manga', { baseUrl: options.coverFallbackUrl, fetchFn: options.fetchImpl }))
     });
     const fileOf = (chapterId: number): string | null => {
         const chapter = db.getChapter(chapterId);

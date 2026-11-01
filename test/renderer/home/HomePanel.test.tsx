@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { HomePanel } from '@renderer/home/HomePanel';
 import { useAnimeStore } from '@renderer/store/animeStore';
@@ -14,13 +14,14 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 const initialManga = useMangaStore.getState();
 const loadHistory = vi.fn(async () => {});
+const loadSources = vi.fn(async () => {});
 
 beforeEach(() => {
     vi.clearAllMocks();
     installMockApi();
-    useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: 'anime' }, jobs: [] });
+    useAppStore.setState({ settings: { ...DEFAULT_SETTINGS }, jobs: [] });
     useAnimeStore.setState({ status: makeStatus(), library: [], history: [], jobs: [], covers: {}, loadCover: vi.fn(async () => {}) });
-    useMangaStore.setState({ status: makeMangaStatus(), library: [], history: [], jobs: [], loadHistory });
+    useMangaStore.setState({ status: makeMangaStatus(), library: [], history: [], jobs: [], loadHistory, loadSources, browse: { ...initialManga.browse, sourcesStatus: 'idle' } });
 });
 
 afterEach(() => {
@@ -40,12 +41,13 @@ describe('HomePanel', () => {
         const home = screen.getByRole('region', { name: 'Home' });
         expect(home).toHaveClass('home');
         expect(within(home).getByRole('region', { name: 'WELCOME TO PULLWAVE' })).toBeInTheDocument();
-        expect(within(home).getByRole('button', { name: 'GO TO ANIME' })).toBeInTheDocument();
+        expect(within(within(home).getByRole('region', { name: 'WELCOME TO PULLWAVE' })).queryByRole('button')).not.toBeInTheDocument();
         expect(within(home).queryByRole('region', { name: 'Highlights' })).not.toBeInTheDocument();
         expect(within(home).getByRole('list', { name: 'Sections' })).toBeInTheDocument();
     });
 
-    it('shows the highlights of both sections, the one of "Open on" first, and no welcome', () => {
+
+    it('shows the highlights of both sections, the anime first, and no welcome', () => {
         fill();
         render(<HomePanel />);
         const highlights = screen.getByRole('region', { name: 'Highlights' });
@@ -55,11 +57,21 @@ describe('HomePanel', () => {
         expect(screen.queryByRole('region', { name: 'WELCOME TO PULLWAVE' })).not.toBeInTheDocument();
     });
 
-    it('puts the manga first when "Open on" says manga', () => {
+    it('puts the manga after the anime in the highlights', () => {
         fill();
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: 'manga' } });
         render(<HomePanel />);
-        expect(within(screen.getByRole('region', { name: 'Highlights' })).getByRole('heading', { level: 2 })).toHaveTextContent('Reading');
+        const highlights = screen.getByRole('region', { name: 'Highlights' });
+        fireEvent.click(within(highlights).getByRole('button', { name: 'Highlight 2 of 2' }));
+        expect(within(highlights).getByRole('heading', { level: 2 })).toHaveTextContent('Reading');
+    });
+
+    it('leaves out of the highlights a manga whose last chapter read was read to the end, when it has no chapter after it', () => {
+        fill();
+        useMangaStore.setState({ history: [makeReading({ id: 5, title: 'Reading', libraryMangaId: 1, chapterRemoteId: makeChapterRecord({ id: 1 }).remoteId, page: 9, pageCount: 10 })] });
+        render(<HomePanel />);
+        const highlights = screen.getByRole('region', { name: 'Highlights' });
+        expect(within(highlights).getByRole('heading', { level: 2 })).toHaveTextContent('Watching');
+        expect(within(highlights).queryByRole('button', { name: /^Highlight/ })).not.toBeInTheDocument();
     });
 
     it('leaves out the highlights of a section that does not exist here', () => {
@@ -78,13 +90,30 @@ describe('HomePanel', () => {
         expect(within(screen.getByRole('region', { name: 'Highlights' })).getByRole('heading', { level: 2 })).toHaveTextContent('Watching');
     });
 
-    it('reads the history of reading once the manga server runs, and not before', () => {
+    it('reads the history of reading and the sources once the manga server runs, and not before', () => {
         useMangaStore.setState({ status: makeMangaStatus({ server: 'starting' }) });
         const { unmount } = render(<HomePanel />);
         expect(loadHistory).not.toHaveBeenCalled();
+        expect(loadSources).not.toHaveBeenCalled();
         unmount();
         useMangaStore.setState({ status: makeMangaStatus() });
         render(<HomePanel />);
         expect(loadHistory).toHaveBeenCalledTimes(1);
+        expect(loadSources).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['loading', 'ready', 'error'] as const)('does not read the sources again when they were asked for already (%s)', (sourcesStatus) => {
+        useMangaStore.setState({ browse: { ...initialManga.browse, sourcesStatus } });
+        render(<HomePanel />);
+        expect(loadHistory).toHaveBeenCalledTimes(1);
+        expect(loadSources).not.toHaveBeenCalled();
+    });
+
+    it('reads nothing of the manga where the section does not exist', () => {
+        useMangaStore.setState({ status: makeMangaStatus({ supported: false }) });
+        render(<HomePanel />);
+        expect(loadHistory).not.toHaveBeenCalled();
+        expect(loadSources).not.toHaveBeenCalled();
     });
 });
+

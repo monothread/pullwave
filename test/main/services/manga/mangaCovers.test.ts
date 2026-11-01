@@ -18,7 +18,7 @@ afterEach(() => {
 
 type Answer = Response | Error;
 
-function setup(options: { baseUrl?: string | null; answers?: Answer[] } = {}) {
+function setup(options: { baseUrl?: string | null; answers?: Answer[]; fallback?: { find: (title: string) => Promise<string | null> } } = {}) {
     const directory = join(makeTempDir(), 'covers');
     const db = new MangaDb(':memory:');
     const requested: Array<{ url: string; init: RequestInit | undefined }> = [];
@@ -34,7 +34,8 @@ function setup(options: { baseUrl?: string | null; answers?: Answer[] } = {}) {
         baseUrl: () => {
             return options.baseUrl === undefined ? BASE : options.baseUrl;
         },
-        fetchImpl
+        fetchImpl,
+        fallback: options.fallback
     });
     const add = (remoteId: number, thumbnailUrl: string | null = `/api/v1/manga/${String(remoteId)}/thumbnail`) => {
         return db.upsertManga({ remoteId, sourceId: '1', title: `Manga ${String(remoteId)}`, thumbnailUrl });
@@ -108,7 +109,7 @@ describe('MangaCovers refresh', () => {
         expect(db.coverHash(manga.id)).toBe(hash(JPEG));
     });
 
-    it('does nothing for a manga that is not in the library, has no cover, or has a path while the server is not running', async () => {
+    it('does nothing for a manga that is not in the library, has no cover, or has a path while the server is not running, when there is no fallback', async () => {
         const { covers, fetchImpl, add } = setup({ baseUrl: null });
         await expect(covers.refresh(999)).resolves.toBe(false);
         await expect(covers.refresh(add(1, null).id)).resolves.toBe(false);
@@ -231,5 +232,123 @@ describe('MangaCovers removal', () => {
         expect(() => {
             covers.remove(5);
         }).not.toThrow();
+    });
+});
+
+describe('MangaCovers the cover looked for in other services', () => {
+    const FALLBACK_COVER = 'https://uploads.example/covers/a/b.jpg.512.jpg';
+
+    function fallbackFinding(url: string | null) {
+        return {
+            find: vi.fn(async (title: string): Promise<string | null> => {
+                void title;
+                return url;
+            })
+        };
+    }
+
+    it('takes the cover of the source when it comes, without asking the other services', async () => {
+        const fallback = fallbackFinding(FALLBACK_COVER);
+        const { covers, requested, add, db } = setup({ fallback });
+        const manga = add(7);
+        await expect(covers.refresh(manga.id)).resolves.toBe(true);
+        expect(fallback.find).not.toHaveBeenCalled();
+        expect(requested.map((item) => {
+            return item.url;
+        })).toEqual([`${BASE}/api/v1/manga/7/thumbnail`]);
+        expect(db.coverHash(manga.id)).toBe(hash(JPEG));
+    });
+
+    it('looks the cover up by the title when the source gives none, and keeps the picture it finds', async () => {
+        const fallback = fallbackFinding(FALLBACK_COVER);
+        const { covers, requested, add, db, directory } = setup({ fallback, answers: [new Response(PNG)] });
+        const manga = add(1, null);
+        await expect(covers.refresh(manga.id)).resolves.toBe(true);
+        expect(fallback.find.mock.calls).toEqual([['Manga 1']]);
+        expect(requested).toEqual([{ url: FALLBACK_COVER, init: { signal: expect.any(AbortSignal) } }]);
+        expect(readFileSync(join(directory, String(manga.id)))).toEqual(Buffer.from(PNG));
+        expect(db.coverHash(manga.id)).toBe(hash(PNG));
+        expect(covers.urlOf(manga.id)).toBe(`pullwave-manga://cover/${String(manga.id)}?v=${hash(PNG).slice(0, FINGERPRINT_LENGTH)}`);
+    });
+
+    it('looks the cover up by the title when the one of the source does not come', async () => {
+        const fallback = fallbackFinding(FALLBACK_COVER);
+        const { covers, requested, add, db } = setup({ fallback, answers: [new Response('no', { status: 404 }), new Response(PNG)] });
+        const manga = add(7);
+        await expect(covers.refresh(manga.id)).resolves.toBe(true);
+        expect(requested.map((item) => {
+            return item.url;
+        })).toEqual([`${BASE}/api/v1/manga/7/thumbnail`, FALLBACK_COVER]);
+        expect(db.coverHash(manga.id)).toBe(hash(PNG));
+    });
+
+    it('looks the cover up by the title when what the source gives is not a picture, or is of an address it cannot take', async () => {
+        const fallback = fallbackFinding(FALLBACK_COVER);
+        const { covers, requested, add } = setup({ fallback, baseUrl: null, answers: [new Response('<html></html>'), new Response(PNG), new Response(PNG)] });
+        await expect(covers.refresh(add(1, 'https://cdn.example/a.jpg').id)).resolves.toBe(true);
+        await expect(covers.refresh(add(2, 'ftp://x/y.jpg').id)).resolves.toBe(true);
+        expect(requested.map((item) => {
+            return item.url;
+        })).toEqual(['https://cdn.example/a.jpg', FALLBACK_COVER, FALLBACK_COVER]);
+        expect(fallback.find.mock.calls).toEqual([['Manga 1'], ['Manga 2']]);
+    });
+
+    it('waits for the server for a cover that is a path of it, without asking the other services or marking it as failed', async () => {
+        const fallback = fallbackFinding(FALLBACK_COVER);
+        const { covers, fetchImpl, add } = setup({ fallback, baseUrl: null });
+        const manga = add(3);
+        await expect(covers.refresh(manga.id)).resolves.toBe(false);
+        expect(fallback.find).not.toHaveBeenCalled();
+        expect(fetchImpl).not.toHaveBeenCalled();
+        expect(covers.pending(true)).toBe(true);
+    });
+
+    it('marks the cover as failed when no service has one, and does not ask again until the app opens again', async () => {
+        const fallback = fallbackFinding(null);
+        const { covers, fetchImpl, add, db } = setup({ fallback });
+        const manga = add(1, null);
+        expect(covers.pending(false)).toBe(true);
+        await expect(covers.backfill()).resolves.toBe(false);
+        expect(fallback.find.mock.calls).toEqual([['Manga 1']]);
+        expect(fetchImpl).not.toHaveBeenCalled();
+        expect(db.coverHash(manga.id)).toBeNull();
+        expect(covers.pending(false)).toBe(false);
+        await covers.backfill();
+        expect(fallback.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('marks the cover as failed when the other services cannot be asked, or what they give does not come', async () => {
+        const failing = { find: vi.fn(async (): Promise<string | null> => {
+            throw new Error('Kitsu could not be reached: offline');
+        }) };
+        const first = setup({ fallback: failing });
+        await expect(first.covers.refresh(first.add(1, null).id)).resolves.toBe(false);
+        expect(first.covers.pending(false)).toBe(false);
+
+        const second = setup({ fallback: fallbackFinding(FALLBACK_COVER), answers: [new Response('no', { status: 503 })] });
+        await expect(second.covers.refresh(second.add(1, null).id)).resolves.toBe(false);
+        expect(second.requested.map((item) => {
+            return item.url;
+        })).toEqual([FALLBACK_COVER]);
+        expect(second.covers.pending(false)).toBe(false);
+    });
+
+    it('does not take what the other services give when it is not a web address', async () => {
+        const fallback = fallbackFinding('file:///etc/passwd');
+        const { covers, fetchImpl, add } = setup({ fallback });
+        await expect(covers.refresh(add(1, null).id)).resolves.toBe(false);
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('takes, in the run of the ones the library lacks, the covers of the mangas whose source gives none', async () => {
+        const fallback = fallbackFinding(FALLBACK_COVER);
+        const { covers, add, db } = setup({ fallback, answers: [new Response(JPEG), new Response(PNG)] });
+        const withCover = add(1);
+        const withoutCover = add(2, null);
+        await expect(covers.backfill()).resolves.toBe(true);
+        expect(fallback.find.mock.calls).toEqual([['Manga 2']]);
+        expect(db.coverHash(withCover.id)).toBe(hash(JPEG));
+        expect(db.coverHash(withoutCover.id)).toBe(hash(PNG));
+        expect(covers.pending(true)).toBe(false);
     });
 });

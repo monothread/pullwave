@@ -14,8 +14,8 @@ interface LibraryControlsProps {
 }
 
 const SORT_KEYS = {
-    anime: { recent: 'library.sort.recent', last: 'library.sort.lastWatched', az: 'library.sort.az' },
-    manga: { recent: 'library.sort.recent', last: 'library.sort.lastRead', az: 'library.sort.az' }
+    anime: { recent: 'library.sort.recent', last: 'library.sort.lastWatched', az: 'library.sort.az', za: 'library.sort.za' },
+    manga: { recent: 'library.sort.recent', last: 'library.sort.lastRead', az: 'library.sort.az', za: 'library.sort.za' }
 } as const;
 
 // Over the grid of a library: the chips ALL and NEW (with what arrived in the last seven days) and the order of the cards.

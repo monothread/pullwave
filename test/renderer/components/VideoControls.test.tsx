@@ -105,6 +105,7 @@ describe('VideoControls', () => {
     it('starts paused at 0:00 with the duration of the video', () => {
         setup();
         expect(screen.getByRole('button', { name: 'Play' })).toHaveTextContent('▶');
+        expect(screen.getByRole('button', { name: 'Play' }).querySelector('.player__icon')).toHaveClass('player__icon--play');
         expect(screen.getAllByText('0:00')).toHaveLength(1);
         expect(screen.getByText('2:00')).toBeInTheDocument();
         expect(screen.getByRole('slider', { name: 'Seek' })).toHaveAttribute('max', '120');
@@ -127,6 +128,7 @@ describe('VideoControls', () => {
             fireEvent.play(video);
         });
         expect(screen.getByRole('button', { name: 'Pause' })).toHaveTextContent('❚❚');
+        expect(screen.getByRole('button', { name: 'Pause' }).querySelector('.player__icon')).toHaveClass('player__icon--pause');
         expect(document.querySelector('.player__controls')).toHaveAttribute('data-playing', 'true');
 
         await user.click(screen.getByRole('button', { name: 'Pause' }));
@@ -414,6 +416,7 @@ describe('VideoControls', () => {
             fireEvent(video, new Event('volumechange'));
         });
         expect(screen.getByRole('button', { name: 'Unmute' })).toHaveTextContent('🔇');
+        expect(screen.getByRole('button', { name: 'Unmute' }).querySelector('.player__icon')).toHaveClass('player__icon--mute');
         expect(screen.getByRole('slider', { name: 'Volume' })).toHaveValue('0');
 
         await user.click(screen.getByRole('button', { name: 'Unmute' }));
@@ -422,6 +425,7 @@ describe('VideoControls', () => {
             fireEvent(video, new Event('volumechange'));
         });
         expect(screen.getByRole('button', { name: 'Mute' })).toHaveTextContent('🔊');
+        expect(screen.getByRole('button', { name: 'Mute' }).querySelector('.player__icon')).toHaveClass('player__icon--volume');
         expect(screen.getByRole('slider', { name: 'Volume' })).toHaveValue('1');
     });
 
@@ -1174,3 +1178,38 @@ describe('VideoControls following the time at every frame', () => {
         expect(window.cancelAnimationFrame).toHaveBeenLastCalledWith(2);
     });
 });
+
+describe('VideoControls: the icons and the switch of the next episode', () => {
+    function renderControls(autoNext?: { enabled: boolean; onToggle: () => void }, subtitles: SubtitleOption[] = []) {
+        const ref = createRef<HTMLVideoElement>();
+        const video = document.createElement('video');
+        document.body.appendChild(video);
+        (ref as { current: HTMLVideoElement | null }).current = video;
+        render(<VideoControls video={ref} subtitles={subtitles} selectedSubtitle={null} onSelectSubtitle={vi.fn()} autoNext={autoNext} />);
+    }
+
+    it('draws the fullscreen button with its icon, hidden from the screen readers', () => {
+        renderControls();
+        const icon = screen.getByRole('button', { name: 'Fullscreen' }).querySelector('.player__icon');
+        expect(icon).toHaveClass('player__icon--fullscreen');
+        expect(icon).toHaveAttribute('aria-hidden', 'true');
+        expect(icon).toHaveTextContent('⛶');
+    });
+
+    it('has no gear with no subtitles and no switch of the next episode', () => {
+        renderControls();
+        expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument();
+    });
+
+    it('has the gear for the switch of the next episode, and hands it to the settings', async () => {
+        const user = userEvent.setup();
+        const onToggle = vi.fn();
+        renderControls({ enabled: false, onToggle });
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        const toggle = screen.getByRole('switch', { name: 'Next episode automatically' });
+        expect(toggle).toHaveProperty('checked', false);
+        await user.click(toggle);
+        expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+});
+

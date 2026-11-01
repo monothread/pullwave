@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { MessageKey } from '@shared/i18n';
-import type { StartTab } from '@shared/types';
+import type { HomeSection } from '@shared/types';
 import { SectionIcon, type SectionIconName } from '../components/SectionIcon';
 import { SECTION_TABS } from '../components/SideNav';
 import { useTranslator } from '../i18n/useTranslator';
@@ -17,7 +17,7 @@ interface CardAction {
 }
 
 export interface SectionCardModel {
-    section: StartTab;
+    section: HomeSection;
     title: MessageKey;
     picture: SectionIconName;
     // What goes on in the section, a line each.
@@ -27,12 +27,12 @@ export interface SectionCardModel {
     actions: CardAction[];
 }
 
-function isSection(id: string): id is StartTab {
+function isSection(id: string): id is HomeSection {
     return id === 'downloads' || id === 'anime' || id === 'manga';
 }
 
 // The sections in the order of the menu on the left (top to bottom is left to right here), without the ones that do not exist here.
-export function sectionOrder(animeSupported: boolean, mangaSupported: boolean): StartTab[] {
+export function sectionOrder(animeSupported: boolean, mangaSupported: boolean): HomeSection[] {
     return SECTION_TABS.map((tab) => {
         return tab.id;
     })
@@ -40,6 +40,51 @@ export function sectionOrder(animeSupported: boolean, mangaSupported: boolean): 
         .filter((section) => {
             return (section !== 'anime' || animeSupported) && (section !== 'manga' || mangaSupported);
         });
+}
+
+// The first button of the block of the anime: the updates of the library, or the search while the library is empty.
+export function animeFirstAction(libraryEmpty: boolean): CardAction {
+    if (libraryEmpty) {
+        return {
+            label: 'anime.nav.search',
+            onClick: () => {
+                openAnime('search');
+            }
+        };
+    }
+    return {
+        label: 'anime.nav.updates',
+        onClick: () => {
+            openAnime('updates');
+        }
+    };
+}
+
+// The first button of the block of the manga: the updates of the library; while the library is empty, the browse when an extension gives a
+// source, else the extensions to install one.
+export function mangaFirstAction(libraryEmpty: boolean, hasSources: boolean): CardAction {
+    if (!libraryEmpty) {
+        return {
+            label: 'manga.nav.updates',
+            onClick: () => {
+                openManga('updates');
+            }
+        };
+    }
+    if (hasSources) {
+        return {
+            label: 'manga.nav.browse',
+            onClick: () => {
+                openManga('browse');
+            }
+        };
+    }
+    return {
+        label: 'manga.nav.extensions',
+        onClick: () => {
+            openManga('extensions');
+        }
+    };
 }
 
 function SectionCard({ card }: { card: SectionCardModel }) {
@@ -98,6 +143,10 @@ export function SectionCards() {
     const mangaJobs = useMangaStore((state) => {
         return state.jobs;
     });
+    // Whether an extension gives a source to browse (known once the sources were read).
+    const hasSources = useMangaStore((state) => {
+        return state.browse.sourcesStatus === 'ready' && state.browse.sources.length > 0;
+    });
     const cards = useMemo(() => {
         const active = activeDownloads(videoJobs, animeJobs, mangaJobs);
         const count = (kind: 'video' | 'anime' | 'manga', status?: 'running' | 'queued'): number => {
@@ -116,7 +165,7 @@ export function SectionCards() {
         const mangaNewsCount = mangaNews(mangaLibrary, openedAt).count;
         const running = count('video', 'running');
         const waiting = count('video', 'queued');
-        const models: Record<StartTab, SectionCardModel> = {
+        const models: Record<HomeSection, SectionCardModel> = {
             downloads: {
                 section: 'downloads',
                 title: 'tab.downloads',
@@ -135,12 +184,7 @@ export function SectionCards() {
                 lines: [newsLine(animeNewsCount), ...downloadsLine('anime')],
                 busy: animeNewsCount > 0 || count('anime') > 0,
                 actions: [
-                    {
-                        label: 'anime.nav.updates',
-                        onClick: () => {
-                            openAnime('updates');
-                        }
-                    },
+                    animeFirstAction(animeLibrary.length === 0),
                     {
                         label: 'home.card.library',
                         onClick: () => {
@@ -156,12 +200,7 @@ export function SectionCards() {
                 lines: [newsLine(mangaNewsCount), ...downloadsLine('manga')],
                 busy: mangaNewsCount > 0 || count('manga') > 0,
                 actions: [
-                    {
-                        label: 'manga.nav.updates',
-                        onClick: () => {
-                            openManga('updates');
-                        }
-                    },
+                    mangaFirstAction(mangaLibrary.length === 0, hasSources),
                     {
                         label: 'home.card.library',
                         onClick: () => {
@@ -174,7 +213,7 @@ export function SectionCards() {
         return sectionOrder(animeSupported, mangaSupported).map((section) => {
             return models[section];
         });
-    }, [t, openedAt, videoJobs, animeSupported, animeLibrary, animeJobs, mangaSupported, mangaLibrary, mangaJobs]);
+    }, [t, openedAt, videoJobs, animeSupported, animeLibrary, animeJobs, mangaSupported, mangaLibrary, mangaJobs, hasSources]);
 
     return (
         <ul className="section-cards" aria-label={t('home.cards')}>

@@ -19,7 +19,9 @@ import { subtitleDisplayNames } from './subtitleName';
 import { SubtitleGenerateDialog } from './SubtitleGenerateDialog';
 import { SubtitleTranslateDialog } from './SubtitleTranslateDialog';
 import { VideoControls } from './VideoControls';
-import { animeErrorKey, isWatched, nextDownloadedEpisode, previousDownloadedEpisode, resumePosition } from './animeText';
+import { AutoNextPanel } from './AutoNextPanel';
+import { useUiPrefsStore } from '../store/uiPrefsStore';
+import { animeErrorKey, isWatched, nextDownloadedEpisode, previousDownloadedEpisode, resumePosition, type PlayableEpisode } from './animeText';
 
 // How often the position is saved while watching.
 export const SAVE_INTERVAL_SECONDS = 5;
@@ -76,6 +78,14 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
     const [generating, setGenerating] = useState(false);
     // Whether the list of the subtitles of the episode has arrived: until then it is not known whether it has any.
     const [tracksLoaded, setTracksLoaded] = useState(false);
+    // The episode ended and the next one is counted down to (see AutoNextPanel).
+    const [upNext, setUpNext] = useState(false);
+    const autoNext = useUiPrefsStore((state) => {
+        return state.autoNext;
+    });
+    const toggleAutoNext = useUiPrefsStore((state) => {
+        return state.toggleAutoNext;
+    });
     const setNotice = useAppStore((state) => {
         return state.setNotice;
     });
@@ -139,6 +149,12 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
         });
     }
 
+    // Another episode (the one before or the next): where this one was is saved first.
+    function goTo(target: PlayableEpisode): void {
+        save();
+        play(target.anime.id, target.episode.id);
+    }
+
     function close(): void {
         save();
         closePlayer();
@@ -172,8 +188,7 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                                 type="button"
                                 className="btn btn--small"
                                 onClick={() => {
-                                    save();
-                                    play(previous.anime.id, previous.episode.id);
+                                    goTo(previous);
                                 }}
                             >
                                 {t('anime.player.previous')}
@@ -184,8 +199,7 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                                 type="button"
                                 className="btn btn--small"
                                 onClick={() => {
-                                    save();
-                                    play(next.anime.id, next.episode.id);
+                                    goTo(next);
                                 }}
                             >
                                 {t('anime.player.next')}
@@ -288,7 +302,16 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                             }
                         }}
                         onPause={save}
-                        onEnded={save}
+                        onPlay={() => {
+                            // Played again after it ended: the user stays on this episode.
+                            setUpNext(false);
+                        }}
+                        onEnded={() => {
+                            save();
+                            if (autoNext && next !== null) {
+                                setUpNext(true);
+                            }
+                        }}
                         onError={() => {
                             setFailed(true);
                         }}
@@ -306,7 +329,24 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                         );
                     })}
                     </video>
-                    <VideoControls video={video} subtitles={optionsOf(tracks, language)} selectedSubtitle={subtitle} onSelectSubtitle={chooseSubtitle} />
+                    {upNext && next !== null && (
+                        <AutoNextPanel
+                            title={t('anime.job.title', { title: next.anime.title, episode: next.episode.number })}
+                            onGo={() => {
+                                goTo(next);
+                            }}
+                            onCancel={() => {
+                                setUpNext(false);
+                            }}
+                        />
+                    )}
+                    <VideoControls
+                        video={video}
+                        subtitles={optionsOf(tracks, language)}
+                        selectedSubtitle={subtitle}
+                        onSelectSubtitle={chooseSubtitle}
+                        autoNext={{ enabled: autoNext, onToggle: toggleAutoNext }}
+                    />
                 </div>
             </div>
         </div>

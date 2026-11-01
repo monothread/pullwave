@@ -11,6 +11,7 @@ import { AniCliService } from './services/aniCliService';
 import { subtitleLabels } from './services/aniSubtitles';
 import { AnimeDb } from './services/animeDb';
 import { AnimeCoverService } from './services/animeCovers';
+import { fallbackProviders } from './services/covers/coverChain';
 import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
 import { AnimeAiringService } from './services/animeAiring';
@@ -93,6 +94,8 @@ export interface AnimeRuntimeOptions {
     translationSleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
     // The address the schedule of the day is asked at, instead of AniList's (used by the end-to-end tests).
     scheduleUrl?: string;
+    // The address that stands in for the services of covers asked when AniList has none (used by the end-to-end tests; see FallbackOptions).
+    coverFallbackUrl?: string;
     // When the look for new episodes happens: that long after the app opens, and again that often (used by the end-to-end tests).
     checkTimes?: { firstMs: number; everyMs: number };
     send: (channel: string, payload?: unknown) => void;
@@ -394,6 +397,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     const streams = new StreamSessions();
     const covers = new AnimeCoverService({
         url: options.scheduleUrl,
+        fallbacks: fallbackProviders('anime', { baseUrl: options.coverFallbackUrl }),
         store: {
             get: (key) => {
                 return db.getCover(key);

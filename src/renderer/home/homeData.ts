@@ -1,7 +1,9 @@
 import type { AnimeHistoryEntry, AnimeJob, LibraryAnime } from '@shared/anime';
-import type { MangaJob, ReadingEntry } from '@shared/manga';
+import type { LibraryManga, MangaChapterRecord, MangaJob, ReadingEntry } from '@shared/manga';
 import type { DownloadJob } from '@shared/types';
 import { libraryEntry, nextDownloadedEpisode } from '../components/animeText';
+import { adjacentSeason, compareChaptersAscending } from '../components/mangaText';
+import { progressKey } from '../components/readerPrefs';
 
 // What the home screen and the highlights read from the stores: what to go on with and the downloads going on. Nothing here asks the main
 // process for anything.
@@ -83,16 +85,95 @@ export function continueWatching(library: readonly LibraryAnime[], history: read
     return items;
 }
 
-// The mangas read most recently, with how far their last chapter was read.
-export function continueReading(history: readonly ReadingEntry[], limit: number = CONTINUE_LIMIT): ContinueReadingItem[] {
-    return [...history]
-        .sort((first, second) => {
-            return second.readAt - first.readAt;
-        })
-        .slice(0, limit)
-        .map((entry) => {
-            return { entry, progress: entry.pageCount > 0 ? Math.min(1, (entry.page + 1) / entry.pageCount) : 0 };
-        });
+// Whether a chapter of a manga was marked as read (the keys are the ones the reader and the page of the manga write).
+type ChapterReadCheck = (mangaTitle: string, chapterRemoteId: number) => boolean;
+
+// Whether the chapter of an entry of the history was read to the end: left on its last page, or marked as read.
+function finishedReading(entry: ReadingEntry, isRead: ChapterReadCheck): boolean {
+    return (entry.pageCount > 0 && entry.page >= entry.pageCount - 1) || isRead(entry.title, entry.chapterRemoteId);
+}
+
+// The first chapter of a manga that is not read, after the one given (from the first when none is given), in the order of its list. Null
+// when there is none, or when the chapter given is not in the manga any more.
+function firstUnreadAfter(manga: LibraryManga, afterRemoteId: number | null, isRead: ChapterReadCheck): MangaChapterRecord | null {
+    const ordered = [...manga.chapters].sort(compareChaptersAscending);
+    const place = afterRemoteId === null ? -1 : ordered.findIndex((chapter) => {
+        return chapter.remoteId === afterRemoteId;
+    });
+    if (afterRemoteId !== null && place === -1) {
+        return null;
+    }
+    return (
+        ordered.slice(place + 1).find((chapter) => {
+            return !isRead(manga.title, chapter.remoteId);
+        }) ?? null
+    );
+}
+
+// The entry pointed at another chapter (of the same manga or of its next season), not started yet.
+function atChapter(entry: ReadingEntry, manga: LibraryManga, chapter: MangaChapterRecord): ReadingEntry {
+    return {
+        ...entry,
+        sourceId: manga.sourceId,
+        mangaRemoteId: manga.remoteId,
+        title: manga.title,
+        thumbnailUrl: manga.thumbnailUrl,
+        libraryMangaId: manga.id,
+        chapterRemoteId: chapter.remoteId,
+        chapterName: chapter.name,
+        chapterNumber: chapter.number,
+        page: 0,
+        pageCount: chapter.pageCount
+    };
+}
+
+// What to go on with after a chapter read to the end: the next chapter not read of the manga, else the first one not read of its next
+// season. Null when there is none (the manga is up to date, or finished) or the manga is not in the library.
+function nextChapterEntry(entry: ReadingEntry, library: readonly LibraryManga[], isRead: ChapterReadCheck): ReadingEntry | null {
+    const manga = library.find((candidate) => {
+        return candidate.id === entry.libraryMangaId;
+    });
+    if (manga === undefined) {
+        return null;
+    }
+    const inSeason = firstUnreadAfter(manga, entry.chapterRemoteId, isRead);
+    if (inSeason !== null) {
+        return atChapter(entry, manga, inSeason);
+    }
+    const season = adjacentSeason(library, manga, 1);
+    const first = season === null ? null : firstUnreadAfter(season, null, isRead);
+    return season === null || first === null ? null : atChapter(entry, season, first);
+}
+
+function readingProgress(entry: ReadingEntry): number {
+    return entry.pageCount > 0 ? Math.min(1, (entry.page + 1) / entry.pageCount) : 0;
+}
+
+// The mangas read most recently, with how far their chapter was read. A chapter read to the end (to its last page, or marked as read) is not
+// one to go on with: its place goes to the next chapter not read (not started yet), or the manga is left out when there is none. A manga
+// shows once, where it was read last.
+export function continueReading(history: readonly ReadingEntry[], library: readonly LibraryManga[], readKeys: readonly string[], limit: number = CONTINUE_LIMIT): ContinueReadingItem[] {
+    const read = new Set(readKeys);
+    const isRead: ChapterReadCheck = (mangaTitle, chapterRemoteId) => {
+        return read.has(progressKey(mangaTitle, chapterRemoteId));
+    };
+    const seen = new Set<string>();
+    const items: ContinueReadingItem[] = [];
+    const recentFirst = [...history].sort((first, second) => {
+        return second.readAt - first.readAt;
+    });
+    for (const original of recentFirst) {
+        if (items.length >= limit) {
+            break;
+        }
+        const entry = finishedReading(original, isRead) ? nextChapterEntry(original, library, isRead) : original;
+        const mangaKey = entry === null ? '' : `${entry.sourceId}|${String(entry.mangaRemoteId)}`;
+        if (entry !== null && !seen.has(mangaKey)) {
+            seen.add(mangaKey);
+            items.push({ entry, progress: readingProgress(entry) });
+        }
+    }
+    return items;
 }
 
 function isActive(status: string): status is ActiveDownloadItem['status'] {

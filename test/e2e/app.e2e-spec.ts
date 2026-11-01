@@ -56,7 +56,7 @@ async function launch(options: LaunchOptions = {}): Promise<Session> {
     prepare?.(userData);
     const app = await electron.launch({
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`, ...args],
-        env: { ...process.env, ...installedProgramsEnv(workDir), FAKE_YTDLP_LOG: logPath, ...env }
+        env: { ...process.env, ...installedProgramsEnv(workDir), FAKE_YTDLP_LOG: logPath, PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9', ...env }
     });
     let exited = false;
     app.on('close', () => {
@@ -1400,53 +1400,51 @@ test.describe('themes', () => {
 });
 
 test.describe('the screen the app opens on', () => {
-    test('is the home screen, and "Open on" offers the three sections to show first there', async () => {
+    test('is the home screen, the welcome has no button, and the settings have no "Open on" any more', async () => {
         const own = await launch({ stayHome: true });
         try {
             await expect(own.page.getByRole('button', { name: 'HOME', exact: true })).toHaveAttribute('aria-current', 'page');
-            await expect(own.page.getByRole('region', { name: 'Home' })).toBeVisible();
+            const home = own.page.getByRole('region', { name: 'Home' });
+            await expect(home).toBeVisible();
             await expect(own.page.getByLabel('Link 1')).toHaveCount(0);
+            await expect(home.locator('.section-card__title')).toHaveText(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
+            await expect(home.getByRole('region', { name: 'WELCOME TO PULLWAVE' }).getByRole('button')).toHaveCount(0);
             await openGlobalSettings(own.page);
-            await expect(own.page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
-            expect(await own.page.getByLabel('Open on', { exact: true }).locator('option').allTextContents()).toEqual(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
-            await expect(own.page.getByText('The section the home screen shows first, and where its big button goes when there is nothing to go on with. The app always opens on the home screen.')).toBeVisible();
+            await expect(own.page.getByLabel('Open on', { exact: true })).toHaveCount(0);
+            await expect(own.page.getByText('The section the home screen shows first, and where its big button goes when there is nothing to go on with. The app always opens on the home screen.')).toHaveCount(0);
         } finally {
             await own.app.close();
         }
     });
 
-    test('choosing the anime saves it right away, without changing the section that is open', async () => {
-        const { page, userData } = session;
-        await openGlobalSettings(page);
-        await page.getByLabel('Open on', { exact: true }).selectOption('anime');
-
-        await expect.poll(() => {
-            return readSettings(userData).startTab;
-        }).toBe('anime');
-        await expect(page.getByRole('button', { name: 'SETTINGS (GLOBAL)' })).toHaveAttribute('aria-current', 'page');
+    test('offers the search of the anime, instead of its updates, while the library of the anime is empty, and goes to it', async () => {
+        const own = await launch({ stayHome: true });
+        try {
+            const home = own.page.getByRole('region', { name: 'Home' });
+            const animeCard = home.locator('.section-card--anime');
+            await expect(animeCard.getByRole('button')).toHaveText(['SEARCH', 'LIBRARY']);
+            await expect(animeCard.getByRole('button', { name: 'SEARCH: ANIME' })).toHaveClass(/btn--primary/);
+            await animeCard.getByRole('button', { name: 'SEARCH: ANIME' }).click();
+            await expect(own.page.getByRole('button', { name: 'ANIME', exact: true })).toHaveAttribute('aria-current', 'page');
+            await expect(own.page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SEARCH', exact: true })).toHaveAttribute('aria-current', 'page');
+            await expect(own.page.getByLabel('Anime name')).toBeVisible();
+        } finally {
+            await own.app.close();
+        }
     });
 
-    test('opens on the home screen, with the blocks in the order of the menu, when the settings say anime', async () => {
-        const own = await launch({ settings: { startTab: 'anime' }, stayHome: true });
+    test('drops the start tab an older version saved, at the first save, and still opens on the home screen', async () => {
+        const own = await launch({ settings: { startTab: 'manga' }, stayHome: true });
         try {
             const home = own.page.getByRole('region', { name: 'Home' });
             await expect(home).toBeVisible();
-            await expect(own.page.getByRole('button', { name: 'HOME', exact: true })).toHaveAttribute('aria-current', 'page');
-            // The blocks follow the menu on the left, whatever "Open on" says.
             await expect(home.locator('.section-card__title')).toHaveText(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
-            await expect(home.getByRole('button', { name: 'GO TO ANIME' })).toBeVisible();
-        } finally {
-            await own.app.close();
-        }
-    });
-
-    test('opens on the home screen with the block of the video downloader first when the settings hold something that is not a section', async () => {
-        const own = await launch({ settings: { startTab: 'history' }, stayHome: true });
-        try {
-            const home = own.page.getByRole('region', { name: 'Home' });
-            await expect(home.locator('.section-card__title').first()).toHaveText('VIDEO DOWNLOADER');
             await openGlobalSettings(own.page);
-            await expect(own.page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
+            await own.page.getByLabel('Theme').selectOption('cyberpunk');
+            await expect.poll(() => {
+                return readSettings(own.userData).theme;
+            }).toBe('cyberpunk');
+            expect(readSettings(own.userData)).not.toHaveProperty('startTab');
         } finally {
             await own.app.close();
         }

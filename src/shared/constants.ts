@@ -1,4 +1,4 @@
-import type { AudioFormat, BrowserName, LanguageCode, LanguageSetting, MaxResolution, Settings, SiteBrowser, StartTab, ThemeName, ThemeStyle, VideoContainer } from './types';
+import type { AudioFormat, BrowserName, LanguageCode, LanguageSetting, MaxResolution, Settings, SiteBrowser, ThemeName, ThemeStyle, VideoContainer } from './types';
 
 export const IPC = {
     settingsGet: 'settings:get',
@@ -209,7 +209,6 @@ export const THEME_STYLES: Readonly<Record<Exclude<ThemeName, 'device'>, ThemeSt
     sakura: 'flat'
 };
 export const LANGUAGE_CODES: readonly LanguageCode[] = ['en', 'pt', 'es', 'zh', 'ja'];
-export const START_TABS: readonly StartTab[] = ['downloads', 'anime', 'manga'];
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['device', ...LANGUAGE_CODES];
 export const FALLBACK_LANGUAGE: LanguageCode = 'en';
 
@@ -253,7 +252,6 @@ export const DEFAULT_SETTINGS: Settings = {
     verifyLiveEndSeconds: 10,
     theme: 'device',
     language: 'device',
-    startTab: 'downloads',
     extraArgs: '',
     animeDownloadDir: '',
     animeQuality: 'best',

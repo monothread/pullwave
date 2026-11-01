@@ -45,6 +45,11 @@ describe('hasPlayerSettings', () => {
     it('is false when there is nothing to set', () => {
         expect(hasPlayerSettings([])).toBe(false);
     });
+
+    it('is true when there is the switch of the next episode, even with no subtitles', () => {
+        expect(hasPlayerSettings([], { enabled: true, onToggle: vi.fn() })).toBe(true);
+        expect(hasPlayerSettings(OPTIONS, { enabled: false, onToggle: vi.fn() })).toBe(true);
+    });
 });
 
 describe('PlayerSettings', () => {
@@ -142,9 +147,64 @@ describe('PlayerSettings', () => {
         expect(screen.getByRole('button', { name: 'Smaller subtitles' })).toBeEnabled();
     });
 
+    it('draws the gear as its icon, hidden from the screen readers', () => {
+        setup({ open: false });
+        const icon = screen.getByRole('button', { name: 'Settings' }).querySelector('.player__icon');
+        expect(icon).toHaveClass('player__icon', 'player__icon--settings');
+        expect(icon).toHaveAttribute('aria-hidden', 'true');
+        expect(icon).toHaveTextContent('⚙');
+    });
+
+    it('has no switch of the next episode when the player has none', () => {
+        setup();
+        expect(screen.queryByRole('switch', { name: 'Next episode automatically' })).not.toBeInTheDocument();
+    });
+
     it('has no color and no background control', () => {
         setup();
         expect(screen.queryByRole('combobox', { name: 'Subtitle color' })).not.toBeInTheDocument();
         expect(screen.queryByRole('combobox', { name: 'Subtitle background' })).not.toBeInTheDocument();
     });
 });
+
+describe('PlayerSettings: the next episode that starts by itself', () => {
+    function renderWith(enabled: boolean, subtitles: SubtitleOption[] = OPTIONS) {
+        const onToggle = vi.fn();
+        render(
+            <PlayerSettings
+                open
+                onOpenChange={vi.fn()}
+                subtitles={subtitles}
+                selectedSubtitle="default"
+                onSelectSubtitle={vi.fn()}
+                subtitleStyle={makeStyle()}
+                autoNext={{ enabled, onToggle }}
+            />
+        );
+        return { onToggle };
+    }
+
+    it.each([true, false])('shows the switch first, on or off as it is (%s), with its label', (enabled) => {
+        renderWith(enabled);
+        const dialog = screen.getByRole('dialog', { name: 'Settings' });
+        const toggle = within(dialog).getByRole('switch', { name: 'Next episode automatically' });
+        expect(toggle).toHaveClass('player__switch');
+        expect(toggle).toHaveProperty('checked', enabled);
+        expect(dialog.querySelector('.player__setting')).toHaveTextContent('Next episode automatically');
+    });
+
+    it('asks to turn it on or off when it is clicked', async () => {
+        const user = userEvent.setup();
+        const { onToggle } = renderWith(true);
+        await user.click(screen.getByRole('switch', { name: 'Next episode automatically' }));
+        expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows only the switch when there are no subtitles', () => {
+        renderWith(true, []);
+        expect(screen.getByRole('switch', { name: 'Next episode automatically' })).toBeInTheDocument();
+        expect(screen.queryByRole('combobox', { name: 'Subtitles' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('group', { name: 'Subtitle size' })).not.toBeInTheDocument();
+    });
+});
+

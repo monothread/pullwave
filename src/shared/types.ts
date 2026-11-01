@@ -108,8 +108,8 @@ export interface DetectedBrowser {
 export type SiteBrowser = 'default' | BrowserName;
 export type MaxResolution = 'best' | '2160' | '1440' | '1080' | '720' | '480';
 
-// The tab the app opens on when it starts.
-export type StartTab = 'downloads' | 'anime' | 'manga';
+// A section of the app with a block on the home screen.
+export type HomeSection = 'downloads' | 'anime' | 'manga';
 
 export interface Settings {
     downloadDir: string;
@@ -145,7 +145,6 @@ export interface Settings {
     verifyLiveEndSeconds: number;
     theme: ThemeName;
     language: LanguageSetting;
-    startTab: StartTab;
     extraArgs: string;
     // Anime section (Linux and Windows).
     animeDownloadDir: string;

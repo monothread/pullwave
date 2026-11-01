@@ -28,14 +28,17 @@ export function TopBar({ menuOpen, onToggleMenu }: TopBarProps) {
     const t = useTranslator();
     return (
         <header className="app__header topbar">
-            <button type="button" className="topbar__button topbar__menu" aria-label={t(menuOpen ? 'nav.menu.close' : 'nav.menu.open')} aria-expanded={menuOpen} aria-controls="side-nav" onClick={onToggleMenu}>
-                <span aria-hidden="true">☰</span>
-            </button>
-            <div className="brand">
-                <BrandWave />
-                <h1 className="logo" data-text="PULLWAVE">
-                    PULLWAVE
-                </h1>
+            {/* The menu and the name share the start of the bar, as wide as its end, so the search is in the middle of the window. */}
+            <div className="topbar__start">
+                <button type="button" className="topbar__button topbar__menu" aria-label={t(menuOpen ? 'nav.menu.close' : 'nav.menu.open')} aria-expanded={menuOpen} aria-controls="side-nav" onClick={onToggleMenu}>
+                    <span aria-hidden="true">☰</span>
+                </button>
+                <div className="brand">
+                    <BrandWave />
+                    <h1 className="logo" data-text="PULLWAVE">
+                        PULLWAVE
+                    </h1>
+                </div>
             </div>
             <GlobalSearch />
             <div className="topbar__end">

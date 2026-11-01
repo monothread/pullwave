@@ -14,10 +14,10 @@ function keys(items: readonly SpotlightItem[]): string[] {
 }
 
 describe('the constants', () => {
-    it('counts as new what arrived in the last seven days, shows eight highlights at most and sorts by date or by name', () => {
+    it('counts as new what arrived in the last seven days, shows eight highlights at most and sorts by date or by name, from A or from Z', () => {
         expect(NEWS_WINDOW_MS).toBe(7 * DAY);
         expect(SPOTLIGHT_LIMIT).toBe(8);
-        expect(LIBRARY_SORTS).toEqual(['recent', 'last', 'az']);
+        expect(LIBRARY_SORTS).toEqual(['recent', 'last', 'az', 'za']);
     });
 });
 
@@ -92,7 +92,7 @@ describe('mangaSpotlight', () => {
         const entry = makeReading({ id: 9, title: 'Reading', libraryMangaId: 1, page: 9, pageCount: 20, thumbnailUrl: 'https://img/r.jpg' });
         const elsewhere = makeReading({ id: 10, title: 'Elsewhere', libraryMangaId: null });
         const [group] = groupLibrary([news]);
-        expect(mangaSpotlight([reading, news], [entry, elsewhere], NOW)).toEqual([
+        expect(mangaSpotlight([reading, news], [entry, elsewhere], [], NOW)).toEqual([
             { key: 'manga-continue-9', kind: 'manga', reason: 'continue', title: 'Reading', coverUrl: 'https://img/r.jpg', entry, progress: 0.5 },
             { key: 'manga-news-manga-2', kind: 'manga', reason: 'news', title: 'News', coverUrl: 'https://img/n.jpg', group, count: 1 }
         ]);
@@ -100,8 +100,33 @@ describe('mangaSpotlight', () => {
 
     it('does not repeat a manga that is already there to go on with, and stops at the limit', () => {
         const entry = makeReading({ id: 9, libraryMangaId: 2 });
-        expect(keys(mangaSpotlight([news], [entry], NOW))).toEqual(['manga-continue-9']);
-        expect(mangaSpotlight([reading, news], [makeReading({ id: 9, libraryMangaId: 1 })], NOW, 1)).toHaveLength(1);
+        expect(keys(mangaSpotlight([news], [entry], [], NOW))).toEqual(['manga-continue-9']);
+        expect(mangaSpotlight([reading, news], [makeReading({ id: 9, libraryMangaId: 1 })], [], NOW, 1)).toHaveLength(1);
+    });
+
+    it('goes on with the next chapter not read of a manga whose chapter was read to its last page', () => {
+        const manga = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, number: 1 }), makeChapterRecord({ id: 2, remoteId: 12, number: 2, name: 'The Great Race', pageCount: 18 })], { id: 1, title: 'Reading', thumbnailUrl: 'https://img/r.jpg' });
+        const finished = makeReading({ id: 9, title: 'Reading', libraryMangaId: 1, chapterRemoteId: 11, page: 19, pageCount: 20, thumbnailUrl: 'https://img/r.jpg' });
+        expect(mangaSpotlight([manga], [finished], [], NOW)).toEqual([
+            {
+                key: 'manga-continue-9',
+                kind: 'manga',
+                reason: 'continue',
+                title: 'Reading',
+                coverUrl: 'https://img/r.jpg',
+                entry: { ...finished, chapterRemoteId: 12, chapterName: 'The Great Race', chapterNumber: 2, page: 0, pageCount: 18 },
+                progress: 1 / 18
+            }
+        ]);
+    });
+
+    it('leaves out a manga whose chapter was marked as read when every chapter after it is read too, and shows its news instead', () => {
+        const manga = makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11, number: 1 }), makeChapterRecord({ id: 2, remoteId: 12, number: 2, addedAt: NOW - DAY })], { id: 1, title: 'Reading', thumbnailUrl: 'https://img/r.jpg' });
+        const marked = makeReading({ id: 9, title: 'Reading', libraryMangaId: 1, chapterRemoteId: 11, page: 3, pageCount: 20 });
+        const [group] = groupLibrary([manga]);
+        expect(mangaSpotlight([manga], [marked], ['Reading|11', 'Reading|12'], NOW)).toEqual([
+            { key: 'manga-news-manga-1', kind: 'manga', reason: 'news', title: 'Reading', coverUrl: 'https://img/r.jpg', group, count: 1 }
+        ]);
     });
 });
 
@@ -109,15 +134,18 @@ describe('mixSpotlight', () => {
     const a = [{ key: 'a1' }, { key: 'a2' }, { key: 'a3' }] as SpotlightItem[];
     const m = [{ key: 'm1' }] as SpotlightItem[];
 
-    it('takes one of each in turn, the section of "Open on" first', () => {
-        expect(keys(mixSpotlight(a, m, 'anime'))).toEqual(['a1', 'm1', 'a2', 'a3']);
-        expect(keys(mixSpotlight(a, m, 'manga'))).toEqual(['m1', 'a1', 'a2', 'a3']);
-        expect(keys(mixSpotlight(a, m, 'downloads'))).toEqual(['a1', 'm1', 'a2', 'a3']);
+    it('takes one of each in turn, the anime first', () => {
+        expect(keys(mixSpotlight(a, m))).toEqual(['a1', 'm1', 'a2', 'a3']);
+    });
+
+    it('takes the manga in turn too when there are more of them', () => {
+        expect(keys(mixSpotlight(m, a))).toEqual(['m1', 'a1', 'a2', 'a3']);
+        expect(keys(mixSpotlight([], a))).toEqual(['a1', 'a2', 'a3']);
     });
 
     it('stops at the limit and is empty with nothing', () => {
-        expect(keys(mixSpotlight(a, m, 'anime', 2))).toEqual(['a1', 'm1']);
-        expect(mixSpotlight([], [], 'anime')).toEqual([]);
+        expect(keys(mixSpotlight(a, m, 2))).toEqual(['a1', 'm1']);
+        expect(mixSpotlight([], [])).toEqual([]);
     });
 });
 
@@ -148,7 +176,20 @@ describe('sortGroups and filterGroups', () => {
         ).toEqual(['alpha 2', 'Alpha 10', 'beta', 'Same']);
     });
 
+    it('sorts by name from Z, whatever the case, with the numbers by their value', () => {
+        expect(
+            sortGroups(groups, 'za', never).map((group) => {
+                return group.series;
+            })
+        ).toEqual(['Same', 'beta', 'Alpha 10', 'alpha 2']);
+    });
+
     it('does not change the list it was given', () => {
+        sortGroups(groups, 'za', never);
+        expect(groups[0]?.series).toBe('beta');
+    });
+
+    it('does not change the list it was given, by name from A either', () => {
         sortGroups(groups, 'az', never);
         expect(groups[0]?.series).toBe('beta');
     });

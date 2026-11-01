@@ -7,6 +7,7 @@ import { AnimeSearch } from '@renderer/components/AnimeSearch';
 import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useBackdropStore } from '@renderer/store/backdropStore';
+import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
@@ -24,6 +25,8 @@ beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, notice: null });
     useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, jobs: [], library: [], search: INITIAL_SEARCH, selection: null, playing: null, streaming: null });
+    useSortPrefsStore.setState({ library: { ...DEFAULT_SORT_PREFS.library }, list: { ...DEFAULT_SORT_PREFS.list } });
+    window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
 });
 
 describe('AnimeSearch form', () => {
@@ -367,6 +370,43 @@ describe('AnimeDetail', () => {
         expect(screen.getByRole('button', { name: 'EP 4' })).not.toHaveClass('episode-chip--done');
     });
 
+    describe('the order of the episodes', () => {
+        function chips(): string[] {
+            return Array.from(document.querySelectorAll('.episode-chip')).map((chip) => {
+                return chip.textContent ?? '';
+            });
+        }
+
+        it('has the field of the order beside the count, from the first episode by default', () => {
+            open(['1', '2', '3']);
+            render(<AnimeSearch />);
+            const order = screen.getByRole('combobox', { name: 'Sort by' });
+            expect(order).toHaveValue('asc');
+            expect(order.closest('.queue__toolbar')).toHaveTextContent('3 EPISODES');
+            expect(chips()).toEqual(['EP 1', 'EP 2', 'EP 3']);
+        });
+
+        it('lists the episodes from the last one when the user chooses it, keeps the choice, and plays the one clicked', async () => {
+            const user = userEvent.setup();
+            open(['1', '2', '3']);
+            render(<AnimeSearch />);
+            await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'desc');
+            expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);
+            expect(useSortPrefsStore.getState().list).toEqual({ chapters: 'asc', episodes: 'desc' });
+            expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'recent', manga: 'recent' }, list: { chapters: 'asc', episodes: 'desc' } });
+            await user.click(screen.getByRole('button', { name: 'EP 3' }));
+            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'cyberpunk', index: 1, audio: 'sub', episode: '3' });
+        });
+
+        it('starts from the last episode when that is the order kept', () => {
+            useSortPrefsStore.setState({ list: { chapters: 'asc', episodes: 'desc' } });
+            open(['1', '2', '3']);
+            render(<AnimeSearch />);
+            expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
+            expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);
+        });
+    });
+
     it('has a button to the library, instead of the one that adds, when the anime is in the library', async () => {
         const user = userEvent.setup();
         const showInLibrary = vi.fn();
@@ -616,7 +656,8 @@ describe('AnimeDetail', () => {
                     })
             ).toEqual(['Bleach', 'Frieren']);
             await user.type(field, 'fri');
-            expect(screen.getAllByRole('option')).toHaveLength(1);
+            // Only the series of the list (the field of the order of the episodes has options of its own).
+            expect(within(screen.getByRole('listbox', { name: 'In the library' })).getAllByRole('option')).toHaveLength(1);
         });
 
         it('puts the series that is picked in the field, and keeps a new name when none is picked', async () => {

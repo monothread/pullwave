@@ -113,46 +113,11 @@ describe('SettingsPanel layout', () => {
     });
 });
 
-describe('SettingsPanel start tab', () => {
-    it('lists the video downloader and the anime, opening on the video downloader by default, with its hint', () => {
-        render(<SettingsPanel scope="global" />);
-        const select = screen.getByLabelText('Open on');
-        expect(select).toHaveValue('downloads');
-        const options = Array.from(select.querySelectorAll('option')).map((option) => {
-            return [option.getAttribute('value'), option.textContent];
-        });
-        expect(options).toEqual([
-            ['downloads', 'VIDEO DOWNLOADER'],
-            ['anime', 'ANIME'],
-            ['manga', 'MANGA']
-        ]);
-        expect(screen.getByText('The section the home screen shows first, and where its big button goes when there is nothing to go on with. The app always opens on the home screen.')).toBeInTheDocument();
-    });
-
-    it('shows the one that is saved', () => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: 'anime' } });
-        render(<SettingsPanel scope="global" />);
-        expect(screen.getByLabelText('Open on')).toHaveValue('anime');
-    });
-
-    it('shows the manga tab when it is the one that is saved', () => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: 'manga' } });
-        render(<SettingsPanel scope="global" />);
-        expect(screen.getByLabelText('Open on')).toHaveValue('manga');
-    });
-
-    it.each(['downloads', 'anime', 'manga'] as const)('saves right away when the start tab changes to "%s"', async (startTab) => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, startTab: startTab === 'anime' ? 'downloads' : 'anime' } });
-        render(<SettingsPanel scope="global" />);
-        fireEvent.change(screen.getByLabelText('Open on'), { target: { value: startTab } });
-        await flushPromises();
-        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
-        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, startTab });
-    });
-
-    it('is only in the global settings', () => {
-        render(<SettingsPanel scope="anime" />);
+describe('SettingsPanel without the start tab', () => {
+    it.each(['global', 'anime', 'manga'] as const)('has no field "Open on" in the %s settings: the app always opens on the home screen', (scope) => {
+        render(<SettingsPanel scope={scope} />);
         expect(screen.queryByLabelText('Open on')).not.toBeInTheDocument();
+        expect(screen.queryByText('The section the home screen shows first, and where its big button goes when there is nothing to go on with. The app always opens on the home screen.')).not.toBeInTheDocument();
     });
 });
 

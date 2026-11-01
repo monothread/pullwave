@@ -284,7 +284,7 @@ async function launch(settings: Record<string, unknown> = {}, env: Record<string
     const app = await electron.launch({
         executablePath: ELECTRON_PATH,
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-        env: { ...process.env, PULLWAVE_NO_TOOLS: '1', PULLWAVE_MANGA_URL: fake.url, ...env }
+        env: { ...process.env, PULLWAVE_NO_TOOLS: '1', PULLWAVE_MANGA_URL: fake.url, PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9', ...env }
     });
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
@@ -2222,6 +2222,115 @@ test.describe('manga section', () => {
         return { reader, area: session.page.locator('.app__main'), title: reader.locator('.reader__title') };
     }
 
+    test('puts the reader in fullscreen with a double click on the pages, and leaves it with another or with Escape, without closing the reader', async () => {
+        const { reader } = await openWebtoon();
+        const fullscreenOf = async (): Promise<string | null> => {
+            return session.page.evaluate(() => {
+                return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+            });
+        };
+        await reader.getByRole('img').nth(1).dblclick();
+        await expect.poll(fullscreenOf).toContain('app__main');
+        await expect(reader.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'true');
+        // The bar of the reader is still on top of the pages.
+        await expect(reader.locator('.reader__bar')).toBeVisible();
+        // Another chapter is read in fullscreen too: the fullscreen stays while it loads.
+        await reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true }).click();
+        await expect(reader.locator('.reader__title')).toHaveText('One Piece · The Great Race');
+        await expect(reader.locator('.reader__loading-page')).toHaveCount(0);
+        await expect.poll(fullscreenOf).toContain('app__main');
+        await expect(reader.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'true');
+
+        await reader.getByTestId('reader-scroll').dblclick();
+        await expect.poll(fullscreenOf).toBeNull();
+        await expect(reader.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'false');
+
+        await reader.getByRole('img').nth(0).dblclick();
+        await expect.poll(fullscreenOf).toContain('app__main');
+        await session.page.keyboard.press('Escape');
+        await expect.poll(fullscreenOf).toBeNull();
+        await expect(reader).toBeVisible();
+        await expect(reader.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'false');
+
+        // Out of fullscreen, Escape closes the reader as before.
+        await session.page.waitForTimeout(700);
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+    });
+
+    test('does not go in fullscreen with a double click one page at a time, where a click turns the page', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(reader.getByTestId('reader-stage')).toBeVisible();
+        await reader.getByTestId('reader-stage').dblclick();
+        await session.page.waitForTimeout(500);
+        expect(await session.page.evaluate(() => {
+            return document.fullscreenElement;
+        })).toBeNull();
+    });
+
+    test('keeps the bar of the reader flush with the top of the page while the chapter is scrolled, so nothing of the pages shows above it', async () => {
+        const { area } = await openWebtoon();
+        const gapAboveBar = async (): Promise<number> => {
+            return session.page.evaluate(() => {
+                const main = document.querySelector('.app__main')!.getBoundingClientRect();
+                const bar = document.querySelector('.reader__bar')!.getBoundingClientRect();
+                return bar.top - main.top;
+            });
+        };
+        await area.evaluate((element) => {
+            element.scrollTop = 900;
+        });
+        await expect.poll(gapAboveBar).toBeLessThanOrEqual(0);
+        await area.evaluate((element) => {
+            element.scrollTop = element.scrollTop + 600;
+        });
+        await expect.poll(gapAboveBar).toBeLessThanOrEqual(0);
+    });
+
+    for (const { mode, scale } of [
+        { mode: 'single', scale: 'width' },
+        { mode: 'single', scale: 'original' },
+        { mode: 'vertical', scale: 'width' },
+        { mode: 'webtoon', scale: 'width' }
+    ] as const) {
+        test(`does not make the page scroll while the pictures of the pages are on their way (${mode}, ${scale})`, async () => {
+            fake.pagesArePicture = true;
+            fake.imageDelayMs = 4000;
+            session = await launch();
+            await openManga(session.page);
+            await installExtension(session.page);
+            await openOnePieceInLibrary(session.page);
+            await session.page.evaluate(({ chosenMode, chosenScale }) => {
+                window.localStorage.setItem('pullwave.manga.reader', JSON.stringify({ mode: chosenMode, scale: chosenScale }));
+            }, { chosenMode: mode, chosenScale: scale });
+            await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+            const reader = session.page.getByRole('region', { name: 'Reader' });
+            await expect(reader.locator('.reader__loading-page').first()).toBeVisible();
+            const pending = await session.page.evaluate(() => {
+                const main = document.querySelector('.app__main')!;
+                return {
+                    overflowsSideways: main.scrollWidth > main.clientWidth,
+                    pictures: Array.from(document.querySelectorAll('.reader__img--pending')).map((picture) => {
+                        const box = picture.getBoundingClientRect();
+                        return { width: box.width, height: box.height };
+                    })
+                };
+            });
+            expect(pending.overflowsSideways).toBe(false);
+            expect(pending.pictures.length).toBeGreaterThan(0);
+            pending.pictures.forEach((picture) => {
+                expect(picture).toEqual({ width: 1, height: 1 });
+            });
+            await expect(reader.locator('.reader__loading-page')).toHaveCount(0, { timeout: 15000 });
+        });
+    }
+
     test('does not switch the chapter when the user scrolls back before the moment of the zone is over, nor while the zone is only crossed', async () => {
         const { reader, area, title } = await openWebtoon();
         // Down to the end of the zone and back at once: nothing happens.
@@ -2987,5 +3096,111 @@ test.describe('manga chapters that lack pages', () => {
         expect(readdirSync(join(mangaFolder(), 'One Piece')).sort()).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
         // The chapter that was whole is not downloaded again.
         expect(pageRequests('/api/v1/chapter/102/page/0')).toBe(1);
+    });
+});
+
+test.describe('manga: the orders kept, the cover behind the page and what to go on with', () => {
+    test('offers the extensions on the block of the manga of the home screen, the browse once an extension gives a source, and the updates once the library has a manga', async () => {
+        session = await launch();
+        const homeButton = session.page.getByRole('button', { name: 'HOME', exact: true });
+        const mangaCard = session.page.getByRole('region', { name: 'Home' }).locator('.section-card--manga');
+        await homeButton.click();
+        await expect(mangaCard.getByRole('button')).toHaveText(['EXTENSIONS', 'LIBRARY']);
+        await mangaCard.getByRole('button', { name: 'EXTENSIONS: MANGA' }).click();
+        await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'EXTENSIONS', exact: true })).toHaveAttribute('aria-current', 'page');
+
+        await installExtension(session.page);
+        await openSource(session.page);
+        await homeButton.click();
+        await expect(mangaCard.getByRole('button')).toHaveText(['BROWSE', 'LIBRARY']);
+        await mangaCard.getByRole('button', { name: 'BROWSE: MANGA' }).click();
+        await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'BROWSE', exact: true })).toHaveAttribute('aria-current', 'page');
+
+        await openOnePieceInLibrary(session.page);
+        await homeButton.click();
+        await expect(mangaCard.getByRole('button')).toHaveText(['UPDATES', 'LIBRARY']);
+    });
+
+    test('keeps the order of the chapters and of the library when the app opens again', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const chapterNames = session.page.getByTestId('manga-chapter').locator('.row-link');
+        await expect(chapterNames).toHaveText(['Romance Dawn', 'The Great Race']);
+        await session.page.getByRole('combobox', { name: 'Sort by' }).selectOption('desc');
+        await expect(chapterNames).toHaveText(['The Great Race', 'Romance Dawn']);
+        await session.page.getByRole('button', { name: '← BACK', exact: true }).click();
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByRole('combobox', { name: 'Sort by' }).selectOption('za');
+        await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
+        await expect(session.page.getByRole('option', { name: 'Z–A' })).toHaveCount(1);
+
+        await session.app.close();
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+        await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
+        await expect(session.page.getByTestId('manga-chapter').locator('.row-link')).toHaveText(['The Great Race', 'Romance Dawn']);
+    });
+
+    test('puts the cover of the manga behind the screen again when the user comes back to its page from the settings', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const backdrop = session.page.locator('.backdrop');
+        await expect(backdrop).toHaveClass(/backdrop--shown/);
+        const cover = await backdrop.locator('.backdrop__image').last().getAttribute('src');
+        expect(cover).not.toBeNull();
+
+        await session.page.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true }).click();
+        await expect(backdrop).not.toHaveClass(/backdrop--shown/);
+        await openManga(session.page);
+        await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
+        await expect(backdrop).toHaveClass(/backdrop--shown/);
+        await expect(backdrop.locator('.backdrop__image').last()).toHaveAttribute('src', cover!);
+    });
+
+    test('offers the next chapter on the home screen once a chapter was read to its last page, and nothing to go on with once the last one was', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await session.page.keyboard.press('End');
+        await expect(reader.getByText('3 / 3')).toBeVisible();
+        // The history of reading is written a moment after the page stops changing.
+        await session.page.waitForTimeout(1200);
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+
+        await session.page.getByRole('button', { name: 'HOME', exact: true }).click();
+        const highlights = session.page.getByRole('region', { name: 'Highlights' });
+        await expect(highlights.getByRole('heading', { level: 2 }).first()).toHaveText('One Piece');
+        await expect(highlights.getByText('CONTINUE READING')).toBeVisible();
+        await expect(highlights.getByText('The Great Race', { exact: true })).toBeVisible();
+
+        // The highlight opens the page of the manga, where the next chapter is read.
+        await highlights.getByRole('button', { name: '▶ OPEN: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'READ: The Great Race', exact: true }).click();
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await session.page.keyboard.press('End');
+        await expect(reader.getByText('3 / 3')).toBeVisible();
+        await session.page.waitForTimeout(1200);
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+
+        await session.page.getByRole('button', { name: 'HOME', exact: true }).click();
+        const home = session.page.getByRole('region', { name: 'Home' });
+        await expect(home).toBeVisible();
+        // The manga is up to date: nothing to go on with (what arrived this week can still be highlighted, as news).
+        await expect(home.getByText('CONTINUE READING')).toHaveCount(0);
+        await expect(home.getByText('The Great Race', { exact: true })).toHaveCount(0);
     });
 });

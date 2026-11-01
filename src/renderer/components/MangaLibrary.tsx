@@ -11,7 +11,8 @@ import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
 import { LibraryControls } from '../library/LibraryControls';
 import { MangaLibrarySpotlight } from '../library/LibrarySpotlights';
-import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter, type LibrarySort } from '../spotlight/spotlightData';
+import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
+import { useLibrarySort } from '../store/sortPrefsStore';
 import { RowLink } from './RowLink';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 
@@ -229,7 +230,8 @@ export function MangaLibrary() {
     const [search, setSearch] = useState('');
     const [managing, setManaging] = useState(false);
     const [filter, setFilter] = useState<LibraryFilter>('all');
-    const [sort, setSort] = useState<LibrarySort>('recent');
+    // The order of the grid is kept: it is the same when the app opens again.
+    const [sort, setSort] = useLibrarySort('manga');
     // What is new is counted from the time the library opened.
     const [openedAt] = useState(() => {
         return Date.now();

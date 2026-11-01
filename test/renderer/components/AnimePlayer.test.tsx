@@ -7,6 +7,8 @@ import { AnimePlayer, SAVE_INTERVAL_SECONDS } from '@renderer/components/AnimePl
 import { INFO_NOTICE_MS, Toast } from '@renderer/components/Toast';
 import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { AUTO_NEXT_STORAGE_KEY, useUiPrefsStore } from '@renderer/store/uiPrefsStore';
+import { AUTO_NEXT_DELAY_MS } from '@renderer/components/AutoNextPanel';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { openedSubtitleMenu, subtitleMenu, subtitleOption } from '../../helpers/playerSettings';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -27,6 +29,7 @@ beforeEach(() => {
     mock.api.listAnimeLibrary.mockResolvedValue([ANIME]);
     mock.api.listAnimeSubtitles.mockResolvedValue([{ id: '', label: 'English', kind: 'default' }]);
     window.localStorage.clear();
+    useUiPrefsStore.setState({ autoNext: true });
 });
 
 const JAPANESE: AnimeSubtitleTrack = { id: 'subtitle-Japanese', label: 'Japanese', kind: 'source' };
@@ -239,6 +242,110 @@ describe('AnimePlayer', () => {
             useAnimeStore.setState({ library: [makeAnime([SECOND], { id: 5 })], playing: { animeId: 5, episodeId: 2 } });
             render(<AnimePlayer />);
             expect(screen.queryByRole('button', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+    });
+
+    describe('the next episode that starts by itself', () => {
+        function endEpisode(): void {
+            const video = getVideo();
+            setPlayback(video, 1440, 1440);
+            act(() => {
+                fireEvent.ended(video);
+            });
+        }
+
+        it('shows no panel while the episode plays', () => {
+            render(<AnimePlayer />);
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+
+        it('shows the panel of the next episode over the video when the episode ends, after saving it as watched', () => {
+            render(<AnimePlayer />);
+            endEpisode();
+            expect(mock.api.saveAnimeProgress).toHaveBeenLastCalledWith({ episodeId: 1, positionSeconds: 1440, durationSeconds: 1440, watched: true });
+            const panel = screen.getByRole('region', { name: 'NEXT EPISODE' });
+            expect(panel.parentElement).toHaveClass('player__stage');
+            expect(within(panel).getByText('Naruto · EP 2')).toBeInTheDocument();
+            expect(within(panel).getByText('Starts in 10s')).toBeInTheDocument();
+        });
+
+        it('plays the next episode by itself when the count is over', () => {
+            vi.useFakeTimers();
+            try {
+                render(<AnimePlayer />);
+                endEpisode();
+                act(() => {
+                    vi.advanceTimersByTime(AUTO_NEXT_DELAY_MS);
+                });
+                expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 2 });
+                expect(screen.getByRole('dialog', { name: 'Naruto · EP 2' })).toBeInTheDocument();
+                expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('plays the next episode at once with PLAY NOW', async () => {
+            const user = userEvent.setup();
+            render(<AnimePlayer />);
+            endEpisode();
+            await user.click(screen.getByRole('button', { name: 'PLAY NOW' }));
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 2 });
+        });
+
+        it('stays on the episode, with no panel, when the user cancels', () => {
+            vi.useFakeTimers();
+            try {
+                render(<AnimePlayer />);
+                endEpisode();
+                fireEvent.click(screen.getByRole('button', { name: 'CANCEL' }));
+                expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+                act(() => {
+                    vi.advanceTimersByTime(AUTO_NEXT_DELAY_MS);
+                });
+                expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('stays on the episode when the user plays it again before the count is over', () => {
+            render(<AnimePlayer />);
+            endEpisode();
+            act(() => {
+                fireEvent.play(getVideo());
+            });
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+        });
+
+        it('shows no panel when there is no next episode downloaded', () => {
+            useAnimeStore.setState({ playing: { animeId: 5, episodeId: 2 } });
+            render(<AnimePlayer />);
+            endEpisode();
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+
+        it('shows no panel when it was turned off', () => {
+            useUiPrefsStore.setState({ autoNext: false });
+            render(<AnimePlayer />);
+            endEpisode();
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+
+        it('is turned off and on from the settings of the player, and the choice is kept', async () => {
+            const user = userEvent.setup();
+            mock.api.listAnimeSubtitles.mockResolvedValue([]);
+            render(<AnimePlayer />);
+            await user.click(screen.getByRole('button', { name: 'Settings' }));
+            const toggle = screen.getByRole('switch', { name: 'Next episode automatically' });
+            expect(toggle).toHaveProperty('checked', true);
+            await user.click(toggle);
+            expect(useUiPrefsStore.getState().autoNext).toBe(false);
+            expect(window.localStorage.getItem(AUTO_NEXT_STORAGE_KEY)).toBe('off');
+            expect(screen.getByRole('switch', { name: 'Next episode automatically' })).toHaveProperty('checked', false);
+            endEpisode();
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
         });
     });
 

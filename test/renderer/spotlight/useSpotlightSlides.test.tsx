@@ -74,6 +74,12 @@ describe('toSlide', () => {
         expect(container.querySelector('img.cover')).toHaveAttribute('src', 'https://img/op.jpg');
     });
 
+    it('makes the next chapter of a manga, whose pages are not known yet, with its name only and an empty bar', () => {
+        const entry = makeReading({ chapterName: 'The Great Race', page: 0, pageCount: 0 });
+        const item: SpotlightItem = { key: 'm', kind: 'manga', reason: 'continue', title: 'One Piece', coverUrl: 'https://img/op.jpg', entry, progress: 0 };
+        expect(toSlide(item, t, COVERS)).toMatchObject({ eyebrow: 'CONTINUE READING', title: 'One Piece', meta: 'The Great Race', imageUrl: 'https://img/op.jpg', progress: 0 });
+    });
+
     it.each([
         [1, '1 new chapter'],
         [3, '3 new chapters']

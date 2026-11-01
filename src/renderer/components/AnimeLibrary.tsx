@@ -16,7 +16,9 @@ import { SeriesMenu } from './SeriesMenu';
 import { ErrorNotice } from './ErrorNotice';
 import { LibraryControls } from '../library/LibraryControls';
 import { AnimeLibrarySpotlight } from '../library/LibrarySpotlights';
-import { animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter, type LibrarySort } from '../spotlight/spotlightData';
+import { animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
+import { inListOrder, useLibrarySort, useListOrder } from '../store/sortPrefsStore';
+import { ListOrderSelect } from './ListOrderSelect';
 import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 
@@ -374,6 +376,8 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
         return state.removeAnime;
     });
     const [editing, setEditing] = useState(false);
+    // The order the list shows the episodes in.
+    const [episodeOrder] = useListOrder('episodes');
     useDetailBackdrop(useAnimeCoverUrl(anime.title));
 
     // An anime on its own has nothing to order; one in a series has its season to edit (the series itself cannot change).
@@ -443,8 +447,11 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
                         }}
                     />
                 )}
+                <div className="list-order-bar">
+                    <ListOrderSelect kind="episodes" />
+                </div>
                 <ul className="episode-cards">
-                    {anime.episodes.map((episode) => {
+                    {inListOrder(anime.episodes, episodeOrder).map((episode) => {
                         return <EpisodeRow key={episode.id} anime={anime} episode={episode} t={t} />;
                     })}
                 </ul>
@@ -726,7 +733,8 @@ export function AnimeLibrary() {
     });
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<LibraryFilter>('all');
-    const [sort, setSort] = useState<LibrarySort>('recent');
+    // The order of the grid is kept: it is the same when the app opens again.
+    const [sort, setSort] = useLibrarySort('anime');
     // What is new is counted from the time the library opened.
     const [openedAt] = useState(() => {
         return Date.now();

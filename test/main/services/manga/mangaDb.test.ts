@@ -988,14 +988,15 @@ describe('MangaDb the cover that is kept', () => {
         expect(new MangaDb(':memory:').coverHash(99)).toBeNull();
     });
 
-    it('lists the mangas that have a cover on the source and none kept', () => {
+    it('lists the mangas that have no cover kept, the ones whose source gives none too (their cover is looked for elsewhere)', () => {
         const { db, manga } = setup();
         const other = db.upsertManga({ remoteId: 8, sourceId: '123', title: 'Bleach', thumbnailUrl: '/api/v1/manga/8/thumbnail' });
-        db.upsertManga({ remoteId: 9, sourceId: '123', title: 'No cover', thumbnailUrl: null });
+        const coverless = db.upsertManga({ remoteId: 9, sourceId: '123', title: 'No cover', thumbnailUrl: null });
         expect(db.coverless().map((item) => {
             return item.id;
-        })).toEqual([manga.id, other.id]);
+        })).toEqual([manga.id, other.id, coverless.id]);
         db.setCoverHash(manga.id, 'b'.repeat(64));
+        db.setCoverHash(coverless.id, 'd'.repeat(64));
         expect(db.coverless().map((item) => {
             return item.id;
         })).toEqual([other.id]);

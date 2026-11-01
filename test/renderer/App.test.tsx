@@ -352,8 +352,7 @@ describe('App anime section', () => {
         expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
     });
 
-    it('opens on the home screen, with the blocks in the order of the menu, when the settings say anime', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
+    it('opens on the home screen, with the welcome (with no button) and the blocks in the order of the menu, where the anime section exists', async () => {
         mock.api.getAnimeStatus.mockResolvedValue(supported);
         render(<App />);
         const home = await screen.findByRole('region', { name: 'Home' });
@@ -366,7 +365,8 @@ describe('App anime section', () => {
                     return heading.textContent;
                 })
         ).toEqual(['WELCOME TO PULLWAVE']);
-        expect(screen.getByRole('button', { name: 'GO TO ANIME' })).toBeInTheDocument();
+        expect(within(screen.getByRole('region', { name: 'WELCOME TO PULLWAVE' })).queryByRole('button')).not.toBeInTheDocument();
+        expect(within(home).getByRole('button', { name: 'SEARCH: ANIME' })).toBeInTheDocument();
         expect(
             within(home)
                 .getAllByRole('heading', { level: 3 })
@@ -376,8 +376,7 @@ describe('App anime section', () => {
         ).toEqual(['VIDEO DOWNLOADER', 'ANIME']);
     });
 
-    it('opens on the home screen without the block of the anime when the settings say anime but the section does not exist', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
+    it('opens on the home screen without the block of the anime where the section does not exist', async () => {
         render(<App />);
         const home = await screen.findByRole('region', { name: 'Home' });
         expect(useAppStore.getState().tab).toBe('home');
@@ -405,9 +404,8 @@ describe('App anime section', () => {
         expect(mock.api.listAnimeJobs).toHaveBeenCalledTimes(1);
     });
 
-    it('opens on the home screen, with the blocks in the order of the menu, when the manga tab is the one saved and the section exists', async () => {
+    it('opens on the home screen, with the blocks in the order of the menu, when only the manga section exists', async () => {
         mock.api.manga.status.mockResolvedValue(makeMangaStatus());
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' });
         render(<App />);
         const home = await screen.findByRole('region', { name: 'Home' });
         expect(useAppStore.getState().tab).toBe('home');
@@ -425,6 +423,7 @@ describe('App anime section', () => {
                     return heading.textContent;
                 })
         ).toEqual(['VIDEO DOWNLOADER', 'MANGA']);
+        expect(within(home).getByRole('button', { name: 'EXTENSIONS: MANGA' })).toBeInTheDocument();
     });
 
     it('unsubscribes from the events of the section too on unmount', async () => {
@@ -507,8 +506,7 @@ describe('App manga section', () => {
         expect(mock.api.manga.jobs).toHaveBeenCalledTimes(1);
     });
 
-    it('leaves the block of the manga out of the home screen when the manga tab was the one saved and the section does not exist', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' });
+    it('leaves the block of the manga out of the home screen when the section does not exist', async () => {
         render(<App />);
         const home = await screen.findByRole('region', { name: 'Home' });
         expect(useAppStore.getState().tab).toBe('home');
@@ -552,14 +550,17 @@ describe('App console shell', () => {
         window.localStorage.removeItem('pullwave-ui-sounds');
     });
 
-    it('lays the top bar out as menu, name with its wave, search, then the downloads, the sounds, the programs and the clock', async () => {
+    it('lays the top bar out as the start (menu, name with its wave), search, then the downloads, the sounds, the programs and the clock', async () => {
         render(<App />);
         await screen.findByRole('region', { name: 'Home' });
         const header = document.querySelector('.app__header') as HTMLElement;
         expect(header).toHaveClass('app__header', 'topbar');
         expect(Array.from(header.children).map((child) => {
             return child.className;
-        })).toEqual(['topbar__button topbar__menu', 'brand', 'global-search', 'topbar__end']);
+        })).toEqual(['topbar__start', 'global-search', 'topbar__end']);
+        expect(Array.from((header.querySelector('.topbar__start') as HTMLElement).children).map((child) => {
+            return child.className;
+        })).toEqual(['topbar__button topbar__menu', 'brand']);
         const brand = header.querySelector('.brand') as HTMLElement;
         expect(within(brand).getByRole('heading', { level: 1, name: 'PULLWAVE' })).toHaveAttribute('data-text', 'PULLWAVE');
         expect(brand.querySelector('.brand__wave')).toHaveAttribute('aria-hidden', 'true');

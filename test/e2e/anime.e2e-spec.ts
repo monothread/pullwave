@@ -41,7 +41,7 @@ async function launch(userData: string, settings: Record<string, unknown> = {}, 
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
         // The folder the library is rebuilt from is not asked for: there is no way to answer a dialog of the system here.
         // The schedule of the day is not asked of AniList: the address is one nobody answers at, unless a test gives its own.
-        env: { ...process.env, ...installedProgramsEnv(workDir), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_IMPORT_DIR: animeDir, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', ...env }
+        env: { ...process.env, ...installedProgramsEnv(workDir), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_IMPORT_DIR: animeDir, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9', ...env }
     });
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
@@ -945,6 +945,23 @@ test('opens an anime and lists its episodes', async () => {
     await expect(page.getByText('2 RESULTS')).toBeVisible();
 });
 
+test('lists the episodes from the last one when the user chooses it, and keeps the order when the app opens again', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await openFirstResult(page);
+    const order = page.getByRole('combobox', { name: 'Sort by' });
+    await expect(order).toHaveValue('asc');
+    await order.selectOption('desc');
+    await expect(page.locator('.episode-chip')).toHaveText(['EP 3', 'EP 2', 'EP 1']);
+
+    await session.app.close();
+    session = await launch(session.userData);
+    await openAnimeTab(session.page);
+    await openFirstResult(session.page);
+    await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
+    await expect(session.page.locator('.episode-chip')).toHaveText(['EP 3', 'EP 2', 'EP 1']);
+});
+
 test('announces a finished download with a toast that takes itself away after five seconds', async () => {
     const { page } = session;
     await openAnimeTab(page);
@@ -1561,6 +1578,113 @@ test.describe('library and folder in sync', () => {
     });
 });
 
+test.describe('the next episode that starts by itself, and the icons of the player', () => {
+    // Two episodes downloaded, the first one open in the player. The fake files are not real videos: the end of one is told to the player.
+    async function playFirstOfTwo(page: Page): Promise<Locator> {
+        await openAnimeTab(page);
+        await openFirstResult(page);
+        await downloadFromLibrary(page, [1, 2]);
+        await waitForDownloaded(page);
+        await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        await expect(dialog).toBeVisible();
+        return dialog;
+    }
+
+    async function endEpisode(dialog: Locator): Promise<void> {
+        await dialog.locator('video').evaluate((video) => {
+            video.dispatchEvent(new Event('ended'));
+        });
+    }
+
+    test('draws the icons of the buttons of the player at the same height, and the buttons at the same width', async () => {
+        const { page } = session;
+        const dialog = await playFirstOfTwo(page);
+        await dialog.getByRole('button', { name: 'Settings' }).waitFor();
+        const sizes = await dialog.locator('.player__controls').evaluate((controls) => {
+            return Array.from(controls.querySelectorAll<HTMLElement>('.player__icon')).map((icon) => {
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d')!;
+                const style = getComputedStyle(icon);
+                context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+                const ink = context.measureText(icon.textContent ?? '');
+                return {
+                    height: ink.actualBoundingBoxAscent + ink.actualBoundingBoxDescent,
+                    buttonWidth: (icon.parentElement as HTMLElement).getBoundingClientRect().width
+                };
+            });
+        });
+        // Play, sound, gear and fullscreen.
+        expect(sizes).toHaveLength(4);
+        const heights = sizes.map((size) => {
+            return size.height;
+        });
+        expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(2);
+        sizes.forEach((size) => {
+            expect(size.buttonWidth).toBe(44);
+        });
+    });
+
+    test('counts down to the next episode when one ends, over the video, and plays it by itself', async () => {
+        const { page } = session;
+        const dialog = await playFirstOfTwo(page);
+        await endEpisode(dialog);
+        const panel = dialog.getByRole('region', { name: 'NEXT EPISODE' });
+        await expect(panel).toBeVisible();
+        await expect(panel).toContainText('Fake Anime · EP 2');
+        await expect(panel.getByRole('button', { name: 'PLAY NOW' })).toBeFocused();
+        await expect(dialog.locator('.player__stage .player__auto-next')).toHaveCount(1);
+        const bar = panel.getByRole('progressbar', { name: 'Time until the next episode starts' });
+        await expect.poll(async () => {
+            return Number(await bar.getAttribute('aria-valuenow'));
+        }).toBeGreaterThan(10);
+        await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 2' })).toBeVisible({ timeout: 15000 });
+        await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 2' }).locator('video')).toHaveAttribute('src', 'pullwave-media://episode/2');
+    });
+
+    test('plays the next episode at once with PLAY NOW, and stays with CANCEL', async () => {
+        const { page } = session;
+        const dialog = await playFirstOfTwo(page);
+        await endEpisode(dialog);
+        await dialog.getByRole('button', { name: 'CANCEL' }).click();
+        await expect(dialog.getByRole('region', { name: 'NEXT EPISODE' })).toHaveCount(0);
+        await page.waitForTimeout(1500);
+        await expect(dialog).toBeVisible();
+
+        await endEpisode(dialog);
+        await dialog.getByRole('button', { name: 'PLAY NOW' }).click();
+        await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 2' })).toBeVisible();
+    });
+
+    test('is turned off in the settings of the player, and stays off when the app opens again', async () => {
+        const { page } = session;
+        const dialog = await playFirstOfTwo(page);
+        await dialog.getByRole('button', { name: 'Settings' }).click();
+        const toggle = dialog.getByRole('switch', { name: 'Next episode automatically' });
+        await expect(toggle).toBeChecked();
+        await toggle.click();
+        await expect(toggle).not.toBeChecked();
+        await dialog.getByRole('button', { name: 'Settings' }).click();
+        await endEpisode(dialog);
+        await expect(dialog.getByRole('region', { name: 'NEXT EPISODE' })).toHaveCount(0);
+
+        await session.app.close();
+        session = await launch(session.userData);
+        const reopened = session.page;
+        await openAnimeTab(reopened);
+        await reopened.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await reopened.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await reopened.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await reopened.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+        const again = reopened.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        await again.getByRole('button', { name: 'Settings' }).click();
+        await expect(again.getByRole('switch', { name: 'Next episode automatically' })).not.toBeChecked();
+    });
+});
+
 test.describe('series and seasons', () => {
     async function downloadSecondEntry(page: Page, series: string, season: string): Promise<void> {
         // Adding to the library closes the anime that was open: the results of the search are what is on the screen.
@@ -2120,33 +2244,53 @@ test.describe('covers', () => {
 
     let aniList: Server;
     let aniListUrl: string;
+    let fallbackUrl: string;
     let searched: string[];
+    // The names of each request made to AniList, and what Kitsu was asked.
+    let requests: string[][];
+    let kitsuAsked: string[];
     let mode: 'ok' | 'error';
 
     async function startAniList(port = 0): Promise<void> {
         aniList = createServer((request, response) => {
+            // Kitsu, asked when AniList has no cover, answers here too: it has none either.
+            if (request.method === 'GET') {
+                kitsuAsked.push(request.url ?? '');
+                response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ data: [] }));
+                return;
+            }
             const chunks: Buffer[] = [];
             request.on('data', (chunk: Buffer) => {
                 chunks.push(chunk);
             });
             request.on('end', () => {
-                const search = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { variables: { search: string } }).variables.search;
-                searched.push(search);
+                const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { query: string; variables: Record<string, string> };
+                // The schedule of the day is asked here too: nothing airs.
+                if (!body.query.includes('Page(perPage: 1)')) {
+                    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ data: { Page: { pageInfo: { hasNextPage: false }, airingSchedules: [] } } }));
+                    return;
+                }
+                // The covers asked for together come in one request: a page for each name, empty for the one AniList does not know.
+                const names = Object.values(body.variables);
+                searched.push(...names);
+                requests.push(names);
                 if (mode === 'error') {
                     response.writeHead(500).end('{}');
                     return;
                 }
-                if (search === 'Fake Anime 2') {
-                    response.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ errors: [{ status: 404 }], data: { Media: null } }));
-                    return;
-                }
-                response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ data: { Media: { coverImage: { large: COVER } } } }));
+                const data = Object.fromEntries(
+                    names.map((name, index) => {
+                        return [`a${String(index)}`, { media: name === 'Fake Anime 2' ? [] : [{ coverImage: { large: COVER } }] }];
+                    })
+                );
+                response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ data }));
             });
         });
         await new Promise<void>((resolveListening) => {
             aniList.listen(port, '127.0.0.1', resolveListening);
         });
         aniListUrl = `http://127.0.0.1:${(aniList.address() as AddressInfo).port}/graphql`;
+        fallbackUrl = `http://127.0.0.1:${(aniList.address() as AddressInfo).port}`;
     }
 
     async function stopAniList(): Promise<void> {
@@ -2160,12 +2304,14 @@ test.describe('covers', () => {
 
     async function relaunchWithAniList(): Promise<Page> {
         await session.app.close();
-        session = await launch(join(workDir, 'user-data'), {}, { PULLWAVE_ANILIST_URL: aniListUrl });
+        session = await launch(join(workDir, 'user-data'), {}, { PULLWAVE_ANILIST_URL: aniListUrl, PULLWAVE_COVER_FALLBACK_URL: fallbackUrl });
         return session.page;
     }
 
     test.beforeEach(async () => {
         searched = [];
+        requests = [];
+        kitsuAsked = [];
         mode = 'ok';
         await startAniList();
         await relaunchWithAniList();
@@ -2186,12 +2332,17 @@ test.describe('covers', () => {
         await expect(cards.nth(1).locator('.cover--none')).toHaveText('COVER NOT FOUND');
         await expect(cards.nth(1).locator('img')).toHaveCount(0);
         expect([...searched].sort()).toEqual(['Fake Anime', 'Fake Anime 2']);
+        // The covers of the results are asked for together, in one request; Kitsu is asked for the one AniList does not know.
+        expect(requests.map((names) => {
+            return [...names].sort();
+        })).toEqual([['Fake Anime', 'Fake Anime 2']]);
+        expect(kitsuAsked).toEqual(['/kitsu/anime?filter%5Btext%5D=Fake+Anime+2&page%5Blimit%5D=5&fields%5Banime%5D=canonicalTitle%2Ctitles%2CabbreviatedTitles%2CposterImage']);
     });
 
     test('shows the covers in the library and in the history too, without asking for them again', async () => {
         const { page } = session;
         await downloadFirstEpisode(page);
-        // The results of the search that was made to open the anime ask for their covers too, one a second.
+        // The results of the search that was made to open the anime ask for their covers too, together.
         await expect.poll(() => {
             return searched.includes('Fake Anime') && searched.includes('Fake Anime 2');
         }).toBe(true);

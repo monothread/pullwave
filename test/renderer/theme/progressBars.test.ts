@@ -15,6 +15,7 @@ const PLAIN_BAR = ".progress:not([class*='progress--']) .progress__bar";
 // draws it: when a bar is added to a file that is not here, this list has to say so, and the CSS below has to cover it.
 const FILES_WITH_BARS: Record<string, string[]> = {
     'AnimeJobs.tsx': ['progress'],
+    'AutoNextPanel.tsx': ['progress'],
     'CutPanel.tsx': ['progress', 'progress--waiting'],
     'GenerateProgressPanel.tsx': ['progress'],
     'JobProgress.tsx': ['progress', 'progress--verify', 'progress--processing', 'progress--saving', 'progress--merging', 'progress--waiting', 'progress--live'],

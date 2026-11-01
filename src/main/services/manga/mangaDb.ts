@@ -328,9 +328,10 @@ export class MangaDb {
         this.run('UPDATE manga SET cover_hash = ? WHERE id = ?', hash, mangaId);
     }
 
-    // The mangas that have a cover on the server (or elsewhere) and none kept yet.
+    // The mangas that have no cover kept yet: the ones whose source gives one, and the ones whose source gives none (their cover is looked
+    // for in other services, see MangaCovers).
     coverless(): MangaRecord[] {
-        return this.all('SELECT * FROM manga WHERE cover_hash IS NULL AND thumbnail_url IS NOT NULL ORDER BY id').map(toManga);
+        return this.all('SELECT * FROM manga WHERE cover_hash IS NULL ORDER BY id').map(toManga);
     }
 
     // Where the cover is on the source now (the source can change it).

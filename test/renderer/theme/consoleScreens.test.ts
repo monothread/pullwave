@@ -124,7 +124,7 @@ describe('bp-shell.css', () => {
         expect(styleOf(shell, '.app')).toMatchObject({ display: 'grid', 'grid-template-columns': 'var(--rail) minmax(0, 1fr)', 'grid-template-rows': 'auto auto minmax(0, 1fr)', padding: '0' });
         expect(styleOf(shell, '.app > .app__header')).toEqual({ 'grid-area': 'header', margin: '0' });
         expect(styleOf(shell, '.app > .sidenav')).toEqual({ 'grid-area': 'rail', margin: '0' });
-        expect(styleOf(shell, '.app > .app__main')).toEqual({ 'grid-area': 'main', 'padding-top': '18px' });
+        expect(styleOf(shell, '.app > .app__main')).toEqual({ '--main-pad-top': '18px', 'grid-area': 'main', 'padding-top': 'var(--main-pad-top)' });
     });
 
     it('opens the menu over the page, never wider than the window', () => {
@@ -149,6 +149,18 @@ describe('bp-shell.css', () => {
         expect(mediaStyleOf(shell, DOCK, '.topbar__menu')).toEqual({ display: 'none' });
         expect(mediaStyleOf(shell, DOCK, '.sidenav')).toMatchObject({ 'flex-direction': 'row', width: 'auto', 'border-top': '1px solid var(--line)' });
         expect(mediaStyleOf(shell, DOCK, '.sidenav__scrim')).toEqual({ display: 'none' });
+    });
+
+    it('puts the menu and the name together at the start of the top bar', () => {
+        expect(styleOf(shell, '.topbar__start')).toEqual({ display: 'flex', 'align-items': 'center', gap: 'inherit', 'min-width': '0' });
+    });
+
+    it('centers the search in the window with room: three columns, the start and the end as wide as each other', () => {
+        const WIDE = '(min-width: 1101px)';
+        expect(mediaStyleOf(shell, WIDE, '.topbar')).toEqual({ display: 'grid', 'grid-template-columns': '1fr minmax(240px, 560px) 1fr', 'padding-inline': '24px' });
+        expect(mediaStyleOf(shell, WIDE, '.topbar .global-search')).toEqual({ width: '100%' });
+        expect(mediaStyleOf(shell, WIDE, '.topbar__end')).toEqual({ 'justify-self': 'end' });
+        expect(mediaStyleOf(shell, '(max-width: 1100px)', '.global-search')).toEqual({ order: '10', flex: '1 1 100%', 'max-width': 'none' });
     });
 
     it('keeps the player over the shell, under the windows (200) and the notices (250)', () => {
@@ -213,6 +225,11 @@ describe('bp-home.css', () => {
         expect(styleOf(home, '.chip-toggle')).toMatchObject({ 'border-radius': 'var(--bp-radius-pill)', 'white-space': 'nowrap' });
         expect(styleOf(home, '.chip-toggle--on')).toEqual({ 'border-color': 'var(--cyan)', background: 'var(--tint-cyan)', color: 'var(--cyan)', 'box-shadow': 'var(--glow)' });
         expect(mediaStyleOf(home, DOCK, '.library-controls__sort')).toEqual({ 'min-width': '0', flex: '1 1 100%' });
+    });
+
+    it('puts the order of a list of chapters or episodes at the right, over the list or at the end of its bar', () => {
+        expect(styleOf(home, '.list-order-bar')).toEqual({ display: 'flex', 'justify-content': 'flex-end' });
+        expect(styleOf(home, '.queue__toolbar .list-order')).toEqual({ 'margin-left': 'auto' });
     });
 });
 

@@ -4,9 +4,10 @@ import { useSubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useVideoBuffer } from '../hooks/useVideoBuffer';
 import { useTranslator } from '../i18n/useTranslator';
 import { seekHover, type SeekHover } from './seekHover';
-import { hasPlayerSettings, PlayerSettings, type SubtitleOption } from './PlayerSettings';
+import { hasPlayerSettings, PlayerSettings, type AutoNextSetting, type SubtitleOption } from './PlayerSettings';
 import { clamp, SEEK_STEP_SECONDS, shortcutOf, VOLUME_STEP, type PlayerShortcut } from './playerShortcuts';
 import { atRangeEnd, mediaTimeOf, outsideRange, rangeLength, timeInRange, type PlaybackRange } from './playbackRange';
+import { PlayerIcon } from './PlayerIcon';
 
 // Kept here, where the player's other files already import it from.
 export type { SubtitleOption } from './PlayerSettings';
@@ -19,6 +20,8 @@ interface VideoControlsProps {
     onSelectSubtitle: (id: string | null) => void;
     // Only this part of the media is played, as if it were the whole of it (the preview of a cut); left out, the whole media.
     range?: PlaybackRange;
+    // The switch of the next episode that starts by itself, in the settings of the player; left out, there is none.
+    autoNext?: AutoNextSetting;
 }
 
 interface PlaybackState {
@@ -189,7 +192,7 @@ function useRangeLimits(video: RefObject<HTMLVideoElement | null>, range: Playba
 }
 
 // The control bar of the player. It drives the <video> through its own API, so it looks the same in every theme.
-export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range }: VideoControlsProps) {
+export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range, autoNext }: VideoControlsProps) {
     const t = useTranslator();
     const [state, setState] = useState<PlaybackState>(INITIAL_STATE);
     const subtitleStyle = useSubtitleStyle(video);
@@ -377,7 +380,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     aria-label={state.paused ? t('anime.player.play') : t('anime.player.pause')}
                     onClick={togglePlay}
                 >
-                    {state.paused ? '▶' : '❚❚'}
+                    {state.paused ? <PlayerIcon name="play" /> : <PlayerIcon name="pause" />}
                 </button>
                 {hover !== null && (
                     <span className="player__hover" role="tooltip" style={{ left: hover.offset }}>
@@ -417,7 +420,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     aria-label={silent ? t('anime.player.unmute') : t('anime.player.mute')}
                     onClick={toggleMute}
                 >
-                    {silent ? '🔇' : '🔊'}
+                    {silent ? <PlayerIcon name="mute" /> : <PlayerIcon name="volume" />}
                 </button>
                 <input
                     type="range"
@@ -432,7 +435,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                         changeVolume(Number(event.target.value));
                     }}
                 />
-                {hasPlayerSettings(subtitles) && (
+                {hasPlayerSettings(subtitles, autoNext) && (
                     <PlayerSettings
                         open={settingsOpen}
                         onOpenChange={setSettingsOpen}
@@ -440,10 +443,11 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                         selectedSubtitle={selectedSubtitle}
                         onSelectSubtitle={onSelectSubtitle}
                         subtitleStyle={subtitleStyle}
+                        autoNext={autoNext}
                     />
                 )}
                 <button type="button" className="player__button" aria-label={t('anime.player.fullscreen')} onClick={toggleFullscreen}>
-                    ⛶
+                    <PlayerIcon name="fullscreen" />
                 </button>
             </div>
         </>

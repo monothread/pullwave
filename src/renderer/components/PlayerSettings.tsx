@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import type { SubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useTranslator } from '../i18n/useTranslator';
 import { MAX_SUBTITLE_SCALE, MIN_SUBTITLE_SCALE, scalePercent } from './subtitleScale';
+import { PlayerIcon } from './PlayerIcon';
 
 // A subtitle the viewer can choose. The id is also the id of its <track>, which is how the control finds it.
 export interface SubtitleOption {
@@ -19,6 +20,14 @@ interface PlayerSettingsProps {
     selectedSubtitle: string | null;
     onSelectSubtitle: (id: string | null) => void;
     subtitleStyle: SubtitleStyle;
+    // The switch of the next episode that starts by itself; left out, the player has none (the stream of the search has no next episode).
+    autoNext?: AutoNextSetting;
+}
+
+// Whether the next episode starts by itself at the end of one, and the way to change it.
+export interface AutoNextSetting {
+    enabled: boolean;
+    onToggle: () => void;
 }
 
 interface SettingRowProps {
@@ -36,12 +45,12 @@ function SettingRow({ label, children }: SettingRowProps) {
 }
 
 // Whether the player has anything to set. The gear only shows up when it does, so a setting added later only has to be added here.
-export function hasPlayerSettings(subtitles: readonly SubtitleOption[]): boolean {
-    return subtitles.length > 0;
+export function hasPlayerSettings(subtitles: readonly SubtitleOption[], autoNext?: AutoNextSetting): boolean {
+    return subtitles.length > 0 || autoNext !== undefined;
 }
 
 // The gear of the player and the panel it opens with every setting that is not on the bar (the sound stays there).
-export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle, onSelectSubtitle, subtitleStyle }: PlayerSettingsProps) {
+export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle, onSelectSubtitle, subtitleStyle, autoNext }: PlayerSettingsProps) {
     const t = useTranslator();
     const root = useRef<HTMLSpanElement>(null);
 
@@ -81,7 +90,7 @@ export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle
                     onOpenChange(!open);
                 }}
             >
-                ⚙
+                <PlayerIcon name="settings" />
             </button>
             {open && (
                 <div
@@ -93,52 +102,68 @@ export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle
                         event.stopPropagation();
                     }}
                 >
-                    <SettingRow label={t('anime.player.subtitles')}>
-                        <select
-                            className="player__select"
-                            aria-label={t('anime.player.subtitles')}
-                            value={selectedSubtitle ?? SUBTITLES_OFF}
-                            onChange={(event) => {
-                                onSelectSubtitle(event.target.value === SUBTITLES_OFF ? null : event.target.value);
-                            }}
-                        >
-                            <option value={SUBTITLES_OFF}>{t('anime.player.subtitlesOff')}</option>
-                            {subtitles.map((option) => {
-                                return (
-                                    <option key={option.id} value={option.id}>
-                                        {option.label}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </SettingRow>
-                    <SettingRow label={t('anime.player.subtitleSize')}>
-                        <span className="player__size" role="group" aria-label={t('anime.player.subtitleSize')}>
-                            <button
-                                type="button"
-                                className="player__button"
-                                aria-label={t('anime.player.subtitleSmaller')}
-                                disabled={subtitleStyle.scale <= MIN_SUBTITLE_SCALE}
-                                onClick={() => {
-                                    subtitleStyle.resize(-1);
-                                }}
-                            >
-                                A−
-                            </button>
-                            <span className="player__time">{scalePercent(subtitleStyle.scale)}</span>
-                            <button
-                                type="button"
-                                className="player__button"
-                                aria-label={t('anime.player.subtitleLarger')}
-                                disabled={subtitleStyle.scale >= MAX_SUBTITLE_SCALE}
-                                onClick={() => {
-                                    subtitleStyle.resize(1);
-                                }}
-                            >
-                                A+
-                            </button>
-                        </span>
-                    </SettingRow>
+                    {autoNext !== undefined && (
+                        <SettingRow label={t('anime.player.autoNext.setting')}>
+                            <input
+                                type="checkbox"
+                                role="switch"
+                                className="player__switch"
+                                aria-label={t('anime.player.autoNext.setting')}
+                                checked={autoNext.enabled}
+                                onChange={autoNext.onToggle}
+                            />
+                        </SettingRow>
+                    )}
+                    {subtitles.length > 0 && (
+                        <>
+                            <SettingRow label={t('anime.player.subtitles')}>
+                                <select
+                                    className="player__select"
+                                    aria-label={t('anime.player.subtitles')}
+                                    value={selectedSubtitle ?? SUBTITLES_OFF}
+                                    onChange={(event) => {
+                                        onSelectSubtitle(event.target.value === SUBTITLES_OFF ? null : event.target.value);
+                                    }}
+                                >
+                                    <option value={SUBTITLES_OFF}>{t('anime.player.subtitlesOff')}</option>
+                                    {subtitles.map((option) => {
+                                        return (
+                                            <option key={option.id} value={option.id}>
+                                                {option.label}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </SettingRow>
+                            <SettingRow label={t('anime.player.subtitleSize')}>
+                                <span className="player__size" role="group" aria-label={t('anime.player.subtitleSize')}>
+                                    <button
+                                        type="button"
+                                        className="player__button"
+                                        aria-label={t('anime.player.subtitleSmaller')}
+                                        disabled={subtitleStyle.scale <= MIN_SUBTITLE_SCALE}
+                                        onClick={() => {
+                                            subtitleStyle.resize(-1);
+                                        }}
+                                    >
+                                        A−
+                                    </button>
+                                    <span className="player__time">{scalePercent(subtitleStyle.scale)}</span>
+                                    <button
+                                        type="button"
+                                        className="player__button"
+                                        aria-label={t('anime.player.subtitleLarger')}
+                                        disabled={subtitleStyle.scale >= MAX_SUBTITLE_SCALE}
+                                        onClick={() => {
+                                            subtitleStyle.resize(1);
+                                        }}
+                                    >
+                                        A+
+                                    </button>
+                                </span>
+                            </SettingRow>
+                        </>
+                    )}
                 </div>
             )}
         </span>

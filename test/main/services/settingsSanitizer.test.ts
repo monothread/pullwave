@@ -44,7 +44,6 @@ describe('sanitizeSettings', () => {
             waitForLive: true,
             theme: 'light',
             language: 'ja',
-            startTab: 'anime',
             verifyLiveEnd: false,
             verifyLiveEndSeconds: 45,
             extraArgs: '--no-mtime',
@@ -225,17 +224,15 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ mangaDirectory: null }).mangaDirectory).toBe('');
     });
 
-    it('opens on the video downloader by default, and keeps the anime tab when it is the one saved', () => {
-        expect(DEFAULT_SETTINGS.startTab).toBe('downloads');
-        expect(sanitizeSettings({})).toMatchObject({ startTab: 'downloads' });
-        expect(sanitizeSettings({ startTab: 'anime' })).toMatchObject({ startTab: 'anime' });
-        expect(sanitizeSettings({ startTab: 'downloads' })).toMatchObject({ startTab: 'downloads' });
-        expect(sanitizeSettings({ startTab: 'manga' })).toMatchObject({ startTab: 'manga' });
-        expect(sanitizeSettings({ startTab: 'books' })).toMatchObject({ startTab: 'downloads' });
+    it('has no start tab any more, and drops the one an older version saved', () => {
+        expect(DEFAULT_SETTINGS).not.toHaveProperty('startTab');
+        expect(sanitizeSettings({})).not.toHaveProperty('startTab');
+        expect(sanitizeSettings({ startTab: 'anime' })).not.toHaveProperty('startTab');
+        expect(sanitizeSettings({ startTab: 'anime' })).toEqual(sanitizeSettings({}));
     });
 
-    it.each(['settings', 'ANIME', 7, null, true])('falls back to the video downloader when the start tab is %s', (startTab) => {
-        expect(sanitizeSettings({ startTab })).toMatchObject({ startTab: 'downloads' });
+    it.each(['settings', 'ANIME', 7, null, true])('drops a start tab of %s too', (startTab) => {
+        expect(sanitizeSettings({ startTab })).not.toHaveProperty('startTab');
     });
 
     it('has the anime settings default to the best quality, subtitled, in the default folder', () => {

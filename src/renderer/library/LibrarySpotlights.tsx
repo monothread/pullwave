@@ -44,6 +44,9 @@ export function MangaLibrarySpotlight() {
     const history = useMangaStore((state) => {
         return state.history;
     });
+    const readKeys = useMangaStore((state) => {
+        return state.readKeys;
+    });
     const loadHistory = useMangaStore((state) => {
         return state.loadHistory;
     });
@@ -54,8 +57,8 @@ export function MangaLibrarySpotlight() {
         }
     }, [loadHistory]);
     const items = useMemo(() => {
-        return mangaSpotlight(library, history, now);
-    }, [library, history, now]);
+        return mangaSpotlight(library, history, readKeys, now);
+    }, [library, history, readKeys, now]);
     const slides = useSpotlightSlides(items);
     if (slides.length === 0) {
         return null;

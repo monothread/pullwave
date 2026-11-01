@@ -144,7 +144,7 @@ MATRICES.forEach((matrix) => {
         const app = await electron.launch({
             executablePath: ELECTRON_PATH,
             args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-            env: { ...process.env, ...installedProgramsEnv(work), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', FAKE_YTDLP_LOG: join(work, 'y.log') }
+            env: { ...process.env, ...installedProgramsEnv(work), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9', FAKE_YTDLP_LOG: join(work, 'y.log') }
         });
         const page = await app.firstWindow();
         const resize = async (w: number, h: number): Promise<void> => {
@@ -263,4 +263,58 @@ MATRICES.forEach((matrix) => {
         await app.close();
         expect(report).toEqual([]);
     });
+});
+
+test('puts the search of the top bar in the middle of the window when there is room, and never over the start or the end of the bar', async () => {
+    const work = mkdtempSync(join(tmpdir(), 'pullwave-search-'));
+    const userData = join(work, 'user-data');
+    mkdirSync(userData, { recursive: true });
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', checkUpdatesOnStart: false, verifyLiveEnd: false, ytdlpPath: FAKE_YTDLP, downloadDir: join(work, 'd') }));
+    const app = await electron.launch({
+        executablePath: ELECTRON_PATH,
+        args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
+        env: { ...process.env, ...installedProgramsEnv(work), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9', FAKE_YTDLP_LOG: join(work, 'y.log') }
+    });
+    try {
+        const page = await app.firstWindow();
+        await page.waitForSelector('.logo');
+        await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+        const resize = async (width: number, height: number): Promise<void> => {
+            await app.evaluate(({ BrowserWindow, screen }, [w, h]) => {
+                const display = screen.getPrimaryDisplay();
+                BrowserWindow.getAllWindows()[0]?.setBounds({ x: display.workArea.x, y: display.workArea.y, width: w as number, height: h as number });
+            }, [width, height]);
+            await page.waitForTimeout(350);
+        };
+        const boxes = async () => {
+            return page.evaluate(() => {
+                const box = (selector: string) => {
+                    const rect = document.querySelector(selector)!.getBoundingClientRect();
+                    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+                };
+                return { window: window.innerWidth, start: box('.topbar__start'), search: box('.global-search'), end: box('.topbar__end') };
+            });
+        };
+
+        await resize(1920, 1050);
+        const wide = await boxes();
+        expect(Math.abs((wide.search.left + wide.search.right) / 2 - wide.window / 2)).toBeLessThanOrEqual(2);
+        expect(wide.search.right - wide.search.left).toBeCloseTo(560, 0);
+        expect(wide.search.left).toBeGreaterThanOrEqual(wide.start.right);
+        expect(wide.search.right).toBeLessThanOrEqual(wide.end.left);
+
+        await resize(1366, 768);
+        const medium = await boxes();
+        expect(medium.search.left).toBeGreaterThanOrEqual(medium.start.right);
+        expect(medium.search.right).toBeLessThanOrEqual(medium.end.left);
+        expect(medium.search.top).toBeLessThan(medium.start.bottom);
+
+        // With less room the search goes under the name, as wide as the bar.
+        await resize(1024, 768);
+        const narrow = await boxes();
+        expect(narrow.search.top).toBeGreaterThanOrEqual(narrow.start.bottom);
+        expect(narrow.search.top).toBeGreaterThanOrEqual(narrow.end.bottom);
+    } finally {
+        await app.close();
+    }
 });

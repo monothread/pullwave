@@ -35,8 +35,9 @@
 }
 
 .app > .app__main {
+    --main-pad-top: 18px;
     grid-area: main;
-    padding-top: 18px;
+    padding-top: var(--main-pad-top);
 }
 
 .app > .backdrop,
@@ -62,6 +63,32 @@
 
 .topbar .brand {
     flex: none;
+}
+
+.topbar__start {
+    display: flex;
+    align-items: center;
+    gap: inherit;
+    min-width: 0;
+}
+
+/* With room the bar is three columns: the start and the end take the same width, so the search is in the middle of the window (a start or an
+   end wider than its share takes what it needs, and the search moves aside rather than covering it). */
+@media (min-width: 1101px) {
+    .topbar {
+        display: grid;
+        grid-template-columns: 1fr minmax(240px, 560px) 1fr;
+        /* The same room on both sides, or the middle of the bar is not the middle of the window. */
+        padding-inline: 24px;
+    }
+
+    .topbar .global-search {
+        width: 100%;
+    }
+
+    .topbar__end {
+        justify-self: end;
+    }
 }
 
 .topbar__button {

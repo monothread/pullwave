@@ -4,35 +4,78 @@ import {
     AnimeCoverService,
     COVER_ATTEMPTS,
     COVER_INTERVAL_MS,
-    COVER_QUERY,
     CoverFetchError,
     MAX_RETRY_WAIT_MS,
     MISSING_COVER_RETRY_MS,
     searchVariants,
     type CoverServiceDependencies
 } from '@main/services/animeCovers';
+import { ANILIST_BATCH_SIZE, coverQuery, type CoverKind, type CoverProvider } from '@main/services/covers/coverProviders';
 
 const COVER = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/naruto.jpg';
 const OTHER_COVER = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/naruto-new.jpg';
 const TODAY = 1_790_000_000_000;
 
-function found(url: string | null = COVER): Response {
-    return new Response(JSON.stringify({ data: { Media: { coverImage: { large: url } } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+// What AniList answers for every name of a request: this cover (null: a page with an anime that has none), or no anime (an empty page).
+interface BatchAnswer {
+    covers: (names: readonly string[]) => Array<string | null | undefined>;
 }
 
-function notFound(): Response {
-    return new Response(JSON.stringify({ errors: [{ message: 'Not Found.', status: 404 }], data: { Media: null } }), { status: 404 });
+function found(url: string | null = COVER): BatchAnswer {
+    return {
+        covers: (names) => {
+            return names.map(() => {
+                return url;
+            });
+        }
+    };
+}
+
+function notFound(): BatchAnswer {
+    return {
+        covers: (names) => {
+            return names.map(() => {
+                return undefined;
+            });
+        }
+    };
+}
+
+// A cover for each name it knows, and no anime for the others.
+function byName(covers: Record<string, string>): BatchAnswer {
+    return {
+        covers: (names) => {
+            return names.map((name) => {
+                return covers[name];
+            });
+        }
+    };
+}
+
+function batchResponse(names: readonly string[], answer: BatchAnswer): Response {
+    const data = Object.fromEntries(
+        answer.covers(names).map((cover, index) => {
+            return [`a${String(index)}`, { media: cover === undefined ? [] : [{ coverImage: { large: cover } }] }];
+        })
+    );
+    return new Response(JSON.stringify({ data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
 function status(code: number, headers: Record<string, string> = {}): Response {
     return new Response('{}', { status: code, headers });
 }
 
-type Answer = Response | Error;
+type Answer = Response | Error | BatchAnswer;
 
-// Answers the requests one after the other with what it is given, and remembers what was searched for.
+function namesOf(init: RequestInit): string[] {
+    return Object.values((JSON.parse(init.body as string) as { variables: Record<string, string> }).variables);
+}
+
+// Answers the requests one after the other with what it is given, and remembers what was searched for (every name, in order, and the
+// names of each request).
 function setup(answers: Answer[], overrides: Partial<CoverServiceDependencies> = {}) {
     const searched: string[] = [];
+    const requests: string[][] = [];
     const inits: RequestInit[] = [];
     const urls: Array<string | URL | Request> = [];
     const sleeps: number[] = [];
@@ -44,7 +87,9 @@ function setup(answers: Answer[], overrides: Partial<CoverServiceDependencies> =
         peak = Math.max(peak, running);
         urls.push(url);
         inits.push(init as RequestInit);
-        searched.push((JSON.parse((init as RequestInit).body as string) as { variables: { search: string } }).variables.search);
+        const names = namesOf(init as RequestInit);
+        requests.push(names);
+        searched.push(...names);
         await Promise.resolve();
         running -= 1;
         const next = queue.shift();
@@ -54,13 +99,13 @@ function setup(answers: Answer[], overrides: Partial<CoverServiceDependencies> =
         if (next instanceof Error) {
             throw next;
         }
-        return next;
+        return next instanceof Response ? next : batchResponse(names, next);
     });
     const sleep = vi.fn(async (milliseconds: number): Promise<void> => {
         sleeps.push(milliseconds);
     });
-    const service = new AnimeCoverService({ fetchFn, sleep, ...overrides });
-    return { service, fetchFn, searched, inits, urls, sleeps, sleep, peak: () => {return peak} };
+    const service = new AnimeCoverService({ fetchFn, sleep, batchWindowMs: 0, ...overrides });
+    return { service, fetchFn, searched, requests, inits, urls, sleeps, sleep, peak: () => {return peak} };
 }
 
 function makeStore(initial: Record<string, StoredCover> = {}) {
@@ -108,7 +153,7 @@ describe('AnimeCoverService finding a cover', () => {
         expect(inits[0]).toEqual({
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify({ query: COVER_QUERY, variables: { search: 'Naruto' } }),
+            body: JSON.stringify({ query: coverQuery('anime', 1), variables: { s0: 'Naruto' } }),
             signal: expect.any(AbortSignal)
         });
     });
@@ -270,24 +315,156 @@ describe('AnimeCoverService when AniList cannot be asked', () => {
     });
 });
 
-describe('AnimeCoverService pace', () => {
-    it('lets one request go at a time, even when many titles are asked for together', async () => {
-        const { service, peak, searched } = setup([found(), found(), found(), found()]);
+describe('AnimeCoverService with fallbacks', () => {
+    const FALLBACK_COVER = 'https://media.kitsu.io/anime/poster_images/11/large.jpg';
 
-        await Promise.all(['A', 'B', 'C', 'D'].map((title) => {
+    // A service tried after AniList: it answers each name with what it is given for it (null for the names it does not know), or fails.
+    function fallback(name: string, answers: Record<string, string | Error>) {
+        const asked: Array<[string, CoverKind]> = [];
+        const service: CoverProvider = {
+            name,
+            find: vi.fn(async (title: string, kind: CoverKind): Promise<string | null> => {
+                asked.push([title, kind]);
+                const answer = answers[title];
+                if (answer instanceof Error) {
+                    throw answer;
+                }
+                return answer ?? null;
+            })
+        };
+        return { service, asked };
+    }
+
+    it('does not ask the fallbacks when AniList has the cover', async () => {
+        const kitsu = fallback('Kitsu', { Naruto: FALLBACK_COVER });
+        const { service } = setup([found()], { fallbacks: [kitsu.service] });
+        expect(await service.find('Naruto')).toBe(COVER);
+        expect(kitsu.asked).toEqual([]);
+    });
+
+    it('asks the fallbacks in order, for an anime, when AniList knows none of the names, and keeps the cover the first one has', async () => {
+        const { store, save } = makeStore();
+        const kitsu = fallback('Kitsu', {});
+        const jikan = fallback('Jikan', { Naruto: FALLBACK_COVER });
+        const { service, searched } = setup([notFound(), notFound()], { store, fallbacks: [kitsu.service, jikan.service] });
+        expect(await service.find('Naruto (TV)')).toBe(FALLBACK_COVER);
+        expect(searched).toEqual(['Naruto (TV)', 'Naruto']);
+        expect(kitsu.asked).toEqual([['Naruto (TV)', 'anime'], ['Naruto', 'anime']]);
+        expect(jikan.asked).toEqual([['Naruto (TV)', 'anime'], ['Naruto', 'anime']]);
+        expect(save.mock.calls).toEqual([['naruto (tv)', FALLBACK_COVER]]);
+    });
+
+    it('asks the fallbacks when AniList cannot be reached, and keeps the cover one of them has', async () => {
+        const { store, save } = makeStore();
+        const kitsu = fallback('Kitsu', { Naruto: FALLBACK_COVER });
+        const { service } = setup([new Error('offline')], { store, fallbacks: [kitsu.service] });
+        expect(await service.find('Naruto')).toBe(FALLBACK_COVER);
+        expect(save.mock.calls).toEqual([['naruto', FALLBACK_COVER]]);
+    });
+
+    it('remembers that a title has no cover only when AniList and every fallback said so', async () => {
+        const { store, save } = makeStore();
+        const kitsu = fallback('Kitsu', {});
+        const { service } = setup([notFound()], { store, fallbacks: [kitsu.service] });
+        expect(await service.find('Naruto')).toBeNull();
+        expect(save.mock.calls).toEqual([['naruto', null]]);
+    });
+
+    it('fails with the failure of AniList, and keeps nothing, when it could not be reached and no fallback has a cover', async () => {
+        const { store, save } = makeStore();
+        const kitsu = fallback('Kitsu', {});
+        const { service } = setup([status(500)], { store, fallbacks: [kitsu.service] });
+        await expect(service.find('Naruto')).rejects.toEqual(new CoverFetchError('AniList answered with status 500.'));
+        expect(kitsu.asked).toEqual([['Naruto', 'anime']]);
+        expect(save).not.toHaveBeenCalled();
+    });
+
+    it('fails with the failure of a fallback, and keeps nothing, when AniList knows no cover and that fallback could not be asked', async () => {
+        const { store, save } = makeStore();
+        const kitsu = fallback('Kitsu', { Naruto: new CoverFetchError('Kitsu could not be reached: offline') });
+        const jikan = fallback('Jikan', {});
+        const { service } = setup([notFound()], { store, fallbacks: [kitsu.service, jikan.service] });
+        await expect(service.find('Naruto')).rejects.toEqual(new CoverFetchError('Kitsu could not be reached: offline'));
+        expect(jikan.asked).toEqual([['Naruto', 'anime']]);
+        expect(save).not.toHaveBeenCalled();
+    });
+
+    it('finds the cover in a fallback when a title that had none is asked again an hour later, and tells', async () => {
+        const kitsu = fallback('Kitsu', { Naruto: FALLBACK_COVER });
+        const onChange = vi.fn();
+        const { store } = makeStore({ naruto: { url: null, checkedAt: TODAY - MISSING_COVER_RETRY_MS } });
+        const { service } = setup([notFound()], { store, onChange, fallbacks: [kitsu.service], now: () => {
+            return TODAY;
+        } });
+        expect(await service.find('Naruto')).toBeNull();
+        await vi.waitFor(() => {
+            expect(onChange.mock.calls).toEqual([['Naruto', FALLBACK_COVER]]);
+        });
+    });
+});
+
+describe('AnimeCoverService pace', () => {
+    it('asks for the titles asked for together in one request, and gives each its own cover', async () => {
+        const { service, requests, fetchFn } = setup([byName({ A: 'https://a.jpg', C: 'https://c.jpg' })]);
+
+        const answers = await Promise.all(['A', 'B', 'C', 'D'].map((title) => {
             return service.find(title);
         }));
 
+        expect(answers).toEqual(['https://a.jpg', null, 'https://c.jpg', null]);
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+        expect(requests).toEqual([['A', 'B', 'C', 'D']]);
+    });
+
+    it('asks for the simpler names of the titles it did not find in the next request, together', async () => {
+        const { service, requests } = setup([byName({ Naruto: COVER }), byName({ Bleach: OTHER_COVER })]);
+
+        const answers = await Promise.all([service.find('Naruto'), service.find('Bleach (TV)'), service.find('Frieren (Dub)')]);
+
+        expect(answers).toEqual([COVER, OTHER_COVER, null]);
+        expect(requests).toEqual([
+            ['Naruto', 'Bleach (TV)', 'Frieren (Dub)'],
+            ['Bleach', 'Frieren']
+        ]);
+    });
+
+    it('puts twenty-five names in a request at most, and the others in the next one', async () => {
+        const titles = Array.from({ length: ANILIST_BATCH_SIZE + 3 }, (_, index) => {
+            return `Anime ${String(index)}`;
+        });
+        const { service, requests, peak } = setup([found(), found()]);
+
+        await Promise.all(titles.map((title) => {
+            return service.find(title);
+        }));
+
+        expect(ANILIST_BATCH_SIZE).toBe(25);
+        expect(requests).toEqual([titles.slice(0, ANILIST_BATCH_SIZE), titles.slice(ANILIST_BATCH_SIZE)]);
         expect(peak()).toBe(1);
-        expect(searched).toEqual(['A', 'B', 'C', 'D']);
+    });
+
+    it('waits the moment it was given to gather the names before the request goes', async () => {
+        vi.useFakeTimers();
+        try {
+            const { service, fetchFn, requests } = setup([found()], { batchWindowMs: 200 });
+            const first = service.find('A');
+            await vi.advanceTimersByTimeAsync(150);
+            const second = service.find('B');
+            expect(fetchFn).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(60);
+            await expect(Promise.all([first, second])).resolves.toEqual([COVER, COVER]);
+            expect(requests).toEqual([['A', 'B']]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('waits an interval of a second after each request before the next one', async () => {
         const { service, sleeps } = setup([found(), found(), found()]);
 
-        await Promise.all(['A', 'B', 'C'].map((title) => {
-            return service.find(title);
-        }));
+        for (const title of ['A', 'B', 'C']) {
+            await service.find(title);
+        }
 
         expect(COVER_INTERVAL_MS).toBe(1000);
         expect(sleeps.slice(0, 3)).toEqual([1000, 1000, 1000]);
@@ -296,7 +473,8 @@ describe('AnimeCoverService pace', () => {
     it('uses the interval it was given', async () => {
         const { service, sleeps } = setup([found(), found()], { intervalMs: 250 });
 
-        await Promise.all([service.find('A'), service.find('B')]);
+        await service.find('A');
+        await service.find('B');
 
         expect(sleeps.slice(0, 2)).toEqual([250, 250]);
     });
@@ -320,12 +498,21 @@ describe('AnimeCoverService pace', () => {
 
     it('makes the requests that come after wait too', async () => {
         const order: string[] = [];
-        const { service, sleep } = setup([status(429, { 'retry-after': '5' }), found(), found()]);
+        // The first request is the refusal (below); the queue answers the ones after it.
+        const { service, sleep, fetchFn } = setup([found(), found()]);
         sleep.mockImplementation(async (milliseconds: number) => {
             order.push(`sleep ${milliseconds}`);
         });
+        fetchFn.mockImplementationOnce(async () => {
+            order.push('request A');
+            return status(429, { 'retry-after': '5' });
+        });
 
-        await Promise.all([service.find('A'), service.find('B')]);
+        const first = service.find('A');
+        await vi.waitFor(() => {
+            expect(order).toContain('request A');
+        });
+        await Promise.all([first, service.find('B')]);
 
         // The pause AniList asked for comes before anything else is asked.
         expect(order.indexOf('sleep 5000')).toBeGreaterThan(-1);

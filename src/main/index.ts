@@ -389,6 +389,9 @@ function bootstrap(): BootstrapResult {
         },
         // PULLWAVE_ANILIST_URL replaces the address of the schedule of the day (used by the end-to-end tests).
         scheduleUrl: process.env.PULLWAVE_ANILIST_URL,
+        // PULLWAVE_COVER_FALLBACK_URL replaces the addresses of the services of covers asked when AniList has none (used by the end-to-end
+        // tests).
+        coverFallbackUrl: process.env.PULLWAVE_COVER_FALLBACK_URL,
         // PULLWAVE_ANIME_CHECK_MS makes the look for new episodes happen that many milliseconds after the app opens, and again that often
         // (used by the end-to-end tests).
         checkTimes: Number(process.env.PULLWAVE_ANIME_CHECK_MS) > 0 ? { firstMs: Number(process.env.PULLWAVE_ANIME_CHECK_MS), everyMs: Number(process.env.PULLWAVE_ANIME_CHECK_MS) } : undefined,
@@ -474,7 +477,10 @@ function bootstrap(): BootstrapResult {
         // PULLWAVE_MANGA_CHECK_MS makes the look for new chapters happen that many milliseconds after the app opens, and again that often
         // (used by the end-to-end tests).
         checkTimes: Number(process.env.PULLWAVE_MANGA_CHECK_MS) > 0 ? { firstMs: Number(process.env.PULLWAVE_MANGA_CHECK_MS), everyMs: Number(process.env.PULLWAVE_MANGA_CHECK_MS) } : undefined,
-        externalBaseUrl: process.env.PULLWAVE_MANGA_URL ?? null
+        externalBaseUrl: process.env.PULLWAVE_MANGA_URL ?? null,
+        // PULLWAVE_COVER_FALLBACK_URL replaces the addresses of the services of covers asked when the source gives none (used by the
+        // end-to-end tests).
+        coverFallbackUrl: process.env.PULLWAVE_COVER_FALLBACK_URL
     });
     if (manga) {
         protocol.handle(MANGA_PAGE_SCHEME, (request) => {

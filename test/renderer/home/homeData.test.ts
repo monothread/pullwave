@@ -1,7 +1,8 @@
 import { CONTINUE_LIMIT, activeDownloads, continueReading, continueWatching } from '@renderer/home/homeData';
 import { makeAnime, makeAnimeJob, makeEpisode } from '../../helpers/animeFixtures';
 import { makeAnimeHistory, makeReading } from '../../helpers/homeFixtures';
-import { makeMangaJob } from '../../helpers/mangaFixtures';
+import type { LibraryManga, ReadingEntry } from '@shared/manga';
+import { makeChapterRecord, makeLibraryManga, makeMangaJob } from '../../helpers/mangaFixtures';
 import { makeJob } from '../../helpers/mockApi';
 
 describe('CONTINUE_LIMIT', () => {
@@ -78,24 +79,97 @@ describe('continueWatching', () => {
 });
 
 describe('continueReading', () => {
+    // One Piece in the library: chapters 1 to 3 (remote ids 11 to 13), listed out of order.
+    const chapter = (number: number, overrides: Parameters<typeof makeChapterRecord>[0] = {}) => {
+        return makeChapterRecord({ id: number, remoteId: 10 + number, number, name: `Chapter ${String(number)}`, pageCount: 10 + number, ...overrides });
+    };
+    const onePiece = makeLibraryManga([chapter(3), chapter(1), chapter(2)], { id: 1, title: 'One Piece', thumbnailUrl: 'https://img/op.jpg' });
+    const atChapter = (entry: ReadingEntry, number: number, manga: LibraryManga = onePiece): ReadingEntry => {
+        return {
+            ...entry,
+            sourceId: manga.sourceId,
+            mangaRemoteId: manga.remoteId,
+            title: manga.title,
+            thumbnailUrl: manga.thumbnailUrl,
+            libraryMangaId: manga.id,
+            chapterRemoteId: 10 + number,
+            chapterName: `Chapter ${String(number)}`,
+            chapterNumber: number,
+            page: 0,
+            pageCount: 10 + number
+        };
+    };
+
     it('lists the mangas read last first, with how far the chapter was read', () => {
         const older = makeReading({ id: 1, readAt: 10, page: 9, pageCount: 20 });
-        const newer = makeReading({ id: 2, title: 'Berserk', readAt: 20, page: 0, pageCount: 4 });
-        expect(continueReading([older, newer])).toEqual([
+        const newer = makeReading({ id: 2, title: 'Berserk', mangaRemoteId: 8, readAt: 20, page: 0, pageCount: 4 });
+        expect(continueReading([older, newer], [], [])).toEqual([
             { entry: newer, progress: 0.25 },
             { entry: older, progress: 0.5 }
         ]);
     });
 
-    it('says 0 for a chapter whose pages are not known, never more than all of it, and stops at the limit', () => {
-        expect(continueReading([makeReading({ pageCount: 0 })])[0]?.progress).toBe(0);
-        expect(continueReading([makeReading({ page: 40, pageCount: 20 })])[0]?.progress).toBe(1);
-        expect(continueReading([makeReading({ id: 1 }), makeReading({ id: 2 })], 1)).toHaveLength(1);
+    it('says 0 for a chapter whose pages are not known, and stops at the limit', () => {
+        expect(continueReading([makeReading({ pageCount: 0 })], [], [])).toEqual([{ entry: makeReading({ pageCount: 0 }), progress: 0 }]);
+        expect(continueReading([makeReading({ id: 1, mangaRemoteId: 7 }), makeReading({ id: 2, mangaRemoteId: 8 })], [], [], 1)).toEqual([{ entry: makeReading({ id: 1, mangaRemoteId: 7 }), progress: 0.25 }]);
+    });
+
+    it('shows a manga once, where it was read last', () => {
+        const last = makeReading({ id: 2, readAt: 20, page: 1, pageCount: 4 });
+        expect(continueReading([makeReading({ id: 1, readAt: 10 }), last], [], [])).toEqual([{ entry: last, progress: 0.5 }]);
+    });
+
+    it('goes on with the next chapter, by its number, when the chapter was read to its last page', () => {
+        const finished = makeReading({ id: 4, chapterRemoteId: 11, chapterName: 'Chapter 1', page: 10, pageCount: 11 });
+        expect(continueReading([finished], [onePiece], [])).toEqual([{ entry: atChapter(finished, 2), progress: 1 / 12 }]);
+    });
+
+    it('counts a page past the last as read to the end', () => {
+        const past = makeReading({ id: 4, chapterRemoteId: 11, page: 40, pageCount: 11 });
+        expect(continueReading([past], [onePiece], [])).toEqual([{ entry: atChapter(past, 2), progress: 1 / 12 }]);
+    });
+
+    it('goes on with the next chapter when the chapter was marked as read, wherever it was left', () => {
+        const marked = makeReading({ id: 4, chapterRemoteId: 11, page: 2, pageCount: 11 });
+        expect(continueReading([marked], [onePiece], ['One Piece|11'])).toEqual([{ entry: atChapter(marked, 2), progress: 1 / 12 }]);
+    });
+
+    it('passes over the chapters after it that are read already', () => {
+        const finished = makeReading({ id: 4, chapterRemoteId: 11, page: 10, pageCount: 11 });
+        expect(continueReading([finished], [onePiece], ['One Piece|12'])).toEqual([{ entry: atChapter(finished, 3), progress: 1 / 13 }]);
+    });
+
+    it('leaves out a manga that is up to date: the last chapter was read to the end', () => {
+        const finished = makeReading({ id: 4, chapterRemoteId: 13, page: 12, pageCount: 13 });
+        expect(continueReading([finished], [onePiece], [])).toEqual([]);
+    });
+
+    it('leaves out a finished chapter of a manga that is not in the library, or whose chapter is not in it any more', () => {
+        expect(continueReading([makeReading({ id: 4, libraryMangaId: null, page: 19, pageCount: 20 })], [onePiece], [])).toEqual([]);
+        expect(continueReading([makeReading({ id: 4, libraryMangaId: 9, page: 19, pageCount: 20 })], [onePiece], [])).toEqual([]);
+        expect(continueReading([makeReading({ id: 4, chapterRemoteId: 99, page: 19, pageCount: 20 })], [onePiece], [])).toEqual([]);
+    });
+
+    it('goes on with the first chapter not read of the next season when the season is over', () => {
+        const first = makeLibraryManga([chapter(1), chapter(2)], { id: 1, title: 'One Piece', series: 'One Piece', season: 1 });
+        const second = makeLibraryManga([chapter(5, { mangaId: 2 }), chapter(4, { mangaId: 2 })], { id: 2, remoteId: 70, title: 'One Piece 2', thumbnailUrl: 'https://img/op2.jpg', series: 'One Piece', season: 2 });
+        const finished = makeReading({ id: 4, chapterRemoteId: 12, page: 11, pageCount: 12 });
+        expect(continueReading([finished], [first, second], [])).toEqual([{ entry: atChapter(finished, 4, second), progress: 1 / 14 }]);
+        expect(continueReading([finished], [first, second], ['One Piece 2|14'])).toEqual([{ entry: atChapter(finished, 5, second), progress: 1 / 15 }]);
+        expect(continueReading([finished], [first, second], ['One Piece 2|14', 'One Piece 2|15'])).toEqual([]);
+    });
+
+    it('shows the next season once when it was read on its own too', () => {
+        const first = makeLibraryManga([chapter(1)], { id: 1, title: 'One Piece', series: 'One Piece', season: 1 });
+        const second = makeLibraryManga([chapter(4, { mangaId: 2 })], { id: 2, remoteId: 70, title: 'One Piece 2', series: 'One Piece', season: 2 });
+        const finished = makeReading({ id: 4, readAt: 30, chapterRemoteId: 11, page: 10, pageCount: 11 });
+        const own = makeReading({ id: 5, readAt: 20, title: 'One Piece 2', mangaRemoteId: 70, libraryMangaId: 2, chapterRemoteId: 14, page: 2, pageCount: 14 });
+        expect(continueReading([finished, own], [first, second], [])).toEqual([{ entry: atChapter(finished, 4, second), progress: 1 / 14 }]);
     });
 
     it('does not change the list it was given', () => {
         const list = [makeReading({ id: 1, readAt: 1 }), makeReading({ id: 2, readAt: 2 })];
-        continueReading(list);
+        continueReading(list, [], []);
         expect(
             list.map((entry) => {
                 return entry.id;

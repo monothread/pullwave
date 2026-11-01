@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { LibraryControls } from '@renderer/library/LibraryControls';
+import type { LibraryFilter, LibrarySort } from '@renderer/spotlight/spotlightData';
 
-function renderControls(filter: 'all' | 'news' = 'all', sort: 'recent' | 'last' | 'az' = 'recent', kind: 'anime' | 'manga' = 'anime') {
+function renderControls(filter: LibraryFilter = 'all', sort: LibrarySort = 'recent', kind: 'anime' | 'manga' = 'anime') {
     const onFilter = vi.fn();
     const onSort = vi.fn();
     render(<LibraryControls kind={kind} filter={filter} sort={sort} allCount={12} newsCount={3} onFilter={onFilter} onSort={onSort} />);
@@ -44,11 +45,13 @@ describe('LibraryControls', () => {
         })).toEqual([
             ['recent', 'Recently added'],
             ['last', 'Last watched'],
-            ['az', 'A–Z']
+            ['az', 'A–Z'],
+            ['za', 'Z–A']
         ]);
         fireEvent.change(order, { target: { value: 'last' } });
         fireEvent.change(order, { target: { value: 'recent' } });
-        expect(onSort.mock.calls).toEqual([['last'], ['recent']]);
+        fireEvent.change(order, { target: { value: 'za' } });
+        expect(onSort.mock.calls).toEqual([['last'], ['recent'], ['za']]);
     });
 
     it('calls it the last one read for the manga', () => {
@@ -57,6 +60,12 @@ describe('LibraryControls', () => {
         expect(order).toHaveValue('last');
         expect(Array.from(order.querySelectorAll('option')).map((option) => {
             return option.textContent;
-        })).toEqual(['Recently added', 'Last read', 'A–Z']);
+        })).toEqual(['Recently added', 'Last read', 'A–Z', 'Z–A']);
+    });
+
+    it('shows the order from Z when it is the one chosen', () => {
+        renderControls('all', 'za', 'manga');
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
+        expect(screen.getByRole('option', { name: 'Z–A' })).toHaveProperty('selected', true);
     });
 });

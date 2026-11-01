@@ -1,6 +1,5 @@
 import type { AnimeHistoryEntry, LibraryAnime } from '@shared/anime';
 import type { LibraryManga, ReadingEntry } from '@shared/manga';
-import type { StartTab } from '@shared/types';
 import { groupLibrary as groupAnime, type LibraryGroup } from '../components/animeText';
 import { groupLibrary as groupManga, type MangaLibraryGroup } from '../components/mangaText';
 import { continueReading, continueWatching } from '../home/homeData';
@@ -99,15 +98,18 @@ export function animeSpotlight(library: readonly LibraryAnime[], history: readon
     return items.slice(0, limit);
 }
 
-// The highlights of the manga: the chapters being read of mangas of the library, then the mangas with new chapters.
-export function mangaSpotlight(library: readonly LibraryManga[], history: readonly ReadingEntry[], now: number, limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
+// The highlights of the manga: the chapters to go on with of mangas of the library (`readKeys`: the chapters marked as read), then the mangas
+// with new chapters.
+export function mangaSpotlight(library: readonly LibraryManga[], history: readonly ReadingEntry[], readKeys: readonly string[], now: number, limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
     const groups = groupManga(library);
     const items: SpotlightItem[] = [];
     const used = new Set<number>();
     continueReading(
         history.filter((entry) => {
             return entry.libraryMangaId !== null;
-        })
+        }),
+        library,
+        readKeys
     ).forEach(({ entry, progress }) => {
         used.add(entry.libraryMangaId ?? -1);
         items.push({ key: `manga-continue-${String(entry.id)}`, kind: 'manga', reason: 'continue', title: entry.title, coverUrl: entry.thumbnailUrl, entry, progress });
@@ -125,28 +127,27 @@ export function mangaSpotlight(library: readonly LibraryManga[], history: readon
     return items.slice(0, limit);
 }
 
-// The highlights of the home screen: the ones of the section "Open on" puts first, then the other, one of each in turn.
-export function mixSpotlight(anime: readonly SpotlightItem[], manga: readonly SpotlightItem[], first: StartTab, limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
-    const [lead, other] = first === 'manga' ? [manga, anime] : [anime, manga];
+// The highlights of the home screen: the anime and the manga one of each in turn, in the order of the menu (the anime first).
+export function mixSpotlight(anime: readonly SpotlightItem[], manga: readonly SpotlightItem[], limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
     const mixed: SpotlightItem[] = [];
-    for (let index = 0; index < Math.max(lead.length, other.length); index++) {
-        const fromLead = lead[index];
-        const fromOther = other[index];
-        if (fromLead !== undefined) {
-            mixed.push(fromLead);
+    for (let index = 0; index < Math.max(anime.length, manga.length); index++) {
+        const fromAnime = anime[index];
+        const fromManga = manga[index];
+        if (fromAnime !== undefined) {
+            mixed.push(fromAnime);
         }
-        if (fromOther !== undefined) {
-            mixed.push(fromOther);
+        if (fromManga !== undefined) {
+            mixed.push(fromManga);
         }
     }
     return mixed.slice(0, limit);
 }
 
 export type LibraryFilter = 'all' | 'news';
-// The order of the grid of a library: the titles added last, the ones watched or read last, or by name.
-export type LibrarySort = 'recent' | 'last' | 'az';
+// The order of the grid of a library: the titles added last, the ones watched or read last, or by name (A to Z or Z to A).
+export type LibrarySort = 'recent' | 'last' | 'az' | 'za';
 
-export const LIBRARY_SORTS: readonly LibrarySort[] = ['recent', 'last', 'az'];
+export const LIBRARY_SORTS: readonly LibrarySort[] = ['recent', 'last', 'az', 'za'];
 
 interface SortableGroup<T> {
     series: string;
@@ -165,11 +166,16 @@ function byName(first: { series: string }, second: { series: string }): number {
 }
 
 // The groups of the library in the order chosen: the ones added last first, the ones watched or read last first (`lastSeen` says when; 0:
-// never, and those go after, the ones added last first), or by name.
+// never, and those go after, the ones added last first), or by name, from A or from Z.
 export function sortGroups<T extends { createdAt: number }, G extends SortableGroup<T>>(groups: readonly G[], sort: LibrarySort, lastSeen: (group: G) => number): G[] {
     const sorted = [...groups];
     if (sort === 'az') {
         return sorted.sort(byName);
+    }
+    if (sort === 'za') {
+        return sorted.sort((first, second) => {
+            return byName(second, first);
+        });
     }
     const byAdded = (first: G, second: G): number => {
         return addedAt(second) - addedAt(first) || byName(first, second);

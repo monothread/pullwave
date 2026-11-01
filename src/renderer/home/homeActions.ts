@@ -1,7 +1,7 @@
 import { batchNavigation } from '../navigation/navigationBatch';
-import { useAnimeStore } from '../store/animeStore';
+import { useAnimeStore, type AnimeBrowseView } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
-import { useMangaStore } from '../store/mangaStore';
+import { useMangaStore, type MangaBrowseView } from '../store/mangaStore';
 import type { ActiveDownloadKind } from './homeData';
 
 // Where the buttons of the home screen and of the downloads of the top bar lead: the screens of the sections, through what their stores
@@ -36,14 +36,14 @@ export function pasteLink(): void {
     }, 0);
 }
 
-export function openAnime(view: 'library' | 'updates'): void {
+export function openAnime(view: Extract<AnimeBrowseView, 'library' | 'updates' | 'search'>): void {
     batchNavigation(() => {
         useAppStore.getState().setTab('anime');
         useAnimeStore.getState().setView(view);
     });
 }
 
-export function openManga(view: 'library' | 'updates'): void {
+export function openManga(view: Extract<MangaBrowseView, 'library' | 'updates' | 'extensions' | 'browse'>): void {
     batchNavigation(() => {
         useAppStore.getState().setTab('manga');
         useMangaStore.getState().setView(view);

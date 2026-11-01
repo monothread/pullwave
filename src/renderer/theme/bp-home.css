@@ -417,3 +417,13 @@
         flex: 1 1 100%;
     }
 }
+
+/* --- The order of a list of chapters or episodes, at the right over the list --------------------------------------------------- */
+.list-order-bar {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.queue__toolbar .list-order {
+    margin-left: auto;
+}

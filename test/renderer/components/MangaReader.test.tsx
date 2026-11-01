@@ -9,6 +9,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaReaderState, type ReaderChapter } from '@renderer/store/mangaStore';
 import { makeChapterRecord, makeLibraryManga } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { installFakeFullscreen, type FakeFullscreen } from '../../helpers/fakeFullscreen';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -1836,3 +1837,123 @@ describe('MangaReader the zones between chapters', () => {
     });
 });
 
+
+describe('MangaReader fullscreen', () => {
+    let fake: FakeFullscreen;
+
+    beforeEach(() => {
+        fake = installFakeFullscreen();
+    });
+
+    afterEach(() => {
+        fake.restore();
+    });
+
+    async function renderInMode(mode: 'single' | 'vertical' | 'webtoon'): Promise<HTMLElement> {
+        const user = userEvent.setup();
+        open();
+        const { container } = render(
+            <main className="app__main">
+                <MangaReader />
+            </main>
+        );
+        if (mode !== 'single') {
+            await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            await user.selectOptions(screen.getByLabelText('Reading mode'), mode);
+            await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        }
+        return container.querySelector('.app__main') as HTMLElement;
+    }
+
+    it.each(['vertical', 'webtoon'] as const)('puts the area that scrolls the pages in fullscreen with a double click on them, and takes it out with another (%s)', async (mode) => {
+        const main = await renderInMode(mode);
+        const scroll = screen.getByTestId('reader-scroll');
+        expect(scroll).toHaveAttribute('data-fullscreen', 'false');
+        fireEvent.doubleClick(screen.getAllByRole('img')[1]!);
+        expect(fake.requests).toEqual([main]);
+        expect(scroll).toHaveAttribute('data-fullscreen', 'true');
+        fireEvent.doubleClick(scroll);
+        expect(fake.exits()).toBe(1);
+        expect(scroll).toHaveAttribute('data-fullscreen', 'false');
+    });
+
+    it('does nothing with a double click one page at a time, where a click turns the page', async () => {
+        await renderInMode('single');
+        fireEvent.doubleClick(screen.getByTestId('reader-stage'));
+        expect(fake.requests).toEqual([]);
+    });
+
+    it('does nothing with a double click on a button of a page that did not load', async () => {
+        await renderInMode('vertical');
+        fireEvent.error(screen.getAllByRole('img')[0]!);
+        fireEvent.doubleClick(screen.getByRole('button', { name: 'TRY AGAIN' }));
+        expect(fake.requests).toEqual([]);
+    });
+
+    it('leaves the fullscreen with Escape and keeps the reader open; Escape out of fullscreen closes it', async () => {
+        await renderInMode('vertical');
+        fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+        act(() => {
+            fireEvent.keyDown(window, { key: 'Escape' });
+        });
+        expect(fake.exits()).toBe(1);
+        expect(useMangaStore.getState().reader.status).toBe('ready');
+        vi.useFakeTimers();
+        try {
+            vi.advanceTimersByTime(600);
+            act(() => {
+                fireEvent.keyDown(window, { key: 'Escape' });
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+        expect(useMangaStore.getState().reader.status).toBe('closed');
+    });
+
+    it('keeps the reader open on the Escape with which the window itself left the fullscreen', async () => {
+        await renderInMode('vertical');
+        fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+        act(() => {
+            fake.end();
+        });
+        act(() => {
+            fireEvent.keyDown(window, { key: 'Escape' });
+        });
+        expect(useMangaStore.getState().reader.status).toBe('ready');
+        expect(fake.exits()).toBe(0);
+    });
+
+    it('stays in fullscreen while another chapter loads, when it fails to, and once it is there', async () => {
+        await renderInMode('webtoon');
+        fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+        act(() => {
+            open({ status: 'loading', index: 2, pages: [] });
+        });
+        expect(screen.getByTestId('reader-loading')).toBeInTheDocument();
+        act(() => {
+            open({ status: 'error', index: 2, pages: [], error: { code: 'UNKNOWN', message: 'boom' } });
+        });
+        act(() => {
+            open({ status: 'ready', index: 2 });
+        });
+        expect(fake.exits()).toBe(0);
+        expect(fake.current()).not.toBeNull();
+        expect(screen.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'true');
+    });
+
+    it('leaves the fullscreen when the mode becomes one page at a time, and when the reader closes', async () => {
+        const user = userEvent.setup();
+        await renderInMode('vertical');
+        fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'single');
+        expect(fake.exits()).toBe(1);
+        expect(fake.current()).toBeNull();
+        await user.selectOptions(screen.getByLabelText('Reading mode'), 'webtoon');
+        fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.click(screen.getByRole('button', { name: '← CLOSE' }));
+        expect(fake.exits()).toBe(2);
+        expect(fake.current()).toBeNull();
+    });
+});

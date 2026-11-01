@@ -35,6 +35,7 @@ import { useChapterZones } from '../hooks/useChapterZones';
 import { ReaderChapterZone } from './ReaderChapterZone';
 import { chapterStartScrollTop, zoneHeight } from './chapterZones';
 import { noop, scrollToTopSmoothly } from '../hooks/smoothScroll';
+import { useReaderFullscreen } from '../hooks/useReaderFullscreen';
 
 const PRELOAD_AHEAD = 2;
 // The longest the place of a chapter is corrected while its pictures arrive, if the user has not taken over before.
@@ -343,6 +344,10 @@ export function MangaReader() {
 
     // The zones are only there in the scroll modes, with the chapter on the screen.
     const zonesOn = continuous && reader.status === 'ready' && total > 0;
+    // A double click on the pages puts the area that scrolls them in fullscreen, in the scroll modes only (one page at a time, a click on a
+    // side turns the page). Another double click or Escape leaves it. It stays while the next chapter loads (or fails to): only closing the
+    // reader or going to one page at a time ends it.
+    const fullscreen = useReaderFullscreen(scroller, continuous && reader.status !== 'closed');
     const scrolledDown = useScrolledDown(scroller, () => {
         return TOP_BUTTON_THRESHOLD + startTopRef.current;
     });
@@ -456,6 +461,11 @@ export function MangaReader() {
                 return;
             }
             if (event.key === 'Escape') {
+                // In fullscreen Escape only leaves it: the reader stays open.
+                if (fullscreen.takesEscape()) {
+                    fullscreen.exit();
+                    return;
+                }
                 if (settingsOpen) {
                     setSettingsOpen(false);
                 } else {
@@ -492,7 +502,7 @@ export function MangaReader() {
         return () => {
             window.removeEventListener('keydown', handleKey);
         };
-    }, [settingsOpen, continuous, reader.status, prefs.direction, total, next, previous, goToChapter, closeReader]);
+    }, [settingsOpen, continuous, reader.status, prefs.direction, total, next, previous, goToChapter, closeReader, fullscreen]);
 
     const pageError = useMemo(() => {
         return (index: number) => {
@@ -779,7 +789,19 @@ export function MangaReader() {
                             void goToChapter(-1, true);
                         }}
                     />
-                    <div ref={scrollRef} className={`reader__scroll reader__scroll--${prefs.mode} reader__stage--${scale}`} style={prefs.mode === 'vertical' ? { gap: `${String(prefs.pageGap)}px` } : undefined} data-testid="reader-scroll">
+                    <div
+                        ref={scrollRef}
+                        className={`reader__scroll reader__scroll--${prefs.mode} reader__stage--${scale}`}
+                        style={prefs.mode === 'vertical' ? { gap: `${String(prefs.pageGap)}px` } : undefined}
+                        data-testid="reader-scroll"
+                        data-fullscreen={fullscreen.active}
+                        onDoubleClick={(event) => {
+                            // The buttons of a page that did not load keep their clicks.
+                            if ((event.target as HTMLElement).closest('button') === null) {
+                                fullscreen.toggle();
+                            }
+                        }}
+                    >
                         {reader.pages.map((_address, index) => {
                             return renderPage(index);
                         })}

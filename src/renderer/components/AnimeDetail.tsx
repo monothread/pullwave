@@ -7,6 +7,8 @@ import { AddToLibraryDialog } from './AddToLibraryDialog';
 import { AnimeCover } from './AnimeCover';
 import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
+import { inListOrder, useListOrder } from '../store/sortPrefsStore';
+import { ListOrderSelect } from './ListOrderSelect';
 
 // The anime that was opened: its episodes (a click on one opens the player, without downloading it), and the way to put it in the library with
 // all of them.
@@ -37,6 +39,8 @@ export function AnimeDetail() {
     });
     const suggested = suggestSeries(selection?.result.title ?? '');
     const [adding, setAdding] = useState(false);
+    // The order the grid shows the episodes in.
+    const [episodeOrder] = useListOrder('episodes');
 
     // The episodes the source has that the library does not know yet (an anime that is still airing gets new ones after it was added).
     const inLibrary = new Set(
@@ -147,10 +151,11 @@ export function AnimeDetail() {
                 <>
                     <div className="queue__toolbar">
                         <span className="section-label">{t('anime.episodes.label', { count: selection.episodes.length })}</span>
+                        <ListOrderSelect kind="episodes" />
                     </div>
                     <p className="field__hint">{t('anime.episodes.hint')}</p>
                     <div className="episode-grid" role="group" aria-label={t('anime.episodes.label', { count: selection.episodes.length })}>
-                        {selection.episodes.map((number) => {
+                        {inListOrder(selection.episodes, episodeOrder).map((number) => {
                             const isDownloaded = downloaded.has(number);
                             return (
                                 <button

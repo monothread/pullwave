@@ -91,13 +91,13 @@ describe('pasteLink', () => {
 });
 
 describe('openAnime and openManga', () => {
-    it.each(['library', 'updates'] as const)('open the %s of the anime', (view) => {
+    it.each(['library', 'updates', 'search'] as const)('open the %s of the anime', (view) => {
         openAnime(view);
         expect(app.setTab.mock.calls).toEqual([['anime']]);
         expect(anime.setView.mock.calls).toEqual([[view]]);
     });
 
-    it.each(['library', 'updates'] as const)('open the %s of the manga', (view) => {
+    it.each(['library', 'updates', 'extensions', 'browse'] as const)('open the %s of the manga', (view) => {
         openManga(view);
         expect(app.setTab.mock.calls).toEqual([['manga']]);
         expect(manga.setView.mock.calls).toEqual([[view]]);

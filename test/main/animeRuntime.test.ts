@@ -56,6 +56,8 @@ function options(overrides: Partial<AnimeRuntimeOptions> = {}) {
         },
         // Nothing answers where AniList would: the look for the anime that ended cannot be made, and the check goes on without it.
         scheduleUrl: 'http://127.0.0.1:1/graphql',
+        // Nor where the services of covers asked after AniList would: the tests never reach the real ones.
+        coverFallbackUrl: 'http://127.0.0.1:1',
         send
     };
     return { root, send, options: { ...base, ...overrides } };
@@ -1688,25 +1690,41 @@ describe('createAnimeRuntime covers', () => {
     let origin: string;
     let searches: string[];
     let cover: string;
+    // What the services asked after AniList were asked (the address of each request), and the results Kitsu gives.
+    let fallbackRequests: string[];
+    let kitsuResults: unknown[];
+    // The names of each request made to AniList.
+    let aniListRequests: string[][];
 
     beforeEach(async () => {
         searches = [];
+        fallbackRequests = [];
+        kitsuResults = [];
+        aniListRequests = [];
         cover = 'https://s4.anilist.co/cover/naruto.jpg';
         server = createServer((request, response) => {
+            if (request.method === 'GET') {
+                fallbackRequests.push(request.url ?? '');
+                response.writeHead(200, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ data: request.url?.startsWith('/kitsu/') === true ? kitsuResults : [] }));
+                return;
+            }
             const chunks: Buffer[] = [];
             request.on('data', (chunk: Buffer) => {
                 chunks.push(chunk);
             });
             request.on('end', () => {
-                const search = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { variables: { search: string } }).variables.search;
-                searches.push(search);
-                if (search.includes('Unknown')) {
-                    response.writeHead(404, { 'Content-Type': 'application/json' });
-                    response.end(JSON.stringify({ errors: [{ status: 404 }], data: { Media: null } }));
-                    return;
-                }
+                // AniList is asked for the names of a request together: a page for each, empty for the anime it does not know.
+                const names = Object.values((JSON.parse(Buffer.concat(chunks).toString('utf8')) as { variables: Record<string, string> }).variables);
+                searches.push(...names);
+                aniListRequests.push(names);
+                const data = Object.fromEntries(
+                    names.map((name, index) => {
+                        return [`a${String(index)}`, { media: name.includes('Unknown') ? [] : [{ coverImage: { large: cover } }] }];
+                    })
+                );
                 response.writeHead(200, { 'Content-Type': 'application/json' });
-                response.end(JSON.stringify({ data: { Media: { coverImage: { large: cover } } } }));
+                response.end(JSON.stringify({ data }));
             });
         });
         await new Promise<void>((resolve) => {
@@ -1734,13 +1752,37 @@ describe('createAnimeRuntime covers', () => {
         expect(runtime.db.getCover('naruto')).toEqual({ url: cover, checkedAt: expect.any(Number) });
     });
 
-    it('keeps that a title has no cover', async () => {
-        const { options: given } = options({ scheduleUrl: origin });
+    it('asks AniList for the covers asked for together in one request', async () => {
+        const { options: given } = options({ scheduleUrl: origin, coverFallbackUrl: origin });
+        const runtime = open(given) as AnimeRuntime;
+
+        await expect(Promise.all([runtime.handlers.covers.find('Naruto'), runtime.handlers.covers.find('Bleach'), runtime.handlers.covers.find('Frieren')])).resolves.toEqual([cover, cover, cover]);
+
+        expect(aniListRequests).toEqual([['Naruto', 'Bleach', 'Frieren']]);
+        expect(fallbackRequests).toEqual([]);
+    });
+
+    it('keeps that a title has no cover, once Kitsu has none either', async () => {
+        const { options: given } = options({ scheduleUrl: origin, coverFallbackUrl: origin });
         const runtime = open(given) as AnimeRuntime;
 
         expect(await runtime.handlers.covers.find('Unknown anime')).toBeNull();
 
+        expect(searches).toEqual(['Unknown anime']);
+        expect(fallbackRequests).toEqual(['/kitsu/anime?filter%5Btext%5D=Unknown+anime&page%5Blimit%5D=5&fields%5Banime%5D=canonicalTitle%2Ctitles%2CabbreviatedTitles%2CposterImage']);
         expect(runtime.db.getCover('unknown anime')).toEqual({ url: null, checkedAt: expect.any(Number) });
+    });
+
+    it('takes the cover from Kitsu, at the address given for the fallbacks, when AniList has none, and keeps it', async () => {
+        kitsuResults = [{ id: '1', type: 'anime', attributes: { canonicalTitle: 'Unknown anime', posterImage: { large: 'https://media.kitsu.io/unknown.jpg' } } }];
+        const { options: given } = options({ scheduleUrl: origin, coverFallbackUrl: origin });
+        const runtime = open(given) as AnimeRuntime;
+
+        expect(await runtime.handlers.covers.find('Unknown anime')).toBe('https://media.kitsu.io/unknown.jpg');
+
+        expect(searches).toEqual(['Unknown anime']);
+        expect(fallbackRequests).toEqual(['/kitsu/anime?filter%5Btext%5D=Unknown+anime&page%5Blimit%5D=5&fields%5Banime%5D=canonicalTitle%2Ctitles%2CabbreviatedTitles%2CposterImage']);
+        expect(runtime.db.getCover('unknown anime')).toEqual({ url: 'https://media.kitsu.io/unknown.jpg', checkedAt: expect.any(Number) });
     });
 
     it('starts with the covers that were kept, without asking AniList again, when the app is opened again the same day', async () => {
@@ -1799,7 +1841,7 @@ describe('createAnimeRuntime covers', () => {
         expect(send).not.toHaveBeenCalled();
     });
 
-    it('fails, and keeps nothing, when AniList cannot be reached', async () => {
+    it('fails, and keeps nothing, when neither AniList nor Kitsu can be reached', async () => {
         const { options: given } = options({ scheduleUrl: 'http://127.0.0.1:1/graphql' });
         const runtime = open(given) as AnimeRuntime;
 

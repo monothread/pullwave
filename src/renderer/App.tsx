@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { AnimePanel } from './components/AnimePanel';
 import { Backdrop } from './components/Backdrop';
 import { DownloadsPanel } from './components/DownloadsPanel';
@@ -101,8 +101,9 @@ export function App() {
     const clearBackdrop = useBackdropStore((state) => {
         return state.clear;
     });
-    // The cover behind the screen belongs to the screen it was chosen on.
-    useEffect(() => {
+    // The cover behind the screen belongs to the screen it was chosen on. Cleared before the effects of the new screen run (a layout effect
+    // runs before every passive one): a screen that shows a cover as it opens, such as the page of a manga the user comes back to, keeps it.
+    useLayoutEffect(() => {
         clearBackdrop();
     }, [tab, clearBackdrop]);
 

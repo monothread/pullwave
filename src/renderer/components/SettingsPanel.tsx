@@ -6,7 +6,6 @@ import {
     MIN_LIVE_END_CHECK_SECONDS,
     MIN_TITLE_LENGTH,
     RESOLUTIONS,
-    START_TABS,
     THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
@@ -278,18 +277,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             hint={t('settings.language.hint')}
                             onChange={(value) => {
                                 change('language', value);
-                            }}
-                        />
-                        <SelectField
-                            label={t('settings.startTab')}
-                            value={draft.startTab}
-                            options={START_TABS}
-                            formatOption={(startTab) => {
-                                return t(startTab === 'anime' ? 'tab.anime' : startTab === 'manga' ? 'tab.manga' : 'tab.downloads');
-                            }}
-                            hint={t('settings.startTab.hint')}
-                            onChange={(value) => {
-                                change('startTab', value);
                             }}
                         />
                         <ToggleField

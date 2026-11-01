@@ -130,11 +130,11 @@ describe('the tab the app opens on', () => {
         expect(useAppStore.getState().tab).toBe('home');
     });
 
-    it.each(['anime', 'manga', 'downloads'] as const)('is the home screen when the settings say %s (it only orders the shelves of the home screen)', async (startTab) => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab });
+    it('is the home screen once the settings arrive', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS });
         await useAppStore.getState().init();
         expect(useAppStore.getState().tab).toBe('home');
-        expect(useAppStore.getState().settings.startTab).toBe(startTab);
+        expect(useAppStore.getState().settings).toEqual(DEFAULT_SETTINGS);
     });
 
     it('keeps the section chosen in the menu while the app was starting', async () => {

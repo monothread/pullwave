@@ -1,4 +1,6 @@
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
+import { inListOrder, useListOrder } from '../store/sortPrefsStore';
+import { ListOrderSelect } from './ListOrderSelect';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { useEffect, useMemo, useState } from 'react';
@@ -184,6 +186,9 @@ export function MangaDetail() {
     const progress = useMemo(() => {
         return readerOpen ? {} : loadAllProgress();
     }, [readerOpen]);
+
+    // The order the list shows the chapters in (the reader always goes from the first to the last).
+    const [chapterOrder] = useListOrder('chapters');
 
     useDetailBackdrop(selection?.manga.thumbnailUrl ?? null);
     if (selection === null) {
@@ -510,8 +515,11 @@ export function MangaDetail() {
                             }}
                         />
                     )}
+                    <div className="list-order-bar">
+                        <ListOrderSelect kind="chapters" />
+                    </div>
                     <ul className="episode-cards manga__chapters">
-                        {ordered.map((chapter) => {
+                        {inListOrder(ordered, chapterOrder).map((chapter) => {
                             const state = chapterState(saved, chapter.remoteId);
                             const label = chapterLabel(chapter.name, chapter.number);
                             const read = isRead(chapter.remoteId);

@@ -8,7 +8,7 @@ beforeEach(() => {
 });
 
 describe('TopBar', () => {
-    it('holds the menu, the name with its wave, the search and the end of the bar, in that order', () => {
+    it('holds the start (the menu and the name with its wave), the search and the end of the bar, in that order', () => {
         render(<TopBar menuOpen={false} onToggleMenu={vi.fn()} />);
         const header = document.querySelector('header') as HTMLElement;
         expect(header).toHaveClass('app__header', 'topbar');
@@ -16,7 +16,13 @@ describe('TopBar', () => {
             Array.from(header.children).map((child) => {
                 return child.className;
             })
-        ).toEqual(['topbar__button topbar__menu', 'brand', 'global-search', 'topbar__end']);
+        ).toEqual(['topbar__start', 'global-search', 'topbar__end']);
+        const start = header.querySelector('.topbar__start') as HTMLElement;
+        expect(
+            Array.from(start.children).map((child) => {
+                return child.className;
+            })
+        ).toEqual(['topbar__button topbar__menu', 'brand']);
         expect(screen.getByRole('heading', { level: 1, name: 'PULLWAVE' })).toHaveClass('logo');
         expect(header.querySelectorAll('.brand__wave .brand__bar')).toHaveLength(5);
         expect(header.querySelector('.brand__wave')).toHaveAttribute('aria-hidden', 'true');

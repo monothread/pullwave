@@ -79,7 +79,7 @@ async function launch(): Promise<Session> {
     const app = await electron.launch({
         executablePath: ELECTRON_PATH,
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-        env: { ...process.env, ...installedProgramsEnv(work), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', FAKE_YTDLP_LOG: join(work, 'y.log') }
+        env: { ...process.env, ...installedProgramsEnv(work), PULLWAVE_ANI_CLI: FAKE_ANI_CLI, PULLWAVE_ANILIST_URL: 'http://127.0.0.1:9/graphql', PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9', FAKE_YTDLP_LOG: join(work, 'y.log') }
     });
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
