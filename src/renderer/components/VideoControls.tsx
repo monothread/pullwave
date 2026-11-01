@@ -125,10 +125,6 @@ function progressStyle(percent: number): CSSProperties {
     return { '--progress': `${percent}%` } as CSSProperties;
 }
 
-function seekStyle(percent: number, bufferedPercent: number): CSSProperties {
-    return { '--progress': `${percent}%`, '--buffered': `${bufferedPercent}%` } as CSSProperties;
-}
-
 // The control bar of the player. It drives the <video> through its own API, so it looks the same in every theme.
 export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle }: VideoControlsProps) {
     const t = useTranslator();
@@ -136,7 +132,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
     const subtitleStyle = useSubtitleStyle(video);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [hover, setHover] = useState<SeekHover | null>(null);
-    const { loading, bufferedPercent } = useVideoBuffer(video);
+    const { loading } = useVideoBuffer(video);
     // The bar stays while the settings are open: they are part of it.
     const hidden = useFullscreenIdle(video) && !settingsOpen;
 
@@ -280,7 +276,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
     // The tooltip sits in the bar, so its position is measured from the bar: the timeline's own offset plus the mouse on it.
     function hoverTimeline(input: HTMLInputElement, clientX: number): void {
         const found = seekHover(clientX, input.getBoundingClientRect(), state.duration);
-        setHover(found === null ? null : { time: found.time, offset: input.offsetLeft + found.offset });
+        setHover(found === null ? null : { time: found.time, offset: (input.parentElement?.offsetLeft ?? input.offsetLeft) + found.offset });
     }
 
     const silent = state.muted || state.volume === 0;
@@ -309,25 +305,29 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     </span>
                 )}
                 <span className="player__time">{formatClock(state.currentTime)}</span>
-                <input
-                    type="range"
-                    className="player__range player__seek"
-                    aria-label={t('anime.player.seek')}
-                    min={0}
-                    max={state.duration}
-                    step={0.1}
-                    value={Math.min(state.currentTime, state.duration)}
-                    style={seekStyle(seekPercent, bufferedPercent)}
-                    onMouseMove={(event) => {
-                        hoverTimeline(event.currentTarget, event.clientX);
-                    }}
-                    onMouseLeave={() => {
-                        setHover(null);
-                    }}
-                    onChange={(event) => {
-                        seekTo(Number(event.target.value));
-                    }}
-                />
+                <div className="player__timeline">
+                    <div className="progress" aria-hidden="true">
+                        <div className="progress__bar" style={{ width: `${seekPercent}%` }} />
+                    </div>
+                    <input
+                        type="range"
+                        className="player__range player__seek"
+                        aria-label={t('anime.player.seek')}
+                        min={0}
+                        max={state.duration}
+                        step={0.1}
+                        value={Math.min(state.currentTime, state.duration)}
+                        onMouseMove={(event) => {
+                            hoverTimeline(event.currentTarget, event.clientX);
+                        }}
+                        onMouseLeave={() => {
+                            setHover(null);
+                        }}
+                        onChange={(event) => {
+                            seekTo(Number(event.target.value));
+                        }}
+                    />
+                </div>
                 <span className="player__time">{formatClock(state.duration)}</span>
                 <button
                     type="button"

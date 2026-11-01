@@ -73,6 +73,10 @@ describe('formatClock', () => {
     });
 });
 
+function fill(): HTMLElement {
+    return document.querySelector('.player__timeline .progress__bar') as HTMLElement;
+}
+
 describe('VideoControls', () => {
     it('starts paused at 0:00 with the duration of the video', () => {
         setup();
@@ -129,7 +133,7 @@ describe('VideoControls', () => {
         expect(screen.getByText('1:15')).toBeInTheDocument();
         const seek = screen.getByRole('slider', { name: 'Seek' });
         expect(seek).toHaveValue('75');
-        expect(seek.style.getPropertyValue('--progress')).toBe('62.5%');
+        expect(fill().style.width).toBe('62.5%');
     });
 
     it('seeks when the slider moves', () => {
@@ -726,11 +730,22 @@ describe('VideoControls', () => {
             return screen.getByRole('slider', { name: 'Seek' }) as HTMLInputElement;
         }
 
+        it('is the bar of a download under the slider: a .progress with a .progress__bar as wide as what was watched, in a box with the slider', () => {
+            setup([], 200);
+            const box = timeline().parentElement as HTMLElement;
+            expect(box).toHaveClass('player__timeline');
+            expect(Array.from(box.children).map((child) => { return child.className; })).toEqual(['progress', 'player__range player__seek']);
+            const bar = box.querySelector('.progress') as HTMLElement;
+            expect(bar).toHaveAttribute('aria-hidden', 'true');
+            expect(Array.from(bar.children).map((child) => { return child.className; })).toEqual(['progress__bar']);
+            expect(fill().style.width).toBe('0%');
+        });
+
         function measure(bar: HTMLInputElement): void {
             bar.getBoundingClientRect = () => {
                 return { left: 100, width: 200, right: 300, top: 0, bottom: 6, height: 6, x: 100, y: 0, toJSON: () => { return {}; } };
             };
-            Object.defineProperty(bar, 'offsetLeft', { value: 60, configurable: true });
+            Object.defineProperty(bar.parentElement as HTMLElement, 'offsetLeft', { value: 60, configurable: true });
         }
 
         it('shows the time under the mouse above the timeline, following the mouse, and hides it when the mouse leaves', () => {
@@ -760,7 +775,7 @@ describe('VideoControls', () => {
             expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
         });
 
-        it('paints how far the video is loaded after the part already watched', () => {
+        it('widens the bar of the part already watched as the video plays', () => {
             const { video } = setup([], 200);
             Object.defineProperty(video, 'currentTime', { value: 20, configurable: true });
             Object.defineProperty(video, 'buffered', {
@@ -771,8 +786,7 @@ describe('VideoControls', () => {
                 video.dispatchEvent(new Event('progress'));
                 video.dispatchEvent(new Event('timeupdate'));
             });
-            expect(timeline().style.getPropertyValue('--progress')).toBe('10%');
-            expect(timeline().style.getPropertyValue('--buffered')).toBe('50%');
+            expect(fill().style.width).toBe('10%');
         });
     });
 

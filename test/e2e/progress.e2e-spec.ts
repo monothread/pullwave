@@ -54,7 +54,7 @@ interface Probes {
     cloudflare: BarProbe;
     done: BarProbe;
     error: BarProbe;
-    timeline: { layers: number; glow: boolean };
+    timeline: { layers: number; glow: boolean; sliderShadow: string };
     volume: { layers: number; glow: boolean };
 }
 
@@ -142,7 +142,13 @@ async function probeBars(target: Page): Promise<Probes> {
             const shadow = getComputedStyle(input).boxShadow;
             return { layers: layersOf(shadow), glow: shadow.includes(colourOf('--cyan')) };
         };
-        const timeline = range('player__range player__seek');
+        // The timeline of the player is the bar of a download with a transparent slider over it: the glow is the one of the bar.
+        const timelineBox = document.createElement('div');
+        timelineBox.className = 'player__timeline';
+        timelineBox.innerHTML = '<div class="progress"><div class="progress__bar" style="width: 40%"></div></div><input type="range" class="player__range player__seek">';
+        host.append(timelineBox);
+        const timelineShadow = getComputedStyle(timelineBox.querySelector('.progress__bar')!).boxShadow;
+        const timeline = { layers: layersOf(timelineShadow), glow: timelineShadow.includes(colourOf('--cyan')), sliderShadow: getComputedStyle(timelineBox.querySelector('.player__seek')!).boxShadow };
         const volume = range('player__range player__volume');
         host.remove();
         return { ...probes, timeline, volume } as unknown as Probes;
@@ -164,8 +170,7 @@ for (const theme of THEMES) {
                 expect(probes[kind].glow, `${kind} glow colour`).toBe(true);
                 expect(probes[kind].overflow, `${kind} track`).toBe('visible');
             });
-            expect(probes.timeline.layers).toBe(3);
-            expect(probes.timeline.glow).toBe(true);
+            expect(probes.timeline).toEqual({ layers: 5, glow: true, sliderShadow: 'none' });
             expect(probes.volume.layers).toBe(3);
             expect(probes.volume.glow).toBe(true);
         });

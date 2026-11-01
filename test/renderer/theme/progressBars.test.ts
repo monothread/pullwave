@@ -234,9 +234,9 @@ describe('the bars when the system asks for less motion', () => {
         expect(verify).toMatchObject({ animation: 'none', width: '100%' });
     });
 
-    it('slows the spinner of the player instead of stopping it, and stops the wave of its timeline', () => {
+    it('slows the spinner of the player instead of stopping it, and keeps the wave of its timeline flowing, like the one of a download', () => {
         expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__spinner')['animation-duration']).toBe('3s');
-        expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__controls .player__seek')['animation']).toBe('none');
+        expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__controls .player__seek')).toEqual({});
     });
 });
 
@@ -246,51 +246,41 @@ describe('the timeline and the volume of the player', () => {
         expect(layers).toEqual(['0 0 3px var(--cyan)', '0 0 10px var(--cyan)', '0 0 20px color-mix(in srgb, var(--cyan) 60%, transparent)']);
     });
 
-    it('flows a neon wave over the part already watched while the video plays, and stands still when it is paused', () => {
-        const seek = styleOf(cyberpunk, '.player__controls .player__seek');
-        expect(seek['animation']).toBe('player-wave-phase 1.2s linear infinite, player-wave-glow-filter 2s ease-in-out infinite');
-        expect(seek['animation-play-state']).toBe('paused');
-        expect(styleOf(cyberpunk, ".player__controls[data-playing='true'] .player__seek")['animation-play-state']).toBe('running');
-        expect(keyframesOf(cyberpunk, 'player-wave-phase')?.body.replace(/\s+/g, ' ').trim()).toBe('from { --wave-phase: 0px; } to { --wave-phase: 160px; }');
-        expect(cyberpunk.atRules.some((block) => { return block.prelude === '@property --wave-phase'; })).toBe(true);
+    it('has no rule of its own for the look of the timeline: its frame, glow and wave are the ones of the bar of a download', () => {
+        const rules = cyberpunk.rules.filter((rule) => { return rule.selector.includes('.player__seek') || rule.selector.includes('.player__timeline') || rule.selector.includes('.player__wave'); });
+        expect(rules.map((rule) => { return rule.selector; })).toEqual(['.player__timeline', '.player__timeline .player__seek']);
+        expect(cyberpunk.text).not.toContain('--wave-phase');
+        expect(cyberpunk.text).not.toContain('player-wave-phase');
+        expect(cyberpunk.text).not.toContain('player-wave-glow-filter');
     });
 
-    it('is a thick bar, so the wave can be seen, with the wave only as wide as what was watched, over a faint track', () => {
-        const seek = styleOf(cyberpunk, '.player__controls .player__seek');
-        expect(seek['height']).toBe('10px');
-        expect(seek['border-color']).toBe('transparent');
-        expect(seek['box-shadow']).toBe('none');
-        const layers = splitTopLevel(seek['background'] ?? '', ',');
-        expect(layers).toHaveLength(3);
-        expect(seek['background']).toContain('0 0 / var(--progress) 100% no-repeat');
-        expect(seek['background']).toContain('0 0 / var(--buffered) 100% no-repeat');
-        expect(seek['background']).toContain('var(--seek-track)');
+    it('lays the box of the timeline out as the bar that grows and fills the row, with the slider over it', () => {
+        expect(styleOf(cyberpunk, '.player__timeline')).toEqual({ position: 'relative', flex: '1', 'min-width': '80px' });
     });
 
-    it('has a wave with a dark trough and a bright crest, so it shows also in the themes whose two colours are close', () => {
-        const background = styleOf(cyberpunk, '.player__controls .player__seek')['background'] ?? '';
-        expect(background).toContain('color-mix(in srgb, var(--cyan) 55%, black) var(--wave-phase)');
-        expect(background).toContain('color-mix(in srgb, var(--magenta) 35%, white) calc(var(--wave-phase) + 80px)');
-        expect(background).toContain('color-mix(in srgb, var(--cyan) 55%, black) calc(var(--wave-phase) + 160px)');
+    it('makes the slider transparent, without frame or glow, as big as the box, so only its thumb is seen over the bar', () => {
+        expect(styleOf(cyberpunk, '.player__timeline .player__seek')).toEqual({
+            position: 'absolute',
+            inset: '0',
+            width: '100%',
+            height: '100%',
+            background: 'transparent',
+            border: '0',
+            'box-shadow': 'none'
+        });
     });
 
-    it('glows around the watched part as a drop shadow of what is painted, strong and in both colours of the theme', () => {
-        const keyframes = keyframesOf(cyberpunk, 'player-wave-glow-filter')?.body.replace(/\s+/g, ' ') ?? '';
-        expect(keyframes).toContain('drop-shadow(0 0 3px var(--cyan))');
-        expect(keyframes).toContain('drop-shadow(0 0 10px color-mix(in srgb, var(--cyan) 85%, transparent))');
-        expect(keyframes).toContain('drop-shadow(0 0 3px var(--magenta))');
-        expect(keyframes).toContain('drop-shadow(0 0 12px color-mix(in srgb, var(--magenta) 90%, transparent))');
+    it('lets the bar of a download, which the timeline uses, flow its wave and glow in every state of the video', () => {
+        const wave = styleOf(cyberpunk, ".progress:not([class*='progress--']) .progress__bar");
+        expect(wave['animation']).toBe('bar-wave-flow 1.4s linear infinite');
+        expect(wave['background-size']).toBe('160px 100%');
+        expect(styleOf(cyberpunk, '.progress')).toMatchObject({ height: '8px', border: '1px solid var(--line)', overflow: 'visible' });
+        expect(cyberpunk.rules.some((rule) => { return rule.media?.includes(REDUCED_MOTION) === true && rule.selector.includes('.player__seek'); })).toBe(false);
     });
 
-    it('makes the track and the loaded part of the colours of the theme, so they show on light and dark panels', () => {
-        const seek = styleOf(cyberpunk, '.player__controls .player__seek');
-        expect(seek['--seek-track']).toBe('color-mix(in srgb, var(--text) 16%, transparent)');
-        expect(seek['--seek-buffered']).toBe('color-mix(in srgb, var(--cyan) 42%, transparent)');
-    });
-
-    it('makes the track and the loaded part white over the video in fullscreen, where they show on any picture', () => {
-        const seek = styleOf(cyberpunk, '.player__stage:fullscreen .player__controls .player__seek');
-        expect(seek).toEqual({ '--seek-track': 'rgba(255, 255, 255, 0.16)', '--seek-buffered': 'rgba(255, 255, 255, 0.5)' });
+    it('does not carry a rule of the timeline in fullscreen: the bar is the one of a download there too', () => {
+        expect(cyberpunk.rules.some((rule) => { return rule.selector.includes(':fullscreen') && rule.selector.includes('.player__seek'); })).toBe(false);
+        expect(cyberpunk.rules.some((rule) => { return rule.selector.includes(':fullscreen') && rule.selector.includes('.player__timeline'); })).toBe(false);
     });
 
     it('has the same fullscreen rules in every theme: none of them is for the neon themes only', () => {

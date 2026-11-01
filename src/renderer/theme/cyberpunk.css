@@ -1120,55 +1120,24 @@ body::after {
     cursor: pointer;
 }
 
-.player__seek { flex: 1; min-width: 80px; }
 
-/* The part of the timeline already watched is a neon wave, in every theme and in fullscreen too. The wave is a layer as wide as the progress
-   (its flow is the phase of the gradient, a registered property that can be animated), with a dark trough and a bright crest so it shows
-   also in the themes whose two colours are close; the rest is a faint track (made of the text colour, so it shows on light and dark
-   panels), and the glow is a drop shadow of what is painted: strong around the watched part, almost none around the faint track. It flows
-   while the video plays and stands still when it is paused. */
-@property --wave-phase {
-    syntax: '<length>';
-    inherits: false;
-    initial-value: 0px;
+/* The timeline of the player is the bar of a download: it has the same elements (.progress with a .progress__bar inside, as wide as what was
+   watched), so it has the same frame, the same glow and the same wave that flows, in every theme. The slider is above it, transparent, with only
+   its thumb to be seen. */
+.player__timeline {
+    position: relative;
+    flex: 1;
+    min-width: 80px;
 }
 
-@keyframes player-wave-phase {
-    from { --wave-phase: 0px; }
-    to { --wave-phase: 160px; }
-}
-
-@keyframes player-wave-glow-filter {
-    0%, 100% { filter: drop-shadow(0 0 3px var(--cyan)) drop-shadow(0 0 10px color-mix(in srgb, var(--cyan) 85%, transparent)); }
-    50% { filter: drop-shadow(0 0 3px var(--magenta)) drop-shadow(0 0 12px color-mix(in srgb, var(--magenta) 90%, transparent)); }
-}
-
-.player__controls .player__seek {
-    --seek-track: color-mix(in srgb, var(--text) 16%, transparent);
-    --seek-buffered: color-mix(in srgb, var(--cyan) 42%, transparent);
-    height: 10px;
-    background:
-        repeating-linear-gradient(
-            90deg,
-            color-mix(in srgb, var(--cyan) 55%, black) var(--wave-phase),
-            var(--cyan) calc(var(--wave-phase) + 40px),
-            color-mix(in srgb, var(--magenta) 35%, white) calc(var(--wave-phase) + 80px),
-            var(--magenta) calc(var(--wave-phase) + 120px),
-            color-mix(in srgb, var(--cyan) 55%, black) calc(var(--wave-phase) + 160px)
-        )
-        0 0 / var(--progress) 100% no-repeat,
-        linear-gradient(var(--seek-buffered), var(--seek-buffered)) 0 0 / var(--buffered) 100% no-repeat,
-        var(--seek-track);
-    border-color: transparent;
+.player__timeline .player__seek {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    border: 0;
     box-shadow: none;
-    animation: player-wave-phase 1.2s linear infinite, player-wave-glow-filter 2s ease-in-out infinite;
-    animation-play-state: paused;
-}
-
-.player__controls[data-playing='true'] .player__seek { animation-play-state: running; }
-
-@media (prefers-reduced-motion: reduce) {
-    .player__controls .player__seek { animation: none; }
 }
 
 /* In every theme, in fullscreen: the bar floats over the video with no background and takes no room (it goes away when the mouse stands still),
@@ -1193,12 +1162,6 @@ body::after {
 }
 
 .player__stage:fullscreen .player__select { background: transparent; border-color: var(--cyan); }
-
-/* Over the video the faint track and the loaded part are white, which shows on any picture. */
-.player__stage:fullscreen .player__controls .player__seek {
-    --seek-track: rgba(255, 255, 255, 0.16);
-    --seek-buffered: rgba(255, 255, 255, 0.5);
-}
 
 .player__volume { width: 80px; }
 

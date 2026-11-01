@@ -251,7 +251,7 @@
         row-gap: 8px;
     }
 
-    .player__seek {
+    .player__timeline {
         flex: 1 1 100%;
         order: -1;
     }

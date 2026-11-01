@@ -127,10 +127,10 @@ describe('the style of each theme', () => {
     });
 
     it('gives the rules of the player in fullscreen to every theme, not only the neon ones, with the colors of the theme', () => {
-        expect(CYBERPUNK_CSS).toContain('.player__stage:fullscreen .player__controls .player__seek {');
+        expect(CYBERPUNK_CSS).toContain('.player__stage:fullscreen .player__controls {');
         expect(CYBERPUNK_CSS).not.toMatch(/data-theme-style='neon'\]\s*\.player/);
         expect(CYBERPUNK_CSS).not.toContain("html[data-theme='cyberpunk']");
-        const player = CYBERPUNK_CSS.slice(CYBERPUNK_CSS.indexOf('@keyframes player-wave'));
+        const player = CYBERPUNK_CSS.slice(CYBERPUNK_CSS.indexOf('.player__timeline {'));
         expect(player).not.toContain('0, 240, 255');
         expect(player).not.toContain('255, 43, 214');
         expect(player).toContain('color-mix(in srgb, var(--cyan)');
