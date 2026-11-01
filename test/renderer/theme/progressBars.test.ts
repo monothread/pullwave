@@ -237,7 +237,6 @@ describe('the bars when the system asks for less motion', () => {
     it('slows the spinner of the player instead of stopping it, and stops the wave of its timeline', () => {
         expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__spinner')['animation-duration']).toBe('3s');
         expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__controls .player__seek')['animation']).toBe('none');
-        expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__stage:fullscreen .player__controls .player__seek')['animation']).toBe('none');
     });
 });
 
@@ -249,22 +248,49 @@ describe('the timeline and the volume of the player', () => {
 
     it('flows a neon wave over the part already watched while the video plays, and stands still when it is paused', () => {
         const seek = styleOf(cyberpunk, '.player__controls .player__seek');
-        expect(seek['animation']).toBe('player-wave 1.6s linear infinite, player-wave-glow 2.4s ease-in-out infinite');
+        expect(seek['animation']).toBe('player-wave-phase 1.2s linear infinite, player-wave-glow-filter 2s ease-in-out infinite');
         expect(seek['animation-play-state']).toBe('paused');
         expect(styleOf(cyberpunk, ".player__controls[data-playing='true'] .player__seek")['animation-play-state']).toBe('running');
-        expect(keyframesOf(cyberpunk, 'player-wave')).toBeDefined();
-        expect(keyframesOf(cyberpunk, 'player-wave-glow')).toBeDefined();
+        expect(keyframesOf(cyberpunk, 'player-wave-phase')?.body.replace(/\s+/g, ' ').trim()).toBe('from { --wave-phase: 0px; } to { --wave-phase: 160px; }');
+        expect(cyberpunk.atRules.some((block) => { return block.prelude === '@property --wave-phase'; })).toBe(true);
     });
 
-    it('moves the wave in fullscreen with a phase that can be animated, and glows around the watched part only', () => {
-        const seek = styleOf(cyberpunk, '.player__stage:fullscreen .player__controls .player__seek');
-        expect(seek['animation']).toBe('player-wave-phase 1.6s linear infinite, player-wave-glow-filter 2.4s ease-in-out infinite');
-        expect(seek['animation-play-state']).toBe('paused');
+    it('is a thick bar, so the wave can be seen, with the wave only as wide as what was watched, over a faint track', () => {
+        const seek = styleOf(cyberpunk, '.player__controls .player__seek');
+        expect(seek['height']).toBe('10px');
+        expect(seek['border-color']).toBe('transparent');
         expect(seek['box-shadow']).toBe('none');
-        expect(styleOf(cyberpunk, ".player__stage:fullscreen .player__controls[data-playing='true'] .player__seek")['animation-play-state']).toBe('running');
-        expect(keyframesOf(cyberpunk, 'player-wave-phase')?.body.replace(/\s+/g, ' ').trim()).toBe('from { --wave-phase: 0px; } to { --wave-phase: 160px; }');
-        expect(keyframesOf(cyberpunk, 'player-wave-glow-filter')?.body).toContain('drop-shadow');
-        expect(cyberpunk.atRules.some((block) => { return block.prelude === '@property --wave-phase'; })).toBe(true);
+        const layers = splitTopLevel(seek['background'] ?? '', ',');
+        expect(layers).toHaveLength(3);
+        expect(seek['background']).toContain('0 0 / var(--progress) 100% no-repeat');
+        expect(seek['background']).toContain('0 0 / var(--buffered) 100% no-repeat');
+        expect(seek['background']).toContain('var(--seek-track)');
+    });
+
+    it('has a wave with a dark trough and a bright crest, so it shows also in the themes whose two colours are close', () => {
+        const background = styleOf(cyberpunk, '.player__controls .player__seek')['background'] ?? '';
+        expect(background).toContain('color-mix(in srgb, var(--cyan) 55%, black) var(--wave-phase)');
+        expect(background).toContain('color-mix(in srgb, var(--magenta) 35%, white) calc(var(--wave-phase) + 80px)');
+        expect(background).toContain('color-mix(in srgb, var(--cyan) 55%, black) calc(var(--wave-phase) + 160px)');
+    });
+
+    it('glows around the watched part as a drop shadow of what is painted, strong and in both colours of the theme', () => {
+        const keyframes = keyframesOf(cyberpunk, 'player-wave-glow-filter')?.body.replace(/\s+/g, ' ') ?? '';
+        expect(keyframes).toContain('drop-shadow(0 0 3px var(--cyan))');
+        expect(keyframes).toContain('drop-shadow(0 0 10px color-mix(in srgb, var(--cyan) 85%, transparent))');
+        expect(keyframes).toContain('drop-shadow(0 0 3px var(--magenta))');
+        expect(keyframes).toContain('drop-shadow(0 0 12px color-mix(in srgb, var(--magenta) 90%, transparent))');
+    });
+
+    it('makes the track and the loaded part of the colours of the theme, so they show on light and dark panels', () => {
+        const seek = styleOf(cyberpunk, '.player__controls .player__seek');
+        expect(seek['--seek-track']).toBe('color-mix(in srgb, var(--text) 16%, transparent)');
+        expect(seek['--seek-buffered']).toBe('color-mix(in srgb, var(--cyan) 42%, transparent)');
+    });
+
+    it('makes the track and the loaded part white over the video in fullscreen, where they show on any picture', () => {
+        const seek = styleOf(cyberpunk, '.player__stage:fullscreen .player__controls .player__seek');
+        expect(seek).toEqual({ '--seek-track': 'rgba(255, 255, 255, 0.16)', '--seek-buffered': 'rgba(255, 255, 255, 0.5)' });
     });
 
     it('has the same fullscreen rules in every theme: none of them is for the neon themes only', () => {

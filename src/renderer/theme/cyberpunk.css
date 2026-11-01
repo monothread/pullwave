@@ -1122,28 +1122,46 @@ body::after {
 
 .player__seek { flex: 1; min-width: 80px; }
 
-/* In every theme the part already watched is a neon wave in the colours of the theme; it flows while the video plays and stands still when it is paused. */
-@keyframes player-wave {
-    from { background-position: 0 0, 0 0; }
-    to { background-position: 0 0, 160px 0; }
+/* The part of the timeline already watched is a neon wave, in every theme and in fullscreen too. The wave is a layer as wide as the progress
+   (its flow is the phase of the gradient, a registered property that can be animated), with a dark trough and a bright crest so it shows
+   also in the themes whose two colours are close; the rest is a faint track (made of the text colour, so it shows on light and dark
+   panels), and the glow is a drop shadow of what is painted: strong around the watched part, almost none around the faint track. It flows
+   while the video plays and stands still when it is paused. */
+@property --wave-phase {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 0px;
 }
 
-@keyframes player-wave-glow {
-    0%, 100% { box-shadow: 0 0 6px color-mix(in srgb, var(--cyan) 45%, transparent); }
-    50% { box-shadow: 0 0 14px color-mix(in srgb, var(--magenta) 65%, transparent); }
+@keyframes player-wave-phase {
+    from { --wave-phase: 0px; }
+    to { --wave-phase: 160px; }
+}
+
+@keyframes player-wave-glow-filter {
+    0%, 100% { filter: drop-shadow(0 0 3px var(--cyan)) drop-shadow(0 0 10px color-mix(in srgb, var(--cyan) 85%, transparent)); }
+    50% { filter: drop-shadow(0 0 3px var(--magenta)) drop-shadow(0 0 12px color-mix(in srgb, var(--magenta) 90%, transparent)); }
 }
 
 .player__controls .player__seek {
+    --seek-track: color-mix(in srgb, var(--text) 16%, transparent);
+    --seek-buffered: color-mix(in srgb, var(--cyan) 42%, transparent);
+    height: 10px;
     background:
-        linear-gradient(
-            to right,
-            transparent var(--progress),
-            color-mix(in srgb, var(--cyan) 55%, var(--input-bg)) var(--progress) var(--buffered),
-            var(--input-bg) var(--buffered)
-        ),
-        linear-gradient(90deg, var(--cyan), var(--magenta) 35%, color-mix(in srgb, var(--magenta) 80%, white) 50%, var(--magenta) 65%, var(--cyan));
-    background-size: 100% 100%, 160px 100%;
-    animation: player-wave 1.6s linear infinite, player-wave-glow 2.4s ease-in-out infinite;
+        repeating-linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--cyan) 55%, black) var(--wave-phase),
+            var(--cyan) calc(var(--wave-phase) + 40px),
+            color-mix(in srgb, var(--magenta) 35%, white) calc(var(--wave-phase) + 80px),
+            var(--magenta) calc(var(--wave-phase) + 120px),
+            color-mix(in srgb, var(--cyan) 55%, black) calc(var(--wave-phase) + 160px)
+        )
+        0 0 / var(--progress) 100% no-repeat,
+        linear-gradient(var(--seek-buffered), var(--seek-buffered)) 0 0 / var(--buffered) 100% no-repeat,
+        var(--seek-track);
+    border-color: transparent;
+    box-shadow: none;
+    animation: player-wave-phase 1.2s linear infinite, player-wave-glow-filter 2s ease-in-out infinite;
     animation-play-state: paused;
 }
 
@@ -1176,50 +1194,12 @@ body::after {
 
 .player__stage:fullscreen .player__select { background: transparent; border-color: var(--cyan); }
 
-/* The wave and the glow are only on the part of the timeline already watched. The wave is a layer as wide as the progress (its flow is
-   the phase of the gradient, a registered property that can be animated), the rest is a plain faint track, and the glow is a
-   drop shadow of what is painted: strong around the watched part, almost none around the faint track. Even when the video is paused
-   the wave is there; it only stands still then. */
-@property --wave-phase {
-    syntax: '<length>';
-    inherits: false;
-    initial-value: 0px;
-}
-
-@keyframes player-wave-phase {
-    from { --wave-phase: 0px; }
-    to { --wave-phase: 160px; }
-}
-
-@keyframes player-wave-glow-filter {
-    0%, 100% { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--cyan) 75%, transparent)); }
-    50% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--magenta) 85%, transparent)); }
-}
-
+/* Over the video the faint track and the loaded part are white, which shows on any picture. */
 .player__stage:fullscreen .player__controls .player__seek {
-    background:
-        repeating-linear-gradient(
-            90deg,
-            var(--cyan) var(--wave-phase),
-            var(--magenta) calc(var(--wave-phase) + 56px),
-            color-mix(in srgb, var(--magenta) 80%, white) calc(var(--wave-phase) + 80px),
-            var(--magenta) calc(var(--wave-phase) + 104px),
-            var(--cyan) calc(var(--wave-phase) + 160px)
-        )
-        0 0 / var(--progress) 100% no-repeat,
-        linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)) 0 0 / var(--buffered) 100% no-repeat,
-        rgba(255, 255, 255, 0.16);
-    border-color: transparent;
-    box-shadow: none;
-    animation: player-wave-phase 1.6s linear infinite, player-wave-glow-filter 2.4s ease-in-out infinite;
-    animation-play-state: paused;
+    --seek-track: rgba(255, 255, 255, 0.16);
+    --seek-buffered: rgba(255, 255, 255, 0.5);
 }
 
-.player__stage:fullscreen .player__controls[data-playing='true'] .player__seek { animation-play-state: running; }
-
-@media (prefers-reduced-motion: reduce) {
-    .player__stage:fullscreen .player__controls .player__seek { animation: none; }
-}
 .player__volume { width: 80px; }
 
 .player__range::-webkit-slider-thumb {
