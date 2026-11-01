@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { openedPlayerSettings } from '../../helpers/playerSettings';
 import { fakeTextTrackList, type FakeTextTrack } from '../../helpers/textTracks';
+import type { PlaybackRange } from '@renderer/components/playbackRange';
 import { VideoControls, formatClock, type SubtitleOption } from '@renderer/components/VideoControls';
 
 interface Harness {
@@ -47,6 +48,29 @@ function setup(subtitles: SubtitleOption[] = OPTIONS, duration = 120, selected: 
     const onSelectSubtitle = vi.fn();
     const { unmount } = render(<VideoControls video={ref} subtitles={subtitles} selectedSubtitle={selected} onSelectSubtitle={onSelectSubtitle} />);
     return { video, ref, play, pause, unmount, onSelectSubtitle };
+}
+
+// A player that plays only a part of the media (the preview of a cut): from 20 to 50 of a video of 120 seconds.
+function setupRange(range: PlaybackRange = { start: 20, end: 50 }, readyState = 0) {
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'duration', { value: 120, configurable: true });
+    Object.defineProperty(video, 'readyState', { value: readyState, configurable: true });
+    Object.defineProperty(video, 'paused', { value: true, configurable: true, writable: true });
+    const play = vi.fn(() => {
+        Object.defineProperty(video, 'paused', { value: false, configurable: true, writable: true });
+        video.dispatchEvent(new Event('play'));
+        return Promise.resolve();
+    });
+    const pause = vi.fn(() => {
+        Object.defineProperty(video, 'paused', { value: true, configurable: true, writable: true });
+    });
+    video.play = play;
+    video.pause = pause;
+    document.body.appendChild(video);
+    const ref = createRef<HTMLVideoElement>();
+    (ref as { current: HTMLVideoElement | null }).current = video;
+    const view = render(<VideoControls video={ref} subtitles={[]} selectedSubtitle={null} onSelectSubtitle={vi.fn()} range={range} />);
+    return { video, ref, play, pause, ...view };
 }
 
 beforeEach(() => {
@@ -134,6 +158,17 @@ describe('VideoControls', () => {
         const seek = screen.getByRole('slider', { name: 'Seek' });
         expect(seek).toHaveValue('75');
         expect(fill().style.width).toBe('62.5%');
+    });
+
+    it('lets the thumb of the timeline stand at any time, not only at steps', () => {
+        const { video } = setup();
+        const seek = screen.getByRole('slider', { name: 'Seek' });
+        expect(seek).toHaveAttribute('step', 'any');
+        video.currentTime = 42.437;
+        act(() => {
+            fireEvent.timeUpdate(video);
+        });
+        expect(seek).toHaveValue('42.437');
     });
 
     it('seeks when the slider moves', () => {
@@ -942,5 +977,200 @@ describe('VideoControls', () => {
             'play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'seeked', 'ended', 'click', 'dblclick'
         ]);
         expect(add).not.toHaveBeenCalled();
+    });
+});
+
+describe('VideoControls on a part of the media', () => {
+    it('goes to the start of the part as soon as the media can be played', () => {
+        const { video } = setupRange();
+        expect(video.currentTime).toBe(0);
+        video.dispatchEvent(new Event('loadedmetadata'));
+        expect(video.currentTime).toBe(20);
+    });
+
+    it('goes to the start of the part at once when the media was already loaded', () => {
+        const { video } = setupRange({ start: 20, end: 50 }, 1);
+        expect(video.currentTime).toBe(20);
+    });
+
+    it('shows the timeline of the part: from 0 to its length', () => {
+        const { video } = setupRange();
+        video.currentTime = 35;
+        act(() => {
+            fireEvent.timeUpdate(video);
+        });
+        const seek = screen.getByRole('slider', { name: 'Seek' });
+        expect(seek).toHaveAttribute('max', '30');
+        expect(seek).toHaveValue('15');
+        expect(screen.getByText('0:15')).toBeInTheDocument();
+        expect(screen.getByText('0:30')).toBeInTheDocument();
+        expect(fill().style.width).toBe('50%');
+    });
+
+    it('shows the start of the part for a time before it and its end for a time after it', () => {
+        const { video } = setupRange();
+        video.currentTime = 5;
+        act(() => {
+            fireEvent.timeUpdate(video);
+        });
+        expect(screen.getByRole('slider', { name: 'Seek' })).toHaveValue('0');
+        expect(fill().style.width).toBe('0%');
+        video.currentTime = 90;
+        act(() => {
+            fireEvent.timeUpdate(video);
+        });
+        expect(screen.getByRole('slider', { name: 'Seek' })).toHaveValue('30');
+        expect(fill().style.width).toBe('100%');
+    });
+
+    it('seeks inside the part when the slider moves', () => {
+        const { video } = setupRange();
+        fireEvent.change(screen.getByRole('slider', { name: 'Seek' }), { target: { value: '12' } });
+        expect(video.currentTime).toBe(32);
+    });
+
+    it('stops at the end of the part, on its last moment', () => {
+        const { video, pause, play } = setupRange();
+        void video.play();
+        expect(play).toHaveBeenCalledTimes(1);
+        video.currentTime = 49.97;
+        video.dispatchEvent(new Event('timeupdate'));
+        expect(pause).toHaveBeenCalledTimes(1);
+        expect(video.currentTime).toBe(50);
+    });
+
+    it('keeps playing before the end of the part', () => {
+        const { video, pause } = setupRange();
+        void video.play();
+        video.currentTime = 40;
+        video.dispatchEvent(new Event('timeupdate'));
+        expect(pause).not.toHaveBeenCalled();
+        expect(video.currentTime).toBe(40);
+    });
+
+    it('does not pause a media that is already paused at the end', () => {
+        const { video, pause } = setupRange();
+        video.currentTime = 50;
+        video.dispatchEvent(new Event('timeupdate'));
+        expect(pause).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['at the end of the part', 50, 20],
+        ['before the part', 3, 20],
+        ['inside the part', 33, 33]
+    ])('plays from the start of the part when played %s', (_where, from, to) => {
+        const { video } = setupRange();
+        video.currentTime = from;
+        void video.play();
+        expect(video.currentTime).toBe(to);
+    });
+
+    it.each([
+        ['ArrowRight', 47, 50],
+        ['ArrowLeft', 22, 20],
+        ['ArrowRight', 30, 35]
+    ])('moves with %s from %s to %s without leaving the part', (key, from, to) => {
+        const { video } = setupRange();
+        video.currentTime = from;
+        fireEvent.keyDown(document.body, { key });
+        expect(video.currentTime).toBe(to);
+    });
+
+    it('stops keeping the media inside the part once it is gone', () => {
+        const { video, unmount } = setupRange();
+        unmount();
+        video.dispatchEvent(new Event('loadedmetadata'));
+        expect(video.currentTime).toBe(0);
+    });
+
+    it('follows a new part', () => {
+        const { video, ref, rerender } = setupRange();
+        rerender(<VideoControls video={ref} subtitles={[]} selectedSubtitle={null} onSelectSubtitle={vi.fn()} range={{ start: 60, end: 70 }} />);
+        video.dispatchEvent(new Event('loadedmetadata'));
+        expect(video.currentTime).toBe(60);
+        expect(screen.getByRole('slider', { name: 'Seek' })).toHaveAttribute('max', '10');
+    });
+});
+
+describe('VideoControls following the time at every frame', () => {
+    let frames: Array<FrameRequestCallback | null>;
+
+    beforeEach(() => {
+        frames = [];
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+            frames.push(callback);
+            return frames.length;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+            frames[id - 1] = null;
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function nextFrame(): void {
+        const callback = frames.filter((frame) => { return frame !== null; }).pop();
+        act(() => {
+            callback?.(performance.now());
+        });
+    }
+
+    it('asks for no frame while the video is paused', () => {
+        setup();
+        expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+    });
+
+    it('moves the bar and the time with the video at each frame while it plays, between the events of the video', () => {
+        const { video } = setup();
+        Object.defineProperty(video, 'paused', { value: false, configurable: true });
+        act(() => {
+            fireEvent.play(video);
+        });
+        expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+        video.currentTime = 30.4;
+        nextFrame();
+        expect(fill().style.width).toBe(`${(30.4 / 120) * 100}%`);
+        expect(screen.getByRole('slider', { name: 'Seek' })).toHaveValue('30.4');
+        expect(screen.getByText('0:30')).toBeInTheDocument();
+        video.currentTime = 31;
+        nextFrame();
+        expect(screen.getByRole('slider', { name: 'Seek' })).toHaveValue('31');
+        expect(window.requestAnimationFrame).toHaveBeenCalledTimes(3);
+    });
+
+    it('moves the bar of a part smoothly too, from 0 to its length', () => {
+        const { video } = setupRange({ start: 20, end: 30 });
+        Object.defineProperty(video, 'paused', { value: false, configurable: true, writable: true });
+        act(() => {
+            fireEvent.play(video);
+        });
+        video.currentTime = 22.5;
+        nextFrame();
+        expect(fill().style.width).toBe('25%');
+        expect(screen.getByRole('slider', { name: 'Seek' })).toHaveValue('2.5');
+    });
+
+    it('stops following the frames when the video is paused or the bar goes away', () => {
+        const { video, unmount } = setup();
+        Object.defineProperty(video, 'paused', { value: false, configurable: true });
+        act(() => {
+            fireEvent.play(video);
+        });
+        Object.defineProperty(video, 'paused', { value: true, configurable: true });
+        act(() => {
+            fireEvent.pause(video);
+        });
+        expect(window.cancelAnimationFrame).toHaveBeenCalledTimes(1);
+        expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1);
+        Object.defineProperty(video, 'paused', { value: false, configurable: true });
+        act(() => {
+            fireEvent.play(video);
+        });
+        unmount();
+        expect(window.cancelAnimationFrame).toHaveBeenCalledTimes(2);
+        expect(window.cancelAnimationFrame).toHaveBeenLastCalledWith(2);
     });
 });

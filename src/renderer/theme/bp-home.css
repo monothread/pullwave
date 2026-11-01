@@ -1,0 +1,419 @@
+/* The home screen, the carousel of the highlights (also at the top of the libraries), the blocks of the sections and the chips of the
+   libraries (D-128). */
+
+/* --- The home screen ---------------------------------------------------------------------------------------------------------------- */
+.home {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding-bottom: 12px;
+}
+
+/* --- The hero: a title over its own cover blurred (the slides of the carousel and the welcome) ------------------------------------- */
+.hero {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: end;
+    gap: 28px;
+    min-height: 280px;
+    padding: 28px 32px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius);
+    background: var(--panel);
+    box-shadow: var(--bp-shadow), var(--glow-inset);
+}
+
+.hero::before {
+    content: '';
+    position: absolute;
+    inset: -40px;
+    z-index: -2;
+    background: var(--hero-image, none) center / cover no-repeat;
+    filter: blur(26px) saturate(1.3);
+    opacity: 0.55;
+    animation: bp-hero-drift 24s ease-in-out infinite alternate;
+}
+
+.hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--panel) 92%, transparent) 0%, color-mix(in srgb, var(--panel) 55%, transparent) 60%, transparent 100%);
+}
+
+@keyframes bp-hero-drift {
+    from { transform: scale(1.05) translate(0, 0); }
+    to { transform: scale(1.15) translate(-2%, -3%); }
+}
+
+.hero__art .cover {
+    width: 160px;
+    border: 0;
+    border-radius: var(--bp-radius-small);
+    box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.8), 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
+    animation: bp-rise 0.6s var(--bp-ease-spring) backwards;
+}
+
+.hero__body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.hero__eyebrow {
+    color: var(--magenta);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 3px;
+}
+
+.hero__title {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 1px;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-shadow: var(--text-glow);
+}
+
+.hero__meta,
+.hero__hint {
+    margin: 0;
+    color: var(--muted);
+    font-size: 15px;
+    overflow-wrap: anywhere;
+}
+
+.hero__hint {
+    max-width: 640px;
+}
+
+.hero__progress {
+    display: block;
+    width: min(420px, 100%);
+    height: 6px;
+    border-radius: var(--bp-radius-pill);
+    background: color-mix(in srgb, var(--text) 14%, transparent);
+    overflow: hidden;
+}
+
+.hero__progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--bp-accent-gradient);
+    box-shadow: var(--glow-strong);
+}
+
+.hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.hero__play {
+    letter-spacing: 3px;
+}
+
+/* The welcome: no cover, a sky of the colours of the theme. */
+.hero--welcome {
+    grid-template-columns: minmax(0, 1fr);
+    background:
+        radial-gradient(60% 120% at 85% 20%, color-mix(in srgb, var(--magenta) 30%, transparent) 0%, transparent 70%),
+        radial-gradient(50% 100% at 10% 100%, color-mix(in srgb, var(--cyan) 26%, transparent) 0%, transparent 70%),
+        var(--panel);
+}
+
+.hero--welcome::before,
+.hero--welcome::after {
+    content: none;
+}
+
+/* --- The carousel of the highlights ------------------------------------------------------------------------------------------------- */
+.spotlight {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* The slide that leaves and the one that comes are in the same cell, one over the other, while they change. */
+.spotlight__stage {
+    display: grid;
+}
+
+.spotlight__stage > .spotlight__slide {
+    grid-area: 1 / 1;
+}
+
+/* The change: the new slide comes in from the side it is on while the old one fades and slides away under it. Both moves end with no transform
+   left on the boxes (the new one is a normal box again; the old one goes away when it ends). */
+.spotlight__slide--entering {
+    z-index: 1;
+    animation: bp-slide-in 0.7s var(--bp-ease-out) backwards;
+}
+
+.spotlight__slide--leaving {
+    z-index: 0;
+    pointer-events: none;
+    animation: bp-slide-out 0.7s var(--bp-ease-out) forwards;
+}
+
+.spotlight__slide--forward {
+    --slide-from: 48px;
+}
+
+.spotlight__slide--back {
+    --slide-from: -48px;
+}
+
+@keyframes bp-slide-in {
+    from { opacity: 0; transform: translateX(var(--slide-from, 48px)); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes bp-slide-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: translateX(calc(var(--slide-from, 48px) * -1)); }
+}
+
+.spotlight__controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+}
+
+.spotlight__arrow {
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    color: var(--text);
+    font: inherit;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, transform 0.25s var(--bp-ease-spring);
+}
+
+.spotlight__arrow:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+}
+
+.spotlight__arrow:active {
+    transform: scale(0.9);
+}
+
+.spotlight__dots {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.spotlight__dot {
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--bp-radius-pill);
+    background: color-mix(in srgb, var(--text) 25%, transparent);
+    cursor: pointer;
+    transition: width 0.3s var(--bp-ease-spring), background 0.2s;
+}
+
+/* The dot of the highlight shown is a long pill in the colours of the theme. */
+.spotlight__dot--current {
+    width: 28px;
+    background: var(--bp-accent-gradient);
+    box-shadow: var(--glow);
+}
+
+.spotlight__arrow:focus-visible,
+.spotlight__dot:focus-visible {
+    outline: 3px solid var(--bp-focus);
+    outline-offset: 3px;
+}
+
+/* --- The blocks of the sections ------------------------------------------------------------------------------------------------- */
+.section-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.section-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    padding: 22px 22px 20px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius);
+    background:
+        radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--cyan) 12%, transparent) 0%, transparent 70%),
+        color-mix(in srgb, var(--panel) 90%, transparent);
+    box-shadow: var(--bp-shadow), var(--glow-inset);
+    transition: border-color 0.25s, box-shadow 0.3s var(--bp-ease-out);
+    animation: bp-rise 0.45s var(--bp-ease-out) backwards;
+}
+
+.section-card:nth-child(2) { animation-delay: 0.06s; }
+.section-card:nth-child(3) { animation-delay: 0.12s; }
+
+.section-card:hover,
+.section-card:focus-within {
+    border-color: color-mix(in srgb, var(--cyan) 55%, var(--line));
+    box-shadow: var(--bp-shadow-hover), var(--glow-inset);
+}
+
+/* Something goes on in the section: its block glows on its edge. */
+.section-card--busy {
+    border-color: color-mix(in srgb, var(--magenta) 55%, var(--line));
+}
+
+.section-card__title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    min-width: 0;
+}
+
+.section-card__title span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.section-card__title .section-icon {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    color: var(--cyan);
+    filter: drop-shadow(var(--text-glow));
+}
+
+.section-card__lines {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.section-card--busy .section-card__lines li:first-child {
+    color: var(--text);
+    font-weight: 700;
+}
+
+.section-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: auto;
+}
+
+/* --- The chips and the order of a library ------------------------------------------------------------------------------------- */
+.library-controls {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.library-controls__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.chip-toggle {
+    padding: 7px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius-pill);
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s, transform 0.25s var(--bp-ease-spring);
+}
+
+.chip-toggle:hover {
+    border-color: var(--cyan);
+    color: var(--text);
+}
+
+.chip-toggle:active {
+    transform: scale(0.95);
+}
+
+.chip-toggle--on {
+    border-color: var(--cyan);
+    background: var(--tint-cyan);
+    color: var(--cyan);
+    box-shadow: var(--glow);
+}
+
+.chip-toggle:focus-visible {
+    outline: 3px solid var(--bp-focus);
+    outline-offset: 3px;
+}
+
+.library-controls__sort {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 200px;
+}
+
+/* --- Less room --------------------------------------------------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+    .hero {
+        grid-template-columns: minmax(0, 1fr);
+        min-height: 0;
+        padding: 20px;
+        gap: 16px;
+    }
+
+    .hero__art .cover {
+        width: 96px;
+    }
+
+    .hero__title {
+        font-size: 24px;
+    }
+
+    .library-controls__sort {
+        min-width: 0;
+        flex: 1 1 100%;
+    }
+}

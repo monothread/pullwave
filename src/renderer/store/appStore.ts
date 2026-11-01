@@ -14,7 +14,8 @@ import type {
     TraySupport
 } from '@shared/types';
 
-export type Tab = 'downloads' | 'anime' | 'manga' | 'settings';
+// The home screen opens first: it gathers what is going on in every section (D-127).
+export type Tab = 'home' | 'downloads' | 'anime' | 'manga' | 'settings';
 // The screens of the video downloader: the queue with the field for links, what was downloaded, and its settings.
 export type DownloadsView = 'queue' | 'cut' | 'history' | 'settings';
 export type NoticeKind = 'error' | 'info';
@@ -106,7 +107,7 @@ let toastCounter = 0;
 
 export const useAppStore = create<AppState>((set, get) => {
     return {
-        tab: 'downloads',
+        tab: 'home',
         downloadsView: 'queue',
         jobs: [],
         history: [],
@@ -159,8 +160,8 @@ export const useAppStore = create<AppState>((set, get) => {
                 api.checkBinaries(),
                 api.getAppUpdateState()
             ]);
-            // The app opens on the tab the settings say (the anime one is left for the downloads when the section does not exist).
-            set({ settings, settingsLoaded: true, jobs, history, binaries, appUpdate, tab: settings.startTab });
+            // The app opens on the home screen (the first state); a section chosen in the menu while the app was starting is kept.
+            set({ settings, settingsLoaded: true, jobs, history, binaries, appUpdate });
             const unsubscribers = [
                 api.onJobUpdate((job) => {
                     const finishedNow = job.status === 'done' && get().jobs.find((candidate) => {

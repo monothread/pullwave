@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { DownloadError, HistoryEntry } from '@shared/types';
@@ -28,7 +28,7 @@ beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({
         ...initial,
-        tab: 'downloads',
+        tab: 'home',
         jobs: [],
         history: [],
         settings: DEFAULT_SETTINGS,
@@ -96,19 +96,22 @@ describe('useAppLanguage and useTranslator', () => {
 
 describe('App in another language', () => {
     it.each([
-        ['en', 'VIDEO DOWNLOADER', 'HISTORY', 'SETTINGS (GLOBAL)', 'Sections', 'TARGET LINKS'],
-        ['pt', 'BAIXADOR DE VÍDEOS', 'HISTÓRICO', 'CONFIGURAÇÕES (GLOBAIS)', 'Seções', 'LINKS DE DESTINO'],
-        ['es', 'DESCARGADOR DE VÍDEOS', 'HISTORIAL', 'AJUSTES (GLOBALES)', 'Secciones', 'ENLACES DE DESTINO'],
-        ['zh', '视频下载器', '历史', '设置（全局）', '栏目', '目标链接'],
-        ['ja', '動画ダウンローダー', '履歴', '設定（全体）', 'セクション', '対象リンク']
-    ] as const)('shows the tabs in "%s" and sets the document language', async (language, downloads, history, settings, sections, targetLinks) => {
+        ['en', 'HOME', 'Home', 'VIDEO DOWNLOADER', 'HISTORY', 'SETTINGS (GLOBAL)', 'Sections', 'TARGET LINKS'],
+        ['pt', 'INÍCIO', 'Início', 'BAIXADOR DE VÍDEOS', 'HISTÓRICO', 'CONFIGURAÇÕES (GLOBAIS)', 'Seções', 'LINKS DE DESTINO'],
+        ['es', 'INICIO', 'Inicio', 'DESCARGADOR DE VÍDEOS', 'HISTORIAL', 'AJUSTES (GLOBALES)', 'Secciones', 'ENLACES DE DESTINO'],
+        ['zh', '首页', '首页', '视频下载器', '历史', '设置（全局）', '栏目', '目标链接'],
+        ['ja', 'ホーム', 'ホーム', '動画ダウンローダー', '履歴', '設定（全体）', 'セクション', '対象リンク']
+    ] as const)('shows the tabs in "%s" and sets the document language', async (language, home, homeRegion, downloads, history, settings, sections, targetLinks) => {
         useLanguage(language);
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, language });
         render(<App />);
         expect(screen.getByRole('navigation', { name: sections })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: downloads })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('button', { name: settings })).toBeInTheDocument();
         expect(document.documentElement.lang).toBe(language);
+        expect(await screen.findByRole('region', { name: homeRegion })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: home })).toHaveAttribute('aria-current', 'page');
+        fireEvent.click(screen.getByRole('button', { name: downloads }));
+        expect(screen.getByRole('button', { name: downloads })).toHaveAttribute('aria-current', 'page');
         expect(await screen.findByText(targetLinks)).toBeInTheDocument();
         // The history is a screen of the video downloader, not a tab of its own.
         expect(within(screen.getByRole('navigation', { name: sections })).queryByRole('button', { name: history })).not.toBeInTheDocument();
@@ -124,7 +127,7 @@ describe('App in another language', () => {
     it('switches the whole interface when the language setting changes', async () => {
         const user = userEvent.setup();
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await screen.findByRole('region', { name: 'Home' });
         await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
         await user.selectOptions(screen.getByLabelText('Language'), 'es');
         await waitFor(() => {

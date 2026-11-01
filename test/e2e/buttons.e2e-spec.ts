@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
+import { leaveHome } from './startScreen';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -47,6 +48,7 @@ async function launch(theme: string): Promise<void> {
     await page.waitForSelector('.logo');
     // The screens only show up once yt-dlp and ffmpeg were probed, which can take a while the first time on Windows.
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+    await leaveHome(page);
 }
 
 test.afterEach(async () => {
@@ -111,6 +113,19 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night'
             await page.setViewportSize({ width: 1100, height: 900 });
             await page.getByRole('button', { name: 'ANIME', exact: true }).click();
             await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SETTINGS', exact: true }).click();
+            // The panels rise into place when the screen opens: the boxes are measured once they are where they stay.
+            await page.evaluate(async () => {
+                const entrances = document.getAnimations().filter((animation) => {
+                    return animation.effect?.getTiming().iterations !== Infinity;
+                });
+                await Promise.all(
+                    entrances.map((animation) => {
+                        return animation.finished.catch(() => {
+                            return undefined;
+                        });
+                    })
+                );
+            });
             const box = async (label: string): Promise<{ x: number; y: number; width: number; height: number }> => {
                 const found = await page.getByLabel(label, { exact: true }).boundingBox();
                 return { x: Math.round(found?.x ?? -1), y: Math.round(found?.y ?? -1), width: Math.round(found?.width ?? -1), height: Math.round(found?.height ?? -1) };
@@ -120,7 +135,8 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night'
             const subtitles = await box('Anime subtitles');
             // One under the other, on the same left edge and with the same width.
             expect(new Set([quality.x, audio.x, subtitles.x]).size).toBe(1);
-            expect(new Set([quality.width, audio.width, subtitles.width]).size).toBe(1);
+            // The page beside the rail of the menu has a width with a fraction of a pixel: the fields may round one pixel apart.
+            expect(Math.max(quality.width, audio.width, subtitles.width) - Math.min(quality.width, audio.width, subtitles.width)).toBeLessThanOrEqual(1);
             expect(quality.y).toBeLessThan(audio.y);
             expect(audio.y).toBeLessThan(subtitles.y);
             expect(new Set([quality.height, audio.height, subtitles.height]).size).toBe(1);
@@ -130,7 +146,7 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night'
             expect(folder.y).toBeLessThan(quality.y);
             expect(folder.height).toBe(quality.height);
             const browse = await page.locator('.settings .panel', { hasText: 'Anime download folder' }).getByRole('button', { name: 'BROWSE' }).boundingBox();
-            expect(Math.round(browse?.y ?? -1)).toBe(folder.y);
+            expect(Math.abs(Math.round(browse?.y ?? -1) - folder.y)).toBeLessThanOrEqual(1);
             const migrate = await page.getByRole('button', { name: 'MIGRATE FOLDER' }).boundingBox();
             expect(Math.round(migrate?.x ?? -1)).toBe(folder.x);
             expect(Math.round(migrate?.y ?? -1)).toBeGreaterThan(folder.y + folder.height);

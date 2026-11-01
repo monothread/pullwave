@@ -11,7 +11,18 @@ const CONTENT_TYPES: Record<string, string> = {
     '.m4v': 'video/mp4',
     '.webm': 'video/webm',
     '.mkv': 'video/x-matroska',
-    '.vtt': 'text/vtt; charset=utf-8'
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    '.vtt': 'text/vtt; charset=utf-8',
+    '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac',
+    '.ogg': 'audio/ogg',
+    '.oga': 'audio/ogg',
+    '.opus': 'audio/ogg',
+    '.wav': 'audio/wav',
+    '.flac': 'audio/flac',
+    '.jpg': 'image/jpeg'
 };
 
 export interface ByteRange {
@@ -90,31 +101,35 @@ function plain(status: number, headers: Record<string, string> = {}): Response {
     return new Response(null, { status, headers: { 'Access-Control-Allow-Origin': '*', ...headers } });
 }
 
-// Serves a downloaded file with support for ranges, which is what lets the player seek. Only files that belong to an
-// episode of the library are reachable: the address carries an id, never a path.
+// Serves a file with support for ranges, which is what lets the player seek; 404 when there is no file (null, or not on the disk).
+export function serveFile(request: Request, path: string | null, files: MediaFileSystem): Response {
+    const size = path === null ? null : files.size(path);
+    if (path === null || size === null) {
+        return plain(404);
+    }
+    const range = parseRange(request.headers.get('range'), size);
+    if (range === 'invalid') {
+        return plain(416, { 'Content-Range': `bytes */${size}` });
+    }
+    const headers = { 'Content-Type': contentTypeOf(path), 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' };
+    if (range === null && size === 0) {
+        return new Response(null, { status: 200, headers: { ...headers, 'Content-Length': '0' } });
+    }
+    if (range === null) {
+        return new Response(files.read(path, { start: 0, end: size - 1 }), { status: 200, headers: { ...headers, 'Content-Length': String(size) } });
+    }
+    return new Response(files.read(path, range), {
+        status: 206,
+        headers: { ...headers, 'Content-Length': String(range.end - range.start + 1), 'Content-Range': `bytes ${range.start}-${range.end}/${size}` }
+    });
+}
+
+// Serves a downloaded file of the anime library. Only files that belong to an episode of the library are reachable: the address carries an
+// id, never a path.
 export function createMediaHandler(source: MediaSource, files: MediaFileSystem): (request: Request) => Response {
     return (request) => {
         const media = parseMediaUrl(request.url);
-        const path = media ? source.resolve(media.kind, media.episodeId, media.trackId) : null;
-        const size = path === null ? null : files.size(path);
-        if (path === null || size === null) {
-            return plain(404);
-        }
-        const range = parseRange(request.headers.get('range'), size);
-        if (range === 'invalid') {
-            return plain(416, { 'Content-Range': `bytes */${size}` });
-        }
-        const headers = { 'Content-Type': contentTypeOf(path), 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' };
-        if (range === null && size === 0) {
-            return new Response(null, { status: 200, headers: { ...headers, 'Content-Length': '0' } });
-        }
-        if (range === null) {
-            return new Response(files.read(path, { start: 0, end: size - 1 }), { status: 200, headers: { ...headers, 'Content-Length': String(size) } });
-        }
-        return new Response(files.read(path, range), {
-            status: 206,
-            headers: { ...headers, 'Content-Length': String(range.end - range.start + 1), 'Content-Range': `bytes ${range.start}-${range.end}/${size}` }
-        });
+        return serveFile(request, media ? source.resolve(media.kind, media.episodeId, media.trackId) : null, files);
     };
 }
 

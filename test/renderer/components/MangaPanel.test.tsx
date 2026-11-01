@@ -184,10 +184,52 @@ describe('MangaPanel', () => {
         expect(screen.queryByTestId('manga-cloudflare')).not.toBeInTheDocument();
     });
 
-    it('says the server is starting', () => {
-        useMangaStore.setState({ status: makeMangaStatus({ server: 'starting' }) });
+    it.each([
+        ['browse', 'BROWSE'],
+        ['search', 'SEARCH'],
+        ['extensions', 'EXTENSIONS']
+    ] as const)('says once that the server is starting in place of the %s screen, which waits for it', (view, region) => {
+        useMangaStore.setState({ status: makeMangaStatus({ server: 'starting' }), view });
         render(<MangaPanel />);
-        expect(screen.getByText('Starting the manga server…')).toBeInTheDocument();
+        const waiting = screen.getByRole('status');
+        expect(waiting).toHaveTextContent('Starting the manga server…');
+        expect(waiting).toHaveClass('empty');
+        expect(screen.getAllByText(/Starting the manga server|LOADING/)).toHaveLength(1);
+        expect(screen.queryByRole('region', { name: region })).not.toBeInTheDocument();
+        expect(mock.api.manga.sources).not.toHaveBeenCalled();
+    });
+
+    it('opens the screen that waited once the server is running', async () => {
+        useMangaStore.setState({ status: makeMangaStatus({ server: 'starting' }), view: 'browse' });
+        render(<MangaPanel />);
+        act(() => {
+            useMangaStore.setState({ status: makeMangaStatus({ server: 'running' }) });
+        });
+        expect(screen.queryByText('Starting the manga server…')).not.toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'BROWSE' })).toBeInTheDocument();
+        await vi.waitFor(() => {
+            expect(mock.api.manga.sources).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it.each([
+        ['updates', 'UPDATES'],
+        ['library', 'LIBRARY'],
+        ['history', 'HISTORY']
+    ] as const)('shows the %s screen, which does not need the server, while it starts, without saying it', (view, region) => {
+        useMangaStore.setState({ status: makeMangaStatus({ server: 'starting' }), view });
+        render(<MangaPanel />);
+        expect(screen.getByRole('region', { name: region })).toBeInTheDocument();
+        expect(screen.queryByText('Starting the manga server…')).not.toBeInTheDocument();
+    });
+
+    it('shows only that the server could not start in place of a screen that needs it', () => {
+        useMangaStore.setState({ status: makeMangaStatus({ server: 'error', serverError: 'port in use' }), view: 'browse' });
+        render(<MangaPanel />);
+        expect(screen.getByRole('button', { name: 'The manga server could not start.' })).toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: 'BROWSE' })).not.toBeInTheDocument();
+        expect(screen.queryByText('The manga server is not ready.')).not.toBeInTheDocument();
+        expect(screen.queryByText('Starting the manga server…')).not.toBeInTheDocument();
     });
 
     it('says the server could not start, opens the window with the details when it is clicked and tries again from the button', async () => {

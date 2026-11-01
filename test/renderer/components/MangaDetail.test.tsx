@@ -6,6 +6,7 @@ import type { MangaError } from '@shared/manga';
 import { MangaDetail } from '@renderer/components/MangaDetail';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore, type MangaSelection } from '@renderer/store/mangaStore';
+import { useBackdropStore } from '@renderer/store/backdropStore';
 import { progressKey, saveLastChapter, saveProgress } from '@renderer/components/readerPrefs';
 import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
@@ -1392,5 +1393,24 @@ describe('MangaDetail the cover of a manga of the library', () => {
         open();
         render(<MangaDetail />);
         expect(document.querySelector('img.cover')).toHaveAttribute('src', 'http://127.0.0.1:4321/api/v1/manga/7/thumbnail');
+    });
+});
+
+describe('MangaDetail: the page of a manga as a hero', () => {
+    it('puts the cover of the manga behind the whole screen while its page is open, and makes its head the hero', () => {
+        open({ manga: makeSummary({ thumbnailUrl: 'https://img/op.jpg' }) });
+        const { unmount, container } = render(<MangaDetail />);
+        expect(useBackdropStore.getState().url).toBe('https://img/op.jpg');
+        expect(container.querySelector('.manga__detail')).toHaveClass('detail-screen');
+        expect(container.querySelector('.manga__head')).toHaveClass('history__item', 'manga__head', 'detail-hero');
+        unmount();
+        expect(useBackdropStore.getState().url).toBeNull();
+    });
+
+    it('leaves the backdrop alone for a manga with no cover', () => {
+        useBackdropStore.setState({ url: null });
+        open({ manga: makeSummary({ thumbnailUrl: null }) });
+        render(<MangaDetail />);
+        expect(useBackdropStore.getState().url).toBeNull();
     });
 });

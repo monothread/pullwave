@@ -3,8 +3,10 @@ import { act, renderHook } from '@testing-library/react';
 import type { AnimeSearchResult } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { MOUSE_BACK_BUTTON, MOUSE_FORWARD_BUTTON, snapshotKey, useMouseNavigation, type MangaPage, type NavigationSnapshot } from '@renderer/hooks/useMouseNavigation';
+import { batchNavigation } from '@renderer/navigation/navigationBatch';
 import { INITIAL_SEARCH, useAnimeStore, type AnimeSelection } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { useCutStore, type CutPreviewState } from '@renderer/store/cutStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeDetails, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { makeAnime } from '../../helpers/animeFixtures';
@@ -13,6 +15,8 @@ import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 const initialManga = useMangaStore.getState();
+const initialCut = useCutStore.getInitialState();
+const PREVIEW: CutPreviewState = { rowId: 1, number: 1, segment: { start: 10, end: 20 }, status: 'ready', url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false, error: null };
 const RESULT: AnimeSearchResult = { index: 2, title: 'Naruto' };
 const SELECTION: AnimeSelection = { result: RESULT, query: 'naruto', audio: 'sub', status: 'ready', episodes: ['1', '2'], error: null };
 
@@ -31,10 +35,12 @@ beforeEach(() => {
         selection: null,
         libraryFocus: null,
         librarySeries: null,
+        librarySeason: null,
         playing: null,
         streaming: null
     });
     useMangaStore.setState({ ...initialManga });
+    useCutStore.setState(initialCut, true);
     mock.api.manga.sources.mockResolvedValue({ ok: true, value: [makeSource({ id: '5' }), makeSource({ id: '6' })] });
     mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: [] } });
 });
@@ -73,11 +79,11 @@ function mount(): { unmount: () => void } {
 
 describe('snapshotKey', () => {
     const manga: MangaPage = { view: 'browse', previousView: 'browse', sourceId: null, mode: 'popular', settingsOpen: false, selection: null, selectionFrom: 'browse', librarySeries: null, libraryGroup: null };
-    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null, manga };
+    const base: NavigationSnapshot = { tab: 'anime', downloadsView: 'queue', view: 'library', returnView: 'library', selection: null, libraryFocus: null, librarySeries: null, librarySeason: null, manga };
 
     it('joins the parts that make a page', () => {
-        expect(snapshotKey(base)).toBe('anime|queue|library|library||||browse:browse::popular:false::browse::');
-        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren' })).toBe('anime|queue|library|library|2:sub|7|series-frieren|browse:browse::popular:false::browse::');
+        expect(snapshotKey(base)).toBe('anime|queue|library|library|||||browse:browse::popular:false::browse::');
+        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren', librarySeason: 12 })).toBe('anime|queue|library|library|2:sub|7|series-frieren|12|browse:browse::popular:false::browse::');
     });
 
     it('differs between the screens of the manga section, the sources, the modes, the settings of a source and the mangas open', () => {
@@ -330,6 +336,61 @@ describe('useMouseNavigation', () => {
         expect(useAnimeStore.getState()).toMatchObject({ view: 'search', librarySeries: null });
     });
 
+    it('goes back from the screen of a season to the screen of its series, and forward to the season again', () => {
+        useAppStore.setState({ tab: 'anime' });
+        mount();
+        setView('library');
+        act(() => {
+            useAnimeStore.getState().openSeries('series-frieren');
+        });
+        act(() => {
+            useAnimeStore.getState().openSeason(12);
+        });
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', librarySeries: 'series-frieren', librarySeason: null });
+
+        press(MOUSE_FORWARD_BUTTON);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', librarySeries: 'series-frieren', librarySeason: 12 });
+
+        press(MOUSE_BACK_BUTTON);
+        press(MOUSE_BACK_BUTTON);
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', librarySeries: null, librarySeason: null });
+    });
+
+    it('takes the steps of one change of page as one page, and goes back past it at once', () => {
+        useAppStore.setState({ tab: 'home' });
+        mount();
+        act(() => {
+            batchNavigation(() => {
+                useAppStore.getState().setTab('anime');
+                useAnimeStore.getState().setView('library');
+                useAnimeStore.getState().openSeries('series-frieren');
+            });
+        });
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', librarySeries: 'series-frieren' });
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAppStore.getState().tab).toBe('home');
+
+        press(MOUSE_FORWARD_BUTTON);
+        expect(useAppStore.getState().tab).toBe('anime');
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'library', librarySeries: 'series-frieren' });
+    });
+
+    it('takes a batch that changes nothing as no page', () => {
+        setTab('settings');
+        mount();
+        act(() => {
+            batchNavigation(() => {
+                return undefined;
+            });
+        });
+        setTab('downloads');
+        press(MOUSE_BACK_BUTTON);
+        expect(useAppStore.getState().tab).toBe('settings');
+    });
+
     it('goes through the series that were opened one after the other, in the order they were opened', () => {
         useAppStore.setState({ tab: 'anime' });
         mount();
@@ -396,6 +457,39 @@ describe('useMouseNavigation', () => {
 
         press(MOUSE_BACK_BUTTON);
         expect(useAppStore.getState().tab).toBe('downloads');
+    });
+
+    it('only closes the preview of a cut, without leaving the page', () => {
+        mount();
+        setDownloadsView('history');
+        act(() => {
+            useAppStore.getState().setDownloadsView('cut');
+        });
+        act(() => {
+            useCutStore.setState({ preview: PREVIEW });
+        });
+
+        const event = press(MOUSE_BACK_BUTTON);
+        expect(event.defaultPrevented).toBe(true);
+        expect(useCutStore.getState().preview).toBeNull();
+        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'cut' });
+
+        press(MOUSE_BACK_BUTTON);
+        expect(useAppStore.getState()).toMatchObject({ tab: 'downloads', downloadsView: 'history' });
+    });
+
+    it('does not go forward while the preview of a cut is open', () => {
+        mount();
+        setDownloadsView('history');
+        press(MOUSE_BACK_BUTTON);
+        act(() => {
+            useCutStore.setState({ preview: PREVIEW });
+        });
+
+        const event = press(MOUSE_FORWARD_BUTTON);
+        expect(event.defaultPrevented).toBe(true);
+        expect(useAppStore.getState().downloadsView).toBe('queue');
+        expect(useCutStore.getState().preview).toEqual(PREVIEW);
     });
 
     it('does not go forward while a player is open', () => {

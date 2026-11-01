@@ -21,6 +21,7 @@ Desktop app for Linux and Windows (Electron + React + TypeScript) with a cyberpu
 | `CONVENTIONS.md` | Code, test, lint and commit standards |
 | `WORKFLOW.md` | How to resume work, split tasks between agents, update docs |
 | `ERRORS.md` | Catalog of yt-dlp errors and friendly messages |
+| `DESIGN.md` | Map of every feature, the console design system, keyboard and gamepad navigation, how the design is verified |
 | `RELEASING.md` | How to publish a version and how the app updates itself |
 | `LOG.md` | Chronological session diary (append-only) |
 

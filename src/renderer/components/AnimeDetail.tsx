@@ -5,6 +5,8 @@ import { sameSeries, suggestSeries } from '@shared/series';
 import { animeErrorKey, seriesNames } from './animeText';
 import { AddToLibraryDialog } from './AddToLibraryDialog';
 import { AnimeCover } from './AnimeCover';
+import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
+import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 
 // The anime that was opened: its episodes (a click on one opens the player, without downloading it), and the way to put it in the library with
 // all of them.
@@ -59,12 +61,14 @@ export function AnimeDetail() {
             })
     );
 
+    useDetailBackdrop(useAnimeCoverUrl(selection?.result.title ?? ''));
+
     if (!selection) {
         return null;
     }
 
     return (
-        <section className="anime__detail" aria-label={selection.result.title}>
+        <section className="anime__detail detail-screen" aria-label={selection.result.title}>
             <div className="queue__toolbar">
                 <button type="button" className="btn btn--small btn--ghost" onClick={closeResult}>
                     {t('anime.back')}

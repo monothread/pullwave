@@ -14,6 +14,12 @@ import { RowLink } from './RowLink';
 import { SeasonTranslation } from './SeasonTranslation';
 import { SeriesMenu } from './SeriesMenu';
 import { ErrorNotice } from './ErrorNotice';
+import { LibraryControls } from '../library/LibraryControls';
+import { AnimeLibrarySpotlight } from '../library/LibrarySpotlights';
+import { animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter, type LibrarySort } from '../spotlight/spotlightData';
+import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
+import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
+
 
 // What says that episodes got into the library today (the check for new episodes put them there).
 function NewEpisodesBadge({ count, t }: { count: number; t: Translator }) {
@@ -368,6 +374,7 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
         return state.removeAnime;
     });
     const [editing, setEditing] = useState(false);
+    useDetailBackdrop(useAnimeCoverUrl(anime.title));
 
     // An anime on its own has nothing to order; one in a series has its season to edit (the series itself cannot change).
     const edit = anime.series !== null && (
@@ -392,7 +399,10 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
                 </button>
                 <span className="section-label">{seriesName}</span>
             </div>
-            <article className="job job--done series">
+            <article className="job job--done series detail">
+                <div className="detail__art">
+                    <AnimeCover title={anime.title} />
+                </div>
                 <header className="job__head">
                     <h3 className="series__title" title={anime.title}>
                         {anime.title}
@@ -577,9 +587,19 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
         return state.downloadMissing;
     });
     const [renaming, setRenaming] = useState(false);
-    // The season that is open: its own screen replaces the one of the series until the way back, or until the season is removed.
-    const [openSeasonId, setOpenSeasonId] = useState<number | null>(null);
+    // The season that is open: its own screen replaces the one of the series until the way back, or until the season is removed. It is a page
+    // of the app (in the store), so the back and forward buttons of the mouse go through it.
+    const openSeasonId = useAnimeStore((state) => {
+        return state.librarySeason;
+    });
+    const showSeason = useAnimeStore((state) => {
+        return state.openSeason;
+    });
+    const hideSeason = useAnimeStore((state) => {
+        return state.closeSeason;
+    });
     const name = group.series;
+    useDetailBackdrop(useAnimeCoverUrl(group.entries[0]?.title ?? name));
     const openSeason = group.entries.find((anime) => {
         return anime.id === openSeasonId;
     });
@@ -594,7 +614,7 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                 seriesName={name}
                 t={t}
                 onBack={() => {
-                    setOpenSeasonId(null);
+                    hideSeason();
                 }}
             />
         );
@@ -607,7 +627,10 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                 </button>
                 <span className="section-label">{name}</span>
             </div>
-            <article className="job job--done series" data-testid="series-view">
+            <article className="job job--done series detail" data-testid="series-view">
+                <div className="detail__art">
+                    <AnimeCover title={group.entries[0]?.title ?? name} />
+                </div>
                 <header className="job__head">
                     <h3 className="series__title" title={name}>
                         {name}
@@ -678,7 +701,7 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                                 anime={anime}
                                 t={t}
                                 onOpen={() => {
-                                    setOpenSeasonId(anime.id);
+                                    showSeason(anime.id);
                                 }}
                             />
                         );
@@ -697,7 +720,17 @@ export function AnimeLibrary() {
     const importLibrary = useAnimeStore((state) => {
         return state.importLibrary;
     });
+    // What was opened or watched, for the order by the last one watched.
+    const history = useAnimeStore((state) => {
+        return state.history;
+    });
     const [search, setSearch] = useState('');
+    const [filter, setFilter] = useState<LibraryFilter>('all');
+    const [sort, setSort] = useState<LibrarySort>('recent');
+    // What is new is counted from the time the library opened.
+    const [openedAt] = useState(() => {
+        return Date.now();
+    });
     // The series that is open is in the store (coming from the search, "VIEW IN LIBRARY", it is the one of the anime that was being looked at).
     const openKey = useAnimeStore((state) => {
         return state.librarySeries;
@@ -746,15 +779,26 @@ export function AnimeLibrary() {
     const shown = library.filter((anime) => {
         return matchesSearch(anime.title, search) || (anime.series !== null && matchesSearch(anime.series, search));
     });
-    const groups = groupLibrary(shown);
+    const all = groupLibrary(shown);
+    const newsOf = (group: LibraryGroup): number => {
+        return animeNews(group.entries, openedAt).count;
+    };
+    const lastSeenOf = (group: LibraryGroup): number => {
+        return animeLastSeen(group.entries, history);
+    };
+    const groups = sortGroups(filterGroups(all, filter, newsOf), sort, lastSeenOf);
+    const searching = search.trim().length > 0;
     return (
         <section className="queue library" aria-label={t('anime.library.aria')}>
+            {!searching && <AnimeLibrarySpotlight />}
             <div className="field-row">
                 <TextField label={t('anime.library.search.label')} value={search} placeholder={t('anime.library.search.placeholder')} onChange={setSearch} />
                 {importButton}
             </div>
+            <LibraryControls kind="anime" filter={filter} sort={sort} allCount={all.length} newsCount={filterGroups(all, 'news', newsOf).length} onFilter={setFilter} onSort={setSort} />
             <span className="section-label">{t('anime.library.label', { count: groups.length })}</span>
             {shown.length === 0 && <p className="empty">{t('anime.library.search.none')}</p>}
+            {shown.length > 0 && groups.length === 0 && <p className="empty">{t('library.filter.noNews')}</p>}
             <div className="cover-grid">
                 {groups.map((group) => {
                     return (

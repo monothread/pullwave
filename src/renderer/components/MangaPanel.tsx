@@ -30,6 +30,10 @@ const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'm
     { id: 'settings', label: 'manga.nav.settings', icon: SETTINGS_ICON }
 ];
 
+// The screens that ask the manga server for everything they show. While the server starts or after it failed they wait for it in one place,
+// instead of each one saying it is loading and then that the server is not ready.
+const SERVER_VIEWS: ReadonlySet<MangaBrowseView> = new Set<MangaBrowseView>(['browse', 'search', 'extensions']);
+
 export function MangaPanel() {
     const t = useTranslator();
     const status = useMangaStore((state) => {
@@ -107,6 +111,7 @@ export function MangaPanel() {
             </section>
         );
     }
+    const waitsForServer = SERVER_VIEWS.has(view) && (status.server === 'starting' || status.server === 'error');
     return (
         <section className="manga" aria-label={t('manga.aria')}>
             <div className="anime__bar">
@@ -165,13 +170,17 @@ export function MangaPanel() {
             )}
             <MangaHelperNotice />
             <MangaCloudflareNotice />
-            {status.server === 'starting' && <p className="empty">{t('manga.server.starting')}</p>}
-            {view === 'browse' && <MangaBrowse />}
-            {view === 'search' && <MangaSearch />}
+            {waitsForServer && status.server === 'starting' && (
+                <p className="empty" role="status">
+                    {t('manga.server.starting')}
+                </p>
+            )}
+            {view === 'browse' && !waitsForServer && <MangaBrowse />}
+            {view === 'search' && !waitsForServer && <MangaSearch />}
             {view === 'updates' && <MangaUpdates />}
             {view === 'library' && <MangaLibrary />}
             {view === 'history' && <MangaHistory />}
-            {view === 'extensions' && <MangaExtensions />}
+            {view === 'extensions' && !waitsForServer && <MangaExtensions />}
             {view === 'settings' && <SettingsPanel scope="manga" />}
         </section>
     );

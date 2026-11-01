@@ -1,32 +1,36 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimePanel } from './components/AnimePanel';
-import { BinaryStatus } from './components/BinaryStatus';
+import { Backdrop } from './components/Backdrop';
 import { DownloadsPanel } from './components/DownloadsPanel';
 import { MangaPanel } from './components/MangaPanel';
 import { SettingsPanel } from './components/SettingsPanel';
-import { SETTINGS_ICON, TabButton } from './components/TabButton';
+import { SECTION_TABS, SideNav } from './components/SideNav';
 import { Toast } from './components/Toast';
+import { TopBar } from './components/TopBar';
 import { UpdateBanner } from './components/UpdateBanner';
-import type { MessageKey } from '@shared/i18n';
+import { HomePanel } from './home/HomePanel';
+import { useGamepadNavigation, type GamepadSections } from './hooks/useGamepadNavigation';
 import { useMouseNavigation } from './hooks/useMouseNavigation';
+import { useSpatialNavigation } from './hooks/useSpatialNavigation';
+import { useUiSounds } from './hooks/useUiSounds';
+import { withViewTransition } from './navigation/viewTransition';
+import { playUiSound } from './sound/uiSound';
+import { useUiPrefsStore } from './store/uiPrefsStore';
+import { sectionAfter } from './navigation/sections';
 import { useAppLanguage, useTranslator } from './i18n/useTranslator';
 import { useAnimeStore } from './store/animeStore';
 import { useMangaStore } from './store/mangaStore';
 import { useProgramsStore } from './store/programsStore';
 import { useAppStore, type Tab } from './store/appStore';
+import { useBackdropStore } from './store/backdropStore';
 import { applyTheme, DARK_SCHEME_QUERY, rememberTheme } from './theme/resolveTheme';
-
-const TABS: ReadonlyArray<{ id: Tab; label: MessageKey; icon?: string }> = [
-    { id: 'downloads', label: 'tab.downloads' },
-    { id: 'anime', label: 'tab.anime' },
-    { id: 'manga', label: 'tab.manga' },
-    { id: 'settings', label: 'tab.settings', icon: SETTINGS_ICON }
-];
 
 export function App() {
     const t = useTranslator();
     const language = useAppLanguage();
     useMouseNavigation();
+    useSpatialNavigation();
+    useUiSounds();
     const tab = useAppStore((state) => {
         return state.tab;
     });
@@ -56,9 +60,51 @@ export function App() {
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });
-    const visibleTabs = TABS.filter((item) => {
-        return (item.id !== 'anime' || animeSupported) && (item.id !== 'manga' || mangaSupported);
+    const visibleTabs = useMemo(() => {
+        return SECTION_TABS.filter((item) => {
+            return (item.id !== 'anime' || animeSupported) && (item.id !== 'manga' || mangaSupported);
+        });
+    }, [animeSupported, mangaSupported]);
+    const gamepadSections = useMemo<GamepadSections>(() => {
+        const ids = visibleTabs.map((item) => {
+            return item.id;
+        });
+        return {
+            previous: () => {
+                setTab(sectionAfter(ids, useAppStore.getState().tab, -1));
+            },
+            next: () => {
+                setTab(sectionAfter(ids, useAppStore.getState().tab, 1));
+            }
+        };
+    }, [visibleTabs, setTab]);
+    useGamepadNavigation(gamepadSections);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const toggleMenu = useCallback(() => {
+        if (!menuOpen && useUiPrefsStore.getState().sounds) {
+            playUiSound('open');
+        }
+        setMenuOpen(!menuOpen);
+    }, [menuOpen]);
+    // A section chosen in the menu slides in.
+    const goToSection = useCallback(
+        (next: Tab) => {
+            withViewTransition(() => {
+                setTab(next);
+            });
+        },
+        [setTab]
+    );
+    const closeMenu = useCallback(() => {
+        setMenuOpen(false);
+    }, []);
+    const clearBackdrop = useBackdropStore((state) => {
+        return state.clear;
     });
+    // The cover behind the screen belongs to the screen it was chosen on.
+    useEffect(() => {
+        clearBackdrop();
+    }, [tab, clearBackdrop]);
 
     const theme = useAppStore((state) => {
         return state.settings.theme;
@@ -109,10 +155,10 @@ export function App() {
             }
             dispose = unsubscribe;
             if (!useAnimeStore.getState().status.supported && useAppStore.getState().tab === 'anime') {
-                setTab('downloads');
+                setTab('home');
             }
             if (!useMangaStore.getState().status.supported && useAppStore.getState().tab === 'manga') {
-                setTab('downloads');
+                setTab('home');
             }
         });
         return () => {
@@ -122,31 +168,14 @@ export function App() {
     }, [init, initAnime, initManga, initPrograms, setTab]);
 
     return (
-        <div className="app">
-            <header className="app__header">
-                <h1 className="logo" data-text="PULLWAVE">
-                    PULLWAVE
-                </h1>
-                <BinaryStatus />
-            </header>
+        <div className={`app${menuOpen ? ' app--menu-open' : ''}`}>
+            <Backdrop />
+            <TopBar menuOpen={menuOpen} onToggleMenu={toggleMenu} />
             <UpdateBanner />
-            <nav className="tabs" aria-label={t('nav.sections')}>
-                {visibleTabs.map((item) => {
-                    return (
-                        <TabButton
-                            key={item.id}
-                            label={t(item.label)}
-                            icon={item.icon}
-                            active={tab === item.id}
-                            onClick={() => {
-                                setTab(item.id);
-                            }}
-                        />
-                    );
-                })}
-            </nav>
-            <main className="app__main">
+            <SideNav tabs={visibleTabs} active={tab} open={menuOpen} onSelect={goToSection} onClose={closeMenu} />
+            <main className="app__main" data-section={tab}>
                 {!ready && <p className="empty">{t('app.booting')}</p>}
+                {ready && tab === 'home' && <HomePanel />}
                 {ready && tab === 'downloads' && <DownloadsPanel />}
                 {ready && tab === 'anime' && animeSupported && <AnimePanel />}
                 {ready && tab === 'manga' && mangaSupported && <MangaPanel />}

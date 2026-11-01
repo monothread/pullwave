@@ -1,4 +1,6 @@
 import type { AnimeJob } from '@shared/anime';
+import { DownloadHero } from '../downloads/DownloadHero';
+import { AnimeCover } from './AnimeCover';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { ConfirmButton } from './ConfirmButton';
@@ -41,8 +43,28 @@ export function AnimeJobs() {
         return ORDER[first.status] - ORDER[second.status];
     });
 
+    const running = jobs.find((job) => {
+        return job.status === 'running';
+    });
+    const waiting = jobs.filter((job) => {
+        return job.status === 'queued';
+    }).length;
+
     return (
         <section className="anime__jobs queue" aria-label={t('anime.jobs.label', { count: jobs.length })}>
+            {running !== undefined && (
+                <DownloadHero
+                    id={`anime-${String(running.episodeId)}`}
+                    title={running.animeTitle}
+                    detail={t('anime.episode', { number: running.episode })}
+                    percent={running.percent}
+                    speed={running.speed}
+                    eta={running.eta}
+                    kind="anime"
+                    cover={<AnimeCover title={running.animeTitle} />}
+                    waiting={waiting}
+                />
+            )}
             <div className="queue__toolbar">
                 <span className="section-label">{t('anime.jobs.label', { count: jobs.length })}</span>
                 {jobs.some(isFinished) && (

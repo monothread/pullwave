@@ -1,0 +1,171 @@
+/* The libraries and the screens of one anime or manga, as the library of a console (D-127, D-128): every title as a tile in the grid (under
+   the highlights and the chips, see bp-home.css), and the page of a title with its cover big and blurred behind the screen. */
+
+/* --- The grid of every title ---------------------------------------------------------------------------------------------------- */
+/* The cards of a grid of covers are tiles: the cover is the card, the name and the buttons are under it. */
+.cover-grid {
+    grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+    gap: 26px 20px;
+}
+
+.cover-grid > .cover-card {
+    padding: 0 0 4px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.cover-grid > .cover-card:hover {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.cover-grid > .cover-card > .cover {
+    border: 0;
+    border-radius: var(--bp-radius-small);
+    box-shadow: var(--bp-shadow);
+    transition: transform 0.35s var(--bp-ease-spring), box-shadow 0.3s, filter 0.3s;
+}
+
+.cover-grid > .cover-card:hover > .cover,
+.cover-grid > .cover-card:has(.row-link:focus-visible) > .cover {
+    transform: translateY(-4px) scale(1.04);
+    box-shadow: var(--bp-shadow-hover), 0 0 0 3px var(--bp-focus);
+}
+
+/* The ring of a focused card is on its cover, like the tiles of the shelves. */
+.cover-grid > .cover-card:has(.row-link:focus-visible) {
+    outline: none;
+    box-shadow: none;
+}
+
+.cover-grid > .cover-card .series__title,
+.cover-grid > .cover-card .history__title {
+    font-size: 15px;
+    font-weight: 700;
+}
+
+/* --- The page of one anime or manga ------------------------------------------------------------------------------------------- */
+.series.detail {
+    display: grid;
+    grid-template-columns: 170px minmax(0, 1fr);
+    column-gap: 28px;
+    row-gap: 12px;
+    align-items: start;
+    padding: 26px 28px;
+    border-left-width: 1px;
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    backdrop-filter: blur(6px);
+}
+
+.series.detail > .detail__art {
+    grid-row: span 3;
+}
+
+.series.detail > :not(.detail__art) {
+    grid-column: 2;
+    min-width: 0;
+}
+
+/* What is long (the seasons, the episodes, the editors) uses the whole width under the hero. */
+.series.detail > .episode-cards,
+.series.detail > .cover-grid,
+.series.detail > .series-editor,
+.series.detail > .series-rename {
+    grid-column: 1 / -1;
+}
+
+.detail__art .cover {
+    width: 100%;
+    border: 0;
+    border-radius: var(--bp-radius-small);
+    box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.8), 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
+    animation: bp-rise 0.5s var(--bp-ease-spring) backwards;
+}
+
+.series.detail .series__title {
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-shadow: var(--text-glow);
+}
+
+.series.detail > .job__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+/* The page of a manga: the head is the hero. */
+.manga__head.detail-hero {
+    gap: 26px;
+    padding: 24px 26px;
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    backdrop-filter: blur(6px);
+}
+
+.manga__head.detail-hero .cover {
+    width: 150px;
+    border: 0;
+    border-radius: var(--bp-radius-small);
+    box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.8);
+    animation: bp-rise 0.5s var(--bp-ease-spring) backwards;
+}
+
+.manga__head.detail-hero .history__title {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-shadow: var(--text-glow);
+}
+
+/* The search result of an anime: its cover bigger, over the blurred one. */
+.detail-screen .series__cover {
+    width: 150px;
+}
+
+.detail-screen .series__cover .cover {
+    border: 0;
+    border-radius: var(--bp-radius-small);
+    box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.8);
+}
+
+/* The tile of a season is narrower than the old card: the audio goes under the chip when the two do not fit on one line. */
+.season-card__top {
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+
+/* --- The cards of the episodes and the chapters ------------------------------------------------------------------------------- */
+.episode-cards > li {
+    border-radius: var(--bp-radius-small);
+    transition: border-color 0.2s, box-shadow 0.25s, background 0.2s;
+}
+
+/* --- Less room --------------------------------------------------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+    .cover-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 20px 14px;
+    }
+
+    .series.detail {
+        grid-template-columns: 96px minmax(0, 1fr);
+        column-gap: 16px;
+        padding: 18px;
+    }
+
+    .series.detail .series__title,
+    .manga__head.detail-hero .history__title {
+        font-size: 21px;
+    }
+
+    .manga__head.detail-hero .cover {
+        width: 96px;
+    }
+}

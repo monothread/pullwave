@@ -33,8 +33,8 @@ describe('the style of the LoadingMark', () => {
         expect(sheet.atRules.some((block) => { return block.prelude === '@keyframes player-spin'; })).toBe(true);
     });
 
-    it('turns it slowly, and does not stop it, when the system asks for less motion', () => {
-        expect(mediaStyleOf(sheet, '(prefers-reduced-motion: reduce)', '.loading-mark__ring')['animation-duration']).toBe('3s');
+    it('turns it at its pace whatever the system says about motion (D-130)', () => {
+        expect(mediaStyleOf(sheet, '(prefers-reduced-motion: reduce)', '.loading-mark__ring')).toEqual({});
     });
 
     it('does not use the code to move it', () => {

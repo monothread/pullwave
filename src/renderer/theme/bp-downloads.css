@@ -1,0 +1,248 @@
+/* The download going on, as in the downloads of a console (D-127): the cover, a big bar, the speed and the graph of the last minute. */
+
+/* Words drawn from their data-text (components/Drawn.tsx): the banner repeats what the card of the download says. */
+.drawn::before {
+    content: attr(data-text);
+}
+
+.download-hero {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr) minmax(200px, 320px);
+    align-items: center;
+    gap: 24px;
+    padding: 20px 24px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--cyan) 45%, var(--line));
+    border-radius: var(--bp-radius);
+    background:
+        radial-gradient(70% 140% at 100% 0%, color-mix(in srgb, var(--cyan) 14%, transparent) 0%, transparent 70%),
+        color-mix(in srgb, var(--panel) 88%, transparent);
+    box-shadow: var(--bp-shadow), var(--glow-inset);
+    animation: bp-fade-in 0.35s var(--bp-ease-out) backwards;
+}
+
+.download-hero__art {
+    width: 110px;
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    border-radius: var(--bp-radius-small);
+    box-shadow: 0 18px 36px -16px rgba(0, 0, 0, 0.8);
+}
+
+.download-hero__art .cover {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+}
+
+.download-hero__body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.download-hero__title {
+    display: block;
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.download-hero__detail {
+    display: block;
+    margin: 0;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.download-hero__bar.progress {
+    height: 12px;
+    border-radius: var(--bp-radius-pill);
+}
+
+.download-hero__bar .progress__bar {
+    border-radius: inherit;
+}
+
+.download-hero__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+    margin: 4px 0 0;
+}
+
+.download-hero__stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.download-hero__stat dt {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 2px;
+}
+
+.download-hero__stat dd {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.download-hero__percent {
+    position: absolute;
+    top: 14px;
+    right: 22px;
+    color: var(--cyan);
+    font-size: 30px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-shadow: var(--text-glow);
+}
+
+.download-hero__graph {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    min-width: 0;
+    align-self: end;
+}
+
+.speed-graph {
+    display: block;
+    width: 100%;
+    height: 80px;
+    overflow: visible;
+}
+
+.speed-graph__stop-top {
+    stop-color: var(--cyan);
+    stop-opacity: 0.45;
+}
+
+.speed-graph__stop-bottom {
+    stop-color: var(--cyan);
+    stop-opacity: 0;
+}
+
+.speed-graph__line {
+    stroke: var(--cyan);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+    filter: drop-shadow(0 0 4px var(--cyan));
+}
+
+.download-hero__peak,
+.download-hero__next {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+.download-hero__next {
+    color: var(--magenta);
+    font-weight: 700;
+}
+
+@media (max-width: 1000px) {
+    .download-hero {
+        grid-template-columns: 90px minmax(0, 1fr);
+    }
+
+    .download-hero__art {
+        width: 90px;
+    }
+
+    .download-hero__graph {
+        grid-column: 1 / -1;
+        align-items: stretch;
+    }
+}
+
+@media (max-width: 520px) {
+    .download-hero {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 16px;
+    }
+
+    .download-hero__art {
+        display: none;
+    }
+
+    .download-hero__percent {
+        font-size: 22px;
+    }
+
+    .download-hero__title {
+        padding-right: 64px;
+        font-size: 18px;
+    }
+}
+
+/* --- The cutter: the picture of the file, the button to clear, the play of each part and its player (D-131) ------------------------------ */
+.cut__thumb {
+    flex: none;
+    width: 96px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border: 1px solid var(--line);
+    border-radius: var(--bp-radius-small);
+    background: color-mix(in srgb, var(--panel) 80%, black);
+    box-shadow: var(--bp-shadow);
+    animation: bp-rise 0.4s var(--bp-ease-spring) backwards;
+}
+
+/* No picture: the mark of the kind of the file, in the colours of the theme. */
+.cut__thumb--empty {
+    display: grid;
+    place-items: center;
+    color: var(--cyan);
+    font-size: 28px;
+    text-shadow: var(--text-glow);
+}
+
+/* The picture is being made: a light goes over the box. */
+.cut__thumb--loading {
+    background:
+        linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--cyan) 22%, transparent) 50%, transparent 70%) 0 0 / 200% 100%,
+        color-mix(in srgb, var(--panel) 80%, black);
+    animation: bp-thumb-shine 1.2s linear infinite;
+}
+
+@keyframes bp-thumb-shine {
+    from { background-position: 100% 0, 0 0; }
+    to { background-position: -100% 0, 0 0; }
+}
+
+.cut__play {
+    min-width: 40px;
+    margin-bottom: 2px;
+    transition: transform 0.25s var(--bp-ease-spring);
+}
+
+/* It grows a little under the mouse; its colours are the ones of every button there (the glyph stays on its filled background). */
+.cut__play:not(:disabled):hover {
+    transform: scale(1.08);
+}
+
+.cut-preview__wait {
+    display: grid;
+    flex: 1;
+    min-height: 240px;
+    place-items: center;
+    border: 1px solid var(--line);
+    background: black;
+}

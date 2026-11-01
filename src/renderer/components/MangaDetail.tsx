@@ -1,3 +1,4 @@
+import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { useEffect, useMemo, useState } from 'react';
@@ -184,6 +185,7 @@ export function MangaDetail() {
         return readerOpen ? {} : loadAllProgress();
     }, [readerOpen]);
 
+    useDetailBackdrop(selection?.manga.thumbnailUrl ?? null);
     if (selection === null) {
         return null;
     }
@@ -247,13 +249,13 @@ export function MangaDetail() {
     const nextIndex = continueIndex(readable, isRead, lastRemoteId);
 
     return (
-        <section className="manga__detail" aria-label={shown.title}>
+        <section className="manga__detail detail-screen" aria-label={shown.title}>
             <div className="queue__toolbar">
                 <button type="button" className="btn btn--small btn--ghost" onClick={closeManga}>
                     {t('manga.back')}
                 </button>
             </div>
-            <header className="history__item manga__head">
+            <header className="history__item manga__head detail-hero">
                 {inLibraryPage && saved && (
                     <button
                         type="button"

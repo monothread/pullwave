@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
+import { leaveHome } from './startScreen';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createServer, type Server } from 'node:http';
@@ -34,6 +35,8 @@ interface LaunchOptions {
     args?: string[];
     // Runs before the app starts, with the folder of its data (to leave files there, as an earlier run would have).
     prepare?: (userData: string) => void;
+    // Leaves the app on the home screen it opens on, instead of going to the video downloader as the other tests do.
+    stayHome?: boolean;
 }
 
 // Answers the window that asks before something is taken away (a cancel, a removal, a clear).
@@ -42,7 +45,7 @@ async function answerConfirm(page: Page, title: string, answer: string): Promise
 }
 
 async function launch(options: LaunchOptions = {}): Promise<Session> {
-    const { useFakeYtdlp = true, settings = {}, env = {}, args = [], prepare } = options;
+    const { useFakeYtdlp = true, settings = {}, env = {}, args = [], prepare, stayHome = false } = options;
     const workDir = mkdtempSync(join(tmpdir(), 'pullwave-e2e-'));
     const userData = join(workDir, 'user-data');
     const downloadDir = join(workDir, 'downloads');
@@ -61,6 +64,9 @@ async function launch(options: LaunchOptions = {}): Promise<Session> {
     });
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
+    if (!stayHome) {
+        await leaveHome(page);
+    }
     return {
         app,
         page,
@@ -456,6 +462,7 @@ test('a paused download is still there when the app is opened again, and goes on
     try {
         const again = await reopened.firstWindow();
         await again.waitForSelector('.logo');
+        await leaveHome(again);
         const reopenedCard = again.getByTestId('job-card');
         await expect(reopenedCard).toHaveCount(1);
         await expect(reopenedCard.locator('.badge')).toHaveText('PAUSED');
@@ -728,25 +735,44 @@ test('the back and forward buttons of the mouse put back how far the page was sc
     await expect.poll(scrollTopOfMain).toBe(0);
 });
 
-test('the settings tabs are a gear at the right end of their bar, in the app and in the video downloader', async () => {
+test('the gear of the settings is at the bottom of the menu of the sections, and at the right end of the bar of the video downloader', async () => {
     const { page } = session;
-    // The gear sits against the right end of its bar and every other tab keeps to the left.
-    const gearAtTheEnd = async (bar: Locator, gear: Locator): Promise<void> => {
-        await expect(gear).toHaveText('\u2699\uFE0E');
-        const barBox = await bar.boundingBox();
-        const gearBox = await gear.boundingBox();
-        const tabs = await bar.getByRole('button').evaluateAll((buttons) => {
-            return buttons.map((button) => {
-                return Math.round(button.getBoundingClientRect().right);
-            });
-        });
-        expect(Math.round((barBox?.x ?? 0) + (barBox?.width ?? 0)) - Math.round((gearBox?.x ?? 0) + (gearBox?.width ?? 0))).toBeLessThanOrEqual(1);
-        expect(Math.max(...tabs.slice(0, -1))).toBeLessThan(Math.round(gearBox?.x ?? 0));
-    };
     const sections = page.getByRole('navigation', { name: 'Sections' });
-    await gearAtTheEnd(sections, sections.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true }));
+    const gear = sections.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true });
+    await expect(gear.locator('svg.section-icon--settings')).toHaveCount(1);
+    // The gear is drawn like the pictures of the sections, on the same vertical line as them.
+    const centres = await sections.locator('.section-icon').evaluateAll((icons) => {
+        return icons.map((icon) => {
+            const box = icon.getBoundingClientRect();
+            return { centre: Math.round(box.left + box.width / 2), width: Math.round(box.width) };
+        });
+    });
+    expect(centres).toHaveLength(5);
+    expect(new Set(centres.map((icon) => { return icon.centre; })).size).toBe(1);
+    expect(new Set(centres.map((icon) => { return icon.width; })).size).toBe(1);
+    const railBox = await sections.boundingBox();
+    const gearBox = await gear.boundingBox();
+    const bottoms = await sections.getByRole('button').evaluateAll((buttons) => {
+        return buttons.map((button) => {
+            return Math.round(button.getBoundingClientRect().bottom);
+        });
+    });
+    // The gear sits low in the rail, under every section.
+    expect(Math.round((railBox?.y ?? 0) + (railBox?.height ?? 0)) - Math.round((gearBox?.y ?? 0) + (gearBox?.height ?? 0))).toBeLessThanOrEqual(16);
+    expect(Math.max(...bottoms.slice(0, -1))).toBeLessThan(Math.round(gearBox?.y ?? 0));
+
     const downloads = page.getByRole('navigation', { name: 'Video downloader' });
-    await gearAtTheEnd(downloads, downloads.getByRole('button', { name: 'SETTINGS', exact: true }));
+    const downloadsGear = downloads.getByRole('button', { name: 'SETTINGS', exact: true });
+    await expect(downloadsGear).toHaveText('\u2699\uFE0E');
+    const barBox = await downloads.boundingBox();
+    const downloadsGearBox = await downloadsGear.boundingBox();
+    const rights = await downloads.getByRole('button').evaluateAll((buttons) => {
+        return buttons.map((button) => {
+            return Math.round(button.getBoundingClientRect().right);
+        });
+    });
+    expect(Math.round((barBox?.x ?? 0) + (barBox?.width ?? 0)) - Math.round((downloadsGearBox?.x ?? 0) + (downloadsGearBox?.width ?? 0))).toBeLessThanOrEqual(1);
+    expect(Math.max(...rights.slice(0, -1))).toBeLessThan(Math.round(downloadsGearBox?.x ?? 0));
 });
 
 test('settings have no save button and are saved automatically', async () => {
@@ -1214,8 +1240,7 @@ test.describe('themes', () => {
     test('offers every theme', async () => {
         const { page } = session;
         await openGlobalSettings(page);
-        const options = await page.getByLabel('Theme').locator('option').allTextContents();
-        expect(options).toEqual([
+        await expect(page.getByLabel('Theme', { exact: true }).locator('option')).toHaveText([
             'Device (follows the system)',
             'Cyberpunk (neon)',
             'Synthwave (neon)',
@@ -1249,7 +1274,8 @@ test.describe('themes', () => {
         }).toBe('dark');
     });
 
-    // The layer that used to draw a neon glow after the mouse is gone: nothing marks the page, and the layer is not drawn.
+    // The layer that used to draw a neon glow after the mouse is gone: nothing marks the page. body::before is now the aurora of the
+    // console layer (D-126), which drifts by itself and never follows the mouse.
     async function glowOf(page: Page): Promise<{ attribute: string | null; x: string; y: string; layer: string; image: string }> {
         return page.evaluate(() => {
             const root = document.documentElement;
@@ -1270,10 +1296,13 @@ test.describe('themes', () => {
         for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura']) {
             await page.getByLabel('Theme').selectOption(theme);
             await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+            const before = await glowOf(page);
             await page.mouse.move(300, 200);
             await page.mouse.move(640, 480);
             await page.waitForTimeout(200);
-            expect(await glowOf(page)).toEqual({ attribute: null, x: '', y: '', layer: 'none', image: 'none' });
+            const after = await glowOf(page);
+            expect(after).toEqual({ attribute: null, x: '', y: '', layer: '""', image: before.image });
+            expect(after.image).toContain('radial-gradient(38% 32% at 18% 22%');
         }
     });
 
@@ -1367,17 +1396,23 @@ test.describe('themes', () => {
     });
 });
 
-test.describe('the tab the app opens on', () => {
-    test('is the video downloader by default, and the setting offers the three tabs', async () => {
-        const { page } = session;
-        await expect(page.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
-        await openGlobalSettings(page);
-        await expect(page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
-        expect(await page.getByLabel('Open on', { exact: true }).locator('option').allTextContents()).toEqual(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
-        await expect(page.getByText('The tab the app shows when it starts. If the anime or the manga section is not available, the video downloader opens.')).toBeVisible();
+test.describe('the screen the app opens on', () => {
+    test('is the home screen, and "Open on" offers the three sections to show first there', async () => {
+        const own = await launch({ stayHome: true });
+        try {
+            await expect(own.page.getByRole('button', { name: 'HOME', exact: true })).toHaveAttribute('aria-current', 'page');
+            await expect(own.page.getByRole('region', { name: 'Home' })).toBeVisible();
+            await expect(own.page.getByLabel('Link 1')).toHaveCount(0);
+            await openGlobalSettings(own.page);
+            await expect(own.page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
+            expect(await own.page.getByLabel('Open on', { exact: true }).locator('option').allTextContents()).toEqual(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
+            await expect(own.page.getByText('The section the home screen shows first, and where its big button goes when there is nothing to go on with. The app always opens on the home screen.')).toBeVisible();
+        } finally {
+            await own.app.close();
+        }
     });
 
-    test('choosing the anime saves it right away, without changing the tab that is open', async () => {
+    test('choosing the anime saves it right away, without changing the section that is open', async () => {
         const { page, userData } = session;
         await openGlobalSettings(page);
         await page.getByLabel('Open on', { exact: true }).selectOption('anime');
@@ -1388,21 +1423,25 @@ test.describe('the tab the app opens on', () => {
         await expect(page.getByRole('button', { name: 'SETTINGS (GLOBAL)' })).toHaveAttribute('aria-current', 'page');
     });
 
-    test('opens on the anime when the settings say so', async () => {
-        const own = await launch({ settings: { startTab: 'anime' } });
+    test('opens on the home screen, with the blocks in the order of the menu, when the settings say anime', async () => {
+        const own = await launch({ settings: { startTab: 'anime' }, stayHome: true });
         try {
-            await expect(own.page.getByRole('button', { name: 'ANIME', exact: true })).toHaveAttribute('aria-current', 'page');
-            await expect(own.page.getByRole('button', { name: 'VIDEO DOWNLOADER' })).not.toHaveAttribute('aria-current');
-            await expect(own.page.getByLabel('Link 1')).toHaveCount(0);
+            const home = own.page.getByRole('region', { name: 'Home' });
+            await expect(home).toBeVisible();
+            await expect(own.page.getByRole('button', { name: 'HOME', exact: true })).toHaveAttribute('aria-current', 'page');
+            // The blocks follow the menu on the left, whatever "Open on" says.
+            await expect(home.locator('.section-card__title')).toHaveText(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
+            await expect(home.getByRole('button', { name: 'GO TO ANIME' })).toBeVisible();
         } finally {
             await own.app.close();
         }
     });
 
-    test('opens on the video downloader when the settings hold something that is not a tab', async () => {
-        const own = await launch({ settings: { startTab: 'history' } });
+    test('opens on the home screen with the block of the video downloader first when the settings hold something that is not a section', async () => {
+        const own = await launch({ settings: { startTab: 'history' }, stayHome: true });
         try {
-            await expect(own.page.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
+            const home = own.page.getByRole('region', { name: 'Home' });
+            await expect(home.locator('.section-card__title').first()).toHaveText('VIDEO DOWNLOADER');
             await openGlobalSettings(own.page);
             await expect(own.page.getByLabel('Open on', { exact: true })).toHaveValue('downloads');
         } finally {
@@ -1501,7 +1540,9 @@ test.describe('languages', () => {
             const reopenedPage = await reopened.firstWindow();
             await reopenedPage.waitForSelector('.logo');
             await expect(reopenedPage.locator('html')).toHaveAttribute('lang', 'ja');
-            await expect(reopenedPage.getByRole('navigation', { name: 'セクション' }).getByRole('button', { name: '動画ダウンローダー' })).toHaveAttribute('aria-current', 'page');
+            // The app opens on its home screen, in Japanese.
+            await expect(reopenedPage.getByRole('navigation', { name: 'セクション' }).getByRole('button', { name: 'ホーム', exact: true })).toHaveAttribute('aria-current', 'page');
+            await expect(reopenedPage.getByRole('region', { name: 'ホーム' })).toBeVisible();
             await reopenedPage.getByRole('button', { name: '設定（全体）' }).click();
             await expect(reopenedPage.getByLabel('言語', { exact: true })).toHaveValue('ja');
             expect(readSettings(userData)).toMatchObject({ language: 'ja', downloadDir });
@@ -1523,7 +1564,8 @@ test.describe('languages', () => {
             const spanishPage = await spanish.firstWindow();
             await spanishPage.waitForSelector('.logo');
             await expect(spanishPage.locator('html')).toHaveAttribute('lang', 'es');
-            await expect(spanishPage.getByRole('button', { name: 'DESCARGADOR DE VÍDEOS' })).toHaveAttribute('aria-current', 'page');
+            await expect(spanishPage.getByRole('navigation', { name: 'Secciones' }).getByRole('button', { name: 'INICIO', exact: true })).toHaveAttribute('aria-current', 'page');
+            await expect(spanishPage.getByRole('navigation', { name: 'Secciones' }).getByRole('button', { name: 'DESCARGADOR DE VÍDEOS', exact: true })).toBeVisible();
             await spanishPage.getByRole('button', { name: 'AJUSTES (GLOBALES)' }).click();
             await expect(spanishPage.getByLabel('Idioma', { exact: true })).toHaveValue('device');
             expect(readSettings(userData).language).toBe('device');

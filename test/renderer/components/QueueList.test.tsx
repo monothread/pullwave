@@ -215,3 +215,37 @@ describe('QueueList pause and resume', () => {
         expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
     });
 });
+
+describe('QueueList: the download going on', () => {
+    it('shows the first running download big at the top, with how many wait after it', () => {
+        useAppStore.setState({
+            jobs: [
+                makeJob({ id: 'r', status: 'running', title: 'Running video', percent: 40, speed: '1.00MiB/s', eta: '00:20' }),
+                makeJob({ id: 'q1', status: 'queued', title: 'Waiting one' }),
+                makeJob({ id: 'q2', status: 'queued', title: 'Waiting two' })
+            ]
+        });
+        render(<QueueList />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.querySelector('.download-hero__title')).toHaveAttribute('data-text', 'Running video');
+        expect(hero.querySelector('.download-hero__next')).toHaveTextContent('UP NEXT: 2');
+        expect(hero.querySelector('.download-hero__percent')).toHaveAttribute('data-text', '40%');
+        // The card of the download is still there, with its title in words.
+        expect(screen.getByRole('heading', { name: 'Running video' })).toBeInTheDocument();
+    });
+
+    it('names a download with no title by its link', () => {
+        useAppStore.setState({ jobs: [makeJob({ id: 'r', status: 'running', title: null, url: 'https://example.com/v' })] });
+        render(<QueueList />);
+        expect(screen.getByTestId('download-hero').querySelector('.download-hero__title')).toHaveAttribute('data-text', 'https://example.com/v');
+    });
+
+    it.each([
+        ['nothing runs', [makeJob({ id: 'q', status: 'queued' }), makeJob({ id: 'd', status: 'done' })]],
+        ['the one running is a live recording', [makeJob({ id: 'l', status: 'running', live: true })]]
+    ])('has no banner when %s', (_case, jobs) => {
+        useAppStore.setState({ jobs });
+        render(<QueueList />);
+        expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
+    });
+});

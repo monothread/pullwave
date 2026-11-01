@@ -7,6 +7,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapterRecord, makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { makeReading } from '../../helpers/homeFixtures';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -722,5 +723,65 @@ describe('MangaLibrary the chapters that are new today', () => {
         const seasons = screen.getAllByTestId('manga-season');
         expect(within(seasons[0]!).getByTestId('manga-new-chapters')).toHaveTextContent('NEW CHAPTER');
         expect(within(seasons[1]!).getByTestId('manga-new-chapters')).toHaveTextContent('2 NEW CHAPTERS');
+    });
+});
+
+describe('MangaLibrary: the highlights, the filters and the order', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const SOLO = makeLibraryManga([makeChapterRecord({ id: 1, addedAt: Date.now() - DAY })], { id: 1, remoteId: 7, title: 'Solo Manga', createdAt: 9 });
+    const PART_ONE = makeLibraryManga([makeChapterRecord({ id: 2, mangaId: 2 })], { id: 2, remoteId: 8, title: 'Epic', series: 'Epic', season: 1, createdAt: 3 });
+    const PART_TWO = makeLibraryManga([makeChapterRecord({ id: 3, mangaId: 3 })], { id: 3, remoteId: 9, title: 'Epic 2', series: 'Epic', season: 2, createdAt: 1 });
+
+    beforeEach(() => {
+        useMangaStore.setState({ library: [SOLO, PART_ONE, PART_TWO], groups: [], history: [makeReading({ libraryMangaId: null })], librarySeries: null, libraryGroup: null });
+    });
+
+    function cardTitles(): string[] {
+        return screen.getAllByRole('heading', { level: 3 }).map((heading) => {
+            return heading.textContent ?? '';
+        });
+    }
+
+    it('shows the highlights over the grid: the mangas with news of the last seven days', () => {
+        render(<MangaLibrary />);
+        const highlights = screen.getByRole('region', { name: 'Highlights of the library' });
+        expect(within(highlights).getByRole('heading', { level: 2 })).toHaveTextContent('Solo Manga');
+        expect(within(highlights).getByText('1 new chapter')).toBeInTheDocument();
+    });
+
+    it('shows the mangas added last first, and by name when asked', async () => {
+        render(<MangaLibrary />);
+        expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
+        expect(cardTitles()).toEqual(['Epic', 'Solo Manga']);
+    });
+
+    it('shows the mangas read last first', async () => {
+        useMangaStore.setState({ history: [makeReading({ id: 1, libraryMangaId: 3, readAt: 50 }), makeReading({ id: 2, libraryMangaId: 1, readAt: 20 })] });
+        render(<MangaLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'last');
+        expect(cardTitles()).toEqual(['Epic', 'Solo Manga']);
+    });
+
+    it('keeps only the mangas with something new in the last seven days with NEW', async () => {
+        render(<MangaLibrary />);
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (1)' }));
+        expect(cardTitles()).toEqual(['Solo Manga']);
+        await userEvent.click(screen.getByRole('button', { name: 'ALL (2)' }));
+        expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
+    });
+
+    it('says when nothing is new in the last seven days', async () => {
+        useMangaStore.setState({ library: [PART_ONE, PART_TWO] });
+        render(<MangaLibrary />);
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (0)' }));
+        expect(screen.getByText('Nothing new in the last 7 days.')).toHaveClass('empty');
+    });
+
+    it('hides the highlights while a search is typed', async () => {
+        render(<MangaLibrary />);
+        await userEvent.type(screen.getByLabelText('Search the library'), 'solo');
+        expect(screen.queryByRole('region', { name: 'Highlights of the library' })).not.toBeInTheDocument();
+        expect(cardTitles()).toEqual(['Solo Manga']);
     });
 });

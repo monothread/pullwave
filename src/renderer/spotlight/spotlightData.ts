@@ -1,0 +1,215 @@
+import type { AnimeHistoryEntry, LibraryAnime } from '@shared/anime';
+import type { LibraryManga, ReadingEntry } from '@shared/manga';
+import type { StartTab } from '@shared/types';
+import { groupLibrary as groupAnime, type LibraryGroup } from '../components/animeText';
+import { groupLibrary as groupManga, type MangaLibraryGroup } from '../components/mangaText';
+import { continueReading, continueWatching } from '../home/homeData';
+
+// What the carousel of the highlights shows (D-128): what was left half way first, then the titles that got something new in the last days.
+
+// How long an episode or a chapter that arrived in the library counts as new for the highlights and the filter NEWS: seven days.
+export const NEWS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+// How many highlights the carousel shows at most.
+export const SPOTLIGHT_LIMIT = 8;
+
+export type SpotlightItem =
+    | { key: string; kind: 'anime'; reason: 'continue'; title: string; coverTitle: string; animeId: number; episodeId: number; episode: string; progress: number }
+    | { key: string; kind: 'anime'; reason: 'news'; title: string; coverTitle: string; groupKey: string; count: number }
+    | { key: string; kind: 'manga'; reason: 'continue'; title: string; coverUrl: string | null; entry: ReadingEntry; progress: number }
+    | { key: string; kind: 'manga'; reason: 'news'; title: string; coverUrl: string | null; group: MangaLibraryGroup; count: number };
+
+// Whether something that arrived at `addedAt` (null: it came with the title) is still new at `now`.
+export function isRecent(addedAt: number | null, now: number): boolean {
+    return addedAt !== null && addedAt <= now && now - addedAt < NEWS_WINDOW_MS;
+}
+
+// How many episodes of these anime arrived in the last seven days, and when the last one did.
+export function animeNews(entries: readonly LibraryAnime[], now: number): { count: number; latest: number } {
+    let count = 0;
+    let latest = 0;
+    entries.forEach((anime) => {
+        anime.episodes.forEach((episode) => {
+            if (isRecent(episode.addedAt, now)) {
+                count += 1;
+                latest = Math.max(latest, episode.addedAt ?? 0);
+            }
+        });
+    });
+    return { count, latest };
+}
+
+// How many chapters of these mangas arrived in the last seven days, and when the last one did.
+export function mangaNews(entries: readonly LibraryManga[], now: number): { count: number; latest: number } {
+    let count = 0;
+    let latest = 0;
+    entries.forEach((manga) => {
+        manga.chapters.forEach((chapter) => {
+            if (isRecent(chapter.addedAt, now)) {
+                count += 1;
+                latest = Math.max(latest, chapter.addedAt ?? 0);
+            }
+        });
+    });
+    return { count, latest };
+}
+
+// The groups that got something new, the one that got it last first.
+function withNews<T extends { key: string }>(groups: readonly T[], news: (group: T) => { count: number; latest: number }): Array<{ group: T; count: number }> {
+    return groups
+        .map((group) => {
+            return { group, ...news(group) };
+        })
+        .filter((item) => {
+            return item.count > 0;
+        })
+        .sort((first, second) => {
+            return second.latest - first.latest;
+        })
+        .map(({ group, count }) => {
+            return { group, count };
+        });
+}
+
+// The highlights of the anime: the episodes to go on with, then the series with new episodes (a series already there to go on with is not
+// repeated).
+export function animeSpotlight(library: readonly LibraryAnime[], history: readonly AnimeHistoryEntry[], now: number, limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
+    const groups = groupAnime(library);
+    const groupOf = (animeId: number): LibraryGroup | undefined => {
+        return groups.find((group) => {
+            return group.entries.some((anime) => {
+                return anime.id === animeId;
+            });
+        });
+    };
+    const items: SpotlightItem[] = [];
+    const used = new Set<string>();
+    continueWatching(library, history).forEach((item) => {
+        const group = groupOf(item.animeId);
+        used.add(group?.key ?? `anime-${String(item.animeId)}`);
+        items.push({ key: `anime-continue-${String(item.animeId)}`, kind: 'anime', reason: 'continue', title: item.title, coverTitle: item.title, animeId: item.animeId, episodeId: item.episodeId, episode: item.episode, progress: item.progress });
+    });
+    withNews(groups, (group) => {
+        return animeNews(group.entries, now);
+    }).forEach(({ group, count }) => {
+        if (!used.has(group.key)) {
+            items.push({ key: `anime-news-${group.key}`, kind: 'anime', reason: 'news', title: group.series, coverTitle: group.entries[0]?.title ?? group.series, groupKey: group.key, count });
+        }
+    });
+    return items.slice(0, limit);
+}
+
+// The highlights of the manga: the chapters being read of mangas of the library, then the mangas with new chapters.
+export function mangaSpotlight(library: readonly LibraryManga[], history: readonly ReadingEntry[], now: number, limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
+    const groups = groupManga(library);
+    const items: SpotlightItem[] = [];
+    const used = new Set<number>();
+    continueReading(
+        history.filter((entry) => {
+            return entry.libraryMangaId !== null;
+        })
+    ).forEach(({ entry, progress }) => {
+        used.add(entry.libraryMangaId ?? -1);
+        items.push({ key: `manga-continue-${String(entry.id)}`, kind: 'manga', reason: 'continue', title: entry.title, coverUrl: entry.thumbnailUrl, entry, progress });
+    });
+    withNews(groups, (group) => {
+        return mangaNews(group.entries, now);
+    }).forEach(({ group, count }) => {
+        const covered = group.entries.some((manga) => {
+            return used.has(manga.id);
+        });
+        if (!covered) {
+            items.push({ key: `manga-news-${group.key}`, kind: 'manga', reason: 'news', title: group.series, coverUrl: group.entries[0]?.thumbnailUrl ?? null, group, count });
+        }
+    });
+    return items.slice(0, limit);
+}
+
+// The highlights of the home screen: the ones of the section "Open on" puts first, then the other, one of each in turn.
+export function mixSpotlight(anime: readonly SpotlightItem[], manga: readonly SpotlightItem[], first: StartTab, limit: number = SPOTLIGHT_LIMIT): SpotlightItem[] {
+    const [lead, other] = first === 'manga' ? [manga, anime] : [anime, manga];
+    const mixed: SpotlightItem[] = [];
+    for (let index = 0; index < Math.max(lead.length, other.length); index++) {
+        const fromLead = lead[index];
+        const fromOther = other[index];
+        if (fromLead !== undefined) {
+            mixed.push(fromLead);
+        }
+        if (fromOther !== undefined) {
+            mixed.push(fromOther);
+        }
+    }
+    return mixed.slice(0, limit);
+}
+
+export type LibraryFilter = 'all' | 'news';
+// The order of the grid of a library: the titles added last, the ones watched or read last, or by name.
+export type LibrarySort = 'recent' | 'last' | 'az';
+
+export const LIBRARY_SORTS: readonly LibrarySort[] = ['recent', 'last', 'az'];
+
+interface SortableGroup<T> {
+    series: string;
+    entries: T[];
+}
+
+// When a group was put in the library: its newest season.
+function addedAt<T extends { createdAt: number }>(group: SortableGroup<T>): number {
+    return group.entries.reduce((newest, entry) => {
+        return Math.max(newest, entry.createdAt);
+    }, 0);
+}
+
+function byName(first: { series: string }, second: { series: string }): number {
+    return first.series.localeCompare(second.series, undefined, { sensitivity: 'base', numeric: true });
+}
+
+// The groups of the library in the order chosen: the ones added last first, the ones watched or read last first (`lastSeen` says when; 0:
+// never, and those go after, the ones added last first), or by name.
+export function sortGroups<T extends { createdAt: number }, G extends SortableGroup<T>>(groups: readonly G[], sort: LibrarySort, lastSeen: (group: G) => number): G[] {
+    const sorted = [...groups];
+    if (sort === 'az') {
+        return sorted.sort(byName);
+    }
+    const byAdded = (first: G, second: G): number => {
+        return addedAt(second) - addedAt(first) || byName(first, second);
+    };
+    if (sort === 'recent') {
+        return sorted.sort(byAdded);
+    }
+    return sorted.sort((first, second) => {
+        return lastSeen(second) - lastSeen(first) || byAdded(first, second);
+    });
+}
+
+// When a season of these anime was last opened or watched (0: never), from the history of the anime section.
+export function animeLastSeen(entries: readonly LibraryAnime[], history: readonly AnimeHistoryEntry[]): number {
+    return history.reduce((latest, entry) => {
+        const ofGroup = entries.some((anime) => {
+            return anime.title === entry.title && anime.audio === entry.audio;
+        });
+        return ofGroup ? Math.max(latest, entry.openedAt) : latest;
+    }, 0);
+}
+
+// When a season of these mangas was last read (0: never), from the history of reading.
+export function mangaLastSeen(entries: readonly LibraryManga[], history: readonly ReadingEntry[]): number {
+    const ids = new Set(
+        entries.map((manga) => {
+            return manga.id;
+        })
+    );
+    return history.reduce((latest, entry) => {
+        return entry.libraryMangaId !== null && ids.has(entry.libraryMangaId) ? Math.max(latest, entry.readAt) : latest;
+    }, 0);
+}
+
+// The groups the filter keeps: all of them, or the ones with something new in the last seven days.
+export function filterGroups<G>(groups: readonly G[], filter: LibraryFilter, newsOf: (group: G) => number): G[] {
+    if (filter === 'all') {
+        return [...groups];
+    }
+    return groups.filter((group) => {
+        return newsOf(group) > 0;
+    });
+}

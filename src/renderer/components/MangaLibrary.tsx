@@ -9,6 +9,9 @@ import { MangaRemove } from './MangaRemove';
 import { MangaDetail } from './MangaDetail';
 import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
+import { LibraryControls } from '../library/LibraryControls';
+import { MangaLibrarySpotlight } from '../library/LibrarySpotlights';
+import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter, type LibrarySort } from '../spotlight/spotlightData';
 import { RowLink } from './RowLink';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 
@@ -219,8 +222,18 @@ export function MangaLibrary() {
     const loadSources = useMangaStore((state) => {
         return state.loadSources;
     });
+    // The history of reading, for the order by the last one read (the highlights read it when the library opens).
+    const history = useMangaStore((state) => {
+        return state.history;
+    });
     const [search, setSearch] = useState('');
     const [managing, setManaging] = useState(false);
+    const [filter, setFilter] = useState<LibraryFilter>('all');
+    const [sort, setSort] = useState<LibrarySort>('recent');
+    // What is new is counted from the time the library opened.
+    const [openedAt] = useState(() => {
+        return Date.now();
+    });
 
     // The sources are read to tell which mangas have an extension that is not installed.
     useEffect(() => {
@@ -276,9 +289,18 @@ export function MangaLibrary() {
             </span>
         );
     };
-    const cards = groupLibrary(shown);
+    const all = groupLibrary(shown);
+    const newsOf = (group: MangaLibraryGroup): number => {
+        return mangaNews(group.entries, openedAt).count;
+    };
+    const lastSeenOf = (group: MangaLibraryGroup): number => {
+        return mangaLastSeen(group.entries, history);
+    };
+    const cards = sortGroups(filterGroups(all, filter, newsOf), sort, lastSeenOf);
+    const searching = search.trim().length > 0;
     return (
         <section className="manga__library" aria-label={t('manga.nav.library')}>
+            {!searching && <MangaLibrarySpotlight />}
             <div className="field-row">
                 <TextField label={t('manga.library.search.label')} value={search} placeholder={t('manga.library.search.placeholder')} onChange={setSearch} />
                 <button
@@ -327,8 +349,10 @@ export function MangaLibrary() {
                 </nav>
             )}
             {hiddenCount > 0 && <p className="field__hint">{t('manga.library.hiddenGroups', { count: hiddenCount })}</p>}
+            <LibraryControls kind="manga" filter={filter} sort={sort} allCount={all.length} newsCount={filterGroups(all, 'news', newsOf).length} onFilter={setFilter} onSort={setSort} />
             <span className="section-label">{t('manga.library.label', { count: cards.length })}</span>
             {shown.length === 0 && <p className="empty">{currentGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}
+            {shown.length > 0 && cards.length === 0 && <p className="empty">{t('library.filter.noNews')}</p>}
             <ul className="cover-grid">
                 {cards.map((card) => {
                     const single = card.entries[0];

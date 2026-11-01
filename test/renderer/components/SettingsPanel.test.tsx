@@ -126,7 +126,7 @@ describe('SettingsPanel start tab', () => {
             ['anime', 'ANIME'],
             ['manga', 'MANGA']
         ]);
-        expect(screen.getByText('The tab the app shows when it starts. If the anime or the manga section is not available, the video downloader opens.')).toBeInTheDocument();
+        expect(screen.getByText('The section the home screen shows first, and where its big button goes when there is nothing to go on with. The app always opens on the home screen.')).toBeInTheDocument();
     });
 
     it('shows the one that is saved', () => {

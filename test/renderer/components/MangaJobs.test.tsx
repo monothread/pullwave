@@ -6,7 +6,7 @@ import type { MangaErrorCode } from '@shared/manga';
 import { MangaJobs } from '@renderer/components/MangaJobs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeMangaJob } from '../../helpers/mangaFixtures';
+import { makeLibraryManga, makeMangaJob } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -306,5 +306,35 @@ describe('MangaJobs trying the failed ones again', () => {
         useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 3, status: 'running' }), makeMangaJob({ chapterId: 4, status: 'paused' })] });
         render(<MangaJobs />);
         expect(screen.queryByRole('button', { name: /RETRY FAILED/ })).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaJobs: the chapter downloading', () => {
+    it('shows the running chapter big at the top, with the pages and the cover of the manga of the library', () => {
+        useMangaStore.setState({
+            jobs: [makeMangaJob({ chapterId: 1, mangaId: 4, status: 'running', mangaTitle: 'One Piece', chapterName: 'Romance Dawn', pagesDone: 5, pageCount: 20, percent: 25 }), makeMangaJob({ chapterId: 2, status: 'queued' })],
+            library: [{ ...makeLibraryManga([], { id: 4, thumbnailUrl: 'https://img/op.jpg' }) }]
+        });
+        render(<MangaJobs />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.querySelector('.download-hero__title')).toHaveAttribute('data-text', 'One Piece');
+        expect(hero.querySelector('.download-hero__detail')).toHaveAttribute('data-text', 'Romance Dawn · 5 of 20 pages');
+        expect(hero.querySelector('.download-hero__art img')).toHaveAttribute('src', 'https://img/op.jpg');
+        expect(hero.querySelector('.speed-graph')).toBeNull();
+        expect(hero.querySelector('.download-hero__next')).toHaveTextContent('UP NEXT: 1');
+    });
+
+    it('says only the chapter while its pages are not known, and draws no cover when the manga is not in the library', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ status: 'running', chapterName: 'Romance Dawn', pageCount: 0 })], library: [] });
+        render(<MangaJobs />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.querySelector('.download-hero__detail')).toHaveAttribute('data-text', 'Romance Dawn');
+        expect(hero.querySelector('.download-hero__art .cover--none')).not.toBeNull();
+    });
+
+    it('has no banner while no chapter downloads', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ status: 'queued' })] });
+        render(<MangaJobs />);
+        expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
     });
 });

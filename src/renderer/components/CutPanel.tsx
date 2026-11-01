@@ -4,7 +4,9 @@ import type { CutRun, CutSegmentState, CutSegmentStatus } from '@shared/cut';
 import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
-import { useCutStore } from '../store/cutStore';
+import { useCutStore, type CutThumbnail } from '../store/cutStore';
+import { ConfirmButton } from './ConfirmButton';
+import { CutPreviewPlayer } from './CutPreviewPlayer';
 import { checkRow, formatClock, problemKey, segmentsToCut } from './cutText';
 import { TextField, ToggleField } from './fields';
 import { LoadingMark } from './LoadingMark';
@@ -91,6 +93,25 @@ function summary(run: CutRun, t: ReturnType<typeof useTranslator>): string {
     return failed > 0 ? t('cut.run.failed', { done, failed }) : t('cut.run.done', { count: done });
 }
 
+interface CutThumbProps {
+    thumbnail: CutThumbnail | null;
+    kind: 'video' | 'audio';
+}
+
+// The picture of the file chosen: a frame of the video or the cover of the audio; while it is made, a glow; with none, the mark of its kind.
+function CutThumb({ thumbnail, kind }: CutThumbProps) {
+    const t = useTranslator();
+    if (thumbnail?.status === 'ready') {
+        return <img className="cut__thumb" src={thumbnail.url} alt={t('cut.thumbnail')} data-testid="cut-thumb" />;
+    }
+    const loading = thumbnail?.status === 'loading';
+    return (
+        <span className={`cut__thumb cut__thumb--empty${loading ? ' cut__thumb--loading' : ''}`} data-testid="cut-thumb" aria-hidden="true">
+            {!loading && (kind === 'audio' ? '♫' : '▶')}
+        </span>
+    );
+}
+
 // Whether what is being dragged carries files (and not text or a link).
 function carriesFiles(event: { dataTransfer: Pick<DataTransfer, 'types'> | null }): boolean {
     return Array.from(event.dataTransfer?.types ?? []).includes('Files');
@@ -105,7 +126,7 @@ export function CutPanel() {
     const audioFormat = useAppStore((state) => {
         return state.settings.audioFormat;
     });
-    const { media, choosing, chooseError, rows, audioOnly, starting, startError, cancelling, run } = useCutStore();
+    const { media, choosing, chooseError, rows, audioOnly, starting, startError, cancelling, run, thumbnail } = useCutStore();
     const init = useCutStore((state) => {
         return state.init;
     });
@@ -135,6 +156,12 @@ export function CutPanel() {
     });
     const rejectDrop = useCutStore((state) => {
         return state.rejectDrop;
+    });
+    const openPreview = useCutStore((state) => {
+        return state.openPreview;
+    });
+    const clear = useCutStore((state) => {
+        return state.clear;
     });
     const [dragging, setDragging] = useState(false);
 
@@ -240,11 +267,22 @@ export function CutPanel() {
                 {choosing && <LoadingMark label={t('cut.reading')} />}
                 {media !== null && !choosing && (
                     <>
+                        <CutThumb thumbnail={thumbnail} kind={media.kind} />
                         <strong className="cut__name" title={media.path}>
                             {media.name + media.extension}
                         </strong>
                         <span className="badge badge--done">{t(media.kind === 'video' ? 'cut.kind.video' : 'cut.kind.audio')}</span>
                         <span className="history__meta">{t('cut.duration', { duration: formatClock(media.durationSeconds) })}</span>
+                        <ConfirmButton
+                            className="btn btn--small btn--hot cut__clear"
+                            disabled={busy}
+                            dialog={{ title: t('cut.clear.title'), message: t('cut.clear.message'), confirmLabel: t('cut.clear.confirm') }}
+                            onConfirm={() => {
+                                void clear();
+                            }}
+                        >
+                            {t('cut.clear')}
+                        </ConfirmButton>
                     </>
                 )}
             </div>
@@ -280,6 +318,18 @@ export function CutPanel() {
                                             updateRow(row.id, { end });
                                         }}
                                     />
+                                    <button
+                                        type="button"
+                                        className="btn btn--small cut__play"
+                                        disabled={checked.segment === null}
+                                        aria-label={t('cut.segment.play', { number })}
+                                        title={t('cut.segment.play', { number })}
+                                        onClick={() => {
+                                            void openPreview(row.id);
+                                        }}
+                                    >
+                                        ▶
+                                    </button>
                                     <span className="cut__length">{checked.segment === null ? '' : t('cut.segment.length', { length: formatClock(checked.segment.end - checked.segment.start) })}</span>
                                     <button
                                         type="button"
@@ -354,6 +404,7 @@ export function CutPanel() {
                     )}
                 </>
             )}
+            <CutPreviewPlayer />
         </section>
     );
 }

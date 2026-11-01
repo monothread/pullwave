@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { useFullscreenIdle } from '../hooks/useFullscreenIdle';
 import { useSubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useVideoBuffer } from '../hooks/useVideoBuffer';
@@ -6,6 +6,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { seekHover, type SeekHover } from './seekHover';
 import { hasPlayerSettings, PlayerSettings, type SubtitleOption } from './PlayerSettings';
 import { clamp, SEEK_STEP_SECONDS, shortcutOf, VOLUME_STEP, type PlayerShortcut } from './playerShortcuts';
+import { atRangeEnd, mediaTimeOf, outsideRange, rangeLength, timeInRange, type PlaybackRange } from './playbackRange';
 
 // Kept here, where the player's other files already import it from.
 export type { SubtitleOption } from './PlayerSettings';
@@ -16,6 +17,8 @@ interface VideoControlsProps {
     // The id of the subtitle being shown; null when they are off.
     selectedSubtitle: string | null;
     onSelectSubtitle: (id: string | null) => void;
+    // Only this part of the media is played, as if it were the whole of it (the preview of a cut); left out, the whole media.
+    range?: PlaybackRange;
 }
 
 interface PlaybackState {
@@ -55,6 +58,26 @@ function readState(element: HTMLVideoElement): PlaybackState {
     };
 }
 
+// While the media plays, its time is read at every frame of the screen: the media only says where it is a few times a second, and the bar
+// would grow in jumps (a part of a few seconds, in the preview of a cut, jumped by a tenth of its length at a time).
+function useFrameClock(video: RefObject<HTMLVideoElement | null>, playing: boolean, onTime: (seconds: number) => void): void {
+    useEffect(() => {
+        const element = video.current;
+        if (!element || !playing) {
+            return undefined;
+        }
+        let frame = 0;
+        const tick = (): void => {
+            onTime(element.currentTime);
+            frame = requestAnimationFrame(tick);
+        };
+        frame = requestAnimationFrame(tick);
+        return () => {
+            cancelAnimationFrame(frame);
+        };
+    }, [video, playing, onTime]);
+}
+
 function setCurrentTime(element: HTMLVideoElement, seconds: number): void {
     element.currentTime = seconds;
 }
@@ -83,18 +106,20 @@ function steppedVolume(value: number): number {
     return Math.round(clamp(value, 0, 1) * 100) / 100;
 }
 
-function runShortcut(element: HTMLVideoElement, shortcut: PlayerShortcut): void {
+function runShortcut(element: HTMLVideoElement, shortcut: PlayerShortcut, range: PlaybackRange | undefined): void {
     const duration = Number.isFinite(element.duration) ? element.duration : 0;
+    const first = range?.start ?? 0;
+    const last = range?.end ?? duration;
     const volume = element.muted ? 0 : element.volume;
     switch (shortcut) {
         case 'toggle-play':
             togglePlayback(element);
             return;
         case 'seek-forward':
-            setCurrentTime(element, clamp(element.currentTime + SEEK_STEP_SECONDS, 0, duration));
+            setCurrentTime(element, clamp(element.currentTime + SEEK_STEP_SECONDS, first, last));
             return;
         case 'seek-backward':
-            setCurrentTime(element, clamp(element.currentTime - SEEK_STEP_SECONDS, 0, duration));
+            setCurrentTime(element, clamp(element.currentTime - SEEK_STEP_SECONDS, first, last));
             return;
         case 'volume-up':
             setVolume(element, steppedVolume(volume + VOLUME_STEP));
@@ -125,8 +150,46 @@ function progressStyle(percent: number): CSSProperties {
     return { '--progress': `${percent}%` } as CSSProperties;
 }
 
+// Keeps the media inside the part: it starts at its start, stops at its end, and plays again from the start when it is played at the end.
+function useRangeLimits(video: RefObject<HTMLVideoElement | null>, range: PlaybackRange | undefined): void {
+    const start = range?.start;
+    const end = range?.end;
+    useEffect(() => {
+        const element = video.current;
+        if (!element || start === undefined || end === undefined) {
+            return undefined;
+        }
+        const part: PlaybackRange = { start, end };
+        const toStart = (): void => {
+            setCurrentTime(element, start);
+        };
+        const onTimeUpdate = (): void => {
+            if (!element.paused && atRangeEnd(element.currentTime, part)) {
+                element.pause();
+                setCurrentTime(element, end);
+            }
+        };
+        const onPlay = (): void => {
+            if (outsideRange(element.currentTime, part)) {
+                toStart();
+            }
+        };
+        if (element.readyState >= 1) {
+            toStart();
+        }
+        element.addEventListener('loadedmetadata', toStart);
+        element.addEventListener('timeupdate', onTimeUpdate);
+        element.addEventListener('play', onPlay);
+        return () => {
+            element.removeEventListener('loadedmetadata', toStart);
+            element.removeEventListener('timeupdate', onTimeUpdate);
+            element.removeEventListener('play', onPlay);
+        };
+    }, [video, start, end]);
+}
+
 // The control bar of the player. It drives the <video> through its own API, so it looks the same in every theme.
-export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle }: VideoControlsProps) {
+export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range }: VideoControlsProps) {
     const t = useTranslator();
     const [state, setState] = useState<PlaybackState>(INITIAL_STATE);
     const subtitleStyle = useSubtitleStyle(video);
@@ -135,6 +198,13 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
     const { loading } = useVideoBuffer(video);
     // The bar stays while the settings are open: they are part of it.
     const hidden = useFullscreenIdle(video) && !settingsOpen;
+    useRangeLimits(video, range);
+    const followTime = useCallback((seconds: number): void => {
+        setState((previous) => {
+            return previous.currentTime === seconds ? previous : { ...previous, currentTime: seconds };
+        });
+    }, []);
+    useFrameClock(video, !state.paused, followTime);
 
     useEffect(() => {
         const element = video.current;
@@ -187,6 +257,12 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         };
     }, [video]);
 
+    // The part played, for the keys (read when a key is pressed, so the listener does not change with it).
+    const rangeRef = useRef(range);
+    useEffect(() => {
+        rangeRef.current = range;
+    }, [range]);
+
     // The keys work wherever the focus is on the page (the video is not a field, so a click on it leaves it nowhere in the bar).
     useEffect(() => {
         const element = video.current;
@@ -199,7 +275,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                 return;
             }
             event.preventDefault();
-            runShortcut(element, shortcut);
+            runShortcut(element, shortcut, rangeRef.current);
         };
         // A button is pressed when the space is released, so that is held back too, or it would press the focused button after the pause.
         const onKeyUp = (event: globalThis.KeyboardEvent): void => {
@@ -246,10 +322,11 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         }
     }
 
+    // A point of the timeline: of the part when there is one.
     function seekTo(seconds: number): void {
         const element = video.current;
         if (element) {
-            setCurrentTime(element, seconds);
+            setCurrentTime(element, range === undefined ? seconds : mediaTimeOf(seconds, range));
         }
     }
 
@@ -275,12 +352,15 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
 
     // The tooltip sits in the bar, so its position is measured from the bar: the timeline's own offset plus the mouse on it.
     function hoverTimeline(input: HTMLInputElement, clientX: number): void {
-        const found = seekHover(clientX, input.getBoundingClientRect(), state.duration);
+        const found = seekHover(clientX, input.getBoundingClientRect(), duration);
         setHover(found === null ? null : { time: found.time, offset: (input.parentElement?.offsetLeft ?? input.offsetLeft) + found.offset });
     }
 
     const silent = state.muted || state.volume === 0;
-    const seekPercent = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
+    // What the timeline shows: the part, from 0 to its length, when there is one.
+    const duration = range === undefined ? state.duration : rangeLength(range);
+    const currentTime = range === undefined ? state.currentTime : timeInRange(state.currentTime, range);
+    const seekPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
     const volumePercent = silent ? 0 : state.volume * 100;
 
     return (
@@ -304,19 +384,21 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                         {formatClock(hover.time)}
                     </span>
                 )}
-                <span className="player__time">{formatClock(state.currentTime)}</span>
+                <span className="player__time">{formatClock(currentTime)}</span>
                 <div className="player__timeline">
                     <div className="progress" aria-hidden="true">
                         <div className="progress__bar" style={{ width: `${seekPercent}%` }} />
                     </div>
+                    {/* Any step: the thumb stands at the very time of the video, as the bar does; with a step it went in jumps (a tenth of a
+                        second is a fiftieth of a part of five seconds). The arrows still move it by the steps of the shortcuts. */}
                     <input
                         type="range"
                         className="player__range player__seek"
                         aria-label={t('anime.player.seek')}
                         min={0}
-                        max={state.duration}
-                        step={0.1}
-                        value={Math.min(state.currentTime, state.duration)}
+                        max={duration}
+                        step="any"
+                        value={Math.min(currentTime, duration)}
                         onMouseMove={(event) => {
                             hoverTimeline(event.currentTarget, event.clientX);
                         }}
@@ -328,7 +410,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                         }}
                     />
                 </div>
-                <span className="player__time">{formatClock(state.duration)}</span>
+                <span className="player__time">{formatClock(duration)}</span>
                 <button
                     type="button"
                     className="player__button"

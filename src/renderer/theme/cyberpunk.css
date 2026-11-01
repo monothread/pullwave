@@ -208,7 +208,6 @@ body::after {
     box-shadow: 0 0 0 1px var(--cyan), var(--glow);
 }
 
-
 .btn {
     background: transparent;
     color: var(--cyan);
@@ -310,10 +309,6 @@ body::after {
     cursor: not-allowed;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .toggle input.switch, .toggle input.switch::after { transition: none; }
-}
-
 .queue, .history { display: flex; flex-direction: column; gap: 12px; }
 .queue__toolbar { display: flex; align-items: center; justify-content: space-between; }
 .queue__toolbar .section-label { margin: 0; }
@@ -392,7 +387,6 @@ body::after {
     animation: bar-wave-flow 1.4s linear infinite;
 }
 @keyframes bar-wave-flow { from { background-position: 0 0; } to { background-position: 160px 0; } }
-/* The wave of a download also flows when the system asks for less motion: it is the sign that the download is going on. */
 
 /* A finished or failed download keeps its colour and stands still. The rule is as specific as the one of the wave above (and comes after it),
    or the wave would win and the bar would go on flowing in the colours of the theme; the glow is the one of every bar, in the colour of the state. */
@@ -589,11 +583,6 @@ body::after {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--line); border: 1px solid var(--cyan); }
 
-@media (prefers-reduced-motion: reduce) {
-    .logo::before, .logo::after { animation: none; }
-    .progress__bar, .btn, body::before { transition: none; }
-}
-
 .update-banner {
     display: flex;
     align-items: center;
@@ -624,7 +613,6 @@ body::after {
 
 .field__warning { margin: 0; color: var(--yellow); font-size: 12px; }
 
-
 .progress--live .progress__bar {
     width: 100%;
     background: repeating-linear-gradient(45deg, var(--red) 0 10px, var(--magenta) 10px 20px);
@@ -634,7 +622,6 @@ body::after {
 }
 .job__live { color: var(--red); font-weight: 700; letter-spacing: 1px; }
 @keyframes live-stripes { from { background-position: 0 0; } to { background-position: 28px 0; } }
-@media (prefers-reduced-motion: reduce) { .progress--live .progress__bar { animation: none; } }
 
 /* The stream seems to have ended: the bar drains over the checking time while a scan line sweeps it. */
 .progress--verify { position: relative; }
@@ -767,10 +754,7 @@ body::after {
 @keyframes job-save-pulse { 50% { box-shadow: var(--glow-strong), inset 0 0 18px var(--tint-cyan); } }
 @keyframes job-merge-pulse { 50% { box-shadow: var(--glow-green), inset 0 0 18px var(--tint-green); } }
 @keyframes job-wait-pulse { 50% { box-shadow: var(--glow-hot), inset 0 0 18px var(--tint-cyan); } }
-@media (prefers-reduced-motion: reduce) {
-    .job--verifying, .job--waiting, .job--merging, .job--saving, .job--processing, .badge--verifying, .badge--waiting, .badge--merging, .badge--saving, .badge--processing, .progress--verify::after, .progress--waiting::after, .progress--merging::after, .progress--saving::after, .progress--processing::after, .job__waiting::after, .job__merging::after, .job__saving::after, .job__processing::after { animation: none; }
-    .progress--verify .progress__bar { animation: none; width: 100%; }
-}
+
 .link-row__folder { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; color: var(--muted); font-size: 12px; min-width: 0; }
 .link-row__folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
@@ -1081,10 +1065,6 @@ body::after {
     to { transform: rotate(360deg); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .player__spinner { animation-duration: 3s; }
-}
-
 .player__hover {
     position: absolute;
     bottom: calc(100% + 6px);
@@ -1120,7 +1100,6 @@ body::after {
     cursor: pointer;
 }
 
-
 /* The timeline of the player is the bar of a download: it has the same elements (.progress with a .progress__bar inside, as wide as what was
    watched), so it has the same frame, the same glow and the same wave that flows, in every theme. The slider is above it, transparent, with only
    its thumb to be seen. */
@@ -1128,6 +1107,11 @@ body::after {
     position: relative;
     flex: 1;
     min-width: 80px;
+}
+
+/* The part watched follows the time of the video at every frame: a transition would make it grow in steps behind it. */
+.player__timeline .progress__bar {
+    transition: none;
 }
 
 .player__timeline .player__seek {
@@ -1251,7 +1235,7 @@ body::after {
     animation: player-spin 0.9s linear infinite;
 }
 .generate__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-@media (prefers-reduced-motion: reduce) { .generate__spinner { animation-duration: 3s; } }
+
 @media (max-width: 520px) {
     .generate__languages { grid-template-columns: 1fr; }
     .generate__arrow { display: none; }
@@ -1301,7 +1285,7 @@ body::after {
 .manga__gear { min-width: 40px; min-height: 40px; padding: 0; font-size: 24px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
 
 /* The check of Cloudflare has no end that is known: a wave that always flows from one end of the bar to the other, with a bright
-   crest that sweeps it (inside the track, like the others, so the track does not clip the glow of the bar). It moves also when the system asks for less motion, since it is the only sign that something is going on. */
+   crest that sweeps it (inside the track, like the others, so the track does not clip the glow of the bar). */
 .progress--cloudflare { position: relative; height: 10px; }
 .progress--cloudflare .progress__bar {
     width: 100%;
@@ -1449,7 +1433,6 @@ body::after {
     animation: player-spin 0.9s linear infinite;
     will-change: transform;
 }
-@media (prefers-reduced-motion: reduce) { .loading-mark__ring { animation-duration: 3s; } }
 
 /* The cutter of the video downloader. */
 .cut { position: relative; display: flex; flex-direction: column; gap: 12px; }

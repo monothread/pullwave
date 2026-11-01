@@ -1,11 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { keyframesOf, mediaStyleOf, readStylesheet, splitTopLevel, styleOf } from '../../helpers/cssRules';
+import { keyframesOf, readStylesheet, splitTopLevel, styleOf } from '../../helpers/cssRules';
 
 const COMPONENTS_DIRECTORY = resolve(__dirname, '../../../src/renderer/components');
 const cyberpunk = readStylesheet('cyberpunk.css');
 const themes = readStylesheet('themes.css');
 const responsive = readStylesheet('responsive.css');
+const consoleLayer = readStylesheet('console.css');
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 const PLAIN_BAR = ".progress:not([class*='progress--']) .progress__bar";
@@ -116,8 +117,8 @@ describe('the neon of every bar', () => {
         expect(styleOf(cyberpunk, selector)['--bar-glow']).toBe(colour);
     });
 
-    it('does not turn the glow off in any theme or screen size', () => {
-        [themes, responsive].forEach((sheet) => {
+    it('does not turn the glow off in any theme, screen size or in the console layer', () => {
+        [themes, responsive, consoleLayer].forEach((sheet) => {
             sheet.rules
                 .filter((rule) => { return /\.progress|\.player__range|\.player__seek/.test(rule.selector); })
                 .forEach((rule) => {
@@ -211,32 +212,13 @@ describe('the movement of the neon inside each bar', () => {
     });
 });
 
-describe('the bars when the system asks for less motion', () => {
-    const reduced = cyberpunk.rules.filter((rule) => { return rule.media?.includes(REDUCED_MOTION) === true; });
-
-    it('stops the sweeps and the stripes, which are decoration', () => {
-        expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.progress--live .progress__bar')['animation']).toBe('none');
-        ['verify', 'waiting', 'merging', 'saving', 'processing'].forEach((kind) => {
-            expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, `.progress--${kind}::after`)['animation'], kind).toBe('none');
+describe('the bars whatever the system says about motion', () => {
+    it('keep every sweep, stripe, wave and spinner moving: no style sheet has a rule for less motion (D-130)', () => {
+        [cyberpunk, themes, responsive, consoleLayer].forEach((sheet) => {
+            expect(sheet.text).not.toContain('prefers-reduced-motion');
         });
-    });
-
-    it('keeps the wave of a download and the one of the check of Cloudflare flowing: they are the sign that something is going on', () => {
-        expect(
-            reduced.filter((rule) => {
-                return /\.progress:not|\.progress--cloudflare/.test(rule.selector);
-            })
-        ).toEqual([]);
-    });
-
-    it('keeps the bar that drains from being frozen empty: it shows its full width', () => {
-        const verify = mediaStyleOf(cyberpunk, REDUCED_MOTION, '.progress--verify .progress__bar');
-        expect(verify).toMatchObject({ animation: 'none', width: '100%' });
-    });
-
-    it('slows the spinner of the player instead of stopping it, and keeps the wave of its timeline flowing, like the one of a download', () => {
-        expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__spinner')['animation-duration']).toBe('3s');
-        expect(mediaStyleOf(cyberpunk, REDUCED_MOTION, '.player__controls .player__seek')).toEqual({});
+        expect(styleOf(cyberpunk, '.progress--live .progress__bar')['animation']).toBe('live-stripes 0.9s linear infinite');
+        expect(styleOf(cyberpunk, '.player__spinner')['animation']).toBe('player-spin 0.9s linear infinite');
     });
 });
 
@@ -248,7 +230,7 @@ describe('the timeline and the volume of the player', () => {
 
     it('has no rule of its own for the look of the timeline: its frame, glow and wave are the ones of the bar of a download', () => {
         const rules = cyberpunk.rules.filter((rule) => { return rule.selector.includes('.player__seek') || rule.selector.includes('.player__timeline') || rule.selector.includes('.player__wave'); });
-        expect(rules.map((rule) => { return rule.selector; })).toEqual(['.player__timeline', '.player__timeline .player__seek']);
+        expect(rules.map((rule) => { return rule.selector; })).toEqual(['.player__timeline', '.player__timeline .progress__bar', '.player__timeline .player__seek']);
         expect(cyberpunk.text).not.toContain('--wave-phase');
         expect(cyberpunk.text).not.toContain('player-wave-phase');
         expect(cyberpunk.text).not.toContain('player-wave-glow-filter');
@@ -256,6 +238,10 @@ describe('the timeline and the volume of the player', () => {
 
     it('lays the box of the timeline out as the bar that grows and fills the row, with the slider over it', () => {
         expect(styleOf(cyberpunk, '.player__timeline')).toEqual({ position: 'relative', flex: '1', 'min-width': '80px' });
+    });
+
+    it('lets the watched part follow the video at every frame, with no transition of its width behind it', () => {
+        expect(styleOf(cyberpunk, '.player__timeline .progress__bar')).toEqual({ transition: 'none' });
     });
 
     it('makes the slider transparent, without frame or glow, as big as the box, so only its thumb is seen over the bar', () => {

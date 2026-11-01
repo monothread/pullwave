@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { batchNavigation } from '../navigation/navigationBatch';
 import { hasChapterFile, IDLE_MANGA_CHECK_STATE } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
@@ -401,6 +402,16 @@ const MIGRATION_ERRORS: Record<Exclude<MangaMigrationFailure, 'cancelled'>, Mess
 };
 
 // A job in the list replaced by its newer state (or added).
+// Runs the first steps of a change of page (they all happen before the first wait) as one page for the back and forward buttons of the mouse,
+// and gives what is left of it to wait for.
+function asOnePage(steps: () => Promise<void>): Promise<void> {
+    let rest: Promise<void> = Promise.resolve();
+    batchNavigation(() => {
+        rest = steps();
+    });
+    return rest;
+}
+
 export function upsertMangaJob(jobs: readonly MangaJob[], job: MangaJob): MangaJob[] {
     const index = jobs.findIndex((candidate) => {
         return candidate.chapterId === job.chapterId;
@@ -573,6 +584,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     toast('manga.notice.newChapters', { count: news.count, titles: news.titles.join(', ') });
                 })
             ];
+            // The server starts with the app, often while the library was being read above: a change of its state then was not heard, and
+            // the screen would not say that it is starting. It is read again now that the changes are heard.
+            await get().refreshStatus();
             return (): void => {
                 unsubscribers.forEach((unsubscribe) => {
                     unsubscribe();
@@ -645,8 +659,10 @@ export const useMangaStore = create<MangaState>((set, get) => {
                           return manga.id === entry.libraryMangaId;
                       }) ?? null);
             const summary: MangaSummary = { remoteId: entry.mangaRemoteId, sourceId: entry.sourceId, title: saved?.title ?? entry.title, thumbnailUrl: saved?.thumbnailUrl ?? entry.thumbnailUrl };
-            set({ view: saved === null ? 'browse' : 'library', librarySeries: null, selection: null });
-            await get().openManga(summary);
+            await asOnePage(() => {
+                set({ view: saved === null ? 'browse' : 'library', librarySeries: null, selection: null });
+                return get().openManga(summary);
+            });
         },
 
         openFromUpdate: async (entry) => {
@@ -656,8 +672,10 @@ export const useMangaStore = create<MangaState>((set, get) => {
             if (saved === undefined) {
                 return;
             }
-            set({ view: 'library', librarySeries: null, selection: null });
-            await get().openManga({ remoteId: saved.remoteId, sourceId: saved.sourceId, title: saved.title, thumbnailUrl: saved.thumbnailUrl });
+            await asOnePage(() => {
+                set({ view: 'library', librarySeries: null, selection: null });
+                return get().openManga({ remoteId: saved.remoteId, sourceId: saved.sourceId, title: saved.title, thumbnailUrl: saved.thumbnailUrl });
+            });
         },
 
         recordReading: async (record) => {
@@ -1213,8 +1231,10 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 return;
             }
             const manga = summaryOf(selection);
-            set({ view: 'library', selection: null });
-            await get().openManga(manga);
+            await asOnePage(() => {
+                set({ view: 'library', selection: null });
+                return get().openManga(manga);
+            });
         },
 
         showInSource: async () => {
@@ -1223,9 +1243,11 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 return;
             }
             const manga = summaryOf(selection);
-            set({ view: 'browse' });
-            get().openSource(manga.sourceId, 'popular');
-            await get().openManga(manga);
+            await asOnePage(() => {
+                set({ view: 'browse' });
+                get().openSource(manga.sourceId, 'popular');
+                return get().openManga(manga);
+            });
         },
 
         searchByTerm: async (term, kind = 'tag') => {

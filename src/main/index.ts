@@ -4,12 +4,14 @@ import { delimiter, join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
 import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
+import { CUT_MEDIA_SCHEME } from '@shared/cut';
 import { IPC } from '@shared/constants';
 import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerMangaHandlers } from './ipc/registerMangaHandlers';
 import { registerCutHandlers } from './ipc/registerCutHandlers';
 import { registerProgramHandlers } from './ipc/registerProgramHandlers';
+import { CutPreview, createCutMediaHandler } from './services/cutPreview';
 import { CutService, createFfmpegRunner } from './services/cutService';
 import { removeLegacyBinaries } from './services/tools/legacyBinaries';
 import { ProgramTools } from './services/tools/programTools';
@@ -53,12 +55,13 @@ const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
 // The covers of the manga section are served by the manga server of the app, on this machine and on a port that changes (hence the
 // wildcard); only images may come from there.
 const PRODUCTION_CSP =
-    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co http://127.0.0.1:* ${MANGA_PAGE_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}:`;
+    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}:`;
 
-// Declared once (Electron takes the list in a single call): the pages of the chapters the manga library has, and, where the anime section
-// exists, the video files and the streams of its player.
+// Declared once (Electron takes the list in a single call): the pages of the chapters the manga library has, the files of the cutter (on
+// every system, like the cutter), and, where the anime section exists, the video files and the streams of its player.
 protocol.registerSchemesAsPrivileged([
     { scheme: MANGA_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    { scheme: CUT_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
     ...(isAnimeSupported(process.platform)
         ? [
               { scheme: ANIME_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
@@ -628,7 +631,22 @@ function bootstrap(): BootstrapResult {
             sendToRenderer(IPC.eventCutProgress, run);
         }
     });
-    registerCutHandlers(ipcMain, cutter);
+    // What the cutter shows before it cuts: the file chosen in the player, a part converted for it when needed, and a picture of the file
+    // (D-131). Its files are in a folder of the app, removed when it ends.
+    const cutPreview = new CutPreview({
+        runFfmpeg: () => {
+            return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
+        },
+        directory: join(dataDir, 'cut-preview')
+    });
+    const handleCutMedia = createCutMediaHandler(cutPreview, defaultMediaFileSystem);
+    protocol.handle(CUT_MEDIA_SCHEME, (request) => {
+        return handleCutMedia(request);
+    });
+    app.on('will-quit', () => {
+        cutPreview.dispose();
+    });
+    registerCutHandlers(ipcMain, cutter, cutPreview);
     // The programs are downloaded when the app opens (nothing happens for the ones that are there already). PULLWAVE_NO_TOOLS leaves it for
     // later (used by the end-to-end tests that need none of them).
     if (process.env.PULLWAVE_NO_TOOLS !== '1') {

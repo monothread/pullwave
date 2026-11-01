@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import './display';
+import { leaveHome } from './startScreen';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -20,6 +21,8 @@ let downloads: string;
 let video: string;
 let longVideo: string;
 let song: string;
+let coverSong: string;
+let oldVideo: string;
 
 function ffmpeg(args: string[]): string {
     try {
@@ -58,6 +61,7 @@ async function launch(file: string, audioFormat = 'mp3'): Promise<void> {
     await page.setViewportSize({ width: 1100, height: 780 });
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+    await leaveHome(page);
     await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'CUT' }).click();
 }
 
@@ -88,6 +92,13 @@ test.beforeAll(() => {
     ffmpeg(['-f', 'lavfi', '-i', 'testsrc=duration=12:size=320x240:rate=15', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', video]);
     ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=duration=90:size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=90', '-shortest', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', longVideo]);
     ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=523:duration=20', '-c:a', 'libmp3lame', song]);
+    // An audio that carries its cover, and a video in a container the player of the app cannot open (it is converted for the preview).
+    coverSong = join(workDir, 'Cover.mp3');
+    oldVideo = join(workDir, 'Old.avi');
+    const cover = join(workDir, 'cover.png');
+    ffmpeg(['-f', 'lavfi', '-i', 'color=c=red:size=200x200:duration=1', '-frames:v', '1', cover]);
+    ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=600:duration=15', '-i', cover, '-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-c:v', 'mjpeg', '-disposition:v', 'attached_pic', '-id3v2_version', '3', coverSong]);
+    ffmpeg(['-f', 'lavfi', '-i', 'testsrc=duration=10:size=320x240:rate=15', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=10', '-shortest', '-c:v', 'mpeg4', '-c:a', 'libmp3lame', oldVideo]);
 });
 
 test.afterAll(() => {
@@ -338,4 +349,150 @@ test('turns the light off when the drag leaves without dropping, and does not ta
     await expect(page.getByText('Song.mp3')).toHaveCount(0);
     await expect(page.getByText('Long.mp4')).toBeVisible();
     await expect(page.getByText(/^Done: 1 file\(s\) saved\.$/)).toBeVisible({ timeout: 120000 });
+});
+
+// The <video> of the preview of a cut, as the page sees it.
+async function previewState(): Promise<{ src: string; currentTime: number; paused: boolean; poster: string; error: boolean }> {
+    return page.getByTestId('cut-preview-video').evaluate((element) => {
+        const media = element as HTMLVideoElement;
+        return { src: media.currentSrc, currentTime: media.currentTime, paused: media.paused, poster: media.poster, error: media.error !== null };
+    });
+}
+
+// The folder of the files the preview and the picture are made in.
+function previewFolder(): string {
+    return join(workDir, 'user-data', 'cut-preview');
+}
+
+test('shows a frame of the chosen video as its picture', async () => {
+    await launch(video);
+    await choose();
+    const picture = page.getByRole('img', { name: 'Picture of the file' });
+    await expect(picture).toBeVisible({ timeout: 20000 });
+    await expect(picture).toHaveAttribute('src', /^pullwave-cut:\/\/thumbnail\/\d+$/);
+    await expect.poll(() => { return picture.evaluate((image) => { return (image as HTMLImageElement).naturalWidth; }); }, { timeout: 10000 }).toBe(320);
+    expect(readdirSync(previewFolder()).filter((name) => { return name.startsWith('thumbnail-'); })).toHaveLength(1);
+});
+
+test('shows the cover an audio carries, and the mark of an audio when it has none', async () => {
+    await launch(coverSong);
+    await choose();
+    const picture = page.getByRole('img', { name: 'Picture of the file' });
+    await expect(picture).toBeVisible({ timeout: 20000 });
+    await expect.poll(() => { return picture.evaluate((image) => { return (image as HTMLImageElement).naturalWidth; }); }, { timeout: 10000 }).toBe(320);
+    await app.close();
+
+    await launch(song);
+    await choose();
+    await expect(page.getByTestId('cut-thumb')).toHaveText('♫', { timeout: 20000 });
+    await expect(page.getByRole('img', { name: 'Picture of the file' })).toHaveCount(0);
+});
+
+test('plays only the part of a video in the player of the app, from its start to its end, before it is cut', async () => {
+    await launch(video);
+    await choose();
+    const play = page.getByRole('button', { name: 'Play part 1' });
+    await expect(play).toBeDisabled();
+    await fill(1, '0:02', '0:04');
+    await expect(play).toBeEnabled();
+    await play.click();
+
+    const player = page.getByRole('dialog', { name: 'Part 1: 0:02 – 0:04' });
+    await expect(player).toBeVisible();
+    await expect(player.getByRole('button', { name: 'CLOSE' })).toBeFocused();
+    await expect(player.getByRole('slider', { name: 'Seek' })).toHaveAttribute('max', '2');
+    await expect.poll(async () => { return (await previewState()).src; }).toMatch(/^pullwave-cut:\/\/media\/\d+$/);
+    await expect.poll(async () => { return (await previewState()).currentTime; }, { timeout: 10000 }).toBeGreaterThanOrEqual(2);
+    // It stops at the end of the part by itself.
+    await expect.poll(async () => { return previewState(); }, { timeout: 15000 }).toMatchObject({ paused: true, error: false });
+    const ended = await previewState();
+    expect(ended.currentTime).toBeGreaterThanOrEqual(3.9);
+    expect(ended.currentTime).toBeLessThanOrEqual(4.1);
+    await expect(player.getByText('PREVIEW')).toHaveCount(0);
+    // Nothing was saved: it is only seen.
+    expect(existsSync(join(downloads, 'Talk - cuts'))).toBe(false);
+
+    await page.keyboard.press('Escape');
+    await expect(player).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Cut a file' })).toBeVisible();
+    await expect(page.getByLabel('Start of part 1')).toHaveValue('0:02');
+});
+
+test('plays a part of an audio with its picture over the player', async () => {
+    await launch(coverSong);
+    await choose();
+    await expect(page.getByRole('img', { name: 'Picture of the file' })).toBeVisible({ timeout: 20000 });
+    await fill(1, '0:05', '0:07');
+    await page.getByRole('button', { name: 'Play part 1' }).click();
+    const player = page.getByRole('dialog', { name: 'Part 1: 0:05 – 0:07' });
+    await expect(player).toBeVisible();
+    await expect.poll(async () => { return (await previewState()).poster; }).toMatch(/^pullwave-cut:\/\/thumbnail\/\d+$/);
+    await expect.poll(async () => { return (await previewState()).currentTime; }, { timeout: 10000 }).toBeGreaterThanOrEqual(5);
+    await player.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(player).toHaveCount(0);
+});
+
+test('makes a part the player cannot play into one it plays, and plays it', async () => {
+    await launch(oldVideo);
+    await choose();
+    await fill(1, '0:03', '0:06');
+    await page.getByRole('button', { name: 'Play part 1' }).click();
+    const player = page.getByRole('dialog', { name: 'Part 1: 0:03 – 0:06' });
+    await expect(player.getByText('PREVIEW')).toBeVisible({ timeout: 30000 });
+    await expect.poll(async () => { return (await previewState()).src; }).toMatch(/^pullwave-cut:\/\/preview\/\d+$/);
+    await expect(player.getByRole('slider', { name: 'Seek' })).toHaveAttribute('max', '3');
+    await expect.poll(async () => { return (await previewState()).currentTime; }, { timeout: 10000 }).toBeGreaterThan(0.5);
+    expect((await previewState()).error).toBe(false);
+    expect(readdirSync(previewFolder()).filter((name) => { return name.startsWith('preview-'); })).toEqual([expect.stringMatching(/^preview-\d+\.mp4$/)]);
+    await player.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(player).toHaveCount(0);
+});
+
+test('closes the preview with the back button of the mouse, staying in the cutter', async () => {
+    await launch(video);
+    await choose();
+    await fill(1, '0:01', '0:03');
+    await page.getByRole('button', { name: 'Play part 1' }).click();
+    const player = page.getByRole('dialog', { name: 'Part 1: 0:01 – 0:03' });
+    await expect(player).toBeVisible();
+    await page.mouse.move(400, 400);
+    await page.evaluate(() => { window.dispatchEvent(new MouseEvent('mouseup', { button: 3, bubbles: true, cancelable: true })); });
+    await expect(player).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Cut a file' })).toBeVisible();
+    await expect(page.getByText('Talk.mp4')).toBeVisible();
+});
+
+test('clears the cutter after asking: the file goes away with its parts and its picture, and stays on the disk', async () => {
+    await launch(video);
+    await choose();
+    await expect(page.getByRole('img', { name: 'Picture of the file' })).toBeVisible({ timeout: 20000 });
+    await fill(1, '0:01', '0:03');
+    await page.getByRole('button', { name: 'CLEAR' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Clear the cutter?' });
+    await expect(dialog).toContainText('The file itself stays where it is.');
+    await dialog.getByRole('button', { name: 'KEEP' }).click();
+    await expect(page.getByText('Talk.mp4')).toBeVisible();
+
+    await page.getByRole('button', { name: 'CLEAR' }).click();
+    await page.getByRole('dialog', { name: 'Clear the cutter?' }).getByRole('button', { name: 'CLEAR' }).click();
+    await expect(page.getByRole('button', { name: 'CHOOSE FILE' })).toBeEnabled();
+    await expect(page.getByText('Talk.mp4')).toHaveCount(0);
+    await expect(page.getByTestId('cut-segment')).toHaveCount(0);
+    await expect(page.getByTestId('cut-thumb')).toHaveCount(0);
+    await expect.poll(() => { return existsSync(previewFolder()); }).toBe(false);
+    expect(existsSync(video)).toBe(true);
+
+    await choose();
+    await expect(page.getByLabel('Start of part 1')).toHaveValue('');
+});
+
+test('does not let the cutter be cleared while a cut goes on', async () => {
+    await launch(longVideo);
+    await choose();
+    await fill(1, '0:00', '1:20');
+    await cutButton().click();
+    await expect(page.getByRole('button', { name: 'CANCEL' })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'CLEAR' })).toBeDisabled();
+    await page.getByRole('button', { name: 'CANCEL' }).click();
+    await expect(page.getByRole('button', { name: 'CLEAR' })).toBeEnabled({ timeout: 30000 });
 });

@@ -109,7 +109,7 @@ describe('useSmoothPercent', () => {
         expect(result.current).toBe(90);
     });
 
-    it('jumps when the user asked for less motion', () => {
+    it('glides also when the system asks for less motion (D-130)', () => {
         vi.stubGlobal('matchMedia', () => {
             return { matches: true };
         });
@@ -120,8 +120,8 @@ describe('useSmoothPercent', () => {
             { initialProps: { value: 0 } }
         );
         rerender({ value: 70 });
-        expect(result.current).toBe(70);
-        expect(frames).toHaveLength(0);
+        expect(result.current).toBe(0);
+        expect(frames).toHaveLength(1);
     });
 
     it('stops its frames when it is removed', () => {

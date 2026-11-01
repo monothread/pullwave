@@ -353,6 +353,34 @@ describe('simple setters', () => {
         expect(useAnimeStore.getState()).toMatchObject({ librarySeries: null, libraryFocus: null });
     });
 
+    it('opens and closes the screen of a season, a page of its own', () => {
+        expect(useAnimeStore.getState().librarySeason).toBeNull();
+        useAnimeStore.getState().openSeries('series-frieren');
+        useAnimeStore.getState().openSeason(12);
+        expect(useAnimeStore.getState()).toMatchObject({ librarySeries: 'series-frieren', librarySeason: 12 });
+        useAnimeStore.getState().closeSeason();
+        expect(useAnimeStore.getState()).toMatchObject({ librarySeries: 'series-frieren', librarySeason: null });
+    });
+
+    it('closes the season when another series opens, the series closes, a view is chosen or an anime is shown in the library', () => {
+        const reopen = (): void => {
+            useAnimeStore.getState().openSeries('series-frieren');
+            useAnimeStore.getState().openSeason(12);
+        };
+        reopen();
+        useAnimeStore.getState().openSeries('series-naruto');
+        expect(useAnimeStore.getState().librarySeason).toBeNull();
+        reopen();
+        useAnimeStore.getState().closeSeries();
+        expect(useAnimeStore.getState().librarySeason).toBeNull();
+        reopen();
+        useAnimeStore.getState().setView('library');
+        expect(useAnimeStore.getState().librarySeason).toBeNull();
+        reopen();
+        useAnimeStore.getState().showInLibrary(7);
+        expect(useAnimeStore.getState().librarySeason).toBeNull();
+    });
+
     it('closes the series when a view is chosen again', () => {
         useAnimeStore.getState().openSeries('series-frieren');
         useAnimeStore.getState().setView('library');

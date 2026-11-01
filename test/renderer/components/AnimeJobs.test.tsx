@@ -227,3 +227,24 @@ describe('AnimeJobs pause and resume', () => {
         expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
     });
 });
+
+describe('AnimeJobs: the episode downloading', () => {
+    it('shows the running episode big at the top, with its anime, the episode and how many wait', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'running', animeTitle: 'Naruto', episode: '3', percent: 10, speed: '2.00MiB/s', eta: '01:00' }), makeAnimeJob({ episodeId: 2, status: 'queued' })] });
+        render(<AnimeJobs />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.querySelector('.download-hero__title')).toHaveAttribute('data-text', 'Naruto');
+        expect(hero.querySelector('.download-hero__detail')).toHaveAttribute('data-text', 'EP 3');
+        expect(Array.from(hero.querySelectorAll('.download-hero__value')).map((value) => {
+            return value.getAttribute('data-text');
+        })).toEqual(['2.00MiB/s', '01:00']);
+        expect(hero.querySelector('.download-hero__next')).toHaveTextContent('UP NEXT: 1');
+        expect(hero.querySelector('.download-hero__art .cover')).not.toBeNull();
+    });
+
+    it('has no banner while no episode downloads', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'paused' })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
+    });
+});

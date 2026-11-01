@@ -310,6 +310,8 @@ describe('CutPanel while the file is cut', () => {
         expect(screen.getByRole('button', { name: 'CHANGE FILE' })).toBeDisabled();
         expect(screen.getByRole('button', { name: '+ ADD PART' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Remove part 1' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'CLEAR' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Play part 1' })).toBeEnabled();
         expect(screen.getByLabelText('Start of part 1')).toBeDisabled();
         expect(screen.getByLabelText('End of part 1')).toBeDisabled();
         expect(screen.getByRole('button', { name: 'CANCEL' })).toBeEnabled();
@@ -611,5 +613,176 @@ describe('CutPanel drag and drop', () => {
         expect(screen.getByText('Você também pode arrastar um arquivo de vídeo ou áudio e soltá-lo aqui.')).toBeInTheDocument();
         fireEvent.dragEnter(screen.getByRole('region', { name: 'Cortar um arquivo' }), { dataTransfer: FILES });
         expect(screen.getByTestId('cut-drop')).toHaveTextContent('SOLTE O ARQUIVO AQUI');
+    });
+});
+
+describe('CutPanel picture of the file', () => {
+    it('shows a glow while the picture is made, then the frame of the video', async () => {
+        const user = userEvent.setup();
+        let answer: (url: string | null) => void = () => {
+            return undefined;
+        };
+        mock.api.cut.thumbnail.mockReturnValue(
+            new Promise<string | null>((resolve) => {
+                answer = resolve;
+            })
+        );
+        render(<CutPanel />);
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: VIDEO });
+        await user.click(screen.getByRole('button', { name: 'CHOOSE FILE' }));
+        const loading = await screen.findByTestId('cut-thumb');
+        expect(loading).toHaveClass('cut__thumb', 'cut__thumb--empty', 'cut__thumb--loading');
+        expect(loading).toHaveAttribute('aria-hidden', 'true');
+        expect(loading).toHaveTextContent('');
+        await act(async () => {
+            answer('pullwave-cut://thumbnail/2');
+        });
+        const picture = screen.getByRole('img', { name: 'Picture of the file' });
+        expect(picture).toHaveAttribute('src', 'pullwave-cut://thumbnail/2');
+        expect(picture).toHaveClass('cut__thumb');
+        expect(picture).toHaveAttribute('data-testid', 'cut-thumb');
+    });
+
+    it('shows the mark of an audio when it has no cover', async () => {
+        const user = userEvent.setup();
+        mock.api.cut.thumbnail.mockResolvedValueOnce(null);
+        render(<CutPanel />);
+        await chooseVideo(user, AUDIO);
+        const mark = await screen.findByText('♫');
+        expect(mark).toHaveClass('cut__thumb', 'cut__thumb--empty');
+        expect(mark).not.toHaveClass('cut__thumb--loading');
+        expect(screen.queryByRole('img', { name: 'Picture of the file' })).not.toBeInTheDocument();
+    });
+
+    it('shows the mark of a video when its frame could not be taken', async () => {
+        const user = userEvent.setup();
+        mock.api.cut.thumbnail.mockResolvedValueOnce(null);
+        render(<CutPanel />);
+        await chooseVideo(user);
+        await vi.waitFor(() => {
+            expect(screen.getByTestId('cut-thumb')).toHaveTextContent('▶');
+        });
+        expect(screen.getByTestId('cut-thumb')).toHaveClass('cut__thumb', 'cut__thumb--empty');
+        expect(screen.getByTestId('cut-thumb')).not.toHaveClass('cut__thumb--loading');
+    });
+
+    it('shows no picture before a file is chosen', () => {
+        render(<CutPanel />);
+        expect(screen.queryByTestId('cut-thumb')).not.toBeInTheDocument();
+    });
+});
+
+describe('CutPanel clear', () => {
+    it('offers to clear once a file is there, and asks first', async () => {
+        const user = userEvent.setup();
+        render(<CutPanel />);
+        expect(screen.queryByRole('button', { name: 'CLEAR' })).not.toBeInTheDocument();
+        await chooseVideo(user);
+        await user.click(screen.getByRole('button', { name: 'CLEAR' }));
+        const dialog = screen.getByRole('dialog', { name: 'Clear the cutter?' });
+        expect(within(dialog).getByText('The file is taken out of the cutter and the parts and the options are cleared. The file itself stays where it is.')).toBeInTheDocument();
+        expect(mock.api.cut.clear).not.toHaveBeenCalled();
+    });
+
+    it('keeps everything when the question is answered no', async () => {
+        const user = userEvent.setup();
+        render(<CutPanel />);
+        await chooseVideo(user);
+        await fill(user, 1, '0:10', '0:14');
+        await user.click(screen.getByRole('button', { name: 'CLEAR' }));
+        await user.click(within(screen.getByRole('dialog', { name: 'Clear the cutter?' })).getByRole('button', { name: 'KEEP' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(screen.getByText('Talk.mp4')).toBeInTheDocument();
+        expect(screen.getByLabelText('Start of part 1')).toHaveValue('0:10');
+        expect(mock.api.cut.clear).not.toHaveBeenCalled();
+    });
+
+    it('takes the file away and goes back to the start when confirmed', async () => {
+        const user = userEvent.setup();
+        render(<CutPanel />);
+        await chooseVideo(user);
+        await fill(user, 1, '0:10', '0:14');
+        await user.click(screen.getByRole('button', { name: '+ ADD PART' }));
+        await user.click(screen.getByRole('button', { name: 'CLEAR' }));
+        await user.click(within(screen.getByRole('dialog', { name: 'Clear the cutter?' })).getByRole('button', { name: 'CLEAR' }));
+        expect(mock.api.cut.clear).toHaveBeenCalledTimes(1);
+        expect(mock.api.cut.clear).toHaveBeenCalledWith();
+        expect(screen.queryByText('Talk.mp4')).not.toBeInTheDocument();
+        expect(screen.queryByText('Parts to keep')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('cut-thumb')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'CHOOSE FILE' })).toBeEnabled();
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: VIDEO });
+        await user.click(screen.getByRole('button', { name: 'CHOOSE FILE' }));
+        await screen.findByText('Talk.mp4');
+        expect(screen.getAllByTestId('cut-segment')).toHaveLength(1);
+        expect(screen.getByLabelText('Start of part 1')).toHaveValue('');
+    });
+
+    it('takes the result of the last cut away too', async () => {
+        const user = userEvent.setup();
+        render(<CutPanel />);
+        await chooseVideo(user);
+        act(() => {
+            useCutStore.setState({ run: runOf('done', [part({ status: 'done', outputPath: '/downloads/Talk - cuts/Talk 1.mp4' })]) });
+        });
+        expect(screen.getByRole('status')).toHaveTextContent('Done: 1 file(s) saved.');
+        await user.click(screen.getByRole('button', { name: 'CLEAR' }));
+        await user.click(within(screen.getByRole('dialog', { name: 'Clear the cutter?' })).getByRole('button', { name: 'CLEAR' }));
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('cut-part')).not.toBeInTheDocument();
+    });
+
+    it('speaks the language of the app', async () => {
+        const user = userEvent.setup();
+        useAppStore.setState({ settings: { ...useAppStore.getState().settings, language: 'pt' } });
+        render(<CutPanel />);
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: VIDEO });
+        await user.click(screen.getByRole('button', { name: 'ESCOLHER ARQUIVO' }));
+        await screen.findByText('Talk.mp4');
+        await user.click(screen.getByRole('button', { name: 'LIMPAR' }));
+        expect(screen.getByRole('dialog', { name: 'Limpar o cortador?' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Tocar a parte 1' })).toBeInTheDocument();
+    });
+});
+
+describe('CutPanel play of a part', () => {
+    it('offers the play of a part only once the part is good', async () => {
+        const user = userEvent.setup();
+        render(<CutPanel />);
+        await chooseVideo(user);
+        const play = screen.getByRole('button', { name: 'Play part 1' });
+        expect(play).toBeDisabled();
+        expect(play).toHaveTextContent('▶');
+        expect(play).toHaveAttribute('title', 'Play part 1');
+        await fill(user, 1, '0:20', '0:10');
+        expect(screen.getByRole('button', { name: 'Play part 1' })).toBeDisabled();
+        await user.clear(screen.getByLabelText('End of part 1'));
+        await user.type(screen.getByLabelText('End of part 1'), '0:30');
+        expect(screen.getByRole('button', { name: 'Play part 1' })).toBeEnabled();
+    });
+
+    it('opens the player of the app on the part, from its start to its end', async () => {
+        const user = userEvent.setup();
+        mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://media/1', start: 10, end: 14, converted: false });
+        render(<CutPanel />);
+        await chooseVideo(user);
+        await fill(user, 1, '0:10', '0:14');
+        await user.click(screen.getByRole('button', { name: 'Play part 1' }));
+        expect(mock.api.cut.preview).toHaveBeenCalledWith({ segment: { start: 10, end: 14 }, convert: false });
+        const player = await screen.findByRole('dialog', { name: 'Part 1: 0:10 – 0:14' });
+        expect(within(player).getByTestId('cut-preview-video')).toHaveAttribute('src', 'pullwave-cut://media/1');
+    });
+
+    it('plays the second part with its own number', async () => {
+        const user = userEvent.setup();
+        mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://media/1', start: 94, end: 103, converted: false });
+        render(<CutPanel />);
+        await chooseVideo(user);
+        await fill(user, 1, '0:10', '0:14');
+        await user.click(screen.getByRole('button', { name: '+ ADD PART' }));
+        await fill(user, 2, '1:34', '1:43');
+        await user.click(screen.getByRole('button', { name: 'Play part 2' }));
+        expect(mock.api.cut.preview).toHaveBeenCalledWith({ segment: { start: 94, end: 103 }, convert: false });
+        expect(await screen.findByRole('dialog', { name: 'Part 2: 1:34 – 1:43' })).toBeInTheDocument();
     });
 });

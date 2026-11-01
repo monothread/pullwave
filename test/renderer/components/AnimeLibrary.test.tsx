@@ -5,7 +5,9 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeLibrary } from '@renderer/components/AnimeLibrary';
 import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { useBackdropStore } from '@renderer/store/backdropStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
+import { makeAnimeHistory } from '../../helpers/homeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
 
@@ -99,7 +101,7 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByRole('list', { name: 'Seasons of Big' })).not.toBeInTheDocument();
         });
 
-        it('has no small cover at the top of the screen of the series, since each season has its own big cover on its card', async () => {
+        it('shows the cover big in the hero of the series, and each season with its own cover on its card', async () => {
             const user = userEvent.setup();
             mock.api.findAnimeCover.mockResolvedValue('https://s4.anilist.co/cover/frieren.jpg');
             useAnimeStore.setState({ library: SERIES_LIBRARY });
@@ -110,9 +112,14 @@ describe('AnimeLibrary', () => {
             const view = screen.getByTestId('series-view');
             expect(view.querySelector('.series__cover')).toBeNull();
             await waitFor(() => {
-                expect(view.querySelectorAll('img.cover')).toHaveLength(2);
+                expect(view.querySelectorAll('img.cover')).toHaveLength(3);
             });
-            view.querySelectorAll('img.cover').forEach((cover) => {
+            // The first cover is the big one of the hero; the others are the ones of the cards of the seasons.
+            const [hero, ...seasons] = Array.from(view.querySelectorAll('img.cover'));
+            expect(hero?.closest('.detail__art')).not.toBeNull();
+            expect(hero).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
+            expect(seasons).toHaveLength(2);
+            seasons.forEach((cover) => {
                 expect(cover).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
                 expect(cover.closest('[data-testid="anime-season-cover"]')).not.toBeNull();
             });
@@ -2048,5 +2055,83 @@ describe('AnimeLibrary the releases of an anime', () => {
         await vi.waitFor(() => {
             expect(screen.getByRole('combobox', { name: 'Releases' })).toHaveValue('complete');
         });
+    });
+});
+
+describe('AnimeLibrary: the highlights, the filters and the order', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const SOLO = makeAnime([makeEpisode({ id: 1, number: '1', addedAt: Date.now() - DAY })], { id: 1, title: 'Solo', createdAt: 5 });
+    const SEASON_ONE = makeAnime([makeEpisode({ id: 2, animeId: 2 })], { id: 2, title: 'Saga', series: 'Saga', season: 1, createdAt: 9 });
+    const SEASON_TWO = makeAnime([makeEpisode({ id: 3, animeId: 3 })], { id: 3, title: 'Saga 2', series: 'Saga', season: 2, createdAt: 1 });
+    const OLD = makeAnime([makeEpisode({ id: 4, animeId: 4, addedAt: Date.now() - 30 * DAY })], { id: 4, title: 'Alpha Old', createdAt: 2 });
+
+    beforeEach(() => {
+        useAnimeStore.setState({ library: [SOLO, SEASON_ONE, SEASON_TWO, OLD], librarySeries: null, history: [] });
+    });
+
+    function cardNames(): string[] {
+        return screen.getAllByTestId('anime-card').map((card) => {
+            return card.getAttribute('aria-label') ?? '';
+        });
+    }
+
+    it('shows the highlights over the grid: the series with news of the last seven days', () => {
+        render(<AnimeLibrary />);
+        const highlights = screen.getByRole('region', { name: 'Highlights of the library' });
+        expect(within(highlights).getByRole('heading', { level: 2 })).toHaveTextContent('Solo');
+        expect(within(highlights).getByText('1 new episode')).toBeInTheDocument();
+    });
+
+    it('shows the titles added last first, and by name when asked', async () => {
+        render(<AnimeLibrary />);
+        expect(cardNames()).toEqual(['Saga', 'Solo', 'Alpha Old']);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
+        expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
+    });
+
+    it('shows the titles watched last first, then the ones never opened as the ones added last', async () => {
+        useAnimeStore.setState({ history: [makeAnimeHistory({ title: 'Alpha Old', openedAt: 50 }), makeAnimeHistory({ title: 'Saga 2', openedAt: 20 })] });
+        render(<AnimeLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'last');
+        expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
+    });
+
+    it('keeps only the titles with something new in the last seven days with NEW, and all of them again with ALL', async () => {
+        render(<AnimeLibrary />);
+        expect(screen.getByRole('button', { name: 'ALL (3)' })).toHaveAttribute('aria-pressed', 'true');
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (1)' }));
+        expect(cardNames()).toEqual(['Solo']);
+        expect(screen.getByText('1 ANIMES')).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'ALL (3)' }));
+        expect(cardNames()).toEqual(['Saga', 'Solo', 'Alpha Old']);
+    });
+
+    it('says when nothing is new in the last seven days', async () => {
+        useAnimeStore.setState({ library: [SEASON_ONE, OLD] });
+        render(<AnimeLibrary />);
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (0)' }));
+        expect(screen.getByText('Nothing new in the last 7 days.')).toHaveClass('empty');
+        expect(screen.queryAllByTestId('anime-card')).toEqual([]);
+    });
+
+    it('hides the highlights while a search is typed, and keeps the filters', async () => {
+        render(<AnimeLibrary />);
+        await userEvent.type(screen.getByLabelText('Search the library'), 'sol');
+        expect(screen.queryByRole('region', { name: 'Highlights of the library' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'ALL (1)' })).toBeInTheDocument();
+        expect(cardNames()).toEqual(['Solo']);
+    });
+
+    it('shows the cover big on the screen of a series and of a season, and puts it behind the screen', async () => {
+        useAnimeStore.setState({ covers: { saga: { status: 'found', url: 'https://img/saga.jpg' } }, librarySeries: 'series-saga' });
+        const { container, unmount } = render(<AnimeLibrary />);
+        const view = screen.getByTestId('series-view');
+        expect(view).toHaveClass('job', 'series', 'detail');
+        expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', 'https://img/saga.jpg');
+        expect(useBackdropStore.getState().url).toBe('https://img/saga.jpg');
+        await userEvent.click(within(container).getAllByRole('button', { name: /^SHOW EPISODES/ })[0] as HTMLElement);
+        expect(screen.getByTestId('season-view').querySelector('.series.detail > .detail__art')).not.toBeNull();
+        unmount();
+        expect(useBackdropStore.getState().url).toBeNull();
     });
 });

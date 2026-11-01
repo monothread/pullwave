@@ -359,3 +359,266 @@ describe('cutStore init', () => {
         expect(state().run).toEqual(runOf('done'));
     });
 });
+
+describe('cutStore thumbnail', () => {
+    it('starts with no picture', () => {
+        expect(state().thumbnail).toBeNull();
+        expect(state().preview).toBeNull();
+    });
+
+    it('shows that the picture is being made once the file is taken, then keeps its address', async () => {
+        let answer: (url: string | null) => void = () => {
+            return undefined;
+        };
+        mock.api.cut.thumbnail.mockReturnValue(
+            new Promise<string | null>((resolve) => {
+                answer = resolve;
+            })
+        );
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: VIDEO });
+        const choosing = state().choose();
+        await vi.waitFor(() => {
+            expect(state().thumbnail).toEqual({ status: 'loading' });
+        });
+        expect(state()).toMatchObject({ choosing: false, media: VIDEO });
+        answer('pullwave-cut://thumbnail/2');
+        await choosing;
+        expect(state().thumbnail).toEqual({ status: 'ready', url: 'pullwave-cut://thumbnail/2' });
+        expect(mock.api.cut.thumbnail).toHaveBeenCalledTimes(1);
+        expect(mock.api.cut.thumbnail).toHaveBeenCalledWith();
+    });
+
+    it('says there is no picture when none could be made (an audio with no cover)', async () => {
+        mock.api.cut.thumbnail.mockResolvedValueOnce(null);
+        mock.api.cut.probe.mockResolvedValueOnce({ ok: true, media: AUDIO });
+        await state().openPath('/media/Song.mp3');
+        expect(state().thumbnail).toEqual({ status: 'none' });
+    });
+
+    it('does not ask for a picture when the file was not taken, and keeps the one there', async () => {
+        useCutStore.setState({ media: VIDEO, thumbnail: { status: 'ready', url: 'pullwave-cut://thumbnail/2' } });
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: false, reason: 'unreadable' });
+        await state().choose();
+        expect(state().thumbnail).toEqual({ status: 'ready', url: 'pullwave-cut://thumbnail/2' });
+        expect(mock.api.cut.thumbnail).not.toHaveBeenCalled();
+    });
+
+    it('drops the picture of a file that is not the one shown any more', async () => {
+        let answer: (url: string | null) => void = () => {
+            return undefined;
+        };
+        mock.api.cut.thumbnail.mockReturnValueOnce(
+            new Promise<string | null>((resolve) => {
+                answer = resolve;
+            })
+        );
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: VIDEO });
+        const first = state().choose();
+        await vi.waitFor(() => {
+            expect(state().thumbnail).toEqual({ status: 'loading' });
+        });
+        mock.api.cut.thumbnail.mockResolvedValueOnce('pullwave-cut://thumbnail/4');
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: AUDIO });
+        await state().choose();
+        answer('pullwave-cut://thumbnail/2');
+        await first;
+        expect(state()).toMatchObject({ media: AUDIO, thumbnail: { status: 'ready', url: 'pullwave-cut://thumbnail/4' } });
+    });
+
+    it('closes the preview of the file before when another one is taken', async () => {
+        useCutStore.setState({ media: VIDEO, preview: { rowId: 1, number: 1, segment: { start: 1, end: 2 }, status: 'ready', url: 'pullwave-cut://media/1', start: 1, end: 2, converted: false, error: null } });
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: AUDIO });
+        await state().choose();
+        expect(state().preview).toBeNull();
+    });
+});
+
+describe('cutStore preview', () => {
+    async function withFile(start: string, end: string): Promise<number> {
+        mock.api.cut.choose.mockResolvedValueOnce({ ok: true, media: VIDEO });
+        await state().choose();
+        fillFirstRow(start, end);
+        return state().rows[0]!.id;
+    }
+
+    it('does nothing without a file', async () => {
+        await state().openPreview(state().rows[0]!.id);
+        expect(state().preview).toBeNull();
+        expect(mock.api.cut.preview).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['nothing written', '', ''],
+        ['a start that is not a time', 'abc', '0:20'],
+        ['an end before the start', '0:20', '0:10'],
+        ['an end after the file', '0:10', '9:00']
+    ])('does nothing for a row with %s', async (_what, start, end) => {
+        const id = await withFile(start, end);
+        await state().openPreview(id);
+        expect(state().preview).toBeNull();
+        expect(mock.api.cut.preview).not.toHaveBeenCalled();
+    });
+
+    it('does nothing for a row that is not there', async () => {
+        await withFile('0:10', '0:20');
+        await state().openPreview(9999);
+        expect(state().preview).toBeNull();
+    });
+
+    it('opens the player on the part, asks where to play it as it is, and plays it from its start to its end', async () => {
+        const id = await withFile('0:10', '0:20');
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.cut.preview.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const opening = state().openPreview(id);
+        expect(state().preview).toEqual({ rowId: id, number: 1, segment: { start: 10, end: 20 }, status: 'loading', url: null, start: 10, end: 20, converted: false, error: null });
+        expect(mock.api.cut.preview).toHaveBeenCalledWith({ segment: { start: 10, end: 20 }, convert: false });
+        answer({ ok: true, url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false });
+        await opening;
+        expect(state().preview).toEqual({ rowId: id, number: 1, segment: { start: 10, end: 20 }, status: 'ready', url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false, error: null });
+    });
+
+    it('gives the part the number it has on the screen', async () => {
+        await withFile('0:10', '0:20');
+        state().addRow();
+        const second = state().rows[1]!.id;
+        state().updateRow(second, { start: '1:00', end: '1:30' });
+        mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://media/1', start: 60, end: 90, converted: false });
+        await state().openPreview(second);
+        expect(state().preview).toMatchObject({ rowId: second, number: 2, segment: { start: 60, end: 90 }, status: 'ready' });
+    });
+
+    it.each(['no-file', 'invalid', 'no-ffmpeg', 'failed'] as const)('says the part cannot be played when the answer is %s', async (reason) => {
+        const id = await withFile('0:10', '0:20');
+        mock.api.cut.preview.mockResolvedValueOnce({ ok: false, reason });
+        await state().openPreview(id);
+        expect(state().preview).toMatchObject({ rowId: id, status: 'failed', url: null, error: reason });
+    });
+
+    it('keeps waiting when the answer is that it was cancelled', async () => {
+        const id = await withFile('0:10', '0:20');
+        mock.api.cut.preview.mockResolvedValueOnce({ ok: false, reason: 'cancelled' });
+        await state().openPreview(id);
+        expect(state().preview).toMatchObject({ rowId: id, status: 'loading', error: null });
+    });
+
+    it('drops the answer once the player was closed', async () => {
+        const id = await withFile('0:10', '0:20');
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        mock.api.cut.preview.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const opening = state().openPreview(id);
+        state().closePreview();
+        answer({ ok: true, url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false });
+        await opening;
+        expect(state().preview).toBeNull();
+    });
+
+    describe('convertPreview', () => {
+        it('does nothing with no player open', async () => {
+            await state().convertPreview();
+            expect(mock.api.cut.preview).not.toHaveBeenCalled();
+        });
+
+        it('makes the part into a file the player plays, showing that it is preparing it, and plays that one', async () => {
+            const id = await withFile('0:10', '0:20');
+            mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false });
+            await state().openPreview(id);
+            let answer: (value: unknown) => void = () => {
+                return undefined;
+            };
+            mock.api.cut.preview.mockReturnValueOnce(
+                new Promise((resolve) => {
+                    answer = resolve;
+                })
+            );
+            const converting = state().convertPreview();
+            expect(state().preview).toMatchObject({ status: 'converting', url: null, converted: false });
+            expect(mock.api.cut.preview).toHaveBeenLastCalledWith({ segment: { start: 10, end: 20 }, convert: true });
+            answer({ ok: true, url: 'pullwave-cut://preview/2', start: 0, end: 10, converted: true });
+            await converting;
+            expect(state().preview).toEqual({ rowId: id, number: 1, segment: { start: 10, end: 20 }, status: 'ready', url: 'pullwave-cut://preview/2', start: 0, end: 10, converted: true, error: null });
+        });
+
+        it('converts once: a part already converted that fails is not converted again', async () => {
+            const id = await withFile('0:10', '0:20');
+            mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://preview/2', start: 0, end: 10, converted: true });
+            await state().openPreview(id);
+            mock.api.cut.preview.mockClear();
+            await state().convertPreview();
+            expect(mock.api.cut.preview).not.toHaveBeenCalled();
+        });
+
+        it('does not ask twice while it converts', async () => {
+            const id = await withFile('0:10', '0:20');
+            mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false });
+            await state().openPreview(id);
+            mock.api.cut.preview.mockReturnValue(new Promise(() => {
+                return undefined;
+            }));
+            void state().convertPreview();
+            await state().convertPreview();
+            expect(mock.api.cut.preview).toHaveBeenCalledTimes(2);
+        });
+
+        it('says why the part could not be converted', async () => {
+            const id = await withFile('0:10', '0:20');
+            mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false });
+            await state().openPreview(id);
+            mock.api.cut.preview.mockResolvedValueOnce({ ok: false, reason: 'no-ffmpeg' });
+            await state().convertPreview();
+            expect(state().preview).toMatchObject({ status: 'failed', error: 'no-ffmpeg', url: null });
+        });
+    });
+
+    it('closes the player', async () => {
+        const id = await withFile('0:10', '0:20');
+        mock.api.cut.preview.mockResolvedValueOnce({ ok: true, url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false });
+        await state().openPreview(id);
+        state().closePreview();
+        expect(state().preview).toBeNull();
+    });
+});
+
+describe('cutStore clear', () => {
+    it('takes the file away, clears the parts, the options, the mistakes, the result, the picture and the player, and forgets it in the app', async () => {
+        useCutStore.setState({
+            media: VIDEO,
+            audioOnly: true,
+            chooseError: 'unreadable',
+            startError: 'busy',
+            run: runOf('done'),
+            thumbnail: { status: 'ready', url: 'pullwave-cut://thumbnail/2' },
+            preview: { rowId: 1, number: 1, segment: { start: 1, end: 2 }, status: 'ready', url: 'pullwave-cut://media/1', start: 1, end: 2, converted: false, error: null }
+        });
+        fillFirstRow('0:10', '0:20');
+        state().addRow();
+        await state().clear();
+        expect(state()).toMatchObject({ media: null, audioOnly: false, chooseError: null, startError: null, run: null, thumbnail: null, preview: null });
+        expect(state().rows).toHaveLength(1);
+        expect(state().rows[0]).toMatchObject({ start: '', end: '' });
+        expect(mock.api.cut.clear).toHaveBeenCalledTimes(1);
+        expect(mock.api.cut.clear).toHaveBeenCalledWith();
+    });
+
+    it.each([
+        ['a cut goes on', { run: runOf('running') }],
+        ['a cut is starting', { starting: true }],
+        ['a file is being read', { choosing: true }]
+    ])('does nothing while %s', async (_what, busy) => {
+        useCutStore.setState({ media: VIDEO, ...busy });
+        await state().clear();
+        expect(state().media).toEqual(VIDEO);
+        expect(mock.api.cut.clear).not.toHaveBeenCalled();
+    });
+});

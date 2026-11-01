@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import './display';
+import { leaveHome } from './startScreen';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -56,6 +57,7 @@ async function open(): Promise<Running> {
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+    await leaveHome(page);
     return { app, page };
 }
 

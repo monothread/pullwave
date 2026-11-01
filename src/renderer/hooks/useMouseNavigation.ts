@@ -3,6 +3,8 @@ import type { MangaListKind } from '@shared/manga';
 import { useAnimeStore, type AnimeBrowseView, type AnimeSelection, type AnimeView } from '../store/animeStore';
 import { useAppStore, type DownloadsView, type Tab } from '../store/appStore';
 import { useMangaStore, type MangaBrowseView, type MangaSelection, type MangaView } from '../store/mangaStore';
+import { useCutStore } from '../store/cutStore';
+import { isBatchingNavigation, onNavigationBatchEnd } from '../navigation/navigationBatch';
 import { MAX_NAVIGATION_ENTRIES, NavigationHistory } from './navigationHistory';
 import { isScrollRestoring, restoreScroll } from './scrollRestoration';
 
@@ -34,6 +36,8 @@ export interface NavigationSnapshot {
     selection: AnimeSelection | null;
     libraryFocus: number | null;
     librarySeries: string | null;
+    // The season of the series whose own screen is open.
+    librarySeason: number | null;
     manga: MangaPage;
 }
 
@@ -41,7 +45,7 @@ export function snapshotKey(snapshot: NavigationSnapshot): string {
     const selection = snapshot.selection === null ? '' : `${snapshot.selection.result.index}:${snapshot.selection.audio}`;
     const { manga } = snapshot;
     const mangaKey = [manga.view, manga.previousView, manga.sourceId ?? '', manga.mode, manga.settingsOpen, manga.selection?.manga.remoteId ?? '', manga.selectionFrom, manga.librarySeries ?? '', manga.libraryGroup ?? ''].join(':');
-    return [snapshot.tab, snapshot.downloadsView, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? '', snapshot.librarySeries ?? '', mangaKey].join('|');
+    return [snapshot.tab, snapshot.downloadsView, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? '', snapshot.librarySeries ?? '', snapshot.librarySeason ?? '', mangaKey].join('|');
 }
 
 function readMangaPage(): MangaPage {
@@ -50,9 +54,9 @@ function readMangaPage(): MangaPage {
 }
 
 function readSnapshot(): NavigationSnapshot {
-    const { view, returnView, selection, libraryFocus, librarySeries } = useAnimeStore.getState();
+    const { view, returnView, selection, libraryFocus, librarySeries, librarySeason } = useAnimeStore.getState();
     const { tab, downloadsView } = useAppStore.getState();
-    return { tab, downloadsView, view, returnView, selection, libraryFocus, librarySeries, manga: readMangaPage() };
+    return { tab, downloadsView, view, returnView, selection, libraryFocus, librarySeries, librarySeason, manga: readMangaPage() };
 }
 
 // Shows a page of the manga section again: the source is opened again when it is another one, and its list is asked for by the section
@@ -88,7 +92,8 @@ function showSnapshot(snapshot: NavigationSnapshot): void {
         returnView: snapshot.returnView,
         selection: snapshot.selection,
         libraryFocus: snapshot.libraryFocus,
-        librarySeries: snapshot.librarySeries
+        librarySeries: snapshot.librarySeries,
+        librarySeason: snapshot.librarySeason
     });
     // Files can be moved or deleted while the app is open: the library says which ones are gone when it is shown.
     if (snapshot.view === 'library') {
@@ -97,7 +102,8 @@ function showSnapshot(snapshot: NavigationSnapshot): void {
     showMangaPage(snapshot.manga);
 }
 
-// A player is not a page: going back from it only closes it. Returns whether there was one to close. The reader of the manga is one too.
+// A player is not a page: going back from it only closes it. Returns whether there was one to close. The reader of the manga and the
+// preview of a cut are ones too.
 function closePlayers(): boolean {
     const { reader, closeReader } = useMangaStore.getState();
     if (reader.status !== 'closed') {
@@ -113,12 +119,17 @@ function closePlayers(): boolean {
         closeStream();
         return true;
     }
+    const { preview, closePreview } = useCutStore.getState();
+    if (preview !== null) {
+        closePreview();
+        return true;
+    }
     return false;
 }
 
 function isPlayerOpen(): boolean {
     const { playing, streaming } = useAnimeStore.getState();
-    return playing !== null || streaming !== null || useMangaStore.getState().reader.status !== 'closed';
+    return playing !== null || streaming !== null || useMangaStore.getState().reader.status !== 'closed' || useCutStore.getState().preview !== null;
 }
 
 // The area of the app that scrolls.
@@ -137,10 +148,27 @@ export function useMouseNavigation(): void {
                 history.rememberScroll(area.scrollTop);
             }
         };
+        // A change of page made of several steps (navigationBatch) is taken once, at its end; the scroll of the page that is left is kept at
+        // its first step, before the screen is drawn again.
+        let batched = false;
         // The stores tell a page is going before the screen is drawn again, so the scroll is still the one of the page that is left.
         const record = (): void => {
-            if (!showing) {
-                rememberScroll(scrollArea());
+            if (showing) {
+                return;
+            }
+            if (isBatchingNavigation()) {
+                if (!batched) {
+                    batched = true;
+                    rememberScroll(scrollArea());
+                }
+                return;
+            }
+            rememberScroll(scrollArea());
+            history.record(readSnapshot());
+        };
+        const recordBatch = (): void => {
+            if (batched) {
+                batched = false;
                 history.record(readSnapshot());
             }
         };
@@ -183,8 +211,10 @@ export function useMouseNavigation(): void {
         const unsubscribeApp = useAppStore.subscribe(record);
         const unsubscribeAnime = useAnimeStore.subscribe(record);
         const unsubscribeManga = useMangaStore.subscribe(record);
+        const unsubscribeBatch = onNavigationBatchEnd(recordBatch);
         window.addEventListener('mouseup', onMouseUp);
         return () => {
+            unsubscribeBatch();
             unsubscribeApp();
             unsubscribeAnime();
             unsubscribeManga();

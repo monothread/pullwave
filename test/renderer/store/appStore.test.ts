@@ -9,7 +9,7 @@ const initial = useAppStore.getState();
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], appUpdate: INITIAL_APP_UPDATE, traySupport: null, tab: 'downloads', downloadsView: 'queue' });
+    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], appUpdate: INITIAL_APP_UPDATE, traySupport: null, tab: 'home', downloadsView: 'queue' });
 });
 
 const HISTORY_ENTRY: HistoryEntry = { id: 'h1', url: 'https://x.com', title: 'T', filePath: '/d/T.mp4', status: 'done', errorTitle: null, finishedAt: 5 };
@@ -27,7 +27,7 @@ describe('upsertJob', () => {
 
 describe('useAppStore basics', () => {
     it('has the expected initial state', () => {
-        expect(initial.tab).toBe('downloads');
+        expect(initial.tab).toBe('home');
         expect(initial.downloadsView).toBe('queue');
         expect(initial.jobs).toEqual([]);
         expect(initial.binaries).toBeNull();
@@ -35,10 +35,10 @@ describe('useAppStore basics', () => {
         expect(initial.notice).toBeNull();
     });
 
-    it('sets the screen of the video downloader', () => {
+    it('sets the screen of the video downloader, without changing the section shown', () => {
         useAppStore.getState().setDownloadsView('history');
         expect(useAppStore.getState().downloadsView).toBe('history');
-        expect(useAppStore.getState().tab).toBe('downloads');
+        expect(useAppStore.getState().tab).toBe('home');
         useAppStore.getState().setDownloadsView('queue');
         expect(useAppStore.getState().downloadsView).toBe('queue');
     });
@@ -125,15 +125,33 @@ describe('the toasts', () => {
 });
 
 describe('the tab the app opens on', () => {
-    it('is the video downloader when the settings do not say another', async () => {
+    it('is the home screen when the settings do not say another', async () => {
         await useAppStore.getState().init();
-        expect(useAppStore.getState().tab).toBe('downloads');
+        expect(useAppStore.getState().tab).toBe('home');
     });
 
-    it('is the one of the settings once they are loaded', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
+    it.each(['anime', 'manga', 'downloads'] as const)('is the home screen when the settings say %s (it only orders the shelves of the home screen)', async (startTab) => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab });
         await useAppStore.getState().init();
-        expect(useAppStore.getState().tab).toBe('anime');
+        expect(useAppStore.getState().tab).toBe('home');
+        expect(useAppStore.getState().settings.startTab).toBe(startTab);
+    });
+
+    it('keeps the section chosen in the menu while the app was starting', async () => {
+        let answer: (settings: typeof DEFAULT_SETTINGS) => void = () => {
+            return undefined;
+        };
+        mock.api.getSettings.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const starting = useAppStore.getState().init();
+        useAppStore.getState().setTab('manga');
+        answer(DEFAULT_SETTINGS);
+        await starting;
+        expect(useAppStore.getState().tab).toBe('manga');
+        expect(useAppStore.getState().settingsLoaded).toBe(true);
     });
 });
 

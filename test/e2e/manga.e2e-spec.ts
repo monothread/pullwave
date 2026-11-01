@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
+import { leaveHome } from './startScreen';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createRequire } from 'node:module';
@@ -288,6 +289,7 @@ async function launch(settings: Record<string, unknown> = {}, env: Record<string
     const page = await app.firstWindow();
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+    await leaveHome(page);
     return { app, page, userData };
 }
 
@@ -1741,10 +1743,10 @@ test.describe('manga section', () => {
         expect(existsSync(file)).toBe(true);
         await session.page.getByRole('button', { name: '← BACK' }).click();
         await expect(session.page.getByText('2 of 3 downloaded')).toBeVisible();
-        await expect(session.page.getByRole('heading', { name: 'One Piece' })).toBeVisible();
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'Open: One Piece' })).toBeVisible();
 
         // The chapters that are new download from the new source.
-        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'Open: One Piece', exact: true }).click();
         await downloadSeason(session.page);
         await waitForDownloaded(session.page);
         await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz', 'Chapter 3.cbz']);
@@ -2067,7 +2069,7 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await goTo(session.page, 'LIBRARY');
-        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'Open: One Piece', exact: true }).click();
         await expect(session.page.getByRole('img', { name: 'Read' })).toHaveCount(2);
     });
 
@@ -2274,7 +2276,7 @@ test.describe('manga section', () => {
         session = await launch();
         await openManga(session.page);
         await goTo(session.page, 'LIBRARY');
-        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'Open: One Piece', exact: true }).click();
         await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         const again = session.page.getByRole('region', { name: 'Reader' });
         await again.getByRole('button', { name: 'READER SETTINGS' }).click();

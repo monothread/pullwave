@@ -3,7 +3,6 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS, THEME_STYLES } from '@shared/constants';
 import { App } from '@renderer/App';
-import { SETTINGS_ICON } from '@renderer/components/TabButton';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
@@ -14,20 +13,29 @@ import { APP_UPDATE_IDLE, installMockApi, makeJob, type MockApiHandle } from '..
 let mock: MockApiHandle;
 const initial = useAppStore.getState();
 
+// The app opens on the home screen: the tests of the video downloader go to it first.
+async function openDownloader(): Promise<void> {
+    await screen.findByRole('region', { name: 'Home' });
+    fireEvent.click(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' }));
+    await screen.findByLabelText('Link 1');
+}
+
 beforeEach(() => {
     mock = installMockApi();
     useAnimeStore.setState({ status: UNSUPPORTED_STATUS, jobs: [], library: [], selection: null, playing: null });
     useMangaStore.setState({ status: makeMangaStatus({ supported: false, tool: null }), jobs: [], library: [], selection: null, view: 'browse' });
-    useAppStore.setState({ ...initial, tab: 'downloads', jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, appUpdate: { ...APP_UPDATE_IDLE, currentVersion: '' } });
+    useAppStore.setState({ ...initial, tab: 'home', jobs: [], history: [], settings: DEFAULT_SETTINGS, binaries: null, notice: null, appUpdate: { ...APP_UPDATE_IDLE, currentVersion: '' } });
 });
 
 describe('App', () => {
-    it('shows a boot message until the binaries are checked, then the downloads tab', async () => {
+    it('shows a boot message until the binaries are checked, then the home screen', async () => {
         render(<App />);
         expect(screen.getByText('// BOOTING SYSTEMS…')).toBeInTheDocument();
         await waitFor(() => {
-            expect(screen.getByLabelText('Link 1')).toBeInTheDocument();
+            expect(screen.getByRole('region', { name: 'Home' })).toBeInTheDocument();
         });
+        expect(screen.getByRole('button', { name: 'HOME' })).toHaveAttribute('aria-current', 'page');
+        expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
         expect(screen.queryByText('// BOOTING SYSTEMS…')).not.toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'PULLWAVE' })).toBeInTheDocument();
         // The programs are installed and run: the header has no chip about them.
@@ -38,7 +46,7 @@ describe('App', () => {
     it('marks the active tab and switches between sections', async () => {
         const user = userEvent.setup();
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('button', { name: 'HISTORY' })).not.toHaveAttribute('aria-current');
 
@@ -60,7 +68,7 @@ describe('App', () => {
     it('goes back and forward through the visited tabs with the side buttons of the mouse', async () => {
         const user = userEvent.setup();
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         await user.click(screen.getByRole('button', { name: 'HISTORY' }));
         await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
 
@@ -80,7 +88,7 @@ describe('App', () => {
 
     it('renders jobs pushed from the main process', async () => {
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         act(() => {
             mock.emitJobUpdate(makeJob({ id: 'x', title: 'Pushed Video' }));
         });
@@ -89,7 +97,7 @@ describe('App', () => {
 
     it('shows the update banner when a new version is pushed', async () => {
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(screen.queryByText('Version 0.2.0 is available.')).not.toBeInTheDocument();
         act(() => {
             mock.emitAppUpdateState({ ...APP_UPDATE_IDLE, status: 'available', version: '0.2.0' });
@@ -100,7 +108,7 @@ describe('App', () => {
 
     it('unsubscribes from events on unmount', async () => {
         const { unmount } = render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         unmount();
         expect(mock.unsubscribers).toHaveLength(6);
         mock.unsubscribers.forEach((unsubscribe) => {
@@ -171,7 +179,7 @@ describe('App theme', () => {
     it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'] as const)('applies the %s theme, with its style, from the stored settings', async (theme) => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(document.documentElement.dataset.theme).toBe(theme);
         expect(document.documentElement.dataset.themeStyle).toBe(THEME_STYLES[theme]);
     });
@@ -179,20 +187,20 @@ describe('App theme', () => {
     it('uses device by default and follows a dark system', async () => {
         prefersDark = true;
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(DEFAULT_SETTINGS.theme).toBe('device');
         expect(document.documentElement.dataset.theme).toBe('dark');
     });
 
     it('uses device by default and follows a light system', async () => {
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(document.documentElement.dataset.theme).toBe('light');
     });
 
     it('follows the system when it switches between light and dark while open', async () => {
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(document.documentElement.dataset.theme).toBe('light');
         expect(listeners.size).toBe(1);
         prefersDark = true;
@@ -207,14 +215,14 @@ describe('App theme', () => {
     it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'] as const)('does not follow the system with the %s theme', async (theme) => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(listeners.size).toBe(0);
     });
 
     it('stops following the system once a fixed theme is chosen', async () => {
         const user = userEvent.setup();
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
         await user.selectOptions(screen.getByLabelText('Theme'), 'cyberpunk');
         await waitFor(() => {
@@ -226,7 +234,7 @@ describe('App theme', () => {
     it('changes the theme as soon as it is chosen in the settings and saves it', async () => {
         const user = userEvent.setup();
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
         await user.selectOptions(screen.getByLabelText('Theme'), 'dark');
         await waitFor(() => {
@@ -238,7 +246,7 @@ describe('App theme', () => {
     it('remembers the applied theme for the next start', async () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'cyberpunk' });
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(window.localStorage.getItem('cyber-dl-theme')).toBe('cyberpunk');
     });
 
@@ -263,7 +271,7 @@ describe('App theme', () => {
         await act(async () => {
             resolveSettings({ ...DEFAULT_SETTINGS, theme: 'nord' });
         });
-        await screen.findByLabelText('Link 1');
+        await screen.findByRole('region', { name: 'Home' });
         expect(document.documentElement.dataset.theme).toBe('nord');
         expect(window.localStorage.getItem('cyber-dl-theme')).toBe('nord');
     });
@@ -271,7 +279,7 @@ describe('App theme', () => {
     it('does not make a neon follow the mouse in the cyberpunk theme', async () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'cyberpunk' });
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         await act(async () => {
             window.dispatchEvent(new MouseEvent('pointermove', { clientX: 33, clientY: 44 }));
             await new Promise((resolve) => {
@@ -287,7 +295,7 @@ describe('App theme', () => {
     it('does not follow the mouse in the dark theme', async () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'dark' });
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         await act(async () => {
             window.dispatchEvent(new MouseEvent('pointermove', { clientX: 33, clientY: 44 }));
             await new Promise((resolve) => {
@@ -304,9 +312,9 @@ describe('App anime section', () => {
 
     it('has no anime tab where the section does not exist', async () => {
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(screen.queryByRole('button', { name: 'ANIME' })).not.toBeInTheDocument();
-        expect(within(screen.getByRole('navigation', { name: 'Sections' })).getAllByRole('button')).toHaveLength(2);
+        expect(within(screen.getByRole('navigation', { name: 'Sections' })).getAllByRole('button')).toHaveLength(3);
     });
 
     it('adds the anime tab, between downloads and settings, where it exists', async () => {
@@ -319,13 +327,14 @@ describe('App anime section', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['VIDEO DOWNLOADER', 'ANIME', 'SETTINGS (GLOBAL)']);
-        // The settings are a gear at the right end of the bar, not a word.
+        ).toEqual(['HOME', 'VIDEO DOWNLOADER', 'ANIME', 'SETTINGS (GLOBAL)']);
+        // The settings are the drawn gear at the bottom of the menu, like the pictures of the sections; the name is kept for the screen readers
+        // and shown when the menu opens.
         const settings = screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' });
-        expect(settings).toHaveClass('tab--icon');
-        expect(settings).toHaveTextContent(SETTINGS_ICON);
-        expect(settings).not.toHaveTextContent('SETTINGS');
-        expect(settings).toHaveAttribute('title', 'SETTINGS (GLOBAL)');
+        expect(settings).not.toHaveClass('tab--icon');
+        expect(settings.querySelector('.tab__decoration svg.section-icon--settings')).not.toBeNull();
+        expect(settings.querySelector('.tab__label')).toHaveTextContent('SETTINGS (GLOBAL)');
+        expect(settings).not.toHaveAttribute('title');
     });
 
     it('shows the anime section when its tab is chosen', async () => {
@@ -343,21 +352,49 @@ describe('App anime section', () => {
         expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
     });
 
-    it('opens on the anime section when the settings say so', async () => {
+    it('opens on the home screen, with the blocks in the order of the menu, when the settings say anime', async () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
         mock.api.getAnimeStatus.mockResolvedValue(supported);
         render(<App />);
-        expect(await screen.findByRole('region', { name: 'Anime' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'ANIME' })).toHaveAttribute('aria-current', 'page');
-        expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
+        const home = await screen.findByRole('region', { name: 'Home' });
+        expect(screen.getByRole('button', { name: 'HOME' })).toHaveAttribute('aria-current', 'page');
+        expect(useAppStore.getState().tab).toBe('home');
+        expect(
+            within(home)
+                .getAllByRole('heading', { level: 2 })
+                .map((heading) => {
+                    return heading.textContent;
+                })
+        ).toEqual(['WELCOME TO PULLWAVE']);
+        expect(screen.getByRole('button', { name: 'GO TO ANIME' })).toBeInTheDocument();
+        expect(
+            within(home)
+                .getAllByRole('heading', { level: 3 })
+                .map((heading) => {
+                    return heading.textContent;
+                })
+        ).toEqual(['VIDEO DOWNLOADER', 'ANIME']);
     });
 
-    it('opens on the video downloader when the settings say anime but the section does not exist', async () => {
+    it('opens on the home screen without the block of the anime when the settings say anime but the section does not exist', async () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'anime' });
         render(<App />);
-        expect(await screen.findByLabelText('Link 1')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
-        expect(useAppStore.getState().tab).toBe('downloads');
+        const home = await screen.findByRole('region', { name: 'Home' });
+        expect(useAppStore.getState().tab).toBe('home');
+        expect(
+            within(home)
+                .getAllByRole('heading', { level: 2 })
+                .map((heading) => {
+                    return heading.textContent;
+                })
+        ).toEqual(['WELCOME TO PULLWAVE']);
+        expect(
+            within(home)
+                .getAllByRole('heading', { level: 3 })
+                .map((heading) => {
+                    return heading.textContent;
+                })
+        ).toEqual(['VIDEO DOWNLOADER']);
     });
 
     it('loads the library and the jobs of the section', async () => {
@@ -368,12 +405,26 @@ describe('App anime section', () => {
         expect(mock.api.listAnimeJobs).toHaveBeenCalledTimes(1);
     });
 
-    it('opens on the manga tab when it is the one saved and the section exists', async () => {
+    it('opens on the home screen, with the blocks in the order of the menu, when the manga tab is the one saved and the section exists', async () => {
         mock.api.manga.status.mockResolvedValue(makeMangaStatus());
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' });
         render(<App />);
-        expect(await screen.findByRole('navigation', { name: 'Manga' })).toBeInTheDocument();
-        expect(useAppStore.getState().tab).toBe('manga');
+        const home = await screen.findByRole('region', { name: 'Home' });
+        expect(useAppStore.getState().tab).toBe('home');
+        expect(
+            within(home)
+                .getAllByRole('heading', { level: 2 })
+                .map((heading) => {
+                    return heading.textContent;
+                })
+        ).toEqual(['WELCOME TO PULLWAVE']);
+        expect(
+            within(home)
+                .getAllByRole('heading', { level: 3 })
+                .map((heading) => {
+                    return heading.textContent;
+                })
+        ).toEqual(['VIDEO DOWNLOADER', 'MANGA']);
     });
 
     it('unsubscribes from the events of the section too on unmount', async () => {
@@ -393,7 +444,7 @@ describe('App manga section', () => {
 
     it('has no manga tab where the section does not exist', async () => {
         render(<App />);
-        await screen.findByLabelText('Link 1');
+        await openDownloader();
         expect(screen.queryByRole('button', { name: 'MANGA' })).not.toBeInTheDocument();
         expect(mock.api.manga.status).toHaveBeenCalledTimes(1);
     });
@@ -409,7 +460,7 @@ describe('App manga section', () => {
                 .map((button) => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
-        ).toEqual(['VIDEO DOWNLOADER', 'ANIME', 'MANGA', 'SETTINGS (GLOBAL)']);
+        ).toEqual(['HOME', 'VIDEO DOWNLOADER', 'ANIME', 'MANGA', 'SETTINGS (GLOBAL)']);
     });
 
     it('shows the manga section when its tab is chosen', async () => {
@@ -456,11 +507,13 @@ describe('App manga section', () => {
         expect(mock.api.manga.jobs).toHaveBeenCalledTimes(1);
     });
 
-    it('falls back to the video downloader when the manga tab was the one saved and the section does not exist', async () => {
+    it('leaves the block of the manga out of the home screen when the manga tab was the one saved and the section does not exist', async () => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, startTab: 'manga' });
         render(<App />);
-        expect(await screen.findByLabelText('Link 1')).toBeInTheDocument();
-        expect(useAppStore.getState().tab).toBe('downloads');
+        const home = await screen.findByRole('region', { name: 'Home' });
+        expect(useAppStore.getState().tab).toBe('home');
+        expect(within(home).queryByRole('heading', { level: 3, name: 'MANGA' })).not.toBeInTheDocument();
+        expect(within(home).getByRole('heading', { level: 3, name: 'VIDEO DOWNLOADER' })).toBeInTheDocument();
     });
 
     it('unsubscribes from the events of the section too on unmount', async () => {
@@ -473,5 +526,195 @@ describe('App manga section', () => {
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe('App console shell', () => {
+    function placeAt(element: HTMLElement, left: number, top: number): void {
+        vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
+            x: left,
+            y: top,
+            left,
+            top,
+            width: 90,
+            height: 40,
+            right: left + 90,
+            bottom: top + 40,
+            toJSON: () => {
+                return {};
+            }
+        });
+    }
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        window.localStorage.removeItem('pullwave-ui-sounds');
+    });
+
+    it('lays the top bar out as menu, name with its wave, search, then the downloads, the sounds, the programs and the clock', async () => {
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        const header = document.querySelector('.app__header') as HTMLElement;
+        expect(header).toHaveClass('app__header', 'topbar');
+        expect(Array.from(header.children).map((child) => {
+            return child.className;
+        })).toEqual(['topbar__button topbar__menu', 'brand', 'global-search', 'topbar__end']);
+        const brand = header.querySelector('.brand') as HTMLElement;
+        expect(within(brand).getByRole('heading', { level: 1, name: 'PULLWAVE' })).toHaveAttribute('data-text', 'PULLWAVE');
+        expect(brand.querySelector('.brand__wave')).toHaveAttribute('aria-hidden', 'true');
+        expect(brand.querySelectorAll('.brand__bar')).toHaveLength(5);
+        const end = header.querySelector('.topbar__end') as HTMLElement;
+        expect(Array.from(end.children).map((child) => {
+            return child.className;
+        })).toEqual(['downloads-indicator', 'topbar__button sound-toggle', 'binary-status', 'topbar__clock']);
+    });
+
+    it('shows the time in the language of the interface', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 10, 1, 14, 5, 0));
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, language: 'pt' });
+        render(<App />);
+        const clock = await screen.findByLabelText('Hora: 14:05');
+        expect(clock.tagName).toBe('TIME');
+        expect(clock).toHaveAttribute('datetime', '14:05');
+        expect(clock).toHaveTextContent('14:05');
+    });
+
+    it('draws a picture beside each section of the menu and the gear of the settings, hidden from the screen readers', async () => {
+        mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
+        render(<App />);
+        await screen.findByRole('button', { name: 'MANGA' });
+        const nav = screen.getByRole('navigation', { name: 'Sections' });
+        expect(nav).toHaveAttribute('id', 'side-nav');
+        expect(nav).toHaveClass('tabs', 'tabs--main', 'sidenav');
+        expect(nav).not.toHaveClass('sidenav--open');
+        const buttons = within(nav).getAllByRole('button');
+        expect(buttons.map((button) => {
+            return button.querySelector('.tab__decoration svg')?.getAttribute('class') ?? null;
+        })).toEqual(['section-icon section-icon--home', 'section-icon section-icon--downloads', 'section-icon section-icon--anime', 'section-icon section-icon--manga', 'section-icon section-icon--settings']);
+        buttons.forEach((button) => {
+            expect(button.querySelector('.tab__decoration')).toHaveAttribute('aria-hidden', 'true');
+        });
+        expect(screen.getByRole('button', { name: 'ANIME' })).toHaveTextContent(/^ANIME$/);
+    });
+
+    it('opens the menu with the button of the top bar and closes it with a choice, Esc or the shade', async () => {
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        const menu = screen.getByRole('button', { name: 'Open the menu' });
+        expect(menu).toHaveAttribute('aria-expanded', 'false');
+        expect(menu).toHaveAttribute('aria-controls', 'side-nav');
+
+        fireEvent.click(menu);
+        const nav = screen.getByRole('navigation', { name: 'Sections' });
+        expect(nav).toHaveClass('sidenav--open');
+        expect(screen.getByRole('button', { name: 'Close the menu' })).toHaveAttribute('aria-expanded', 'true');
+        expect(document.querySelector('.app')).toHaveClass('app--menu-open');
+        // The section that is open takes the focus.
+        expect(document.activeElement).toBe(screen.getByRole('button', { name: 'HOME' }));
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(nav).not.toHaveClass('sidenav--open');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Open the menu' }));
+        fireEvent.click(document.querySelector('.sidenav__scrim') as HTMLElement);
+        expect(nav).not.toHaveClass('sidenav--open');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Open the menu' }));
+        fireEvent.click(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' }));
+        expect(nav).not.toHaveClass('sidenav--open');
+        expect(await screen.findByLabelText('Link 1')).toBeInTheDocument();
+        expect(document.querySelector('.sidenav__scrim')).toBeNull();
+    });
+
+    it('says on the page which section it shows, for the theme', async () => {
+        render(<App />);
+        await openDownloader();
+        expect(document.querySelector('.app__main')).toHaveAttribute('data-section', 'downloads');
+        fireEvent.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
+        expect(document.querySelector('.app__main')).toHaveAttribute('data-section', 'settings');
+        fireEvent.click(screen.getByRole('button', { name: 'HOME' }));
+        expect(document.querySelector('.app__main')).toHaveAttribute('data-section', 'home');
+    });
+
+    it('moves the focus between the sections of the rail with the arrow keys', async () => {
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        Element.prototype.scrollIntoView = vi.fn();
+        const home = screen.getByRole('button', { name: 'HOME' });
+        const downloads = screen.getByRole('button', { name: 'VIDEO DOWNLOADER' });
+        placeAt(home, 0, 80);
+        placeAt(downloads, 0, 140);
+        home.focus();
+        fireEvent.keyDown(home, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(downloads);
+        fireEvent.keyDown(downloads, { key: 'ArrowUp' });
+        expect(document.activeElement).toBe(home);
+    });
+
+    it('turns the sounds of the navigation off and on with the button of the top bar, and remembers it', async () => {
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        const on = screen.getByRole('button', { name: 'Turn the sounds off' });
+        expect(on).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(on);
+        expect(screen.getByRole('button', { name: 'Turn the sounds on' })).toHaveAttribute('aria-pressed', 'false');
+        expect(window.localStorage.getItem('pullwave-ui-sounds')).toBe('off');
+        fireEvent.click(screen.getByRole('button', { name: 'Turn the sounds on' }));
+        expect(window.localStorage.getItem('pullwave-ui-sounds')).toBe('on');
+    });
+
+    it('changes the section with the bumpers of a gamepad, going round the visible ones', async () => {
+        let pads: Gamepad[] = [];
+        const frames: FrameRequestCallback[] = [];
+        const originalRequest = window.requestAnimationFrame;
+        window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
+            frames.push(callback);
+            return frames.length;
+        };
+        Object.defineProperty(navigator, 'getGamepads', {
+            configurable: true,
+            value: () => {
+                return pads;
+            }
+        });
+        const holding = (index: number | null): Gamepad => {
+            return {
+                buttons: Array.from({ length: 17 }, (_, button) => {
+                    return { pressed: button === index, touched: false, value: button === index ? 1 : 0 };
+                }),
+                axes: [0, 0]
+            } as unknown as Gamepad;
+        };
+        const runFrame = (): void => {
+            act(() => {
+                frames.shift()?.(0);
+            });
+        };
+        const press = (index: number): void => {
+            pads = [holding(index)];
+            runFrame();
+            pads = [holding(null)];
+            runFrame();
+        };
+        try {
+            render(<App />);
+            await screen.findByRole('region', { name: 'Home' });
+            pads = [holding(null)];
+            fireEvent(window, new Event('gamepadconnected'));
+            press(5);
+            expect(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' })).toHaveAttribute('aria-current', 'page');
+            press(5);
+            expect(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' })).toHaveAttribute('aria-current', 'page');
+            press(5);
+            expect(screen.getByRole('button', { name: 'HOME' })).toHaveAttribute('aria-current', 'page');
+            press(4);
+            expect(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' })).toHaveAttribute('aria-current', 'page');
+        } finally {
+            window.requestAnimationFrame = originalRequest;
+            Reflect.deleteProperty(navigator, 'getGamepads');
+        }
     });
 });

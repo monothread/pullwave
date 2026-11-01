@@ -249,6 +249,15 @@ const cut: CyberApi['cut'] = {
     },
     onProgress: (listener) => {
         return subscribe<CutRun>(IPC.eventCutProgress, listener);
+    },
+    thumbnail: () => {
+        return ipcRenderer.invoke(IPC.cutThumbnail);
+    },
+    preview: (request) => {
+        return ipcRenderer.invoke(IPC.cutPreview, request);
+    },
+    clear: () => {
+        return ipcRenderer.invoke(IPC.cutClear);
     }
 };
 

@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
+import { leaveHome } from './startScreen';
 import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -46,6 +47,7 @@ async function launch(userData: string, settings: Record<string, unknown> = {}, 
     await page.waitForSelector('.logo');
     // The screens only show up once yt-dlp and ffmpeg were probed, which can take a while the first time on Windows.
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+    await leaveHome(page);
     return { app, page, userData, animeDir, callsLog: join(userData, 'anime', 'history', 'calls.log') };
 }
 
@@ -156,10 +158,10 @@ test.afterEach(async () => {
 
 test('adds the anime tab and opens its search', async () => {
     const { page } = session;
-    // The settings are a gear, named for the screen readers, not a word.
+    // The settings are the drawn gear at the bottom of the menu; their name is there for the screen readers and the open menu.
     const sections = page.getByRole('navigation', { name: 'Sections' });
-    await expect(sections.getByRole('button')).toHaveText(['VIDEO DOWNLOADER', 'ANIME', 'MANGA', '\u2699\uFE0E']);
-    await expect(sections.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true })).toHaveAttribute('title', 'SETTINGS (GLOBAL)');
+    await expect(sections.getByRole('button')).toHaveText(['HOME', 'VIDEO DOWNLOADER', 'ANIME', 'MANGA', 'SETTINGS (GLOBAL)']);
+    await expect(sections.getByRole('button', { name: 'SETTINGS (GLOBAL)' }).locator('svg.section-icon--settings')).toHaveCount(1);
     await openAnimeTab(page);
     await expect(page.getByRole('button', { name: 'ANIME', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByLabel('Anime name')).toBeVisible();
@@ -569,6 +571,46 @@ test('opens an anime of the history on its series in the library when it is ther
     });
     await expect(subNav.getByRole('button', { name: 'HISTORY', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('region', { name: 'Anime history' })).toBeVisible();
+});
+
+// Playwright cannot press the side buttons of the mouse, so the events the browser sends for them are dispatched.
+async function pressSideButton(page: Page, button: 3 | 4): Promise<void> {
+    await page.evaluate((which) => {
+        window.dispatchEvent(new MouseEvent('mouseup', { button: which, bubbles: true, cancelable: true }));
+    }, button);
+}
+
+test('the buttons of the mouse go through the home screen, its blocks and the screen of a season, one page each', async () => {
+    const { page } = session;
+    const subNav = page.getByRole('navigation', { name: 'Anime' });
+    const sections = page.getByRole('navigation', { name: 'Sections' });
+    await downloadFirstEpisode(page);
+
+    // From the home screen, a block leads to UPDATES of the anime in one page: going back is the home screen at once.
+    await sections.getByRole('button', { name: 'HOME', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Home' })).toBeVisible();
+    await page.getByRole('button', { name: 'UPDATES: ANIME', exact: true }).click();
+    await expect(subNav.getByRole('button', { name: 'UPDATES', exact: true })).toHaveAttribute('aria-current', 'page');
+    await pressSideButton(page, 3);
+    await expect(sections.getByRole('button', { name: 'HOME', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('region', { name: 'Home' })).toBeVisible();
+    await pressSideButton(page, 4);
+    await expect(subNav.getByRole('button', { name: 'UPDATES', exact: true })).toHaveAttribute('aria-current', 'page');
+
+    // The screen of a season is a page: going back from it is the screen of its series, then the cards of the library.
+    await subNav.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+    await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime', exact: true }).click();
+    await expect(page.getByTestId('series-view')).toBeVisible();
+    await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+    await expect(page.getByTestId('season-view')).toBeVisible();
+    await pressSideButton(page, 3);
+    await expect(page.getByTestId('series-view')).toBeVisible();
+    await expect(page.getByTestId('season-view')).toHaveCount(0);
+    await pressSideButton(page, 4);
+    await expect(page.getByTestId('season-view')).toBeVisible();
+    await pressSideButton(page, 3);
+    await pressSideButton(page, 3);
+    await expect(page.getByTestId('anime-card')).toHaveCount(1);
 });
 
 test('the history of the anime survives closing the app and can be cleared', async () => {
@@ -1758,7 +1800,7 @@ test.describe('layout for every size of window @resize', () => {
         page: Page,
         width: number,
         height: number
-    ): Promise<{ zoom: string; appMax: string; contentWidth: number; scrollerWidth: number; windowWidth: number; columns: number; overflow: boolean }> {
+    ): Promise<{ zoom: string; appMax: string; contentWidth: number; railWidth: number; scrollbar: number; scrollerWidth: number; windowWidth: number; columns: number; overflow: boolean }> {
         await page.setViewportSize({ width, height });
         return page.evaluate(() => {
             const list = document.querySelector('.queue') as HTMLElement;
@@ -1766,7 +1808,9 @@ test.describe('layout for every size of window @resize', () => {
             return {
                 zoom: getComputedStyle(document.documentElement).zoom,
                 appMax: getComputedStyle(document.documentElement).getPropertyValue('--app-max').trim(),
-                contentWidth: Math.round((document.querySelector('.app__header') as HTMLElement).getBoundingClientRect().width),
+                contentWidth: Math.round((document.querySelector('.app__main > section') as HTMLElement).getBoundingClientRect().width),
+                railWidth: Math.round((document.querySelector('.sidenav') as HTMLElement).getBoundingClientRect().width),
+                scrollbar: (document.querySelector('.app__main') as HTMLElement).offsetWidth - (document.querySelector('.app__main') as HTMLElement).clientWidth,
                 scrollerWidth: Math.round((document.querySelector('.app__main') as HTMLElement).getBoundingClientRect().width),
                 windowWidth: window.innerWidth,
                 columns: getComputedStyle(list).display === 'grid' ? tracks.split(' ').length : 1,
@@ -1786,19 +1830,25 @@ test.describe('layout for every size of window @resize', () => {
         const { page } = session;
         await threeDownloads(page);
 
-        // The content is as wide as --app-max less the 20 pixels of each side, in the middle; the part that scrolls is as wide as the window.
-        const sizes: Array<[number, number, string, number, number]> = [
-            [1100, 780, '1000px', 960, 1],
-            [1366, 768, '1240px', 1200, 2],
-            [1920, 1080, '1400px', 1360, 2],
-            // Bigger screens are not a target: nothing changes there.
-            [2560, 1440, '1400px', 1360, 2],
-            [3440, 1440, '1400px', 1360, 2]
+        // The page is beside the rail of the menu (84 pixels): the part that scrolls is the rest of the window. Its sides are the gutter of
+        // responsive.css (20 pixels, or what centres --app-max) and 4 more, and its scrollbar takes its own room.
+        const sizes: Array<[number, number, string, number]> = [
+            [1100, 780, '1000px', 1],
+            [1366, 768, '1240px', 2],
+            [1920, 1080, '1400px', 2],
+            // Bigger screens are not a target: the content stops growing.
+            [2560, 1440, '1400px', 2],
+            [3440, 1440, '1400px', 2]
         ];
-        for (const [width, height, appMax, contentWidth, columns] of sizes) {
+        for (const [width, height, appMax, columns] of sizes) {
             const measured = await layout(page, width, height);
-            expect(measured).toMatchObject({ zoom: '1', appMax, contentWidth, columns });
-            expect(measured.scrollerWidth).toBe(measured.windowWidth);
+            const area = width - 84;
+            const gutter = Math.max(20, (area - parseInt(appMax, 10)) / 2 + 20);
+            expect(measured).toMatchObject({ zoom: '1', appMax, columns, railWidth: 84 });
+            expect(measured.scrollerWidth).toBe(area);
+            expect(Math.abs(measured.contentWidth - (area - 2 * (gutter + 4) - measured.scrollbar))).toBeLessThanOrEqual(1);
+            // Never wider than --app-max less its sides, however big the window.
+            expect(measured.contentWidth).toBeLessThanOrEqual(parseInt(appMax, 10) - 48);
         }
     });
 
@@ -1831,7 +1881,8 @@ test.describe('layout for every size of window @resize', () => {
         const besideTitle = (marked?.x ?? 0) >= (title?.x ?? 0) + (title?.width ?? 0);
         expect(underTitle || besideTitle).toBe(true);
         expect((marked?.x ?? 0) + (marked?.width ?? 0)).toBeLessThanOrEqual((box?.x ?? 0) + (box?.width ?? 0) + 1);
-        expect(await page.locator('.tabs').first().evaluate((tabs) => { return getComputedStyle(tabs).overflowX; })).toBe('auto');
+        // The tabs of the section (the menu of the sections is a dock of its own here).
+        expect(await page.locator('.app__main .tabs').first().evaluate((tabs) => { return getComputedStyle(tabs).overflowX; })).toBe('auto');
     });
 });
 

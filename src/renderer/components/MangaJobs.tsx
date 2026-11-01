@@ -1,4 +1,5 @@
 import type { MangaJob } from '@shared/manga';
+import { DownloadHero } from '../downloads/DownloadHero';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { ConfirmButton } from './ConfirmButton';
@@ -6,6 +7,7 @@ import { formatPercent } from './jobStatus';
 import { jobStatusKey } from './mangaText';
 import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { MangaErrorNotice } from './MangaErrorNotice';
+import { MangaCover } from './MangaCover';
 
 const ORDER: Record<MangaJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
@@ -69,6 +71,9 @@ export function MangaJobs() {
     const resumeJob = useMangaStore((state) => {
         return state.resumeJob;
     });
+    const library = useMangaStore((state) => {
+        return state.library;
+    });
     const pauseAllJobs = useMangaStore((state) => {
         return state.pauseAllJobs;
     });
@@ -93,8 +98,30 @@ export function MangaJobs() {
         return ORDER[first.status] - ORDER[second.status];
     });
 
+    const running = jobs.find(isRunning);
+    const waiting = jobs.filter(isQueued).length;
+    const runningCover =
+        running === undefined
+            ? null
+            : (library.find((manga) => {
+                  return manga.id === running.mangaId;
+              })?.thumbnailUrl ?? null);
+
     return (
         <section className="manga__jobs queue" aria-label={t('manga.jobs.label', { count: jobs.length })}>
+            {running !== undefined && (
+                <DownloadHero
+                    id={`manga-${String(running.chapterId)}`}
+                    title={running.mangaTitle}
+                    detail={running.pageCount > 0 ? `${running.chapterName} · ${t('downloads.hero.pages', { done: running.pagesDone, total: running.pageCount })}` : running.chapterName}
+                    percent={running.percent}
+                    speed=""
+                    eta=""
+                    kind="manga"
+                    cover={<MangaCover url={runningCover} />}
+                    waiting={waiting}
+                />
+            )}
             <div className="queue__toolbar">
                 <span className="section-label">{t('manga.jobs.label', { count: jobs.length })}</span>
                 {canPauseAll && (

@@ -1,6 +1,24 @@
 import { create } from 'zustand';
-import type { CutChooseFailure, CutChooseResponse, CutMedia, CutRun, CutStartFailure } from '@shared/cut';
-import { segmentsToCut, type SegmentRow } from '../components/cutText';
+import type { CutChooseFailure, CutChooseResponse, CutMedia, CutPreviewFailure, CutRun, CutSegment, CutStartFailure } from '@shared/cut';
+import { checkRow, segmentsToCut, type SegmentRow } from '../components/cutText';
+
+// The picture of the file chosen: being made, made (its address), or none (an audio with no cover, or it could not be made).
+export type CutThumbnail = { status: 'loading' } | { status: 'ready'; url: string } | { status: 'none' };
+
+// A part seen in the player before it is cut (D-131). `loading`: asking where to play it. `converting`: the player could not play the file as
+// it is, and the part is being made into a file it plays. `ready`: playing `url` from `start` to `end`. `failed`: it cannot be played.
+export interface CutPreviewState {
+    rowId: number;
+    // The number of the part on the screen (from 1).
+    number: number;
+    segment: CutSegment;
+    status: 'loading' | 'converting' | 'ready' | 'failed';
+    url: string | null;
+    start: number;
+    end: number;
+    converted: boolean;
+    error: CutPreviewFailure | null;
+}
 
 export interface CutState {
     media: CutMedia | null;
@@ -15,6 +33,8 @@ export interface CutState {
     // The cut was ended by the user and the part being made is still stopping.
     cancelling: boolean;
     run: CutRun | null;
+    thumbnail: CutThumbnail | null;
+    preview: CutPreviewState | null;
     // Follows the cut that goes on, also when the screen opens in the middle of it; gives what stops it.
     init: () => Promise<() => void>;
     choose: () => Promise<void>;
@@ -28,6 +48,13 @@ export interface CutState {
     setAudioOnly: (value: boolean) => void;
     start: () => Promise<void>;
     cancel: () => Promise<void>;
+    // Opens the player on a part (a row that is a part), to see it before it is cut.
+    openPreview: (rowId: number) => Promise<void>;
+    // The player could not play the file as it is: the part is made into a file it plays (once).
+    convertPreview: () => Promise<void>;
+    closePreview: () => void;
+    // Takes the file away and clears the parts and the options (the file stays where it is); not while a cut goes on.
+    clear: () => Promise<void>;
 }
 
 let nextRowId = 1;
@@ -57,8 +84,30 @@ export const useCutStore = create<CutState>((set, get) => {
             startError: null,
             run: null,
             rows: [newRow()],
-            audioOnly: false
+            audioOnly: false,
+            preview: null,
+            thumbnail: { status: 'loading' }
         });
+        const url = await window.api.cut.thumbnail();
+        // Another file may have been chosen while the picture was made.
+        if (get().media === response.media) {
+            set({ thumbnail: url === null ? { status: 'none' } : { status: 'ready', url } });
+        }
+    }
+
+    // Asks where to play the part, as it is or converted, and shows it (unless the player was closed or opened on another part meanwhile).
+    async function loadPreview(preview: CutPreviewState, convert: boolean): Promise<void> {
+        const response = await window.api.cut.preview({ segment: preview.segment, convert });
+        if (get().preview?.rowId !== preview.rowId || get().preview?.status === 'ready') {
+            return;
+        }
+        if (response.ok) {
+            set({ preview: { ...preview, status: 'ready', url: response.url, start: response.start, end: response.end, converted: response.converted, error: null } });
+            return;
+        }
+        if (response.reason !== 'cancelled') {
+            set({ preview: { ...preview, status: 'failed', error: response.reason } });
+        }
     }
 
     return {
@@ -71,6 +120,8 @@ export const useCutStore = create<CutState>((set, get) => {
         startError: null,
         cancelling: false,
         run: null,
+        thumbnail: null,
+        preview: null,
 
         init: async () => {
             const unsubscribe = window.api.cut.onProgress((run) => {
@@ -160,6 +211,43 @@ export const useCutStore = create<CutState>((set, get) => {
             }
             set({ cancelling: true });
             await window.api.cut.cancel();
+        },
+
+        openPreview: async (rowId) => {
+            const { media, rows } = get();
+            const index = rows.findIndex((row) => {
+                return row.id === rowId;
+            });
+            const row = rows[index];
+            const segment = media === null || row === undefined ? null : checkRow(row, media.durationSeconds).segment;
+            if (segment === null) {
+                return;
+            }
+            const preview: CutPreviewState = { rowId, number: index + 1, segment, status: 'loading', url: null, start: segment.start, end: segment.end, converted: false, error: null };
+            set({ preview });
+            await loadPreview(preview, false);
+        },
+
+        convertPreview: async () => {
+            const preview = get().preview;
+            if (preview === null || preview.converted || preview.status === 'converting') {
+                return;
+            }
+            const converting: CutPreviewState = { ...preview, status: 'converting', url: null };
+            set({ preview: converting });
+            await loadPreview(converting, true);
+        },
+
+        closePreview: () => {
+            set({ preview: null });
+        },
+
+        clear: async () => {
+            if (get().run?.status === 'running' || get().starting || get().choosing) {
+                return;
+            }
+            set({ media: null, rows: [newRow()], audioOnly: false, chooseError: null, startError: null, run: null, thumbnail: null, preview: null });
+            await window.api.cut.clear();
         }
     };
 });

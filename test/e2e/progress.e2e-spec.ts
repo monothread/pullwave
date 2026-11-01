@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import './display';
+import { leaveHome } from './startScreen';
 import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,6 +25,7 @@ async function launch(theme: string): Promise<void> {
     await page.setViewportSize({ width: 1100, height: 780 });
     await page.waitForSelector('.logo');
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
+    await leaveHome(page);
 }
 
 test.afterEach(async () => {
@@ -195,17 +197,17 @@ for (const theme of THEMES) {
             expect(probes.error).toMatchObject({ animation: 'none', moves: false });
         });
 
-        test('when the system asks for less motion the decoration stops, and the waves that show that something is going on keep flowing', async () => {
+        test('when the system asks for less motion every wave, stripe and sweep keeps moving: the animations are always on (D-130)', async () => {
             await page.emulateMedia({ reducedMotion: 'reduce' });
             const probes = await probeBars(page);
             expect(probes.plain).toMatchObject({ animation: 'bar-wave-flow', moves: true });
             expect(probes.cloudflare).toMatchObject({ animation: 'bar-wave-flow', moves: true });
-            expect(probes.live).toMatchObject({ animation: 'none', moves: false });
-            expect(probes.verify.sweep).toEqual({ animation: 'none', moves: false });
-            expect(probes.waiting.sweep).toEqual({ animation: 'none', moves: false });
-            expect(probes.processing.sweep).toEqual({ animation: 'none', moves: false });
-            expect(probes.saving.sweep).toEqual({ animation: 'none', moves: false });
-            expect(probes.merging.sweep).toEqual({ animation: 'none', moves: false });
+            expect(probes.live).toMatchObject({ animation: 'live-stripes', moves: true });
+            expect(probes.verify.sweep).toEqual({ animation: 'scan-sweep', moves: true });
+            expect(probes.waiting.sweep).toEqual({ animation: 'scan-sweep', moves: true });
+            expect(probes.processing.sweep).toEqual({ animation: 'scan-sweep', moves: true });
+            expect(probes.saving.sweep).toEqual({ animation: 'scan-sweep', moves: true });
+            expect(probes.merging.sweep).toEqual({ animation: 'scan-sweep', moves: true });
             expect(probes.plain.glow).toBe(true);
             expect(probes.plain.layers).toBe(5);
         });

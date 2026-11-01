@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 const THEME_DIRECTORY = resolve(__dirname, '../../../src/renderer/theme');
 const CYBERPUNK_CSS = readFileSync(resolve(THEME_DIRECTORY, 'cyberpunk.css'), 'utf-8');
-const THEME_FILES = ['cyberpunk.css', 'themes.css', 'responsive.css'];
+const THEME_FILES = ['cyberpunk.css', 'themes.css', 'responsive.css', 'console.css'];
 
 const OUTLINE_COLOR = '#0b1a4a';
 const OUTLINE_RINGS_EM = [0.12, 0.06];

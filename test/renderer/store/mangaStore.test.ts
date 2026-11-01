@@ -65,11 +65,20 @@ describe('mangaStore init', () => {
         expect(mock.api.manga.queueHeld).toHaveBeenCalledTimes(1);
         expect(state().queueHeld).toBe(true);
         expect(mock.api.manga.checkState).toHaveBeenCalledTimes(1);
+        // Once at the start, once more after it listens to the changes.
+        expect(mock.api.manga.status).toHaveBeenCalledTimes(2);
         unsubscribe();
         expect(mock.unsubscribers).toHaveLength(10);
         mock.unsubscribers.forEach((fn) => {
             expect(fn).toHaveBeenCalledTimes(1);
         });
+    });
+
+    it('says the server is starting when it began to start while the library was being read', async () => {
+        mock.api.manga.status.mockResolvedValueOnce(makeMangaStatus({ server: 'stopped' })).mockResolvedValueOnce(makeMangaStatus({ server: 'starting' }));
+        const unsubscribe = await state().init();
+        expect(state().status).toEqual(makeMangaStatus({ server: 'starting' }));
+        unsubscribe();
     });
 
     describe('events', () => {

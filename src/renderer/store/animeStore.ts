@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { batchNavigation } from '../navigation/navigationBatch';
 import type { AniError, AnimeAiringOverride, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
 import { IDLE_CHECK_STATE } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
@@ -97,6 +98,8 @@ export interface AnimeState {
     // The series open on the screen of the library (the key of its card); null: the cards. It is a page of the app, so the back and forward
     // buttons of the mouse go through it.
     librarySeries: string | null;
+    // The season of the open series whose own screen is open (the id of its anime); null: the screen of the series. A page of the app too.
+    librarySeason: number | null;
     init: () => Promise<() => void>;
     // Reads whether the anime section is available (its programs are installed) and the version of ani-cli again.
     refreshStatus: () => Promise<void>;
@@ -105,6 +108,8 @@ export interface AnimeState {
     closeDownloads: () => void;
     openSeries: (key: string) => void;
     closeSeries: () => void;
+    openSeason: (animeId: number) => void;
+    closeSeason: () => void;
     setQuery: (query: string) => void;
     setAudio: (audio: AnimeAudio) => void;
     runSearch: () => Promise<void>;
@@ -279,6 +284,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         streaming: null,
         libraryFocus: null,
         librarySeries: null,
+        librarySeason: null,
 
         init: async () => {
             const api = window.api;
@@ -345,7 +351,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         setView: (view) => {
-            set({ view, returnView: view, libraryFocus: null, librarySeries: null });
+            set({ view, returnView: view, libraryFocus: null, librarySeries: null, librarySeason: null });
             // Files can be moved or deleted while the app is open: the library says which ones are gone when it is shown.
             if (view === 'library') {
                 void get().refreshLibrary();
@@ -365,11 +371,19 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         openSeries: (key) => {
-            set({ librarySeries: key });
+            set({ librarySeries: key, librarySeason: null });
         },
 
         closeSeries: () => {
-            set({ librarySeries: null, libraryFocus: null });
+            set({ librarySeries: null, librarySeason: null, libraryFocus: null });
+        },
+
+        openSeason: (animeId) => {
+            set({ librarySeason: animeId });
+        },
+
+        closeSeason: () => {
+            set({ librarySeason: null });
         },
 
         setQuery: (query) => {
@@ -554,7 +568,10 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return;
             }
             const result: AnimeSearchResult = { index: anime.searchIndex, title: anime.title, ...(anime.sourceId === undefined || anime.sourceId === null ? {} : { sourceId: anime.sourceId }) };
-            set((state) => {
+            // The list of the search and the anime opened from it are one page for the back and forward buttons of the mouse.
+            let opening: Promise<void> = Promise.resolve();
+            batchNavigation(() => {
+                set((state) => {
                 return {
                     view: 'search',
                     returnView: 'search',
@@ -569,8 +586,10 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                         searchedAudio: anime.audio
                     }
                 };
+                });
+                opening = get().openResult(result);
             });
-            await get().openResult(result);
+            await opening;
         },
 
         openHistoryEntry: async (entry) => {
@@ -589,7 +608,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     return entry.id === animeId;
                 });
             });
-            set({ view: 'library', returnView: 'library', selection: null, libraryFocus: animeId, librarySeries: group?.key ?? null });
+            set({ view: 'library', returnView: 'library', selection: null, libraryFocus: animeId, librarySeries: group?.key ?? null, librarySeason: null });
             void get().refreshLibrary();
         },
 

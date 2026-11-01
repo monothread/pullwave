@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { AnimeAddResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
-import type { CutChooseResponse, CutRun, CutStartResponse } from '@shared/cut';
+import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
@@ -122,6 +122,15 @@ export function createMockApi(): MockApiHandle {
         }),
         onProgress: vi.fn((listener: (run: CutRun) => void) => {
             return subscribe(cutListeners, listener);
+        }),
+        thumbnail: vi.fn(async (): Promise<string | null> => {
+            return null;
+        }),
+        preview: vi.fn(async (): Promise<CutPreviewResponse> => {
+            return { ok: false, reason: 'failed' };
+        }),
+        clear: vi.fn(async () => {
+            return undefined;
         })
     };
 

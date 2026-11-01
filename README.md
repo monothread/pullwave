@@ -45,7 +45,16 @@ Ubuntu 22.04 and newer need FUSE 2 for AppImages (`sudo apt install libfuse2`, o
 Once installed, the app looks for new versions by itself (the ⚙ of the top bar, APP UPDATES): one click downloads the update and another restarts into it.
 
 ## Getting around
-The top bar has **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the settings of the whole app. Each part has its own bar and its own ⚙:
+The app looks and moves like the TV mode of a game console.
+
+- **HOME** is the first screen: a carousel of highlights that changes every 5 seconds (what you left half way, then the anime and manga that got something new in the last 7 days) and a big block for each section, in the order of the menu, with what goes on in it (downloads, news of the week) and quick buttons (VIDEO DOWNLOADER: PASTE A LINK, CUT; ANIME and MANGA: UPDATES, LIBRARY).
+- **The menu on the left** has HOME, **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the settings of the whole app. It is a rail of pictures; ☰ opens it with the names. On a narrow window it is a dock at the bottom.
+- **The top bar** has a search (titles of your libraries, or a search in the anime or manga section), the downloads of the whole app (⬇ with how many are going on), a button for the sounds of the navigation, and the clock.
+- **The libraries** start with the same carousel of highlights, then the chips **ALL** and **NEW** (titles with episodes or chapters that arrived in the last 7 days), the order (recently added, last watched or read, or A–Z) and the grid of every title. The page of a title shows its cover big, also blurred behind the whole screen.
+- **The downloads** show the one going on big at the top, with its speed over the last minute, and the queue below.
+- **Keyboard and gamepad:** the arrow keys move between the controls (not inside a field, the player or the reader). A gamepad works too: the directional pad or the left stick moves, A presses, B goes back, LB and RB change the section.
+
+Each part has its own bar and its own ⚙:
 
 | Part | Screens |
 |---|---|
@@ -82,7 +91,8 @@ Every download, finished or failed, with the time and a button to show the file.
 The **CUT** tab cuts a video or audio file you already have (any file, not only the ones the app downloaded) into the parts you mark.
 
 - **CHOOSE FILE** reads the file (a ring says it is reading) and shows its name, whether it is a **VIDEO** or an **AUDIO** and its length. You can also **drag the file from your file manager and drop it on the panel** (it lights up while the file is over it); a file dropped while a cut goes on is not taken, and a file dropped outside the panel never makes the window open it.
-- Mark the parts to keep: a **start** and an **end** for each (`m:ss`, `h:mm:ss` or plain seconds, with decimals if you want: `1:34.5`), **+ ADD PART** for more. A part that is wrong says why (the end is not after the start, the end is past the end of the file...) and the cut is not allowed until every part is right. Parts may overlap.
+- A **picture** of the file is shown beside its name: a frame of the video, or the cover of an audio file (♫ when it has none). **CLEAR** (it asks first) takes the file out of the cutter and clears the parts and the options; the file stays where it is. It is off while a cut goes on.
+- Mark the parts to keep: a **start** and an **end** for each (`m:ss`, `h:mm:ss` or plain seconds, with decimals if you want: `1:34.5`), **+ ADD PART** for more. A part that is wrong says why (the end is not after the start, the end is past the end of the file...) and the cut is not allowed until every part is right. Parts may overlap. **▶** beside a part that is right plays **only that part** in the player of the app (video or audio), so you can check it before anything is saved; when the player cannot open the format, the app prepares that part in a format it plays first (marked **PREVIEW**).
 - **CUT** makes one file for each part, one after the other, in the folder of the downloads, inside `<name> - cuts`, called `<name> - 01 (0m10s-0m14s).mp4`, `<name> - 02 (1m34s-1m43s).mp4`... in the **same format as the original**. A file that is already there is never written over (` (2)` is added to the name).
 - The cut is **exact**: every part is encoded again, so it starts at the moment you wrote and not at the keyframe before it. For that, cutting a video takes a while: each part shows a bar that fills, the ones waiting have a bar of their own, and **CANCEL** ends the cut at once (the part being made is deleted; the ones that were done stay). ffmpeg runs at a low priority and without taking every core of the computer, so the app stays smooth meanwhile.
 - For a **video**, the switch **Only the audio** makes each part an audio file instead, in the audio format of the settings (mp3, m4a or opus).
@@ -222,7 +232,7 @@ Use it only for content you have the right to download; see [DISCLAIMER.md](DISC
 ## Settings, themes and languages
 Settings are saved as you change them. The ⚙ of the top bar has the ones of the whole app:
 - **Theme:** Device (follows your system, the default) or one of twelve: the neon ones (Cyberpunk, Synthwave, Terminal in phosphor green) and the flat ones, dark (Dark, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED in pure black, High contrast) or light (Light, Sakura). In the neon themes the controls float over the video in fullscreen with a progress bar that glows in the colors of the theme.
-- **Open on:** the tab the app shows when it starts, VIDEO DOWNLOADER (the default) or ANIME (which opens on its schedule).
+- **Open on:** the section the HOME screen shows first (its block and its highlights come first, and it is where the welcome leads): VIDEO DOWNLOADER (the default), ANIME or MANGA. The app always opens on HOME.
 - **Language:** Device (follows your system, the default), English, Português, Español, 中文 or 日本語. The whole app changes right away.
 - **System tray:** keep the app running in the tray when you close the window.
 - **App updates:** check for new versions on startup, or now.

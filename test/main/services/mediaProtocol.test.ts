@@ -7,6 +7,7 @@ import {
     defaultMediaFileSystem,
     parseMediaUrl,
     parseRange,
+    serveFile,
     type ByteRange,
     type MediaFileSystem
 } from '@main/services/mediaProtocol';
@@ -70,6 +71,22 @@ describe('contentTypeOf', () => {
         expect(contentTypeOf('/a/b.webm')).toBe('video/webm');
         expect(contentTypeOf('/a/b.mkv')).toBe('video/x-matroska');
         expect(contentTypeOf('/a/b.vtt')).toBe('text/vtt; charset=utf-8');
+    });
+
+    it.each([
+        ['/a/b.mov', 'video/quicktime'],
+        ['/a/b.AVI', 'video/x-msvideo'],
+        ['/a/b.mp3', 'audio/mpeg'],
+        ['/a/b.m4a', 'audio/mp4'],
+        ['/a/b.aac', 'audio/aac'],
+        ['/a/b.ogg', 'audio/ogg'],
+        ['/a/b.oga', 'audio/ogg'],
+        ['/a/b.opus', 'audio/ogg'],
+        ['/a/b.wav', 'audio/wav'],
+        ['/a/b.FLAC', 'audio/flac'],
+        ['/a/thumbnail-1.jpg', 'image/jpeg']
+    ])('knows the type of %s, a file the cutter serves: %s', (path, type) => {
+        expect(contentTypeOf(path)).toBe(type);
     });
 
     it('falls back to a generic type', () => {
@@ -218,6 +235,69 @@ describe('createMediaHandler', () => {
         expect(handler(request('pullwave-media://episode/abc')).status).toBe(404);
         expect(handler(request('pullwave-media://file/%2Fetc%2Fpasswd')).status).toBe(404);
         expect(resolve).not.toHaveBeenCalled();
+    });
+});
+
+describe('serveFile', () => {
+    const CONTENT = 'abcdef';
+
+    function filesOf(size: number | null): MediaFileSystem {
+        return {
+            size: vi.fn(() => {
+                return size;
+            }),
+            read: vi.fn((_path: string, range: ByteRange): ReadableStream<Uint8Array> => {
+                return streamOf(CONTENT.slice(range.start, range.end + 1));
+            })
+        };
+    }
+
+    it('answers 404 for no path without looking at the disk', async () => {
+        const files = filesOf(6);
+        const response = serveFile(new Request('pullwave-cut://media/1'), null, files);
+        expect(response.status).toBe(404);
+        expect(Object.fromEntries(response.headers)).toEqual({ 'access-control-allow-origin': '*' });
+        expect(await response.text()).toBe('');
+        expect(files.size).not.toHaveBeenCalled();
+        expect(files.read).not.toHaveBeenCalled();
+    });
+
+    it('serves an audio file whole, with its type', async () => {
+        const files = filesOf(6);
+        const response = serveFile(new Request('pullwave-cut://media/1'), '/music/song.mp3', files);
+        expect(response.status).toBe(200);
+        expect(Object.fromEntries(response.headers)).toEqual({
+            'accept-ranges': 'bytes',
+            'access-control-allow-origin': '*',
+            'content-length': '6',
+            'content-type': 'audio/mpeg'
+        });
+        expect(await response.text()).toBe(CONTENT);
+        expect(files.size).toHaveBeenCalledWith('/music/song.mp3');
+        expect(files.read).toHaveBeenCalledWith('/music/song.mp3', { start: 0, end: 5 });
+    });
+
+    it('serves a part of a picture with 206', async () => {
+        const files = filesOf(6);
+        const response = serveFile(new Request('pullwave-cut://thumbnail/2', { headers: { Range: 'bytes=1-2' } }), '/tmp/thumbnail-2.jpg', files);
+        expect(response.status).toBe(206);
+        expect(Object.fromEntries(response.headers)).toEqual({
+            'accept-ranges': 'bytes',
+            'access-control-allow-origin': '*',
+            'content-length': '2',
+            'content-range': 'bytes 1-2/6',
+            'content-type': 'image/jpeg'
+        });
+        expect(await response.text()).toBe('bc');
+        expect(files.read).toHaveBeenCalledWith('/tmp/thumbnail-2.jpg', { start: 1, end: 2 });
+    });
+
+    it('answers 404 when the file is gone and 416 for a range out of it', async () => {
+        expect(serveFile(new Request('pullwave-cut://media/1'), '/gone.mp4', filesOf(null)).status).toBe(404);
+        const response = serveFile(new Request('pullwave-cut://media/1', { headers: { Range: 'bytes=9-' } }), '/a.mp4', filesOf(6));
+        expect(response.status).toBe(416);
+        expect(Object.fromEntries(response.headers)).toEqual({ 'access-control-allow-origin': '*', 'content-range': 'bytes */6' });
+        expect(await response.text()).toBe('');
     });
 });
 

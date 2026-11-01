@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeSearch } from '@renderer/components/AnimeSearch';
 import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { useBackdropStore } from '@renderer/store/backdropStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
@@ -1026,5 +1027,22 @@ describe('AnimeSearch cards with a cover', () => {
         expect(other.querySelector('.history__main > .history__title')).not.toBeNull();
         expect(inLibrary.querySelector('.cover-card__footer')).not.toBeNull();
         expect(other.querySelector('.cover-card__footer')).toBeNull();
+    });
+});
+
+describe('AnimeDetail: the cover behind the screen', () => {
+    it('puts the cover of the anime behind the whole screen while its page is open', async () => {
+        mock.api.findAnimeCover.mockResolvedValue('https://s4.anilist.co/cover/edgerunners.jpg');
+        useAnimeStore.setState({
+            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
+            selection: { result: RESULTS[0] as AnimeSearchResult, query: 'cyberpunk', audio: 'sub', status: 'ready', episodes: ['1'], error: null }
+        });
+        const { unmount, container } = render(<AnimeSearch />);
+        await waitFor(() => {
+            expect(useBackdropStore.getState().url).toBe('https://s4.anilist.co/cover/edgerunners.jpg');
+        });
+        expect(container.querySelector('.anime__detail')).toHaveClass('detail-screen');
+        unmount();
+        expect(useBackdropStore.getState().url).toBeNull();
     });
 });
