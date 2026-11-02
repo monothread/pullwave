@@ -35,6 +35,7 @@ describe('useAnimeStore initial state', () => {
         expect(initialAnime.returnView).toBe('schedule');
         expect(initialAnime.schedule).toEqual({ status: 'idle', entries: [], error: null, view: 'day', timeZone: machineTimeZone(), limits: [] });
         expect(initialAnime.jobs).toEqual([]);
+        expect(initialAnime.queueHeld).toBe(false);
         expect(initialAnime.library).toEqual([]);
         expect(initialAnime.history).toEqual([]);
         expect(initialAnime.search).toEqual({ query: '', audio: null, status: 'idle', results: [], error: null, searchedQuery: '', searchedAudio: 'sub' });
@@ -85,10 +86,32 @@ describe('init', () => {
         });
 
         dispose();
-        expect(mock.unsubscribers).toHaveLength(6);
+        expect(mock.unsubscribers).toHaveLength(7);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe('init and the queue that is held', () => {
+    it('reads whether the queue is held and follows PAUSE ALL and RESUME ALL', async () => {
+        mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
+        mock.api.animeQueueHeld.mockResolvedValue(true);
+
+        await useAnimeStore.getState().init();
+
+        expect(mock.api.animeQueueHeld).toHaveBeenCalledTimes(1);
+        expect(useAnimeStore.getState().queueHeld).toBe(true);
+        mock.emitAnimeQueueHeld(false);
+        expect(useAnimeStore.getState().queueHeld).toBe(false);
+        mock.emitAnimeQueueHeld(true);
+        expect(useAnimeStore.getState().queueHeld).toBe(true);
+    });
+
+    it('does not ask where the section does not exist', async () => {
+        await useAnimeStore.getState().init();
+        expect(mock.api.animeQueueHeld).not.toHaveBeenCalled();
+        expect(mock.api.onAnimeQueueHeld).not.toHaveBeenCalled();
     });
 });
 
@@ -980,6 +1003,47 @@ describe('jobs and library actions', () => {
         expect(mock.api.resumeAnimeJob).toHaveBeenCalledTimes(1);
         expect(mock.api.resumeAnimeJob).toHaveBeenCalledWith(7);
         expect(mock.api.cancelAnimeJob).not.toHaveBeenCalled();
+    });
+
+    it('pauses and resumes every download at once', async () => {
+        await useAnimeStore.getState().pauseAllJobs();
+        expect(mock.api.pauseAllAnimeJobs).toHaveBeenCalledTimes(1);
+        expect(mock.api.resumeAllAnimeJobs).not.toHaveBeenCalled();
+        await useAnimeStore.getState().resumeAllJobs();
+        expect(mock.api.resumeAllAnimeJobs).toHaveBeenCalledTimes(1);
+        expect(mock.api.pauseAllAnimeJobs).toHaveBeenCalledTimes(1);
+    });
+
+    it('pauses, resumes and cancels the downloads of the anime given, and only of them', async () => {
+        await useAnimeStore.getState().pauseAnimeJobs([3, 4]);
+        expect(mock.api.pauseAnimes.mock.calls).toEqual([[[3, 4]]]);
+        expect(mock.api.resumeAnimes).not.toHaveBeenCalled();
+        expect(mock.api.cancelAnimes).not.toHaveBeenCalled();
+        await useAnimeStore.getState().resumeAnimeJobs([5]);
+        expect(mock.api.resumeAnimes.mock.calls).toEqual([[[5]]]);
+        await useAnimeStore.getState().cancelAnimeJobs([6, 7]);
+        expect(mock.api.cancelAnimes.mock.calls).toEqual([[[6, 7]]]);
+        expect(mock.api.pauseAnimes).toHaveBeenCalledTimes(1);
+        expect(mock.api.pauseAllAnimeJobs).not.toHaveBeenCalled();
+        expect(mock.api.resumeAllAnimeJobs).not.toHaveBeenCalled();
+    });
+
+    it('tries again every download that failed or was cancelled, and none of the others', async () => {
+        useAnimeStore.setState({
+            jobs: (['running', 'queued', 'paused', 'error', 'cancelled'] as const).map((status, index) => {
+                return makeAnimeJob({ episodeId: index + 1, status });
+            })
+        });
+
+        await useAnimeStore.getState().retryFailedJobs();
+
+        expect(mock.api.retryAnimeJob.mock.calls).toEqual([[4], [5]]);
+    });
+
+    it('tries nothing again when no download failed', async () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' })] });
+        await useAnimeStore.getState().retryFailedJobs();
+        expect(mock.api.retryAnimeJob).not.toHaveBeenCalled();
     });
 
     it('cancels and retries through the api', async () => {

@@ -41,6 +41,12 @@ const ANIME_CHANNELS = [
     IPC.animeCheckNew,
     IPC.animeCheckState,
     IPC.animeClearFinished,
+    IPC.animePauseAll,
+    IPC.animeResumeAll,
+    IPC.animeQueueHeld,
+    IPC.animePauseAnimes,
+    IPC.animeResumeAnimes,
+    IPC.animeCancelAnimes,
     IPC.animeCover,
     IPC.animePause,
     IPC.animeResume,
@@ -147,6 +153,14 @@ function setup(available = true) {
         pause: vi.fn(),
         resume: vi.fn(),
         clearFinished: vi.fn(),
+        isHeld: vi.fn(() => {
+            return true;
+        }),
+        pauseAll: vi.fn(),
+        resumeAll: vi.fn(),
+        pauseAnimes: vi.fn(),
+        resumeAnimes: vi.fn(),
+        cancelAnimes: vi.fn(),
         forget: vi.fn()
     };
     const removeFiles = vi.fn();
@@ -400,6 +414,42 @@ describe('registerAnimeHandlers', () => {
         expect(queue.pause).toHaveBeenCalledWith(6);
         expect(queue.resume).toHaveBeenCalledTimes(1);
         expect(queue.resume).toHaveBeenCalledWith(7);
+    });
+
+    it('pauses and resumes everything through the queue, and says whether the queue is held', () => {
+        const { call, queue } = setup();
+        expect(call(IPC.animeQueueHeld)).toBe(true);
+        call(IPC.animePauseAll);
+        call(IPC.animeResumeAll);
+        expect(queue.isHeld).toHaveBeenCalledTimes(1);
+        expect(queue.pauseAll.mock.calls).toEqual([[]]);
+        expect(queue.resumeAll.mock.calls).toEqual([[]]);
+    });
+
+    it('pauses, resumes and cancels the downloads of the anime given, keeping only valid ids once each', () => {
+        const { call, queue } = setup();
+
+        call(IPC.animePauseAnimes, [3, 4, 3, '5', 0, -1, 1.5, null]);
+        call(IPC.animeResumeAnimes, [5]);
+        call(IPC.animeCancelAnimes, [6, 7]);
+
+        expect(queue.pauseAnimes.mock.calls).toEqual([[[3, 4]]]);
+        expect(queue.resumeAnimes.mock.calls).toEqual([[[5]]]);
+        expect(queue.cancelAnimes.mock.calls).toEqual([[[6, 7]]]);
+    });
+
+    it('treats what is not a list of ids as no anime', () => {
+        const { call, queue } = setup();
+
+        [undefined, null, 'x', 7, { 0: 1 }].forEach((value) => {
+            call(IPC.animePauseAnimes, value);
+            call(IPC.animeResumeAnimes, value);
+            call(IPC.animeCancelAnimes, value);
+        });
+
+        expect(queue.pauseAnimes.mock.calls).toEqual(Array(5).fill([[]]));
+        expect(queue.resumeAnimes.mock.calls).toEqual(Array(5).fill([[]]));
+        expect(queue.cancelAnimes.mock.calls).toEqual(Array(5).fill([[]]));
     });
 
     it('ignores an id that is not a positive whole number', () => {
@@ -1859,6 +1909,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeCheckNew, null)).toEqual({ ok: false, error: { code: 'UNKNOWN', message: unsupported.raw } });
         expect(ipc.call(IPC.animeLibrary)).toEqual([]);
         expect(ipc.call(IPC.animeJobs)).toEqual([]);
+        expect(ipc.call(IPC.animeQueueHeld)).toBe(false);
         expect(ipc.call(IPC.animeHistoryList)).toEqual([]);
         expect(ipc.call(IPC.animeStreamOpen, {})).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeImportLibrary)).toEqual({ ok: false, reason: 'cancelled' });
@@ -1874,7 +1925,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeSubtitleTranslateMany, { episodeIds: [1], language: 'Spanish' })).toBe(0);
         expect(ipc.call(IPC.animeSubtitleGenerate, { episodeId: 1, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitleGenerateEstimate, 1)).toEqual({ ok: false, reason: 'missing' });
-        [IPC.animeSubtitleGenerateCancel, IPC.animeSubtitleTranslateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
+        [IPC.animeSubtitleGenerateCancel, IPC.animeSubtitleTranslateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animePauseAll, IPC.animeResumeAll, IPC.animePauseAnimes, IPC.animeResumeAnimes, IPC.animeCancelAnimes, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
             expect(ipc.call(channel, 1)).toBeUndefined();
         });
     });

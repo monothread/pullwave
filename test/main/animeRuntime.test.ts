@@ -1412,13 +1412,30 @@ describe('createAnimeRuntime', () => {
             .map(([, job]) => {
                 return (job as AnimeJob).status;
             });
-        expect(jobs).toEqual(['queued', 'running', 'error']);
-        // There is no ani-cli in the empty resources folder, so the download ends with that error.
+        // There is no ani-cli in the empty resources folder: the download fails three times (the queue tries it again) and ends with that error.
+        expect(jobs).toEqual(['queued', 'running', 'queued', 'running', 'queued', 'running', 'error']);
         expect(runtime?.db.getEpisode(1)).toMatchObject({
             status: 'error',
             error: { code: 'UNKNOWN', raw: 'ani-cli is not installed.' }
         });
         expect(send).toHaveBeenCalledWith(IPC.eventAnimeLibrary);
+    });
+
+    it('tells the screen when the queue is held and let go', () => {
+        const { options: given, send } = options();
+        const runtime = open(given);
+
+        runtime?.queue.pauseAll();
+        runtime?.queue.resumeAll();
+
+        expect(
+            send.mock.calls.filter(([channel]) => {
+                return channel === IPC.eventAnimeQueueHeld;
+            })
+        ).toEqual([
+            [IPC.eventAnimeQueueHeld, true],
+            [IPC.eventAnimeQueueHeld, false]
+        ]);
     });
 });
 

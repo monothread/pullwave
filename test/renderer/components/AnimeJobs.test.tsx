@@ -249,3 +249,103 @@ describe('AnimeJobs: the episode downloading', () => {
         expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
     });
 });
+
+describe('AnimeJobs pause all and resume all', () => {
+    it.each(['running', 'queued'] as const)('offers PAUSE ALL when a download is %s, and not RESUME ALL', async (status) => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 5, status })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByRole('button', { name: 'RESUME ALL' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'PAUSE ALL' }));
+        expect(mock.api.pauseAllAnimeJobs).toHaveBeenCalledTimes(1);
+        expect(mock.api.resumeAllAnimeJobs).not.toHaveBeenCalled();
+    });
+
+    it('offers RESUME ALL when a download is paused, and not PAUSE ALL', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 6, status: 'paused' })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByRole('button', { name: 'PAUSE ALL' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'RESUME ALL' }));
+        expect(mock.api.resumeAllAnimeJobs).toHaveBeenCalledTimes(1);
+        expect(mock.api.pauseAllAnimeJobs).not.toHaveBeenCalled();
+    });
+
+    it('offers neither when the downloads are over', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'error' }), makeAnimeJob({ episodeId: 2, status: 'cancelled' })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByRole('button', { name: 'PAUSE ALL' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'RESUME ALL' })).not.toBeInTheDocument();
+    });
+
+    it('offers RESUME ALL and not PAUSE ALL in a held queue where the downloads wait, and says they start with it', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ queueHeld: true, jobs: [makeAnimeJob({ episodeId: 5, status: 'queued' })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByRole('button', { name: 'PAUSE ALL' })).not.toBeInTheDocument();
+        expect(screen.getByText('The downloads are paused: the episodes that wait start with RESUME ALL.')).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'RESUME ALL' }));
+        expect(mock.api.resumeAllAnimeJobs).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers RESUME ALL in a held queue even when nothing is paused or waiting, so the hold can be let go', () => {
+        useAnimeStore.setState({ queueHeld: true, jobs: [makeAnimeJob({ episodeId: 5, status: 'running' })] });
+        render(<AnimeJobs />);
+        expect(screen.getByRole('button', { name: 'PAUSE ALL' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'RESUME ALL' })).toBeEnabled();
+        expect(screen.queryByText(/The downloads are paused/)).not.toBeInTheDocument();
+    });
+
+    it('says nothing about a hold when the queue is not held', () => {
+        useAnimeStore.setState({ queueHeld: false, jobs: [makeAnimeJob({ episodeId: 5, status: 'queued' })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByText(/The downloads are paused/)).not.toBeInTheDocument();
+    });
+});
+
+describe('AnimeJobs trying the failed ones again', () => {
+    it('counts the downloads that failed or were cancelled on a button that tries them all again', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({
+            jobs: [
+                makeAnimeJob({ episodeId: 1, status: 'running' }),
+                makeAnimeJob({ episodeId: 2, status: 'error' }),
+                makeAnimeJob({ episodeId: 3, status: 'cancelled' }),
+                makeAnimeJob({ episodeId: 4, status: 'paused' })
+            ]
+        });
+        render(<AnimeJobs />);
+
+        await user.click(screen.getByRole('button', { name: 'RETRY FAILED (2)' }));
+
+        expect(mock.api.retryAnimeJob.mock.calls).toEqual([[2], [3]]);
+    });
+
+    it('has no such button when nothing failed', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'paused' })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByRole('button', { name: /^RETRY FAILED/ })).not.toBeInTheDocument();
+    });
+});
+
+describe('AnimeJobs the window to manage the downloads', () => {
+    it.each(['running', 'queued', 'paused'] as const)('offers MANAGE when a download is %s, and it opens the window to pick the anime', async (status) => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 5, animeId: 2, animeTitle: 'Bleach', status })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'MANAGE' }));
+
+        const dialog = confirmDialog('Manage downloads');
+        expect(within(dialog).getByRole('checkbox', { name: 'Bleach' })).not.toBeChecked();
+        await user.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('does not offer MANAGE when every download is over', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'done' }), makeAnimeJob({ episodeId: 2, status: 'error' }), makeAnimeJob({ episodeId: 3, status: 'cancelled' })] });
+        render(<AnimeJobs />);
+        expect(screen.queryByRole('button', { name: 'MANAGE' })).not.toBeInTheDocument();
+    });
+});

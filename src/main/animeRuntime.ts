@@ -220,6 +220,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         },
         onLibraryChanged: () => {
             options.send(IPC.eventAnimeLibrary);
+        },
+        onHeldChange: (held) => {
+            options.send(IPC.eventAnimeQueueHeld, held);
         }
     });
     // The episodes that were paused when the app closed are shown again, ready to go on or be cancelled.

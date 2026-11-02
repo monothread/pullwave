@@ -403,6 +403,15 @@ export interface CyberApi {
     pauseAnimeJob: (episodeId: number) => Promise<void>;
     resumeAnimeJob: (episodeId: number) => Promise<void>;
     clearFinishedAnimeJobs: () => Promise<void>;
+    // Pauses what is going on and holds what waits (it keeps waiting), and goes on with everything that is paused or held.
+    pauseAllAnimeJobs: () => Promise<void>;
+    resumeAllAnimeJobs: () => Promise<void>;
+    // Whether the queue is held by PAUSE ALL.
+    animeQueueHeld: () => Promise<boolean>;
+    // The same, for the downloads of these anime only (the rest of the queue is not held).
+    pauseAnimes: (animeIds: number[]) => Promise<void>;
+    resumeAnimes: (animeIds: number[]) => Promise<void>;
+    cancelAnimes: (animeIds: number[]) => Promise<void>;
     removeAnimeEpisode: (episodeId: number) => Promise<void>;
     removeAnime: (animeId: number) => Promise<void>;
     // Opens the folder the videos of an anime of the library are in.
@@ -461,6 +470,8 @@ export interface CyberApi {
     // Whether a check for new episodes of all the anime is going on now (the hourly one or a button), to show it when the screen is opened.
     getAnimeCheckState: () => Promise<AnimeCheckState>;
     onAnimeJobUpdate: (listener: (job: AnimeJob) => void) => () => void;
+    // The queue was held by PAUSE ALL (true) or let go by RESUME ALL (false).
+    onAnimeQueueHeld: (listener: (held: boolean) => void) => () => void;
     onAnimeLibraryChanged: (listener: () => void) => () => void;
     onAnimeMigrationProgress: (listener: (progress: AnimeMigrationProgress) => void) => () => void;
     // A cover that was checked again and changed.

@@ -7,7 +7,8 @@ version_number="0.0.0-fake"
 #                                            "1 pwid:twin-anime-10 Twin Anime" and "2 pwid:twin-anime-season-2-11 Twin Anime", the first with 3 episodes and the second with 2)
 #   episodes:  -S <n> <words>                lists episodes 1 to 3, or 1 to 4 once a test wrote more-episodes in the history folder (words with "single": the one episode is picked silently)
 #   stream:    -S <n> -e <ep> -q <q> ...     (with the debug player) prints the address of the episode, the subtitle and the list of subtitles
-#   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists)
+#   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists,
+#                                            "flaky": a connection error the first time each episode is asked for, and the video the next time)
 # Every call is appended to $ANI_CLI_HIST_DIR/calls.log as "<mode> | <arguments>", and the subtitle languages it was
 # asked to try to subtitle-labels.log.
 mkdir -p "$ANI_CLI_HIST_DIR"
@@ -42,6 +43,17 @@ if [ "$download" = 1 ]; then
         *fail*)
             printf '\033[2K\r\033[1;31mNo sources found for %s!\033[0m\n' "$ANI_CLI_MODE" >&2
             exit 1
+            ;;
+    esac
+    case "$query" in
+        *flaky*)
+            # The first call of each episode fails like a connection that dropped; the next ones work.
+            marker="$ANI_CLI_HIST_DIR/flaky-$index-$episode"
+            if [ ! -f "$marker" ]; then
+                : > "$marker"
+                printf '\033[2K\r\033[1;31mConnection error: could not resolve host\033[0m\n' >&2
+                exit 1
+            fi
             ;;
     esac
     title="Fake Anime"

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AnimeJob } from '@shared/anime';
 import { DownloadHero } from '../downloads/DownloadHero';
 import { AnimeCover } from './AnimeCover';
@@ -7,6 +8,7 @@ import { ConfirmButton } from './ConfirmButton';
 import { animeErrorReport, animeStatusKey } from './animeText';
 import { formatPercent } from './jobStatus';
 import { ErrorNotice } from './ErrorNotice';
+import { AnimeManageDownloads } from './AnimeManageDownloads';
 
 const ORDER: Record<AnimeJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
@@ -14,11 +16,39 @@ function isFinished(job: AnimeJob): boolean {
     return job.status === 'done' || job.status === 'error' || job.status === 'cancelled';
 }
 
+function isFailed(job: AnimeJob): boolean {
+    return job.status === 'error' || job.status === 'cancelled';
+}
+
+function isPausable(job: AnimeJob): boolean {
+    return job.status === 'running' || job.status === 'queued';
+}
+
+function isRunning(job: AnimeJob): boolean {
+    return job.status === 'running';
+}
+
+function isQueued(job: AnimeJob): boolean {
+    return job.status === 'queued';
+}
+
+function isPaused(job: AnimeJob): boolean {
+    return job.status === 'paused';
+}
+
+function isManageable(job: AnimeJob): boolean {
+    return job.status === 'running' || job.status === 'queued' || job.status === 'paused';
+}
+
 // The list on the downloads screen: the running ones first, then the waiting ones, then the ones that are over.
 export function AnimeJobs() {
     const t = useTranslator();
+    const [managing, setManaging] = useState(false);
     const jobs = useAnimeStore((state) => {
         return state.jobs;
+    });
+    const queueHeld = useAnimeStore((state) => {
+        return state.queueHeld;
     });
     const cancelJob = useAnimeStore((state) => {
         return state.cancelJob;
@@ -35,20 +65,29 @@ export function AnimeJobs() {
     const clearFinishedJobs = useAnimeStore((state) => {
         return state.clearFinishedJobs;
     });
+    const pauseAllJobs = useAnimeStore((state) => {
+        return state.pauseAllJobs;
+    });
+    const resumeAllJobs = useAnimeStore((state) => {
+        return state.resumeAllJobs;
+    });
+    const retryFailedJobs = useAnimeStore((state) => {
+        return state.retryFailedJobs;
+    });
 
     if (jobs.length === 0) {
         return <p className="empty">{t('anime.jobs.empty')}</p>;
     }
+    const failed = jobs.filter(isFailed).length;
+    // A held queue has nothing more to pause than the episodes resumed one by one; what waits there goes on with RESUME ALL.
+    const canPauseAll = queueHeld ? jobs.some(isRunning) : jobs.some(isPausable);
+    const canResumeAll = queueHeld || jobs.some(isPaused);
     const sorted = [...jobs].sort((first, second) => {
         return ORDER[first.status] - ORDER[second.status];
     });
 
-    const running = jobs.find((job) => {
-        return job.status === 'running';
-    });
-    const waiting = jobs.filter((job) => {
-        return job.status === 'queued';
-    }).length;
+    const running = jobs.find(isRunning);
+    const waiting = jobs.filter(isQueued).length;
 
     return (
         <section className="anime__jobs queue" aria-label={t('anime.jobs.label', { count: jobs.length })}>
@@ -67,6 +106,50 @@ export function AnimeJobs() {
             )}
             <div className="queue__toolbar">
                 <span className="section-label">{t('anime.jobs.label', { count: jobs.length })}</span>
+                {canPauseAll && (
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            void pauseAllJobs();
+                        }}
+                    >
+                        {t('anime.jobs.pauseAll')}
+                    </button>
+                )}
+                {canResumeAll && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void resumeAllJobs();
+                        }}
+                    >
+                        {t('anime.jobs.resumeAll')}
+                    </button>
+                )}
+                {jobs.some(isManageable) && (
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            setManaging(true);
+                        }}
+                    >
+                        {t('anime.jobs.manage')}
+                    </button>
+                )}
+                {failed > 0 && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void retryFailedJobs();
+                        }}
+                    >
+                        {t('anime.jobs.retryAll', { count: failed })}
+                    </button>
+                )}
                 {jobs.some(isFinished) && (
                     <ConfirmButton
                         className="btn btn--small btn--ghost"
@@ -79,6 +162,14 @@ export function AnimeJobs() {
                     </ConfirmButton>
                 )}
             </div>
+            {managing && (
+                <AnimeManageDownloads
+                    onClose={() => {
+                        setManaging(false);
+                    }}
+                />
+            )}
+            {queueHeld && jobs.some(isQueued) && <p className="field__hint">{t('anime.jobs.held')}</p>}
             {sorted.map((job) => {
                 const title = t('anime.job.title', { title: job.animeTitle, episode: job.episode });
                 return (

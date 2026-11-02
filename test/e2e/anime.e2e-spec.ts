@@ -1313,6 +1313,152 @@ test('shows why a download failed and retries it', async () => {
     ).toHaveLength(2);
 });
 
+
+test('tries an episode again by itself when the connection drops, and finishes it with no failure on the screen', async () => {
+    test.slow();
+    const { page, animeDir } = session;
+    await openAnimeTab(page);
+    await search(page, 'flaky');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1]);
+
+    await showDownloads(page);
+    await expect(page.locator('.toast').filter({ hasText: 'Download complete: Fake Anime · EP 1' })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('anime-job')).toHaveCount(0);
+    await expect(page.getByText('FAILED')).toHaveCount(0);
+    expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'))).toBe(true);
+    // ani-cli was asked twice for the same episode: the one that failed with the connection and the one the queue made by itself.
+    expect(
+        calls().filter((line) => {
+            return line === 'sub | -d -S 1 -e 1 -q 720p flaky';
+        })
+    ).toHaveLength(2);
+});
+
+test('tries again every failed download with RETRY FAILED', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await search(page, 'fail');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1]);
+
+    await showDownloads(page);
+    const job = page.getByTestId('anime-job');
+    await expect(job.locator('.badge--error')).toHaveText('FAILED');
+    const downloadCalls = (): number => {
+        return calls().filter((line) => {
+            return line.includes('-d ');
+        }).length;
+    };
+    // NO_SOURCES is not tried again by itself: ani-cli was asked once.
+    expect(downloadCalls()).toBe(1);
+
+    await page.getByRole('button', { name: 'RETRY FAILED (1)' }).click();
+
+    await expect.poll(downloadCalls).toBe(2);
+    await expect(job.locator('.badge--error')).toHaveText('FAILED');
+    await expect(page.getByRole('button', { name: 'RETRY FAILED (1)' })).toBeVisible();
+});
+
+test('pauses everything at once with PAUSE ALL and goes on with everything with RESUME ALL', async () => {
+    test.slow();
+    const { page, animeDir } = session;
+    await openAnimeTab(page);
+    await search(page, 'slow');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1, 2, 3]);
+
+    await showDownloads(page);
+    const jobs = page.getByTestId('anime-job');
+    await expect(jobs.locator('.badge--running')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: 'RESUME ALL' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'PAUSE ALL' }).click();
+
+    await expect(jobs.locator('.badge--paused')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: 'PAUSE ALL' })).toHaveCount(0);
+    expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'))).toBe(false);
+    await page.getByRole('button', { name: 'RESUME ALL' }).click();
+    await expect(page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 30000 });
+    await expect(jobs).toHaveCount(0, { timeout: 30000 });
+    for (const episode of [1, 2, 3]) {
+        expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', `Episode ${String(episode)}`, `Fake Anime Episode ${String(episode)}.mp4`))).toBe(true);
+    }
+});
+
+test('pauses and resumes the downloads of an anime picked in the window of MANAGE, without holding the queue', async () => {
+    test.slow();
+    const { page, animeDir } = session;
+    await openAnimeTab(page);
+    await search(page, 'slow');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1, 2, 3]);
+
+    await showDownloads(page);
+    const jobs = page.getByTestId('anime-job');
+    await expect(jobs.locator('.badge--running')).toHaveCount(3);
+    await page.getByRole('button', { name: 'MANAGE' }).click();
+    const manage = page.getByRole('dialog', { name: 'Manage downloads' });
+    await expect(manage.getByRole('listitem')).toHaveText(['Fake Anime · 3 downloading · 0 waiting · 0 paused']);
+    await expect(manage.getByRole('button', { name: 'PAUSE SELECTED' })).toBeDisabled();
+    await manage.getByRole('checkbox', { name: 'Fake Anime' }).check();
+    await expect(manage.getByRole('button', { name: 'RESUME SELECTED' })).toBeDisabled();
+    await manage.getByRole('button', { name: 'PAUSE SELECTED' }).click();
+
+    await expect(manage.getByRole('listitem')).toHaveText(['Fake Anime · 0 downloading · 0 waiting · 3 paused']);
+    await manage.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(manage).toHaveCount(0);
+    await expect(jobs.locator('.badge--paused')).toHaveCount(3);
+    // Only the anime was paused: the queue itself is not held.
+    await expect(page.getByText(/The downloads are paused/)).toHaveCount(0);
+    expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'))).toBe(false);
+
+    await page.getByRole('button', { name: 'MANAGE' }).click();
+    await manage.getByRole('checkbox', { name: 'Select all' }).check();
+    await expect(manage.getByRole('button', { name: 'PAUSE SELECTED' })).toBeDisabled();
+    await manage.getByRole('button', { name: 'RESUME SELECTED' }).click();
+    await manage.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 30000 });
+    await expect(jobs).toHaveCount(0, { timeout: 30000 });
+    for (const episode of [1, 2, 3]) {
+        expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', `Episode ${String(episode)}`, `Fake Anime Episode ${String(episode)}.mp4`))).toBe(true);
+    }
+});
+
+test('cancels the downloads of the anime picked in the window of MANAGE after asking, deleting what they downloaded', async () => {
+    const { page, animeDir } = session;
+    await openAnimeTab(page);
+    await search(page, 'slow');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1, 2, 3]);
+
+    await showDownloads(page);
+    const jobs = page.getByTestId('anime-job');
+    await expect(jobs.locator('.badge--running')).toHaveCount(3);
+    await page.getByRole('button', { name: 'MANAGE' }).click();
+    const manage = page.getByRole('dialog', { name: 'Manage downloads' });
+    await expect(manage.getByRole('button', { name: 'CANCEL SELECTED' })).toBeDisabled();
+    await manage.getByRole('checkbox', { name: 'Select all' }).check();
+    await manage.getByRole('button', { name: 'CANCEL SELECTED' }).click();
+    // Going back keeps the downloads going.
+    await answerConfirm(page, 'Cancel the downloads of the selected anime?', 'BACK');
+    await expect(jobs.locator('.badge--running')).toHaveCount(3);
+
+    await manage.getByRole('button', { name: 'CANCEL SELECTED' }).click();
+    await expect(page.getByRole('dialog', { name: 'Cancel the downloads of the selected anime?' }).getByText('Every episode of them that is downloading, waiting or paused stops, and what it downloaded so far is deleted. You can start them again later.')).toBeVisible();
+    await answerConfirm(page, 'Cancel the downloads of the selected anime?', 'CANCEL SELECTED');
+
+    await expect(manage.getByText('No downloads to manage.')).toBeVisible();
+    await manage.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(jobs.locator('.badge--cancelled')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: 'MANAGE' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'RETRY FAILED (3)' })).toBeVisible();
+    // Nothing is left running to finish the files, and the folders of the episodes go with what was in them.
+    await page.waitForTimeout(7000);
+    for (const episode of [1, 2, 3]) {
+        expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', `Episode ${String(episode)}`))).toBe(false);
+    }
+});
+
 test('keeps the library after the app is restarted', async () => {
     const { page, userData } = session;
     await openAnimeTab(page);

@@ -77,6 +77,8 @@ export interface AnimeState {
     // Where BACK goes from the downloads screen.
     returnView: AnimeBrowseView;
     jobs: AnimeJob[];
+    // The queue is held by PAUSE ALL: what waits keeps waiting.
+    queueHeld: boolean;
     library: LibraryAnime[];
     // What was opened or watched, the most recent first.
     history: AnimeHistoryEntry[];
@@ -151,6 +153,15 @@ export interface AnimeState {
     // Stops a download that is going on keeping what it downloaded, and goes on from there later.
     pauseJob: (episodeId: number) => Promise<void>;
     resumeJob: (episodeId: number) => Promise<void>;
+    // Pauses what is going on and holds what waits, and goes on with everything that is paused or held.
+    pauseAllJobs: () => Promise<void>;
+    resumeAllJobs: () => Promise<void>;
+    // The same for the downloads of the anime given only (the rest of the queue is not held).
+    pauseAnimeJobs: (animeIds: number[]) => Promise<void>;
+    resumeAnimeJobs: (animeIds: number[]) => Promise<void>;
+    cancelAnimeJobs: (animeIds: number[]) => Promise<void>;
+    // Tries again every download that failed or was cancelled.
+    retryFailedJobs: () => Promise<void>;
     clearFinishedJobs: () => Promise<void>;
     removeEpisode: (episodeId: number) => Promise<void>;
     removeAnime: (animeId: number) => Promise<void>;
@@ -271,6 +282,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         view: 'schedule',
         returnView: 'schedule',
         jobs: [],
+        queueHeld: false,
         library: [],
         history: [],
         search: INITIAL_SEARCH,
@@ -295,8 +307,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     return undefined;
                 };
             }
-            const [library, jobs, history, checkState] = await Promise.all([api.listAnimeLibrary(), api.listAnimeJobs(), api.listAnimeHistory(), api.getAnimeCheckState()]);
-            set({ library, jobs, history, checkState });
+            const [library, jobs, history, checkState, queueHeld] = await Promise.all([api.listAnimeLibrary(), api.listAnimeJobs(), api.listAnimeHistory(), api.getAnimeCheckState(), api.animeQueueHeld()]);
+            set({ library, jobs, history, checkState, queueHeld });
             const unsubscribers = [
                 api.onAnimeJobUpdate((job) => {
                     if (job.status === 'done') {
@@ -314,6 +326,9 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     set((state) => {
                         return { jobs: upsertAnimeJob(state.jobs, job) };
                     });
+                }),
+                api.onAnimeQueueHeld((queueHeld) => {
+                    set({ queueHeld });
                 }),
                 api.onAnimeLibraryChanged(() => {
                     void get().refreshLibrary();
@@ -711,6 +726,37 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         resumeJob: async (episodeId) => {
             await window.api.resumeAnimeJob(episodeId);
+        },
+
+        pauseAllJobs: async () => {
+            await window.api.pauseAllAnimeJobs();
+        },
+
+        resumeAllJobs: async () => {
+            await window.api.resumeAllAnimeJobs();
+        },
+
+        pauseAnimeJobs: async (animeIds) => {
+            await window.api.pauseAnimes(animeIds);
+        },
+
+        resumeAnimeJobs: async (animeIds) => {
+            await window.api.resumeAnimes(animeIds);
+        },
+
+        cancelAnimeJobs: async (animeIds) => {
+            await window.api.cancelAnimes(animeIds);
+        },
+
+        retryFailedJobs: async () => {
+            const failed = get().jobs.filter((job) => {
+                return job.status === 'error' || job.status === 'cancelled';
+            });
+            await Promise.all(
+                failed.map((job) => {
+                    return window.api.retryAnimeJob(job.episodeId);
+                })
+            );
         },
 
         clearFinishedJobs: async () => {

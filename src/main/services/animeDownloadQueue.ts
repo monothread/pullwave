@@ -1,5 +1,5 @@
 import { posix, win32 } from 'node:path';
-import type { AniDownloadProgress, AniError, AnimeAddRequest, AnimeAddResponse, AnimeDownloadRequest, AnimeEpisodeRecord, AnimeJob, AnimeRecord, LibraryAnime } from '@shared/anime';
+import type { AniDownloadProgress, AniError, AniErrorCode, AnimeAddRequest, AnimeAddResponse, AnimeDownloadRequest, AnimeEpisodeRecord, AnimeJob, AnimeRecord, LibraryAnime } from '@shared/anime';
 import type { Settings } from '@shared/types';
 import type { AnimeDb } from './animeDb';
 import {
@@ -30,6 +30,8 @@ export interface AnimeQueueDependencies {
     onEpisodeDownloaded?: (episodeId: number) => void;
     onJobUpdate: (job: AnimeJob) => void;
     onLibraryChanged: () => void;
+    // The queue was held (by PAUSE ALL) or let go (by RESUME ALL).
+    onHeldChange?: (held: boolean) => void;
     // Deletes a folder with what is in it (the folder of an episode whose download was cancelled, removed or cut short by closing the app).
     removeDirectory?: (path: string) => void;
     // The system the files are on (decides the rules of file names); this one by default.
@@ -40,6 +42,10 @@ export interface AnimeQueueDependencies {
 
 // How long closing the app waits for the downloads to end before it deletes what they left behind.
 export const ANIME_SHUTDOWN_TIMEOUT_MS = 5000;
+// How many times an episode is tried before it is left as an error to retry by hand.
+export const ANIME_MAX_TRIES = 3;
+// Errors that asking again will not fix: the source has nothing for it, or the program that downloads is not there.
+const FINAL_ERRORS: ReadonlySet<AniErrorCode> = new Set<AniErrorCode>(['NO_RESULTS', 'NO_SOURCES', 'EPISODE_NOT_RELEASED', 'INVALID_SELECTION', 'BINARY_MISSING']);
 
 function isActive(job: AnimeJob): boolean {
     return job.status === 'queued' || job.status === 'running';
@@ -55,6 +61,11 @@ export class AnimeDownloadQueue {
     private closed = false;
     // Episodes asked to pause: the run is ended on purpose, and its partial file is kept for the next one to go on from.
     private readonly pauseRequested = new Set<number>();
+    // How many times each episode has failed in a row (the failures that may pass are tried again by the queue).
+    private readonly tries = new Map<number, number>();
+    // While the queue is held (PAUSE ALL) the episodes that wait keep waiting; only the ones the user resumed one by one start.
+    private held = false;
+    private readonly startsWhileHeld = new Set<number>();
 
     constructor(private readonly deps: AnimeQueueDependencies) {}
 
@@ -64,6 +75,10 @@ export class AnimeDownloadQueue {
 
     pendingCount(): number {
         return this.list().filter(isActive).length;
+    }
+
+    isHeld(): boolean {
+        return this.held;
     }
 
     // Queues the episodes (the ones already downloaded or already waiting are left as they are) and returns the anime.
@@ -136,6 +151,7 @@ export class AnimeDownloadQueue {
         if (!episode || !anime || episode.status === 'done' || this.isActiveJob(episodeId)) {
             return;
         }
+        this.tries.delete(episodeId);
         this.queueEpisode(anime, this.deps.db.ensureEpisode(anime.id, episode.number));
         this.deps.onLibraryChanged();
         this.pump();
@@ -166,9 +182,70 @@ export class AnimeDownloadQueue {
 
     // Queues a paused episode again (also after the app was restarted): the download finds its partial file and goes on from it.
     resume(episodeId: number): void {
-        if (this.deps.db.getEpisode(episodeId)?.status === 'paused') {
-            this.retry(episodeId);
+        if (this.deps.db.getEpisode(episodeId)?.status !== 'paused') {
+            return;
         }
+        if (this.held) {
+            this.startsWhileHeld.add(episodeId);
+        }
+        this.retry(episodeId);
+    }
+
+    // Pauses everything: the queue is held first (so the episodes that wait keep waiting, and none takes the place of one that is
+    // paused), then the ones that are running end their run, keeping what they downloaded.
+    pauseAll(): void {
+        this.setHeld(true);
+        this.startsWhileHeld.clear();
+        this.list().forEach((job) => {
+            if (job.status === 'running') {
+                this.pause(job.episodeId);
+            }
+        });
+        this.deps.onLibraryChanged();
+    }
+
+    // Lets the queue go and queues again every episode that is paused.
+    resumeAll(): void {
+        this.setHeld(false);
+        this.startsWhileHeld.clear();
+        this.list().forEach((job) => {
+            if (job.status === 'paused') {
+                this.resume(job.episodeId);
+            }
+        });
+        this.pump();
+    }
+
+    // Pauses the downloads of these anime, without holding the queue: the episodes that are running end their run keeping what they
+    // downloaded, and the ones that wait are paused where they are (they go on, one by one, with RESUME or with resumeAnimes).
+    pauseAnimes(animeIds: readonly number[]): void {
+        this.jobsOfAnimes(animeIds).forEach((job) => {
+            if (job.status === 'running') {
+                this.pause(job.episodeId);
+            } else if (job.status === 'queued') {
+                this.pauseWaiting(job);
+            }
+        });
+        this.deps.onLibraryChanged();
+    }
+
+    // Queues again the paused episodes of these anime.
+    resumeAnimes(animeIds: readonly number[]): void {
+        this.jobsOfAnimes(animeIds).forEach((job) => {
+            if (job.status === 'paused') {
+                this.resume(job.episodeId);
+            }
+        });
+        this.pump();
+    }
+
+    // Cancels every episode of these anime that is running, waiting or paused.
+    cancelAnimes(animeIds: readonly number[]): void {
+        this.jobsOfAnimes(animeIds).forEach((job) => {
+            if (job.status === 'queued' || job.status === 'running' || job.status === 'paused') {
+                this.cancel(job.episodeId);
+            }
+        });
     }
 
     // Cancels an episode that waits, runs or is paused, and deletes the folder of the episode with the partial file in it.
@@ -185,6 +262,8 @@ export class AnimeDownloadQueue {
             return;
         }
         this.removePartial(job.animeId, job.episode);
+        this.startsWhileHeld.delete(episodeId);
+        this.tries.delete(episodeId);
         this.deps.db.markFailed(episodeId, 'cancelled', null);
         this.update(job, { status: 'cancelled' });
         this.deps.onLibraryChanged();
@@ -215,6 +294,8 @@ export class AnimeDownloadQueue {
             this.jobs.delete(episodeId);
             this.lastReported.delete(episodeId);
             this.pauseRequested.delete(episodeId);
+            this.startsWhileHeld.delete(episodeId);
+            this.tries.delete(episodeId);
         });
         this.pump();
     }
@@ -228,6 +309,14 @@ export class AnimeDownloadQueue {
     // other one is cancelled and the folder of its episode is deleted, with the unfinished file in it.
     async shutdown(timeoutMs: number = ANIME_SHUTDOWN_TIMEOUT_MS): Promise<void> {
         this.closed = true;
+        // The episodes that wait in a held queue were paused by the user: they are found paused when the app opens again.
+        if (this.held) {
+            this.list().forEach((job) => {
+                if (job.status === 'queued' && !this.handles.has(job.episodeId)) {
+                    this.deps.db.markPaused(job.episodeId);
+                }
+            });
+        }
         const ending: Array<Promise<unknown>> = [];
         const discarded: string[] = [];
         this.handles.forEach((handle, episodeId) => {
@@ -253,6 +342,36 @@ export class AnimeDownloadQueue {
         discarded.forEach((directory) => {
             this.deps.removeDirectory?.(directory);
         });
+    }
+
+    // The jobs of these anime, as they are now (a copy: acting on one may change the list).
+    private jobsOfAnimes(animeIds: readonly number[]): AnimeJob[] {
+        const wanted = new Set(animeIds);
+        return this.list().filter((job) => {
+            return wanted.has(job.animeId);
+        });
+    }
+
+    // An episode that waits is paused where it is: it has no run to end and nothing downloaded yet.
+    private pauseWaiting(job: AnimeJob): void {
+        this.startsWhileHeld.delete(job.episodeId);
+        this.deps.db.markPaused(job.episodeId);
+        this.update(job, { status: 'paused' });
+    }
+
+    private setHeld(held: boolean): void {
+        if (this.held !== held) {
+            this.held = held;
+            this.deps.onHeldChange?.(held);
+        }
+    }
+
+    // Whether an episode that waits may start now: the queue is not held, or the user resumed this one by itself.
+    private canStart(job: AnimeJob): boolean {
+        if (job.status !== 'queued' || this.handles.has(job.episodeId)) {
+            return false;
+        }
+        return !this.held || this.startsWhileHeld.has(job.episodeId);
     }
 
     private isActiveJob(episodeId: number): boolean {
@@ -312,7 +431,7 @@ export class AnimeDownloadQueue {
             if (running >= limit) {
                 return;
             }
-            if (job.status === 'queued' && !this.handles.has(job.episodeId) && this.launch(job)) {
+            if (this.canStart(job) && this.launch(job)) {
                 running += 1;
             }
         }
@@ -376,9 +495,13 @@ export class AnimeDownloadQueue {
                 db.markFailed(job.episodeId, 'cancelled', null);
                 this.update(job, { status: 'cancelled', speed: '', eta: '' });
             } else if (result.status === 'error') {
-                this.finishWithError(job, result.error);
+                this.onFailure(job, result.error);
             } else {
                 this.finishDownloaded(job, result.value.filePath, downloadDir, anime.title, platform);
+            }
+            // An episode the user resumed in a held queue may still start again when it is tried again after a failure.
+            if (job.status !== 'queued') {
+                this.startsWhileHeld.delete(job.episodeId);
             }
             this.deps.onLibraryChanged();
             this.pump();
@@ -419,6 +542,20 @@ export class AnimeDownloadQueue {
         this.update(job, { percent: progress.percent, speed: progress.speed ?? '', eta: progress.eta ?? '' });
     }
 
+    // A failure that may pass is tried again (what was downloaded is kept); one that will not, or an episode that has used its tries, is
+    // left as an error.
+    private onFailure(job: AnimeJob, error: AniError): void {
+        const tries = (this.tries.get(job.episodeId) ?? 0) + 1;
+        if (FINAL_ERRORS.has(error.code) || tries >= ANIME_MAX_TRIES) {
+            this.tries.delete(job.episodeId);
+            this.finishWithError(job, error);
+            return;
+        }
+        this.tries.set(job.episodeId, tries);
+        this.deps.db.ensureEpisode(job.animeId, job.episode);
+        this.update(job, { status: 'queued', speed: '', eta: '', error: null });
+    }
+
     private finishDownloaded(job: AnimeJob, filePath: string | null, downloadDir: string, title: string, platform: NodeJS.Platform): void {
         const path = filePath ?? (platform === 'win32' ? win32 : posix).join(downloadDir, animeFileName(title, job.episode));
         const size = this.deps.fileSize(path);
@@ -426,6 +563,7 @@ export class AnimeDownloadQueue {
             this.finishWithError(job, { code: 'UNKNOWN', raw: `The downloaded file was not found: ${path}` });
             return;
         }
+        this.tries.delete(job.episodeId);
         this.deps.db.markDone(job.episodeId, path, size);
         this.deps.onEpisodeDownloaded?.(job.episodeId);
         this.update(job, { status: 'done', percent: 100, speed: '', eta: '' });

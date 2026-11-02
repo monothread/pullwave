@@ -57,8 +57,8 @@ describe('MangaManageDownloads with adult sources', () => {
 describe('groupActiveJobs', () => {
     it('counts the chapters of each manga by what they are doing, in the order the mangas first appear', () => {
         expect(groupActiveJobs(jobs())).toEqual([
-            { mangaId: 1, title: 'One Piece', running: 1, queued: 2, paused: 0 },
-            { mangaId: 2, title: 'Bleach', running: 0, queued: 0, paused: 1 }
+            { id: 1, title: 'One Piece', running: 1, queued: 2, paused: 0 },
+            { id: 2, title: 'Bleach', running: 0, queued: 0, paused: 1 }
         ]);
     });
 

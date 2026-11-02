@@ -418,6 +418,24 @@ const api: CyberApi = {
     clearFinishedAnimeJobs: () => {
         return ipcRenderer.invoke(IPC.animeClearFinished);
     },
+    pauseAllAnimeJobs: () => {
+        return ipcRenderer.invoke(IPC.animePauseAll);
+    },
+    resumeAllAnimeJobs: () => {
+        return ipcRenderer.invoke(IPC.animeResumeAll);
+    },
+    animeQueueHeld: () => {
+        return ipcRenderer.invoke(IPC.animeQueueHeld);
+    },
+    pauseAnimes: (animeIds) => {
+        return ipcRenderer.invoke(IPC.animePauseAnimes, animeIds);
+    },
+    resumeAnimes: (animeIds) => {
+        return ipcRenderer.invoke(IPC.animeResumeAnimes, animeIds);
+    },
+    cancelAnimes: (animeIds) => {
+        return ipcRenderer.invoke(IPC.animeCancelAnimes, animeIds);
+    },
     removeAnimeEpisode: (episodeId) => {
         return ipcRenderer.invoke(IPC.animeRemoveEpisode, episodeId);
     },
@@ -525,6 +543,9 @@ const api: CyberApi = {
     },
     onAnimeJobUpdate: (listener) => {
         return subscribe<AnimeJob>(IPC.eventAnimeJob, listener);
+    },
+    onAnimeQueueHeld: (listener) => {
+        return subscribe<boolean>(IPC.eventAnimeQueueHeld, listener);
     },
     onAnimeLibraryChanged: (listener) => {
         return subscribe<undefined>(IPC.eventAnimeLibrary, () => {

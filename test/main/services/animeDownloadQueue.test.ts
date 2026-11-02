@@ -3,7 +3,7 @@ import type { AniDownloadProgress, AniRunResult, AnimeAddRequest, AnimeDownloadR
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { AnimeDb } from '@main/services/animeDb';
-import { AnimeDownloadQueue } from '@main/services/animeDownloadQueue';
+import { ANIME_MAX_TRIES, AnimeDownloadQueue } from '@main/services/animeDownloadQueue';
 import { DEFAULT_ANIME_FOLDER } from '@main/services/animeFiles';
 import type { AniDownloadHandle, AniDownloadOptions } from '@main/services/aniCliService';
 
@@ -29,6 +29,7 @@ function setup(
     });
     const downloads: Download[] = [];
     const updates: AnimeJob[] = [];
+    const heldChanges: boolean[] = [];
     const state = { settings: { ...DEFAULT_SETTINGS, ...settings }, libraryChanges: 0, directories: [] as string[], files: { ...files }, downloaded: [] as number[] };
     const ensureDirectory = vi.fn((path: string) => {
         state.directories.push(path);
@@ -71,9 +72,12 @@ function setup(
         },
         onLibraryChanged: () => {
             state.libraryChanges += 1;
+        },
+        onHeldChange: (held) => {
+            heldChanges.push(held);
         }
     });
-    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory, site };
+    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory, site, heldChanges };
 }
 
 async function settleResults(): Promise<void> {
@@ -171,7 +175,7 @@ describe('AnimeDownloadQueue.enqueue', () => {
     it('queues an episode that failed before again', async () => {
         const { queue, downloads } = setup({ maxConcurrent: 1 });
         queue.enqueue({ ...REQUEST, episodes: ['1'] });
-        downloads[0]?.finish({ status: 'error', error: { code: 'NETWORK', raw: 'down' } });
+        downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'down' } });
         await settleResults();
 
         queue.enqueue({ ...REQUEST, episodes: ['1'] });
@@ -416,7 +420,7 @@ describe('AnimeDownloadQueue.cancel', () => {
     it('ignores a job that failed or was cancelled already', async () => {
         const { queue, downloads, removeDirectory } = setup({ maxConcurrent: 2 });
         queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
-        downloads[0]?.finish({ status: 'error', error: { code: 'BLOCKED', raw: 'Blocked.' } });
+        downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked.' } });
         queue.cancel(2);
         downloads[1]?.finish({ status: 'cancelled' });
         await settleResults();
@@ -436,7 +440,7 @@ describe('AnimeDownloadQueue.retry', () => {
     it('queues an episode that failed again', async () => {
         const { queue, downloads, db } = setup({ maxConcurrent: 1 });
         queue.enqueue({ ...REQUEST, episodes: ['1'] });
-        downloads[0]?.finish({ status: 'error', error: { code: 'BLOCKED', raw: 'Blocked by cloudflare.' } });
+        downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked by cloudflare.' } });
         await settleResults();
 
         queue.retry(1);
@@ -535,7 +539,7 @@ describe('AnimeDownloadQueue.forget', () => {
         const anime = queue.enqueue({ ...REQUEST, episodes: ['4', '1', '2', '3', '5'] })!;
         downloads[0]?.finish(doneAt('/a/4.mp4'));
         await settleResults();
-        downloads[1]?.finish({ status: 'error', error: { code: 'BLOCKED', raw: 'Blocked.' } });
+        downloads[1]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked.' } });
         await settleResults();
         queue.cancel(db.ensureEpisode(anime.id, '2').id);
         downloads[2]?.finish({ status: 'cancelled' });
@@ -803,18 +807,18 @@ describe('AnimeDownloadQueue pause and resume', () => {
             const { queue, downloads, db } = setup({ maxConcurrent: 1 });
             queue.enqueue({ ...REQUEST, episodes: ['1'] });
             queue.pause(1);
-            downloads[0]?.finish({ status: 'error', error: { code: 'NETWORK', raw: 'offline' } });
+            downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'offline' } });
             await settleResults();
 
             expect(queue.list()[0]?.status).toBe('error');
-            expect(db.getEpisode(1)).toMatchObject({ status: 'error', error: { code: 'NETWORK', raw: 'offline' } });
+            expect(db.getEpisode(1)).toMatchObject({ status: 'error', error: { code: 'NO_SOURCES', raw: 'offline' } });
         });
 
         it('does not turn a cancel after a failed pause into a pause', async () => {
             const { queue, downloads } = setup({ maxConcurrent: 1 });
             queue.enqueue({ ...REQUEST, episodes: ['1'] });
             queue.pause(1);
-            downloads[0]?.finish({ status: 'error', error: { code: 'NETWORK', raw: 'offline' } });
+            downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'offline' } });
             await settleResults();
             queue.retry(1);
 
@@ -1213,7 +1217,7 @@ describe('AnimeDownloadQueue downloads that are complete', () => {
         queue.enqueue({ ...REQUEST, episodes: ['1', '2', '3', '4'] });
         downloads[0]?.finish(doneAt('/a/1.mp4'));
         await settleResults();
-        downloads[1]?.finish({ status: 'error', error: { code: 'NETWORK', raw: 'boom' } });
+        downloads[1]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'boom' } });
         await settleResults();
         queue.cancel(4);
 
@@ -1709,5 +1713,473 @@ describe('AnimeDownloadQueue.downloadEpisodes', () => {
         queue.downloadEpisodes(1, ['1']);
 
         expect(downloads).toEqual([]);
+    });
+});
+
+describe('AnimeDownloadQueue tries again by itself', () => {
+    const NETWORK_ERROR = { code: 'NETWORK' as const, raw: 'The connection dropped.' };
+
+    it('tries an episode three times at most', () => {
+        expect(ANIME_MAX_TRIES).toBe(3);
+    });
+
+    it.each(['NETWORK', 'BLOCKED', 'UNKNOWN'] as const)('queues the episode again, in the same place, when the run fails with %s', async (code) => {
+        const { queue, downloads, db, updates } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+
+        downloads[0]?.finish({ status: 'error', error: { code, raw: 'It failed.' } });
+        await settleResults();
+
+        // The same episode starts again before the next one (it was first in the list), in the same folder.
+        expect(downloads).toHaveLength(2);
+        expect(downloads[1]?.options.episode).toBe('1');
+        expect(downloads[1]?.options.downloadDir).toBe(downloads[0]?.options.downloadDir);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', error: null });
+        expect(updates.filter((job) => {
+            return job.episodeId === 1;
+        }).map((job) => {
+            return job.status;
+        })).toEqual(['queued', 'running', 'queued', 'running']);
+        expect(queue.list().map((job) => {
+            return [job.episode, job.status, job.error];
+        })).toEqual([['1', 'running', null], ['2', 'queued', null]]);
+    });
+
+    it('leaves the episode as an error, with what went wrong, once it has failed three times, and goes on with the next one', async () => {
+        const { queue, downloads, db, updates } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+
+        downloads[0]?.finish({ status: 'error', error: NETWORK_ERROR });
+        await settleResults();
+        downloads[1]?.finish({ status: 'error', error: NETWORK_ERROR });
+        await settleResults();
+        expect(downloads).toHaveLength(3);
+        expect(queue.list()[0]).toMatchObject({ episode: '1', status: 'running' });
+        downloads[2]?.finish({ status: 'error', error: NETWORK_ERROR });
+        await settleResults();
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'error', error: NETWORK_ERROR });
+        expect(updates.filter((job) => {
+            return job.episodeId === 1;
+        }).at(-1)).toMatchObject({ status: 'error', error: NETWORK_ERROR, speed: '', eta: '' });
+        expect(downloads).toHaveLength(4);
+        expect(downloads[3]?.options.episode).toBe('2');
+    });
+
+    it.each(['NO_RESULTS', 'NO_SOURCES', 'EPISODE_NOT_RELEASED', 'INVALID_SELECTION', 'BINARY_MISSING'] as const)('does not try again a failure that asking again will not fix (%s)', async (code) => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+
+        downloads[0]?.finish({ status: 'error', error: { code, raw: 'Nothing to do.' } });
+        await settleResults();
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'error', error: { code, raw: 'Nothing to do.' } });
+        expect(downloads).toHaveLength(2);
+        expect(downloads[1]?.options.episode).toBe('2');
+    });
+
+    it('gives an episode three new tries when it is retried by hand, after it used its tries', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        for (let run = 0; run < ANIME_MAX_TRIES; run += 1) {
+            downloads[run]?.finish({ status: 'error', error: NETWORK_ERROR });
+            await settleResults();
+        }
+        expect(db.getEpisode(1)?.status).toBe('error');
+        expect(downloads).toHaveLength(3);
+
+        queue.retry(1);
+        for (let run = 3; run < 3 + ANIME_MAX_TRIES - 1; run += 1) {
+            downloads[run]?.finish({ status: 'error', error: NETWORK_ERROR });
+            await settleResults();
+        }
+
+        // Two failures after the retry still leave it running: the count started again.
+        expect(downloads).toHaveLength(6);
+        expect(queue.list()[0]).toMatchObject({ status: 'running', error: null });
+    });
+
+    it('finishes an episode that failed twice and then worked, which leaves the list like any other that is done', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 1 }, { [join(DOWNLOADS, DEFAULT_ANIME_FOLDER, 'Naruto', 'Episode 1', 'Naruto Episode 1.mkv')]: 100 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.finish({ status: 'error', error: NETWORK_ERROR });
+        await settleResults();
+        downloads[1]?.finish({ status: 'error', error: NETWORK_ERROR });
+        await settleResults();
+        downloads[2]?.finish(doneAt(join(DOWNLOADS, DEFAULT_ANIME_FOLDER, 'Naruto', 'Episode 1', 'Naruto Episode 1.mkv')));
+        await settleResults();
+        expect(db.getEpisode(1)?.status).toBe('done');
+        expect(queue.list()).toEqual([]);
+    });
+});
+
+describe('AnimeDownloadQueue pause all and resume all', () => {
+    function status(db: AnimeDb, number: string): string | undefined {
+        return db.getLibraryAnime(1)?.episodes.find((episode) => {
+            return episode.number === number;
+        })?.status;
+    }
+
+    it('holds the queue, so the episodes that wait keep waiting, and ends the run of the ones that go on', async () => {
+        const { queue, downloads, db, updates, heldChanges } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2', '3'] });
+        expect(queue.isHeld()).toBe(false);
+
+        queue.pauseAll();
+
+        expect(queue.isHeld()).toBe(true);
+        expect(heldChanges).toEqual([true]);
+        expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+        expect(status(db, '2')).toBe('queued');
+        expect(status(db, '3')).toBe('queued');
+        downloads[0]?.finish({ status: 'cancelled' });
+        await settleResults();
+
+        expect(status(db, '1')).toBe('paused');
+        // The place the paused episode left is not taken: the queue is held.
+        expect(downloads).toHaveLength(1);
+        expect(queue.list().map((job) => {
+            return [job.episode, job.status];
+        })).toEqual([['1', 'paused'], ['2', 'queued'], ['3', 'queued']]);
+        expect(updates.filter((job) => {
+            return job.status === 'paused';
+        }).map((job) => {
+            return job.episode;
+        })).toEqual(['1']);
+    });
+
+    it('tells the screen of the library once, does nothing with nothing in the queue, and tells the hold only when it changes', () => {
+        const { queue, state, heldChanges } = setup();
+        queue.pauseAll();
+        expect(state.libraryChanges).toBe(1);
+        expect(queue.list()).toEqual([]);
+        queue.pauseAll();
+        expect(heldChanges).toEqual([true]);
+        queue.resumeAll();
+        queue.resumeAll();
+        expect(heldChanges).toEqual([true, false]);
+        expect(queue.isHeld()).toBe(false);
+    });
+
+    it('starts nothing new in a held queue, a new download or a retry, until everything goes on', () => {
+        const { queue, downloads } = setup({ maxConcurrent: 2 });
+        queue.pauseAll();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        queue.enqueue({ title: 'Bleach', query: 'bleach', index: 1, audio: 'sub', episodes: ['5'] });
+        expect(downloads).toEqual([]);
+        expect(queue.list().map((job) => {
+            return job.status;
+        })).toEqual(['queued', 'queued']);
+        queue.cancel(1);
+        queue.retry(1);
+        expect(downloads).toEqual([]);
+
+        queue.resumeAll();
+
+        expect(downloads.map((item) => {
+            return item.options.episode;
+        })).toEqual(['1', '5']);
+    });
+
+    it('starts at once an episode resumed by itself in a held queue, and keeps the rest waiting', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+        queue.pauseAll();
+        downloads[0]?.finish({ status: 'cancelled' });
+        await settleResults();
+
+        queue.resume(1);
+
+        expect(downloads.map((item) => {
+            return item.options.episode;
+        })).toEqual(['1', '1']);
+        expect(queue.isHeld()).toBe(true);
+        downloads[1]?.finish(doneAt(null));
+        await settleResults();
+        // The episode that waits still waits for RESUME ALL.
+        expect(downloads).toHaveLength(2);
+        expect(status(db, '2')).toBe('queued');
+        queue.resumeAll();
+        expect(downloads.map((item) => {
+            return item.options.episode;
+        })).toEqual(['1', '1', '2']);
+    });
+
+    it('queues again every paused episode with RESUME ALL, and lets the queue go', async () => {
+        const { queue, downloads, db, heldChanges } = setup({ maxConcurrent: 2 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2', '3'] });
+        queue.pauseAll();
+        downloads[0]?.finish({ status: 'cancelled' });
+        downloads[1]?.finish({ status: 'cancelled' });
+        await settleResults();
+        expect(queue.list().map((job) => {
+            return job.status;
+        })).toEqual(['paused', 'paused', 'queued']);
+
+        queue.resumeAll();
+
+        expect(heldChanges).toEqual([true, false]);
+        expect(queue.isHeld()).toBe(false);
+        // The paused ones are queued again in turn and the queue is let go first: the places go to the episodes in the order of the list at
+        // that moment, so the third (which never started) takes the second place before the second, which is queued last.
+        expect(queue.list().map((job) => {
+            return job.status;
+        })).toEqual(['running', 'queued', 'running']);
+        expect(status(db, '1')).toBe('downloading');
+        expect(status(db, '2')).toBe('queued');
+        expect(downloads.map((item) => {
+            return item.options.episode;
+        })).toEqual(['1', '2', '1', '3']);
+    });
+
+    it('does not start an episode paused by itself again when a held episode resumed by itself fails and is tried again', async () => {
+        const { queue, downloads } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+        queue.pauseAll();
+        downloads[0]?.finish({ status: 'cancelled' });
+        await settleResults();
+        queue.resume(1);
+
+        downloads[1]?.finish({ status: 'error', error: { code: 'NETWORK', raw: 'down' } });
+        await settleResults();
+
+        // The one resumed by itself keeps its permission, so its try again starts in the held queue; the other still waits.
+        expect(downloads.map((item) => {
+            return item.options.episode;
+        })).toEqual(['1', '1', '1']);
+        expect(queue.list().map((job) => {
+            return [job.episode, job.status];
+        })).toEqual([['1', 'running'], ['2', 'queued']]);
+    });
+
+    it('keeps the episodes that wait in a held queue as paused when the app is closed, so they are found paused when it opens again', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2', '3'] });
+        queue.pauseAll();
+
+        const closing = queue.shutdown();
+        downloads[0]?.finish({ status: 'cancelled' });
+        await closing;
+
+        expect(status(db, '1')).toBe('paused');
+        expect(status(db, '2')).toBe('paused');
+        expect(status(db, '3')).toBe('paused');
+    });
+
+    it('leaves the episodes that wait as they are when the app is closed without PAUSE ALL', async () => {
+        const { queue, downloads, db } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+
+        const closing = queue.shutdown();
+        downloads[0]?.finish({ status: 'cancelled' });
+        await closing;
+
+        expect(status(db, '2')).toBe('queued');
+    });
+});
+
+describe('AnimeDownloadQueue pause, resume and cancel by anime', () => {
+    const BLEACH = { title: 'Bleach', query: 'bleach', index: 1, audio: 'sub' as const, episodes: ['5'] };
+
+    function twoAnime() {
+        const context = setup({ maxConcurrent: 2 });
+        context.queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+        context.queue.enqueue(BLEACH);
+        const naruto = context.db.list().find((anime) => {
+            return anime.title === 'Naruto';
+        })!.id;
+        const bleach = context.db.list().find((anime) => {
+            return anime.title === 'Bleach';
+        })!.id;
+        return { ...context, naruto, bleach };
+    }
+
+    function statuses(queue: AnimeDownloadQueue): Array<[string, string]> {
+        return queue.list().map((job) => {
+            return [`${job.animeTitle} ${job.episode}`, job.status];
+        });
+    }
+
+    describe('pauseAnimes', () => {
+        it('ends the run of the episodes that are going on and pauses the ones that wait, without holding the queue', async () => {
+            const { queue, downloads, db, heldChanges, updates, naruto } = twoAnime();
+            expect(statuses(queue)).toEqual([['Naruto 1', 'running'], ['Naruto 2', 'running'], ['Bleach 5', 'queued']]);
+
+            queue.pauseAnimes([naruto]);
+
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+            expect(downloads[1]?.cancel).toHaveBeenCalledTimes(1);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await settleResults();
+
+            expect(db.getLibraryAnime(naruto)?.episodes.map((episode) => {
+                return [episode.number, episode.status];
+            })).toEqual([['1', 'paused'], ['2', 'paused']]);
+            expect(updates.filter((job) => {
+                return job.status === 'paused';
+            }).map((job) => {
+                return job.episode;
+            })).toEqual(['1', '2']);
+            expect(queue.isHeld()).toBe(false);
+            expect(heldChanges).toEqual([]);
+            // The places the paused episodes left go to the other anime, which was waiting.
+            expect(statuses(queue)).toEqual([['Naruto 1', 'paused'], ['Naruto 2', 'paused'], ['Bleach 5', 'running']]);
+        });
+
+        it('pauses where it is an episode that waits, which has nothing downloaded to keep', () => {
+            const { queue, db, bleach } = twoAnime();
+
+            queue.pauseAnimes([bleach]);
+
+            expect(statuses(queue)).toEqual([['Naruto 1', 'running'], ['Naruto 2', 'running'], ['Bleach 5', 'paused']]);
+            expect(db.getLibraryAnime(bleach)?.episodes[0]?.status).toBe('paused');
+        });
+
+        it('does nothing for an unknown id, for no ids, and for an episode that is paused or over', () => {
+            const { queue, downloads, naruto } = twoAnime();
+            queue.pauseAnimes([naruto]);
+            const before = queue.list();
+
+            queue.pauseAnimes([9999]);
+            queue.pauseAnimes([]);
+
+            expect(queue.list()).toEqual(before);
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+        });
+
+        it('tells the screen of the library once', () => {
+            const { queue, state, naruto, bleach } = twoAnime();
+            const before = state.libraryChanges;
+
+            queue.pauseAnimes([naruto, bleach]);
+
+            expect(state.libraryChanges).toBe(before + 1);
+        });
+    });
+
+    describe('resumeAnimes', () => {
+        it('queues again the paused episodes of the anime, and leaves the paused ones of another anime as they are', async () => {
+            const { queue, downloads, naruto, bleach } = twoAnime();
+            queue.pauseAnimes([naruto, bleach]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await settleResults();
+            expect(statuses(queue).map(([, status]) => {
+                return status;
+            })).toEqual(['paused', 'paused', 'paused']);
+
+            queue.resumeAnimes([naruto]);
+
+            expect(statuses(queue)).toEqual([['Naruto 1', 'running'], ['Naruto 2', 'running'], ['Bleach 5', 'paused']]);
+            expect(downloads).toHaveLength(4);
+            expect(downloads[2]?.options.episode).toBe('1');
+            expect(downloads[2]?.options.downloadDir).toBe(downloads[0]?.options.downloadDir);
+        });
+
+        it('does nothing for the episodes that are running or waiting, for an unknown id and for no ids', () => {
+            const { queue, downloads, naruto, bleach } = twoAnime();
+            const before = statuses(queue);
+
+            queue.resumeAnimes([naruto, bleach]);
+            queue.resumeAnimes([9999]);
+            queue.resumeAnimes([]);
+
+            expect(statuses(queue)).toEqual(before);
+            expect(downloads).toHaveLength(2);
+        });
+
+        it('starts an episode resumed in a held queue, and keeps the rest waiting', async () => {
+            const { queue, downloads, naruto } = twoAnime();
+            queue.pauseAll();
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await settleResults();
+
+            queue.resumeAnimes([naruto]);
+
+            expect(queue.isHeld()).toBe(true);
+            expect(downloads.map((item) => {
+                return item.options.episode;
+            })).toEqual(['1', '2', '1', '2']);
+            expect(statuses(queue)).toEqual([['Naruto 1', 'running'], ['Naruto 2', 'running'], ['Bleach 5', 'queued']]);
+        });
+    });
+
+    describe('cancelAnimes', () => {
+        it('cancels the episodes that are going on, the ones that wait and the ones that are paused, and leaves the other anime alone', async () => {
+            const { queue, downloads, db, removeDirectory, naruto } = twoAnime();
+
+            queue.cancelAnimes([naruto]);
+
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+            expect(downloads[1]?.cancel).toHaveBeenCalledTimes(1);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await settleResults();
+
+            expect(statuses(queue)).toEqual([['Naruto 1', 'cancelled'], ['Naruto 2', 'cancelled'], ['Bleach 5', 'running']]);
+            expect(db.getLibraryAnime(naruto)?.episodes.map((episode) => {
+                return episode.status;
+            })).toEqual(['cancelled', 'cancelled']);
+            expect(removeDirectory.mock.calls.map((call) => {
+                return call[0];
+            })).toEqual([downloads[0]?.options.downloadDir, downloads[1]?.options.downloadDir]);
+        });
+
+        it('cancels on the spot the episodes that wait or are paused, deleting what they kept', async () => {
+            const { queue, downloads, db, removeDirectory, bleach, naruto } = twoAnime();
+            queue.pauseAnimes([naruto]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await settleResults();
+            removeDirectory.mockClear();
+
+            queue.cancelAnimes([naruto, bleach]);
+            // Bleach took the place the paused ones left, so its run ends as cancelled.
+            expect(downloads[2]?.cancel).toHaveBeenCalledTimes(1);
+            downloads[2]?.finish({ status: 'cancelled' });
+            await settleResults();
+
+            expect(statuses(queue).map(([, status]) => {
+                return status;
+            })).toEqual(['cancelled', 'cancelled', 'cancelled']);
+            expect(db.getLibraryAnime(naruto)?.episodes.map((episode) => {
+                return episode.status;
+            })).toEqual(['cancelled', 'cancelled']);
+            expect(removeDirectory).toHaveBeenCalledWith(join(DOWNLOADS, DEFAULT_ANIME_FOLDER, 'Naruto', 'Episode 1'));
+            expect(removeDirectory).toHaveBeenCalledWith(join(DOWNLOADS, DEFAULT_ANIME_FOLDER, 'Naruto', 'Episode 2'));
+        });
+
+        it('cancels every anime when all of them are given, and starts nothing after', async () => {
+            const { queue, downloads, naruto, bleach } = twoAnime();
+
+            queue.cancelAnimes([naruto, bleach]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await settleResults();
+
+            expect(statuses(queue).map(([, status]) => {
+                return status;
+            })).toEqual(['cancelled', 'cancelled', 'cancelled']);
+            expect(downloads).toHaveLength(2);
+            expect(queue.pendingCount()).toBe(0);
+        });
+
+        it('keeps the episodes that were already cancelled, and does nothing for an unknown id or for no ids', async () => {
+            const { queue, downloads, naruto } = twoAnime();
+            queue.cancelAnimes([naruto]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await settleResults();
+            const before = queue.list();
+
+            queue.cancelAnimes([naruto]);
+            queue.cancelAnimes([9999]);
+            queue.cancelAnimes([]);
+
+            expect(queue.list()).toEqual(before);
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+        });
     });
 });

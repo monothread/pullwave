@@ -371,7 +371,10 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeSubtitleGenerateEstimate, (): SubtitleGenerateEstimateResponse => {
         return { ok: false, reason: 'missing' };
     });
-    [IPC.animeSubtitleTranslateCancel, IPC.animeSubtitleGenerateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
+    ipcMain.handle(IPC.animeQueueHeld, (): boolean => {
+        return false;
+    });
+    [IPC.animeSubtitleTranslateCancel, IPC.animeSubtitleGenerateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animePauseAll, IPC.animeResumeAll, IPC.animePauseAnimes, IPC.animeResumeAnimes, IPC.animeCancelAnimes, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
         ipcMain.handle(channel, (): void => {
             return undefined;
         });
@@ -575,6 +578,24 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     });
     ipcMain.handle(IPC.animeClearFinished, (): void => {
         queue.clearFinished();
+    });
+    ipcMain.handle(IPC.animeQueueHeld, (): boolean => {
+        return queue.isHeld();
+    });
+    ipcMain.handle(IPC.animePauseAll, (): void => {
+        queue.pauseAll();
+    });
+    ipcMain.handle(IPC.animeResumeAll, (): void => {
+        queue.resumeAll();
+    });
+    ipcMain.handle(IPC.animePauseAnimes, (_event, animeIds): void => {
+        queue.pauseAnimes(validIds(animeIds));
+    });
+    ipcMain.handle(IPC.animeResumeAnimes, (_event, animeIds): void => {
+        queue.resumeAnimes(validIds(animeIds));
+    });
+    ipcMain.handle(IPC.animeCancelAnimes, (_event, animeIds): void => {
+        queue.cancelAnimes(validIds(animeIds));
     });
     // Removing always deletes the files too: what is in the library is what is on the disk.
     ipcMain.handle(IPC.animeRemoveEpisode, (_event, episodeId): void => {

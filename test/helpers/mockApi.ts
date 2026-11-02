@@ -54,6 +54,7 @@ export interface MockApiHandle {
     emitHistoryChanged: () => void;
     emitAppUpdateState: (state: AppUpdateState) => void;
     emitAnimeJob: (job: AnimeJob) => void;
+    emitAnimeQueueHeld: (held: boolean) => void;
     emitAnimeLibraryChanged: () => void;
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
     emitAnimeCover: (update: AnimeCoverUpdate) => void;
@@ -72,6 +73,7 @@ export function createMockApi(): MockApiHandle {
     const historyListeners: Array<() => void> = [];
     const appUpdateListeners: Array<(state: AppUpdateState) => void> = [];
     const animeJobListeners: Array<(job: AnimeJob) => void> = [];
+    const animeQueueHeldListeners: Array<(held: boolean) => void> = [];
     const animeLibraryListeners: Array<() => void> = [];
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
     const animeCoverListeners: Array<(update: AnimeCoverUpdate) => void> = [];
@@ -467,6 +469,24 @@ export function createMockApi(): MockApiHandle {
         clearFinishedAnimeJobs: vi.fn(async () => {
             return undefined;
         }),
+        pauseAllAnimeJobs: vi.fn(async () => {
+            return undefined;
+        }),
+        resumeAllAnimeJobs: vi.fn(async () => {
+            return undefined;
+        }),
+        animeQueueHeld: vi.fn(async () => {
+            return false;
+        }),
+        pauseAnimes: vi.fn(async () => {
+            return undefined;
+        }),
+        resumeAnimes: vi.fn(async () => {
+            return undefined;
+        }),
+        cancelAnimes: vi.fn(async () => {
+            return undefined;
+        }),
         removeAnimeEpisode: vi.fn(async () => {
             return undefined;
         }),
@@ -574,6 +594,9 @@ export function createMockApi(): MockApiHandle {
         }),
         onAnimeJobUpdate: vi.fn((listener: (job: AnimeJob) => void) => {
             return subscribe(animeJobListeners, listener);
+        }),
+        onAnimeQueueHeld: vi.fn((listener: (held: boolean) => void) => {
+            return subscribe(animeQueueHeldListeners, listener);
         }),
         onAnimeLibraryChanged: vi.fn((listener: () => void) => {
             return subscribe(animeLibraryListeners, listener);
@@ -685,6 +708,11 @@ export function createMockApi(): MockApiHandle {
         emitAnimeJob: (job) => {
             animeJobListeners.forEach((listener) => {
                 listener(job);
+            });
+        },
+        emitAnimeQueueHeld: (held) => {
+            animeQueueHeldListeners.forEach((listener) => {
+                listener(held);
             });
         },
         emitAnimeMigrationProgress: (progress) => {
