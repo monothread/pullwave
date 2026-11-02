@@ -5,8 +5,8 @@ import { useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeAnimeJob, makeStatus } from '../../helpers/animeFixtures';
-import { makeMangaJob, makeMangaStatus } from '../../helpers/mangaFixtures';
-import { makeJob } from '../../helpers/mockApi';
+import { makeMangaJob, makeMangaStatus, makeSource } from '../../helpers/mangaFixtures';
+import { installMockApi, makeJob } from '../../helpers/mockApi';
 
 const openActiveDownload = vi.fn();
 vi.mock('@renderer/home/homeActions', () => {
@@ -22,6 +22,7 @@ const initialAnime = useAnimeStore.getState();
 const initialManga = useMangaStore.getState();
 
 beforeEach(() => {
+    installMockApi();
     openActiveDownload.mockClear();
     useAppStore.setState({ jobs: [makeJob({ id: 'a', status: 'running' }), makeJob({ id: 'b', status: 'done' })] });
     useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'queued' }), makeAnimeJob({ episodeId: 2, status: 'paused' })], status: makeStatus() });
@@ -42,6 +43,19 @@ describe('countByKind', () => {
 });
 
 describe('DownloadsIndicator', () => {
+    it('does not count the downloads of the adult sources while they are not listed, and counts them when they are', () => {
+        useMangaStore.setState({
+            jobs: [makeMangaJob({ chapterId: 1, sourceId: 'safe', status: 'running' }), makeMangaJob({ chapterId: 2, sourceId: 'adult', status: 'running' })],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' }
+        });
+        const { unmount } = render(<DownloadsIndicator />);
+        expect(screen.getByRole('button', { name: 'Downloads going on: 4' })).toBeInTheDocument();
+        unmount();
+        useAppStore.setState({ settings: { ...useAppStore.getState().settings, mangaShowAdult: true } });
+        render(<DownloadsIndicator />);
+        expect(screen.getByRole('button', { name: 'Downloads going on: 5' })).toBeInTheDocument();
+    });
+
     it('says how many downloads go on in the whole app and lights up', () => {
         render(<DownloadsIndicator />);
         const button = screen.getByRole('button', { name: 'Downloads going on: 3' });

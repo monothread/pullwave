@@ -10,6 +10,7 @@ import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { openAnime, openManga, pasteLink, showCut } from './homeActions';
 import { activeDownloads } from './homeData';
+import { useShownJobs, useShownLibrary } from '../hooks/useShownManga';
 
 interface CardAction {
     label: MessageKey;
@@ -137,12 +138,8 @@ export function SectionCards() {
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });
-    const mangaLibrary = useMangaStore((state) => {
-        return state.library;
-    });
-    const mangaJobs = useMangaStore((state) => {
-        return state.jobs;
-    });
+    const mangaLibrary = useShownLibrary();
+    const mangaJobs = useShownJobs();
     // Whether an extension gives a source to browse (known once the sources were read).
     const hasSources = useMangaStore((state) => {
         return state.browse.sourcesStatus === 'ready' && state.browse.sources.length > 0;

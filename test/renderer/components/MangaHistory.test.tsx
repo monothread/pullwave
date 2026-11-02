@@ -6,7 +6,7 @@ import type { ReadingEntry } from '@shared/manga';
 import { MangaHistory } from '@renderer/components/MangaHistory';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeLibraryManga } from '../../helpers/mangaFixtures';
+import { makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -32,6 +32,21 @@ beforeEach(() => {
 });
 
 describe('MangaHistory', () => {
+    it('does not list the readings of the adult sources while they are not listed, and lists them when they are', async () => {
+        const readings = [line({ id: 1, sourceId: 'safe', title: 'Safe Manga' }), line({ id: 2, sourceId: 'adult', title: 'Adult Manga' })];
+        mock.api.manga.readingHistory.mockResolvedValue(readings);
+        useMangaStore.setState({ browse: { ...initialManga.browse, sources: [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' } });
+        const { unmount } = render(<MangaHistory />);
+        expect(await screen.findByText('Safe Manga')).toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-history-entry')).toHaveLength(1);
+        expect(screen.queryByText('Adult Manga')).not.toBeInTheDocument();
+        unmount();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        render(<MangaHistory />);
+        expect(await screen.findAllByTestId('manga-history-entry')).toHaveLength(2);
+        expect(screen.getByText('Adult Manga')).toBeInTheDocument();
+    });
+
     it('reads the history when it opens', async () => {
         mock.api.manga.readingHistory.mockResolvedValue([line()]);
         render(<MangaHistory />);

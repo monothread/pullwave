@@ -5,6 +5,7 @@ import { useMangaStore } from '../store/mangaStore';
 import { Spotlight } from '../spotlight/Spotlight';
 import { animeSpotlight, mangaSpotlight } from '../spotlight/spotlightData';
 import { useSpotlightSlides } from '../spotlight/useSpotlightSlides';
+import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
 // The time the screen opened: what is new is counted from it (a screen left open for days is read again when it is opened again).
 function useOpenedAt(): number {
@@ -38,12 +39,8 @@ export function AnimeLibrarySpotlight() {
 export function MangaLibrarySpotlight() {
     const t = useTranslator();
     const now = useOpenedAt();
-    const library = useMangaStore((state) => {
-        return state.library;
-    });
-    const history = useMangaStore((state) => {
-        return state.history;
-    });
+    const library = useShownLibrary();
+    const history = useShownHistory();
     const readKeys = useMangaStore((state) => {
         return state.readKeys;
     });

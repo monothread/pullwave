@@ -4,6 +4,7 @@ import { searchSuggestions, type SearchSuggestion } from '../home/searchData';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useMangaStore } from '../store/mangaStore';
+import { useShownLibrary } from '../hooks/useShownManga';
 
 // What a line of the list says.
 function useSuggestionText(): (suggestion: SearchSuggestion) => { text: string; tag: string | null } {
@@ -44,9 +45,7 @@ export function GlobalSearch() {
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
-    const mangaLibrary = useMangaStore((state) => {
-        return state.library;
-    });
+    const mangaLibrary = useShownLibrary();
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });

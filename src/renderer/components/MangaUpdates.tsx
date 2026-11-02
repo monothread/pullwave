@@ -7,6 +7,7 @@ import { MangaCover } from './MangaCover';
 import { MangaRemove } from './MangaRemove';
 import { RowLink } from './RowLink';
 import { chapterLabel, chapterStatusKey, groupByDay } from './mangaText';
+import { useShownUpdates } from '../hooks/useShownManga';
 
 const ORIGIN_KEYS: Record<ArrivalOrigin, MessageKey> = {
     auto: 'manga.recent.origin.auto',
@@ -33,9 +34,7 @@ function startOfDay(time: number): number {
 // and what the buttons that look for new chapters found. A click opens the manga in the library.
 export function MangaUpdates() {
     const t = useTranslator();
-    const updates = useMangaStore((state) => {
-        return state.updates;
-    });
+    const updates = useShownUpdates();
     const checking = useMangaStore((state) => {
         return state.checkingNew;
     });

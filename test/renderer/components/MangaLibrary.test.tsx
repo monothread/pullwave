@@ -28,7 +28,7 @@ const ONE_PIECE = makeLibraryManga(
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
-    useMangaStore.setState({ ...initialManga, library: [], hiddenGroupIds: [] });
+    useMangaStore.setState({ ...initialManga, library: [] });
     useSortPrefsStore.setState({ library: { ...DEFAULT_SORT_PREFS.library }, list: { ...DEFAULT_SORT_PREFS.list } });
     window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
 });
@@ -446,77 +446,59 @@ describe('MangaLibrary series, groups and search', () => {
             expect(tabs()).toEqual(['ALL', 'Manhwas', 'Mangas']);
         });
 
-        it('keeps the order of the tabs that are shown when a group in the middle is hidden', () => {
+        it('keeps the order of the groups in the tabs', () => {
             useMangaStore.setState({
                 groups: [{ id: 3, name: 'Webtoons' }, { id: 2, name: 'Manhwas' }, { id: 1, name: 'Mangas' }],
-                hiddenGroupIds: [2],
                 library: [FRIEREN_IN_MANGAS, BLEACH_IN_MANHWAS, NARUTO, makeLibraryManga([], { id: 31, remoteId: 32, title: 'Solo', groupIds: [3] })]
             });
             render(<MangaLibrary />);
-            expect(tabs()).toEqual(['ALL', 'Webtoons', 'Mangas']);
+            expect(tabs()).toEqual(['ALL', 'Webtoons', 'Manhwas', 'Mangas']);
         });
     });
 
-    describe('hidden groups', () => {
-        const NARUTO = makeLibraryManga([], { id: 30, remoteId: 31, title: 'Naruto', groupIds: [] });
+    describe('mangas of the sources for adults', () => {
+        const SAFE = makeLibraryManga([], { id: 40, remoteId: 41, sourceId: 'safe', title: 'Safe Manga', groupIds: [] });
+        const ADULT = makeLibraryManga([], { id: 42, remoteId: 43, sourceId: 'adult', title: 'Adult Manga', groupIds: [] });
+        const ADULT_IN_GROUP = makeLibraryManga([], { id: 44, remoteId: 45, sourceId: 'adult', title: 'Adult Grouped', groupIds: [1] });
+        const SOURCES = [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })];
 
-        function tabs(): Array<string | null> {
-            return within(screen.getByRole('navigation', { name: 'Groups' }))
-                .getAllByRole('button')
-                .map((button) => {
-                    return button.textContent;
-                });
+        function titles(): Array<string | null> {
+            return screen.getAllByTestId('manga-entry').map((entry) => {
+                return within(entry).getByRole('heading').textContent;
+            });
         }
 
         beforeEach(() => {
-            useMangaStore.setState({ library: [FRIEREN_2_IN_MANGAS, BLEACH_IN_MANHWAS, FRIEREN_IN_MANGAS, NARUTO] });
+            useMangaStore.setState({ library: [SAFE, ADULT, ADULT_IN_GROUP], groups: [{ id: 1, name: 'Mangas' }], browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready' } });
         });
 
-        it('has no tab for a hidden group, and says how many are hidden', () => {
-            useMangaStore.setState({ hiddenGroupIds: [2] });
+        it('hides them while the setting that lists the adult sources is off, and shows the rest', () => {
             render(<MangaLibrary />);
-            expect(tabs()).toEqual(['ALL', 'Mangas']);
-            expect(screen.getByText('1 hidden group(s). Open MANAGE GROUPS to show them again.')).toBeInTheDocument();
+            expect(titles()).toEqual(['Safe Manga']);
         });
 
-        it('says nothing about hidden groups while none is hidden', () => {
+        it('does not list a hidden manga inside the tab of its group', () => {
+            useMangaStore.setState({ libraryGroup: 1 });
             render(<MangaLibrary />);
-            expect(screen.queryByText(/hidden group/)).not.toBeInTheDocument();
-            expect(tabs()).toEqual(['ALL', 'Mangas', 'Manhwas']);
+            expect(screen.queryByText('Adult Grouped')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('manga-entry')).not.toBeInTheDocument();
         });
 
-        it('does not show the mangas that are only in a hidden group, not even in the tab of all', () => {
-            useMangaStore.setState({ hiddenGroupIds: [1, 2] });
+        it('shows them when the setting is on', () => {
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
             render(<MangaLibrary />);
-            expect(screen.queryByRole('navigation', { name: 'Groups' })).not.toBeInTheDocument();
-            expect(screen.getAllByTestId('manga-entry')).toHaveLength(1);
-            expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Naruto' })).toBeInTheDocument();
-            expect(screen.queryByTestId('manga-series')).not.toBeInTheDocument();
-            expect(screen.getByText('2 hidden group(s). Open MANAGE GROUPS to show them again.')).toBeInTheDocument();
+            expect(titles()).toEqual(['Adult Manga', 'Safe Manga']);
         });
 
-        it('still shows a manga that is in a hidden group and in a group that is not hidden', () => {
-            const both = { ...BLEACH, groupIds: [1, 2] };
-            useMangaStore.setState({ library: [both, NARUTO], hiddenGroupIds: [2], libraryGroup: 1 });
+        it('still shows a manga whose source is not known any more', () => {
+            useMangaStore.setState({ library: [SAFE, { ...ADULT, sourceId: 'removed' }] });
             render(<MangaLibrary />);
-            expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
+            expect(titles()).toEqual(['Adult Manga', 'Safe Manga']);
         });
 
-        it('goes to the first group that is not hidden when no manga is in no group', () => {
-            useMangaStore.setState({ library: [FRIEREN_2_IN_MANGAS, BLEACH_IN_MANHWAS, FRIEREN_IN_MANGAS], hiddenGroupIds: [1] });
+        it('keeps the hidden mangas in the store: nothing is removed', () => {
             render(<MangaLibrary />);
-            expect(tabs()).toEqual(['Manhwas']);
-            expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
-        });
-
-        it('shows the group again through the panel that manages the groups', async () => {
-            const user = userEvent.setup();
-            useMangaStore.setState({ hiddenGroupIds: [2] });
-            render(<MangaLibrary />);
-            await user.click(screen.getByRole('button', { name: 'MANAGE GROUPS' }));
-            await user.click(screen.getByRole('button', { name: 'SHOW: Manhwas' }));
-            expect(tabs()).toEqual(['ALL', 'Mangas', 'Manhwas']);
-            expect(screen.queryByText(/hidden group/)).not.toBeInTheDocument();
+            expect(useMangaStore.getState().library).toEqual([SAFE, ADULT, ADULT_IN_GROUP]);
         });
     });
 

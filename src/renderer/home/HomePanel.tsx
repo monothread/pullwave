@@ -7,6 +7,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { useMangaStore } from '../store/mangaStore';
 import { HomeWelcome } from './HomeWelcome';
 import { SectionCards } from './SectionCards';
+import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
 // The history of reading and the sources of the manga are only read by their own screens: the home screen asks for them once the manga
 // server runs (the highlights show what is being read; the block of the manga goes to the browse once an extension gives a source). The
@@ -46,12 +47,8 @@ function useHomeSpotlight() {
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });
-    const mangaLibrary = useMangaStore((state) => {
-        return state.library;
-    });
-    const mangaHistory = useMangaStore((state) => {
-        return state.history;
-    });
+    const mangaLibrary = useShownLibrary();
+    const mangaHistory = useShownHistory();
     const mangaReadKeys = useMangaStore((state) => {
         return state.readKeys;
     });

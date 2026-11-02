@@ -5,6 +5,7 @@ import { useModalDialog } from '../hooks/useModalDialog';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { ConfirmButton } from './ConfirmButton';
+import { useShownJobs } from '../hooks/useShownManga';
 
 // What one manga has going on: how many of its chapters are downloading, waiting and paused.
 export interface MangaDownloadGroup {
@@ -39,9 +40,7 @@ export function MangaManageDownloads({ onClose }: MangaManageDownloadsProps) {
     const t = useTranslator();
     const titleId = useId();
     const { dialogRef, handleKeyDown } = useModalDialog(onClose, true);
-    const jobs = useMangaStore((state) => {
-        return state.jobs;
-    });
+    const jobs = useShownJobs();
     const pauseMangaJobs = useMangaStore((state) => {
         return state.pauseMangaJobs;
     });

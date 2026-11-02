@@ -7,14 +7,17 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
 import { makeAnimeHistory, makeReading } from '../../helpers/homeFixtures';
-import { makeChapterRecord, makeLibraryManga, makeMangaStatus } from '../../helpers/mangaFixtures';
+import { makeChapterRecord, makeLibraryManga, makeMangaStatus, makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi } from '../../helpers/mockApi';
 
 const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 const initialManga = useMangaStore.getState();
 const loadHistory = vi.fn(async () => {});
-const loadSources = vi.fn(async () => {});
+// As the real one does, it marks the sources as asked for at once.
+const loadSources = vi.fn(async () => {
+    useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sourcesStatus: 'loading' } });
+});
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -55,6 +58,23 @@ describe('HomePanel', () => {
         expect(within(highlights).getByRole('heading', { level: 2 })).toHaveTextContent('Watching');
         expect(within(highlights).getByRole('button', { name: 'Highlight 2 of 2' })).toBeInTheDocument();
         expect(screen.queryByRole('region', { name: 'WELCOME TO PULLWAVE' })).not.toBeInTheDocument();
+    });
+
+    it('leaves the manga of the adult sources out of the highlights while they are not listed, and shows them when they are', () => {
+        fill();
+        useMangaStore.setState({
+            library: [{ ...useMangaStore.getState().library[0]!, sourceId: 'adult' }],
+            history: [{ ...useMangaStore.getState().history[0]!, sourceId: 'adult' }],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' }
+        });
+        const { unmount } = render(<HomePanel />);
+        const highlights = screen.getByRole('region', { name: 'Highlights' });
+        expect(within(highlights).getByRole('heading', { level: 2 })).toHaveTextContent('Watching');
+        expect(within(highlights).queryByRole('button', { name: 'Highlight 2 of 2' })).not.toBeInTheDocument();
+        unmount();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        render(<HomePanel />);
+        expect(within(screen.getByRole('region', { name: 'Highlights' })).getByRole('button', { name: 'Highlight 2 of 2' })).toBeInTheDocument();
     });
 
     it('puts the manga after the anime in the highlights', () => {

@@ -19,6 +19,7 @@ import { SETTINGS_ICON, TabButton } from './TabButton';
 import { TabMenu } from './TabMenu';
 import { ErrorNotice } from './ErrorNotice';
 import { plainErrorReport } from './errorReport';
+import { useShownJobs } from '../hooks/useShownManga';
 
 const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'manga.nav.search' | 'manga.nav.updates' | 'manga.nav.library' | 'manga.nav.history' | 'manga.nav.extensions' | 'manga.nav.settings'; icon?: string }> = [
     { id: 'browse', label: 'manga.nav.browse' },
@@ -60,9 +61,8 @@ export function MangaPanel() {
     const loadSources = useMangaStore((state) => {
         return state.loadSources;
     });
-    const active = useMangaStore((state) => {
-        return activeJobCount(state.jobs);
-    });
+    const shownJobs = useShownJobs();
+    const active = activeJobCount(shownJobs);
     // Whatever page of the section is opened (a screen, a source, a manga, a series, the reader) starts at the top.
     const page = useMangaStore((state) => {
         return [state.view, state.browse.sourceId ?? '', state.browse.mode, state.sourceSettings.open, state.selection?.manga.remoteId ?? '', state.librarySeries ?? '', state.libraryGroup ?? '', state.reader.status === 'closed'].join('|');

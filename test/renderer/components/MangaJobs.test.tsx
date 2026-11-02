@@ -6,7 +6,7 @@ import type { MangaErrorCode } from '@shared/manga';
 import { MangaJobs } from '@renderer/components/MangaJobs';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeLibraryManga, makeMangaJob } from '../../helpers/mangaFixtures';
+import { makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -25,6 +25,23 @@ describe('MangaJobs', () => {
         render(<MangaJobs />);
         expect(screen.getByText('No downloads going on.')).toBeInTheDocument();
         expect(screen.queryByTestId('manga-job')).not.toBeInTheDocument();
+    });
+
+    it('does not list the downloads of the adult sources while they are not listed, and lists them when they are', () => {
+        useMangaStore.setState({
+            jobs: [makeMangaJob({ chapterId: 1, sourceId: 'safe', mangaTitle: 'Safe Manga' }), makeMangaJob({ chapterId: 2, sourceId: 'adult', mangaTitle: 'Adult Manga' })],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' }
+        });
+        const { unmount } = render(<MangaJobs />);
+        expect(screen.getAllByTestId('manga-job')).toHaveLength(1);
+        expect(screen.getByRole('heading', { name: 'Safe Manga · Romance Dawn' })).toBeInTheDocument();
+        expect(screen.queryByText('Adult Manga · Romance Dawn')).not.toBeInTheDocument();
+        expect(screen.getByText('DOWNLOADS (1)', { selector: '.section-label' })).toBeInTheDocument();
+        unmount();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        render(<MangaJobs />);
+        expect(screen.getAllByTestId('manga-job')).toHaveLength(2);
+        expect(screen.getByText('DOWNLOADS (2)', { selector: '.section-label' })).toBeInTheDocument();
     });
 
     it('shows the title, the progress and the pages of a running download', () => {

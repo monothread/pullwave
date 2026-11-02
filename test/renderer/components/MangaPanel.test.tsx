@@ -32,7 +32,7 @@ describe('MangaPanel', () => {
     });
 
     it.each(['missing', 'downloading', 'verifying', 'extracting', 'error'] as const)('shows only the preparation while the program is %s', (status) => {
-        useMangaStore.setState({ status: makeMangaStatus({ tool: makeTool({ status, error: status === 'error' ? { code: 'DOWNLOAD_FAILED', message: 'x' } : null }) }) });
+        useMangaStore.setState({ status: makeMangaStatus({ server: 'stopped', tool: makeTool({ status, error: status === 'error' ? { code: 'DOWNLOAD_FAILED', message: 'x' } : null }) }) });
         render(<MangaPanel />);
         expect(screen.getByText('PREPARING THE MANGA SERVER')).toBeInTheDocument();
         expect(screen.queryByRole('navigation')).not.toBeInTheDocument();

@@ -5,7 +5,8 @@ import { useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
-import { makeLibraryManga, makeMangaStatus } from '../../helpers/mangaFixtures';
+import { makeLibraryManga, makeMangaStatus, makeSource } from '../../helpers/mangaFixtures';
+import { installMockApi } from '../../helpers/mockApi';
 
 const runSuggestion = vi.fn();
 vi.mock('@renderer/home/searchActions', () => {
@@ -22,6 +23,7 @@ const naruto = makeAnime([makeEpisode()], { id: 1, title: 'Naruto' });
 const narutoManga = makeLibraryManga([], { id: 8, title: 'Naruto Gaiden' });
 
 beforeEach(() => {
+    installMockApi();
     runSuggestion.mockClear();
     useAppStore.setState({ settings: { ...useAppStore.getState().settings, language: 'en' } });
     useAnimeStore.setState({ library: [naruto], status: makeStatus() });
@@ -73,6 +75,21 @@ describe('GlobalSearch', () => {
         expect(field()).toHaveAttribute('aria-controls', list.id);
         expect(options()).toEqual(['NarutoANIME', 'Naruto GaidenMANGA', 'Search “naru” in anime', 'Search “naru” in manga']);
         expect(within(list).getAllByRole('option')[0]).toHaveClass('global-search__option', 'global-search__option--anime');
+    });
+
+    it('does not suggest a manga of an adult source while they are not listed, and suggests it when they are', () => {
+        useMangaStore.setState({
+            library: [{ ...narutoManga, sourceId: 'adult' }],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' }
+        });
+        const { unmount } = render(<GlobalSearch />);
+        fireEvent.change(field(), { target: { value: 'naru' } });
+        expect(options()).toEqual(['NarutoANIME', 'Search “naru” in anime', 'Search “naru” in manga']);
+        unmount();
+        useAppStore.setState({ settings: { ...useAppStore.getState().settings, mangaShowAdult: true } });
+        render(<GlobalSearch />);
+        fireEvent.change(field(), { target: { value: 'naru' } });
+        expect(options()).toEqual(['NarutoANIME', 'Naruto GaidenMANGA', 'Search “naru” in anime', 'Search “naru” in manga']);
     });
 
     it('moves through the list with the arrows and goes with Enter, then empties and closes', () => {

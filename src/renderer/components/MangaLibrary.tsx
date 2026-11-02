@@ -15,6 +15,7 @@ import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter 
 import { useLibrarySort } from '../store/sortPrefsStore';
 import { RowLink } from './RowLink';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
+import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
 interface MangaRowProps {
     manga: LibraryManga;
@@ -187,14 +188,9 @@ function SeriesRow({ group, onOpen }: SeriesRowProps) {
 // searched and limited to one of the groups the user made.
 export function MangaLibrary() {
     const t = useTranslator();
-    const library = useMangaStore((state) => {
-        return state.library;
-    });
+    const library = useShownLibrary();
     const groups = useMangaStore((state) => {
         return state.groups;
-    });
-    const hiddenGroupIds = useMangaStore((state) => {
-        return state.hiddenGroupIds;
     });
     const libraryGroup = useMangaStore((state) => {
         return state.libraryGroup;
@@ -224,9 +220,7 @@ export function MangaLibrary() {
         return state.loadSources;
     });
     // The history of reading, for the order by the last one read (the highlights read it when the library opens).
-    const history = useMangaStore((state) => {
-        return state.history;
-    });
+    const history = useShownHistory();
     const [search, setSearch] = useState('');
     const [managing, setManaging] = useState(false);
     const [filter, setFilter] = useState<LibraryFilter>('all');
@@ -272,17 +266,12 @@ export function MangaLibrary() {
     }
     // The tab of all holds the mangas that are in no group; it is not there when every manga is in a group.
     const hasAllTab = inGroup(library, null).length > 0;
-    // A hidden group has no tab, and the mangas that are only in it are not shown.
-    const visibleGroups = groups.filter((group) => {
-        return !hiddenGroupIds.includes(group.id);
-    });
-    const hiddenCount = groups.length - visibleGroups.length;
-    const currentGroup = activeGroup(library, visibleGroups, libraryGroup);
+    const currentGroup = activeGroup(library, groups, libraryGroup);
     const shown = inGroup(library, currentGroup).filter((manga) => {
         return matchesManga(manga, search);
     });
     // While searching, the tabs that hold a match say how many.
-    const tabMatches = searchMatchesByTab(library, [...(hasAllTab ? [null] : []), ...visibleGroups.map((group) => { return group.id; })], search);
+    const tabMatches = searchMatchesByTab(library, [...(hasAllTab ? [null] : []), ...groups.map((group) => { return group.id; })], search);
     const matchBadge = (groupId: number | null): ReactNode => {
         const count = tabMatches.get(groupId);
         return count === undefined ? null : (
@@ -317,7 +306,7 @@ export function MangaLibrary() {
                 </button>
             </div>
             {managing && <MangaGroupsPanel />}
-            {visibleGroups.length > 0 && (
+            {groups.length > 0 && (
                 <nav className="tabs" aria-label={t('manga.library.groups')}>
                     {hasAllTab && (
                         <button
@@ -332,7 +321,7 @@ export function MangaLibrary() {
                             {matchBadge(null)}
                         </button>
                     )}
-                    {visibleGroups.map((group) => {
+                    {groups.map((group) => {
                         return (
                             <button
                                 key={group.id}
@@ -350,7 +339,6 @@ export function MangaLibrary() {
                     })}
                 </nav>
             )}
-            {hiddenCount > 0 && <p className="field__hint">{t('manga.library.hiddenGroups', { count: hiddenCount })}</p>}
             <LibraryControls kind="manga" filter={filter} sort={sort} allCount={all.length} newsCount={filterGroups(all, 'news', newsOf).length} onFilter={setFilter} onSort={setSort} />
             <span className="section-label">{t('manga.library.label', { count: cards.length })}</span>
             {shown.length === 0 && <p className="empty">{currentGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}

@@ -1530,57 +1530,58 @@ test.describe('manga section', () => {
         await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
     });
 
-    test('hides a group with its mangas from the library, shows it again, and forgets the hiding when the app is closed', async () => {
+    test('has no way to hide a group: the tab of a group stays with all its mangas', async () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
         await openSource(session.page);
         await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
         await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
-        await session.page.getByRole('button', { name: '← BACK' }).click();
-        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
-        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
         await goTo(session.page, 'LIBRARY');
         await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
         await session.page.getByLabel('Name of the group').fill('Mangas');
         await session.page.getByRole('button', { name: 'CREATE', exact: true }).click();
         await expect(session.page.getByTestId('manga-group')).toHaveCount(1);
-        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
-        await session.page.getByTestId('manga-entry').filter({ hasText: 'One Piece' }).getByRole('button', { name: 'Open: One Piece' }).click();
-        await openOrganize(session.page);
-        await session.page.getByRole('button', { name: 'Mangas', exact: true }).click();
-        await session.page.getByRole('button', { name: '← BACK' }).click();
-
-        const tabs = session.page.getByRole('navigation', { name: 'Groups' });
-        await expect(tabs.getByRole('button')).toHaveText(['ALL', 'Mangas']);
-        await tabs.getByRole('button', { name: 'Mangas' }).click();
-        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'One Piece' })).toBeVisible();
-
-        // Hiding the group takes its tab away, and the manga that is only in it; the tab that was open goes back to all.
-        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
-        await session.page.getByRole('button', { name: 'HIDE: Mangas' }).click();
-        await expect(session.page.getByTestId('manga-group').getByText('HIDDEN')).toBeVisible();
-        await expect(tabs).toHaveCount(0);
-        await expect(session.page.getByTestId('manga-entry')).toHaveCount(1);
-        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'Bleach' })).toBeVisible();
-        await expect(session.page.getByText('1 hidden group(s). Open MANAGE GROUPS to show them again.')).toBeVisible();
-
-        // SHOW brings it back.
-        await session.page.getByRole('button', { name: 'SHOW: Mangas' }).click();
-        await expect(tabs.getByRole('button')).toHaveText(['ALL', 'Mangas']);
+        await expect(session.page.getByRole('button', { name: 'HIDE: Mangas' })).toHaveCount(0);
+        await expect(session.page.getByRole('button', { name: 'SHOW: Mangas' })).toHaveCount(0);
+        await expect(session.page.getByTestId('manga-group').getByText('HIDDEN')).toHaveCount(0);
         await expect(session.page.getByText(/hidden group/)).toHaveCount(0);
-        await tabs.getByRole('button', { name: 'Mangas' }).click();
-        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'One Piece' })).toBeVisible();
+    });
 
-        // It is a hiding for now: when the app is closed and opened again the group is there.
-        await session.page.getByRole('button', { name: 'HIDE: Mangas' }).click();
-        await expect(tabs).toHaveCount(0);
-        await session.app.close();
+    test('hides the mangas of an adult source from the library, the history and the updates while the setting is off, and shows them when it is on', async () => {
+        fake.adult = true;
         session = await launch();
         await openManga(session.page);
+        await addStore(session.page);
+        const settings = session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'SETTINGS', exact: true });
+        await settings.click();
+        await session.page.getByRole('switch', { name: 'Show adult (+18) sources' }).check();
+        await goTo(session.page, 'EXTENSIONS');
+        await session.page.getByRole('switch', { name: 'Installed only' }).uncheck();
+        await session.page.getByRole('button', { name: 'INSTALL: Tachiyomi: Fake Dex' }).click();
+        await expect(session.page.getByText('INSTALLED', { exact: true })).toBeVisible();
+        await goTo(session.page, 'BROWSE');
+        await session.page.getByTestId('manga-source').click();
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
         await goTo(session.page, 'LIBRARY');
-        await expect(session.page.getByRole('navigation', { name: 'Groups' }).getByRole('button')).toHaveText(['ALL', 'Mangas']);
-        await expect(session.page.getByText(/hidden group/)).toHaveCount(0);
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'One Piece' })).toBeVisible();
+
+        // With the setting off the manga is not shown anywhere, but it is still in the library.
+        await settings.click();
+        await session.page.getByRole('switch', { name: 'Show adult (+18) sources' }).uncheck();
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByTestId('manga-entry')).toHaveCount(0);
+        await goTo(session.page, 'HISTORY');
+        await expect(session.page.getByTestId('manga-history-entry')).toHaveCount(0);
+        await goTo(session.page, 'UPDATES');
+        await expect(session.page.getByTestId('manga-update')).toHaveCount(0);
+
+        // With the setting on again it is back, as it was.
+        await settings.click();
+        await session.page.getByRole('switch', { name: 'Show adult (+18) sources' }).check();
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'One Piece' })).toBeVisible();
     });
 
     test('keeps seasons together in a series and mangas in groups, which are made and used from the library', async () => {

@@ -40,6 +40,9 @@ import {
     isCloudflareError,
     isListed,
     listedSources,
+    hiddenSourceIds,
+    withoutHiddenSources,
+    withoutHiddenUpdates,
     jobStatusKey,
     STORE_PLACEHOLDER,
     libraryEntriesByTitle,
@@ -56,6 +59,7 @@ import {
     toolErrorReport
 } from '@renderer/components/mangaText';
 import { makeChapterRecord, makeExtension, makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
+import { makeMangaUpdate, makeReading } from '../../helpers/homeFixtures';
 
 const t = createTranslator('en');
 
@@ -251,6 +255,46 @@ describe('content for adults', () => {
         ).toEqual(['1', '3']);
         expect(listedSources(sources, true)).toEqual(sources);
         expect(listedSources([], false)).toEqual([]);
+    });
+});
+
+describe('hiding what comes from the sources for adults', () => {
+    const SOURCES = [makeSource({ id: '1', contentWarning: 'SAFE' }), makeSource({ id: '2', contentWarning: 'NSFW' }), makeSource({ id: '3', contentWarning: 'MIXED' }), makeSource({ id: '4', contentWarning: 'NSFW' })];
+
+    it('hides the ids of the adult sources unless the adult ones are asked for', () => {
+        expect([...hiddenSourceIds(SOURCES, false)]).toEqual(['2', '4']);
+        expect(hiddenSourceIds(SOURCES, true).size).toBe(0);
+        expect(hiddenSourceIds([], false).size).toBe(0);
+    });
+
+    it('keeps the items of the other sources, in their order', () => {
+        const jobs = [makeMangaJob({ chapterId: 1, sourceId: '1' }), makeMangaJob({ chapterId: 2, sourceId: '2' }), makeMangaJob({ chapterId: 3, sourceId: 'removed' }), makeMangaJob({ chapterId: 4, sourceId: '4' })];
+        expect(
+            withoutHiddenSources(jobs, new Set(['2', '4'])).map((job) => {
+                return job.chapterId;
+            })
+        ).toEqual([1, 3]);
+    });
+
+    it('gives back the same list when nothing is hidden', () => {
+        const readings = [makeReading({ id: 1, sourceId: '2' })];
+        expect(withoutHiddenSources(readings, new Set())).toBe(readings);
+    });
+
+    it('works for the readings of the history', () => {
+        const readings = [makeReading({ id: 1, sourceId: '2' }), makeReading({ id: 2, sourceId: '1' })];
+        expect(withoutHiddenSources(readings, new Set(['2']))).toEqual([readings[1]]);
+    });
+
+    it('takes out the new chapters of the mangas of the library that come from a hidden source', () => {
+        const library = [makeLibraryManga([], { id: 10, sourceId: '1' }), makeLibraryManga([], { id: 11, sourceId: '2' })];
+        const updates = [makeMangaUpdate({ id: 1, mangaId: 10 }), makeMangaUpdate({ id: 2, mangaId: 11 }), makeMangaUpdate({ id: 3, mangaId: 99 })];
+        expect(withoutHiddenUpdates(updates, library, new Set(['2']))).toEqual([updates[0], updates[2]]);
+    });
+
+    it('gives back the same new chapters when nothing is hidden', () => {
+        const updates = [makeMangaUpdate({ id: 1, mangaId: 10 })];
+        expect(withoutHiddenUpdates(updates, [makeLibraryManga([], { id: 10, sourceId: '2' })], new Set())).toBe(updates);
     });
 });
 

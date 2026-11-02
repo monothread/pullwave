@@ -5,6 +5,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
+import { useShownJobs } from '../hooks/useShownManga';
 
 const KINDS: readonly ActiveDownloadKind[] = ['video', 'anime', 'manga'];
 
@@ -32,9 +33,7 @@ export function DownloadsIndicator() {
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
-    const mangaJobs = useMangaStore((state) => {
-        return state.jobs;
-    });
+    const mangaJobs = useShownJobs();
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });

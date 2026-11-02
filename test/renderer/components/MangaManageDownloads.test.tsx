@@ -6,7 +6,7 @@ import type { MangaJob } from '@shared/manga';
 import { groupActiveJobs, MangaManageDownloads } from '@renderer/components/MangaManageDownloads';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeMangaJob } from '../../helpers/mangaFixtures';
+import { makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -36,6 +36,22 @@ beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
     useMangaStore.setState({ ...initialManga, jobs: jobs(), queueHeld: false });
+});
+
+describe('MangaManageDownloads with adult sources', () => {
+    it('does not offer the mangas of the adult sources while they are not listed, and offers them when they are', () => {
+        useMangaStore.setState({
+            jobs: [makeMangaJob({ chapterId: 1, mangaId: 1, mangaTitle: 'Safe Manga', sourceId: 'safe', status: 'running' }), makeMangaJob({ chapterId: 2, mangaId: 2, mangaTitle: 'Adult Manga', sourceId: 'adult', status: 'running' })],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' }
+        });
+        const { unmount } = render(<MangaManageDownloads onClose={vi.fn()} />);
+        expect(within(dialog()).getByRole('checkbox', { name: 'Safe Manga' })).toBeInTheDocument();
+        expect(within(dialog()).queryByRole('checkbox', { name: 'Adult Manga' })).not.toBeInTheDocument();
+        unmount();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        render(<MangaManageDownloads onClose={vi.fn()} />);
+        expect(within(dialog()).getByRole('checkbox', { name: 'Adult Manga' })).toBeInTheDocument();
+    });
 });
 
 describe('groupActiveJobs', () => {

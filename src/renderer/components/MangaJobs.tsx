@@ -10,6 +10,7 @@ import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { MangaCover } from './MangaCover';
 import { MangaManageDownloads } from './MangaManageDownloads';
+import { useShownJobs } from '../hooks/useShownManga';
 
 const ORDER: Record<MangaJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
@@ -60,9 +61,7 @@ function MangaJobBar({ percent, title }: MangaJobBarProps) {
 export function MangaJobs() {
     const t = useTranslator();
     const [managing, setManaging] = useState(false);
-    const jobs = useMangaStore((state) => {
-        return state.jobs;
-    });
+    const jobs = useShownJobs();
     const queueHeld = useMangaStore((state) => {
         return state.queueHeld;
     });

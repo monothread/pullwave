@@ -1,7 +1,7 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
 import { hasChapterFile } from '@shared/manga';
-import type { LibraryManga, MangaChapter, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus } from '@shared/manga';
+import type { LibraryManga, MangaChapter, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus, MangaUpdateEntry } from '@shared/manga';
 import type { ToolError, ToolErrorCode } from '@shared/tools';
 import type { MangaReaderState, ReaderChapter } from '../store/mangaStore';
 import { codedErrorReport, type ErrorReport } from './errorReport';
@@ -321,6 +321,50 @@ export function isListed(contentWarning: MangaSource['contentWarning'], showAdul
 export function listedSources(sources: readonly MangaSource[], showAdult: boolean): MangaSource[] {
     return sources.filter((source) => {
         return isListed(source.contentWarning, showAdult);
+    });
+}
+
+// The ids of the sources whose mangas are not shown: the ones for adults, unless the user asked for them. A source that is not known (its
+// extension was removed) is not in the set, so what comes from it is still shown.
+export function hiddenSourceIds(sources: readonly MangaSource[], showAdult: boolean): ReadonlySet<string> {
+    return new Set(
+        sources
+            .filter((source) => {
+                return !isListed(source.contentWarning, showAdult);
+            })
+            .map((source) => {
+                return source.id;
+            })
+    );
+}
+
+// The items (mangas, jobs, readings) that do not come from a hidden source; the same list when nothing is hidden.
+export function withoutHiddenSources<T extends { sourceId: string }>(items: T[], hidden: ReadonlySet<string>): T[] {
+    if (hidden.size === 0) {
+        return items;
+    }
+    return items.filter((item) => {
+        return !hidden.has(item.sourceId);
+    });
+}
+
+// The chapters that arrived, without the ones of the mangas of the library that come from a hidden source (an entry knows its manga, not
+// its source).
+export function withoutHiddenUpdates(updates: MangaUpdateEntry[], library: readonly LibraryManga[], hidden: ReadonlySet<string>): MangaUpdateEntry[] {
+    if (hidden.size === 0) {
+        return updates;
+    }
+    const hiddenMangaIds = new Set(
+        library
+            .filter((manga) => {
+                return hidden.has(manga.sourceId);
+            })
+            .map((manga) => {
+                return manga.id;
+            })
+    );
+    return updates.filter((entry) => {
+        return !hiddenMangaIds.has(entry.mangaId);
     });
 }
 

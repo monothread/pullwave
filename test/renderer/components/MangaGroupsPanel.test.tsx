@@ -16,7 +16,7 @@ const GROUPS = [{ id: 1, name: 'Mangas' }, { id: 2, name: 'Manhwas' }];
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
-    useMangaStore.setState({ ...initialManga, groups: GROUPS, hiddenGroupIds: [] });
+    useMangaStore.setState({ ...initialManga, groups: GROUPS });
     mock.api.manga.groups.mockResolvedValue(GROUPS);
 });
 
@@ -102,14 +102,6 @@ describe('MangaGroupsPanel', () => {
             expect(screen.queryByRole('button', { name: /Move up .*: Manhwas/ })).not.toBeInTheDocument();
             expect(screen.queryByRole('button', { name: /Move down .*: Manhwas/ })).not.toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'Move up (towards the left tab): Webtoons' })).toBeEnabled();
-        });
-
-        it('lets a group that is hidden be moved too', async () => {
-            const user = userEvent.setup();
-            useMangaStore.setState({ hiddenGroupIds: [2] });
-            render(<MangaGroupsPanel />);
-            await user.click(screen.getByRole('button', { name: 'Move up (towards the left tab): Manhwas' }));
-            expect(mock.api.manga.moveGroup).toHaveBeenCalledWith(2, 'up');
         });
     });
 
@@ -210,45 +202,12 @@ describe('MangaGroupsPanel', () => {
     });
 });
 
-describe('MangaGroupsPanel hiding a group', () => {
-    function row(name: string): HTMLElement {
-        return screen.getAllByTestId('manga-group').find((item) => {
-            return item.querySelector('.history__title')?.textContent === name;
-        })!;
-    }
-
-    it('hides a group with HIDE, which then says it is hidden and offers SHOW', async () => {
-        const user = userEvent.setup();
+describe('MangaGroupsPanel without hiding', () => {
+    it('has no button to hide or show a group: the +18 setting is what hides mangas', () => {
         render(<MangaGroupsPanel />);
-        expect(within(row('Manhwas')).queryByText('HIDDEN')).not.toBeInTheDocument();
-        const hide = screen.getByRole('button', { name: 'HIDE: Manhwas' });
-        expect(hide).toHaveAttribute('aria-pressed', 'false');
-        await user.click(hide);
-        expect(useMangaStore.getState().hiddenGroupIds).toEqual([2]);
-        expect(within(row('Manhwas')).getByText('HIDDEN')).toHaveClass('badge');
-        expect(screen.getByRole('button', { name: 'SHOW: Manhwas' })).toHaveAttribute('aria-pressed', 'true');
-        expect(screen.queryByRole('button', { name: 'HIDE: Manhwas' })).not.toBeInTheDocument();
-        expect(within(row('Mangas')).queryByText('HIDDEN')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'HIDE: Mangas' })).toBeInTheDocument();
-    });
-
-    it('shows the group again with SHOW', async () => {
-        const user = userEvent.setup();
-        useMangaStore.setState({ hiddenGroupIds: [1, 2] });
-        render(<MangaGroupsPanel />);
-        await user.click(screen.getByRole('button', { name: 'SHOW: Mangas' }));
-        expect(useMangaStore.getState().hiddenGroupIds).toEqual([2]);
-        expect(screen.getByRole('button', { name: 'HIDE: Mangas' })).toBeInTheDocument();
-        expect(within(row('Manhwas')).getByText('HIDDEN')).toBeInTheDocument();
-    });
-
-    it('does not touch the group on the server', async () => {
-        const user = userEvent.setup();
-        render(<MangaGroupsPanel />);
-        await user.click(screen.getByRole('button', { name: 'HIDE: Mangas' }));
-        expect(mock.api.manga.deleteGroup).not.toHaveBeenCalled();
-        expect(mock.api.manga.renameGroup).not.toHaveBeenCalled();
-        expect(mock.api.manga.setGroupMembers).not.toHaveBeenCalled();
+        expect(screen.getAllByTestId('manga-group')).toHaveLength(2);
+        expect(screen.queryByRole('button', { name: /^(HIDE|SHOW):/ })).not.toBeInTheDocument();
+        expect(screen.queryByText('HIDDEN')).not.toBeInTheDocument();
     });
 });
 

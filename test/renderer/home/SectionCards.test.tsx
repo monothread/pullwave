@@ -7,7 +7,7 @@ import { useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeAnime, makeAnimeJob, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
-import { makeJob } from '../../helpers/mockApi';
+import { installMockApi, makeJob } from '../../helpers/mockApi';
 
 const actions = vi.hoisted(() => {
     return { openAnime: vi.fn(), openManga: vi.fn(), pasteLink: vi.fn(), showCut: vi.fn() };
@@ -24,6 +24,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 beforeEach(() => {
     vi.clearAllMocks();
+    installMockApi();
     useAppStore.setState({ settings: { ...DEFAULT_SETTINGS }, jobs: [] });
     useAnimeStore.setState({ status: makeStatus(), library: [], jobs: [] });
     useMangaStore.setState({ status: makeMangaStatus(), library: [], jobs: [] });
@@ -139,6 +140,20 @@ describe('SectionCards', () => {
         expect(search).toHaveClass('btn', 'btn--primary');
         fireEvent.click(search);
         expect(actions.openAnime.mock.calls).toEqual([['search']]);
+    });
+
+    it('leaves the chapters and downloads of the adult sources out of the manga card while they are not listed', () => {
+        useMangaStore.setState({
+            library: [makeLibraryManga([makeChapterRecord({ addedAt: NOW - DAY })], { id: 1, sourceId: 'safe' }), makeLibraryManga([makeChapterRecord({ id: 2, addedAt: NOW - DAY })], { id: 2, remoteId: 8, sourceId: 'adult' })],
+            jobs: [makeMangaJob({ chapterId: 1, sourceId: 'safe', status: 'queued' }), makeMangaJob({ chapterId: 2, sourceId: 'adult', status: 'running' }), makeMangaJob({ chapterId: 3, sourceId: 'adult', status: 'paused' })],
+            browse: { ...initialManga.browse, sources: [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' }
+        });
+        const { unmount } = render(<SectionCards />);
+        expect(lines('MANGA')).toEqual(['1 new this week', '1 downloading']);
+        unmount();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        render(<SectionCards />);
+        expect(lines('MANGA')).toEqual(['2 new this week', '3 downloading']);
     });
 
     it('offers the extensions instead of the updates while the library of the manga is empty and no extension gives a source', () => {

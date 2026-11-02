@@ -7,6 +7,7 @@ import { MangaRemove } from './MangaRemove';
 import { RowLink } from './RowLink';
 import { chapterLabel, groupByDay } from './mangaText';
 import type { ReadingEntry } from '@shared/manga';
+import { useShownHistory } from '../hooks/useShownManga';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -19,9 +20,7 @@ function startOfDay(time: number): number {
 // the library opens on its page there (which has the chapters that are downloaded); one that only was read opens on its source.
 export function MangaHistory() {
     const t = useTranslator();
-    const history = useMangaStore((state) => {
-        return state.history;
-    });
+    const history = useShownHistory();
     const loadHistory = useMangaStore((state) => {
         return state.loadHistory;
     });

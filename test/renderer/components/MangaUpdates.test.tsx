@@ -6,7 +6,7 @@ import type { MangaUpdateEntry } from '@shared/manga';
 import { MangaUpdates } from '@renderer/components/MangaUpdates';
 import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeLibraryManga } from '../../helpers/mangaFixtures';
+import { makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -31,6 +31,21 @@ beforeEach(() => {
 });
 
 describe('MangaUpdates', () => {
+    it('does not list the chapters of the mangas of the adult sources while they are not listed, and lists them when they are', async () => {
+        const library = [makeLibraryManga([], { id: 9, sourceId: 'safe' }), makeLibraryManga([], { id: 10, remoteId: 8, sourceId: 'adult' })];
+        mock.api.manga.updates.mockResolvedValue([entry({ id: 1, mangaId: 9, mangaTitle: 'Safe Manga' }), entry({ id: 2, mangaId: 10, mangaTitle: 'Adult Manga' })]);
+        useMangaStore.setState({ library, browse: { ...initialManga.browse, sources: [makeSource({ id: 'safe', contentWarning: 'SAFE' }), makeSource({ id: 'adult', contentWarning: 'NSFW' })], sourcesStatus: 'ready' } });
+        const { unmount } = render(<MangaUpdates />);
+        expect(await screen.findByText('Safe Manga')).toBeInTheDocument();
+        expect(screen.getAllByTestId('manga-update')).toHaveLength(1);
+        expect(screen.queryByText('Adult Manga')).not.toBeInTheDocument();
+        unmount();
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaShowAdult: true } });
+        render(<MangaUpdates />);
+        expect(await screen.findAllByTestId('manga-update')).toHaveLength(2);
+        expect(screen.getByText('Adult Manga')).toBeInTheDocument();
+    });
+
     it('reads the chapters that arrived when it opens', async () => {
         mock.api.manga.updates.mockResolvedValue([entry()]);
         render(<MangaUpdates />);
