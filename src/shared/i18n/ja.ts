@@ -310,6 +310,7 @@ export const ja: Messages = {
     'theme.amoled': 'AMOLED（純黒）',
     'theme.high-contrast': 'ハイコントラスト',
     'theme.sakura': 'さくら（ピンク・ライト）',
+    'theme.sakura-dark': 'さくら・ダーク（ピンク・ダーク）',
     'settings.language': '言語',
     'settings.language.hint': '「デバイス」は、対応していればシステムの言語を使用し、そうでなければ英語を使用します。',
     'language.device': 'デバイス（システムに従う）',

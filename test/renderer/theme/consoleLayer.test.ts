@@ -85,6 +85,11 @@ describe('the console layer: tokens', () => {
         });
     });
 
+    it('does not give the soft shadows and the pale aurora of the light themes to Sakura Dark, which is dark like the others', () => {
+        expect(styleOf(sheet, ":root[data-theme='sakura-dark']")).toEqual({});
+        expect(styleOf(sheet, ":root[data-theme='dark']")).toEqual({});
+    });
+
     it('keeps the screen plain black in AMOLED: no aurora and no soft shadows', () => {
         expect(styleOf(sheet, ":root[data-theme='amoled']")).toEqual({ '--bp-aurora-opacity': '0', '--bp-shadow': 'none', '--bp-shadow-hover': 'none' });
     });

@@ -853,12 +853,13 @@ describe('SettingsPanel theme', () => {
             ['amoled', 'AMOLED (pure black)'],
             ['high-contrast', 'High contrast'],
             ['light', 'Light'],
-            ['sakura', 'Sakura (pink, light)']
+            ['sakura', 'Sakura (pink, light)'],
+            ['sakura-dark', 'Sakura Dark (pink, dark)']
         ]);
         expect(screen.getByText('Device follows the light or dark mode of your system. Saved and restored the next time the app opens.')).toBeInTheDocument();
     });
 
-    it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'] as const)('saves right away when %s is chosen', async (theme) => {
+    it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('saves right away when %s is chosen', async (theme) => {
         render(<SettingsPanel scope="global" />);
         fireEvent.change(screen.getByLabelText('Theme'), { target: { value: theme } });
         await flushPromises();

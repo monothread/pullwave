@@ -56,7 +56,7 @@ test.afterEach(async () => {
     rmSync(workDir, { recursive: true, force: true });
 });
 
-for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura']) {
+for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']) {
     test.describe(`button sizes (${theme} theme)`, () => {
         test.beforeEach(async () => {
             await launch(theme);
@@ -99,10 +99,15 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night'
                 await height(page.getByLabel('Anime name')),
                 await height(page.getByLabel('Audio')),
                 await height(page.locator('form .btn')),
-                await height(page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ })),
                 await height(page.getByRole('navigation', { name: 'Anime' }).getByRole('button').first())
             ];
             expect(new Set(heights)).toEqual(new Set([39]));
+            // DOWNLOADS is 8 px shorter than the tabs and floats in the middle of the bar, so it does not sit on the line under them.
+            const downloads = await page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).boundingBox();
+            const bar = await page.locator('.anime__bar').boundingBox();
+            expect(downloads?.height).toBe(31);
+            expect((downloads?.y ?? 0) - (bar?.y ?? 0)).toBeGreaterThanOrEqual(3);
+            expect((bar?.y ?? 0) + (bar?.height ?? 0) - ((downloads?.y ?? 0) + (downloads?.height ?? 0))).toBeGreaterThanOrEqual(3);
             const form = await page.locator('form .btn').boundingBox();
             const field = await page.getByLabel('Anime name').boundingBox();
             expect(form?.y).toBe(field?.y);

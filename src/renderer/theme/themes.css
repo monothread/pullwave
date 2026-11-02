@@ -332,6 +332,43 @@
     color-scheme: light;
 }
 
+/* Sakura Dark: the soft pink of Sakura at night, on a warm plum black. */
+:root[data-theme='sakura-dark'] {
+    --bg: #1c1319;
+    --panel: #261b22;
+    --panel-2: #31232c;
+    --line: #52384a;
+    --text: #f6e7ee;
+    --muted: #c9a9b9;
+    --cyan: #ff8fb8;
+    --magenta: #c9a0ff;
+    --yellow: #ffb27a;
+    --red: #ff8a8a;
+    --green: #7ee0a4;
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --input-bg: #170f14;
+    --code-bg: #140d11;
+    --on-accent: #1c1319;
+    --glow: none;
+    --glow-strong: none;
+    --glow-hot: none;
+    --glow-red: none;
+    --glow-yellow: none;
+    --glow-green: none;
+    --glow-inset: none;
+    --text-glow: none;
+    --logo-glow: none;
+    --tint-cyan: rgba(255, 143, 184, 0.1);
+    --tint-red: rgba(255, 138, 138, 0.1);
+    --tint-yellow: rgba(255, 178, 122, 0.1);
+    --tint-green: rgba(126, 224, 164, 0.08);
+    --toast-error-text: #ffdede;
+    --body-bg: var(--bg);
+    --scanlines: none;
+    --cut: 0px;
+    color-scheme: dark;
+}
+
 /* Synthwave: neon pink and orange on a purple sunset, with the glow and the scanlines of the cyberpunk theme. */
 :root[data-theme='synthwave'] {
     --bg: #120c2a;

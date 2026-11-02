@@ -1296,7 +1296,7 @@ test.describe('themes', () => {
     test('no theme has a neon glow that follows the mouse, the cyberpunk one included', async () => {
         const { page } = session;
         await openGlobalSettings(page);
-        for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura']) {
+        for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']) {
             await page.getByLabel('Theme').selectOption(theme);
             await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
             const before = await glowOf(page);
@@ -1322,7 +1322,8 @@ test.describe('themes', () => {
         ['amoled', 'rgb(0, 0, 0)', 'flat'],
         ['high-contrast', 'rgb(0, 0, 0)', 'flat'],
         ['light', 'rgb(243, 244, 247)', 'flat'],
-        ['sakura', 'rgb(253, 246, 248)', 'flat']
+        ['sakura', 'rgb(253, 246, 248)', 'flat'],
+        ['sakura-dark', 'rgb(28, 19, 25)', 'flat']
     ];
 
     for (const [theme, background, style] of THEME_BACKGROUNDS) {

@@ -318,6 +318,7 @@ export const en = {
     'theme.amoled': 'AMOLED (pure black)',
     'theme.high-contrast': 'High contrast',
     'theme.sakura': 'Sakura (pink, light)',
+    'theme.sakura-dark': 'Sakura Dark (pink, dark)',
     'settings.language': 'Language',
     'settings.language.hint': 'Device uses the language of your system when it is available, otherwise English.',
     'language.device': 'Device (follows the system)',

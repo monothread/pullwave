@@ -15,7 +15,7 @@ const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
 // narrow ones.
 const SIZES: Array<[number, number]> = [[480, 800], [600, 800], [768, 1000], [1024, 768], [1366, 768], [1920, 1050]];
 // Every theme: the font of the neon ones is wider than the others and their boxes are cut differently.
-const THEMES = ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'];
+const THEMES = ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
 // Day to day the audit runs on a few themes and sizes that stand for the others; the whole matrix runs before a release, in the test tagged
 // @full (`npm run test:e2e:full`).
 interface AuditMatrix {

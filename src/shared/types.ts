@@ -85,7 +85,8 @@ export type ThemeName =
     | 'amoled'
     | 'high-contrast'
     | 'light'
-    | 'sakura';
+    | 'sakura'
+    | 'sakura-dark';
 // How a theme looks: 'neon' keeps the glow, the scanlines and the cut corners of the default theme; 'flat' has none of them.
 export type ThemeStyle = 'neon' | 'flat';
 export type LanguageCode = 'en' | 'pt' | 'es' | 'zh' | 'ja';

@@ -92,6 +92,23 @@ describe('the themes in themes.css', () => {
     });
 });
 
+describe('Sakura Dark', () => {
+    it('is the dark version of Sakura: the same pink and purple family, flat, on a dark plum background', () => {
+        const sakura = themeVariables('sakura');
+        const night = themeVariables('sakura-dark');
+        expect(THEME_STYLES['sakura-dark']).toBe('flat');
+        expect(night['color-scheme']).toBe('dark');
+        expect(night['--font']).toBe(sakura['--font']);
+        expect(night['--bg']).toBe('#1c1319');
+        expect(night['--cyan']).toBe('#ff8fb8');
+        expect(night['--magenta']).toBe('#c9a0ff');
+        // The surfaces are darker than the text, which is the opposite of Sakura.
+        expect(luminance(color(night, '--bg'))).toBeLessThan(luminance(color(night, '--text')));
+        expect(luminance(color(night, '--bg'))).toBeLessThan(0.02);
+        expect(luminance(color(sakura, '--bg'))).toBeGreaterThan(0.8);
+    });
+});
+
 describe('the style of each theme', () => {
     it.each(LISTED.filter((theme) => {
         return THEME_STYLES[theme] === 'flat';

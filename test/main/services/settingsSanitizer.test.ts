@@ -443,7 +443,7 @@ describe('sanitizeSettings', () => {
 });
 
 describe('sanitizeSettings theme', () => {
-    it.each(['device', 'cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura'])('keeps the %s theme', (theme) => {
+    it.each(['device', 'cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'])('keeps the %s theme', (theme) => {
         expect(sanitizeSettings({ theme }).theme).toBe(theme);
     });
 
@@ -456,8 +456,8 @@ describe('sanitizeSettings theme', () => {
         expect(sanitizeSettings({ theme: 'tokyo_night' }).theme).toBe('device');
     });
 
-    it('offers the thirteen themes, in the order of the list', () => {
-        expect(THEMES).toEqual(['device', 'cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura']);
+    it('offers the fourteen themes, in the order of the list', () => {
+        expect(THEMES).toEqual(['device', 'cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']);
     });
 });
 

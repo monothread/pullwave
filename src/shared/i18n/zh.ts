@@ -310,6 +310,7 @@ export const zh: Messages = {
     'theme.amoled': 'AMOLED（纯黑）',
     'theme.high-contrast': '高对比度',
     'theme.sakura': '樱花（粉色，浅色）',
+    'theme.sakura-dark': '樱花·深色（粉色，深色）',
     'settings.language': '语言',
     'settings.language.hint': '“跟随设备”会在支持时使用系统语言，否则使用英语。',
     'language.device': '跟随设备（跟随系统）',

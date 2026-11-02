@@ -32,7 +32,8 @@ const THEME_STYLES: Record<string, 'neon' | 'flat'> = {
     amoled: 'flat',
     'high-contrast': 'flat',
     light: 'flat',
-    sakura: 'flat'
+    sakura: 'flat',
+    'sakura-dark': 'flat'
 };
 const THEMES = Object.keys(THEME_STYLES);
 // The audits of every screen go through a matrix of themes and sizes. Day to day they run on a few that stand for the others (a neon theme, a
@@ -587,7 +588,8 @@ test('every theme keeps its own colours under the layer: background, accent of t
         amoled: 'rgb(0, 0, 0)',
         'high-contrast': 'rgb(0, 0, 0)',
         light: 'rgb(243, 244, 247)',
-        sakura: 'rgb(253, 246, 248)'
+        sakura: 'rgb(253, 246, 248)',
+        'sakura-dark': 'rgb(28, 19, 25)'
     };
     for (const theme of THEMES) {
         await applyTheme(page, theme);

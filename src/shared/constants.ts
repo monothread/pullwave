@@ -194,7 +194,8 @@ export const THEMES: readonly ThemeName[] = [
     'amoled',
     'high-contrast',
     'light',
-    'sakura'
+    'sakura',
+    'sakura-dark'
 ];
 
 // The style of every theme that can be applied ('device' is one of the two it follows).
@@ -210,7 +211,8 @@ export const THEME_STYLES: Readonly<Record<Exclude<ThemeName, 'device'>, ThemeSt
     amoled: 'flat',
     'high-contrast': 'flat',
     light: 'flat',
-    sakura: 'flat'
+    sakura: 'flat',
+    'sakura-dark': 'flat'
 };
 export const LANGUAGE_CODES: readonly LanguageCode[] = ['en', 'pt', 'es', 'zh', 'ja'];
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['device', ...LANGUAGE_CODES];

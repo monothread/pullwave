@@ -310,6 +310,7 @@ export const es: Messages = {
     'theme.amoled': 'AMOLED (negro puro)',
     'theme.high-contrast': 'Alto contraste',
     'theme.sakura': 'Sakura (rosa, claro)',
+    'theme.sakura-dark': 'Sakura Oscuro (rosa, oscuro)',
     'settings.language': 'Idioma',
     'settings.language.hint': 'Dispositivo usa el idioma de tu sistema cuando está disponible; si no, inglés.',
     'language.device': 'Dispositivo (sigue el sistema)',

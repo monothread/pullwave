@@ -42,7 +42,8 @@ describe('resolveTheme', () => {
         ['high-contrast', true, 'high-contrast'],
         ['dark', false, 'dark'],
         ['light', true, 'light'],
-        ['sakura', true, 'sakura']
+        ['sakura', true, 'sakura'],
+        ['sakura-dark', false, 'sakura-dark']
     ] as const)('resolves %s with a system that prefers dark = %s to %s', (theme, dark, expected) => {
         expect(resolveTheme(theme, dark)).toBe(expected);
     });
@@ -89,7 +90,8 @@ describe('applyTheme', () => {
         ['amoled', 'flat'],
         ['high-contrast', 'flat'],
         ['light', 'flat'],
-        ['sakura', 'flat']
+        ['sakura', 'flat'],
+        ['sakura-dark', 'flat']
     ] as const)('puts the %s theme on the document with the %s style', (theme, style) => {
         mockSystem(false);
         applyTheme(theme);
@@ -122,7 +124,7 @@ describe('remembering the theme', () => {
         expect(rememberedTheme()).toBe('light');
     });
 
-    it.each(['synthwave', 'terminal', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'sakura'] as const)('stores %s and reads it back', (theme) => {
+    it.each(['synthwave', 'terminal', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'sakura', 'sakura-dark'] as const)('stores %s and reads it back', (theme) => {
         rememberTheme(theme);
         expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe(theme);
         expect(rememberedTheme()).toBe(theme);
