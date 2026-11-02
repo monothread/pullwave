@@ -104,6 +104,15 @@ const manga: CyberApi['manga'] = {
     resumeAll: () => {
         return ipcRenderer.invoke(IPC.mangaResumeAll);
     },
+    pauseMangas: (mangaIds) => {
+        return ipcRenderer.invoke(IPC.mangaPauseMangas, mangaIds);
+    },
+    resumeMangas: (mangaIds) => {
+        return ipcRenderer.invoke(IPC.mangaResumeMangas, mangaIds);
+    },
+    cancelMangas: (mangaIds) => {
+        return ipcRenderer.invoke(IPC.mangaCancelMangas, mangaIds);
+    },
     queueHeld: () => {
         return ipcRenderer.invoke(IPC.mangaQueueHeld);
     },
@@ -193,6 +202,9 @@ const manga: CyberApi['manga'] = {
     },
     health: (start) => {
         return ipcRenderer.invoke(IPC.mangaHealth, start);
+    },
+    restartPrograms: () => {
+        return ipcRenderer.invoke(IPC.mangaRestartPrograms);
     },
     onServerUpdate: (listener) => {
         return subscribe<ToolState>(IPC.eventMangaServerUpdate, listener);

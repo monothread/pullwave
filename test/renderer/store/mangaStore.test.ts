@@ -934,6 +934,20 @@ describe('mangaStore library and jobs', () => {
         expect(mock.api.manga.pauseAll).toHaveBeenCalledTimes(1);
     });
 
+    it('pauses, resumes and cancels the downloads of the mangas given, and only of them', async () => {
+        await state().pauseMangaJobs([3, 4]);
+        expect(mock.api.manga.pauseMangas.mock.calls).toEqual([[[3, 4]]]);
+        expect(mock.api.manga.resumeMangas).not.toHaveBeenCalled();
+        expect(mock.api.manga.cancelMangas).not.toHaveBeenCalled();
+        await state().resumeMangaJobs([5]);
+        expect(mock.api.manga.resumeMangas.mock.calls).toEqual([[[5]]]);
+        await state().cancelMangaJobs([6, 7]);
+        expect(mock.api.manga.cancelMangas.mock.calls).toEqual([[[6, 7]]]);
+        expect(mock.api.manga.pauseMangas).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.pauseAll).not.toHaveBeenCalled();
+        expect(mock.api.manga.resumeAll).not.toHaveBeenCalled();
+    });
+
     it('clears the downloads that are over and keeps the others', async () => {
         useMangaStore.setState({
             jobs: (['queued', 'running', 'paused', 'error', 'cancelled'] as const).map((status, index) => {
@@ -1810,6 +1824,28 @@ describe('mangaStore health of the programs', () => {
     it('starts with nothing known', () => {
         expect(state().health).toBeNull();
         expect(state().healthChecking).toBe(false);
+        expect(state().programsRestarting).toBe(false);
+    });
+
+    it('restarts the programs, says so while it does, and keeps how they are doing after', async () => {
+        const health = { server: { state: 'healthy' as const, version: 'v9', message: null, external: false }, helper: { state: 'healthy' as const, version: '3.5.2', message: null, external: false } };
+        mock.api.manga.restartPrograms.mockResolvedValue(health);
+        const pending = state().restartPrograms();
+        expect(state().programsRestarting).toBe(true);
+        await pending;
+        expect(state().programsRestarting).toBe(false);
+        expect(state().health).toEqual(health);
+        expect(mock.api.manga.restartPrograms).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.health).not.toHaveBeenCalled();
+    });
+
+    it('stops saying it restarts, and keeps what it knew, when the restart fails', async () => {
+        const known = { server: { state: 'stopped' as const, version: null, message: null, external: false }, helper: null };
+        useMangaStore.setState({ health: known });
+        mock.api.manga.restartPrograms.mockRejectedValue(new Error('boom'));
+        await expect(state().restartPrograms()).rejects.toThrow('boom');
+        expect(state().programsRestarting).toBe(false);
+        expect(state().health).toEqual(known);
     });
 
     it('looks without starting anything, and keeps what it finds', async () => {

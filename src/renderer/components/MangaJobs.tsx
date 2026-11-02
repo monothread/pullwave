@@ -2,12 +2,14 @@ import type { MangaJob } from '@shared/manga';
 import { DownloadHero } from '../downloads/DownloadHero';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
+import { useState } from 'react';
 import { ConfirmButton } from './ConfirmButton';
 import { formatPercent } from './jobStatus';
 import { jobStatusKey } from './mangaText';
 import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { MangaCover } from './MangaCover';
+import { MangaManageDownloads } from './MangaManageDownloads';
 
 const ORDER: Record<MangaJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
@@ -29,6 +31,10 @@ function isQueued(job: MangaJob): boolean {
 
 function isPaused(job: MangaJob): boolean {
     return job.status === 'paused';
+}
+
+function isManageable(job: MangaJob): boolean {
+    return job.status === 'running' || job.status === 'queued' || job.status === 'paused';
 }
 
 function isFinished(job: MangaJob): boolean {
@@ -53,6 +59,7 @@ function MangaJobBar({ percent, title }: MangaJobBarProps) {
 
 export function MangaJobs() {
     const t = useTranslator();
+    const [managing, setManaging] = useState(false);
     const jobs = useMangaStore((state) => {
         return state.jobs;
     });
@@ -146,6 +153,17 @@ export function MangaJobs() {
                         {t('manga.jobs.resumeAll')}
                     </button>
                 )}
+                {jobs.some(isManageable) && (
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            setManaging(true);
+                        }}
+                    >
+                        {t('manga.jobs.manage')}
+                    </button>
+                )}
                 {failed > 0 && (
                     <button
                         type="button"
@@ -160,7 +178,7 @@ export function MangaJobs() {
                 {jobs.some(isFinished) && (
                     <ConfirmButton
                         className="btn btn--small btn--ghost"
-                        dialog={{ title: t('confirm.queueClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('manga.jobs.clear') }}
+                        dialog={{ title: t('confirm.failedClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('manga.jobs.clear') }}
                         onConfirm={() => {
                             void clearFinishedJobs();
                         }}
@@ -169,6 +187,13 @@ export function MangaJobs() {
                     </ConfirmButton>
                 )}
             </div>
+            {managing && (
+                <MangaManageDownloads
+                    onClose={() => {
+                        setManaging(false);
+                    }}
+                />
+            )}
             {queueHeld && jobs.some(isQueued) && <p className="field__hint">{t('manga.jobs.held')}</p>}
             {sorted.map((job) => {
                 const title = `${job.mangaTitle} · ${job.chapterName}`;

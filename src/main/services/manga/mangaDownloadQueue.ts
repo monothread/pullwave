@@ -246,6 +246,38 @@ export class MangaDownloadQueue {
         this.pump();
     }
 
+    // Pauses the downloads of these mangas, without holding the queue: the chapters that are running end their run keeping their pages,
+    // and the ones that wait are paused where they are (they go on, one by one, with RESUME or with resumeMangas).
+    pauseMangas(mangaIds: readonly number[]): void {
+        this.jobsOfMangas(mangaIds).forEach((job) => {
+            if (job.status === 'running') {
+                this.pause(job.chapterId);
+            } else if (job.status === 'queued') {
+                this.pauseWaiting(job);
+            }
+        });
+        this.deps.onLibraryChanged();
+    }
+
+    // Queues again the paused chapters of these mangas.
+    resumeMangas(mangaIds: readonly number[]): void {
+        this.jobsOfMangas(mangaIds).forEach((job) => {
+            if (job.status === 'paused') {
+                this.resume(job.chapterId);
+            }
+        });
+        this.pump();
+    }
+
+    // Cancels every chapter of these mangas that is running, waiting or paused.
+    cancelMangas(mangaIds: readonly number[]): void {
+        this.jobsOfMangas(mangaIds).forEach((job) => {
+            if (job.status === 'queued' || job.status === 'running' || job.status === 'paused') {
+                this.cancel(job.chapterId);
+            }
+        });
+    }
+
     cancel(chapterId: number): void {
         const job = this.jobs.get(chapterId);
         if (job === undefined || job.status === 'done') {
@@ -334,6 +366,21 @@ export class MangaDownloadQueue {
         discarded.forEach((chapterId) => {
             this.discardWork(chapterId);
         });
+    }
+
+    // The jobs of these mangas, as they are now (a copy: acting on one may change the list).
+    private jobsOfMangas(mangaIds: readonly number[]): MangaJob[] {
+        const wanted = new Set(mangaIds);
+        return this.list().filter((job) => {
+            return wanted.has(job.mangaId);
+        });
+    }
+
+    // A chapter that waits is paused where it is: it has no run to end and no pages yet.
+    private pauseWaiting(job: MangaJob): void {
+        this.startsWhileHeld.delete(job.chapterId);
+        this.deps.db.markPaused(job.chapterId);
+        this.update(job, { status: 'paused' });
     }
 
     private isActiveJob(chapterId: number): boolean {

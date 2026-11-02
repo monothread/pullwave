@@ -129,6 +129,12 @@ export function MangaHealthSettings() {
     const restartApp = useMangaStore((state) => {
         return state.restartApp;
     });
+    const restarting = useMangaStore((state) => {
+        return state.programsRestarting;
+    });
+    const restartPrograms = useMangaStore((state) => {
+        return state.restartPrograms;
+    });
     const server = versions?.suwayomi ?? null;
     const helper = versions?.flaresolverr ?? null;
     const downloading = updating.server && download !== null && download.status !== 'ready' && download.status !== 'error';
@@ -238,6 +244,16 @@ export function MangaHealthSettings() {
                 >
                     {toolsChecking ? t('manga.updates.checking') : t('manga.updates.check')}
                 </button>
+                <ConfirmButton
+                    className="btn btn--small btn--hot"
+                    disabled={restarting || health?.server.state === 'not-installed'}
+                    dialog={{ title: t('confirm.programsRestart.title'), message: t('confirm.programsRestart.message'), confirmLabel: t('manga.health.restart'), cancelLabel: t('confirm.back') }}
+                    onConfirm={() => {
+                        void restartPrograms();
+                    }}
+                >
+                    {restarting ? t('manga.health.restarting') : t('manga.health.restart')}
+                </ConfirmButton>
             </div>
             <p className="field__hint">{t('manga.health.hint')}</p>
             <p className="field__hint">{t('manga.updates.hint')}</p>

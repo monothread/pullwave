@@ -139,6 +139,19 @@ export class MangaService {
         return { server, helper };
     }
 
+    // Stops the server and the helper and starts them again (to get out of a hang), and says how they are doing. A chapter that is
+    // downloading fails with them and is tried again by the queue. The server that is already running somewhere else (the end-to-end
+    // tests) is not ours to stop: only its health is read.
+    async restartPrograms(): Promise<MangaHealth> {
+        const { server, helper, externalBaseUrl } = this.deps;
+        if (externalBaseUrl == null) {
+            await Promise.all([server.stop(), helper?.stop()]);
+        }
+        const health = await this.health(true);
+        await this.applyHelper();
+        return health;
+    }
+
     private async serverHealth(start: boolean): Promise<ComponentHealth> {
         const { spec, tool, server, externalBaseUrl } = this.deps;
         const base = { version: null, message: null, external: false };

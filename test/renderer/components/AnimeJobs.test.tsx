@@ -125,13 +125,13 @@ describe('AnimeJobs', () => {
         const user = userEvent.setup();
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' })] });
         const { rerender } = render(<AnimeJobs />);
-        expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CLEAR FAILED' })).not.toBeInTheDocument();
 
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'done' })] });
         rerender(<AnimeJobs />);
-        await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        await user.click(screen.getByRole('button', { name: 'CLEAR FAILED' }));
         expect(mock.api.clearFinishedAnimeJobs).not.toHaveBeenCalled();
-        await answerDialog(user, 'Clear the finished ones?', 'CLEAR FINISHED');
+        await answerDialog(user, 'Clear the failed ones?', 'CLEAR FAILED');
         expect(mock.api.clearFinishedAnimeJobs).toHaveBeenCalledTimes(1);
     });
 
@@ -141,17 +141,18 @@ describe('AnimeJobs', () => {
         render(<AnimeJobs />);
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
         await answerDialog(user, 'Cancel this download?', 'BACK');
-        await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        await user.click(screen.getByRole('button', { name: 'CLEAR FAILED' }));
         await user.keyboard('{Escape}');
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(mock.api.cancelAnimeJob).not.toHaveBeenCalled();
         expect(mock.api.clearFinishedAnimeJobs).not.toHaveBeenCalled();
     });
 
-    it('offers to clear failed and cancelled downloads too', () => {
-        useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'error' })] });
+    it.each(['error', 'cancelled'] as const)('offers CLEAR FAILED for a download that is %s, and no button called CLEAR FINISHED', (status) => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ status })] });
         render(<AnimeJobs />);
-        expect(screen.getByRole('button', { name: 'CLEAR FINISHED' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'CLEAR FAILED' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
     });
 });
 
@@ -224,7 +225,7 @@ describe('AnimeJobs pause and resume', () => {
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'paused' })] });
         render(<AnimeJobs />);
 
-        expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CLEAR FAILED' })).not.toBeInTheDocument();
     });
 });
 

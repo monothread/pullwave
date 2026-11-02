@@ -240,6 +240,15 @@ export function createMockApi(): MockApiHandle {
         resumeAll: vi.fn(async () => {
             return undefined;
         }),
+        pauseMangas: vi.fn(async () => {
+            return undefined;
+        }),
+        resumeMangas: vi.fn(async () => {
+            return undefined;
+        }),
+        cancelMangas: vi.fn(async () => {
+            return undefined;
+        }),
         queueHeld: vi.fn(async () => {
             return false;
         }),
@@ -276,6 +285,9 @@ export function createMockApi(): MockApiHandle {
         }),
         restartApp: vi.fn(async () => {return undefined}),
         health: vi.fn(async () => {
+            return { server: { state: 'healthy', version: 'v1.0.0', message: null, external: false }, helper: null };
+        }),
+        restartPrograms: vi.fn(async () => {
             return { server: { state: 'healthy', version: 'v1.0.0', message: null, external: false }, helper: null };
         }),
         onServerUpdate: vi.fn((listener: (state: ToolState) => void) => {

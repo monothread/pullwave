@@ -68,7 +68,7 @@ function setup(options: { ready?: boolean; status?: MangaServerStatus; error?: s
         },
         externalBaseUrl: options.externalBaseUrl ?? null
     };
-    return { service: new MangaService(deps), serverVersion };
+    return { service: new MangaService(deps), serverVersion, server };
 }
 
 function answer(body: unknown, status = 200): Response {
@@ -348,5 +348,98 @@ describe('MangaService health of the helper', () => {
             }
         });
         expect((await setup({ helper: plain }).service.health(true)).helper?.message).toBe('plain');
+    });
+});
+
+describe('MangaService restart of the programs', () => {
+    function restartSetup(options: Parameters<typeof setup>[0] = {}) {
+        const order: string[] = [];
+        const helper = makeHelper({ status: 'running', baseUrl: HELPER_URL });
+        vi.mocked(helper.stop).mockImplementation(() => {
+            order.push('helper stop');
+            return Promise.resolve();
+        });
+        const context = setup({ helper, ...options });
+        vi.mocked(context.server.stop).mockImplementation(() => {
+            order.push('server stop');
+            return Promise.resolve();
+        });
+        return { ...context, helper, order };
+    }
+
+    it('stops the server and the helper and then starts them again, answering with how they are doing', async () => {
+        const fetchMock = vi.fn(() => {
+            return Promise.resolve(answer({ msg: 'FlareSolverr is ready!', version: '3.5.2' }));
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const { service, server, helper, order, serverVersion } = restartSetup({ status: 'running' });
+        vi.mocked(server.ensureRunning).mockResolvedValue('http://127.0.0.1:1');
+
+        const health = await service.restartPrograms();
+
+        expect(order.sort()).toEqual(['helper stop', 'server stop']);
+        expect(server.stop).toHaveBeenCalledTimes(1);
+        expect(helper.stop).toHaveBeenCalledTimes(1);
+        // The check that follows the restart starts what was stopped (here the server answers its version at once).
+        expect(serverVersion).toHaveBeenCalledTimes(1);
+        expect(health.server).toEqual({ state: 'healthy', version: 'v2.4.2366', message: null, external: false });
+        expect(health.helper?.state).toBe('healthy');
+    });
+
+    it('stops both before it asks anything, and starts the helper again when it was stopped', async () => {
+        vi.stubGlobal('fetch', vi.fn(() => {
+            return Promise.resolve(answer({ version: '3.5.2' }));
+        }));
+        const { service, helper, order, serverVersion } = restartSetup({ status: 'running' });
+        vi.mocked(serverVersion).mockImplementation(() => {
+            order.push('server asked');
+            return Promise.resolve('v2.4.2366');
+        });
+        vi.mocked(helper.ensureRunning).mockImplementation(() => {
+            order.push('helper started');
+            return Promise.resolve(HELPER_URL);
+        });
+        Object.assign(helper, { status: 'stopped', baseUrl: null });
+
+        await service.restartPrograms();
+
+        expect(order.slice(0, 2).sort()).toEqual(['helper stop', 'server stop']);
+        expect(order.slice(2).sort()).toEqual(['helper started', 'server asked']);
+    });
+
+    it('says the server is not working when it does not come back, instead of failing', async () => {
+        const { service } = restartSetup({
+            version: () => {
+                return Promise.reject(new SuwayomiApiError('SERVER_UNAVAILABLE', 'The server did not answer'));
+            }
+        });
+
+        const health = await service.restartPrograms();
+
+        expect(health.server).toEqual({ state: 'unhealthy', version: null, message: 'The server did not answer', external: false });
+    });
+
+    it('stops only the server when there is no helper, and answers with no helper', async () => {
+        const { service, server, serverVersion } = setup({ status: 'running' });
+
+        const health = await service.restartPrograms();
+
+        expect(server.stop).toHaveBeenCalledTimes(1);
+        expect(serverVersion).toHaveBeenCalledTimes(1);
+        expect(health).toEqual({ server: { state: 'healthy', version: 'v2.4.2366', message: null, external: false }, helper: null });
+    });
+
+    it('does not stop a server that runs somewhere else, nor the helper, and only asks them how they are', async () => {
+        const { service, server, helper, serverVersion } = restartSetup({ externalBaseUrl: 'http://127.0.0.1:9' });
+        vi.stubGlobal('fetch', vi.fn(() => {
+            return Promise.resolve(answer({ version: '3.5.2' }));
+        }));
+
+        const health = await service.restartPrograms();
+
+        expect(server.stop).not.toHaveBeenCalled();
+        expect(helper.stop).not.toHaveBeenCalled();
+        expect(serverVersion).toHaveBeenCalledTimes(1);
+        expect(health.server.state).toBe('healthy');
     });
 });

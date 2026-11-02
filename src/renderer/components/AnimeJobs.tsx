@@ -70,7 +70,7 @@ export function AnimeJobs() {
                 {jobs.some(isFinished) && (
                     <ConfirmButton
                         className="btn btn--small btn--ghost"
-                        dialog={{ title: t('confirm.queueClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('anime.jobs.clear') }}
+                        dialog={{ title: t('confirm.failedClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('anime.jobs.clear') }}
                         onConfirm={() => {
                             void clearFinishedJobs();
                         }}

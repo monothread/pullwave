@@ -123,6 +123,55 @@ describe('MangaHealthSettings', () => {
         expect(screen.getByRole('button', { name: 'CHECK NOW' })).toBeEnabled();
     });
 
+    it('restarts the server and the helper after asking, and shows how they are afterwards', async () => {
+        const user = userEvent.setup();
+        answerWith(health());
+        render(<MangaHealthSettings />);
+        await vi.waitFor(() => {
+            expect(screen.getByRole('button', { name: 'CHECK NOW' })).toBeEnabled();
+        });
+        let finish: (value: MangaHealth) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.restartPrograms.mockReturnValue(
+            new Promise((resolve) => {
+                finish = resolve;
+            })
+        );
+
+        await user.click(screen.getByRole('button', { name: 'RESTART PROGRAMS' }));
+        const question = confirmDialog('Restart Suwayomi-Server and FlareSolverr?');
+        expect(within(question).getByText('Both are stopped and started again. A chapter that is downloading fails and is tried again by itself (up to 3 times). Use it when the sources or the downloads hang.')).toBeInTheDocument();
+        expect(mock.api.manga.restartPrograms).not.toHaveBeenCalled();
+        await answerDialog(user, 'Restart Suwayomi-Server and FlareSolverr?', 'RESTART PROGRAMS');
+
+        expect(mock.api.manga.restartPrograms).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('button', { name: 'RESTARTING…' })).toBeDisabled();
+        finish(health({ server: { state: 'healthy', version: 'v3.0.0', message: null, external: false } }));
+        expect(await screen.findByText('v3.0.0')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'RESTART PROGRAMS' })).toBeEnabled();
+    });
+
+    it('restarts nothing when the answer is to go back', async () => {
+        const user = userEvent.setup();
+        answerWith(health());
+        render(<MangaHealthSettings />);
+        await vi.waitFor(() => {
+            expect(screen.getByRole('button', { name: 'RESTART PROGRAMS' })).toBeEnabled();
+        });
+        await user.click(screen.getByRole('button', { name: 'RESTART PROGRAMS' }));
+        await answerDialog(user, 'Restart Suwayomi-Server and FlareSolverr?', 'BACK');
+        expect(mock.api.manga.restartPrograms).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('cannot restart the server when the program is not installed', async () => {
+        answerWith(health({ server: { state: 'not-installed', version: null, message: null, external: false } }));
+        render(<MangaHealthSettings />);
+        expect(await screen.findByText('NOT INSTALLED')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'RESTART PROGRAMS' })).toBeDisabled();
+    });
+
     it('has no section of its own for the updates, only the button that looks for them', () => {
         mock.api.manga.health.mockReturnValue(new Promise(() => {
             return undefined;

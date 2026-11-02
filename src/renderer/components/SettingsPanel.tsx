@@ -637,7 +637,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             label={t('settings.mangaDir')}
                             value={draft.mangaDirectory}
                             placeholder={t('settings.mangaDir.placeholder')}
-                            hint={mangaFolderLocked ? t('settings.mangaDir.locked') : undefined}
                             disabled={mangaFolderLocked}
                             onChange={(value) => {
                                 edit('mangaDirectory', value);
@@ -654,6 +653,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             {t('settings.browse')}
                         </button>
                     </div>
+                    {mangaFolderLocked && <span className="field__hint">{t('settings.mangaDir.locked')}</span>}
                     <div className="field">
                         <div className="field-row">
                             <button
@@ -753,7 +753,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             label={t('settings.animeDownloadDir')}
                             value={draft.animeDownloadDir}
                             placeholder={t('settings.animeDownloadDir.placeholder')}
-                            hint={animeFolderLocked ? t('settings.animeDownloadDir.locked') : undefined}
                             disabled={animeFolderLocked}
                             onChange={(value) => {
                                 edit('animeDownloadDir', value);
@@ -770,6 +769,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             {t('settings.browse')}
                         </button>
                     </div>
+                    {animeFolderLocked && <span className="field__hint">{t('settings.animeDownloadDir.locked')}</span>}
                     <div className="field">
                         <div className="field-row">
                             <button

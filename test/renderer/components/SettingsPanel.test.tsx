@@ -1159,6 +1159,16 @@ describe('SettingsPanel anime section', () => {
                 expect(screen.getByRole('button', { name: 'MIGRATE FOLDER' })).toBeEnabled();
             });
 
+            it('keeps the hint out of the row of the folder, so BROWSE lines up with the field and not with the hint', () => {
+                render(<SettingsPanel scope="anime" />);
+                const row = screen.getByRole('button', { name: 'BROWSE' }).closest<HTMLElement>('.field-row')!;
+                expect(within(row).getByLabelText('Anime download folder')).toBeInTheDocument();
+                const hint = screen.getByText('With anime in the library, the folder only changes through MIGRATE FOLDER, which moves the files too.');
+                expect(hint).toHaveClass('field__hint');
+                expect(row).not.toContainElement(hint);
+                expect(row.nextElementSibling).toBe(hint);
+            });
+
             it('migrates, then shows and saves the new folder', async () => {
                 mock.api.migrateAnimeFolder.mockResolvedValue({ ok: true, episodes: 1, files: 2, destination: '/new/anime' });
                 render(<SettingsPanel scope="anime" />);
@@ -1517,6 +1527,16 @@ describe('SettingsPanel manga section', () => {
             expect(screen.getByRole('button', { name: 'BROWSE' })).toBeDisabled();
             expect(screen.getByText('With mangas in the library, the folder only changes through MIGRATE FOLDER, which moves the files too.')).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'MIGRATE FOLDER' })).toBeEnabled();
+        });
+
+        it('keeps the hint out of the row of the folder, so BROWSE lines up with the field and not with the hint', () => {
+            render(<SettingsPanel scope="manga" />);
+            const row = screen.getByRole('button', { name: 'BROWSE' }).closest<HTMLElement>('.field-row')!;
+            expect(within(row).getByLabelText('Manga folder')).toBeInTheDocument();
+            const hint = screen.getByText('With mangas in the library, the folder only changes through MIGRATE FOLDER, which moves the files too.');
+            expect(hint).toHaveClass('field__hint');
+            expect(row).not.toContainElement(hint);
+            expect(row.nextElementSibling).toBe(hint);
         });
 
         it('does not open the dialog to choose a folder nor save anything', () => {

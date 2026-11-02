@@ -513,6 +513,56 @@ test.describe('manga section', () => {
         await expect(status.getByRole('button', { name: /^UPDATE TO/ })).toHaveCount(0);
     });
 
+    test('restarts the programs from their status after asking, and shows how they are doing afterwards', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'SETTINGS');
+        const status = session.page.getByRole('group', { name: 'Status of the programs' });
+        await expect(status.getByTestId('manga-health-server')).toContainText('HEALTHY');
+        const before = fake.graphqlRequests('aboutServer').length;
+
+        await status.getByRole('button', { name: 'RESTART PROGRAMS' }).click();
+        const ask = session.page.getByRole('dialog', { name: 'Restart Suwayomi-Server and FlareSolverr?' });
+        await expect(ask.getByText('Both are stopped and started again. A chapter that is downloading fails and is tried again by itself (up to 3 times). Use it when the sources or the downloads hang.')).toBeVisible();
+        // Going back restarts nothing.
+        await ask.getByRole('button', { name: 'BACK', exact: true }).click();
+        await expect(ask).toBeHidden();
+        expect(fake.graphqlRequests('aboutServer').length).toBe(before);
+
+        await status.getByRole('button', { name: 'RESTART PROGRAMS' }).click();
+        await ask.getByRole('button', { name: 'RESTART PROGRAMS', exact: true }).click();
+        await expect(ask).toBeHidden();
+        await expect(status.getByRole('button', { name: 'RESTART PROGRAMS' })).toBeEnabled();
+        await expect(status.getByTestId('manga-health-server')).toContainText('v9.9.9-fake');
+        await expect(status.getByTestId('manga-health-server')).toContainText('HEALTHY');
+        expect(fake.graphqlRequests('aboutServer').length).toBe(before + 1);
+    });
+
+    test('lines up BROWSE with the field of the folder even with the hint under it, and keeps DOWNLOADS (N) off the line under the tabs', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await goTo(session.page, 'SETTINGS');
+        const hint = session.page.getByText('With mangas in the library, the folder only changes through MIGRATE FOLDER, which moves the files too.');
+        await expect(hint).toBeVisible();
+
+        const field = (await session.page.getByLabel('Manga folder').boundingBox())!;
+        const browse = (await session.page.getByRole('region', { name: 'Settings' }).getByRole('button', { name: 'BROWSE' }).boundingBox())!;
+        const hintBox = (await hint.boundingBox())!;
+        expect(Math.abs(browse.y - field.y)).toBeLessThanOrEqual(1);
+        expect(Math.abs(browse.y + browse.height - (field.y + field.height))).toBeLessThanOrEqual(1);
+        // The hint is under the row, not beside the button.
+        expect(hintBox.y).toBeGreaterThanOrEqual(field.y + field.height);
+
+        const bar = (await session.page.locator('.anime__bar').boundingBox())!;
+        const downloads = (await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).boundingBox())!;
+        // A gap above and under the button: it floats in the bar and does not sit on its bottom line.
+        expect(downloads.y - bar.y).toBeGreaterThanOrEqual(3);
+        expect(bar.y + bar.height - (downloads.y + downloads.height)).toBeGreaterThanOrEqual(3);
+    });
+
     test('only adds to the library and reads one chapter on the page of the browse: no way to start reading or to mark as read', async () => {
         session = await launch();
         await openManga(session.page);
@@ -1875,6 +1925,76 @@ test.describe('manga section', () => {
         await session.page.getByRole('button', { name: 'RESUME ALL' }).click();
         await expect(session.page.getByText(/The downloads are paused/)).toHaveCount(0);
         await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}, { timeout: 20000 }).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz', 'Chapter 3.cbz', 'Chapter 4.cbz']);
+    });
+
+    test('pauses and resumes the downloads of a manga picked in the window of MANAGE, without holding the queue', async () => {
+        fake.imageDelayMs = 400;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        const jobs = session.page.getByTestId('manga-job');
+        await expect(jobs.getByText('Downloading', { exact: true })).toHaveCount(2);
+
+        await session.page.getByRole('button', { name: 'MANAGE' }).click();
+        const manage = session.page.getByRole('dialog', { name: 'Manage downloads' });
+        await expect(manage.getByRole('listitem')).toHaveText(['One Piece · 2 downloading · 0 waiting · 0 paused']);
+        await expect(manage.getByRole('button', { name: 'PAUSE SELECTED' })).toBeDisabled();
+        await manage.getByRole('checkbox', { name: 'One Piece' }).check();
+        await expect(manage.getByRole('button', { name: 'RESUME SELECTED' })).toBeDisabled();
+        await manage.getByRole('button', { name: 'PAUSE SELECTED' }).click();
+
+        await expect(manage.getByRole('listitem')).toHaveText(['One Piece · 0 downloading · 0 waiting · 2 paused']);
+        await manage.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(manage).toHaveCount(0);
+        await expect(jobs.getByText('Paused', { exact: true })).toHaveCount(2);
+        // Only the mangas were paused: the queue itself is not held.
+        await expect(session.page.getByText(/The downloads are paused/)).toHaveCount(0);
+        expect(existsSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'))).toBe(false);
+
+        await session.page.getByRole('button', { name: 'MANAGE' }).click();
+        await manage.getByRole('checkbox', { name: 'Select all' }).check();
+        await expect(manage.getByRole('button', { name: 'PAUSE SELECTED' })).toBeDisabled();
+        await manage.getByRole('button', { name: 'RESUME SELECTED' }).click();
+        await manage.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}, { timeout: 20000 }).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+    });
+
+    test('cancels the downloads of the mangas picked in the window of MANAGE after asking, deleting their pages', async () => {
+        fake.imageDelayMs = 400;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        const jobs = session.page.getByTestId('manga-job');
+        await expect(jobs.getByText('Downloading', { exact: true })).toHaveCount(2);
+
+        await session.page.getByRole('button', { name: 'MANAGE' }).click();
+        const manage = session.page.getByRole('dialog', { name: 'Manage downloads' });
+        await expect(manage.getByRole('button', { name: 'CANCEL SELECTED' })).toBeDisabled();
+        await manage.getByRole('checkbox', { name: 'Select all' }).check();
+        await manage.getByRole('button', { name: 'CANCEL SELECTED' }).click();
+        // Going back keeps the downloads going.
+        await answerConfirm(session.page, 'Cancel the downloads of the selected mangas?', 'BACK');
+        await expect(jobs.getByText('Downloading', { exact: true })).toHaveCount(2);
+
+        await manage.getByRole('button', { name: 'CANCEL SELECTED' }).click();
+        await expect(session.page.getByRole('dialog', { name: 'Cancel the downloads of the selected mangas?' }).getByText('Every chapter of them that is downloading, waiting or paused stops. You can start them again later.')).toBeVisible();
+        await answerConfirm(session.page, 'Cancel the downloads of the selected mangas?', 'CANCEL SELECTED');
+
+        await expect(manage.getByText('No downloads to manage.')).toBeVisible();
+        await manage.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(jobs.getByText('Cancelled', { exact: true })).toHaveCount(2);
+        await expect(jobs.getByRole('button', { name: 'RETRY' })).toHaveCount(2);
+        await expect(session.page.getByRole('button', { name: 'MANAGE' })).toHaveCount(0);
+        await expect.poll(() => {
+            return existsSync(join(mangaFolder(), 'One Piece')) ? readdirSync(join(mangaFolder(), 'One Piece')) : [];
+        }).toEqual([]);
     });
 
     test('tries a chapter whose pages the server cannot give three times, then shows why and lets it be retried', async () => {

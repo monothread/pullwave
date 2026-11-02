@@ -181,6 +181,26 @@ describe('MangaJobs', () => {
         expect(mock.api.manga.resumeAll).not.toHaveBeenCalled();
     });
 
+    it.each(['running', 'queued', 'paused'] as const)('offers MANAGE when a download is %s, and it opens the window to pick the mangas', async (status) => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 5, mangaId: 2, mangaTitle: 'Bleach', status })] });
+        render(<MangaJobs />);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'MANAGE' }));
+
+        const dialog = confirmDialog('Manage downloads');
+        expect(within(dialog).getByRole('checkbox', { name: 'Bleach' })).not.toBeChecked();
+        await user.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('does not offer MANAGE when every download is over', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 1, status: 'done' }), makeMangaJob({ chapterId: 2, status: 'error' }), makeMangaJob({ chapterId: 3, status: 'cancelled' })] });
+        render(<MangaJobs />);
+        expect(screen.queryByRole('button', { name: 'MANAGE' })).not.toBeInTheDocument();
+    });
+
     it('offers RESUME ALL when a download is paused, and not PAUSE ALL', async () => {
         const user = userEvent.setup();
         useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 6, status: 'paused' })] });
@@ -272,17 +292,38 @@ describe('MangaJobs', () => {
         const user = userEvent.setup();
         useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 1, status: 'running' })] });
         const { rerender } = render(<MangaJobs />);
-        expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CLEAR FAILED' })).not.toBeInTheDocument();
         useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 1, status: 'running' }), makeMangaJob({ chapterId: 2, status: 'error' })] });
         rerender(<MangaJobs />);
-        await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
+        await user.click(screen.getByRole('button', { name: 'CLEAR FAILED' }));
         expect(mock.api.manga.clearFinished).not.toHaveBeenCalled();
-        expect(within(confirmDialog('Clear the finished ones?')).getByText('Only the list goes. Files already saved stay on the disk.')).toBeInTheDocument();
-        await answerDialog(user, 'Clear the finished ones?', 'CLEAR FINISHED');
+        expect(within(confirmDialog('Clear the failed ones?')).getByText('Only the list goes. Files already saved stay on the disk.')).toBeInTheDocument();
+        await answerDialog(user, 'Clear the failed ones?', 'CLEAR FAILED');
         expect(mock.api.manga.clearFinished).toHaveBeenCalledTimes(1);
         expect(useMangaStore.getState().jobs.map((job) => {
             return job.chapterId;
         })).toEqual([1]);
+    });
+});
+
+describe('MangaJobs clearing the failed ones', () => {
+    it.each(['error', 'cancelled'] as const)('offers CLEAR FAILED for a download that is %s, and no button called CLEAR FINISHED', (status) => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 3, status })] });
+        render(<MangaJobs />);
+        expect(screen.getByRole('button', { name: 'CLEAR FAILED' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
+    });
+
+    it('asks to clear the failed ones, and keeps the list when the answer is to go back', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ jobs: [makeMangaJob({ chapterId: 3, status: 'cancelled' })] });
+        render(<MangaJobs />);
+        await user.click(screen.getByRole('button', { name: 'CLEAR FAILED' }));
+        await answerDialog(user, 'Clear the failed ones?', 'KEEP');
+        expect(mock.api.manga.clearFinished).not.toHaveBeenCalled();
+        expect(useMangaStore.getState().jobs.map((job) => {
+            return job.chapterId;
+        })).toEqual([3]);
     });
 });
 

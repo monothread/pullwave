@@ -1,6 +1,7 @@
 import type { MangaChapter, MangaDetails, MangaDownloadRequest, MangaJob, MangaOutputFormat } from '@shared/manga';
 import type { ChapterDownloadHandle, ChapterDownloadOptions, ChapterRunResult, ChapterDownloadResult } from '@main/services/manga/mangaChapterDownloader';
 import { MangaDb } from '@main/services/manga/mangaDb';
+import { chapterWorkDirectory } from '@main/services/manga/mangaFiles';
 import { MANGA_DOWNLOAD_LIMITS, MAX_TRIES, MangaDownloadQueue, type MangaDownloadLimits, type MangaQueueSettings } from '@main/services/manga/mangaDownloadQueue';
 
 type Result = ChapterRunResult<ChapterDownloadResult>;
@@ -1219,5 +1220,227 @@ describe('MangaDownloadQueue which chapters are new', () => {
         queue.addToLibrary(request([chapter(1)]));
         const later = queue.enqueue(request([chapter(4)]));
         expect(later?.chapters.find((item) => {return item.remoteId === 4})?.addedAt).toBe(1000);
+    });
+});
+
+describe('MangaDownloadQueue pause, resume and cancel by manga', () => {
+    const BLEACH = { manga: { remoteId: 8, sourceId: 'src-b', title: 'Bleach', thumbnailUrl: null } };
+
+    function twoMangas() {
+        const context = setup({}, { limits: { sources: 2, perSource: 1 } });
+        context.queue.enqueue(request([chapter(1), chapter(2)]));
+        context.queue.enqueue(request([chapter(5)], BLEACH));
+        const onePiece = context.db.findManga('src-a', 7)!.id;
+        const bleach = context.db.findManga('src-b', 8)!.id;
+        return { ...context, onePiece, bleach };
+    }
+
+    function statuses(queue: MangaDownloadQueue): Array<[string, string]> {
+        return queue.list().map((job) => {
+            return [`${job.mangaTitle} ${job.chapterName}`, job.status];
+        });
+    }
+
+    describe('pauseMangas', () => {
+        it('ends the run of the chapter that is going on and pauses the ones that wait, without holding the queue', async () => {
+            const { queue, downloads, db, heldChanges, updates, onePiece } = twoMangas();
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'running'], ['One Piece Chapter 2', 'queued'], ['Bleach Chapter 5', 'running']]);
+
+            queue.pauseMangas([onePiece]);
+
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+            expect(downloads[1]?.cancel).not.toHaveBeenCalled();
+            expect(db.chaptersOf(onePiece).map((item) => {
+                return [item.remoteId, item.status];
+            })).toEqual([[2, 'paused'], [1, 'downloading']]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            await flush();
+
+            expect(db.chaptersOf(onePiece).map((item) => {
+                return [item.remoteId, item.status];
+            })).toEqual([[2, 'paused'], [1, 'paused']]);
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'paused'], ['One Piece Chapter 2', 'paused'], ['Bleach Chapter 5', 'running']]);
+            expect(updates.filter((job) => {
+                return job.status === 'paused';
+            }).map((job) => {
+                return job.chapterName;
+            })).toEqual(['Chapter 2', 'Chapter 1']);
+            // The queue is not held, and the paused chapters do not take the place of anyone.
+            expect(queue.isHeld()).toBe(false);
+            expect(heldChanges).toEqual([]);
+            expect(downloads).toHaveLength(2);
+        });
+
+        it('pauses several mangas at once and leaves the others going on', () => {
+            const { queue, downloads, onePiece, bleach, state } = twoMangas();
+            const before = state.libraryChanges;
+
+            queue.pauseMangas([onePiece, bleach]);
+
+            expect(downloads.map((item) => {
+                return item.cancel.mock.calls.length;
+            })).toEqual([1, 1]);
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'running'], ['One Piece Chapter 2', 'paused'], ['Bleach Chapter 5', 'running']]);
+            expect(state.libraryChanges).toBe(before + 1);
+        });
+
+        it('does nothing for an unknown id and for no ids, and keeps a chapter that is paused as it is', async () => {
+            const { queue, downloads, db, onePiece, bleach } = twoMangas();
+            queue.pauseMangas([onePiece]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            await flush();
+            const pausedBefore = queue.list();
+
+            queue.pauseMangas([onePiece, 9999]);
+            queue.pauseMangas([]);
+
+            expect(queue.list()).toEqual(pausedBefore);
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+            expect(downloads[1]?.cancel).not.toHaveBeenCalled();
+            expect(db.getChapter(db.chaptersOf(bleach)[0]!.id)?.status).toBe('downloading');
+        });
+
+        it('does not start a chapter that was paused while it waited, even when a place is free', async () => {
+            const { queue, downloads, onePiece } = twoMangas();
+            queue.pauseMangas([onePiece]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            await flush();
+            downloads[1]?.finish(DONE('/m/5.cbz'));
+            await flush();
+
+            expect(downloads).toHaveLength(2);
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'paused'], ['One Piece Chapter 2', 'paused']]);
+        });
+
+        it('pauses by itself a chapter that waits in a held queue, and RESUME ALL queues it again with the others', async () => {
+            const { queue, downloads, onePiece } = twoMangas();
+            queue.pauseAll();
+            queue.pauseMangas([onePiece]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await flush();
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'paused'], ['One Piece Chapter 2', 'paused'], ['Bleach Chapter 5', 'paused']]);
+
+            queue.resumeAll();
+
+            // RESUME ALL queues again every paused chapter, the one paused by itself included.
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'running'], ['One Piece Chapter 2', 'queued'], ['Bleach Chapter 5', 'running']]);
+            expect(downloads.map((item) => {
+                return item.options.chapterRemoteId;
+            })).toEqual([1, 5, 1, 5]);
+        });
+    });
+
+    describe('resumeMangas', () => {
+        it('queues again the paused chapters of the manga, and the first one goes on from the same place', async () => {
+            const { queue, downloads, db, onePiece, bleach } = twoMangas();
+            queue.pauseMangas([onePiece, bleach]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await flush();
+            expect(statuses(queue).map(([, status]) => {
+                return status;
+            })).toEqual(['paused', 'paused', 'paused']);
+
+            queue.resumeMangas([onePiece]);
+
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'running'], ['One Piece Chapter 2', 'queued'], ['Bleach Chapter 5', 'paused']]);
+            expect(downloads).toHaveLength(3);
+            expect(downloads[2]?.options.chapterRemoteId).toBe(1);
+            expect(downloads[2]?.options.outputPath).toBe(downloads[0]?.options.outputPath);
+            expect(db.chaptersOf(bleach)[0]?.status).toBe('paused');
+        });
+
+        it('does nothing for the chapters that are running or waiting, for an unknown id and for no ids', () => {
+            const { queue, downloads, onePiece, bleach } = twoMangas();
+            const before = statuses(queue);
+
+            queue.resumeMangas([onePiece, bleach]);
+            queue.resumeMangas([9999]);
+            queue.resumeMangas([]);
+
+            expect(statuses(queue)).toEqual(before);
+            expect(downloads).toHaveLength(2);
+        });
+
+        it('starts a chapter resumed in a held queue, and keeps the rest waiting', async () => {
+            const { queue, downloads, onePiece } = twoMangas();
+            queue.pauseAll();
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await flush();
+
+            queue.resumeMangas([onePiece]);
+
+            expect(queue.isHeld()).toBe(true);
+            expect(downloads.map((item) => {
+                return item.options.chapterRemoteId;
+            })).toEqual([1, 5, 1]);
+        });
+    });
+
+    describe('cancelMangas', () => {
+        it('cancels the chapter that is going on, the ones that wait and the ones that are paused, and leaves the other manga alone', async () => {
+            const { queue, downloads, db, removed, onePiece } = twoMangas();
+
+            queue.cancelMangas([onePiece]);
+
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+            expect(downloads[1]?.cancel).not.toHaveBeenCalled();
+            expect(db.chaptersOf(onePiece).find((item) => {
+                return item.remoteId === 2;
+            })?.status).toBe('cancelled');
+            downloads[0]?.finish({ status: 'cancelled' });
+            await flush();
+
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'cancelled'], ['One Piece Chapter 2', 'cancelled'], ['Bleach Chapter 5', 'running']]);
+            expect(db.chaptersOf(onePiece).map((item) => {
+                return item.status;
+            })).toEqual(['cancelled', 'cancelled']);
+            expect(removed).toEqual([chapterWorkDirectory(downloads[0]!.options.outputPath)]);
+        });
+
+        it('cancels the paused chapters of the manga and forgets the pages they kept', async () => {
+            const { queue, downloads, db, removed, onePiece } = twoMangas();
+            queue.pauseMangas([onePiece]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            await flush();
+            removed.length = 0;
+
+            queue.cancelMangas([onePiece]);
+
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'cancelled'], ['One Piece Chapter 2', 'cancelled'], ['Bleach Chapter 5', 'running']]);
+            expect(db.chaptersOf(onePiece).map((item) => {
+                return item.status;
+            })).toEqual(['cancelled', 'cancelled']);
+        });
+
+        it('cancels every manga when all of them are given, and starts nothing after', async () => {
+            const { queue, downloads, onePiece, bleach } = twoMangas();
+
+            queue.cancelMangas([onePiece, bleach]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            downloads[1]?.finish({ status: 'cancelled' });
+            await flush();
+
+            expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'cancelled'], ['One Piece Chapter 2', 'cancelled'], ['Bleach Chapter 5', 'cancelled']]);
+            expect(downloads).toHaveLength(2);
+            expect(queue.pendingCount()).toBe(0);
+        });
+
+        it('keeps the chapters that were already cancelled, and does nothing for an unknown id or for no ids', async () => {
+            const { queue, downloads, onePiece } = twoMangas();
+            queue.cancelMangas([onePiece]);
+            downloads[0]?.finish({ status: 'cancelled' });
+            await flush();
+            const before = queue.list();
+
+            queue.cancelMangas([onePiece]);
+            queue.cancelMangas([9999]);
+            queue.cancelMangas([]);
+
+            expect(queue.list()).toEqual(before);
+            expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
+        });
     });
 });

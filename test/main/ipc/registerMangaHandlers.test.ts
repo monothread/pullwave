@@ -63,11 +63,14 @@ const MANGA_CHANNELS = [
     IPC.mangaOpenFolder,
     IPC.mangaPause,
     IPC.mangaPauseAll,
+    IPC.mangaPauseMangas,
     IPC.mangaQueueHeld,
     IPC.mangaRemoveDownload,
     IPC.mangaRemoveManga,
     IPC.mangaResume,
     IPC.mangaResumeAll,
+    IPC.mangaResumeMangas,
+    IPC.mangaCancelMangas,
     IPC.mangaRepairChapter,
     IPC.mangaRetry,
     IPC.mangaSourcePreferenceSet,
@@ -85,6 +88,7 @@ const MANGA_CHANNELS = [
     IPC.mangaHelperUpdate,
     IPC.mangaRestart,
     IPC.mangaHealth,
+    IPC.mangaRestartPrograms,
     IPC.mangaUpdates,
     IPC.mangaClearUpdates,
     IPC.mangaCheckNew,
@@ -197,6 +201,9 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         }),
         health: vi.fn(() => {
             return Promise.resolve({ server: { state: 'healthy' as const, version: 'v1', message: null, external: false }, helper: null });
+        }),
+        restartPrograms: vi.fn(() => {
+            return Promise.resolve({ server: { state: 'healthy' as const, version: 'v2', message: null, external: false }, helper: null });
         }),
         warmUp: vi.fn(),
         baseUrl: options.baseUrl === undefined ? BASE : options.baseUrl
@@ -317,6 +324,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaServerReset)).toBeUndefined();
         expect(ipc.call(IPC.mangaRestart)).toBeUndefined();
         expect(ipc.call(IPC.mangaHealth)).toEqual({ server: { state: 'not-installed', version: null, message: null, external: false }, helper: null });
+        expect(ipc.call(IPC.mangaRestartPrograms)).toEqual({ server: { state: 'not-installed', version: null, message: null, external: false }, helper: null });
         expect(ipc.call(IPC.mangaUpdates)).toEqual([]);
         expect(ipc.call(IPC.mangaReadingHistory)).toEqual([]);
         expect(ipc.call(IPC.mangaCheckNew)).toEqual(unsupported);
@@ -341,7 +349,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaLibrary)).toEqual([]);
         expect(ipc.call(IPC.mangaJobs)).toEqual([]);
         expect(ipc.call(IPC.mangaQueueHeld)).toBe(false);
-        [IPC.mangaDownloadMissing, IPC.mangaCancel, IPC.mangaRetry, IPC.mangaPause, IPC.mangaResume, IPC.mangaPauseAll, IPC.mangaResumeAll, IPC.mangaClearFinished, IPC.mangaRemoveDownload, IPC.mangaRemoveManga, IPC.mangaOpenFolder].forEach((channel) => {
+        [IPC.mangaDownloadMissing, IPC.mangaCancel, IPC.mangaRetry, IPC.mangaPause, IPC.mangaResume, IPC.mangaPauseAll, IPC.mangaResumeAll, IPC.mangaPauseMangas, IPC.mangaResumeMangas, IPC.mangaCancelMangas, IPC.mangaClearFinished, IPC.mangaRemoveDownload, IPC.mangaRemoveManga, IPC.mangaOpenFolder].forEach((channel) => {
             expect(ipc.call(channel)).toBeUndefined();
         });
     });
@@ -751,6 +759,13 @@ describe('the site and the folder of the mangas', () => {
         expect(restarts.count).toBe(1);
     });
 
+    it('restarts the server and the helper through the service and answers with how they are doing', async () => {
+        const { call, service } = setup();
+        await expect(call(IPC.mangaRestartPrograms)).resolves.toEqual({ server: { state: 'healthy', version: 'v2', message: null, external: false }, helper: null });
+        expect(service.restartPrograms.mock.calls).toEqual([[]]);
+        expect(service.health).not.toHaveBeenCalled();
+    });
+
     it('asks the service for the health, starting what is stopped only when the screen says so', async () => {
         const { call, service } = setup();
         const healthy = { server: { state: 'healthy', version: 'v1', message: null, external: false }, helper: null };
@@ -846,6 +861,65 @@ describe('the site and the folder of the mangas', () => {
         await first;
         call(IPC.mangaResumeAll);
         expect(resumeAll).toHaveBeenCalledTimes(2);
+    });
+
+    it('pauses, resumes and cancels the downloads of the mangas given, keeping only valid ids once each', () => {
+        const { call, queue } = setup();
+        const pauseMangas = vi.spyOn(queue, 'pauseMangas');
+        const resumeMangas = vi.spyOn(queue, 'resumeMangas');
+        const cancelMangas = vi.spyOn(queue, 'cancelMangas');
+
+        call(IPC.mangaPauseMangas, [3, 4, 3, 'x', -1, 1.5]);
+        call(IPC.mangaResumeMangas, [5]);
+        call(IPC.mangaCancelMangas, [6, 7]);
+
+        expect(pauseMangas.mock.calls).toEqual([[[3, 4]]]);
+        expect(resumeMangas.mock.calls).toEqual([[[5]]]);
+        expect(cancelMangas.mock.calls).toEqual([[[6, 7]]]);
+    });
+
+    it('treats what is not a list of ids as no mangas', () => {
+        const { call, queue } = setup();
+        const pauseMangas = vi.spyOn(queue, 'pauseMangas');
+        const resumeMangas = vi.spyOn(queue, 'resumeMangas');
+        const cancelMangas = vi.spyOn(queue, 'cancelMangas');
+
+        [undefined, null, 'x', 7, { 0: 1 }].forEach((value) => {
+            call(IPC.mangaPauseMangas, value);
+            call(IPC.mangaResumeMangas, value);
+            call(IPC.mangaCancelMangas, value);
+        });
+
+        expect(pauseMangas.mock.calls).toEqual(Array(5).fill([[]]));
+        expect(resumeMangas.mock.calls).toEqual(Array(5).fill([[]]));
+        expect(cancelMangas.mock.calls).toEqual(Array(5).fill([[]]));
+    });
+
+    it('lets the downloads of a manga be paused or cancelled while the files are moved, but not resumed', async () => {
+        let finish: (value: MangaMigrationResponse) => void = () => {return undefined};
+        const { call, queue } = setup({
+            migrate: () => {
+                return new Promise((resolve) => {
+                    finish = resolve;
+                });
+            }
+        });
+        const pauseMangas = vi.spyOn(queue, 'pauseMangas');
+        const resumeMangas = vi.spyOn(queue, 'resumeMangas');
+        const cancelMangas = vi.spyOn(queue, 'cancelMangas');
+        const first = call(IPC.mangaMigrateFolder);
+
+        call(IPC.mangaPauseMangas, [1]);
+        call(IPC.mangaCancelMangas, [2]);
+        call(IPC.mangaResumeMangas, [3]);
+
+        expect(pauseMangas.mock.calls).toEqual([[[1]]]);
+        expect(cancelMangas.mock.calls).toEqual([[[2]]]);
+        expect(resumeMangas).not.toHaveBeenCalled();
+        finish({ ok: false, reason: 'cancelled' });
+        await first;
+        call(IPC.mangaResumeMangas, [3]);
+        expect(resumeMangas.mock.calls).toEqual([[[3]]]);
     });
 
     it('lets a download be paused or cancelled while the files are moved', async () => {

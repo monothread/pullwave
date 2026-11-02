@@ -560,6 +560,10 @@ export interface MangaApi {
     // Pauses what is going on and holds what waits (it keeps waiting), and goes on with everything that is paused or held.
     pauseAll: () => Promise<void>;
     resumeAll: () => Promise<void>;
+    // The same, for the downloads of these mangas only (the rest of the queue is not held).
+    pauseMangas: (mangaIds: number[]) => Promise<void>;
+    resumeMangas: (mangaIds: number[]) => Promise<void>;
+    cancelMangas: (mangaIds: number[]) => Promise<void>;
     // Whether the queue is held by PAUSE ALL.
     queueHeld: () => Promise<boolean>;
     clearFinished: () => Promise<void>;
@@ -606,6 +610,8 @@ export interface MangaApi {
     restartApp: () => Promise<void>;
     // How the server and the helper are doing. `start` also starts them when they are stopped.
     health: (start: boolean) => Promise<MangaHealth>;
+    // Stops the server and the helper and starts them again, to get out of a hang; gives how they are doing then.
+    restartPrograms: () => Promise<MangaHealth>;
     onServerUpdate: (listener: (state: ToolState) => void) => () => void;
     onMigrationProgress: (listener: (progress: MangaMigrationProgress) => void) => () => void;
     // The hourly check added chapters to the library.

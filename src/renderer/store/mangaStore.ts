@@ -242,6 +242,8 @@ interface MangaState {
     updating: { server: boolean; helper: boolean };
     health: MangaHealth | null;
     healthChecking: boolean;
+    // The server and the helper are being stopped and started again.
+    programsRestarting: boolean;
     // The chapters that arrived in the library (the updates screen) and the history of reading, as the main process last gave them.
     updates: MangaUpdateEntry[];
     history: ReadingEntry[];
@@ -268,6 +270,7 @@ interface MangaState {
     restartApp: () => Promise<void>;
     // Looks at how the server and the helper are doing; with `start`, a stopped one is started.
     checkHealth: (start: boolean) => Promise<void>;
+    restartPrograms: () => Promise<void>;
     // Marks chapters as read, or as not read.
     markRead: (keys: readonly string[], read: boolean) => void;
     init: () => Promise<() => void>;
@@ -370,6 +373,9 @@ interface MangaState {
     pauseJob: (chapterId: number) => Promise<void>;
     pauseAllJobs: () => Promise<void>;
     resumeAllJobs: () => Promise<void>;
+    pauseMangaJobs: (mangaIds: number[]) => Promise<void>;
+    resumeMangaJobs: (mangaIds: number[]) => Promise<void>;
+    cancelMangaJobs: (mangaIds: number[]) => Promise<void>;
     resumeJob: (chapterId: number) => Promise<void>;
     clearFinishedJobs: () => Promise<void>;
 
@@ -490,6 +496,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         updating: { server: false, helper: false },
         health: null,
         healthChecking: false,
+        programsRestarting: false,
         termFilters: { sourceId: null, status: 'idle', filters: [] },
         updates: [],
         history: [],
@@ -732,6 +739,15 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 set({ health: await window.api.manga.health(start) });
             } finally {
                 set({ healthChecking: false });
+            }
+        },
+
+        restartPrograms: async () => {
+            set({ programsRestarting: true });
+            try {
+                set({ health: await window.api.manga.restartPrograms() });
+            } finally {
+                set({ programsRestarting: false });
             }
         },
 
@@ -1476,6 +1492,18 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         resumeAllJobs: async () => {
             await window.api.manga.resumeAll();
+        },
+
+        pauseMangaJobs: async (mangaIds) => {
+            await window.api.manga.pauseMangas(mangaIds);
+        },
+
+        resumeMangaJobs: async (mangaIds) => {
+            await window.api.manga.resumeMangas(mangaIds);
+        },
+
+        cancelMangaJobs: async (mangaIds) => {
+            await window.api.manga.cancelMangas(mangaIds);
         },
 
         clearFinishedJobs: async () => {

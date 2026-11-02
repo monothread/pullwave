@@ -16,7 +16,7 @@ import { fromStoredAddress, toStoredAddress } from '../services/manga/serverAddr
 import type { IpcMainLike } from './registerHandlers';
 
 export interface MangaHandlerDependencies {
-    service: Pick<MangaService, 'status' | 'health' | 'install' | 'installHelper' | 'removeHelper' | 'updateAllExtensions' | 'stores' | 'addStore' | 'removeStore' | 'extensions' | 'changeExtension' | 'sources' | 'list' | 'details' | 'warmUp' | 'sourcePreferences' | 'sourceFilters' | 'setSourcePreference'> & {
+    service: Pick<MangaService, 'status' | 'health' | 'restartPrograms' | 'install' | 'installHelper' | 'removeHelper' | 'updateAllExtensions' | 'stores' | 'addStore' | 'removeStore' | 'extensions' | 'changeExtension' | 'sources' | 'list' | 'details' | 'warmUp' | 'sourcePreferences' | 'sourceFilters' | 'setSourcePreference'> & {
         readonly baseUrl: string | null;
     };
     queue: MangaDownloadQueue;
@@ -127,9 +127,11 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
             return undefined;
         });
     });
-    ipcMain.handle(IPC.mangaHealth, (): MangaHealth => {
-        const none: ComponentHealth = { state: 'not-installed', version: null, message: null, external: false };
-        return { server: none, helper: null };
+    [IPC.mangaHealth, IPC.mangaRestartPrograms].forEach((channel) => {
+        ipcMain.handle(channel, (): MangaHealth => {
+            const none: ComponentHealth = { state: 'not-installed', version: null, message: null, external: false };
+            return { server: none, helper: null };
+        });
     });
     ipcMain.handle(IPC.mangaExtensionsUpdateAll, () => {
         return unsupported;
@@ -160,6 +162,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
         IPC.mangaResume,
         IPC.mangaPauseAll,
         IPC.mangaResumeAll,
+        IPC.mangaPauseMangas,
+        IPC.mangaResumeMangas,
+        IPC.mangaCancelMangas,
         IPC.mangaClearFinished,
         IPC.mangaRemoveDownload,
         IPC.mangaRemoveManga,
@@ -383,6 +388,18 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             queue.resumeAll();
         }
     });
+    ipcMain.handle(IPC.mangaPauseMangas, (_event, mangaIds): void => {
+        queue.pauseMangas(asIds(mangaIds));
+    });
+    ipcMain.handle(IPC.mangaResumeMangas, (_event, mangaIds): void => {
+        // Nothing is started while the files are being moved.
+        if (!migrating) {
+            queue.resumeMangas(asIds(mangaIds));
+        }
+    });
+    ipcMain.handle(IPC.mangaCancelMangas, (_event, mangaIds): void => {
+        queue.cancelMangas(asIds(mangaIds));
+    });
     byChapter.forEach(([channel, action]) => {
         ipcMain.handle(channel, (_event, chapterId) => {
             const id = asId(chapterId);
@@ -537,6 +554,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaHealth, (_event, start) => {
         return service.health(start === true);
+    });
+    ipcMain.handle(IPC.mangaRestartPrograms, (): Promise<MangaHealth> => {
+        return service.restartPrograms();
     });
     ipcMain.handle(IPC.mangaUpdates, (): MangaUpdateEntry[] => {
         return db.updates().map((entry) => {
