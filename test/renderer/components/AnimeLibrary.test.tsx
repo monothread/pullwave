@@ -168,6 +168,115 @@ describe('AnimeLibrary', () => {
             expect(covers[0]!.querySelector('img.cover')).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
         });
 
+        describe('the cover of a series that has seasons without a cover', () => {
+            const FRIEREN_ONE = 'https://s4.anilist.co/cover/frieren.jpg';
+            const FRIEREN_TWO = 'https://s4.anilist.co/cover/frieren-2.jpg';
+
+            beforeEach(() => {
+                useAnimeStore.setState({ covers: {} });
+            });
+
+            it('shows on the card the cover of the first season, without looking the other seasons up', async () => {
+                mock.api.findAnimeCover.mockImplementation(async (title: string) => {
+                    return title === 'Frieren' ? FRIEREN_ONE : title === 'Frieren Season 2' ? FRIEREN_TWO : null;
+                });
+                useAnimeStore.setState({ library: SERIES_LIBRARY });
+                render(<AnimeLibrary />);
+
+                const [series] = screen.getAllByTestId('anime-card');
+                await waitFor(() => {
+                    expect((series as HTMLElement).querySelector('img.cover')).toHaveAttribute('src', FRIEREN_ONE);
+                });
+                expect(mock.api.findAnimeCover).not.toHaveBeenCalledWith('Frieren Season 2');
+            });
+
+            it('shows on the card the cover of the next season when the first has none', async () => {
+                mock.api.findAnimeCover.mockImplementation(async (title: string) => {
+                    return title === 'Frieren Season 2' ? FRIEREN_TWO : null;
+                });
+                useAnimeStore.setState({ library: SERIES_LIBRARY });
+                render(<AnimeLibrary />);
+
+                const [series] = screen.getAllByTestId('anime-card');
+                await waitFor(() => {
+                    expect((series as HTMLElement).querySelector('img.cover')).toHaveAttribute('src', FRIEREN_TWO);
+                });
+                expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Frieren');
+                expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Frieren Season 2');
+                expect(within(series as HTMLElement).queryByText('COVER NOT FOUND')).not.toBeInTheDocument();
+            });
+
+            it('says on the card the cover was not found when none of the seasons has one', async () => {
+                mock.api.findAnimeCover.mockResolvedValue(null);
+                useAnimeStore.setState({ library: SERIES_LIBRARY });
+                render(<AnimeLibrary />);
+
+                const [series] = screen.getAllByTestId('anime-card');
+                await waitFor(() => {
+                    expect(within(series as HTMLElement).getByText('COVER NOT FOUND')).toHaveClass('cover', 'cover--none');
+                });
+                expect((series as HTMLElement).querySelector('img')).toBeNull();
+            });
+
+            it('shows the cover of the next season big in the hero of the series, and puts it behind the screen', async () => {
+                const user = userEvent.setup();
+                mock.api.findAnimeCover.mockImplementation(async (title: string) => {
+                    return title === 'Frieren Season 2' ? FRIEREN_TWO : null;
+                });
+                useAnimeStore.setState({ library: SERIES_LIBRARY });
+                render(<AnimeLibrary />);
+
+                await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+
+                const view = screen.getByTestId('series-view');
+                await waitFor(() => {
+                    expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', FRIEREN_TWO);
+                });
+                expect(useBackdropStore.getState().url).toBe(FRIEREN_TWO);
+                const seasons = screen.getAllByTestId('anime-season-cover');
+                expect(seasons[0]!.querySelector('.cover--none')).toHaveTextContent('COVER NOT FOUND');
+                expect(seasons[1]!.querySelector('img.cover')).toHaveAttribute('src', FRIEREN_TWO);
+            });
+
+            it('goes back to the first season for the hero and the backdrop when its cover turns up', async () => {
+                const user = userEvent.setup();
+                mock.api.findAnimeCover.mockImplementation(async (title: string) => {
+                    return title === 'Frieren Season 2' ? FRIEREN_TWO : null;
+                });
+                useAnimeStore.setState({ library: SERIES_LIBRARY });
+                render(<AnimeLibrary />);
+                await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+                const view = screen.getByTestId('series-view');
+                await waitFor(() => {
+                    expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', FRIEREN_TWO);
+                });
+
+                act(() => {
+                    useAnimeStore.setState({ covers: { ...useAnimeStore.getState().covers, frieren: { status: 'found', url: FRIEREN_ONE } } });
+                });
+
+                await waitFor(() => {
+                    expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', FRIEREN_ONE);
+                });
+                expect(useBackdropStore.getState().url).toBe(FRIEREN_ONE);
+            });
+
+            it('says the cover was not found in the hero of the series, with no backdrop, when none of the seasons has one', async () => {
+                const user = userEvent.setup();
+                mock.api.findAnimeCover.mockResolvedValue(null);
+                useAnimeStore.setState({ library: SERIES_LIBRARY });
+                render(<AnimeLibrary />);
+
+                await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
+
+                const view = screen.getByTestId('series-view');
+                await waitFor(() => {
+                    expect(view.querySelector(':scope > .detail__art .cover--none')).toHaveTextContent('COVER NOT FOUND');
+                });
+                expect(useBackdropStore.getState().url).toBeNull();
+            });
+        });
+
         it('opens the screen of a series, with every season and a way back to the cards', async () => {
             const user = userEvent.setup();
             useAnimeStore.setState({ library: SERIES_LIBRARY });

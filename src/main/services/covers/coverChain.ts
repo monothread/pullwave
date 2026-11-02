@@ -21,6 +21,20 @@ export function searchVariants(title: string): string[] {
     });
 }
 
+const SUBTITLE_SEPARATOR = ': ';
+
+// The names the covers are looked up by: the ones of `searchVariants` and, for an anime, last of all, the name without its subtitle
+// ("Name: Another Part" is found as "Name", the series it belongs to, when the services have no cover for the part itself).
+export function coverSearchNames(kind: CoverKind, title: string): string[] {
+    const names = searchVariants(title);
+    const simplest = names.at(-1);
+    if (kind !== 'anime' || simplest === undefined) {
+        return names;
+    }
+    const series = simplest.split(SUBTITLE_SEPARATOR)[0]?.trim() ?? '';
+    return series.length > 0 && !names.includes(series) ? [...names, series] : names;
+}
+
 function asCoverError(error: unknown): CoverFetchError {
     return error instanceof CoverFetchError ? error : new CoverFetchError(error instanceof Error ? error.message : String(error));
 }
@@ -53,7 +67,7 @@ export class CoverChain {
 
     // The cover of the first name the service knows; a failure to ask it (not a title it does not know) stops the names.
     private async askProvider(provider: CoverProvider, title: string): Promise<string | null> {
-        for (const name of searchVariants(title)) {
+        for (const name of coverSearchNames(this.kind, title)) {
             const url = await provider.find(name, this.kind);
             if (url !== null) {
                 return url;

@@ -53,9 +53,9 @@ import { runYtdlpLiveAware } from './services/liveHlsRunner';
 const APP_ID = 'dev.lucas.pullwave';
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
 // The covers of the manga section are served by the manga server of the app, on this machine and on a port that changes (hence the
-// wildcard); only images may come from there.
+// wildcard); only images may come from there. The covers of the anime come from AniList and, when it has none, from the posters of Kitsu.
 const PRODUCTION_CSP =
-    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}:`;
+    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co https://media.kitsu.app http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}:`;
 
 // Declared once (Electron takes the list in a single call): the pages of the chapters the manga library has, the files of the cutter (on
 // every system, like the cutter), and, where the anime section exists, the video files and the streams of its player.

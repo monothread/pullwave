@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeCover } from '@renderer/components/AnimeCover';
 import { useAnimeStore } from '@renderer/store/animeStore';
@@ -21,6 +21,47 @@ beforeEach(() => {
 function image(container: HTMLElement): HTMLImageElement | null {
     return container.querySelector('img');
 }
+
+describe('AnimeCover telling that its picture is broken', () => {
+    it('tells when the picture of the address it was given does not load', () => {
+        const onBroken = vi.fn();
+        const { container } = render(<AnimeCover title="Naruto" url={COVER} onBroken={onBroken} />);
+
+        fireEvent.error(image(container) as HTMLImageElement);
+
+        expect(onBroken).toHaveBeenCalledTimes(1);
+        expect(onBroken).toHaveBeenCalledWith();
+    });
+
+    it('tells when the picture of the cover it looked up does not load', async () => {
+        const onBroken = vi.fn();
+        mock.api.findAnimeCover.mockResolvedValue(COVER);
+        const { container } = render(<AnimeCover title="Naruto" onBroken={onBroken} />);
+
+        await waitFor(() => {
+            expect(image(container)).toHaveAttribute('src', COVER);
+        });
+        expect(onBroken).not.toHaveBeenCalled();
+        fireEvent.error(image(container) as HTMLImageElement);
+
+        expect(onBroken).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not tell anything while the picture loads, or when there is no cover', () => {
+        const onBroken = vi.fn();
+        render(<AnimeCover title="Naruto" url={null} onBroken={onBroken} />);
+
+        expect(onBroken).not.toHaveBeenCalled();
+    });
+
+    it('does not fail when nobody is listening', () => {
+        const { container } = render(<AnimeCover title="Naruto" url={COVER} />);
+
+        fireEvent.error(image(container) as HTMLImageElement);
+
+        expect(screen.getByText('COVER NOT FOUND')).toBeInTheDocument();
+    });
+});
 
 describe('AnimeCover with an address it was given', () => {
     it('shows the picture, as a decoration, at the size of a cover, and loads it lazily', () => {

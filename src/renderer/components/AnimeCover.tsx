@@ -6,11 +6,13 @@ interface AnimeCoverProps {
     title: string;
     // The cover when it is already known (null: there is none); left out, it is looked up by the title.
     url?: string | null;
+    // Told when the picture of the cover does not load, so whoever shows the cover can look for another one.
+    onBroken?: () => void;
 }
 
 // The cover of an anime, to tell it apart at a glance. While it is being looked for there is a plain block; when it is not found (or
 // could not be asked for, or does not load) the block says so.
-export function AnimeCover({ title, url }: AnimeCoverProps) {
+export function AnimeCover({ title, url, onBroken }: AnimeCoverProps) {
     const t = useTranslator();
     const loadCover = useAnimeStore((state) => {
         return state.loadCover;
@@ -40,6 +42,7 @@ export function AnimeCover({ title, url }: AnimeCoverProps) {
                 height={128}
                 onError={() => {
                     setFailedUrl(source);
+                    onBroken?.();
                 }}
             />
         );

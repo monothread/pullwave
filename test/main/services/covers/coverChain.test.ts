@@ -1,4 +1,4 @@
-import { CoverChain, FALLBACK_INTERVAL_MS, FALLBACK_TIMEOUT_MS, fallbackProviders, searchVariants } from '@main/services/covers/coverChain';
+import { CoverChain, FALLBACK_INTERVAL_MS, FALLBACK_TIMEOUT_MS, coverSearchNames, fallbackProviders, searchVariants } from '@main/services/covers/coverChain';
 import { AniListCoverProvider, KitsuCoverProvider, MangaDexCoverProvider, type CoverKind, type CoverProvider } from '@main/services/covers/coverProviders';
 import { CoverFetchError } from '@main/services/covers/politeClient';
 
@@ -45,7 +45,74 @@ describe('searchVariants', () => {
     });
 });
 
+describe('coverSearchNames', () => {
+    it('adds, last of all, the name without the subtitle for an anime', () => {
+        expect(coverSearchNames('anime', 'Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai')).toEqual([
+            'Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai',
+            'Yamada-kun to 7-nin no Majo'
+        ]);
+    });
+
+    it('takes the subtitle off the name that is already simplified, after the qualifier and the D of the number', () => {
+        expect(coverSearchNames('anime', '2.5D Seduction: Season 2 (TV)')).toEqual(['2.5D Seduction: Season 2 (TV)', '2.5D Seduction: Season 2', '2.5 Seduction: Season 2', '2.5 Seduction']);
+    });
+
+    it('cuts at the first separator when the name has more than one', () => {
+        expect(coverSearchNames('anime', 'Name: Part 1: The Start')).toEqual(['Name: Part 1: The Start', 'Name']);
+    });
+
+    it('does not cut a name whose colon has no space after it', () => {
+        expect(coverSearchNames('anime', 'Re:ZERO 2nd Season')).toEqual(['Re:ZERO 2nd Season']);
+        expect(coverSearchNames('anime', 'Fate/Zero')).toEqual(['Fate/Zero']);
+    });
+
+    it('does not repeat a name, and does not add an empty one', () => {
+        expect(coverSearchNames('anime', 'Name: ')).toEqual(['Name:']);
+        expect(coverSearchNames('anime', ': Subtitle')).toEqual([': Subtitle']);
+    });
+
+    it('is empty for an empty name', () => {
+        expect(coverSearchNames('anime', '   ')).toEqual([]);
+    });
+
+    it('leaves the names of a manga as they are', () => {
+        expect(coverSearchNames('manga', 'Name: Another Part')).toEqual(['Name: Another Part']);
+        expect(coverSearchNames('manga', 'Name: Another Part')).toEqual(searchVariants('Name: Another Part'));
+    });
+});
+
 describe('CoverChain', () => {
+    it('finds the cover of the series for an anime whose own name no service knows', async () => {
+        const first = provider('A', { 'Yamada-kun to 7-nin no Majo': 'https://a/yamada.jpg' });
+        const second = provider('B', {});
+        await expect(new CoverChain('anime', [first.service, second.service]).find('Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai')).resolves.toBe('https://a/yamada.jpg');
+        expect(first.asked).toEqual([
+            ['Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai', 'anime'],
+            ['Yamada-kun to 7-nin no Majo', 'anime']
+        ]);
+        expect(second.asked).toEqual([]);
+    });
+
+    it('asks the whole name of every service before the name without the subtitle', async () => {
+        const first = provider('A', {});
+        const second = provider('B', { 'Yamada-kun to 7-nin no Majo': 'https://b/yamada.jpg' });
+        await expect(new CoverChain('anime', [first.service, second.service]).find('Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai')).resolves.toBe('https://b/yamada.jpg');
+        expect(first.asked).toEqual([
+            ['Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai', 'anime'],
+            ['Yamada-kun to 7-nin no Majo', 'anime']
+        ]);
+        expect(second.asked).toEqual([
+            ['Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai', 'anime'],
+            ['Yamada-kun to 7-nin no Majo', 'anime']
+        ]);
+    });
+
+    it('does not look a manga up by the name without its subtitle', async () => {
+        const only = provider('A', { 'Name': 'https://a/name.jpg' });
+        await expect(new CoverChain('manga', [only.service]).find('Name: Another Part')).resolves.toBeNull();
+        expect(only.asked).toEqual([['Name: Another Part', 'manga']]);
+    });
+
     it('gives the cover of the first service, without asking the others', async () => {
         const first = provider('A', { Naruto: 'https://a/naruto.jpg' });
         const second = provider('B', { Naruto: 'https://b/naruto.jpg' });

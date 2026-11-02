@@ -5,6 +5,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { animeErrorReport, animeStatusKey, downloadedCount, groupLibrary, isNewEpisode, matchesSearch, newEpisodeCount, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
 import { AnimeCover } from './AnimeCover';
+import { SeriesCover } from './SeriesCover';
 import { AnimeRemove } from './AnimeRemove';
 import { ConfirmButton } from './ConfirmButton';
 import { cleanSeasonName, cleanSeriesName, foldSeries, isValidSeason, MAX_SEASON, MAX_SEASON_NAME_LENGTH, sameSeries } from '@shared/series';
@@ -20,6 +21,7 @@ import { animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter 
 import { inListOrder, useLibrarySort, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
 import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
+import { useSeriesCoverTitle } from '../hooks/useSeriesCoverTitle';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 
 
@@ -484,6 +486,13 @@ function newEpisodesOf(group: LibraryGroup): number {
     }, 0);
 }
 
+// The titles of the seasons of a series, in order: its cover is the one of the first that has one.
+function seasonTitles(group: LibraryGroup): string[] {
+    return group.entries.map((anime) => {
+        return anime.title;
+    });
+}
+
 // The card of a series: its name, how many seasons it has and the way into its own screen.
 function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; onOpen: () => void }) {
     const removeAnime = useAnimeStore((state) => {
@@ -493,7 +502,7 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
 
     return (
         <article className="job job--done series library__card cover-card row--link" data-testid="anime-card" aria-label={name}>
-            <AnimeCover title={group.entries[0]?.title ?? name} />
+            <SeriesCover titles={seasonTitles(group)} name={name} />
             <div className="cover-card__body">
                 <header className="job__head">
                     <h3 className="series__title">
@@ -606,7 +615,7 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
         return state.closeSeason;
     });
     const name = group.series;
-    useDetailBackdrop(useAnimeCoverUrl(group.entries[0]?.title ?? name));
+    useDetailBackdrop(useAnimeCoverUrl(useSeriesCoverTitle(seasonTitles(group)).title ?? name));
     const openSeason = group.entries.find((anime) => {
         return anime.id === openSeasonId;
     });
@@ -636,7 +645,7 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
             </div>
             <article className="job job--done series detail" data-testid="series-view">
                 <div className="detail__art">
-                    <AnimeCover title={group.entries[0]?.title ?? name} />
+                    <SeriesCover titles={seasonTitles(group)} name={name} />
                 </div>
                 <header className="job__head">
                     <h3 className="series__title" title={name}>

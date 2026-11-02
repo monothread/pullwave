@@ -2251,6 +2251,8 @@ test.describe('covers', () => {
     let requests: string[][];
     let kitsuAsked: string[];
     let mode: 'ok' | 'error';
+    // The names AniList has no cover for.
+    let withoutCover: string[];
 
     async function startAniList(port = 0): Promise<void> {
         aniList = createServer((request, response) => {
@@ -2281,7 +2283,7 @@ test.describe('covers', () => {
                 }
                 const data = Object.fromEntries(
                     names.map((name, index) => {
-                        return [`a${String(index)}`, { media: name === 'Fake Anime 2' ? [] : [{ coverImage: { large: COVER } }] }];
+                        return [`a${String(index)}`, { media: withoutCover.includes(name) ? [] : [{ coverImage: { large: COVER } }] }];
                     })
                 );
                 response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ data }));
@@ -2314,6 +2316,7 @@ test.describe('covers', () => {
         requests = [];
         kitsuAsked = [];
         mode = 'ok';
+        withoutCover = ['Fake Anime 2'];
         await startAniList();
         await relaunchWithAniList();
     });
@@ -2373,6 +2376,41 @@ test.describe('covers', () => {
         await expect(reopened.getByRole('listitem').nth(0).locator('img.cover')).toHaveAttribute('src', COVER);
         await expect(reopened.getByRole('listitem').nth(1).locator('.cover--none')).toHaveText('COVER NOT FOUND');
         expect(searched.length).toBe(asks);
+    });
+
+    test('shows, for a series whose first season has no cover, the cover of the next season on its card and on its screen', async () => {
+        const { page } = session;
+        withoutCover = ['Fake Anime'];
+        await openAnimeTab(page);
+        await openFirstResult(page);
+        await confirmAdd(page);
+        await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
+        // The second season is added by hand to the same series, from the results of the search.
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SEARCH', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
+        await openAddDialog(page);
+        await page.getByRole('textbox', { name: 'Series' }).fill('Fake Anime');
+        await page.getByRole('spinbutton', { name: 'Order' }).fill('2');
+        await addDialog(page).getByRole('button', { name: 'CONFIRM' }).click();
+        await expect(addDialog(page)).toBeHidden();
+
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        const card = page.getByTestId('anime-card');
+        await expect(card).toHaveCount(1);
+        await expect(card.getByText('2 SEASONS')).toBeVisible();
+        // The first season has none (Kitsu has none either): the card shows the one of the second season.
+        await expect(card.locator('img.cover')).toHaveAttribute('src', COVER);
+        await expect(card.getByText('COVER NOT FOUND')).toHaveCount(0);
+        expect(searched).toContain('Fake Anime');
+        expect(searched).toContain('Fake Anime 2');
+
+        await card.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        const view = page.getByTestId('series-view');
+        await expect(view.locator(':scope > .detail__art img.cover')).toHaveAttribute('src', COVER);
+        // Each season still shows its own: the first says there is none.
+        const seasons = page.getByTestId('anime-season-cover');
+        await expect(seasons.nth(0).locator('.cover--none')).toHaveText('COVER NOT FOUND');
+        await expect(seasons.nth(1).locator('img.cover')).toHaveAttribute('src', COVER);
     });
 
     test('says the cover was not found when AniList fails, and asks again the next time the card is shown', async () => {
