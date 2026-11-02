@@ -23,7 +23,8 @@ const LLM_ERROR_KEYS: Record<LlmErrorCode, MessageKey> = {
     TIMEOUT: 'llm.error.TIMEOUT',
     NETWORK: 'llm.error.NETWORK',
     BAD_RESPONSE: 'llm.error.BAD_RESPONSE',
-    CANCELLED: 'llm.error.CANCELLED'
+    CANCELLED: 'llm.error.CANCELLED',
+    NO_TIMESTAMPS: 'llm.error.NO_TIMESTAMPS'
 };
 
 const PROVIDER_KEYS: Record<LlmProviderId, MessageKey> = {

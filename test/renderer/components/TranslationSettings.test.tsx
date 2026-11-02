@@ -219,7 +219,7 @@ describe('TranslationSettings', () => {
             expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('whisper-large');
             expect(screen.getByLabelText('Speech-to-text address (optional)')).toHaveValue('http://stt/v1');
             expect(screen.queryByLabelText('Language spoken in the audio')).not.toBeInTheDocument();
-            expect(screen.getByText('With OpenAI, the model has to answer in WebVTT (whisper-1 does). With Gemini, write the name of a Gemini model that takes audio.')).toBeInTheDocument();
+            expect(screen.getByText('With OpenAI, the model has to give the times of the lines in WebVTT: whisper-1 does (OpenAI turns it off on February 26, 2027); gpt-transcribe and the gpt-4o transcription models only write the text and cannot create a subtitle. With Gemini, write the name of a Gemini model that takes audio.')).toBeInTheDocument();
             expect(screen.getByText('Only to use another address than the one of the service. Required for "Other". The service has to speak the protocol of OpenAI (/audio/transcriptions).')).toBeInTheDocument();
         });
 

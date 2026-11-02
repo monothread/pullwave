@@ -59,8 +59,10 @@ export function speechTokenSlot(provider: SpeechProviderId): LlmTokenSlot {
 }
 
 // Why a request to a language model did not give a text: the token is not accepted, the provider asks to wait or has no more
-// credit, the model is not there, the answer did not come in time or could not be read, or the user cancelled.
-export type LlmErrorCode = 'INVALID_TOKEN' | 'RATE_LIMITED' | 'QUOTA_EXCEEDED' | 'MODEL_NOT_FOUND' | 'TIMEOUT' | 'NETWORK' | 'BAD_RESPONSE' | 'CANCELLED';
+// credit, the model is not there, the answer did not come in time or could not be read, or the user cancelled. `NO_TIMESTAMPS` is only of
+// the services of speech to text: the model writes the text but not the times of the lines, which a subtitle needs (gpt-transcribe and the
+// gpt-4o models of transcription of OpenAI answer only in JSON or text).
+export type LlmErrorCode = 'INVALID_TOKEN' | 'RATE_LIMITED' | 'QUOTA_EXCEEDED' | 'MODEL_NOT_FOUND' | 'TIMEOUT' | 'NETWORK' | 'BAD_RESPONSE' | 'CANCELLED' | 'NO_TIMESTAMPS';
 
 export interface LlmError {
     code: LlmErrorCode;

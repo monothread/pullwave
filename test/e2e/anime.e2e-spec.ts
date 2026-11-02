@@ -3370,6 +3370,8 @@ test.describe('creating the subtitle of an episode from its audio', () => {
     let geminis: GeminiRequest[];
     let answerWith: number;
     let refuseTranslations: boolean;
+    // The service answers as gpt-transcribe does: no WebVTT (400) and no endpoint of translations (404).
+    let noTimestamps: boolean;
     let hold: boolean;
     let holdChat: boolean;
 
@@ -3418,6 +3420,14 @@ test.describe('creating the subtitle of an episode from its audio', () => {
                 if (hold) {
                     return;
                 }
+                if (noTimestamps) {
+                    const translations = path === '/v1/audio/translations';
+                    const message = translations
+                        ? { error: { message: 'Invalid URL (POST /v1/audio/translations)', type: 'invalid_request_error' } }
+                        : { error: { message: "response_format 'vtt' is not compatible with model 'gpt-transcribe-api-ev3'. Use 'json' or 'text' instead.", type: 'invalid_request_error', param: 'response_format', code: 'unsupported_value' } };
+                    response.writeHead(translations ? 404 : 400, { 'Content-Type': 'application/json' }).end(JSON.stringify(message));
+                    return;
+                }
                 if (answerWith !== 200 || (refuseTranslations && path === '/v1/audio/translations')) {
                     response.writeHead(answerWith === 200 ? 400 : answerWith, { 'Content-Type': 'text/plain' }).end('the service says no');
                     return;
@@ -3449,6 +3459,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         geminis.length = 0;
         answerWith = 200;
         refuseTranslations = false;
+        noTimestamps = false;
         hold = false;
         holdChat = false;
         const { userData } = session;
@@ -3786,6 +3797,38 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await expect(create.getByRole('region', { name: 'Progress' })).toHaveCount(0);
         // The notices of the downloads are still there: only the one that says the subtitle was made must not be.
         await expect(page.locator('.toast--info', { hasText: 'SUBTITLE CREATED' })).toHaveCount(0);
+    });
+
+    test('says a model that gives no times of the lines (gpt-transcribe) cannot create a subtitle, and which ones can, saving nothing', async () => {
+        const { page } = session;
+        noTimestamps = true;
+        await saveTokens(page);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Japanese');
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create.getByRole('alert')).toHaveText('The subtitle could not be created. This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models of OpenAI only write the text). Use whisper-1, or Gemini, in the anime settings.');
+        expect(
+            received.map((request) => {
+                return request.path;
+            })
+        ).toEqual(['/v1/audio/transcriptions']);
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+    });
+
+    test('goes on as a transcription when the model has no endpoint of translations, and then says it gives no times of the lines', async () => {
+        const { page } = session;
+        noTimestamps = true;
+        await saveTokens(page, true);
+        await downloadWithoutSubtitle(page);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'English');
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create.getByRole('alert')).toHaveText('The subtitle could not be created. This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models of OpenAI only write the text). Use whisper-1, or Gemini, in the anime settings.', { timeout: 60000 });
+        expect(
+            received.map((request) => {
+                return request.path;
+            })
+        ).toEqual(['/v1/audio/translations', '/v1/audio/transcriptions']);
+        expect(existsSync(generatedFile('English'))).toBe(false);
     });
 
     test('shows the parts that were sent and stops when the user cancels, without saving anything', async () => {

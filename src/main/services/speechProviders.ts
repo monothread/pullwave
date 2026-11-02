@@ -1,9 +1,14 @@
-import { SPEECH_PROVIDERS, type LlmCompletionResult, type SpeechProviderId } from '@shared/llm';
+import { SPEECH_PROVIDERS, type LlmCompletionResult, type LlmError, type SpeechProviderId } from '@shared/llm';
 import { errorOf, failureOf, type LlmFetch } from './llmProviders';
 
 // A part of the audio is a few megabytes and the service transcribes it, which takes a while.
 const REQUEST_TIMEOUT_MS = 300_000;
 const AUDIO_TYPE = 'audio/mpeg';
+// What OpenAI answers (400) to a model that cannot give WebVTT: "response_format 'vtt' is not compatible with model 'gpt-transcribe-…'. Use
+// 'json' or 'text' instead."
+const NO_SUBTITLE_FORMAT = /response_format/i;
+// What it answers (404) to a model that has no endpoint of translations (only whisper-1 has one): "Invalid URL (POST /v1/audio/translations)".
+const NO_TRANSLATIONS = /invalid url/i;
 
 // What the service is asked to do with the audio: write what is said (`transcribe`, in the language that is spoken) or write it in English
 // (`translate`: the service answers in English whatever the language is, and it is not told which one is spoken).
@@ -30,6 +35,19 @@ function joinUrl(base: string, path: string): string {
     return `${base.replace(/\/+$/, '')}${path}`;
 }
 
+// What an answer that is not a success means for a subtitle. A model that cannot write the times of the lines says so; one with no endpoint
+// of translations is a refusal (`BAD_RESPONSE`), so the audio goes again as a transcription, to be translated afterwards (see
+// generateEpisodeSubtitle).
+function speechFailureOf(response: Response, text: string, token: string, translating: boolean): LlmError {
+    if (response.status === 400 && NO_SUBTITLE_FORMAT.test(text)) {
+        return errorOf('NO_TIMESTAMPS', text, token);
+    }
+    if (translating && response.status === 404 && NO_TRANSLATIONS.test(text)) {
+        return errorOf('BAD_RESPONSE', `HTTP 404: ${text}`, token);
+    }
+    return failureOf(response, text, token);
+}
+
 // Asks a service of speech to text (the protocol of OpenAI: `POST <address>/audio/transcriptions`, or `/audio/translations` to have it in
 // English, a form with the file) for the subtitle of a part of the audio, in WebVTT with the times from the start of that part. Never
 // throws: what went wrong comes back as an error.
@@ -54,7 +72,7 @@ export async function transcribeWithSpeechService(request: SpeechRequest, fetchI
         });
         const text = await response.text();
         if (!response.ok) {
-            return { ok: false, error: failureOf(response, text, request.token) };
+            return { ok: false, error: speechFailureOf(response, text, request.token, translating) };
         }
         if (!text.trim().startsWith('WEBVTT')) {
             return { ok: false, error: errorOf('BAD_RESPONSE', `The answer is not a WebVTT subtitle: ${text}`, request.token) };

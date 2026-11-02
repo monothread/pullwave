@@ -121,6 +121,15 @@ describe('transcribeWithSpeechService: translating into English at once', () => 
         expect(await errorOf(respond(400, 'bad format'), { ...BASE, task: 'translate' })).toEqual({ code: 'BAD_RESPONSE', raw: 'HTTP 400: bad format' });
         expect(await errorOf(respond(200, '{"text":"hi"}'), { ...BASE, task: 'translate' })).toEqual({ code: 'BAD_RESPONSE', raw: 'The answer is not a WebVTT subtitle: {"text":"hi"}' });
     });
+
+    it('takes a model with no endpoint of translations (gpt-transcribe) as a refusal, so the audio goes again as a transcription', async () => {
+        const body = '{"error":{"message":"Invalid URL (POST /v1/audio/translations)","type":"invalid_request_error"}}';
+        expect(await errorOf(respond(404, body), { ...BASE, model: 'gpt-transcribe', task: 'translate' })).toEqual({ code: 'BAD_RESPONSE', raw: `HTTP 404: ${body}` });
+    });
+
+    it('still says the model is not there on another 404 of the translations', async () => {
+        expect(await errorOf(respond(404, 'The model `whisper-9` does not exist'), { ...BASE, task: 'translate' })).toEqual({ code: 'MODEL_NOT_FOUND', raw: 'The model `whisper-9` does not exist' });
+    });
 });
 
 describe('transcribeWithSpeechService: the answer', () => {
@@ -164,6 +173,16 @@ Hi
 
     it('says the model is not there on 404', async () => {
         expect(await errorOf(respond(404, 'no such model'))).toEqual({ code: 'MODEL_NOT_FOUND', raw: 'no such model' });
+    });
+
+    it('says the model gives no times of the lines when it refuses the format of a subtitle (gpt-transcribe and the gpt-4o models)', async () => {
+        const body = `{"error":{"message":"response_format 'vtt' is not compatible with model 'gpt-transcribe-api-ev3'. Use 'json' or 'text' instead.","type":"invalid_request_error","param":"response_format","code":"unsupported_value"}}`;
+        expect(await errorOf(respond(400, body), { ...BASE, model: 'gpt-transcribe' })).toEqual({ code: 'NO_TIMESTAMPS', raw: body });
+    });
+
+    it('keeps an Invalid URL of a transcription, and another 400, as they were', async () => {
+        expect(await errorOf(respond(404, 'Invalid URL (POST /v1/audio/transcriptions)'))).toEqual({ code: 'MODEL_NOT_FOUND', raw: 'Invalid URL (POST /v1/audio/transcriptions)' });
+        expect(await errorOf(respond(400, 'the file is too short'))).toEqual({ code: 'BAD_RESPONSE', raw: 'HTTP 400: the file is too short' });
     });
 
     it('keeps the status and the text of any other failure, without the token', async () => {

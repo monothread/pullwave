@@ -36,7 +36,8 @@ const LLM_TEXTS: Record<LlmErrorCode, string> = {
     TIMEOUT: 'The provider took too long to answer.',
     NETWORK: 'The provider could not be reached. Check your connection and the address.',
     BAD_RESPONSE: 'The provider answered in a way the app could not use.',
-    CANCELLED: 'The translation was cancelled.'
+    CANCELLED: 'The translation was cancelled.',
+    NO_TIMESTAMPS: 'This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models of OpenAI only write the text). Use whisper-1, or Gemini, in the anime settings.'
 };
 
 describe('providerName', () => {

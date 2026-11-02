@@ -184,7 +184,7 @@ Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next 
 ### Translating and creating subtitles
 These use **your own account** with a provider; the app has no key of its own and nothing is charged by Pullwave. Everything is set in the anime settings (⚙ of the ANIME tab):
 - **Subtitle translation:** the provider (ChatGPT/OpenAI, Claude, Gemini, DeepSeek, GLM, Kimi, or any service that speaks the OpenAI protocol, with its address), the model (you write its name), the default language and the token.
-- **Subtitle creation (speech to text):** the service (OpenAI's Whisper, Gemini, or another that speaks the OpenAI protocol), the model (`whisper-1` for OpenAI; for Gemini a model of Gemini that takes audio) and its token. The token of the speech service is kept apart from the one of the translation.
+- **Subtitle creation (speech to text):** the service (OpenAI's Whisper, Gemini, or another that speaks the OpenAI protocol), the model (`whisper-1` for OpenAI; for Gemini a model of Gemini that takes audio) and its token. The model has to give the times of the lines: OpenAI's `gpt-transcribe` and its gpt-4o transcription models only write the text, so the app says they cannot create a subtitle and suggests `whisper-1` (which OpenAI turns off on February 26, 2027) or Gemini. The token of the speech service is kept apart from the one of the translation.
 - **The tokens** are kept encrypted by your system's keyring, in the main process of the app, and are never shown again. Without a keyring (some Linux setups) the app says so and does not save them.
 
 How it works:
