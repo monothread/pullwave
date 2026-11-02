@@ -190,12 +190,20 @@ describe('AnimeCoverService finding a cover', () => {
         expect(searched).toEqual(['2.5D Seduction (TV)', '2.5D Seduction', '2.5 Seduction']);
     });
 
-    it('says there is no cover when AniList knows none of the names', async () => {
-        const { service, searched } = setup([notFound(), notFound()]);
+    it('says there is no cover when AniList knows none of the names, the one without the subtitle included', async () => {
+        const { service, searched } = setup([notFound(), notFound(), notFound()]);
 
         expect(await service.find('Bleach: Karaburi! (Mini Anime)')).toBeNull();
 
-        expect(searched).toEqual(['Bleach: Karaburi! (Mini Anime)', 'Bleach: Karaburi!']);
+        expect(searched).toEqual(['Bleach: Karaburi! (Mini Anime)', 'Bleach: Karaburi!', 'Bleach']);
+    });
+
+    it('finds the cover of the series when AniList knows only the name without the subtitle', async () => {
+        const { service, searched } = setup([notFound(), found(COVER)]);
+
+        expect(await service.find('Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai')).toBe(COVER);
+
+        expect(searched).toEqual(['Yamada-kun to 7-nin no Majo: Mou Hitotsu no Suzaku-sai', 'Yamada-kun to 7-nin no Majo']);
     });
 
     it('goes on to the next name when the anime has no cover or an empty one', async () => {
