@@ -2146,6 +2146,14 @@ test.describe('manga section', () => {
         const box = await blocks.nth(0).boundingBox();
         expect(box!.height).toBeGreaterThan(300);
 
+        // Each picture waits in the place of its own page (not at the top of the chapter), so a lazy one starts when its page comes near.
+        const pictures = reader.locator('.reader__img--pending');
+        for (const index of [0, 1, 2]) {
+            const blockBox = await blocks.nth(index).boundingBox();
+            const pictureBox = await pictures.nth(index).boundingBox();
+            expect(Math.abs(pictureBox!.y - blockBox!.y)).toBeLessThanOrEqual(1);
+        }
+
         // When the pictures arrive the blocks are gone and the pages are in the flow.
         await expect(blocks).toHaveCount(0, { timeout: 15000 });
         await expect(reader.locator('.reader__img--pending')).toHaveCount(0);
@@ -2167,8 +2175,9 @@ test.describe('manga section', () => {
         await reader.getByLabel('Reading mode').selectOption('webtoon');
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
         await expect(reader.getByRole('img')).toHaveCount(4);
-        // The pages count once their pictures are in the flow (until then each one is a block that says it is loading).
-        await expect(reader.locator('.reader__loading-page')).toHaveCount(0);
+        // The first page counts once its picture is in the flow (until then it is a block that says it is loading). The pages far below wait
+        // for the reading to come near them (their pictures are lazy), each one in the place of its page.
+        await expect(reader.locator('img[data-page="0"]')).toHaveCount(1);
         await expect(title).toHaveText('One Piece · Romance Dawn');
 
         // The chapter starts with its first page under the bar, the zone of the previous chapter above it, out of view.

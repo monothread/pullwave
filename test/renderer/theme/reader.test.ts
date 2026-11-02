@@ -26,6 +26,8 @@ describe('a page of the reader whose picture is on its way', () => {
     it('takes no room, whatever the scale: its rule is stronger than the ones of the scales', () => {
         expect(styleOf(cyberpunk, '.reader__img.reader__img--pending')).toEqual({
             position: 'absolute',
+            top: '0',
+            left: '0',
             width: '1px',
             height: '1px',
             'max-width': '1px',
@@ -35,6 +37,11 @@ describe('a page of the reader whose picture is on its way', () => {
             'pointer-events': 'none'
         });
         expect(styleOf(cyberpunk, '.reader__img--pending')).toEqual({});
+    });
+
+    it('waits inside the slot of its page, which is the box of the page while it is on its way and leaves no box once it arrived', () => {
+        expect(styleOf(cyberpunk, '.reader__slot')).toEqual({ display: 'contents' });
+        expect(styleOf(cyberpunk, '.reader__slot--pending')).toEqual({ position: 'relative', display: 'block', width: '100%' });
     });
 
     it('waits inside the pages, which hold it in their box', () => {

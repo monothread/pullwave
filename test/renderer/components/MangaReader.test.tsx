@@ -336,6 +336,36 @@ describe('MangaReader the blocks that say a page is loading', () => {
         expect(screen.getAllByRole('img')[0]).not.toHaveAttribute('data-page');
     });
 
+    it('holds the picture on its way inside the slot of its own page, so a lazy picture starts when its page comes near', () => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'webtoon' }));
+        open();
+        render(<MangaReader />);
+        const images = screen.getAllByRole('img');
+        PAGES.forEach((_address, index) => {
+            const slot = screen.getByTestId(`reader-slot-${String(index)}`);
+            expect(slot).toHaveClass('reader__slot', 'reader__slot--pending');
+            expect(slot.parentElement).toBe(screen.getByTestId('reader-scroll'));
+            expect(slot.children).toHaveLength(2);
+            expect(slot.children[0]).toHaveClass('reader__loading-page');
+            expect(slot.children[1]).toBe(images[index]);
+        });
+    });
+
+    it('lets the slot of the page that arrived go, with the same picture in it (it is not loaded again)', () => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'webtoon' }));
+        open();
+        render(<MangaReader />);
+        const picture = screen.getAllByRole('img')[1]!;
+        fireEvent.load(picture);
+        const slot = screen.getByTestId('reader-slot-1');
+        expect(slot).toHaveClass('reader__slot');
+        expect(slot).not.toHaveClass('reader__slot--pending');
+        expect(slot.children).toHaveLength(1);
+        expect(slot.children[0]).toBe(picture);
+        expect(screen.getByTestId('reader-slot-0')).toHaveClass('reader__slot--pending');
+        expect(screen.getByTestId('reader-slot-2')).toHaveClass('reader__slot--pending');
+    });
+
     it('shows the failure of a page in the place of its block, and the block again when it is tried again', async () => {
         const user = userEvent.setup();
         open();

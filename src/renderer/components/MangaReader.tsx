@@ -1,4 +1,4 @@
-import { Fragment, type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReadingRecord } from '@shared/manga';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useScrolledDown } from '../hooks/useScrolledDown';
@@ -587,8 +587,15 @@ export function MangaReader() {
             );
         }
         const arrived = loaded.includes(index);
+        // The slot holds the picture on its way in the place of its page (so a picture loaded lazily starts when its page comes near); once
+        // it arrives the slot leaves no box of its own and the picture is a page of the flow. It is the same element all along, so the
+        // picture is not loaded again.
         return (
-            <Fragment key={`${address}-${String(retries[index] ?? 0)}`}>
+            <div
+                className={`reader__slot${arrived ? '' : ' reader__slot--pending'}`}
+                data-testid={`reader-slot-${String(index)}`}
+                key={`${address}-${String(retries[index] ?? 0)}`}
+            >
                 {!arrived && (
                     <div className="reader__loading-page" data-page={index} role="status">
                         {t('manga.reader.pageLoading', { page: index + 1 })}
@@ -612,7 +619,7 @@ export function MangaReader() {
                         pageSettled(index);
                     }}
                 />
-            </Fragment>
+            </div>
         );
     }
 

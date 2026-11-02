@@ -1389,10 +1389,14 @@ body::after {
 .reader__stage--original { overflow: auto; align-items: flex-start; }
 .reader__failed { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; }
 /* A page whose picture is still on its way holds its place with a block, and the picture waits beside it (it still loads, but takes no room). */
+/* The slot of a page: while its picture is on its way it is the box of the page (the picture waits inside it, so a picture loaded lazily starts when
+   the page comes near); once it arrives the slot leaves no box and the picture is a page of the flow. */
+.reader__slot { display: contents; }
+.reader__slot--pending { position: relative; display: block; width: 100%; }
 .reader__loading-page { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 70vh; box-sizing: border-box; padding: 24px; color: var(--muted); letter-spacing: 2px; background: var(--line); }
 /* Stronger than the sizes of the scales (.reader__stage--width .reader__img and the others): a picture on its way at its full size, out of the
    flow, made the page scroll for a moment. */
-.reader__img.reader__img--pending { position: absolute; width: 1px; height: 1px; max-width: 1px; max-height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.reader__img.reader__img--pending { position: absolute; top: 0; left: 0; width: 1px; height: 1px; max-width: 1px; max-height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 /* The chapter is opening: the pages are not known yet, the block holds the place of the reading. */
 .reader__chapter-loading { justify-content: center; min-height: 70vh; color: var(--muted); letter-spacing: 2px; cursor: default; }
 
