@@ -28,11 +28,38 @@ function bracketing(): TranslatorDependencies['complete'] {
 }
 
 describe('systemPromptFor', () => {
+    const BASE_PROMPT = [
+        'You are a professional subtitle translator.',
+        'The user sends a JSON array of strings, the lines of a subtitle in order. Translate each string into Spanish.',
+        'Keep the meaning, the tone and the register of spoken dialogue, and keep names consistent.',
+        'Keep the line breaks (\\n) and any markup tags such as <i>...</i> where they are.',
+        'Do not merge, split, add or drop strings, and do not explain anything.',
+        'Answer with only a JSON array of strings with exactly as many entries as you received, in the same order, with no code fences.'
+    ];
+    const RECOGNIZED = [
+        'They come from automatic speech recognition and can have mistakes: words heard wrongly (often homophones or near homophones), wrong kanji for names, or a sentence cut between two lines.',
+        'Use the context of the nearby lines and of the series to understand what was really said, and translate that.'
+    ];
+
     it('names the language to translate into and asks for a list of the same size', () => {
         const prompt = systemPromptFor('Spanish');
         expect(prompt).toContain('Translate each string into Spanish.');
         expect(prompt).toContain('exactly as many entries as you received');
         expect(prompt).toContain('JSON array of strings');
+    });
+
+    it('says nothing of speech recognition for the lines of a subtitle that was not written from the audio', () => {
+        expect(systemPromptFor('Spanish')).toBe(BASE_PROMPT.join(' '));
+    });
+
+    it('says the lines were written from the audio of the series, and can have words heard wrongly to see through', () => {
+        expect(systemPromptFor('Spanish', { title: 'Tsukimichi -Moonlit Fantasy-' })).toBe(
+            [...BASE_PROMPT.slice(0, 2), 'The lines were written from the audio of the series "Tsukimichi -Moonlit Fantasy-".', ...RECOGNIZED, ...BASE_PROMPT.slice(2)].join(' ')
+        );
+    });
+
+    it('says the lines were written from the audio of a video when the series has no name', () => {
+        expect(systemPromptFor('Spanish', { title: null })).toBe([...BASE_PROMPT.slice(0, 2), 'The lines were written from the audio of a video.', ...RECOGNIZED, ...BASE_PROMPT.slice(2)].join(' '));
     });
 });
 
@@ -125,6 +152,14 @@ describe('translateTexts', () => {
         expect(result).toEqual({ ok: true, texts: ['[Hello]', '[Bye\nnow]'] });
         expect(complete).toHaveBeenCalledTimes(1);
         expect(complete).toHaveBeenCalledWith(systemPromptFor('Spanish'), '["Hello","Bye\\nnow"]');
+    });
+
+    it('tells the model the texts were written from the audio of the series when that is said', async () => {
+        const complete = bracketing();
+        const result = await translateTexts(['こんにちは'], 'Spanish', { complete }, { title: 'Naruto' });
+        expect(result).toEqual({ ok: true, texts: ['[こんにちは]'] });
+        expect(complete).toHaveBeenCalledTimes(1);
+        expect(complete).toHaveBeenCalledWith(systemPromptFor('Spanish', { title: 'Naruto' }), '["こんにちは"]');
     });
 
     it('asks once for each batch and keeps the order across them', async () => {

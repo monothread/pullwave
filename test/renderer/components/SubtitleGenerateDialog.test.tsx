@@ -102,11 +102,19 @@ describe('SubtitleGenerateDialog: the choices', () => {
             expect(screen.getByTestId('generate-plan')).toHaveTextContent('The audio is transcribed in Portuguese.');
         });
 
-        it('says the service translates the audio into English at once, when the subtitle is wanted in English', async () => {
+        it('says another service of the protocol of OpenAI translates the audio into English at once, when the subtitle is wanted in English', async () => {
             const user = userEvent.setup();
+            useAppStore.setState({ settings: { ...useAppStore.getState().settings, transcribeProvider: 'custom', transcribeBaseUrl: 'http://stt/v1' } });
             await ready();
             await user.selectOptions(screen.getByLabelText('Language of the subtitle'), 'English');
             expect(screen.getByTestId('generate-plan')).toHaveTextContent('The audio, spoken in Japanese, is written in English at once by the speech service.');
+        });
+
+        it('says OpenAI transcribes the audio and the text is translated into English afterwards, since gpt-transcribe cannot translate it', async () => {
+            const user = userEvent.setup();
+            await ready();
+            await user.selectOptions(screen.getByLabelText('Language of the subtitle'), 'English');
+            expect(screen.getByTestId('generate-plan')).toHaveTextContent('The audio is transcribed in Japanese, then the text is translated into English.');
         });
 
         it('only transcribes English audio for an English subtitle', async () => {
@@ -177,7 +185,8 @@ describe('SubtitleGenerateDialog: the choices', () => {
             expect(card.getByText('Audio')).toBeInTheDocument();
             expect(card.getByTestId('generate-estimate')).toHaveTextContent(AUDIO_TEXT);
             expect(card.getByText('Speech to text')).toBeInTheDocument();
-            expect(card.getByText('OpenAI (Whisper) · whisper-1')).toBeInTheDocument();
+            // OpenAI is always asked with gpt-transcribe, whatever model is stored.
+            expect(card.getByText('OpenAI (gpt-transcribe) · gpt-transcribe')).toBeInTheDocument();
             expect(card.getByText('Each service charges your account. The cost depends on the length of the episode.')).toBeInTheDocument();
         });
 
@@ -189,13 +198,22 @@ describe('SubtitleGenerateDialog: the choices', () => {
         });
 
         it.each([
-            ['the audio is only transcribed', 'Japanese'],
-            ['the service translates the audio into English at once', 'English']
-        ])('does not show a translation service when %s', async (_name, language) => {
+            ['the audio is only transcribed', 'openai', 'Japanese'],
+            ['the service translates the audio into English at once', 'custom', 'English']
+        ] as const)('does not show a translation service when %s', async (_name, transcribeProvider, language) => {
             const user = userEvent.setup();
+            useAppStore.setState({ settings: { ...useAppStore.getState().settings, transcribeProvider } });
             await ready();
             await user.selectOptions(screen.getByLabelText('Language of the subtitle'), language);
             expect(within(facts()).queryByText('Translation (the text only)')).not.toBeInTheDocument();
+        });
+
+        it('shows the translation service for an English subtitle with OpenAI, which only transcribes', async () => {
+            const user = userEvent.setup();
+            await ready();
+            await user.selectOptions(screen.getByLabelText('Language of the subtitle'), 'English');
+            expect(within(facts()).getByText('Translation (the text only)')).toBeInTheDocument();
+            expect(within(facts()).getByText('Claude (Anthropic) · my-model')).toBeInTheDocument();
         });
 
         it('shows a dash for a model that is not set, and names the service of one\'s own', async () => {
@@ -349,6 +367,7 @@ describe('SubtitleGenerateDialog: creating', () => {
 
         it('warns, and shows the translation service, when the service did not translate the audio at once and it is transcribed instead', async () => {
             const user = userEvent.setup();
+            useAppStore.setState({ settings: { ...useAppStore.getState().settings, transcribeProvider: 'custom', transcribeBaseUrl: 'http://stt/v1' } });
             mock.api.generateAnimeSubtitle.mockReturnValue(new Promise(() => {
                 return undefined;
             }));

@@ -1,4 +1,4 @@
-import { isLlmProviderId, isLlmTokenSlot, LLM_PROVIDER_IDS, LLM_PROVIDERS, LLM_TOKEN_SLOTS, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechTokenSlot, speechTranslatesTo } from '@shared/llm';
+import { isLlmProviderId, isLlmTokenSlot, LLM_PROVIDER_IDS, LLM_PROVIDERS, LLM_TOKEN_SLOTS, OPENAI_SPEECH_MODEL, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo } from '@shared/llm';
 
 describe('LLM_PROVIDER_IDS', () => {
     it('lists the providers the app knows, in the order the settings show them', () => {
@@ -45,11 +45,33 @@ describe('the services of speech to text', () => {
     });
 
     it.each([
-        ['openai', 'english'],
+        ['openai', 'none'],
         ['custom', 'english'],
         ['gemini', 'any']
     ] as const)('write the audio at once in %s only when it can: %s', (provider, translatesTo) => {
         expect(speechTranslatesTo(provider)).toBe(translatesTo);
+    });
+
+    it('use only gpt-transcribe with OpenAI', () => {
+        expect(OPENAI_SPEECH_MODEL).toBe('gpt-transcribe');
+    });
+
+    it.each([
+        ['openai', 'whisper-1', 'gpt-transcribe'],
+        ['openai', '', 'gpt-transcribe'],
+        ['custom', 'whisper-1', 'whisper-1'],
+        ['custom', '', ''],
+        ['gemini', 'gemini-pro', 'gemini-pro']
+    ] as const)('ask %s with the model %j as %j', (provider, model, used) => {
+        expect(speechModelOf(provider, model)).toBe(used);
+    });
+
+    it.each([
+        ['openai', true],
+        ['custom', false],
+        ['gemini', false]
+    ] as const)('cut the audio at its pauses for %s: %s', (provider, cuts) => {
+        expect(speechCutsAtPauses(provider)).toBe(cuts);
     });
 
     it.each(SPEECH_PROVIDER_IDS)('keep the token of %s in a slot of their own', (provider) => {

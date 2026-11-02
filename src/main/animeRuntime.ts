@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { isAnimeSupported, type AnimeScheduleRequest, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { resolveLanguage } from '@shared/i18n';
-import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechTokenSlot, speechTranslatesTo, type LlmTokenSlot } from '@shared/llm';
+import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, type LlmTokenSlot } from '@shared/llm';
 import type { Settings } from '@shared/types';
 import type { AnimeHandlerDependencies } from './ipc/registerAnimeHandlers';
 import { AniCliLocator, type AniPrograms } from './services/aniCliLocator';
@@ -30,7 +30,7 @@ import { scanLibraryFolder, type ScanFileSystem } from './services/libraryScan';
 import { createFfmpegRunner, type AudioFiles, type FfmpegRunner } from './services/audioExtractor';
 import { completeWithLlm, type LlmFetch } from './services/llmProviders';
 import { transcribeWithGemini } from './services/geminiSpeech';
-import { transcribeWithSpeechService } from './services/speechProviders';
+import { transcribeTextWithSpeechService, transcribeWithSpeechService } from './services/speechProviders';
 import { estimateSubtitleGeneration, generateEpisodeSubtitle, type SpeechAccess } from './services/subtitleGeneration';
 import { SubtitleGenerationQueue } from './services/subtitleGenerationQueue';
 import { checkSubtitles } from './services/subtitleCheck';
@@ -229,6 +229,12 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         const episode = db.getEpisode(episodeId);
         return episode && episode.status === 'done' ? episode.filePath : null;
     };
+    // The name of the series of an episode (the one the user gave the seasons, or the title of the anime), to help hear the names in it.
+    const seriesTitleOf = (episodeId: number): string | null => {
+        const episode = db.getEpisode(episodeId);
+        const anime = episode === null ? null : db.getAnime(episode.animeId);
+        return anime === null ? null : (anime.series ?? anime.title);
+    };
     // What the language model of the settings is asked with; what the settings lack when it cannot be.
     const llmAccess = (): LlmAccess => {
         const settings = options.getSettings();
@@ -276,7 +282,8 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         if (token === null) {
             return { ok: false, reason: 'no-token' };
         }
-        if (settings.transcribeModel.length === 0) {
+        const model = speechModelOf(settings.transcribeProvider, settings.transcribeModel);
+        if (model.length === 0) {
             return { ok: false, reason: 'no-model' };
         }
         if (settings.transcribeBaseUrl.length === 0 && SPEECH_PROVIDERS[settings.transcribeProvider].defaultBaseUrl.length === 0) {
@@ -285,11 +292,12 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         return {
             ok: true,
             translatesTo: speechTranslatesTo(settings.transcribeProvider),
+            cutsAtPauses: speechCutsAtPauses(settings.transcribeProvider),
             ask: (input) => {
                 if (settings.transcribeProvider === 'gemini') {
                     return transcribeWithGemini({
                         baseUrl: settings.transcribeBaseUrl,
-                        model: settings.transcribeModel,
+                        model,
                         token,
                         task: input.task,
                         audioLanguage: input.audioLanguage,
@@ -298,10 +306,23 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                         signal: input.signal
                     }, options.speechFetch);
                 }
+                if (speechCutsAtPauses(settings.transcribeProvider)) {
+                    return transcribeTextWithSpeechService({
+                        provider: settings.transcribeProvider,
+                        baseUrl: settings.transcribeBaseUrl,
+                        model,
+                        token,
+                        language: input.languageCode,
+                        prompt: input.prompt ?? '',
+                        audio: input.audio,
+                        fileName: input.fileName,
+                        signal: input.signal
+                    }, options.speechFetch);
+                }
                 return transcribeWithSpeechService({
                     provider: settings.transcribeProvider,
                     baseUrl: settings.transcribeBaseUrl,
-                    model: settings.transcribeModel,
+                    model,
                     token,
                     task: input.task,
                     language: input.languageCode,
@@ -322,7 +343,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             if (filePath === null) {
                 return Promise.resolve({ ok: false, reason: 'missing' });
             }
-            return generateEpisodeSubtitle(filePath, request, { speech: speechAccess, translation: llmAccess, ffmpeg: runFfmpeg, audio: options.audioFiles, files: options.subtitleFiles, sleep: options.translationSleep }, onProgress, signal);
+            return generateEpisodeSubtitle(filePath, { ...request, title: seriesTitleOf(request.episodeId) }, { speech: speechAccess, translation: llmAccess, ffmpeg: runFfmpeg, audio: options.audioFiles, files: options.subtitleFiles, sleep: options.translationSleep }, onProgress, signal);
         },
         onJobUpdate: (job) => {
             options.send(IPC.eventSubtitleGeneration, job);
@@ -530,7 +551,10 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 },
                 estimateGeneration: async (episodeId) => {
                     const filePath = downloadedFile(episodeId);
-                    return filePath === null ? { ok: false, reason: 'missing' } : estimateSubtitleGeneration(filePath, runFfmpeg);
+                    if (filePath === null) {
+                        return { ok: false, reason: 'missing' };
+                    }
+                    return estimateSubtitleGeneration(filePath, runFfmpeg, { cutsAtPauses: speechCutsAtPauses(options.getSettings().transcribeProvider), audio: options.audioFiles });
                 },
                 cancelGeneration: (episodeId) => {
                     generations.cancel(episodeId);

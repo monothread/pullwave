@@ -48,34 +48,33 @@ function speechFailureOf(response: Response, text: string, token: string, transl
     return failureOf(response, text, token);
 }
 
-// Asks a service of speech to text (the protocol of OpenAI: `POST <address>/audio/transcriptions`, or `/audio/translations` to have it in
-// English, a form with the file) for the subtitle of a part of the audio, in WebVTT with the times from the start of that part. Never
-// throws: what went wrong comes back as an error.
-export async function transcribeWithSpeechService(request: SpeechRequest, fetchImpl: LlmFetch = fetch): Promise<LlmCompletionResult> {
+// What is sent besides the file: the fields of the form, and where (the transcriptions or the translations into English).
+interface AudioForm {
+    path: '/audio/transcriptions' | '/audio/translations';
+    fields: ReadonlyArray<[string, string]>;
+}
+
+// Sends the audio to a service of the protocol of OpenAI and gives back what it answered when it said yes. Never throws: what went wrong
+// comes back as an error.
+async function sendAudio(request: SpeechRequest, form: AudioForm, fetchImpl: LlmFetch): Promise<LlmCompletionResult> {
     const base = request.baseUrl.length > 0 ? request.baseUrl : SPEECH_PROVIDERS[request.provider].defaultBaseUrl;
-    const form = new FormData();
-    form.append('file', new Blob([new Uint8Array(request.audio)], { type: AUDIO_TYPE }), request.fileName);
-    const translating = request.task === 'translate';
-    form.append('model', request.model);
-    if (!translating) {
-        form.append('language', request.language);
+    const body = new FormData();
+    body.append('file', new Blob([new Uint8Array(request.audio)], { type: AUDIO_TYPE }), request.fileName);
+    for (const [name, value] of form.fields) {
+        body.append(name, value);
     }
-    form.append('response_format', 'vtt');
     const timeout = AbortSignal.timeout(request.timeoutMs ?? REQUEST_TIMEOUT_MS);
     const signal = request.signal === undefined ? timeout : AbortSignal.any([request.signal, timeout]);
     try {
-        const response = await fetchImpl(joinUrl(base, translating ? '/audio/translations' : '/audio/transcriptions'), {
+        const response = await fetchImpl(joinUrl(base, form.path), {
             method: 'POST',
             headers: { Authorization: `Bearer ${request.token}` },
-            body: form,
+            body,
             signal
         });
         const text = await response.text();
         if (!response.ok) {
-            return { ok: false, error: speechFailureOf(response, text, request.token, translating) };
-        }
-        if (!text.trim().startsWith('WEBVTT')) {
-            return { ok: false, error: errorOf('BAD_RESPONSE', `The answer is not a WebVTT subtitle: ${text}`, request.token) };
+            return { ok: false, error: speechFailureOf(response, text, request.token, form.path === '/audio/translations') };
         }
         return { ok: true, text };
     } catch (error) {
@@ -87,4 +86,61 @@ export async function transcribeWithSpeechService(request: SpeechRequest, fetchI
         }
         return { ok: false, error: errorOf('NETWORK', error instanceof Error ? error.message : String(error), request.token) };
     }
+}
+
+// Asks a service of speech to text (the protocol of OpenAI: `POST <address>/audio/transcriptions`, or `/audio/translations` to have it in
+// English, a form with the file) for the subtitle of a part of the audio, in WebVTT with the times from the start of that part. Never
+// throws: what went wrong comes back as an error.
+export async function transcribeWithSpeechService(request: SpeechRequest, fetchImpl: LlmFetch = fetch): Promise<LlmCompletionResult> {
+    const translating = request.task === 'translate';
+    const fields: Array<[string, string]> = [['model', request.model]];
+    if (!translating) {
+        fields.push(['language', request.language]);
+    }
+    fields.push(['response_format', 'vtt']);
+    const result = await sendAudio(request, { path: translating ? '/audio/translations' : '/audio/transcriptions', fields }, fetchImpl);
+    if (result.ok && !result.text.trim().startsWith('WEBVTT')) {
+        return { ok: false, error: errorOf('BAD_RESPONSE', `The answer is not a WebVTT subtitle: ${result.text}`, request.token) };
+    }
+    return result;
+}
+
+// A piece of the audio to be transcribed, with what helps the model hear it: the name of the series and what was said just before it.
+export interface SpeechTextRequest extends Omit<SpeechRequest, 'task'> {
+    prompt: string;
+}
+
+// The text of an answer in JSON (`{"text": "…"}`), or null when it is not one.
+function textOfJson(answer: string): string | null {
+    try {
+        const parsed: unknown = JSON.parse(answer);
+        if (typeof parsed === 'object' && parsed !== null && 'text' in parsed && typeof parsed.text === 'string') {
+            return parsed.text;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+// Asks OpenAI what is said in a piece of the audio, in the language that is spoken, as text with no times (`response_format: json`, the
+// only one gpt-transcribe gives): the times come from where the piece was cut. The text is empty when nothing was said. Never throws.
+export async function transcribeTextWithSpeechService(request: SpeechTextRequest, fetchImpl: LlmFetch = fetch): Promise<LlmCompletionResult> {
+    const fields: Array<[string, string]> = [
+        ['model', request.model],
+        ['language', request.language],
+        ['response_format', 'json']
+    ];
+    if (request.prompt.length > 0) {
+        fields.push(['prompt', request.prompt]);
+    }
+    const result = await sendAudio(request, { path: '/audio/transcriptions', fields }, fetchImpl);
+    if (!result.ok) {
+        return result;
+    }
+    const text = textOfJson(result.text);
+    if (text === null) {
+        return { ok: false, error: errorOf('BAD_RESPONSE', `The answer is not the text of the audio: ${result.text}`, request.token) };
+    }
+    return { ok: true, text: text.trim() };
 }

@@ -219,15 +219,30 @@ describe('TranslationSettings', () => {
             expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('whisper-large');
             expect(screen.getByLabelText('Speech-to-text address (optional)')).toHaveValue('http://stt/v1');
             expect(screen.queryByLabelText('Language spoken in the audio')).not.toBeInTheDocument();
-            expect(screen.getByText('With OpenAI, the model has to give the times of the lines in WebVTT: whisper-1 does (OpenAI turns it off on February 26, 2027); gpt-transcribe and the gpt-4o transcription models only write the text and cannot create a subtitle. With Gemini, write the name of a Gemini model that takes audio.')).toBeInTheDocument();
+            expect(screen.getByText('With OpenAI the model is always gpt-transcribe: the audio is cut at its pauses and each piece is transcribed with what was said before it, so the times of the lines come from the cuts. With "Other", the model has to give the times of the lines in WebVTT, such as whisper-1. With Gemini, write the name of a Gemini model that takes audio.')).toBeInTheDocument();
             expect(screen.getByText('Only to use another address than the one of the service. Required for "Other". The service has to speak the protocol of OpenAI (/audio/transcriptions).')).toBeInTheDocument();
         });
 
         it('starts with the defaults of the settings', async () => {
             await renderSettings();
             expect(screen.getByLabelText('Speech-to-text service')).toHaveValue('openai');
-            expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('whisper-1');
+            expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('gpt-transcribe');
             expect(screen.getByLabelText('Speech-to-text address (optional)')).toHaveValue('');
+        });
+
+        it('shows gpt-transcribe for OpenAI, whatever model is stored, in a field that cannot be changed', async () => {
+            await renderSettings({ transcribeProvider: 'openai', transcribeModel: 'whisper-1' });
+            expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('gpt-transcribe');
+            expect(screen.getByLabelText('Speech-to-text model')).toBeDisabled();
+        });
+
+        it.each([
+            ['custom', 'whisper-1'],
+            ['gemini', 'gemini-pro']
+        ] as const)('shows the stored model for %s, in a field that can be changed', async (transcribeProvider, transcribeModel) => {
+            await renderSettings({ transcribeProvider, transcribeModel });
+            expect(screen.getByLabelText('Speech-to-text model')).toHaveValue(transcribeModel);
+            expect(screen.getByLabelText('Speech-to-text model')).toBeEnabled();
         });
 
         it('does not ask for the language spoken in the audio: it is chosen each time, in the window that makes the subtitle', async () => {
@@ -238,7 +253,7 @@ describe('TranslationSettings', () => {
         it('lists the services that speak the protocol of OpenAI and Gemini', async () => {
             await renderSettings();
             expect(optionsOf('Speech-to-text service')).toEqual([
-                ['openai', 'OpenAI (Whisper)'],
+                ['openai', 'OpenAI (gpt-transcribe)'],
                 ['gemini', 'Gemini (Google)'],
                 ['custom', 'Other (OpenAI-compatible)']
             ]);
@@ -254,7 +269,7 @@ describe('TranslationSettings', () => {
         });
 
         it('saves the service right away and the texts as they are typed, apart from the translation ones', async () => {
-            const { change, edit, changeMany } = await renderSettings();
+            const { change, edit, changeMany } = await renderSettings({ transcribeProvider: 'gemini', transcribeModel: 'gemini-pro' });
             fireEvent.change(screen.getByLabelText('Speech-to-text service'), { target: { value: 'custom' } });
             expect(changeMany).toHaveBeenLastCalledWith({ transcribeProvider: 'custom' });
             fireEvent.change(screen.getByLabelText('Speech-to-text model'), { target: { value: 'whisper-2' } });

@@ -130,6 +130,26 @@ describe('generatePlanOf', () => {
     });
 });
 
+describe('generatePlanOf for a service that cannot write the audio in another language (OpenAI, gpt-transcribe)', () => {
+    it.each([
+        ['Japanese', 'English'],
+        ['Korean', 'English'],
+        ['Japanese', 'Portuguese (Brazil)'],
+        ['English', 'Spanish'],
+        ['Chinese', 'Japanese']
+    ] as const)('transcribes audio in %s and translates the text for a subtitle in %s', (audio, language) => {
+        expect(generatePlanOf(audio, language, 'none')).toBe('transcribe-translate');
+    });
+
+    it.each([
+        ['Japanese', 'Japanese'],
+        ['English', 'English'],
+        ['Portuguese', 'Portuguese (Brazil)']
+    ] as const)('only transcribes audio in %s for a subtitle in %s, never translating it', (audio, language) => {
+        expect(generatePlanOf(audio, language, 'none')).toBe('transcribe');
+    });
+});
+
 describe('generatePlanOf for a service that writes the audio in any language at once', () => {
     it.each([
         ['Japanese', 'Portuguese (Brazil)'],

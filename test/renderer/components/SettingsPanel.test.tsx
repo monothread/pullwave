@@ -964,7 +964,8 @@ describe('SettingsPanel anime section', () => {
                 await flushPromises();
                 expect(screen.getByText('SUBTITLE CREATION (SPEECH TO TEXT)')).toBeInTheDocument();
                 expect(screen.getByLabelText('Speech-to-text service')).toHaveValue('openai');
-                expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('whisper-1');
+                expect(screen.getByLabelText('Speech-to-text model')).toHaveValue('gpt-transcribe');
+                expect(screen.getByLabelText('Speech-to-text model')).toBeDisabled();
                 expect(screen.getByLabelText('Speech-to-text address (optional)')).toHaveValue('');
                 expect(screen.queryByLabelText('Language spoken in the audio')).not.toBeInTheDocument();
                 expect(screen.getByLabelText('Speech-to-text token (API key)')).toHaveValue('');

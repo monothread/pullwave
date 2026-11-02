@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { TRANSLATION_LANGUAGES } from '@shared/anime';
-import { LLM_PROVIDER_IDS, LLM_PROVIDERS, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechTokenSlot, type LlmStatus, type LlmTokenSlot, type SpeechProviderId } from '@shared/llm';
+import { LLM_PROVIDER_IDS, LLM_PROVIDERS, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechModelOf, speechTokenSlot, type LlmStatus, type LlmTokenSlot, type SpeechProviderId } from '@shared/llm';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
@@ -214,8 +214,9 @@ export function TranslationSettings({ draft, change, edit, changeMany }: Transla
             />
             <TextField
                 label={t('settings.speech.model')}
-                value={draft.transcribeModel}
+                value={speechModelOf(speech, draft.transcribeModel)}
                 hint={t('settings.speech.model.hint')}
+                disabled={speech === 'openai'}
                 onChange={(value) => {
                     edit('transcribeModel', value);
                 }}

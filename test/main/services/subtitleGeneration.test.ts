@@ -3,16 +3,22 @@ import type { LlmCompletionResult } from '@shared/llm';
 import type { AudioFiles, FfmpegRunner } from '@main/services/audioExtractor';
 import type { SubtitleFileSystem } from '@main/services/subtitleFiles';
 import {
+    CONTEXT_PIECES,
     estimateSubtitleGeneration,
     generateEpisodeSubtitle,
+    piecePromptOf,
+    PIECE_STREAMS,
     type GenerationProgressExtra,
     type SpeechAccess,
+    type SpeechInput,
     type SubtitleGenerationDependencies
 } from '@main/services/subtitleGeneration';
 import type { LlmAccess } from '@main/services/subtitleTranslation';
 import { systemPromptFor } from '@main/services/subtitleTranslator';
+import { pcmOf, silence, tone, type PcmStretch } from '../../helpers/speechPcm';
 
 const DIR = join('/lib', 'Naruto');
+const TITLE = 'Naruto';
 const VIDEO = join(DIR, 'Naruto Episode 1.mp4');
 const WORK = join('/tmp', 'work');
 
@@ -122,7 +128,7 @@ function setup(ask: ReturnType<typeof vi.fn<Ask>>, translate: ReturnType<typeof 
     });
     const dependencies: SubtitleGenerationDependencies = {
         speech: () => {
-            return { ok: true, translatesTo, ask };
+            return { ok: true, translatesTo, cutsAtPauses: false, ask };
         },
         translation,
         ffmpeg,
@@ -172,7 +178,7 @@ describe('generateEpisodeSubtitle: transcribing, when the subtitle is in the lan
     it('takes the audio out, sends each part, puts the cues together with the times of each part moved to where it starts, and saves them', async () => {
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { files, audio, ffmpeg, translation, dependencies } = setup(ask);
-        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn());
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
         expect(result).toEqual({
             ok: true,
             tracks: [{ id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }],
@@ -190,7 +196,7 @@ describe('generateEpisodeSubtitle: transcribing, when the subtitle is in the lan
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { dependencies } = setup(ask);
         const controller = new AbortController();
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'English', language: 'English' }, dependencies, vi.fn(), controller.signal);
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'English', language: 'English', title: TITLE }, dependencies, vi.fn(), controller.signal);
         expect(ask.mock.calls).toEqual([
             [{ task: 'transcribe', audio: new TextEncoder().encode(join(WORK, 'part-000.mp3')), fileName: 'part-0.mp3', languageCode: 'en', audioLanguage: 'English', language: 'English', signal: controller.signal }],
             [{ task: 'transcribe', audio: new TextEncoder().encode(join(WORK, 'part-001.mp3')), fileName: 'part-1.mp3', languageCode: 'en', audioLanguage: 'English', language: 'English', signal: controller.signal }]
@@ -206,14 +212,14 @@ describe('generateEpisodeSubtitle: transcribing, when the subtitle is in the lan
             return { ok: true, text: 'WEBVTT\n' };
         });
         const { dependencies } = setup(ask);
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn());
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
         expect(order).toEqual(['start part-0.mp3', 'end part-0.mp3', 'start part-1.mp3', 'end part-1.mp3']);
     });
 
     it('tells the phase and the plan at every step, with how many parts and bytes were sent', async () => {
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART));
         const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, onProgress);
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, onProgress);
         expect(onProgress.mock.calls).toEqual([
             [0, 1, { phase: 'extracting', plan: 'transcribe' }],
             [0, 2, { phase: 'sending', plan: 'transcribe', sentBytes: 0, totalBytes: 1600 }],
@@ -226,7 +232,7 @@ describe('generateEpisodeSubtitle: transcribing, when the subtitle is in the lan
     it('only transcribes Portuguese audio for a subtitle in Brazilian Portuguese, and names the subtitle after the one that is wanted', async () => {
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { files, translation, dependencies } = setup(ask);
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Portuguese', language: 'Portuguese (Brazil)' }, dependencies, vi.fn());
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Portuguese', language: 'Portuguese (Brazil)', title: TITLE }, dependencies, vi.fn());
         expect(ask.mock.calls.map((call) => {
             return [call[0].task, call[0].languageCode];
         })).toEqual([['transcribe', 'pt'], ['transcribe', 'pt']]);
@@ -237,7 +243,7 @@ describe('generateEpisodeSubtitle: transcribing, when the subtitle is in the lan
     it('replaces the subtitle that was there for the language', async () => {
         const existing = memory({ [VIDEO]: 'v', [generatedFile('Japanese')]: 'WEBVTT\n\n00:01.000 --> 00:02.000\nold\n' });
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART), translating(), { files: existing });
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn());
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
         expect(existing.written[generatedFile('Japanese')]).toBe(TRANSCRIBED);
     });
 });
@@ -247,7 +253,7 @@ describe('generateEpisodeSubtitle: having the audio translated into English at o
         const ask = speaking('WEBVTT\n\n1\n00:01.000 --> 00:03.000\nHello\n', 'WEBVTT\n\n00:02.000 --> 00:04.000\nI am home\n');
         const { files, translation, dependencies } = setup(ask);
         const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
-        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English' }, dependencies, onProgress);
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, onProgress);
         expect(result).toMatchObject({ ok: true, generated: { id: 'generated-English', label: 'English', kind: 'generated' } });
         expect(ask.mock.calls.map((call) => {
             return [call[0].task, call[0].fileName];
@@ -262,7 +268,7 @@ describe('generateEpisodeSubtitle: having the audio translated into English at o
     it('does not ask for the translation of the text when the audio is already in English', async () => {
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { translation, dependencies } = setup(ask);
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'English', language: 'English' }, dependencies, vi.fn());
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'English', language: 'English', title: TITLE }, dependencies, vi.fn());
         expect(ask.mock.calls.map((call) => {
             return call[0].task;
         })).toEqual(['transcribe', 'transcribe']);
@@ -276,14 +282,14 @@ describe('generateEpisodeSubtitle: having the audio translated into English at o
             const ask = speaking(REFUSED, FIRST_PART, SECOND_PART);
             const { files, translation, translate, dependencies } = setup(ask);
             const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
-            const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English' }, dependencies, onProgress);
+            const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, onProgress);
             expect(result).toMatchObject({ ok: true, generated: { id: 'generated-English' } });
             expect(ask.mock.calls.map((call) => {
                 return [call[0].task, call[0].fileName, call[0].languageCode];
             })).toEqual([['translate', 'part-0.mp3', 'ja'], ['transcribe', 'part-0.mp3', 'ja'], ['transcribe', 'part-1.mp3', 'ja']]);
             expect(translation).toHaveBeenCalledTimes(1);
             expect(translate).toHaveBeenCalledTimes(1);
-            expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('English'));
+            expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('English', { title: TITLE }));
             expect(translate.mock.calls[0]?.[1]).toBe(JSON.stringify(['こんにちは', 'またね', 'ただいま']));
             expect(files.written[generatedFile('English')]).toContain('[こんにちは]');
             expect(onProgress.mock.calls.map((call) => {
@@ -312,7 +318,7 @@ describe('generateEpisodeSubtitle: having the audio translated into English at o
                     return { ok: false, reason: lack };
                 }
             });
-            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English' }, dependencies, vi.fn())).toEqual({ ok: false, reason });
+            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason });
             expect(ask).toHaveBeenCalledTimes(1);
             expect(files.written).toEqual({});
             expect(audio.removed).toEqual([WORK]);
@@ -321,7 +327,7 @@ describe('generateEpisodeSubtitle: having the audio translated into English at o
         it('does not go on with a transcription when the refusal is of another kind', async () => {
             const ask = speaking({ ok: false, error: { code: 'INVALID_TOKEN', raw: 'bad key' } });
             const { translation, dependencies } = setup(ask);
-            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English' }, dependencies, vi.fn())).toEqual({
+            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn())).toEqual({
                 ok: false,
                 reason: 'failed',
                 error: { code: 'INVALID_TOKEN', raw: 'bad key' }
@@ -333,7 +339,7 @@ describe('generateEpisodeSubtitle: having the audio translated into English at o
         it('does not go on with a transcription when it is the second part that is refused', async () => {
             const ask = speaking(FIRST_PART, REFUSED);
             const { translation, dependencies } = setup(ask);
-            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English' }, dependencies, vi.fn())).toEqual({
+            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn())).toEqual({
                 ok: false,
                 reason: 'failed',
                 error: REFUSED.ok ? { code: 'BAD_RESPONSE', raw: '' } : REFUSED.error
@@ -351,7 +357,7 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { files, translation, dependencies } = setup(ask, translating(), {}, 'any');
         const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
-        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Portuguese (Brazil)' }, dependencies, onProgress);
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Portuguese (Brazil)', title: TITLE }, dependencies, onProgress);
         expect(result).toMatchObject({ ok: true, generated: { id: 'generated-Portuguese (Brazil)', label: 'Portuguese (Brazil)', kind: 'generated' } });
         expect(
             ask.mock.calls.map((call) => {
@@ -373,7 +379,7 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
     it('does the same for English, which the other services also do at once', async () => {
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { dependencies } = setup(ask, translating(), {}, 'any');
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English' }, dependencies, vi.fn());
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn());
         expect(
             ask.mock.calls.map((call) => {
                 return call[0].task;
@@ -387,7 +393,7 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
     ] as const)('only transcribes audio in %s for a subtitle in %s', async (audioLanguage, language) => {
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { translation, dependencies } = setup(ask, translating(), {}, 'any');
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage, language }, dependencies, vi.fn());
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage, language, title: TITLE }, dependencies, vi.fn());
         expect(
             ask.mock.calls.map((call) => {
                 return call[0].task;
@@ -401,7 +407,7 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
             return { ok: false, reason: 'no-token' };
         });
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART), translating(), { translation }, 'any');
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn())).toMatchObject({ ok: true });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toMatchObject({ ok: true });
         expect(translation).not.toHaveBeenCalled();
     });
 
@@ -409,7 +415,7 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
         const ask = speaking(REFUSED, FIRST_PART, SECOND_PART);
         const { files, translate, dependencies } = setup(ask, translating(), {}, 'any');
         const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
-        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, onProgress);
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, onProgress);
         expect(result).toMatchObject({ ok: true, generated: { id: 'generated-Spanish' } });
         expect(
             ask.mock.calls.map((call) => {
@@ -417,7 +423,7 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
             })
         ).toEqual([['translate', 'part-0.mp3'], ['transcribe', 'part-0.mp3'], ['transcribe', 'part-1.mp3']]);
         expect(translate).toHaveBeenCalledTimes(1);
-        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish'));
+        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish', { title: TITLE }));
         expect(files.written[generatedFile('Spanish')]).toContain('[こんにちは]');
         expect(onProgress.mock.calls.at(-2)?.[2]).toEqual({ phase: 'translating', plan: 'transcribe-translate' });
     });
@@ -429,7 +435,7 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
                 return { ok: false, reason: 'no-model' };
             }
         }, 'any');
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-translation-model' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-translation-model' });
         expect(ask).toHaveBeenCalledTimes(1);
         expect(files.written).toEqual({});
         expect(audio.removed).toEqual([WORK]);
@@ -440,7 +446,7 @@ describe('generateEpisodeSubtitle: transcribing and translating the text, when t
     it('transcribes in the language that is spoken, translates the text into the language that is wanted, keeps the times and saves only that subtitle', async () => {
         const ask = speaking(FIRST_PART, SECOND_PART);
         const { files, translate, dependencies } = setup(ask);
-        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn());
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn());
         expect(result).toEqual({
             ok: true,
             tracks: [{ id: 'generated-Spanish', label: 'Spanish', kind: 'generated' }],
@@ -450,7 +456,7 @@ describe('generateEpisodeSubtitle: transcribing and translating the text, when t
             return [call[0].task, call[0].languageCode];
         })).toEqual([['transcribe', 'ja'], ['transcribe', 'ja']]);
         expect(translate).toHaveBeenCalledTimes(1);
-        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish'));
+        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish', { title: TITLE }));
         expect(translate.mock.calls[0]?.[1]).toBe(JSON.stringify(['こんにちは', 'またね', 'ただいま']));
         expect(files.written).toEqual({
             [generatedFile('Spanish')]: TRANSCRIBED.replace('こんにちは', '[こんにちは]').replace('またね', '[またね]').replace('ただいま', '[ただいま]')
@@ -460,7 +466,7 @@ describe('generateEpisodeSubtitle: transcribing and translating the text, when t
     it('tells how far the transcription and then the translation are', async () => {
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART));
         const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, onProgress);
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, onProgress);
         const plan = 'transcribe-translate';
         expect(onProgress.mock.calls).toEqual([
             [0, 1, { phase: 'extracting', plan }],
@@ -479,7 +485,7 @@ describe('generateEpisodeSubtitle: transcribing and translating the text, when t
             return { ok: false, error: { code: 'QUOTA_EXCEEDED', raw: 'no credit' } };
         });
         const { files, audio, dependencies } = setup(speaking(FIRST_PART, SECOND_PART), translate);
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn())).toEqual({
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({
             ok: false,
             reason: 'failed',
             error: { code: 'QUOTA_EXCEEDED', raw: 'no credit' }
@@ -493,7 +499,7 @@ describe('generateEpisodeSubtitle: transcribing and translating the text, when t
             return { ok: false, error: { code: 'CANCELLED', raw: 'The translation was cancelled.' } };
         });
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART), translate);
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'cancelled' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'cancelled' });
     });
 
     it('does not translate when the user cancels while the last part is answered', async () => {
@@ -503,7 +509,7 @@ describe('generateEpisodeSubtitle: transcribing and translating the text, when t
             return { ok: true, text: FIRST_PART };
         });
         const { files, translate, dependencies } = setup(ask, translating(), { audio: audioFiles(['part-000.mp3']) });
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
         expect(translate).not.toHaveBeenCalled();
         expect(files.written).toEqual({});
     });
@@ -517,7 +523,7 @@ describe('generateEpisodeSubtitle: before anything is sent', () => {
                 return { ok: false, reason };
             }
         });
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn())).toEqual({ ok: false, reason });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason });
         expect(audio.makeDirectory).not.toHaveBeenCalled();
         expect(ffmpeg).not.toHaveBeenCalled();
         expect(ask).not.toHaveBeenCalled();
@@ -535,7 +541,7 @@ describe('generateEpisodeSubtitle: before anything is sent', () => {
                 return { ok: false, reason: lack };
             }
         });
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn())).toEqual({ ok: false, reason });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason });
         expect(audio.makeDirectory).not.toHaveBeenCalled();
         expect(ffmpeg).not.toHaveBeenCalled();
         expect(ask).not.toHaveBeenCalled();
@@ -549,7 +555,7 @@ describe('generateEpisodeSubtitle: before anything is sent', () => {
             return { ok: false, reason: 'no-token' };
         });
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART), translating(), { translation });
-        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage, language }, dependencies, vi.fn());
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage, language, title: TITLE }, dependencies, vi.fn());
         expect(result).toMatchObject({ ok: true });
         expect(translation).not.toHaveBeenCalled();
     });
@@ -558,7 +564,7 @@ describe('generateEpisodeSubtitle: before anything is sent', () => {
         const { audio, ffmpeg, dependencies } = setup(speaking());
         const controller = new AbortController();
         controller.abort();
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
         expect(audio.makeDirectory).not.toHaveBeenCalled();
         expect(ffmpeg).not.toHaveBeenCalled();
     });
@@ -572,7 +578,7 @@ describe('generateEpisodeSubtitle: when the audio cannot be taken out', () => {
         });
         const audio = audioFiles(reason === 'no-audio' ? [] : ['part-000.mp3']);
         const { files, dependencies } = setup(ask, translating(), { ffmpeg, audio });
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn())).toEqual({ ok: false, reason });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason });
         expect(ask).not.toHaveBeenCalled();
         expect(files.written).toEqual({});
         expect(audio.removed).toEqual([WORK]);
@@ -586,7 +592,7 @@ describe('generateEpisodeSubtitle: when the audio cannot be taken out', () => {
         });
         const audio = audioFiles();
         const { dependencies } = setup(speaking(), translating(), { ffmpeg, audio });
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
         expect(audio.removed).toEqual([WORK]);
     });
 });
@@ -596,7 +602,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
         const ask = speaking({ ok: false, error: { code: 'INVALID_TOKEN', raw: 'bad key' } });
         const { files, audio, dependencies } = setup(ask);
         const onProgress = vi.fn();
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, onProgress)).toEqual({
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, onProgress)).toEqual({
             ok: false,
             reason: 'failed',
             error: { code: 'INVALID_TOKEN', raw: 'bad key' }
@@ -610,7 +616,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
     it('stops at the part that failed and saves nothing, even when the earlier ones went well', async () => {
         const ask = speaking(FIRST_PART, { ok: false, error: { code: 'QUOTA_EXCEEDED', raw: 'no credit' } });
         const { files, dependencies } = setup(ask);
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn())).toEqual({
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({
             ok: false,
             reason: 'failed',
             error: { code: 'QUOTA_EXCEEDED', raw: 'no credit' }
@@ -621,7 +627,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
     it('says it was cancelled when the service answers that it was', async () => {
         const ask = speaking({ ok: false, error: { code: 'CANCELLED', raw: 'The subtitle was cancelled.' } });
         const { dependencies } = setup(ask);
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'cancelled' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'cancelled' });
     });
 
     it('does not ask the next part when the user cancelled', async () => {
@@ -631,7 +637,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
             return { ok: true, text: FIRST_PART };
         });
         const { files, audio, dependencies } = setup(ask);
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
         expect(ask).toHaveBeenCalledTimes(1);
         expect(files.written).toEqual({});
         expect(audio.removed).toEqual([WORK]);
@@ -649,7 +655,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
             const ask = speaking(limited(2), FIRST_PART, SECOND_PART);
             const { dependencies } = setup(ask, translating(), { sleep });
             const controller = new AbortController();
-            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn(), controller.signal)).toMatchObject({ ok: true });
+            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal)).toMatchObject({ ok: true });
             expect(sleep).toHaveBeenCalledTimes(1);
             expect(sleep).toHaveBeenCalledWith(2000, controller.signal);
             expect(ask).toHaveBeenCalledTimes(3);
@@ -661,7 +667,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
             });
             const ask = speaking(limited(), limited(3600), 'WEBVTT\n', 'WEBVTT\n');
             const { dependencies } = setup(ask, translating(), { sleep });
-            await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn());
+            await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
             expect(sleep.mock.calls).toEqual([[5000, undefined], [60000, undefined]]);
         });
 
@@ -673,7 +679,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
                 return limited(1);
             });
             const { dependencies } = setup(ask, translating(), { sleep });
-            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn())).toEqual({
+            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({
                 ok: false,
                 reason: 'failed',
                 error: { code: 'RATE_LIMITED', raw: 'slow', retryAfterSeconds: 1 }
@@ -691,7 +697,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
                 return limited(1);
             });
             const { dependencies } = setup(ask, translating(), { sleep });
-            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
+            expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
             expect(ask).toHaveBeenCalledTimes(1);
         });
     });
@@ -700,7 +706,7 @@ describe('generateEpisodeSubtitle: when the service does not work', () => {
 describe('generateEpisodeSubtitle: when there is nothing to save', () => {
     it('says no speech was recognized when no part had any cue, and saves nothing', async () => {
         const { files, audio, translate, dependencies } = setup(speaking('WEBVTT\n', 'WEBVTT\n\nNOTE nothing\n'));
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish' }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-speech' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-speech' });
         expect(files.written).toEqual({});
         expect(translate).not.toHaveBeenCalled();
         expect(audio.removed).toEqual([WORK]);
@@ -708,7 +714,7 @@ describe('generateEpisodeSubtitle: when there is nothing to save', () => {
 
     it('saves the cues of the parts that had speech when another part had none', async () => {
         const { files, dependencies } = setup(speaking('WEBVTT\n', SECOND_PART));
-        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn());
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
         expect(files.written[generatedFile('Japanese')]).toBe('WEBVTT\n\n00:10:02.000 --> 00:10:04.500\nただいま\n');
     });
 
@@ -720,7 +726,7 @@ describe('generateEpisodeSubtitle: when there is nothing to save', () => {
         });
         const audio = audioFiles();
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART), translating(), { files, audio });
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'unreadable' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'unreadable' });
         expect(audio.removed).toEqual([WORK]);
     });
 
@@ -735,6 +741,413 @@ describe('generateEpisodeSubtitle: when there is nothing to save', () => {
             }
         };
         const { dependencies } = setup(speaking(FIRST_PART, SECOND_PART), translating(), { files });
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese' }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'unreadable' });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'unreadable' });
+    });
+});
+
+describe('piecePromptOf', () => {
+    it.each([
+        ['the name of the series alone, for the first piece', 'Naruto', [], 'Naruto'],
+        ['nothing, with no name and no piece before', null, [], ''],
+        ['the name, then what was said before joined by spaces', 'Naruto', ['こんにちは', 'またね'], 'Naruto\nこんにちは またね'],
+        ['only what was said before, with no name', null, ['こんにちは'], 'こんにちは'],
+        ['no room for the pieces where nothing was said', 'Naruto', ['', 'またね'], 'Naruto\nまたね'],
+        ['the name alone when nothing was said before', 'Naruto', ['', ''], 'Naruto']
+    ] as const)('is %s', (_name, title, previous, prompt) => {
+        expect(piecePromptOf(title, previous)).toBe(prompt);
+    });
+});
+
+// The audio as decodeSpeechAudio gives it, for the cutting at the pauses: lines of LINE_SECONDS separated by a second of silence.
+const LINE_SECONDS = 1.5;
+
+function linesPcm(count: number): Uint8Array {
+    const stretches: PcmStretch[] = [silence(1)];
+    for (let line = 0; line < count; line += 1) {
+        stretches.push(tone(LINE_SECONDS), silence(1));
+    }
+    return pcmOf(stretches);
+}
+
+// Two lines: from 1 s to 3 s and from 4 s to 6 s, in 7 seconds; cut at 3.5 s.
+const TWO_LINES = pcmOf([silence(1), tone(2), silence(1), tone(2), silence(1)]);
+const TWO_LINES_VTT = 'WEBVTT\n\n00:00:00.750 --> 00:00:03.000\nこんにちは\n\n00:00:03.750 --> 00:00:06.000\nまたね\n';
+const DECODE_ARGS = ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', VIDEO, '-vn', '-af', 'highpass=f=250,lowpass=f=3500', '-ac', '1', '-ar', '16000', '-f', 's16le', join(WORK, 'speech.pcm')];
+const PIECE_BYTES = 100;
+
+function pieceNames(count: number): string[] {
+    return Array.from({ length: count }, (_unused, index) => {
+        return `piece-${String(index).padStart(4, '0')}.mp3`;
+    });
+}
+
+// The folder of the work: the decoded audio and the pieces ffmpeg cut it in (`pcm` null when the decoded file is not there).
+function piecesFolder(pcm: Uint8Array | null, pieces: number): AudioFiles & { removed: string[] } {
+    const removed: string[] = [];
+    return {
+        removed,
+        makeDirectory: vi.fn(() => {
+            return WORK;
+        }),
+        list: vi.fn(() => {
+            return [...(pcm === null ? [] : ['speech.pcm']), ...pieceNames(pieces)];
+        }),
+        read: vi.fn((path: string) => {
+            return path.endsWith('speech.pcm') ? (pcm as Uint8Array) : new TextEncoder().encode(path);
+        }),
+        size: vi.fn(() => {
+            return PIECE_BYTES;
+        }),
+        remove: vi.fn((directory: string) => {
+            removed.push(directory);
+        })
+    };
+}
+
+// The service answering the text of each piece from the name of its file: piece-N.mp3 gets texts[N].
+function hearing(texts: readonly string[]): ReturnType<typeof vi.fn<Ask>> {
+    return vi.fn<Ask>(async (input): Promise<LlmCompletionResult> => {
+        const index = Number(/piece-(\d+)\.mp3/.exec(input.fileName)?.[1]);
+        return { ok: true, text: texts[index] ?? '' };
+    });
+}
+
+function cuttingSetup(ask: ReturnType<typeof vi.fn<Ask>>, { pcm = TWO_LINES as Uint8Array | null, pieces = 2, translate = translating(), ffmpeg = ffmpegOk() } = {}) {
+    const files = memory({ [VIDEO]: 'v' });
+    const audio = piecesFolder(pcm, pieces);
+    const translation = vi.fn((): LlmAccess => {
+        return { ok: true, ask: translate };
+    });
+    const sleep = vi.fn(async () => {
+        return undefined;
+    });
+    const dependencies: SubtitleGenerationDependencies = {
+        speech: () => {
+            return { ok: true, translatesTo: 'none', cutsAtPauses: true, ask };
+        },
+        translation,
+        ffmpeg,
+        audio,
+        files,
+        sleep
+    };
+    return { files, audio, ffmpeg, translation, translate, sleep, dependencies };
+}
+
+function piecesArgs(cutTimes: string): string[] {
+    return ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', VIDEO, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k', '-f', 'segment', '-segment_times', cutTimes, '-reset_timestamps', '1', join(WORK, 'piece-%04d.mp3')];
+}
+
+function askedInputs(ask: ReturnType<typeof vi.fn<Ask>>): SpeechInput[] {
+    return ask.mock.calls
+        .map((call) => {
+            return call[0];
+        })
+        .sort((first, second) => {
+            return first.fileName.localeCompare(second.fileName, 'en', { numeric: true });
+        });
+}
+
+describe('estimateSubtitleGeneration: cutting the audio at its pauses', () => {
+    const PROBE = '  Duration: 00:00:07.00, start: 0.000000\n  Stream #0:1: Audio: aac (LC), 48000 Hz, stereo';
+
+    function measuring(decodeCode = 0): ReturnType<typeof vi.fn<FfmpegRunner>> {
+        return vi.fn<FfmpegRunner>(async (args) => {
+            return args.includes('-vn') ? { code: decodeCode, stderr: '' } : { code: 1, stderr: PROBE };
+        });
+    }
+
+    it('says there is one request for each piece, decoding the audio in a folder that it removes afterwards', async () => {
+        const ffmpeg = measuring();
+        const audio = piecesFolder(TWO_LINES, 0);
+        expect(await estimateSubtitleGeneration(VIDEO, ffmpeg, { cutsAtPauses: true, audio })).toEqual({ ok: true, seconds: 7, parts: 2, approxBytes: 28_000 });
+        expect(ffmpeg.mock.calls).toEqual([[['-hide_banner', '-nostdin', '-i', VIDEO]], [DECODE_ARGS, undefined]]);
+        expect(audio.makeDirectory).toHaveBeenCalledTimes(1);
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('says there are no requests when nothing is said in the audio', async () => {
+        const audio = piecesFolder(pcmOf([silence(3)]), 0);
+        expect(await estimateSubtitleGeneration(VIDEO, measuring(), { cutsAtPauses: true, audio })).toEqual({ ok: true, seconds: 7, parts: 0, approxBytes: 28_000 });
+    });
+
+    it('decodes nothing when the video has no audio', async () => {
+        const ffmpeg = vi.fn<FfmpegRunner>(async () => {
+            return { code: 1, stderr: '  Duration: 00:00:07.00, start: 0.0\n  Stream #0:0: Video: h264' };
+        });
+        const audio = piecesFolder(TWO_LINES, 0);
+        expect(await estimateSubtitleGeneration(VIDEO, ffmpeg, { cutsAtPauses: true, audio })).toEqual({ ok: false, reason: 'no-audio' });
+        expect(ffmpeg).toHaveBeenCalledTimes(1);
+        expect(audio.makeDirectory).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['ffmpeg fails to decode it', 1, TWO_LINES, 'extract-failed'],
+        ['the decoded audio is not there', 0, null, 'no-audio'],
+        ['the decoded audio is empty', 0, new Uint8Array(0), 'no-audio']
+    ] as const)('says why when %s, and removes the folder', async (_name, code, pcm, reason) => {
+        const audio = piecesFolder(pcm, 0);
+        expect(await estimateSubtitleGeneration(VIDEO, measuring(code), { cutsAtPauses: true, audio })).toEqual({ ok: false, reason });
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('counts parts of ten minutes, decoding nothing, when the audio is not cut at its pauses', async () => {
+        const ffmpeg = measuring();
+        const audio = piecesFolder(TWO_LINES, 0);
+        expect(await estimateSubtitleGeneration(VIDEO, ffmpeg, { cutsAtPauses: false, audio })).toEqual({ ok: true, seconds: 7, parts: 1, approxBytes: 28_000 });
+        expect(ffmpeg).toHaveBeenCalledTimes(1);
+        expect(audio.makeDirectory).not.toHaveBeenCalled();
+    });
+});
+
+describe('generateEpisodeSubtitle: cutting the audio at its pauses', () => {
+    it('cuts the audio at its pauses, asks for the text of each piece with the name of the series, and saves the lines with the times of their speech', async () => {
+        const ask = hearing(['こんにちは', 'またね']);
+        const { files, audio, ffmpeg, translation, dependencies } = cuttingSetup(ask);
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({
+            ok: true,
+            tracks: [{ id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }],
+            generated: { id: 'generated-Japanese', label: 'Japanese', kind: 'generated' }
+        });
+        expect(files.written).toEqual({ [generatedFile('Japanese')]: TWO_LINES_VTT });
+        expect(ffmpeg.mock.calls).toEqual([[DECODE_ARGS, undefined], [piecesArgs('3.500'), undefined]]);
+        expect(askedInputs(ask)).toEqual([0, 1].map((index) => {
+            return {
+                task: 'transcribe',
+                audio: new TextEncoder().encode(join(WORK, pieceNames(2)[index] as string)),
+                fileName: `piece-${index}.mp3`,
+                languageCode: 'ja',
+                audioLanguage: 'Japanese',
+                language: 'Japanese',
+                prompt: TITLE,
+                signal: expect.any(AbortSignal)
+            };
+        }));
+        // The audio is spoken in the language of the subtitle: nothing is translated.
+        expect(translation).not.toHaveBeenCalled();
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('decodes the audio and cuts it with the signal of the subtitle', async () => {
+        const controller = new AbortController();
+        const { ffmpeg, dependencies } = cuttingSetup(hearing(['a', 'b']));
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal);
+        expect(ffmpeg.mock.calls).toEqual([[DECODE_ARGS, controller.signal], [piecesArgs('3.500'), controller.signal]]);
+    });
+
+    it('cuts a single line into one file, with no segment muxer', async () => {
+        const ask = hearing(['こんにちは']);
+        const { files, ffmpeg, dependencies } = cuttingSetup(ask, { pcm: pcmOf([silence(1), tone(2), silence(1)]), pieces: 1 });
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
+        expect(ffmpeg.mock.calls[1]?.[0]).toEqual(['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', VIDEO, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k', '-f', 'mp3', join(WORK, 'piece-0000.mp3')]);
+        expect(files.written[generatedFile('Japanese')]).toBe('WEBVTT\n\n00:00:00.750 --> 00:00:03.000\nこんにちは\n');
+    });
+
+    it('tells how it goes: the audio taken out, each piece answered with the bytes sent, and the saving', async () => {
+        const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
+        const { dependencies } = cuttingSetup(hearing(['こんにちは', 'またね']));
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, onProgress);
+        expect(onProgress.mock.calls).toEqual([
+            [0, 1, { phase: 'extracting', plan: 'transcribe' }],
+            [0, 2, { phase: 'sending', plan: 'transcribe', sentBytes: 0, totalBytes: 200 }],
+            [1, 2, { phase: 'sending', plan: 'transcribe', sentBytes: 100, totalBytes: 200 }],
+            [2, 2, { phase: 'sending', plan: 'transcribe', sentBytes: 200, totalBytes: 200 }],
+            [0, 1, { phase: 'saving', plan: 'transcribe' }]
+        ]);
+    });
+
+    it(`sends the pieces in ${PIECE_STREAMS} streams over stretches of the audio, each piece with what was said in the ${CONTEXT_PIECES} before it in its stream`, async () => {
+        const count = 13;
+        const texts = Array.from({ length: count }, (_unused, index) => {
+            return `line ${index}`;
+        });
+        const ask = hearing(texts);
+        const { files, dependencies } = cuttingSetup(ask, { pcm: linesPcm(count), pieces: count });
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
+        // 13 pieces in streams of 3: [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11] and [12].
+        expect(askedInputs(ask).map((input) => {
+            return [input.fileName, input.prompt];
+        })).toEqual([
+            ['piece-0.mp3', 'Naruto'],
+            ['piece-1.mp3', 'Naruto\nline 0'],
+            ['piece-2.mp3', 'Naruto\nline 0 line 1'],
+            ['piece-3.mp3', 'Naruto'],
+            ['piece-4.mp3', 'Naruto\nline 3'],
+            ['piece-5.mp3', 'Naruto\nline 3 line 4'],
+            ['piece-6.mp3', 'Naruto'],
+            ['piece-7.mp3', 'Naruto\nline 6'],
+            ['piece-8.mp3', 'Naruto\nline 6 line 7'],
+            ['piece-9.mp3', 'Naruto'],
+            ['piece-10.mp3', 'Naruto\nline 9'],
+            ['piece-11.mp3', 'Naruto\nline 9 line 10'],
+            ['piece-12.mp3', 'Naruto']
+        ]);
+        // The first ones of the streams go out at once, before any answer.
+        expect(ask.mock.calls.slice(0, 5).map((call) => {
+            return call[0].fileName;
+        })).toEqual(['piece-0.mp3', 'piece-3.mp3', 'piece-6.mp3', 'piece-9.mp3', 'piece-12.mp3']);
+        const saved = files.written[generatedFile('Japanese')] as string;
+        expect(saved.split('\n\n').slice(1, 3)).toEqual(['00:00:00.750 --> 00:00:02.500\nline 0', '00:00:03.250 --> 00:00:05.000\nline 1']);
+        expect(saved.match(/-->/g)).toHaveLength(count);
+    });
+
+    it('sends what was said before alone when the series has no name', async () => {
+        const ask = hearing(['a', 'b', 'c']);
+        const { dependencies } = cuttingSetup(ask, { pcm: linesPcm(3), pieces: 3 });
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: null }, dependencies, vi.fn());
+        expect(askedInputs(ask).map((input) => {
+            return input.prompt;
+        })).toEqual(['', '', '']);
+    });
+
+    it('leaves out the pieces where nothing was said, in the subtitle and in what goes with the next ones', async () => {
+        // 7 pieces in streams of 2: [0, 1], [2, 3], [4, 5] and [6].
+        const ask = hearing(['', '  ', 'c', 'd', 'e', 'f', 'g']);
+        const { files, dependencies } = cuttingSetup(ask, { pcm: linesPcm(7), pieces: 7 });
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
+        expect(askedInputs(ask).map((input) => {
+            return input.prompt;
+        })).toEqual(['Naruto', 'Naruto', 'Naruto', 'Naruto\nc', 'Naruto', 'Naruto\ne', 'Naruto']);
+        const saved = files.written[generatedFile('Japanese')] as string;
+        expect(saved.split('\n\n').slice(1).map((cue) => {
+            return cue.split('\n')[1];
+        })).toEqual(['c', 'd', 'e', 'f', 'g']);
+        expect(saved.split('\n\n')[1]).toBe('00:00:05.750 --> 00:00:07.500\nc');
+    });
+
+    it('says no speech was recognized, and saves nothing, when every piece came back empty', async () => {
+        const { files, translate, audio, dependencies } = cuttingSetup(hearing(['', '']));
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-speech' });
+        expect(files.written).toEqual({});
+        expect(translate).not.toHaveBeenCalled();
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('says no speech was recognized, without cutting the audio or asking the service, when there is no line in it', async () => {
+        const ask = hearing([]);
+        const { ffmpeg, files, dependencies } = cuttingSetup(ask, { pcm: pcmOf([silence(5)]), pieces: 0 });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-speech' });
+        expect(ffmpeg).toHaveBeenCalledTimes(1);
+        expect(ask).not.toHaveBeenCalled();
+        expect(files.written).toEqual({});
+    });
+
+    it.each([
+        ['ffmpeg fails to decode the audio', 'decode', 'extract-failed'],
+        ['the decoded audio is not there', 'missing', 'no-audio'],
+        ['ffmpeg fails to cut the pieces', 'cut', 'extract-failed'],
+        ['ffmpeg cuts fewer pieces than there are lines', 'fewer', 'extract-failed']
+    ] as const)('says why, asking nothing, when %s', async (_name, failure, reason) => {
+        const ask = hearing(['a', 'b']);
+        const ffmpeg = vi.fn<FfmpegRunner>(async (args) => {
+            const failing = (failure === 'decode' && args.includes('s16le')) || (failure === 'cut' && args.includes('segment'));
+            return { code: failing ? 1 : 0, stderr: '' };
+        });
+        const { files, audio, dependencies } = cuttingSetup(ask, { ffmpeg, pcm: failure === 'missing' ? null : TWO_LINES, pieces: failure === 'fewer' ? 1 : 2 });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason });
+        expect(ask).not.toHaveBeenCalled();
+        expect(files.written).toEqual({});
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('gives the first failure of the service and stops the other streams, saving nothing', async () => {
+        const count = 13;
+        const error = { code: 'INVALID_TOKEN' as const, raw: 'bad key' };
+        const ask = vi.fn<Ask>(async (input): Promise<LlmCompletionResult> => {
+            return input.fileName === 'piece-0.mp3' ? { ok: false, error } : { ok: true, text: 'text' };
+        });
+        const { files, audio, dependencies } = cuttingSetup(ask, { pcm: linesPcm(count), pieces: count });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'failed', error });
+        // Only the first piece of each of the 5 streams went out: none asked for another after the failure.
+        expect(ask).toHaveBeenCalledTimes(5);
+        expect((ask.mock.calls[1]?.[0].signal as AbortSignal).aborted).toBe(true);
+        expect(files.written).toEqual({});
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('waits and asks for a piece again when the service asks to slow down', async () => {
+        let first = true;
+        const ask = vi.fn<Ask>(async (input): Promise<LlmCompletionResult> => {
+            if (input.fileName === 'piece-1.mp3' && first) {
+                first = false;
+                return { ok: false, error: { code: 'RATE_LIMITED', raw: 'slow down', retryAfterSeconds: 2 } };
+            }
+            return { ok: true, text: input.fileName === 'piece-0.mp3' ? 'こんにちは' : 'またね' };
+        });
+        const { files, sleep, dependencies } = cuttingSetup(ask);
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
+        expect(sleep).toHaveBeenCalledWith(2000, expect.any(AbortSignal));
+        expect(ask).toHaveBeenCalledTimes(3);
+        expect(files.written[generatedFile('Japanese')]).toBe(TWO_LINES_VTT);
+    });
+
+    it.each(['decode', 'cut'] as const)('stops, asking nothing, when it is cancelled while ffmpeg works (%s)', async (step) => {
+        const controller = new AbortController();
+        const ask = hearing(['a', 'b']);
+        const ffmpeg = vi.fn<FfmpegRunner>(async (args) => {
+            if ((step === 'decode' && args.includes('s16le')) || (step === 'cut' && args.includes('segment'))) {
+                controller.abort();
+            }
+            return { code: 0, stderr: '' };
+        });
+        const { files, audio, dependencies } = cuttingSetup(ask, { ffmpeg });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
+        expect(ask).not.toHaveBeenCalled();
+        expect(files.written).toEqual({});
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('stops when it is cancelled while the pieces are sent, saving nothing', async () => {
+        const controller = new AbortController();
+        const ask = vi.fn<Ask>(async (input): Promise<LlmCompletionResult> => {
+            controller.abort();
+            return input.signal?.aborted === true ? { ok: false, error: { code: 'CANCELLED', raw: 'cancelled' } } : { ok: true, text: 'a' };
+        });
+        const { files, audio, dependencies } = cuttingSetup(ask);
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn(), controller.signal)).toEqual({ ok: false, reason: 'cancelled' });
+        expect(files.written).toEqual({});
+        expect(audio.removed).toEqual([WORK]);
+    });
+
+    it.each(['English', 'Spanish'] as const)('transcribes and has the language model translate the text into %s, telling it the lines were heard from the audio of the series', async (language) => {
+        const ask = hearing(['こんにちは', 'またね']);
+        const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
+        const { files, translate, translation, dependencies } = cuttingSetup(ask);
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language, title: TITLE }, dependencies, onProgress)).toMatchObject({ ok: true, generated: { id: `generated-${language}` } });
+        expect(askedInputs(ask).map((input) => {
+            return input.task;
+        })).toEqual(['transcribe', 'transcribe']);
+        expect(translation).toHaveBeenCalledTimes(1);
+        expect(translate.mock.calls).toEqual([[systemPromptFor(language, { title: TITLE }), '["こんにちは","またね"]', undefined]]);
+        expect(files.written).toEqual({ [generatedFile(language)]: 'WEBVTT\n\n00:00:00.750 --> 00:00:03.000\n[こんにちは]\n\n00:00:03.750 --> 00:00:06.000\n[またね]\n' });
+        expect(onProgress.mock.calls.map((call) => {
+            return [call[2].phase, call[2].plan];
+        })).toEqual([
+            ['extracting', 'transcribe-translate'],
+            ['sending', 'transcribe-translate'],
+            ['sending', 'transcribe-translate'],
+            ['sending', 'transcribe-translate'],
+            ['translating', 'transcribe-translate'],
+            ['translating', 'transcribe-translate'],
+            ['translating', 'transcribe-translate'],
+            ['saving', 'transcribe-translate']
+        ]);
+    });
+
+    it('tells the language model the lines were heard from the audio of a video when the series has no name', async () => {
+        const { translate, dependencies } = cuttingSetup(hearing(['こんにちは', 'またね']));
+        await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: null }, dependencies, vi.fn());
+        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish', { title: null }));
+    });
+
+    it('says the translation has no token, before decoding or sending anything, when the subtitle is wanted in another language', async () => {
+        const ask = hearing(['a', 'b']);
+        const { ffmpeg, dependencies } = cuttingSetup(ask);
+        dependencies.translation = () => {
+            return { ok: false, reason: 'no-token' };
+        };
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-translation-token' });
+        expect(ffmpeg).not.toHaveBeenCalled();
+        expect(ask).not.toHaveBeenCalled();
     });
 });

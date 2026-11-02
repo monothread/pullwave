@@ -28,10 +28,27 @@ export type TranslateTextsResult = { ok: true; texts: string[] } | { ok: false; 
 
 const CANCELLED: LlmError = { code: 'CANCELLED', raw: 'The translation was cancelled.' };
 
-export function systemPromptFor(language: string): string {
+// Where the lines being translated come from, when they were written by a service of speech to text from the audio (a subtitle that was
+// generated): they can have words heard wrongly, which the model is asked to see through. `title` is the name of the series, when known.
+export interface RecognizedSpeech {
+    title: string | null;
+}
+
+// What the model is told about lines written from the audio: measured on an episode, it took the subtitle from 88% to 92% of lines with the
+// right meaning (D-138), seeing "白色なこと" as "博識なこと" or "スクヨミ" as "Tsukuyomi".
+function recognizedSpeechPrompt(recognized: RecognizedSpeech): string[] {
+    return [
+        recognized.title === null ? 'The lines were written from the audio of a video.' : `The lines were written from the audio of the series "${recognized.title}".`,
+        'They come from automatic speech recognition and can have mistakes: words heard wrongly (often homophones or near homophones), wrong kanji for names, or a sentence cut between two lines.',
+        'Use the context of the nearby lines and of the series to understand what was really said, and translate that.'
+    ];
+}
+
+export function systemPromptFor(language: string, recognized?: RecognizedSpeech): string {
     return [
         'You are a professional subtitle translator.',
         `The user sends a JSON array of strings, the lines of a subtitle in order. Translate each string into ${language}.`,
+        ...(recognized === undefined ? [] : recognizedSpeechPrompt(recognized)),
         'Keep the meaning, the tone and the register of spoken dialogue, and keep names consistent.',
         'Keep the line breaks (\\n) and any markup tags such as <i>...</i> where they are.',
         'Do not merge, split, add or drop strings, and do not explain anything.',
@@ -147,13 +164,14 @@ async function translateBatch(texts: string[], context: Context): Promise<Transl
     return second.ok ? { ok: true, texts: [...first.texts, ...second.texts] } : second;
 }
 
-// Translates the texts, in order, into a language. The empty ones are not sent.
-export async function translateTexts(texts: readonly string[], language: string, dependencies: TranslatorDependencies): Promise<TranslateTextsResult> {
+// Translates the texts, in order, into a language. The empty ones are not sent. `recognized` is given when the texts were written from the
+// audio by a service of speech to text.
+export async function translateTexts(texts: readonly string[], language: string, dependencies: TranslatorDependencies, recognized?: RecognizedSpeech): Promise<TranslateTextsResult> {
     const positions = texts.flatMap((text, index) => {
         return text.trim().length > 0 ? [index] : [];
     });
     const translated = [...texts];
-    const context: Context = { system: systemPromptFor(language), dependencies };
+    const context: Context = { system: systemPromptFor(language, recognized), dependencies };
     let done = 0;
     dependencies.onProgress?.(0, texts.length);
     for (const batchTexts of splitIntoBatches(positions.map((position) => {

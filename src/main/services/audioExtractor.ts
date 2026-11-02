@@ -16,6 +16,12 @@ export type FfmpegRunner = (args: string[], signal?: AbortSignal) => Promise<Ffm
 // The most of the output of ffmpeg that is kept (it prints a line for every second it works on).
 const MAX_STDERR = 200_000;
 const PART_NAME = /^part-\d+\.mp3$/;
+const PIECE_NAME = /^piece-\d+\.mp3$/;
+const SPEECH_PCM = 'speech.pcm';
+// The audio as it is sent: mono MP3 of 32 kbps at 16 kHz.
+const MONO_MP3 = ['-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k'];
+// The band of the voice, where the pauses between the lines are looked for (see speechSegmenter).
+const VOICE_BAND = 'highpass=f=250,lowpass=f=3500';
 const DURATION = /Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/;
 const AUDIO_STREAM = /Stream #\d+:\d+.*: Audio:/;
 
@@ -107,15 +113,7 @@ export async function extractAudioParts(videoPath: string, directory: string, ru
             'error',
             '-i',
             videoPath,
-            '-vn',
-            '-ac',
-            '1',
-            '-ar',
-            '16000',
-            '-c:a',
-            'libmp3lame',
-            '-b:a',
-            '32k',
+            ...MONO_MP3,
             '-f',
             'segment',
             '-segment_time',
@@ -129,14 +127,61 @@ export async function extractAudioParts(videoPath: string, directory: string, ru
     if (result.code !== 0) {
         return { ok: false, reason: 'extract-failed' };
     }
-    const paths = audio
+    const paths = filesNamed(directory, PART_NAME, audio);
+    return paths.length === 0 ? { ok: false, reason: 'no-audio' } : { ok: true, paths };
+}
+
+// The files of the folder whose name matches, in order, with their paths.
+function filesNamed(directory: string, pattern: RegExp, audio: AudioFiles): string[] {
+    return audio
         .list(directory)
         .filter((name) => {
-            return PART_NAME.test(name);
+            return pattern.test(name);
         })
         .sort()
         .map((name) => {
             return join(directory, name);
         });
-    return paths.length === 0 ? { ok: false, reason: 'no-audio' } : { ok: true, paths };
+}
+
+export type SpeechAudio = { ok: true; pcm: Uint8Array } | { ok: false; reason: 'no-audio' | 'extract-failed' };
+
+// The audio of a video in the band of the voice, as mono 16-bit PCM at 16 kHz, to find the pauses between the lines in it.
+export async function decodeSpeechAudio(videoPath: string, directory: string, run: FfmpegRunner, audio: AudioFiles, signal?: AbortSignal): Promise<SpeechAudio> {
+    const target = join(directory, SPEECH_PCM);
+    const result = await run(
+        ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', videoPath, '-vn', '-af', VOICE_BAND, '-ac', '1', '-ar', '16000', '-f', 's16le', target],
+        signal
+    );
+    if (result.code !== 0) {
+        return { ok: false, reason: 'extract-failed' };
+    }
+    if (!audio.list(directory).includes(SPEECH_PCM)) {
+        return { ok: false, reason: 'no-audio' };
+    }
+    const pcm = audio.read(target);
+    return pcm.byteLength === 0 ? { ok: false, reason: 'no-audio' } : { ok: true, pcm };
+}
+
+// Where ffmpeg writes the pieces: one file when nothing is cut (the segment muxer would cut every 2 seconds without times), the segment
+// muxer cutting at the times otherwise.
+function piecesOutput(directory: string, cutTimes: readonly number[]): string[] {
+    if (cutTimes.length === 0) {
+        return ['-f', 'mp3', join(directory, 'piece-0000.mp3')];
+    }
+    const times = cutTimes.map((time) => {
+        return time.toFixed(3);
+    });
+    return ['-f', 'segment', '-segment_times', times.join(','), '-reset_timestamps', '1', join(directory, 'piece-%04d.mp3')];
+}
+
+// The audio of a video cut at the times that are given, all at once, in small mono MP3 pieces in a folder: the piece number n starts at the
+// time n - 1 (the first at the start). There is one piece more than there are times, or it failed.
+export async function extractAudioPieces(videoPath: string, directory: string, cutTimes: readonly number[], run: FfmpegRunner, audio: AudioFiles, signal?: AbortSignal): Promise<AudioParts> {
+    const result = await run(['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', videoPath, ...MONO_MP3, ...piecesOutput(directory, cutTimes)], signal);
+    if (result.code !== 0) {
+        return { ok: false, reason: 'extract-failed' };
+    }
+    const paths = filesNamed(directory, PIECE_NAME, audio);
+    return paths.length === cutTimes.length + 1 ? { ok: true, paths } : { ok: false, reason: 'extract-failed' };
 }

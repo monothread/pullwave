@@ -1,5 +1,5 @@
 // Types of the anime section (ani-cli). It exists on Linux and Windows.
-import type { LlmError } from './llm';
+import type { LlmError, SpeechTranslatesTo } from './llm';
 import type { ErrorDetails } from './errorDetails';
 
 export type AnimeAudio = 'sub' | 'dub';
@@ -497,11 +497,15 @@ export function isSpokenLanguage(audioLanguage: TranscriptionLanguage, language:
     return audioLanguage === language || (audioLanguage === 'Portuguese' && language === 'Portuguese (Brazil)');
 }
 
-// How the subtitle is made, given what the speech service can write the audio in at once: only English (the protocol of OpenAI, the default)
-// or any language (Gemini).
-export function generatePlanOf(audioLanguage: TranscriptionLanguage, language: TranslationLanguage, translatesTo: 'english' | 'any' = 'english'): SubtitleGeneratePlan {
+// How the subtitle is made, given what the speech service can write the audio in at once: only English (another service of the protocol of
+// OpenAI, the default), any language (Gemini) or none (OpenAI, whose gpt-transcribe only transcribes). Audio spoken in the language that is
+// wanted is only transcribed, never translated.
+export function generatePlanOf(audioLanguage: TranscriptionLanguage, language: TranslationLanguage, translatesTo: SpeechTranslatesTo = 'english'): SubtitleGeneratePlan {
     if (isSpokenLanguage(audioLanguage, language)) {
         return 'transcribe';
+    }
+    if (translatesTo === 'none') {
+        return 'transcribe-translate';
     }
     return translatesTo === 'any' || language === 'English' ? 'direct' : 'transcribe-translate';
 }

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AUDIO_BYTES_PER_SECOND, createFfmpegRunner, defaultAudioFiles, extractAudioParts, probeAudio, type AudioFiles, type FfmpegResult, type FfmpegRunner } from '@main/services/audioExtractor';
+import { AUDIO_BYTES_PER_SECOND, createFfmpegRunner, decodeSpeechAudio, defaultAudioFiles, extractAudioParts, extractAudioPieces, probeAudio, type AudioFiles, type FfmpegResult, type FfmpegRunner } from '@main/services/audioExtractor';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
 afterEach(() => {
@@ -111,6 +111,97 @@ describe('extractAudioParts', () => {
 
     it('says there is no audio when ffmpeg made no part', async () => {
         expect(await extractAudioParts(VIDEO, DIRECTORY, runner({ code: 0, stderr: '' }), audioFiles(['notes.txt']))).toEqual({ ok: false, reason: 'no-audio' });
+    });
+});
+
+describe('cutting the audio at its pauses', () => {
+    const DIRECTORY = join('/tmp', 'work');
+    const PCM = new Uint8Array([1, 2, 3, 4]);
+
+    function folder(names: string[], pcm: Uint8Array = PCM): AudioFiles {
+        return {
+            makeDirectory: vi.fn(() => {
+                return DIRECTORY;
+            }),
+            list: vi.fn(() => {
+                return names;
+            }),
+            read: vi.fn(() => {
+                return pcm;
+            }),
+            size: vi.fn(() => {
+                return 0;
+            }),
+            remove: vi.fn()
+        };
+    }
+
+    describe('decodeSpeechAudio', () => {
+        const DECODE = ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', VIDEO, '-vn', '-af', 'highpass=f=250,lowpass=f=3500', '-ac', '1', '-ar', '16000', '-f', 's16le', join(DIRECTORY, 'speech.pcm')];
+
+        it('asks ffmpeg for the audio in the band of the voice as mono 16-bit PCM at 16 kHz, and reads it', async () => {
+            const run = runner({ code: 0, stderr: '' });
+            const files = folder(['speech.pcm']);
+            const controller = new AbortController();
+            expect(await decodeSpeechAudio(VIDEO, DIRECTORY, run, files, controller.signal)).toEqual({ ok: true, pcm: PCM });
+            expect(run.mock.calls).toEqual([[DECODE, controller.signal]]);
+            expect(files.list).toHaveBeenCalledWith(DIRECTORY);
+            expect(files.read).toHaveBeenCalledWith(join(DIRECTORY, 'speech.pcm'));
+        });
+
+        it('says it failed when ffmpeg ends with an error or could not be run, without reading anything', async () => {
+            const files = folder(['speech.pcm']);
+            expect(await decodeSpeechAudio(VIDEO, DIRECTORY, runner({ code: 1, stderr: 'boom' }), files)).toEqual({ ok: false, reason: 'extract-failed' });
+            expect(await decodeSpeechAudio(VIDEO, DIRECTORY, runner({ code: null, stderr: 'ENOENT' }), files)).toEqual({ ok: false, reason: 'extract-failed' });
+            expect(files.read).not.toHaveBeenCalled();
+        });
+
+        it('says there is no audio when ffmpeg wrote no file', async () => {
+            const files = folder(['notes.txt']);
+            expect(await decodeSpeechAudio(VIDEO, DIRECTORY, runner({ code: 0, stderr: '' }), files)).toEqual({ ok: false, reason: 'no-audio' });
+            expect(files.read).not.toHaveBeenCalled();
+        });
+
+        it('says there is no audio when the file it wrote is empty', async () => {
+            expect(await decodeSpeechAudio(VIDEO, DIRECTORY, runner({ code: 0, stderr: '' }), folder(['speech.pcm'], new Uint8Array(0)))).toEqual({ ok: false, reason: 'no-audio' });
+        });
+    });
+
+    describe('extractAudioPieces', () => {
+        const MP3 = ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', VIDEO, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k'];
+
+        it('asks ffmpeg for mono 16 kHz MP3 pieces cut at the times, to the millisecond, and gives their paths in order', async () => {
+            const run = runner({ code: 0, stderr: '' });
+            const files = folder(['piece-0002.mp3', 'speech.pcm', 'piece-0000.mp3', 'piece-0001.mp3', 'part-000.mp3', 'piece-x.mp3']);
+            const controller = new AbortController();
+            expect(await extractAudioPieces(VIDEO, DIRECTORY, [3.5, 7.12345], run, files, controller.signal)).toEqual({
+                ok: true,
+                paths: [join(DIRECTORY, 'piece-0000.mp3'), join(DIRECTORY, 'piece-0001.mp3'), join(DIRECTORY, 'piece-0002.mp3')]
+            });
+            expect(run.mock.calls).toEqual([[[...MP3, '-f', 'segment', '-segment_times', '3.500,7.123', '-reset_timestamps', '1', join(DIRECTORY, 'piece-%04d.mp3')], controller.signal]]);
+            expect(files.list).toHaveBeenCalledWith(DIRECTORY);
+        });
+
+        it('writes a single piece, with no segment muxer, when there is no time to cut at', async () => {
+            const run = runner({ code: 0, stderr: '' });
+            expect(await extractAudioPieces(VIDEO, DIRECTORY, [], run, folder(['piece-0000.mp3']))).toEqual({ ok: true, paths: [join(DIRECTORY, 'piece-0000.mp3')] });
+            expect(run.mock.calls).toEqual([[[...MP3, '-f', 'mp3', join(DIRECTORY, 'piece-0000.mp3')], undefined]]);
+        });
+
+        it('says it failed when ffmpeg ends with an error or could not be run, without looking at the folder', async () => {
+            const files = folder(['piece-0000.mp3', 'piece-0001.mp3']);
+            expect(await extractAudioPieces(VIDEO, DIRECTORY, [3.5], runner({ code: 1, stderr: 'boom' }), files)).toEqual({ ok: false, reason: 'extract-failed' });
+            expect(await extractAudioPieces(VIDEO, DIRECTORY, [3.5], runner({ code: null, stderr: 'ENOENT' }), files)).toEqual({ ok: false, reason: 'extract-failed' });
+            expect(files.list).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['fewer', ['piece-0000.mp3']],
+            ['more', ['piece-0000.mp3', 'piece-0001.mp3', 'piece-0002.mp3']],
+            ['no', []]
+        ])('says it failed when ffmpeg made %s pieces than there are cuts plus one', async (_name, names) => {
+            expect(await extractAudioPieces(VIDEO, DIRECTORY, [3.5], runner({ code: 0, stderr: '' }), folder(names))).toEqual({ ok: false, reason: 'extract-failed' });
+        });
     });
 });
 

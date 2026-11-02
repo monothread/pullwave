@@ -37,7 +37,7 @@ const LLM_TEXTS: Record<LlmErrorCode, string> = {
     NETWORK: 'The provider could not be reached. Check your connection and the address.',
     BAD_RESPONSE: 'The provider answered in a way the app could not use.',
     CANCELLED: 'The translation was cancelled.',
-    NO_TIMESTAMPS: 'This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models of OpenAI only write the text). Use whisper-1, or Gemini, in the anime settings.'
+    NO_TIMESTAMPS: 'This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models only write the text). With "Other", use a model that writes WebVTT, such as whisper-1; or choose OpenAI (which cuts the audio at its pauses) or Gemini in the anime settings.'
 };
 
 describe('providerName', () => {
@@ -64,7 +64,7 @@ describe('estimateFailureText', () => {
 
 describe('speechProviderName', () => {
     it('names OpenAI by its model of speech to text and the service of one\'s own like the language models do', () => {
-        expect(speechProviderName('openai', t)).toBe('OpenAI (Whisper)');
+        expect(speechProviderName('openai', t)).toBe('OpenAI (gpt-transcribe)');
         expect(speechProviderName('custom', t)).toBe('Other (OpenAI-compatible)');
     });
 });

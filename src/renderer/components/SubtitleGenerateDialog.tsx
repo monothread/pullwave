@@ -12,7 +12,7 @@ import {
     type TranslationLanguage
 } from '@shared/anime';
 import type { Translator } from '@shared/i18n';
-import { speechTranslatesTo } from '@shared/llm';
+import { speechModelOf, speechTranslatesTo } from '@shared/llm';
 import type { Settings } from '@shared/types';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useTranslator } from '../i18n/useTranslator';
@@ -40,6 +40,7 @@ interface FactsProps {
 // What will leave the computer and where it goes: only the audio (never the video), how much of it, to which service and, when the text has to
 // be translated afterwards, to which other one.
 function SentFacts({ estimate, translating, settings, t }: FactsProps) {
+    const speechModel = speechModelOf(settings.transcribeProvider, settings.transcribeModel);
     return (
         <section className="generate__card" aria-label={t('anime.generate.sent.title')}>
             <span className="section-label">{t('anime.generate.sent.title')}</span>
@@ -57,7 +58,7 @@ function SentFacts({ estimate, translating, settings, t }: FactsProps) {
                     {estimate?.ok === false && generateEstimateFailureText(estimate.reason, t)}
                 </dd>
                 <dt>{t('anime.generate.sent.speech')}</dt>
-                <dd>{t('anime.generate.sent.service', { provider: speechProviderName(settings.transcribeProvider, t), model: settings.transcribeModel.length > 0 ? settings.transcribeModel : '—' })}</dd>
+                <dd>{t('anime.generate.sent.service', { provider: speechProviderName(settings.transcribeProvider, t), model: speechModel.length > 0 ? speechModel : '—' })}</dd>
                 {translating && (
                     <>
                         <dt>{t('anime.generate.sent.translation')}</dt>

@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
+import { systemPromptFor } from '../../src/main/services/subtitleTranslator';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
@@ -3420,6 +3421,12 @@ test.describe('creating the subtitle of an episode from its audio', () => {
                 if (hold) {
                     return;
                 }
+                // A piece cut at the pauses, asked by the app of OpenAI in JSON (gpt-transcribe): "Line N" for piece-N.mp3.
+                const piece = /name="response_format"\r\n\r\njson/.test(form) ? /filename="piece-(\d+)\.mp3"/.exec(form) : null;
+                if (piece !== null) {
+                    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ text: `Line ${piece[1]}`, usage: { type: 'duration', seconds: 3 } }));
+                    return;
+                }
                 if (noTimestamps) {
                     const translations = path === '/v1/audio/translations';
                     const message = translations
@@ -3488,8 +3495,8 @@ test.describe('creating the subtitle of an episode from its audio', () => {
     }
 
     // Downloads the episode and makes its video a real one (the fake ani-cli writes a file that is not a video): 11 minutes of silence, or with no
-    // audio at all, and with no subtitle.
-    async function downloadWithoutSubtitle(page: Page, withAudio = true): Promise<void> {
+    // audio at all, or (`lines`) 10 seconds with three lines (a tone from 1 s to 3 s, from 4 s to 6 s and from 7 s to 9 s), and with no subtitle.
+    async function downloadWithoutSubtitle(page: Page, withAudio = true, lines = false): Promise<void> {
         await openAnimeTab(page);
         await openFirstResult(page);
         await downloadFromLibrary(page, [1]);
@@ -3498,7 +3505,9 @@ test.describe('creating the subtitle of an episode from its audio', () => {
             return name.endsWith('.mp4');
         }) as string;
         const target = join(episodeFolder(), video);
-        const input = withAudio ? ['-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', '650', '-c:a', 'aac'] : ['-f', 'lavfi', '-i', 'testsrc=duration=2:size=64x64:rate=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p'];
+        const silent = ['-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', '650', '-c:a', 'aac'];
+        const spoken = ['-f', 'lavfi', '-i', 'aevalsrc=0.25*sin(2*PI*1000*t)*gte(mod(t\\,3)\\,1):s=16000:d=10', '-c:a', 'aac'];
+        const input = withAudio ? (lines ? spoken : silent) : ['-f', 'lavfi', '-i', 'testsrc=duration=2:size=64x64:rate=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p'];
         execFileSync(FFMPEG, ['-y', '-loglevel', 'error', ...input, target]);
         readdirSync(episodeFolder()).filter((name) => {
             return name.endsWith('.vtt');
@@ -3537,7 +3546,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         }
     }
 
-    async function openGenerateDialog(page: Page, audio: string, subtitle: string): Promise<{ player: Locator; create: Locator }> {
+    async function openGenerateDialog(page: Page, audio: string, subtitle: string, audioText: RegExp = AUDIO_TEXT): Promise<{ player: Locator; create: Locator }> {
         const player = await openPlayer(page);
         await expect(player.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toHaveCount(0);
         await player.getByRole('button', { name: 'CREATE SUBTITLE' }).click();
@@ -3545,7 +3554,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await expect(create).toBeVisible();
         await create.getByLabel('Language of the audio', { exact: true }).selectOption(audio);
         await create.getByLabel('Language of the subtitle', { exact: true }).selectOption(subtitle);
-        await expect(create.getByText(AUDIO_TEXT)).toBeVisible();
+        await expect(create.getByText(audioText)).toBeVisible();
         return { player, create };
     }
 
@@ -3678,6 +3687,123 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         expect(existsSync(generatedFile('Japanese'))).toBe(false);
     });
 
+    // OpenAI (here, the fake server at the address of the settings) is always asked with gpt-transcribe, which gives no times: the audio is cut
+    // at its pauses and each piece goes for its text.
+    async function launchWithOpenAi(): Promise<Page> {
+        const { userData } = session;
+        await session.app.close();
+        session = await launch(
+            userData,
+            {
+                transcribeProvider: 'openai',
+                transcribeModel: 'whisper-1',
+                transcribeBaseUrl: `${baseUrl}/v1`,
+                translateProvider: 'custom',
+                translateModel: 'fake-model',
+                translateBaseUrl: `${baseUrl}/v1`,
+                translateLanguage: 'Spanish'
+            },
+            { PULLWAVE_FAKE_SECRETS: '1' }
+        );
+        const { page } = session;
+        await openAnimeSettings(page);
+        await expect(page.getByLabel('Speech-to-text service', { exact: true })).toHaveValue('openai');
+        await expect(page.getByLabel('Speech-to-text service', { exact: true }).locator('option:checked')).toHaveText('OpenAI (gpt-transcribe)');
+        // The model stored (whisper-1) is not used: the field shows gpt-transcribe and cannot be changed.
+        await expect(page.getByLabel('Speech-to-text model', { exact: true })).toHaveValue('gpt-transcribe');
+        await expect(page.getByLabel('Speech-to-text model', { exact: true })).toBeDisabled();
+        await expect(page.getByText('With OpenAI the model is always gpt-transcribe: the audio is cut at its pauses and each piece is transcribed with what was said before it, so the times of the lines come from the cuts. With "Other", the model has to give the times of the lines in WebVTT, such as whisper-1. With Gemini, write the name of a Gemini model that takes audio.')).toBeVisible();
+        await page.getByLabel('Speech-to-text token (API key)', { exact: true }).fill(SPEECH_TOKEN);
+        await page.getByRole('button', { name: 'SAVE SPEECH TOKEN' }).click();
+        await expect(page.getByText('A token is saved for this service.')).toBeVisible();
+        await page.getByLabel('Token (API key)', { exact: true }).fill(TRANSLATION_TOKEN);
+        await page.getByRole('button', { name: 'SAVE TOKEN' }).click();
+        await expect(page.getByText('A token is saved for this provider.')).toBeVisible();
+        const tokens = JSON.parse(readFileSync(join(userData, 'llm-tokens.json'), 'utf-8')) as Record<string, string>;
+        expect(Object.keys(tokens).sort()).toEqual(['custom', 'speech-openai']);
+        return page;
+    }
+
+    const LINES_AUDIO_TEXT = /^1 min · about 39\.1 KiB · 3 requests$/;
+    const LINES_TIMES = ['00:00:00.750 --> 00:00:03.000', '00:00:03.750 --> 00:00:06.000', '00:00:06.750 --> 00:00:09.000'];
+
+    function linesVtt(prefix: string): string {
+        return `WEBVTT\n\n${LINES_TIMES.map((timing, index) => {
+            return `${timing}\n${prefix}Line ${index}`;
+        }).join('\n\n')}\n`;
+    }
+
+    // The three pieces were asked for their text in JSON with gpt-transcribe, the language and the name of the series, never translated.
+    function expectPiecesAsked(): void {
+        expect(received).toHaveLength(3);
+        const names = received.map((request) => {
+            return /filename="(piece-\d+\.mp3)"/.exec(request.form)?.[1];
+        });
+        expect([...names].sort()).toEqual(['piece-0.mp3', 'piece-1.mp3', 'piece-2.mp3']);
+        received.forEach((request) => {
+            expect({ method: request.method, path: request.path, authorization: request.authorization }).toEqual({
+                method: 'POST',
+                path: '/v1/audio/transcriptions',
+                authorization: `Bearer ${SPEECH_TOKEN}`
+            });
+            expect(request.contentType?.startsWith('multipart/form-data; boundary=')).toBe(true);
+            expect(request.form).toContain('name="model"\r\n\r\ngpt-transcribe');
+            expect(request.form).toContain('name="language"\r\n\r\nja');
+            expect(request.form).toContain('name="response_format"\r\n\r\njson');
+            // Three pieces go in three streams of one: each one with only the name of the series.
+            expect(request.form).toContain('name="prompt"\r\n\r\nFake Anime\r\n');
+            expect(request.fileStart[0] === 0x49 || request.fileStart[0] === 0xff).toBe(true);
+        });
+    }
+
+    test('with OpenAI, cuts the audio at its pauses, asks gpt-transcribe for the text of each piece with the name of the series, and saves the lines with the times of their speech, never translating audio spoken in the language of the subtitle', async () => {
+        const page = await launchWithOpenAi();
+        await downloadWithoutSubtitle(page, true, true);
+        const { player, create } = await openGenerateDialog(page, 'Japanese', 'Japanese', LINES_AUDIO_TEXT);
+        await expect(create.getByTestId('generate-plan')).toHaveText('The audio is transcribed in Japanese.');
+        const facts = create.getByRole('region', { name: 'What will be sent' });
+        await expect(facts.getByText('OpenAI (gpt-transcribe) · gpt-transcribe')).toBeVisible();
+        await expect(facts.getByText('Translation (the text only)')).toHaveCount(0);
+        expect(received).toEqual([]);
+
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create).toBeHidden({ timeout: 30000 });
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN Japanese.');
+        expectPiecesAsked();
+        expect(chats).toEqual([]);
+        expect(readFileSync(generatedFile('Japanese'), 'utf-8')).toBe(linesVtt(''));
+        await player.getByRole('button', { name: 'Settings' }).click();
+        await expect(player.getByRole('combobox', { name: 'Subtitles' })).toHaveValue('generated-Japanese');
+    });
+
+    test('with OpenAI, transcribes the audio and has the language model translate it even into English, telling it the lines were heard from the audio of the series', async () => {
+        const page = await launchWithOpenAi();
+        await downloadWithoutSubtitle(page, true, true);
+        const { create } = await openGenerateDialog(page, 'Japanese', 'English', LINES_AUDIO_TEXT);
+        await expect(create.getByTestId('generate-plan')).toHaveText('The audio is transcribed in Japanese, then the text is translated into English.');
+        const facts = create.getByRole('region', { name: 'What will be sent' });
+        await expect(facts.getByText('Translation (the text only)')).toBeVisible();
+        await expect(facts.getByText('Other (OpenAI-compatible) · fake-model')).toBeVisible();
+
+        await create.getByRole('button', { name: 'CREATE', exact: true }).click();
+        await expect(create).toBeHidden({ timeout: 30000 });
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN English.');
+        // The endpoint of the translations is never asked: gpt-transcribe has none.
+        expectPiecesAsked();
+        expect(chats).toHaveLength(1);
+        expect(chats[0]?.path).toBe('/v1/chat/completions');
+        expect(chats[0]?.authorization).toBe(`Bearer ${TRANSLATION_TOKEN}`);
+        expect(chats[0]?.body).toEqual({
+            model: 'fake-model',
+            messages: [
+                { role: 'system', content: systemPromptFor('English', { title: 'Fake Anime' }) },
+                { role: 'user', content: '["Line 0","Line 1","Line 2"]' }
+            ]
+        });
+        expect(readFileSync(generatedFile('English'), 'utf-8')).toBe(linesVtt('ES: '));
+        expect(existsSync(generatedFile('Japanese'))).toBe(false);
+    });
+
     test('has Gemini write the audio in the language of the subtitle at once, in any language, without the language model', async () => {
         const { userData } = session;
         await session.app.close();
@@ -3806,7 +3932,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await downloadWithoutSubtitle(page);
         const { create } = await openGenerateDialog(page, 'Japanese', 'Japanese');
         await create.getByRole('button', { name: 'CREATE', exact: true }).click();
-        await expect(create.getByRole('alert')).toHaveText('The subtitle could not be created. This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models of OpenAI only write the text). Use whisper-1, or Gemini, in the anime settings.');
+        await expect(create.getByRole('alert')).toHaveText('The subtitle could not be created. This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models only write the text). With "Other", use a model that writes WebVTT, such as whisper-1; or choose OpenAI (which cuts the audio at its pauses) or Gemini in the anime settings.');
         expect(
             received.map((request) => {
                 return request.path;
@@ -3822,7 +3948,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await downloadWithoutSubtitle(page);
         const { create } = await openGenerateDialog(page, 'Japanese', 'English');
         await create.getByRole('button', { name: 'CREATE', exact: true }).click();
-        await expect(create.getByRole('alert')).toHaveText('The subtitle could not be created. This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models of OpenAI only write the text). Use whisper-1, or Gemini, in the anime settings.', { timeout: 60000 });
+        await expect(create.getByRole('alert')).toHaveText('The subtitle could not be created. This model does not give the times of the lines, which a subtitle needs (gpt-transcribe and the gpt-4o transcription models only write the text). With "Other", use a model that writes WebVTT, such as whisper-1; or choose OpenAI (which cuts the audio at its pauses) or Gemini in the anime settings.', { timeout: 60000 });
         expect(
             received.map((request) => {
                 return request.path;

@@ -1,5 +1,5 @@
 import type { LlmFetch } from '@main/services/llmProviders';
-import { transcribeWithSpeechService, type SpeechRequest } from '@main/services/speechProviders';
+import { transcribeTextWithSpeechService, transcribeWithSpeechService, type SpeechRequest, type SpeechTextRequest } from '@main/services/speechProviders';
 
 interface Call {
     url: string;
@@ -213,5 +213,105 @@ Hi
             ok: false,
             error: { code: 'TIMEOUT', raw: 'The service did not answer in time.' }
         });
+    });
+});
+
+describe('transcribeTextWithSpeechService: a piece cut at the pauses', () => {
+    const PIECE: SpeechTextRequest = {
+        provider: 'openai',
+        baseUrl: '',
+        model: 'gpt-transcribe',
+        token: 'sk-secret',
+        language: 'ja',
+        prompt: 'Naruto\nこんにちは',
+        audio: AUDIO,
+        fileName: 'piece-3.mp3'
+    };
+    const ANSWER = JSON.stringify({ text: ' またね ', languages: [{ code: 'ja' }], usage: { type: 'duration', seconds: 3 } });
+
+    async function pieceErrorOf(response: Response | Error, request: SpeechTextRequest = PIECE) {
+        const result = await transcribeTextWithSpeechService(request, fakeFetch(response).fetchImpl);
+        if (result.ok) {
+            throw new Error('expected an error');
+        }
+        return result.error;
+    }
+
+    it('asks the transcriptions of OpenAI for the text in JSON, with the file, the model, the language and the prompt, and the token as a bearer', async () => {
+        const { fetchImpl, calls } = fakeFetch(respond(200, ANSWER));
+        expect(await transcribeTextWithSpeechService(PIECE, fetchImpl)).toEqual({ ok: true, text: 'またね' });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]?.url).toBe('https://api.openai.com/v1/audio/transcriptions');
+        expect(calls[0]?.init.method).toBe('POST');
+        expect(calls[0]?.init.headers).toEqual({ Authorization: 'Bearer sk-secret' });
+        const form = calls[0]?.init.body as FormData;
+        expect([...form.keys()]).toEqual(['file', 'model', 'language', 'response_format', 'prompt']);
+        expect([form.get('model'), form.get('language'), form.get('response_format'), form.get('prompt')]).toEqual(['gpt-transcribe', 'ja', 'json', 'Naruto\nこんにちは']);
+        const file = form.get('file') as File;
+        expect(file.name).toBe('piece-3.mp3');
+        expect(file.type).toBe('audio/mpeg');
+        expect(new Uint8Array(await file.arrayBuffer())).toEqual(AUDIO);
+    });
+
+    it('sends no prompt when there is nothing to help with', async () => {
+        const { fetchImpl, calls } = fakeFetch(respond(200, ANSWER));
+        await transcribeTextWithSpeechService({ ...PIECE, prompt: '' }, fetchImpl);
+        expect([...(calls[0]?.init.body as FormData).keys()]).toEqual(['file', 'model', 'language', 'response_format']);
+    });
+
+    it('uses the address the user chose', async () => {
+        const { fetchImpl, calls } = fakeFetch(respond(200, ANSWER));
+        await transcribeTextWithSpeechService({ ...PIECE, baseUrl: 'https://stt.example/v1/' }, fetchImpl);
+        expect(calls[0]?.url).toBe('https://stt.example/v1/audio/transcriptions');
+    });
+
+    it('passes a signal that follows the one of the user', async () => {
+        const controller = new AbortController();
+        const { fetchImpl, calls } = fakeFetch(respond(200, ANSWER));
+        await transcribeTextWithSpeechService({ ...PIECE, signal: controller.signal }, fetchImpl);
+        const signal = calls[0]?.init.signal as AbortSignal;
+        expect(signal.aborted).toBe(false);
+        controller.abort();
+        expect(signal.aborted).toBe(true);
+    });
+
+    it('gives an empty text when nothing was said in the piece', async () => {
+        expect(await transcribeTextWithSpeechService(PIECE, fakeFetch(respond(200, '{"text":""}')).fetchImpl)).toEqual({ ok: true, text: '' });
+    });
+
+    it.each([
+        ['not JSON', 'WEBVTT\n'],
+        ['JSON with no text', '{"transcript":"またね"}'],
+        ['JSON whose text is not a string', '{"text":3}'],
+        ['JSON that is not an object', '"またね"'],
+        ['null', 'null']
+    ])('says the answer is not the text of the audio when it is %s, without the token', async (_name, body) => {
+        expect(await pieceErrorOf(respond(200, body))).toEqual({ code: 'BAD_RESPONSE', raw: `The answer is not the text of the audio: ${body}` });
+        expect(await pieceErrorOf(respond(200, `${body} sk-secret`))).toEqual({ code: 'BAD_RESPONSE', raw: `The answer is not the text of the audio: ${body} [token]` });
+    });
+
+    it('gives the errors of the service as the transcriptions in WebVTT do', async () => {
+        expect(await pieceErrorOf(respond(401, 'nope'))).toEqual({ code: 'INVALID_TOKEN', raw: 'nope' });
+        expect(await pieceErrorOf(respond(429, 'slow down', { 'retry-after': '7' }))).toEqual({ code: 'RATE_LIMITED', raw: 'slow down', retryAfterSeconds: 7 });
+        expect(await pieceErrorOf(respond(404, 'no such model'))).toEqual({ code: 'MODEL_NOT_FOUND', raw: 'no such model' });
+        expect(await pieceErrorOf(respond(500, 'boom'))).toEqual({ code: 'BAD_RESPONSE', raw: 'HTTP 500: boom' });
+        expect(await pieceErrorOf(new Error('connect ECONNREFUSED sk-secret'))).toEqual({ code: 'NETWORK', raw: 'connect ECONNREFUSED [token]' });
+    });
+
+    it('says it was cancelled when the user aborted', async () => {
+        const controller = new AbortController();
+        controller.abort();
+        expect(await pieceErrorOf(new Error('aborted'), { ...PIECE, signal: controller.signal })).toEqual({ code: 'CANCELLED', raw: 'The subtitle was cancelled.' });
+    });
+
+    it('says it timed out when the service did not answer in time', async () => {
+        const never: LlmFetch = (_url, init) => {
+            return new Promise<Response>((_resolve, reject) => {
+                (init.signal as AbortSignal).addEventListener('abort', () => {
+                    reject(new Error('aborted'));
+                });
+            });
+        };
+        expect(await transcribeTextWithSpeechService({ ...PIECE, timeoutMs: 20 }, never)).toEqual({ ok: false, error: { code: 'TIMEOUT', raw: 'The service did not answer in time.' } });
     });
 });
