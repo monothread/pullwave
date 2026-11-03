@@ -47,6 +47,8 @@ Once installed, the app looks for new versions by itself (the ⚙ of the top bar
 ## Getting around
 The app looks and moves like the TV mode of a game console.
 
+![The home screen](docs/screenshots/home.png)
+
 - **HOME** is the first screen: a carousel of highlights that changes every 5 seconds (what you left half way, then the anime and manga that got something new in the last 7 days; a chapter read to its end gives its place to the next one not read, and a manga that is up to date leaves the carousel) and a big block for each section, in the order of the menu, with what goes on in it (downloads, news of the week) and quick buttons (VIDEO DOWNLOADER: PASTE A LINK, CUT; ANIME and MANGA: UPDATES, LIBRARY). While a library is empty, ANIME offers SEARCH instead of UPDATES, and MANGA offers EXTENSIONS (or BROWSE, once an extension gives a source). With nothing to highlight yet, a welcome takes the place of the carousel.
 - **The menu on the left** has HOME, **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the settings of the whole app. It is a rail of pictures; ☰ opens it with the names. On a narrow window it is a dock at the bottom.
 - **The top bar** has a search in the middle (titles of your libraries, or a search in the anime or manga section), the downloads of the whole app (⬇ with how many are going on), a button for the sounds of the navigation, and the clock.
@@ -60,7 +62,7 @@ Each part has its own bar and its own ⚙:
 |---|---|
 | VIDEO DOWNLOADER | QUEUE · HISTORY · CUT · ⚙ |
 | ANIME | SCHEDULE · UPDATES · SEARCH · LIBRARY · HISTORY · ⚙ (and a DOWNLOADS button) |
-| MANGA | BROWSE · LIBRARY · EXTENSIONS · ⚙ (and a DOWNLOADS button) |
+| MANGA | BROWSE · SEARCH · UPDATES · LIBRARY · HISTORY · EXTENSIONS · ⚙ (and a DOWNLOADS button) |
 
 The back and forward buttons of the mouse take you through the screens you have been to.
 
@@ -121,6 +123,8 @@ Where downloads are saved and how files are named, quality and format, playlists
 Pullwave includes [ani-cli](https://github.com/pystardust/ani-cli) and everything it needs, so the anime section works as soon as the app is installed.
 
 ### Schedule
+![The schedule of the day](docs/screenshots/anime-schedule.png)
+
 The first tab of ANIME shows the episodes that air, as [AniList](https://anilist.co) schedules them, as cards with the cover of each anime, in the order they air, at the time of the time zone you pick (the one of your computer to begin with). The schedule always opens on the DAY view; the time zone you pick is remembered. The search field above the cards narrows what is listed to the anime whose name (or another name AniList knows it by) has what you typed, and each card then shows the date and the time its episode airs; it looks only at the day or the week that is listed.
 
 - **VIEW** switches between **DAY** (today) and **WEEK** (the seven days that start with today, one section for each day).
@@ -222,6 +226,7 @@ Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](http
 
   ![The library of the manga](docs/screenshots/manga-library.png)
   ![The page of a manga](docs/screenshots/manga-page.png)
+  ![The reader](docs/screenshots/manga-reader.png)
 - **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: the sources are the ones in the language of the settings (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number.
 - **The folder:** as with the anime, once there are mangas in the library the folder is fixed and only **MIGRATE FOLDER** changes it (it moves the files, checks them and then removes the old ones).
 

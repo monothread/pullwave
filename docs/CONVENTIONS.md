@@ -23,6 +23,9 @@ npx vitest run
 ```
 Fix everything before considering the task done.
 
+## Screenshots
+- `docs/screenshots` is made by `npm run screenshots` (`scripts/screenshots`, D-144): invented titles, fake programs and servers, a temporary user-data folder. Never take them from an installed app. After a change of design, run it again and look at every image.
+
 ## Git
 - Commit messages in English; no AI attribution in any file, commit or PR.
 - Never push or deploy without explicit confirmation.
