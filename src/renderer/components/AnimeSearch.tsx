@@ -89,7 +89,7 @@ export function AnimeSearch() {
                             const inSeries = joined?.series != null && joined.season !== null;
                             return (
                                 <li key={result.index} className="history__item cover-card row--link">
-                                    <AnimeCover title={result.title} />
+                                    {result.unconfirmed === true ? <AnimeCover title={result.title} url={null} /> : <AnimeCover title={result.title} />}
                                     <div className="history__main">
                                         <span className="history__title">
                                             <RowLink
@@ -102,6 +102,11 @@ export function AnimeSearch() {
                                                 {result.title}
                                             </RowLink>
                                         </span>
+                                        {result.unconfirmed === true && (
+                                            <span className="history__meta" data-testid="anime-result-unconfirmed">
+                                                {t('anime.result.unconfirmed')}
+                                            </span>
+                                        )}
                                         {(saved || inSeries) && (
                                             <div className="cover-card__footer">
                                                 {joined?.series != null && joined.season !== null && (

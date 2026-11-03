@@ -849,6 +849,36 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
 });
 }
 
+test('shows the title of the anime the source picked on its own, not the words searched, when the script lists it', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await search(page, 'loneshown');
+    const card = page.getByRole('listitem');
+    await expect(card).toHaveCount(1);
+    await expect(page.locator('.history__title')).toHaveText(['Picked Anime']);
+    await expect(page.getByRole('button', { name: 'OPEN: Picked Anime', exact: true })).toBeVisible();
+    await expect(page.getByTestId('anime-result-unconfirmed')).toHaveCount(0);
+    await page.getByRole('button', { name: 'OPEN: Picked Anime', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+    await expect(page.getByTestId('anime-result-unconfirmed')).toHaveCount(0);
+});
+
+test('says the name could not be confirmed, with no cover, for an anime the source picked on its own and did not name', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await search(page, 'loneunlisted');
+    const card = page.getByRole('listitem');
+    await expect(card).toHaveCount(1);
+    await expect(page.locator('.history__title')).toHaveText(['loneunlisted']);
+    await expect(card.getByTestId('anime-result-unconfirmed')).toHaveText('ANIME PICKED BY THE SOURCE: THE NAME COULD NOT BE CONFIRMED');
+    await expect(card.locator('.cover')).toHaveText('COVER NOT FOUND');
+    await expect(card.locator('img.cover')).toHaveCount(0);
+    await page.getByRole('button', { name: 'OPEN: loneunlisted', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+    await expect(page.getByTestId('anime-result-unconfirmed')).toHaveText('ANIME PICKED BY THE SOURCE: THE NAME COULD NOT BE CONFIRMED');
+    await expect(page.locator('.anime__detail .series__cover .cover')).toHaveText('COVER NOT FOUND');
+});
+
 test('tells two anime that have the same title apart by the id of the source, and keeps each one with its own episodes', async () => {
     const { page } = session;
     await openAnimeTab(page);

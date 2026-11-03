@@ -14,6 +14,7 @@ const ALL_SUBTITLES = [
     '    command -v "yt-dlp" >/dev/null && yt-dlp --referer "$refr" "$1" -o x'
 ].join('\n');
 const MENU = `    _line=$(printf "%s" "$_stdin" | cut -f 1,3 | tr '\\t' ' ' | menu "$_prompt" "$_multi_flag" "$menu_extra_flags" | cut -d " " -f 1)`;
+const SINGLE_RESULT = '    [ "$_line_count" -eq 1 ] && printf "%s" "$_stdin" | cut -f 2,3 && return 0';
 const DEBUG = '        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;';
 
 describe('patchAniCli', () => {
@@ -54,33 +55,33 @@ describe('patchAniCli', () => {
 
 describe('patchReport', () => {
     it('says which of the changes fit a script', () => {
-        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: true, menuIds: false });
+        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: true, menuIds: false, singleResult: false });
     });
 
     it('says the choice of the subtitle language does not fit when that line changed, and the others still do', () => {
         const changed = SUBTITLES.replace('s|}\\].*||', 's|\\].*||');
         expect(changed).not.toBe(SUBTITLES);
-        expect(patchReport(`${changed}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: true, debugReferer: true, menuIds: false });
+        expect(patchReport(`${changed}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: true, debugReferer: true, menuIds: false, singleResult: false });
     });
 
     it('says the saving of every subtitle does not fit without its two lines or without the function it hooks into', () => {
-        expect(patchReport(`${SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: false, debugReferer: true, menuIds: false });
-        expect(patchReport(`${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: true, menuIds: false });
+        expect(patchReport(`${SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: false, debugReferer: true, menuIds: false, singleResult: false });
+        expect(patchReport(`${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: true, menuIds: false, singleResult: false });
     });
 
     it('says the address of the stream does not fit when its line changed', () => {
-        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG.replace('Subtitles:', 'Subs:')}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: false, menuIds: false });
+        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG.replace('Subtitles:', 'Subs:')}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: false, menuIds: false, singleResult: false });
     });
 
     it('says none of them fit a script it knows nothing about, even an empty one', () => {
-        expect(patchReport('a different script')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false });
-        expect(patchReport('')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false });
+        expect(patchReport('a different script')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false });
+        expect(patchReport('')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false });
     });
 
     it('agrees with what patchAniCli does: it gives null exactly when none fit', () => {
-        ['', SUBTITLES, ALL_SUBTITLES, DEBUG, MENU, `${SUBTITLES}\n${DEBUG}`].forEach((script) => {
+        ['', SUBTITLES, ALL_SUBTITLES, DEBUG, MENU, SINGLE_RESULT, `${SUBTITLES}\n${DEBUG}`].forEach((script) => {
             const report = patchReport(script);
-            expect(patchAniCli(script) === null).toBe(!report.subtitleSelection && !report.allSubtitles && !report.debugReferer && !report.menuIds);
+            expect(patchAniCli(script) === null).toBe(!report.subtitleSelection && !report.allSubtitles && !report.debugReferer && !report.menuIds && !report.singleResult);
         });
     });
 });
@@ -90,7 +91,7 @@ describe('the id of the source in the lists of the menu', () => {
         const patched = patchAniCli(MENU) as string;
         expect(patched).toContain(`cut -f 1,2,3 | sed -E 's/^([^\\t]*)\\t([^\\t]*)\\t/\\1 pwid:\\2 /' | tr '\\t' ' ' | menu "$_prompt"`);
         expect(patched).not.toContain('cut -f 1,3');
-        expect(patchReport(MENU)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: true });
+        expect(patchReport(MENU)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: true, singleResult: false });
     });
 
     it('is applied with the others, each on its own', () => {
@@ -135,5 +136,65 @@ describe('the id of the source in the lists of the menu', () => {
 describe('REQUIRED_PATCHES', () => {
     it('is only the address of the stream: without it the app cannot play or download an episode', () => {
         expect(REQUIRED_PATCHES).toEqual(['debugReferer']);
+    });
+});
+
+describe('the lone result shown in the menu', () => {
+    const SHOWN = '[ "$_line_count" -eq 1 ] && [ "$1" != "Select anime: " ] && printf "%s" "$_stdin" | cut -f 2,3 && return 0';
+    const bundled = join(process.cwd(), 'resources', 'bin', 'ani', 'ani-cli');
+
+    it('stops the shortcut of a single line only for the list of the anime, when that part of the script fits', () => {
+        const patched = patchAniCli(SINGLE_RESULT) as string;
+        expect(patched).toContain(SHOWN);
+        expect(patched).not.toBe(SINGLE_RESULT);
+        expect(patchReport(SINGLE_RESULT)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: true });
+    });
+
+    it('is applied with the others, each on its own', () => {
+        const patched = patchAniCli(`${SUBTITLES}\n${DEBUG}\n${MENU}\n${SINGLE_RESULT}`) as string;
+        expect(patched).toContain('pullwave_pick_subtitle "$_json"');
+        expect(patched).toContain('Referer:\\n%s\\n');
+        expect(patched).toContain('cut -f 1,2,3');
+        expect(patched).toContain(SHOWN);
+    });
+
+    it('does not fit a script whose line changed', () => {
+        const changed = SINGLE_RESULT.replace('-eq 1', '-le 1');
+        expect(patchReport(changed).singleResult).toBe(false);
+        expect(patchAniCli(changed)).toBeNull();
+    });
+
+    it('is not one the app cannot do without', () => {
+        expect(REQUIRED_PATCHES).not.toContain('singleResult');
+    });
+
+    it('fits the script of ani-cli that comes with the tests, when it is there', () => {
+        if (existsSync(bundled)) {
+            expect(patchReport(readFileSync(bundled, 'utf-8')).singleResult).toBe(true);
+        }
+    });
+
+    describe.skipIf(process.platform === 'win32' || !existsSync(bundled))('in the function nth of the script that comes with the tests', () => {
+        // The function as the script has it, patched, run with a stand-in for the menu that prints what it was asked and fails (as the one of the
+        // app does, so ani-cli stops after listing).
+        function runNth(prompt: string, list: string): string {
+            const patched = patchAniCli(readFileSync(bundled, 'utf-8')) as string;
+            const start = patched.indexOf('nth() {');
+            const nth = patched.slice(start, patched.indexOf('\n}\n', start) + 3);
+            const script = `menu() { printf 'MENU:%s\\n' "$1" >&2; cat >&2; return 1; }\n${nth}\nprintf '${list}' | nth '${prompt}' 2>&1 || true`;
+            return execFileSync('sh', ['-c', script]).toString();
+        }
+
+        it('hands a single anime to the menu, so its title is told', () => {
+            expect(runNth('Select anime: ', '1\\tnisekoi-603\\tNisekoi: False Love')).toBe('MENU:Select anime: \n1 pwid:nisekoi-603 Nisekoi: False Love\n');
+        });
+
+        it('still hands several anime to the menu', () => {
+            expect(runNth('Select anime: ', '1\\ta\\tOne\\n2\\tb\\tTwo')).toBe('MENU:Select anime: \n1 pwid:a One\n2 pwid:b Two\n');
+        });
+
+        it('still picks a single episode by itself, without the menu', () => {
+            expect(runNth('Select episode: ', '1\\tep-1-id\\tEpisode 1')).toBe('ep-1-id\tEpisode 1\n');
+        });
     });
 });

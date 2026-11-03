@@ -111,6 +111,16 @@ if [ -n "$index" ]; then
 fi
 
 case "$query" in
+    # The source has only one anime for the words searched: the script of the app lists it, with its own title (the title is not the words).
+    *loneshown*)
+        printf '1 pwid:picked-anime-12 Picked Anime\n' | "$ANI_CLI_MENU" 'Select anime: '
+        exit 1
+        ;;
+    # The same, with a script the change of the app does not fit: ani-cli picks the anime itself and lists only its episodes.
+    *loneunlisted*)
+        printf '1\n2\n3\n' | "$ANI_CLI_MENU" 'Select episode: '
+        exit 1
+        ;;
     *twin*)
         printf '1 pwid:twin-anime-10 Twin Anime\n2 pwid:twin-anime-season-2-11 Twin Anime\n' | "$ANI_CLI_MENU" 'Select anime: '
         exit 1

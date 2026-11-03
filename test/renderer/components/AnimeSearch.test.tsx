@@ -219,6 +219,27 @@ describe('AnimeDetail', () => {
         expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Cyberpunk: Edgerunners');
     });
 
+    it('does not look the cover up, and says the name is not confirmed, on the screen of an anime ani-cli picked on its own', () => {
+        const unconfirmed: AnimeSearchResult = { index: 1, title: 'The Cold Sato-san is Only Sweet to Me', unconfirmed: true };
+        useAnimeStore.setState({
+            search: { ...INITIAL_SEARCH, status: 'done', results: [unconfirmed], searchedQuery: unconfirmed.title },
+            selection: { result: unconfirmed, query: unconfirmed.title, audio: 'sub', status: 'ready', episodes: ['1', '2'], error: null }
+        });
+        const { container } = render(<AnimeSearch />);
+
+        expect(screen.getByTestId('anime-result-unconfirmed')).toHaveTextContent('ANIME PICKED BY THE SOURCE: THE NAME COULD NOT BE CONFIRMED');
+        expect(container.querySelector('.anime__detail .series__cover img.cover')).toBeNull();
+        expect(within(container.querySelector('.series__cover') as HTMLElement).getByText('COVER NOT FOUND')).toBeInTheDocument();
+        expect(mock.api.findAnimeCover).not.toHaveBeenCalled();
+    });
+
+    it('says nothing about the name on the screen of an anime whose title the source gave', () => {
+        open(['1', '2']);
+        render(<AnimeSearch />);
+
+        expect(screen.queryByTestId('anime-result-unconfirmed')).toBeNull();
+    });
+
     it('asks for the cover by the title of the library when the anime is in it, as its card does', async () => {
         mock.api.findAnimeCover.mockResolvedValue(null);
         open(['1', '2']);
@@ -989,6 +1010,27 @@ describe('AnimeSearch cards with a cover', () => {
             expect(card.querySelector('.cover')).not.toBeNull();
             expect(card.firstElementChild).toHaveClass('cover');
         });
+    });
+
+    it('does not look a cover up, nor tell the name is confirmed, for a result ani-cli picked on its own', () => {
+        useAnimeStore.setState({
+            search: { ...INITIAL_SEARCH, status: 'done', results: [{ index: 1, title: 'The Cold Sato-san is Only Sweet to Me', unconfirmed: true }], searchedQuery: 'The Cold Sato-san is Only Sweet to Me', searchedAudio: 'sub' }
+        });
+        render(<AnimeSearch />);
+
+        const card = screen.getByRole('listitem');
+        expect(within(card).getByTestId('anime-result-unconfirmed')).toHaveTextContent('ANIME PICKED BY THE SOURCE: THE NAME COULD NOT BE CONFIRMED');
+        expect(within(card).getByText('COVER NOT FOUND')).toBeInTheDocument();
+        expect(card.querySelector('img.cover')).toBeNull();
+        expect(mock.api.findAnimeCover).not.toHaveBeenCalled();
+    });
+
+    it('says nothing about the name for the results whose title the source gave, and looks their cover up', () => {
+        showResults();
+        render(<AnimeSearch />);
+
+        expect(screen.queryByTestId('anime-result-unconfirmed')).toBeNull();
+        expect(mock.api.findAnimeCover).toHaveBeenCalledWith('Cyberpunk: Edgerunners');
     });
 
     it('looks the cover of each result up by its title', async () => {

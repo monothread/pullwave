@@ -115,8 +115,13 @@ export function AnimeDetail() {
                 )}
             </div>
             <div className="series__cover">
-                <AnimeCover title={entry?.title ?? selection.result.title} />
+                {entry === undefined && selection.result.unconfirmed === true ? <AnimeCover title={selection.result.title} url={null} /> : <AnimeCover title={entry?.title ?? selection.result.title} />}
             </div>
+            {entry === undefined && selection.result.unconfirmed === true && (
+                <p className="field__hint" data-testid="anime-result-unconfirmed">
+                    {t('anime.result.unconfirmed')}
+                </p>
+            )}
             {entry !== undefined && entry.series !== null && entry.season !== null && (
                 <p className="field__hint" data-testid="anime-series-info">
                     {t('anime.series.in', { series: entry.series, order: entry.season })}

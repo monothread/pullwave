@@ -121,9 +121,11 @@ export class AniCliService {
             return { status: 'done', value: tellResultsApart(results) };
         }
         // A single result is picked by ani-cli itself, without asking, so all that shows is the list of its episodes (or,
-        // when it has just one, nothing at all: ani-cli goes on to fetch it and ends cleanly).
+        // when it has just one, nothing at all: ani-cli goes on to fetch it and ends cleanly). The script of the app lists it too (see
+        // aniSingleResult.ts); this is a script it does not fit, where the anime the source picked is not known: the title is only what was
+        // searched, and the result says so.
         if (choicesFor(outcome.value, EPISODE_PROMPT).length > 0 || outcome.value.exitCode === 0) {
-            return { status: 'done', value: [{ index: 1, title: sanitizeQuery(query) }] };
+            return { status: 'done', value: [{ index: 1, title: sanitizeQuery(query), unconfirmed: true }] };
         }
         return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Searching for the anime with ani-cli' }) };
     }

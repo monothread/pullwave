@@ -368,12 +368,26 @@ describe('AniCliService.search', () => {
 
     it('treats a lone result, picked by ani-cli, as the first one', async () => {
         const { service } = setup([done(outcome({ menuChoices: episodeChoices('1', '2', '3') }))]);
-        expect(await service.search('Kaguya-sama', 'sub')).toEqual({ status: 'done', value: [{ index: 1, title: 'Kaguya-sama' }] });
+        expect(await service.search('Kaguya-sama', 'sub')).toEqual({ status: 'done', value: [{ index: 1, title: 'Kaguya-sama', unconfirmed: true }] });
+    });
+
+    it('lists a lone result with its own title, and no mark, when the menu shows it (the script of the app)', async () => {
+        const { service } = setup([done(outcome({ menuChoices: [{ prompt: 'Select anime:', choice: '1 pwid:trails-of-cold-steel-9 The Legend of Heroes: Trails of Cold Steel - Northern War' }] }))]);
+        expect(await service.search('The Cold Sato-san is Only Sweet to Me', 'sub')).toEqual({
+            status: 'done',
+            value: [{ index: 1, title: 'The Legend of Heroes: Trails of Cold Steel - Northern War', sourceId: 'trails-of-cold-steel-9' }]
+        });
+    });
+
+    it('does not mark as unconfirmed the results of a list of several anime', async () => {
+        const { service } = setup([done(outcome({ menuChoices: animeChoices('Naruto', 'Naruto Shippuden') }))]);
+        const result = await service.search('naruto', 'sub');
+        expect(result).toEqual({ status: 'done', value: [{ index: 1, title: 'Naruto' }, { index: 2, title: 'Naruto Shippuden' }] });
     });
 
     it('treats a clean exit without any menu as a lone result with a single episode', async () => {
         const { service } = setup([done(outcome({ exitCode: 0, output: 'hianime.at links fetched\n' }))]);
-        expect(await service.search('kimi no na wa', 'sub')).toEqual({ status: 'done', value: [{ index: 1, title: 'kimi no na wa' }] });
+        expect(await service.search('kimi no na wa', 'sub')).toEqual({ status: 'done', value: [{ index: 1, title: 'kimi no na wa', unconfirmed: true }] });
     });
 
     it('maps what ani-cli reports when there is nothing to list', async () => {

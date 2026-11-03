@@ -16,7 +16,7 @@ import {
     type LatestDependencies
 } from '@main/services/tools/programLatest';
 import { FFMPEG_RELEASE_API } from '@main/services/tools/programSpecs';
-import { ALL_SUBTITLES_PART, aniCliScript, aniCliScriptWithout, DEBUG_PART, MENU_PART, SELECTION_PART } from '../../../helpers/aniCliScripts';
+import { ALL_SUBTITLES_PART, aniCliScript, aniCliScriptWithout, DEBUG_PART, MENU_PART, SELECTION_PART, SINGLE_RESULT_PART } from '../../../helpers/aniCliScripts';
 
 const SHA = 'cd'.repeat(32);
 const OTHER_SHA = 'ef'.repeat(32);
@@ -364,6 +364,9 @@ describe('the scripts of ani-cli', () => {
         expect(unfitPatches(aniCliScriptWithout('5.2.0', ALL_SUBTITLES_PART, DEBUG_PART)).sort()).toEqual(['allSubtitles', 'debugReferer']);
         // The ids of the source in the lists only tell apart the anime that have the same name.
         expect(unfitPatches(aniCliScriptWithout('5.2.0', MENU_PART))).toEqual(['menuIds']);
+        // The lone result shown in the menu only tells which anime the source picked on its own.
+        expect(unfitPatches(aniCliScriptWithout('5.2.0', SINGLE_RESULT_PART))).toEqual(['singleResult']);
+        expect(unfitPatches(aniCliScriptWithout('5.2.0', MENU_PART, SINGLE_RESULT_PART)).sort()).toEqual(['menuIds', 'singleResult']);
     });
 });
 
@@ -407,6 +410,12 @@ describe('latestAniCli', () => {
     it('tells that the ids of the source do not fit, and still gives the script', async () => {
         const result = await latestAniCli(deps(table(aniCliScriptWithout('5.2.0', MENU_PART))).deps);
         expect(result.unfit).toEqual(['menuIds']);
+        expect(result.version).toBe('5.2.0');
+    });
+
+    it('tells that the lone result in the menu does not fit, and still gives the script', async () => {
+        const result = await latestAniCli(deps(table(aniCliScriptWithout('5.2.0', SINGLE_RESULT_PART))).deps);
+        expect(result.unfit).toEqual(['singleResult']);
         expect(result.version).toBe('5.2.0');
     });
 

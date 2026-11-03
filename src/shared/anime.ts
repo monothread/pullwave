@@ -11,6 +11,9 @@ export interface AnimeSearchResult {
     // The id the source gives the anime (absent when this copy of ani-cli does not report it): unlike the position it does not change when
     // the source lists another anime before it, and unlike the title it is not shared by the seasons of an anime.
     sourceId?: string;
+    // True when ani-cli picked the anime on its own and did not say which one: the title is then the words that were searched, not the name
+    // of the anime the episodes belong to.
+    unconfirmed?: boolean;
 }
 
 export type AniErrorCode =
