@@ -247,7 +247,7 @@ The ⚙ of each part has the settings of that part. The app adapts to the size o
 ## Development
 More documentation is in [`docs/`](docs/README.md); how to publish a version is in [`docs/RELEASING.md`](docs/RELEASING.md).
 
-You need Node.js 22 or newer. The app downloads yt-dlp, deno, ffmpeg, ani-cli, busybox and curl itself the first time it opens (they are not in the package); `npm run fetch-binaries` downloads real copies of them for the end-to-end tests.
+You need Node.js 24 or newer. The app downloads yt-dlp, deno, ffmpeg, ani-cli, busybox and curl itself the first time it opens (they are not in the package); `npm run fetch-binaries` downloads real copies of them for the end-to-end tests.
 
 | Command | What it does |
 |---|---|
