@@ -277,6 +277,25 @@ describe('the console layer: movement', () => {
         names.forEach((name) => {
             expect(name).toMatch(/^bp-/);
         });
-        expect(names.sort()).toEqual(['bp-aurora-drift', 'bp-banner-sheen', 'bp-fade-in', 'bp-focus-breathe', 'bp-hop', 'bp-ping', 'bp-pop', 'bp-rise', 'bp-sheen', 'bp-sparks', 'bp-toast-in', 'bp-wave-bar']);
+        expect(names.sort()).toEqual(['bp-aurora-drift', 'bp-banner-sheen', 'bp-disk-enter', 'bp-disk-glow', 'bp-disk-pulse', 'bp-fade-in', 'bp-focus-breathe', 'bp-hop', 'bp-ping', 'bp-pop', 'bp-rise', 'bp-sheen', 'bp-sparks', 'bp-toast-in', 'bp-wave-bar']);
+    });
+});
+
+describe('the console layer: the disk space', () => {
+    it('enters the body and the items of the legend, one a little after the other', () => {
+        expect(styleOf(sheet, '.disk__body')).toMatchObject({ animation: 'bp-disk-enter 0.6s var(--bp-ease-out) both' });
+        expect(styleOf(sheet, '.disk__item')).toMatchObject({ animation: 'bp-disk-enter 0.6s var(--bp-ease-out) both' });
+        expect(styleOf(sheet, '.disk__item:nth-child(2)')).toMatchObject({ 'animation-delay': '0.1s' });
+        expect(styleOf(sheet, '.disk__item:nth-child(3)')).toMatchObject({ 'animation-delay': '0.2s' });
+    });
+
+    it('makes the folder segment glow and the loading text pulse', () => {
+        expect(styleOf(sheet, '.disk__segment--folder')).toMatchObject({ animation: 'bp-disk-glow 2.8s ease-in-out infinite' });
+        expect(styleOf(sheet, '.disk__loading')).toMatchObject({ animation: 'bp-disk-pulse 1.2s ease-in-out infinite' });
+    });
+
+    it('draws the ring with the stroke of the segments and the colours of the theme', () => {
+        expect(styleOf(sheet, '.disk__track')).toMatchObject({ fill: 'none', stroke: 'color-mix(in srgb, var(--text) 10%, transparent)' });
+        expect(styleOf(sheet, '.disk__segment--others')).toMatchObject({ stroke: 'color-mix(in srgb, var(--muted) 80%, var(--yellow))' });
     });
 });

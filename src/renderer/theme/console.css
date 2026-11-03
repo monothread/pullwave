@@ -605,7 +605,7 @@ body::before {
     flex-wrap: wrap;
     align-items: center;
     gap: 24px 32px;
-    animation: disk-enter 0.6s var(--bp-ease-out) both;
+    animation: bp-disk-enter 0.6s var(--bp-ease-out) both;
 }
 
 .disk__ring {
@@ -638,7 +638,7 @@ body::before {
 
 .disk__segment--folder {
     filter: drop-shadow(0 0 6px color-mix(in srgb, var(--cyan) 70%, transparent));
-    animation: disk-glow 2.8s ease-in-out infinite;
+    animation: bp-disk-glow 2.8s ease-in-out infinite;
 }
 
 .disk__segment--others {
@@ -686,7 +686,7 @@ body::before {
     padding: 8px 12px;
     border-radius: var(--bp-radius-small);
     background: color-mix(in srgb, var(--text) 5%, transparent);
-    animation: disk-enter 0.6s var(--bp-ease-out) both;
+    animation: bp-disk-enter 0.6s var(--bp-ease-out) both;
 }
 
 .disk__item:nth-child(2) { animation-delay: 0.1s; }
@@ -727,20 +727,20 @@ body::before {
 }
 
 .disk__loading {
-    animation: disk-pulse 1.2s ease-in-out infinite;
+    animation: bp-disk-pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes disk-enter {
+@keyframes bp-disk-enter {
     from { opacity: 0; translate: 0 8px; }
     to { opacity: 1; translate: 0 0; }
 }
 
-@keyframes disk-glow {
+@keyframes bp-disk-glow {
     0%, 100% { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--cyan) 50%, transparent)); }
     50% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--magenta) 70%, transparent)); }
 }
 
-@keyframes disk-pulse {
+@keyframes bp-disk-pulse {
     0%, 100% { opacity: 0.45; }
     50% { opacity: 1; }
 }
