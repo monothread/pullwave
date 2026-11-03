@@ -1965,7 +1965,9 @@ test.describe('manga section', () => {
     });
 
     test('cancels the downloads of the mangas picked in the window of MANAGE after asking, deleting their pages', async () => {
-        fake.imageDelayMs = 400;
+        // Slow enough that the downloads are still going after all the steps before the cancel, also on a machine under load (with 400 ms
+        // a page they finished first, and there was nothing left to cancel).
+        fake.imageDelayMs = 4000;
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);

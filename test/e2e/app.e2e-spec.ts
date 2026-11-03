@@ -1256,7 +1256,8 @@ test.describe('themes', () => {
             'AMOLED (pure black)',
             'High contrast',
             'Light',
-            'Sakura (pink, light)'
+            'Sakura (pink, light)',
+            'Sakura Dark (pink, dark)'
         ]);
     });
 
