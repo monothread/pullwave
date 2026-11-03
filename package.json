@@ -25,7 +25,9 @@
     "fetch-binaries": "node scripts/fetch-binaries.mjs",
     "release": "npm run build && electron-builder --linux AppImage --publish always",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "release:win": "npm run build && electron-builder --win nsis --x64 --publish always"
+    "release:win": "npm run build && electron-builder --win nsis --x64 --publish always",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "audit:check": "npm audit --audit-level=low"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -50,7 +52,7 @@
     "@types/yauzl": "^3.4.0",
     "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^44.5.1",
+    "electron": "^44.10.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^10.11.0",
@@ -68,6 +70,7 @@
     "url": "https://github.com/monothread/pullwave.git"
   },
   "overrides": {
-    "@electron/get": "^5.1.0"
+    "@electron/get": "^5.1.0",
+    "minimatch": "^11.0.4"
   }
 }
