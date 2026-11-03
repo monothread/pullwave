@@ -335,6 +335,18 @@ export interface AppUpdateState {
     message: string | null;
 }
 
+// The sections that keep their files in a folder of their own, the ones that show how much of the disk it takes.
+export type DiskSection = 'anime' | 'manga';
+
+// The space of the disk the folder of a section is on, and what the folder takes in it.
+export interface DiskUsage {
+    // The folder that was measured (the one in the settings, or the default one when none is set).
+    directory: string;
+    totalBytes: number;
+    freeBytes: number;
+    folderBytes: number;
+}
+
 export interface TraySupport {
     available: boolean;
     reason: string | null;
@@ -388,6 +400,8 @@ export interface CyberApi {
     listBrowsers: (refresh?: boolean) => Promise<DetectedBrowser[]>;
     chooseDirectory: () => Promise<string | null>;
     showItemInFolder: (path: string) => Promise<void>;
+    // Null when the disk of the folder cannot be read.
+    getDiskUsage: (section: DiskSection) => Promise<DiskUsage | null>;
     getAnimeStatus: () => Promise<AnimeStatus>;
     searchAnime: (query: string, audio: AnimeAudio) => Promise<AnimeSearchResponse>;
     listAnimeEpisodes: (query: string, index: number, audio: AnimeAudio) => Promise<AnimeEpisodesResponse>;

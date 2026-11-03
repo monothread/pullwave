@@ -38,6 +38,7 @@ export const IPC = {
     browsersList: 'browsers:list',
     dialogChooseDir: 'dialog:choose-dir',
     shellShowItem: 'shell:show-item',
+    diskUsage: 'disk:usage',
     animeStatus: 'anime:status',
     animeSearch: 'anime:search',
     animeEpisodes: 'anime:episodes',

@@ -22,6 +22,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
+import { DiskUsageChart } from './DiskUsageChart';
 import { MangaHealthSettings } from './MangaHealthSettings';
 import { MangaLanguageSetting } from './MangaLanguageSetting';
 import { ProgramsStatusBlock } from './ProgramsStatusBlock';
@@ -733,6 +734,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         }}
                     />
                 </fieldset>
+                <DiskUsageChart section="manga" refreshKey={`${stored.mangaDirectory}|${mangaLibraryCount}`} />
                 <MangaStoreSettings />
                 <MangaHealthSettings />
                 <MangaHelperSettings
@@ -839,6 +841,10 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                     />
                     <TranslationSettings draft={draft} change={change} edit={edit} changeMany={changeMany} />
                 </fieldset>
+            )}
+
+            {scope === 'anime' && animeSupported && (
+                <DiskUsageChart section="anime" refreshKey={`${stored.animeDownloadDir}|${library.length}`} />
             )}
 
             {scope === 'anime' && animeSupported && <ProgramsStatusBlock place="anime" />}

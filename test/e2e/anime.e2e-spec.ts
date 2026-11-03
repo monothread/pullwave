@@ -4652,3 +4652,27 @@ test.describe('the look for new episodes', () => {
         await expect(page.getByText('CHECKING…', { exact: true })).toHaveCount(0);
     });
 });
+
+test('shows the disk space and what the anime folder takes in the settings, with the numbers counting up', async () => {
+    const { page, animeDir } = session;
+    mkdirSync(join(animeDir, 'Some Show'), { recursive: true });
+    writeFileSync(join(animeDir, 'Some Show', 'ep1.mp4'), Buffer.alloc(3 * 1024 * 1024));
+    writeFileSync(join(animeDir, 'ep2.mp4'), Buffer.alloc(1024 * 1024));
+    await openAnimeSettings(page);
+    const chart = page.getByTestId('disk-usage-anime');
+    await expect(chart.getByText('DISK SPACE')).toBeVisible();
+    await expect(chart.getByTestId('disk-folder')).toHaveText('4.0 MiB', { timeout: 10000 });
+    await expect(chart.getByText('This folder')).toBeVisible();
+    await expect(chart.getByText('Other files')).toBeVisible();
+    await expect(chart.getByText('Free', { exact: true })).toBeVisible();
+    await expect(chart.getByTestId('disk-percent')).toHaveText(/^\d+%$/);
+    await expect(chart.getByTestId('disk-free')).toHaveText(/^\d+(\.\d)? (GiB|TiB|MiB)$/);
+    await expect(chart.getByTestId('disk-others')).toHaveText(/^\d+(\.\d)? (B|KiB|MiB|GiB|TiB)$/);
+    await expect(chart.locator('.disk__segment--folder')).toHaveAttribute('stroke-dasharray', /^\d+(\.\d+)? \d+(\.\d+)?$/);
+    await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /^Disk space of the folder: 4\.0 MiB in the folder, .* free of .*$/);
+
+    // Files that appear later are counted when the disk is read again.
+    writeFileSync(join(animeDir, 'ep3.mp4'), Buffer.alloc(2 * 1024 * 1024));
+    await chart.getByRole('button', { name: 'REFRESH' }).click();
+    await expect(chart.getByTestId('disk-folder')).toHaveText('6.0 MiB', { timeout: 10000 });
+});

@@ -1640,3 +1640,40 @@ describe('SettingsPanel status of the programs', () => {
         expect(screen.queryByTestId('programs-block-anime')).not.toBeInTheDocument();
     });
 });
+
+describe('SettingsPanel disk space', () => {
+    it('shows the disk space of the anime in its settings, below the anime panel', async () => {
+        useAnimeStore.setState({ status: makeStatus(), library: [] });
+        mock.api.getDiskUsage.mockResolvedValue({ directory: '/anime', totalBytes: 1024 ** 3, freeBytes: 512 * 1024 ** 2, folderBytes: 0 });
+        render(<SettingsPanel scope="anime" />);
+        await flushPromises();
+        expect(screen.getByTestId('disk-usage-anime')).toBeInTheDocument();
+        expect(screen.queryByTestId('disk-usage-manga')).not.toBeInTheDocument();
+        expect(mock.api.getDiskUsage).toHaveBeenCalledWith('anime');
+        expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not show the disk space of the anime where the section is not supported', async () => {
+        render(<SettingsPanel scope="anime" />);
+        await flushPromises();
+        expect(screen.queryByTestId('disk-usage-anime')).not.toBeInTheDocument();
+        expect(mock.api.getDiskUsage).not.toHaveBeenCalled();
+    });
+
+    it('shows the disk space of the manga in its settings', async () => {
+        mock.api.getDiskUsage.mockResolvedValue({ directory: '/manga', totalBytes: 1024 ** 3, freeBytes: 512 * 1024 ** 2, folderBytes: 0 });
+        render(<SettingsPanel scope="manga" />);
+        await flushPromises();
+        expect(screen.getByTestId('disk-usage-manga')).toBeInTheDocument();
+        expect(screen.queryByTestId('disk-usage-anime')).not.toBeInTheDocument();
+        expect(mock.api.getDiskUsage).toHaveBeenCalledWith('manga');
+    });
+
+    it.each(['global', 'downloads'] as const)('does not show the disk space in the %s settings', async (scope) => {
+        render(<SettingsPanel scope={scope} />);
+        await flushPromises();
+        expect(screen.queryByTestId('disk-usage-anime')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('disk-usage-manga')).not.toBeInTheDocument();
+        expect(mock.api.getDiskUsage).not.toHaveBeenCalled();
+    });
+});

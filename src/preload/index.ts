@@ -373,6 +373,9 @@ const api: CyberApi = {
     showItemInFolder: (path) => {
         return ipcRenderer.invoke(IPC.shellShowItem, path);
     },
+    getDiskUsage: (section) => {
+        return ipcRenderer.invoke(IPC.diskUsage, section);
+    },
     getAnimeStatus: () => {
         return ipcRenderer.invoke(IPC.animeStatus);
     },

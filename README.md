@@ -206,6 +206,7 @@ Lists the anime you opened or watched, the most recent first, with the last epis
 ### Keeping your library
 - **IMPORT LIBRARY** rebuilds the library from a folder, for a new computer, a reinstall, or after you renamed or moved folders. Episodes downloaded by the app come back exactly as they were, with where you stopped watching. An episode whose file is gone is marked.
 - **MIGRATE FOLDER** (in the anime settings) moves the whole library to another folder safely, and points the app to it.
+- **Disk space** (in the anime settings, below the folder and the options) shows a ring with how much the anime folder takes, how much other files take and how much is free on the disk the folder is on, with the numbers counting up as it draws. **REFRESH** reads it again; it is read again by itself when the folder or the library changes.
 - **Status of the programs** (in the ⚙ of the ANIME tab) shows ani-cli, busybox and curl: installed or not, version, and **UPDATE TO** the newest ani-cli when the source changes and something stops working. It downloads the latest version from the ani-cli project, so use it only if you trust that project (it publishes no signature, so what is checked is that the file looks like ani-cli, that the shell accepts it, and that the changes Pullwave makes to it still fit: if the one that finds the stream no longer fits, it is not installed, and if only a subtitle feature does not fit, it is installed and you are told). **USE THE VERSION OF THE APP** goes back to the version the app was made with; busybox and curl stay at it. The programs are downloaded the first time the app opens, so nothing of the anime section works until they are there (a bar shows how it goes, and **TRY AGAIN** appears for any that failed).
 
 ### Good to know
@@ -229,6 +230,7 @@ Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](http
   ![The reader](docs/screenshots/manga-reader.png)
 - **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: the sources are the ones in the language of the settings (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number.
 - **The folder:** as with the anime, once there are mangas in the library the folder is fixed and only **MIGRATE FOLDER** changes it (it moves the files, checks them and then removes the old ones).
+- **Disk space:** the manga settings have the same ring, for the manga folder.
 
   ![The settings of the manga, with the folder fixed](docs/screenshots/manga-settings.png)
 

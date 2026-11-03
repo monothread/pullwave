@@ -4,10 +4,13 @@ import type {
     AppUpdateState,
     BinariesStatus,
     DetectedBrowser,
+    DiskSection,
+    DiskUsage,
     HistoryEntry,
     Settings,
     TraySupport
 } from '@shared/types';
+import { readDiskUsage, sectionDirectory } from '../services/diskUsage';
 import { checkBinaries } from '../services/binaryLocator';
 import type { BinaryResolver } from '../services/binaryResolver';
 import { sanitizeDownloadOptions } from '../services/settingsSanitizer';
@@ -37,6 +40,8 @@ export interface HandlerDependencies {
     // moves them too.
     animeFolderLocked?: () => boolean;
     showItemInFolder: (path: string) => void;
+    // The folder of the downloads of the system, where the anime and the manga go when no folder is chosen.
+    defaultDownloadDir: string;
 }
 
 function asString(value: unknown): string {
@@ -133,5 +138,12 @@ export function registerHandlers(deps: HandlerDependencies): void {
         if (target.length > 0) {
             deps.showItemInFolder(target);
         }
+    });
+    ipcMain.handle(IPC.diskUsage, (_event, section): Promise<DiskUsage | null> => {
+        const chosen: DiskSection | null = section === 'anime' || section === 'manga' ? section : null;
+        if (chosen === null) {
+            return Promise.resolve(null);
+        }
+        return readDiskUsage(sectionDirectory(chosen, settingsStore.get(), deps.defaultDownloadDir));
     });
 }

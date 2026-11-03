@@ -3335,4 +3335,30 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await expect(home.getByText('CONTINUE READING')).toHaveCount(0);
         await expect(home.getByText('The Great Race', { exact: true })).toHaveCount(0);
     });
+
+    test('shows the disk space and what the manga folder takes in the settings, with the numbers counting up', async () => {
+        mkdirSync(join(mangaFolder(), 'One Piece'), { recursive: true });
+        writeFileSync(join(mangaFolder(), 'One Piece', 'Chapter 1.cbz'), Buffer.alloc(2 * 1024 * 1024));
+        writeFileSync(join(mangaFolder(), 'extra.bin'), Buffer.alloc(1024 * 1024));
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'SETTINGS');
+        const chart = session.page.getByTestId('disk-usage-manga');
+        await expect(chart.getByText('DISK SPACE')).toBeVisible();
+        await expect(chart.getByTestId('disk-folder')).toHaveText('3.0 MiB', { timeout: 10000 });
+        await expect(chart.getByText('This folder')).toBeVisible();
+        await expect(chart.getByText('Other files')).toBeVisible();
+        await expect(chart.getByText('Free', { exact: true })).toBeVisible();
+        await expect(chart.getByTestId('disk-percent')).toHaveText(/^\d+%$/);
+        await expect(chart.getByTestId('disk-free')).toHaveText(/^\d+(\.\d)? (GiB|TiB|MiB)$/);
+        await expect(chart.getByTestId('disk-others')).toHaveText(/^\d+(\.\d)? (B|KiB|MiB|GiB|TiB)$/);
+        await expect(chart.locator('.disk__segment--folder')).toHaveAttribute('stroke-dasharray', /^\d+(\.\d+)? \d+(\.\d+)?$/);
+        await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /^Disk space of the folder: 3\.0 MiB in the folder, .* free of .*$/);
+        await expect(session.page.getByTestId('disk-usage-anime')).toHaveCount(0);
+
+        // Files that appear later are counted when the disk is read again.
+        writeFileSync(join(mangaFolder(), 'more.bin'), Buffer.alloc(1024 * 1024));
+        await chart.getByRole('button', { name: 'REFRESH' }).click();
+        await expect(chart.getByTestId('disk-folder')).toHaveText('4.0 MiB', { timeout: 10000 });
+    });
 });

@@ -1,6 +1,7 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_SETTINGS, IPC } from '@shared/constants';
-import type { DownloadJob, HistoryEntry } from '@shared/types';
+import type { DiskUsage, DownloadJob, HistoryEntry } from '@shared/types';
 import { registerHandlers, type IpcMainLike } from '@main/ipc/registerHandlers';
 import { checkBinaries } from '@main/services/binaryLocator';
 import { BinaryResolver } from '@main/services/binaryResolver';
@@ -90,7 +91,7 @@ function setup(animeFolderLocked?: () => boolean) {
             return null;
         }
     });
-    registerHandlers({ ipcMain, settingsStore, historyStore, queue: queue as unknown as QueueManager, resolver, appUpdates: appUpdates as unknown as AppUpdateService, refreshTraySupport, browserCatalog: browserCatalog as unknown as BrowserCatalog, onSettingsSaved, chooseDirectory, showItemInFolder, animeFolderLocked });
+    registerHandlers({ ipcMain, settingsStore, historyStore, queue: queue as unknown as QueueManager, resolver, appUpdates: appUpdates as unknown as AppUpdateService, refreshTraySupport, browserCatalog: browserCatalog as unknown as BrowserCatalog, onSettingsSaved, chooseDirectory, showItemInFolder, animeFolderLocked, defaultDownloadDir: join(dir, 'Downloads') });
     const call = (channel: string, ...args: unknown[]): unknown => {
         const handler = handlers.get(channel);
         if (!handler) {
@@ -98,7 +99,7 @@ function setup(animeFolderLocked?: () => boolean) {
         }
         return handler({}, ...args);
     };
-    return { handlers, call, browserCatalog, refreshTraySupport, onSettingsSaved, appUpdates, resolver, settingsStore, historyStore, queue, chooseDirectory, showItemInFolder };
+    return { handlers, call, browserCatalog, refreshTraySupport, onSettingsSaved, appUpdates, resolver, settingsStore, historyStore, queue, chooseDirectory, showItemInFolder, dir };
 }
 
 describe('registerHandlers', () => {
@@ -108,7 +109,7 @@ describe('registerHandlers', () => {
             [
                 IPC.settingsGet, IPC.settingsSave, IPC.queueAdd, IPC.queueList, IPC.queueCancel, IPC.queuePause, IPC.queueResume, IPC.queueStop, IPC.queueRetry, IPC.queueClearPartials, IPC.queueRemove,
                 IPC.queueClearFinished, IPC.historyList, IPC.historyClear, IPC.binariesCheck, IPC.appUpdateGet, IPC.appUpdateCheck, IPC.appUpdateDownload, IPC.appUpdateInstall, IPC.traySupport, IPC.browsersList, IPC.dialogChooseDir,
-                IPC.shellShowItem
+                IPC.shellShowItem, IPC.diskUsage
             ].sort()
         );
     });
@@ -350,5 +351,43 @@ describe('registerHandlers', () => {
         call(IPC.shellShowItem, null);
         expect(showItemInFolder).toHaveBeenCalledTimes(1);
         expect(showItemInFolder).toHaveBeenCalledWith('/dl/a.mp4');
+    });
+
+    describe('disk usage', () => {
+        it('measures the default anime folder inside the downloads folder when none is set', async () => {
+            const { call, dir } = setup();
+            const folder = join(dir, 'Downloads', 'Pullwave Anime');
+            mkdirSync(folder, { recursive: true });
+            writeFileSync(join(folder, 'ep1.mp4'), 'x'.repeat(100));
+            const usage = (await call(IPC.diskUsage, 'anime')) as DiskUsage;
+            expect(usage.directory).toBe(folder);
+            expect(usage.folderBytes).toBe(100);
+            expect(usage.totalBytes).toBeGreaterThan(0);
+            expect(usage.freeBytes).toBeLessThanOrEqual(usage.totalBytes);
+        });
+
+        it('measures the folder chosen in the settings for the manga', async () => {
+            const { call, dir, settingsStore } = setup();
+            const folder = join(dir, 'my-manga');
+            mkdirSync(folder, { recursive: true });
+            writeFileSync(join(folder, 'c1.cbz'), 'y'.repeat(42));
+            settingsStore.save({ ...settingsStore.get(), mangaDirectory: folder });
+            const usage = (await call(IPC.diskUsage, 'manga')) as DiskUsage;
+            expect(usage.directory).toBe(folder);
+            expect(usage.folderBytes).toBe(42);
+        });
+
+        it('uses the default manga folder when none is set, even if it does not exist yet', async () => {
+            const { call, dir } = setup();
+            const usage = (await call(IPC.diskUsage, 'manga')) as DiskUsage;
+            expect(usage.directory).toBe(join(dir, 'Downloads', 'Pullwave Manga'));
+            expect(usage.folderBytes).toBe(0);
+            expect(usage.totalBytes).toBeGreaterThan(0);
+        });
+
+        it.each([['video'], [''], [null], [undefined], [7]])('answers null for the section %j', async (section) => {
+            const { call } = setup();
+            await expect(call(IPC.diskUsage, section)).resolves.toBeNull();
+        });
     });
 });

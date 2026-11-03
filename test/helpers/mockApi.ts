@@ -424,6 +424,9 @@ export function createMockApi(): MockApiHandle {
         showItemInFolder: vi.fn(async () => {
             return undefined;
         }),
+        getDiskUsage: vi.fn(async () => {
+            return null;
+        }),
         getAnimeStatus: vi.fn(async () => {
             return { supported: false, available: false, aniCli: null };
         }),

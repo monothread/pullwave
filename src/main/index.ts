@@ -693,7 +693,8 @@ function bootstrap(): BootstrapResult {
         },
         showItemInFolder: (path) => {
             shell.showItemInFolder(path);
-        }
+        },
+        defaultDownloadDir: app.getPath('downloads')
     });
     return { startMinimized: settingsStore.get().startMinimized, trayReady };
 }
