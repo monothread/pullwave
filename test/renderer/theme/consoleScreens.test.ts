@@ -197,7 +197,7 @@ describe('bp-home.css', () => {
     });
 
     it('puts the slide that leaves and the one that comes in one cell, the new one coming over the old one', () => {
-        expect(styleOf(home, '.spotlight__stage')).toEqual({ display: 'grid' });
+        expect(styleOf(home, '.spotlight__stage')).toEqual({ display: 'grid', 'overflow-x': 'clip' });
         expect(styleOf(home, '.spotlight__stage > .spotlight__slide')).toEqual({ 'grid-area': '1 / 1' });
         expect(styleOf(home, '.spotlight__slide--entering')).toEqual({ 'z-index': '1', animation: 'bp-slide-in 0.7s var(--bp-ease-out) backwards' });
         expect(styleOf(home, '.spotlight__slide--leaving')).toEqual({ 'z-index': '0', 'pointer-events': 'none', animation: 'bp-slide-out 0.7s var(--bp-ease-out) forwards' });

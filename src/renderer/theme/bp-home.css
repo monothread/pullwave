@@ -151,6 +151,9 @@
 /* The slide that leaves and the one that comes are in the same cell, one over the other, while they change. */
 .spotlight__stage {
     display: grid;
+    /* The slides travel 48px to the sides while they change: what goes out of the stage is cut, so it never makes the screen scroll
+       sideways. Only the sides: above and below, the shadow and the glow of the slide stay (a clip, unlike hidden, does not scroll). */
+    overflow-x: clip;
 }
 
 .spotlight__stage > .spotlight__slide {
