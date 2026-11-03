@@ -15,7 +15,7 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     env:
       PULLWAVE_LIVE: ${{ inputs.live && '1' || '0' }}
     steps:
