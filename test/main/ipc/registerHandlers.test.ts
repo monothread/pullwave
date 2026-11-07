@@ -354,27 +354,39 @@ describe('registerHandlers', () => {
     });
 
     describe('disk usage', () => {
-        it('measures the default anime folder inside the downloads folder when none is set', async () => {
+        it('measures the default anime folder inside the downloads folder when none is set, with the default manga folder next to it', async () => {
             const { call, dir } = setup();
             const folder = join(dir, 'Downloads', 'Pullwave Anime');
+            const mangaFolder = join(dir, 'Downloads', 'Pullwave Manga');
             mkdirSync(folder, { recursive: true });
+            mkdirSync(mangaFolder, { recursive: true });
             writeFileSync(join(folder, 'ep1.mp4'), 'x'.repeat(100));
+            writeFileSync(join(mangaFolder, 'c1.cbz'), 'm'.repeat(37));
             const usage = (await call(IPC.diskUsage, 'anime')) as DiskUsage;
-            expect(usage.directory).toBe(folder);
-            expect(usage.folderBytes).toBe(100);
+            expect(usage).toEqual({
+                directory: folder,
+                totalBytes: expect.any(Number),
+                freeBytes: expect.any(Number),
+                folderBytes: 100,
+                sibling: { section: 'manga', directory: mangaFolder, bytes: 37, placement: 'same-disk' }
+            });
             expect(usage.totalBytes).toBeGreaterThan(0);
             expect(usage.freeBytes).toBeLessThanOrEqual(usage.totalBytes);
         });
 
-        it('measures the folder chosen in the settings for the manga', async () => {
+        it('measures the folder chosen in the settings for the manga, with the anime folder of the settings next to it', async () => {
             const { call, dir, settingsStore } = setup();
             const folder = join(dir, 'my-manga');
+            const animeFolder = join(dir, 'my-anime');
             mkdirSync(folder, { recursive: true });
+            mkdirSync(animeFolder, { recursive: true });
             writeFileSync(join(folder, 'c1.cbz'), 'y'.repeat(42));
-            settingsStore.save({ ...settingsStore.get(), mangaDirectory: folder });
+            writeFileSync(join(animeFolder, 'e1.mp4'), 'a'.repeat(64));
+            settingsStore.save({ ...settingsStore.get(), mangaDirectory: folder, animeDownloadDir: animeFolder });
             const usage = (await call(IPC.diskUsage, 'manga')) as DiskUsage;
             expect(usage.directory).toBe(folder);
             expect(usage.folderBytes).toBe(42);
+            expect(usage.sibling).toEqual({ section: 'anime', directory: animeFolder, bytes: 64, placement: 'same-disk' });
         });
 
         it('uses the default manga folder when none is set, even if it does not exist yet', async () => {
@@ -383,6 +395,19 @@ describe('registerHandlers', () => {
             expect(usage.directory).toBe(join(dir, 'Downloads', 'Pullwave Manga'));
             expect(usage.folderBytes).toBe(0);
             expect(usage.totalBytes).toBeGreaterThan(0);
+            expect(usage.sibling).toEqual({ section: 'anime', directory: join(dir, 'Downloads', 'Pullwave Anime'), bytes: 0, placement: 'same-disk' });
+        });
+
+        it('reads the settings again at every call, so a folder that was migrated is the one measured', async () => {
+            const { call, dir, settingsStore } = setup();
+            const moved = join(dir, 'moved-anime');
+            mkdirSync(moved, { recursive: true });
+            writeFileSync(join(moved, 'e1.mp4'), 'a'.repeat(5));
+            expect(((await call(IPC.diskUsage, 'anime')) as DiskUsage).folderBytes).toBe(0);
+            settingsStore.save({ ...settingsStore.get(), animeDownloadDir: moved });
+            const usage = (await call(IPC.diskUsage, 'anime')) as DiskUsage;
+            expect(usage.directory).toBe(moved);
+            expect(usage.folderBytes).toBe(5);
         });
 
         it.each([['video'], [''], [null], [undefined], [7]])('answers null for the section %j', async (section) => {

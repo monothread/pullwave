@@ -277,7 +277,7 @@ describe('the console layer: movement', () => {
         names.forEach((name) => {
             expect(name).toMatch(/^bp-/);
         });
-        expect(names.sort()).toEqual(['bp-aurora-drift', 'bp-banner-sheen', 'bp-disk-enter', 'bp-disk-glow', 'bp-disk-pulse', 'bp-fade-in', 'bp-focus-breathe', 'bp-hop', 'bp-ping', 'bp-pop', 'bp-rise', 'bp-sheen', 'bp-sparks', 'bp-toast-in', 'bp-wave-bar']);
+        expect(names.sort()).toEqual(['bp-aurora-drift', 'bp-banner-sheen', 'bp-disk-enter', 'bp-disk-glow', 'bp-disk-pulse', 'bp-disk-sibling-glow', 'bp-disk-spin', 'bp-fade-in', 'bp-focus-breathe', 'bp-hop', 'bp-ping', 'bp-pop', 'bp-rise', 'bp-sheen', 'bp-sparks', 'bp-toast-in', 'bp-wave-bar']);
     });
 });
 
@@ -287,6 +287,7 @@ describe('the console layer: the disk space', () => {
         expect(styleOf(sheet, '.disk__item')).toMatchObject({ animation: 'bp-disk-enter 0.6s var(--bp-ease-out) both' });
         expect(styleOf(sheet, '.disk__item:nth-child(2)')).toMatchObject({ 'animation-delay': '0.1s' });
         expect(styleOf(sheet, '.disk__item:nth-child(3)')).toMatchObject({ 'animation-delay': '0.2s' });
+        expect(styleOf(sheet, '.disk__item:nth-child(4)')).toMatchObject({ 'animation-delay': '0.3s' });
     });
 
     it('makes the folder segment glow and the loading text pulse', () => {
@@ -297,5 +298,67 @@ describe('the console layer: the disk space', () => {
     it('draws the ring with the stroke of the segments and the colours of the theme', () => {
         expect(styleOf(sheet, '.disk__track')).toMatchObject({ fill: 'none', stroke: 'color-mix(in srgb, var(--text) 10%, transparent)' });
         expect(styleOf(sheet, '.disk__segment--others')).toMatchObject({ stroke: 'color-mix(in srgb, var(--muted) 80%, var(--yellow))' });
+    });
+
+    it('draws the folder of the other section with a warm colour made of the red and the yellow of the theme', () => {
+        expect(styleOf(sheet, '.disk')).toEqual({ '--disk-sibling': 'color-mix(in srgb, var(--red) 45%, var(--yellow))' });
+        expect(styleOf(sheet, '.disk__segment--sibling')).toMatchObject({
+            stroke: 'var(--disk-sibling)',
+            filter: 'drop-shadow(0 0 5px color-mix(in srgb, var(--disk-sibling) 70%, transparent))',
+            animation: 'bp-disk-sibling-glow 3.4s ease-in-out infinite'
+        });
+        expect(styleOf(sheet, '.disk__item--sibling .disk__swatch')).toEqual({
+            background: 'var(--disk-sibling)',
+            'box-shadow': '0 0 8px color-mix(in srgb, var(--disk-sibling) 70%, transparent)'
+        });
+    });
+
+    it.each(['synthwave', 'sakura', 'sakura-dark'])('uses the green of the %s theme for the folder of the other section, because its cyan or magenta is warm', (theme) => {
+        expect(styleOf(sheet, `:root[data-theme='${theme}'] .disk`)).toEqual({ '--disk-sibling': 'var(--green)' });
+    });
+
+    it('does not change the colour of the folder of the other section in the other themes', () => {
+        const overridden = topLevel()
+            .filter((rule) => {
+                return rule.declarations['--disk-sibling'] !== undefined;
+            })
+            .map((rule) => {
+                return rule.selector;
+            });
+        expect(overridden.sort()).toEqual([".disk", ":root[data-theme='sakura'] .disk", ":root[data-theme='sakura-dark'] .disk", ":root[data-theme='synthwave'] .disk"].sort());
+    });
+
+    it('lights the part of the ring of the line of the legend that is pointed at, and dims the others', () => {
+        expect(styleOf(sheet, '.disk__segment')).toMatchObject({ transition: 'opacity 0.25s ease, stroke-width 0.25s ease' });
+        expect(styleOf(sheet, '.disk__body:has(.disk__item:hover) .disk__segment')).toEqual({ opacity: '0.25' });
+        [
+            '.disk__body:has(.disk__item--folder:hover) .disk__segment--folder',
+            '.disk__body:has(.disk__item--sibling:hover) .disk__segment--sibling',
+            '.disk__body:has(.disk__item--others:hover) .disk__segment--others'
+        ].forEach((selector) => {
+            expect(styleOf(sheet, selector)).toEqual({ opacity: '1', 'stroke-width': '15' });
+        });
+    });
+
+    it('puts the note about the folder of the other section under its line, a little after the line enters', () => {
+        expect(styleOf(sheet, '.disk__note')).toEqual({
+            'grid-column': '2 / -1',
+            'font-size': '0.75rem',
+            color: 'var(--yellow)',
+            animation: 'bp-disk-enter 0.6s var(--bp-ease-out) 0.5s both'
+        });
+    });
+
+    it('shows a spinner next to the text while the disk is read', () => {
+        expect(styleOf(sheet, '.disk__loading')).toMatchObject({ display: 'flex', 'align-items': 'center', gap: '10px' });
+        expect(styleOf(sheet, '.disk__spinner')).toMatchObject({
+            width: '14px',
+            height: '14px',
+            'border-top-color': 'var(--cyan)',
+            'border-right-color': 'var(--magenta)',
+            animation: 'bp-disk-spin 0.8s linear infinite'
+        });
+        expect(keyframesOf(sheet, 'bp-disk-spin')?.body.replace(/\s+/g, ' ')).toContain('to { transform: rotate(360deg); }');
+        expect(keyframesOf(sheet, 'bp-disk-sibling-glow')?.body.replace(/\s+/g, ' ')).toContain('var(--disk-sibling)');
     });
 });

@@ -10,7 +10,7 @@ import type {
     Settings,
     TraySupport
 } from '@shared/types';
-import { readDiskUsage, sectionDirectory } from '../services/diskUsage';
+import { readSectionDiskUsage } from '../services/diskUsage';
 import { checkBinaries } from '../services/binaryLocator';
 import type { BinaryResolver } from '../services/binaryResolver';
 import { sanitizeDownloadOptions } from '../services/settingsSanitizer';
@@ -144,6 +144,6 @@ export function registerHandlers(deps: HandlerDependencies): void {
         if (chosen === null) {
             return Promise.resolve(null);
         }
-        return readDiskUsage(sectionDirectory(chosen, settingsStore.get(), deps.defaultDownloadDir));
+        return readSectionDiskUsage(chosen, settingsStore.get(), deps.defaultDownloadDir);
     });
 }

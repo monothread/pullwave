@@ -599,7 +599,19 @@ body::before {
 
 /* --- Disk space ----------------------------------------------------------------------------------------------------------------- */
 /* The ring of the disk space in the settings of the anime and of the manga. The segments are drawn by the component (they grow with the
-   numbers), so only the colours, the glow and the entrance of the panel are set here. */
+   numbers), so only the colours, the glow and the entrance of the panel are set here. The folder of the other section is warm (red and
+   yellow of the theme), which no theme uses in its cyan and magenta; the three themes whose cyan or magenta is warm too (synthwave,
+   sakura and sakura-dark) use their green for it. */
+.disk {
+    --disk-sibling: color-mix(in srgb, var(--red) 45%, var(--yellow));
+}
+
+:root[data-theme='synthwave'] .disk,
+:root[data-theme='sakura'] .disk,
+:root[data-theme='sakura-dark'] .disk {
+    --disk-sibling: var(--green);
+}
+
 .disk__body {
     display: flex;
     flex-wrap: wrap;
@@ -628,6 +640,22 @@ body::before {
     stroke-width: 12;
 }
 
+/* Pointing at a line of the legend lights its part of the ring and dims the others (the free space dims all of them). */
+.disk__segment {
+    transition: opacity 0.25s ease, stroke-width 0.25s ease;
+}
+
+.disk__body:has(.disk__item:hover) .disk__segment {
+    opacity: 0.25;
+}
+
+.disk__body:has(.disk__item--folder:hover) .disk__segment--folder,
+.disk__body:has(.disk__item--sibling:hover) .disk__segment--sibling,
+.disk__body:has(.disk__item--others:hover) .disk__segment--others {
+    opacity: 1;
+    stroke-width: 15;
+}
+
 .disk__track {
     stroke: color-mix(in srgb, var(--text) 10%, transparent);
 }
@@ -639,6 +667,12 @@ body::before {
 .disk__segment--folder {
     filter: drop-shadow(0 0 6px color-mix(in srgb, var(--cyan) 70%, transparent));
     animation: bp-disk-glow 2.8s ease-in-out infinite;
+}
+
+.disk__segment--sibling {
+    stroke: var(--disk-sibling);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--disk-sibling) 70%, transparent));
+    animation: bp-disk-sibling-glow 3.4s ease-in-out infinite;
 }
 
 .disk__segment--others {
@@ -691,6 +725,7 @@ body::before {
 
 .disk__item:nth-child(2) { animation-delay: 0.1s; }
 .disk__item:nth-child(3) { animation-delay: 0.2s; }
+.disk__item:nth-child(4) { animation-delay: 0.3s; }
 
 .disk__swatch {
     width: 12px;
@@ -701,6 +736,11 @@ body::before {
 .disk__item--folder .disk__swatch {
     background: var(--bp-accent-gradient);
     box-shadow: 0 0 8px color-mix(in srgb, var(--cyan) 70%, transparent);
+}
+
+.disk__item--sibling .disk__swatch {
+    background: var(--disk-sibling);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--disk-sibling) 70%, transparent);
 }
 
 .disk__item--others .disk__swatch {
@@ -716,6 +756,14 @@ body::before {
     color: var(--muted);
 }
 
+/* What is said about the folder of the other section when it is not a part of the ring of its own, under its line. */
+.disk__note {
+    grid-column: 2 / -1;
+    font-size: 0.75rem;
+    color: var(--yellow);
+    animation: bp-disk-enter 0.6s var(--bp-ease-out) 0.5s both;
+}
+
 .disk__item-value {
     font-variant-numeric: tabular-nums;
 }
@@ -727,7 +775,21 @@ body::before {
 }
 
 .disk__loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     animation: bp-disk-pulse 1.2s ease-in-out infinite;
+}
+
+.disk__spinner {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--text) 15%, transparent);
+    border-top-color: var(--cyan);
+    border-right-color: var(--magenta);
+    animation: bp-disk-spin 0.8s linear infinite;
 }
 
 @keyframes bp-disk-enter {
@@ -743,4 +805,13 @@ body::before {
 @keyframes bp-disk-pulse {
     0%, 100% { opacity: 0.45; }
     50% { opacity: 1; }
+}
+
+@keyframes bp-disk-sibling-glow {
+    0%, 100% { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--disk-sibling) 45%, transparent)); }
+    50% { filter: drop-shadow(0 0 9px color-mix(in srgb, var(--disk-sibling) 85%, transparent)); }
+}
+
+@keyframes bp-disk-spin {
+    to { transform: rotate(360deg); }
 }

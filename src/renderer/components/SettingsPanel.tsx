@@ -734,7 +734,11 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         }}
                     />
                 </fieldset>
-                <DiskUsageChart section="manga" refreshKey={`${stored.mangaDirectory}|${mangaLibraryCount}`} />
+                <DiskUsageChart
+                    section="manga"
+                    refreshKey={`${stored.mangaDirectory}|${mangaLibraryCount}|${stored.animeDownloadDir}|${library.length}`}
+                    busy={mangaMigrating}
+                />
                 <MangaStoreSettings />
                 <MangaHealthSettings />
                 <MangaHelperSettings
@@ -844,7 +848,11 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
             )}
 
             {scope === 'anime' && animeSupported && (
-                <DiskUsageChart section="anime" refreshKey={`${stored.animeDownloadDir}|${library.length}`} />
+                <DiskUsageChart
+                    section="anime"
+                    refreshKey={`${stored.animeDownloadDir}|${library.length}|${stored.mangaDirectory}|${mangaLibraryCount}`}
+                    busy={migrating}
+                />
             )}
 
             {scope === 'anime' && animeSupported && <ProgramsStatusBlock place="anime" />}

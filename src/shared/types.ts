@@ -338,6 +338,18 @@ export interface AppUpdateState {
 // The sections that keep their files in a folder of their own, the ones that show how much of the disk it takes.
 export type DiskSection = 'anime' | 'manga';
 
+// Where the folder of the other section is, compared to the one that was measured: on the same disk (its size is a part of the ring of
+// its own), on another disk (its size is not in the ring) or the same folder or one inside the other (its files are counted only once).
+export type DiskSiblingPlacement = 'same-disk' | 'other-disk' | 'overlap';
+
+// What the folder of the other section (the manga for the anime, the anime for the manga) takes.
+export interface DiskSibling {
+    section: DiskSection;
+    directory: string;
+    bytes: number;
+    placement: DiskSiblingPlacement;
+}
+
 // The space of the disk the folder of a section is on, and what the folder takes in it.
 export interface DiskUsage {
     // The folder that was measured (the one in the settings, or the default one when none is set).
@@ -345,6 +357,7 @@ export interface DiskUsage {
     totalBytes: number;
     freeBytes: number;
     folderBytes: number;
+    sibling: DiskSibling;
 }
 
 export interface TraySupport {

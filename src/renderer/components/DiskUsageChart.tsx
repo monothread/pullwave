@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
-import type { DiskSection, DiskUsage } from '@shared/types';
+import type { MessageKey } from '@shared/i18n';
+import type { DiskSection, DiskSiblingPlacement, DiskUsage } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
 import { useRevealProgress } from '../hooks/useRevealProgress';
 import { diskShares } from './diskUsageShares';
@@ -11,9 +12,24 @@ interface DiskUsageChartProps {
     section: DiskSection;
     // When it changes the disk is read again (the folder was changed, or files were added or removed).
     refreshKey: string;
+    // True while the files of the section are being moved (a migration of the folder): the disk is not read until it ends, because what is
+    // on it changes all the time and the reading would compete with the copy.
+    busy?: boolean;
 }
 
 const RING_RADIUS = 52;
+
+// What the folder of the other section is called in the legend.
+const SIBLING_LABELS: Record<DiskSection, MessageKey> = {
+    anime: 'settings.disk.sibling.anime',
+    manga: 'settings.disk.sibling.manga'
+};
+
+// What is said about the folder of the other section when it is not a part of the ring of its own.
+const SIBLING_NOTES: Record<Exclude<DiskSiblingPlacement, 'same-disk'>, MessageKey> = {
+    'other-disk': 'settings.disk.note.otherDisk',
+    overlap: 'settings.disk.note.overlap'
+};
 
 interface DiskReading {
     key: string;
@@ -44,9 +60,34 @@ function RingSegment({ className, start, length, stroke }: RingSegmentProps) {
     );
 }
 
+interface LegendItemProps {
+    kind: 'folder' | 'sibling' | 'others' | 'free';
+    label: string;
+    value: string;
+    valueTestId: string;
+    note?: string;
+}
+
+function LegendItem({ kind, label, value, valueTestId, note }: LegendItemProps) {
+    return (
+        <li className={`disk__item disk__item--${kind}`}>
+            <span className="disk__swatch" aria-hidden="true" />
+            <span className="disk__item-label">{label}</span>
+            <strong className="disk__item-value" data-testid={valueTestId}>
+                {value}
+            </strong>
+            {note && (
+                <span className="disk__note" data-testid="disk-sibling-note">
+                    {note}
+                </span>
+            )}
+        </li>
+    );
+}
+
 // The space of the disk the folder of a section is on: a ring that grows when it opens, with the part the folder takes, the part other files
 // take and the free part.
-export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
+export function DiskUsageChart({ section, refreshKey, busy = false }: DiskUsageChartProps) {
     const t = useTranslator();
     const gradientId = useId();
     const [reloads, setReloads] = useState(0);
@@ -59,6 +100,9 @@ export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
     const progress = useRevealProgress(status === 'ready');
 
     useEffect(() => {
+        if (busy) {
+            return undefined;
+        }
         let cancelled = false;
         void window.api.getDiskUsage(section).then(
             (result) => {
@@ -75,7 +119,7 @@ export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
         return () => {
             cancelled = true;
         };
-    }, [section, readingKey]);
+    }, [section, readingKey, busy]);
 
     const shares = usage ? diskShares(usage) : null;
     const grown = (percent: number): number => {
@@ -85,6 +129,8 @@ export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
         usage && shares
             ? t('settings.disk.summary', {
                   folder: formatBytes(usage.folderBytes),
+                  siblingLabel: t(SIBLING_LABELS[usage.sibling.section]),
+                  sibling: formatBytes(usage.sibling.bytes),
                   others: formatBytes(shares.othersBytes),
                   free: formatBytes(usage.freeBytes),
                   total: formatBytes(usage.totalBytes)
@@ -94,7 +140,12 @@ export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
     return (
         <fieldset className="panel disk" data-testid={`disk-usage-${section}`}>
             <legend>{t('settings.disk.title')}</legend>
-            {status === 'loading' && <p className="field__hint disk__loading">{t('settings.disk.loading')}</p>}
+            {status === 'loading' && (
+                <p className="field__hint disk__loading">
+                    <span className="disk__spinner" aria-hidden="true" />
+                    {t('settings.disk.loading')}
+                </p>
+            )}
             {status === 'error' && <p className="field__hint disk__error">{t('settings.disk.error')}</p>}
             {status === 'ready' && usage && shares && (
                 <div className="disk__body">
@@ -107,7 +158,8 @@ export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
                                 </linearGradient>
                             </defs>
                             <circle className="disk__track" cx="60" cy="60" r={RING_RADIUS} />
-                            <RingSegment className="disk__segment--others" start={grown(shares.folderPercent)} length={grown(shares.othersPercent)} />
+                            <RingSegment className="disk__segment--others" start={grown(shares.folderPercent + shares.siblingPercent)} length={grown(shares.othersPercent)} />
+                            <RingSegment className="disk__segment--sibling" start={grown(shares.folderPercent)} length={grown(shares.siblingPercent)} />
                             <RingSegment className="disk__segment--folder" start={0} length={grown(shares.folderPercent)} stroke={`url(#${gradientId})`} />
                         </svg>
                         <div className="disk__center" aria-hidden="true">
@@ -118,27 +170,16 @@ export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
                         </div>
                     </div>
                     <ul className="disk__legend">
-                        <li className="disk__item disk__item--folder">
-                            <span className="disk__swatch" aria-hidden="true" />
-                            <span className="disk__item-label">{t('settings.disk.folder')}</span>
-                            <strong className="disk__item-value" data-testid="disk-folder">
-                                {formatBytes(usage.folderBytes * progress)}
-                            </strong>
-                        </li>
-                        <li className="disk__item disk__item--others">
-                            <span className="disk__swatch" aria-hidden="true" />
-                            <span className="disk__item-label">{t('settings.disk.others')}</span>
-                            <strong className="disk__item-value" data-testid="disk-others">
-                                {formatBytes(shares.othersBytes * progress)}
-                            </strong>
-                        </li>
-                        <li className="disk__item disk__item--free">
-                            <span className="disk__swatch" aria-hidden="true" />
-                            <span className="disk__item-label">{t('settings.disk.free')}</span>
-                            <strong className="disk__item-value" data-testid="disk-free">
-                                {formatBytes(usage.freeBytes * progress)}
-                            </strong>
-                        </li>
+                        <LegendItem kind="folder" label={t('settings.disk.folder')} value={formatBytes(usage.folderBytes * progress)} valueTestId="disk-folder" />
+                        <LegendItem
+                            kind="sibling"
+                            label={t(SIBLING_LABELS[usage.sibling.section])}
+                            value={formatBytes(usage.sibling.bytes * progress)}
+                            valueTestId="disk-sibling"
+                            note={usage.sibling.placement === 'same-disk' ? undefined : t(SIBLING_NOTES[usage.sibling.placement])}
+                        />
+                        <LegendItem kind="others" label={t('settings.disk.others')} value={formatBytes(shares.othersBytes * progress)} valueTestId="disk-others" />
+                        <LegendItem kind="free" label={t('settings.disk.free')} value={formatBytes(usage.freeBytes * progress)} valueTestId="disk-free" />
                         <li className="disk__total">{formatBytes(usage.totalBytes)}</li>
                     </ul>
                 </div>
@@ -147,7 +188,7 @@ export function DiskUsageChart({ section, refreshKey }: DiskUsageChartProps) {
                 <button
                     type="button"
                     className="btn btn--small"
-                    disabled={status === 'loading'}
+                    disabled={status === 'loading' || busy}
                     onClick={() => {
                         setReloads((count) => {
                             return count + 1;

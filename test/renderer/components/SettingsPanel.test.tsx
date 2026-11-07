@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { AUTOSAVE_DELAY_MS } from '@renderer/hooks/useAutoSaveSettings';
 import { DEFAULT_SETTINGS } from '@shared/constants';
+import type { DiskSection, DiskUsage } from '@shared/types';
 import { SettingsPanel } from '@renderer/components/SettingsPanel';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { INITIAL_APP_UPDATE, useAppStore } from '@renderer/store/appStore';
@@ -1641,14 +1642,25 @@ describe('SettingsPanel status of the programs', () => {
     });
 });
 
+function diskUsageOf(directory: string, sibling: DiskSection): DiskUsage {
+    return {
+        directory,
+        totalBytes: 1024 ** 3,
+        freeBytes: 512 * 1024 ** 2,
+        folderBytes: 0,
+        sibling: { section: sibling, directory: `/${sibling}`, bytes: 0, placement: 'same-disk' }
+    };
+}
+
 describe('SettingsPanel disk space', () => {
     it('shows the disk space of the anime in its settings, below the anime panel', async () => {
         useAnimeStore.setState({ status: makeStatus(), library: [] });
-        mock.api.getDiskUsage.mockResolvedValue({ directory: '/anime', totalBytes: 1024 ** 3, freeBytes: 512 * 1024 ** 2, folderBytes: 0 });
+        mock.api.getDiskUsage.mockResolvedValue(diskUsageOf('/anime', 'manga'));
         render(<SettingsPanel scope="anime" />);
         await flushPromises();
         expect(screen.getByTestId('disk-usage-anime')).toBeInTheDocument();
         expect(screen.queryByTestId('disk-usage-manga')).not.toBeInTheDocument();
+        expect(screen.getByText('Manga folder')).toBeInTheDocument();
         expect(mock.api.getDiskUsage).toHaveBeenCalledWith('anime');
         expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(1);
     });
@@ -1661,12 +1673,14 @@ describe('SettingsPanel disk space', () => {
     });
 
     it('shows the disk space of the manga in its settings', async () => {
-        mock.api.getDiskUsage.mockResolvedValue({ directory: '/manga', totalBytes: 1024 ** 3, freeBytes: 512 * 1024 ** 2, folderBytes: 0 });
+        mock.api.getDiskUsage.mockResolvedValue(diskUsageOf('/manga', 'anime'));
         render(<SettingsPanel scope="manga" />);
         await flushPromises();
         expect(screen.getByTestId('disk-usage-manga')).toBeInTheDocument();
         expect(screen.queryByTestId('disk-usage-anime')).not.toBeInTheDocument();
+        expect(screen.getByText('Anime folder')).toBeInTheDocument();
         expect(mock.api.getDiskUsage).toHaveBeenCalledWith('manga');
+        expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(1);
     });
 
     it.each(['global', 'downloads'] as const)('does not show the disk space in the %s settings', async (scope) => {
@@ -1675,5 +1689,158 @@ describe('SettingsPanel disk space', () => {
         expect(screen.queryByTestId('disk-usage-anime')).not.toBeInTheDocument();
         expect(screen.queryByTestId('disk-usage-manga')).not.toBeInTheDocument();
         expect(mock.api.getDiskUsage).not.toHaveBeenCalled();
+    });
+
+    describe('reading the disk again', () => {
+        beforeEach(() => {
+            useAnimeStore.setState({ status: makeStatus(), library: [] });
+            useMangaStore.setState({ library: [] });
+            mock.api.getDiskUsage.mockResolvedValue(diskUsageOf('/x', 'manga'));
+        });
+
+        it('reads the anime disk again when the anime folder changes', async () => {
+            render(<SettingsPanel scope="anime" />);
+            await flushPromises();
+            act(() => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeDownloadDir: '/media/other' } });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(2);
+        });
+
+        it('reads the anime disk again when the number of anime changes', async () => {
+            render(<SettingsPanel scope="anime" />);
+            await flushPromises();
+            act(() => {
+                useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, status: 'done' })])] });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(2);
+        });
+
+        it('reads the anime disk again when the manga folder changes, because the manga is shown there too', async () => {
+            render(<SettingsPanel scope="anime" />);
+            await flushPromises();
+            act(() => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaDirectory: '/media/manga-elsewhere' } });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(2);
+            expect(mock.api.getDiskUsage).toHaveBeenLastCalledWith('anime');
+        });
+
+        it('reads the anime disk again when the number of mangas changes', async () => {
+            render(<SettingsPanel scope="anime" />);
+            await flushPromises();
+            act(() => {
+                useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, status: 'done' })])] });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(2);
+        });
+
+        it('reads the manga disk again when the manga folder or the number of mangas changes', async () => {
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            act(() => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, mangaDirectory: '/media/other' } });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(2);
+            act(() => {
+                useMangaStore.setState({ library: [makeLibraryManga([makeChapterRecord({ id: 1, status: 'done' })])] });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(3);
+        });
+
+        it('reads the manga disk again when the anime folder or the number of anime changes, because the anime is shown there too', async () => {
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            act(() => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeDownloadDir: '/media/anime-elsewhere' } });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(2);
+            act(() => {
+                useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, status: 'done' })])] });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(3);
+            expect(mock.api.getDiskUsage).toHaveBeenLastCalledWith('manga');
+        });
+    });
+
+    describe('while the folder is migrated', () => {
+        beforeEach(() => {
+            useAnimeStore.setState({ status: makeStatus(), library: [] });
+            useMangaStore.setState({ library: [] });
+            mock.api.getDiskUsage.mockResolvedValue(diskUsageOf('/x', 'manga'));
+        });
+
+        afterEach(() => {
+            useAnimeStore.setState({ migration: null });
+            useMangaStore.setState({ migration: null });
+        });
+
+        // The migration ends (the disk is read, with the folder the settings say now) and the new folder is saved (the disk is read once
+        // more, because the folder of the settings changed): two readings after the one made when the screen opened.
+
+        it('does not read the anime disk during the migration of the anime folder, and reads it when it ends', async () => {
+            useAnimeStore.setState({ migration: { done: 3, total: 8 } });
+            render(<SettingsPanel scope="anime" />);
+            await flushPromises();
+            expect(mock.api.getDiskUsage).not.toHaveBeenCalled();
+            expect(within(screen.getByTestId('disk-usage-anime')).getByRole('button', { name: 'REFRESH' })).toBeDisabled();
+            act(() => {
+                useAnimeStore.setState({ migration: null });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(1);
+            expect(within(screen.getByTestId('disk-usage-anime')).getByRole('button', { name: 'REFRESH' })).toBeEnabled();
+        });
+
+        it('does not read the manga disk during the migration of the manga folder, and reads it when it ends', async () => {
+            useMangaStore.setState({ migration: { done: 1, total: 4 } });
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            expect(mock.api.getDiskUsage).not.toHaveBeenCalled();
+            expect(within(screen.getByTestId('disk-usage-manga')).getByRole('button', { name: 'REFRESH' })).toBeDisabled();
+            act(() => {
+                useMangaStore.setState({ migration: null });
+            });
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(1);
+            expect(within(screen.getByTestId('disk-usage-manga')).getByRole('button', { name: 'REFRESH' })).toBeEnabled();
+        });
+
+        it('reads the anime disk after the migration, and again when the new folder is saved', async () => {
+            mock.api.migrateAnimeFolder.mockResolvedValue({ ok: true, episodes: 1, files: 2, destination: '/new/anime' });
+            mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
+            mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([makeEpisode({ id: 1, status: 'done' })])]);
+            await useAnimeStore.getState().init();
+            render(<SettingsPanel scope="anime" />);
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(1);
+
+            fireEvent.click(screen.getByRole('button', { name: 'MIGRATE FOLDER' }));
+            await flushPromises();
+            expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, animeDownloadDir: '/new/anime' });
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(3);
+            expect(mock.api.getDiskUsage).toHaveBeenLastCalledWith('anime');
+        });
+
+        it('reads the manga disk after the migration, and again when the new folder is saved', async () => {
+            mock.api.manga.migrateFolder.mockResolvedValue({ ok: true, chapters: 1, files: 1, destination: '/mnt/new-manga' });
+            render(<SettingsPanel scope="manga" />);
+            await flushPromises();
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(1);
+
+            fireEvent.click(screen.getByRole('button', { name: 'MIGRATE FOLDER' }));
+            await flushPromises();
+            expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaDirectory: '/mnt/new-manga' });
+            expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(3);
+            expect(mock.api.getDiskUsage).toHaveBeenLastCalledWith('manga');
+        });
     });
 });

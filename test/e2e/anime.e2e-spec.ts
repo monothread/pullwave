@@ -1,6 +1,7 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
 import { leaveHome } from './startScreen';
+import { expectNoSiblingInRing, expectSiblingAfterFolder, makeFolderOnAnotherDisk } from './diskChart';
 import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -4653,26 +4654,142 @@ test.describe('the look for new episodes', () => {
     });
 });
 
-test('shows the disk space and what the anime folder takes in the settings, with the numbers counting up', async () => {
-    const { page, animeDir } = session;
-    mkdirSync(join(animeDir, 'Some Show'), { recursive: true });
-    writeFileSync(join(animeDir, 'Some Show', 'ep1.mp4'), Buffer.alloc(3 * 1024 * 1024));
-    writeFileSync(join(animeDir, 'ep2.mp4'), Buffer.alloc(1024 * 1024));
-    await openAnimeSettings(page);
-    const chart = page.getByTestId('disk-usage-anime');
-    await expect(chart.getByText('DISK SPACE')).toBeVisible();
-    await expect(chart.getByTestId('disk-folder')).toHaveText('4.0 MiB', { timeout: 10000 });
-    await expect(chart.getByText('This folder')).toBeVisible();
-    await expect(chart.getByText('Other files')).toBeVisible();
-    await expect(chart.getByText('Free', { exact: true })).toBeVisible();
-    await expect(chart.getByTestId('disk-percent')).toHaveText(/^\d+%$/);
-    await expect(chart.getByTestId('disk-free')).toHaveText(/^\d+(\.\d)? (GiB|TiB|MiB)$/);
-    await expect(chart.getByTestId('disk-others')).toHaveText(/^\d+(\.\d)? (B|KiB|MiB|GiB|TiB)$/);
-    await expect(chart.locator('.disk__segment--folder')).toHaveAttribute('stroke-dasharray', /^\d+(\.\d+)? \d+(\.\d+)?$/);
-    await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /^Disk space of the folder: 4\.0 MiB in the folder, .* free of .*$/);
+// The manga folder of the session: the settings say where it is, so the test never reads the downloads folder of the person.
+function mangaFolderOf(directory: string): string {
+    return join(directory, 'manga');
+}
 
-    // Files that appear later are counted when the disk is read again.
-    writeFileSync(join(animeDir, 'ep3.mp4'), Buffer.alloc(2 * 1024 * 1024));
-    await chart.getByRole('button', { name: 'REFRESH' }).click();
-    await expect(chart.getByTestId('disk-folder')).toHaveText('6.0 MiB', { timeout: 10000 });
+async function relaunchWithSettings(settings: Record<string, unknown>): Promise<void> {
+    const { userData } = session;
+    await session.app.close();
+    session = await launch(userData, settings);
+}
+
+test.describe('the disk space of the anime', () => {
+    test('shows the disk space, what the anime folder takes and what the manga folder takes, with the numbers counting up', async () => {
+        const { animeDir } = session;
+        const mangaDir = mangaFolderOf(workDir);
+        mkdirSync(join(animeDir, 'Some Show'), { recursive: true });
+        mkdirSync(join(mangaDir, 'One Piece'), { recursive: true });
+        writeFileSync(join(animeDir, 'Some Show', 'ep1.mp4'), Buffer.alloc(3 * 1024 * 1024));
+        writeFileSync(join(animeDir, 'ep2.mp4'), Buffer.alloc(1024 * 1024));
+        writeFileSync(join(mangaDir, 'One Piece', 'Chapter 1.cbz'), Buffer.alloc(2 * 1024 * 1024));
+        await relaunchWithSettings({ mangaDirectory: mangaDir });
+        const { page } = session;
+        await openAnimeSettings(page);
+        const chart = page.getByTestId('disk-usage-anime');
+        await expect(chart.getByText('DISK SPACE')).toBeVisible();
+        await expect(chart.getByTestId('disk-folder')).toHaveText('4.0 MiB', { timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling')).toHaveText('2.0 MiB', { timeout: 10000 });
+        await expect(chart.getByText('This folder')).toBeVisible();
+        await expect(chart.getByText('Manga folder')).toBeVisible();
+        await expect(chart.getByText('Anime folder')).toHaveCount(0);
+        await expect(chart.getByText('Other files')).toBeVisible();
+        await expect(chart.getByText('Free', { exact: true })).toBeVisible();
+        await expect(chart.getByTestId('disk-sibling-note')).toHaveCount(0);
+        await expect(chart.getByTestId('disk-percent')).toHaveText(/^\d+%$/);
+        await expect(chart.getByTestId('disk-free')).toHaveText(/^\d+(\.\d)? (GiB|TiB|MiB)$/);
+        await expect(chart.getByTestId('disk-others')).toHaveText(/^\d+(\.\d)? (B|KiB|MiB|GiB|TiB)$/);
+        await expect(chart.locator('.disk__segment--folder')).toHaveAttribute('stroke-dasharray', /^\d+(\.\d+)? \d+(\.\d+)?$/);
+        await expect(chart.locator('.disk__segment--sibling')).toHaveAttribute('stroke-dasharray', /^\d+(\.\d+)? \d+(\.\d+)?$/);
+        await expectSiblingAfterFolder(chart);
+        await expect(chart.getByRole('img')).toHaveAttribute('aria-label', /^Disk space of the folder: 4\.0 MiB in the folder, Manga folder 2\.0 MiB, .* in other files, .* free of .*$/);
+        await expect(page.getByTestId('disk-usage-manga')).toHaveCount(0);
+
+        // Files that appear later, in either folder, are counted when the disk is read again.
+        writeFileSync(join(animeDir, 'ep3.mp4'), Buffer.alloc(2 * 1024 * 1024));
+        writeFileSync(join(mangaDir, 'One Piece', 'Chapter 2.cbz'), Buffer.alloc(1024 * 1024));
+        await chart.getByRole('button', { name: 'REFRESH' }).click();
+        await expect(chart.getByTestId('disk-folder')).toHaveText('6.0 MiB', { timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling')).toHaveText('3.0 MiB', { timeout: 10000 });
+    });
+
+    test('shows the manga folder as empty when it has no files yet', async () => {
+        await relaunchWithSettings({ mangaDirectory: mangaFolderOf(workDir) });
+        await openAnimeSettings(session.page);
+        const chart = session.page.getByTestId('disk-usage-anime');
+        await expect(chart.getByText('Manga folder')).toBeVisible({ timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling')).toHaveText('0 B');
+        await expect(chart.locator('.disk__segment--sibling')).toHaveAttribute('stroke-dasharray', '0 100');
+        await expect(chart.getByTestId('disk-sibling-note')).toHaveCount(0);
+    });
+
+    test('warns that the folders overlap and counts the files once when the manga folder is inside the anime folder', async () => {
+        const { animeDir } = session;
+        const inside = join(animeDir, 'manga');
+        mkdirSync(inside, { recursive: true });
+        writeFileSync(join(animeDir, 'ep1.mp4'), Buffer.alloc(3 * 1024 * 1024));
+        writeFileSync(join(inside, 'Chapter 1.cbz'), Buffer.alloc(1024 * 1024));
+        await relaunchWithSettings({ mangaDirectory: inside });
+        const chart = session.page.getByTestId('disk-usage-anime');
+        await openAnimeSettings(session.page);
+        await expect(chart.getByTestId('disk-folder')).toHaveText('4.0 MiB', { timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling')).toHaveText('1.0 MiB', { timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling-note')).toHaveText('The folders overlap, so these files are counted only once.');
+        await expectNoSiblingInRing(chart);
+    });
+
+    test('warns that the folders overlap when both sections use the same folder', async () => {
+        const { animeDir } = session;
+        mkdirSync(animeDir, { recursive: true });
+        writeFileSync(join(animeDir, 'ep1.mp4'), Buffer.alloc(2 * 1024 * 1024));
+        await relaunchWithSettings({ mangaDirectory: animeDir });
+        const chart = session.page.getByTestId('disk-usage-anime');
+        await openAnimeSettings(session.page);
+        await expect(chart.getByTestId('disk-folder')).toHaveText('2.0 MiB', { timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling')).toHaveText('2.0 MiB', { timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling-note')).toHaveText('The folders overlap, so these files are counted only once.');
+        await expectNoSiblingInRing(chart);
+    });
+
+    test('warns that the manga folder is on another disk and leaves it out of the ring', async () => {
+        const otherDisk = makeFolderOnAnotherDisk(workDir);
+        if (otherDisk === null) {
+            test.skip(true, 'needs another disk to put the manga folder on (Linux has /dev/shm)');
+            return;
+        }
+        try {
+            const mangaDir = join(otherDisk, 'manga');
+            mkdirSync(mangaDir, { recursive: true });
+            mkdirSync(session.animeDir, { recursive: true });
+            writeFileSync(join(mangaDir, 'Chapter 1.cbz'), Buffer.alloc(2 * 1024 * 1024));
+            writeFileSync(join(session.animeDir, 'ep1.mp4'), Buffer.alloc(1024 * 1024));
+            await relaunchWithSettings({ mangaDirectory: mangaDir });
+            const chart = session.page.getByTestId('disk-usage-anime');
+            await openAnimeSettings(session.page);
+            await expect(chart.getByTestId('disk-folder')).toHaveText('1.0 MiB', { timeout: 10000 });
+            await expect(chart.getByTestId('disk-sibling')).toHaveText('2.0 MiB', { timeout: 10000 });
+            await expect(chart.getByTestId('disk-sibling-note')).toHaveText('On another disk, so it is not part of the ring.');
+            await expectNoSiblingInRing(chart);
+        } finally {
+            rmSync(otherDisk, { recursive: true, force: true });
+        }
+    });
+
+    test('measures the new folder, and still shows the manga folder, once the anime folder is migrated', async () => {
+        const mangaDir = mangaFolderOf(workDir);
+        mkdirSync(mangaDir, { recursive: true });
+        writeFileSync(join(mangaDir, 'Chapter 1.cbz'), Buffer.alloc(2 * 1024 * 1024));
+        await relaunchWithSettings({ mangaDirectory: mangaDir });
+        await downloadFirstEpisode(session.page);
+        const target = join(workDir, 'migrated');
+        mkdirSync(target, { recursive: true });
+        writeFileSync(join(target, 'extra.bin'), Buffer.alloc(1024 * 1024));
+        const { userData } = session;
+        await session.app.close();
+        session = await launch(userData, { mangaDirectory: mangaDir }, { PULLWAVE_MIGRATE_DIR: target });
+        const { page } = session;
+
+        await openAnimeSettings(page);
+        const chart = page.getByTestId('disk-usage-anime');
+        await expect(chart.getByTestId('disk-folder')).toHaveText(/^\d+(\.\d)? (B|KiB)$/, { timeout: 10000 });
+        await page.getByRole('button', { name: 'MIGRATE FOLDER' }).click();
+        await expect(page.locator('.toast .toast__message')).toHaveText(`MIGRATION DONE: 1 EPISODES MOVED TO ${target}`);
+
+        // The folder that is measured is the new one (the extra file is there), and the old files are not counted anymore.
+        await expect(chart.getByTestId('disk-folder')).toHaveText('1.0 MiB', { timeout: 10000 });
+        await expect(chart.getByTestId('disk-sibling')).toHaveText('2.0 MiB');
+        await expect(chart.getByRole('button', { name: 'REFRESH' })).toBeEnabled();
+        expect(existsSync(session.animeDir)).toBe(false);
+    });
 });
