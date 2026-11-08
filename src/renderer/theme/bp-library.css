@@ -76,6 +76,15 @@
     grid-column: 1 / -1;
 }
 
+/* The page of a series has no cover of its own (the first season shows it right below): everything uses the whole width. */
+.series.detail.series--overview {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.series.detail.series--overview > * {
+    grid-column: 1 / -1;
+}
+
 .detail__art .cover {
     width: 100%;
     border: 0;

@@ -277,6 +277,11 @@ describe('bp-library.css', () => {
         expect(mediaStyleOf(library, DOCK, '.series.detail')).toMatchObject({ 'grid-template-columns': '96px minmax(0, 1fr)' });
     });
 
+    it('gives the page of a series, which has no cover of its own, one column of the whole width', () => {
+        expect(styleOf(library, '.series.detail.series--overview')).toEqual({ 'grid-template-columns': 'minmax(0, 1fr)' });
+        expect(styleOf(library, '.series.detail.series--overview > *')).toEqual({ 'grid-column': '1 / -1' });
+    });
+
     it('lets the audio of a season go under its chip when the tile is narrow', () => {
         expect(styleOf(library, '.season-card__top')).toEqual({ 'flex-wrap': 'wrap', 'row-gap': '6px' });
     });

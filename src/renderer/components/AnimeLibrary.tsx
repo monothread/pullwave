@@ -640,10 +640,7 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
                 </button>
                 <span className="section-label">{name}</span>
             </div>
-            <article className="job job--done series detail" data-testid="series-view">
-                <div className="detail__art">
-                    <SeriesCover titles={seasonTitles(group)} name={name} />
-                </div>
+            <article className="job job--done series detail series--overview" data-testid="series-view">
                 <header className="job__head">
                     <h3 className="series__title" title={name}>
                         {name}

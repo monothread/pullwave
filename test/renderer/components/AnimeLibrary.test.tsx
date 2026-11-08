@@ -104,7 +104,7 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByRole('list', { name: 'Seasons of Big' })).not.toBeInTheDocument();
         });
 
-        it('shows the cover big in the hero of the series, and each season with its own cover on its card', async () => {
+        it('shows no cover of its own in the hero of the series, only each season with its own cover on its card', async () => {
             const user = userEvent.setup();
             mock.api.findAnimeCover.mockResolvedValue('https://s4.anilist.co/cover/frieren.jpg');
             useAnimeStore.setState({ library: SERIES_LIBRARY });
@@ -113,19 +113,20 @@ describe('AnimeLibrary', () => {
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
 
             const view = screen.getByTestId('series-view');
+            expect(view).toHaveClass('job', 'job--done', 'series', 'detail', 'series--overview');
             expect(view.querySelector('.series__cover')).toBeNull();
+            expect(view.querySelector('.detail__art')).toBeNull();
             await waitFor(() => {
-                expect(view.querySelectorAll('img.cover')).toHaveLength(3);
+                expect(view.querySelectorAll('img.cover')).toHaveLength(2);
             });
-            // The first cover is the big one of the hero; the others are the ones of the cards of the seasons.
-            const [hero, ...seasons] = Array.from(view.querySelectorAll('img.cover'));
-            expect(hero?.closest('.detail__art')).not.toBeNull();
-            expect(hero).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
+            // The only covers are the ones of the cards of the seasons.
+            const seasons = Array.from(view.querySelectorAll('img.cover'));
             expect(seasons).toHaveLength(2);
             seasons.forEach((cover) => {
                 expect(cover).toHaveAttribute('src', 'https://s4.anilist.co/cover/frieren.jpg');
                 expect(cover.closest('[data-testid="anime-season-cover"]')).not.toBeNull();
             });
+            expect(view.querySelector('.cover--none')).toBeNull();
         });
 
         it('shows the cover of each season in its row, looked up by the title of that season', async () => {
@@ -218,7 +219,7 @@ describe('AnimeLibrary', () => {
                 expect((series as HTMLElement).querySelector('img')).toBeNull();
             });
 
-            it('shows the cover of the next season big in the hero of the series, and puts it behind the screen', async () => {
+            it('puts the cover of the next season behind the screen of the series, with no cover in its hero', async () => {
                 const user = userEvent.setup();
                 mock.api.findAnimeCover.mockImplementation(async (title: string) => {
                     return title === 'Frieren Season 2' ? FRIEREN_TWO : null;
@@ -230,15 +231,15 @@ describe('AnimeLibrary', () => {
 
                 const view = screen.getByTestId('series-view');
                 await waitFor(() => {
-                    expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', FRIEREN_TWO);
+                    expect(useBackdropStore.getState().url).toBe(FRIEREN_TWO);
                 });
-                expect(useBackdropStore.getState().url).toBe(FRIEREN_TWO);
+                expect(view.querySelector(':scope > .detail__art')).toBeNull();
                 const seasons = screen.getAllByTestId('anime-season-cover');
                 expect(seasons[0]!.querySelector('.cover--none')).toHaveTextContent('COVER NOT FOUND');
                 expect(seasons[1]!.querySelector('img.cover')).toHaveAttribute('src', FRIEREN_TWO);
             });
 
-            it('goes back to the first season for the hero and the backdrop when its cover turns up', async () => {
+            it('goes back to the first season for the backdrop when its cover turns up', async () => {
                 const user = userEvent.setup();
                 mock.api.findAnimeCover.mockImplementation(async (title: string) => {
                     return title === 'Frieren Season 2' ? FRIEREN_TWO : null;
@@ -248,7 +249,7 @@ describe('AnimeLibrary', () => {
                 await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
                 const view = screen.getByTestId('series-view');
                 await waitFor(() => {
-                    expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', FRIEREN_TWO);
+                    expect(useBackdropStore.getState().url).toBe(FRIEREN_TWO);
                 });
 
                 act(() => {
@@ -256,12 +257,12 @@ describe('AnimeLibrary', () => {
                 });
 
                 await waitFor(() => {
-                    expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', FRIEREN_ONE);
+                    expect(useBackdropStore.getState().url).toBe(FRIEREN_ONE);
                 });
-                expect(useBackdropStore.getState().url).toBe(FRIEREN_ONE);
+                expect(view.querySelector(':scope > .detail__art')).toBeNull();
             });
 
-            it('says the cover was not found in the hero of the series, with no backdrop, when none of the seasons has one', async () => {
+            it('has no backdrop and no cover in the hero of the series when none of the seasons has one', async () => {
                 const user = userEvent.setup();
                 mock.api.findAnimeCover.mockResolvedValue(null);
                 useAnimeStore.setState({ library: SERIES_LIBRARY });
@@ -270,9 +271,13 @@ describe('AnimeLibrary', () => {
                 await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Frieren' }));
 
                 const view = screen.getByTestId('series-view');
+                const seasons = screen.getAllByTestId('anime-season-cover');
                 await waitFor(() => {
-                    expect(view.querySelector(':scope > .detail__art .cover--none')).toHaveTextContent('COVER NOT FOUND');
+                    expect(seasons[0]!.querySelector('.cover--none')).toHaveTextContent('COVER NOT FOUND');
+                    expect(seasons[1]!.querySelector('.cover--none')).toHaveTextContent('COVER NOT FOUND');
                 });
+                expect(view.querySelector(':scope > .detail__art')).toBeNull();
+                expect(view.querySelectorAll('.cover--none')).toHaveLength(2);
                 expect(useBackdropStore.getState().url).toBeNull();
             });
         });
@@ -2294,15 +2299,17 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
         expect(cardNames()).toEqual(['Solo']);
     });
 
-    it('shows the cover big on the screen of a series and of a season, and puts it behind the screen', async () => {
+    it('shows no cover in the hero of a series, the cover big on the screen of a season, and puts it behind the screen', async () => {
         useAnimeStore.setState({ covers: { saga: { status: 'found', url: 'https://img/saga.jpg' } }, librarySeries: 'series-saga' });
         const { container, unmount } = render(<AnimeLibrary />);
         const view = screen.getByTestId('series-view');
-        expect(view).toHaveClass('job', 'series', 'detail');
-        expect(view.querySelector(':scope > .detail__art img.cover')).toHaveAttribute('src', 'https://img/saga.jpg');
+        expect(view).toHaveClass('job', 'series', 'detail', 'series--overview');
+        expect(view.querySelector(':scope > .detail__art')).toBeNull();
         expect(useBackdropStore.getState().url).toBe('https://img/saga.jpg');
         await userEvent.click(within(container).getAllByRole('button', { name: /^SHOW EPISODES/ })[0] as HTMLElement);
-        expect(screen.getByTestId('season-view').querySelector('.series.detail > .detail__art')).not.toBeNull();
+        const seasonView = screen.getByTestId('season-view');
+        expect(seasonView.querySelector('.series.detail > .detail__art img.cover')).toHaveAttribute('src', 'https://img/saga.jpg');
+        expect(seasonView.querySelector('.series.detail')).not.toHaveClass('series--overview');
         unmount();
         expect(useBackdropStore.getState().url).toBeNull();
     });

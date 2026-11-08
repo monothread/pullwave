@@ -2618,7 +2618,7 @@ test.describe('covers', () => {
         expect(searched.length).toBe(asks);
     });
 
-    test('shows, for a series whose first season has no cover, the cover of the next season on its card and on its screen', async () => {
+    test('shows, for a series whose first season has no cover, the cover of the next season on its card, and none in the hero of its screen', async () => {
         const { page } = session;
         withoutCover = ['Fake Anime'];
         await openAnimeTab(page);
@@ -2646,9 +2646,12 @@ test.describe('covers', () => {
 
         await card.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
         const view = page.getByTestId('series-view');
-        await expect(view.locator(':scope > .detail__art img.cover')).toHaveAttribute('src', COVER);
-        // Each season still shows its own: the first says there is none.
+        await expect(view).toHaveClass(/series--overview/);
+        // The screen of the series has no cover of its own: the covers are the ones of the seasons, and the first says there is none.
+        await expect(view.locator('.detail__art')).toHaveCount(0);
+        await expect(view.locator('img.cover')).toHaveCount(1);
         const seasons = page.getByTestId('anime-season-cover');
+        await expect(seasons).toHaveCount(2);
         await expect(seasons.nth(0).locator('.cover--none')).toHaveText('COVER NOT FOUND');
         await expect(seasons.nth(1).locator('img.cover')).toHaveAttribute('src', COVER);
     });
