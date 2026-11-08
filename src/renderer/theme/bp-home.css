@@ -158,6 +158,8 @@
 
 .spotlight__stage > .spotlight__slide {
     grid-area: 1 / 1;
+    /* The room left by the minimum height is shared between the top and the bottom, so the margin above is not bigger than the one below. */
+    align-items: center;
 }
 
 /* The change: the new slide comes in from the side it is on while the old one fades and slides away under it. Both moves end with no transform
