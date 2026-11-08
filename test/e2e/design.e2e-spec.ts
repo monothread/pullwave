@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
 
 // The audit of the console design: every screen of the video downloader and of the anime section, in every theme, at the sizes of the
-// windows from 480 pixels up to a 1920x1080 screen. Three independent checks look for what makes a design ugly:
+// windows from 480 pixels up to an ultrawide 3440x1440 screen (and the 1080x1920 one turned to stand up). Three independent checks look for what makes a design ugly:
 //   1. geometry: nothing scrolls sideways, comes out of the window or of its box, no text is cut, buttons of one row are the same height;
 //   2. alignment: the parts of the top bar are centred on one line and do not overlap, the sections share one line, the bar under the active
 //      section stays under it, the tiles of a grid share a width;
@@ -19,7 +19,7 @@ const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
-const SIZES: Array<[number, number]> = [[480, 800], [1024, 768], [1366, 768], [1920, 1050]];
+const SIZES: Array<[number, number]> = [[480, 800], [1024, 768], [1080, 1850], [1366, 768], [1920, 1050], [3440, 1400]];
 const THEME_STYLES: Record<string, 'neon' | 'flat'> = {
     cyberpunk: 'neon',
     synthwave: 'neon',
@@ -54,6 +54,7 @@ interface AuditMatrix {
 }
 const MATRICES: readonly AuditMatrix[] = [
     { tag: '(cyberpunk, light, synthwave at 480 and 1366 px)', themes: ['cyberpunk', 'light', 'synthwave'], sizes: [[480, 800], [1366, 768]] },
+    { tag: '(cyberpunk, light at 1080x1850 and 3440x1400)', themes: ['cyberpunk', 'light'], sizes: [[1080, 1850], [3440, 1400]] },
     { tag: '(every theme and size) @full', themes: THEMES, sizes: SIZES }
 ];
 // The least contrast accepted between a text of the interface and what is behind it (WCAG for large text and for the parts of a control).

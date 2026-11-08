@@ -106,3 +106,6 @@ Last updated: 2026-11-08 · **v0.25.11 published** (seven more neon themes, the 
 - yt-dlp, deno, ffmpeg and ani-cli can be updated from the app (the programs block of the settings); busybox and curl never update.
 - x86_64 only (Linux and Windows 64 bits); the manga section needs a 64-bit system.
 - Anime with the same title (D-125): an anime added before 0.24.2 has no id of the source until it is added or found again; a download from the queue uses the position stored; the check for new episodes does not refresh the id and the provider; two seasons with the same title are skipped by the check after the source moved, until they are added again.
+
+### Reader: the five changes asked on 2026-11-08 (DONE, D-156)
+Fullscreen with a double click in the strip in the middle (every mode), turning two pages only in the corners, the settings closing with a click outside them, three pages loaded ahead, and the settings kept for each manga. The open points were decided as follows (and can be changed in `readerClickZones.ts` and `readerPrefs.ts`): the strip is 40% to 60% of the width; the sides are 40% of the stage with one page and 25% with two; with two pages three pages (not three pairs) are loaded after the pair on screen; a manga that was never set starts with the settings chosen last.

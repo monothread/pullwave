@@ -421,6 +421,37 @@
     }
 }
 
+/* --- A screen turned to stand up (1080x1920) ------------------------------------------------------------------------------------
+   The window is narrow and very tall: the hero grows with the height, the blocks of the sections are one on each row (wide, with room for
+   their lines) and the screen breathes, so the home does not end in the first third of the window and leave the rest empty. */
+@media (orientation: portrait) and (min-height: 1200px) {
+    .home {
+        gap: 40px;
+    }
+
+    .hero {
+        min-height: clamp(280px, 24vh, 480px);
+        padding: 36px 40px;
+    }
+
+    .hero__art .cover {
+        width: 200px;
+    }
+
+    .hero__title {
+        font-size: 42px;
+    }
+
+    .section-cards {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 24px;
+    }
+
+    .section-card {
+        padding: 28px 30px 26px;
+    }
+}
+
 /* --- The order of a list of chapters or episodes, at the right over the list --------------------------------------------------- */
 .list-order-bar {
     display: flex;

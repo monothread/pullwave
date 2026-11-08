@@ -1,10 +1,13 @@
-/* One layout for every window up to a 1920x1080 screen: the page grows with the window, the lists take more columns
+/* One layout for every window, from a phone-sized one to an ultrawide screen: the page grows with the window, the lists take more columns
    when there is room, and the controls stack when there is not. Nothing here depends on a theme: it only moves and sizes. */
 
-/* --- The page grows with the window, up to what a 1920x1080 screen needs ----------------------------------------------------
-   Bigger screens are not a target: the page stops growing at --app-max and stays in the middle. */
+/* --- The page grows with the window ---------------------------------------------------------------------------------------------
+   The page stops growing at --app-max and stays in the middle: 1400 px for a 1920x1080 screen, 2400 px for an ultrawide one (2200 px and wider,
+   like 3440x1440). --ui-zoom is how much the interface is magnified (see below): the units of the screen (vh, vw) are magnified with it, so
+   whoever uses them divides by it. */
 :root {
     --app-max: 1000px;
+    --ui-zoom: 1;
 }
 
 @media (min-width: 1280px) {
@@ -13,6 +16,22 @@
 
 @media (min-width: 1700px) {
     :root { --app-max: 1400px; }
+}
+
+@media (min-width: 2200px) {
+    :root { --app-max: 2400px; }
+}
+
+/* --- An ultrawide screen with 1440 lines or more: the interface is magnified a fifth (the text and the controls look small from there) ----
+   Only where the screen is wide and tall enough: a 2560x1080 screen has the room of the page but not the height for a bigger interface. */
+@media (min-width: 2200px) and (min-height: 1300px) {
+    :root {
+        --ui-zoom: 1.2;
+    }
+
+    html {
+        zoom: var(--ui-zoom);
+    }
 }
 
 /* The page is as wide as the window, so the mouse wheel scrolls it anywhere under the header, and the scrollbar is at the edge of the window.
@@ -79,6 +98,22 @@
 @container main (min-width: 900px) {
     .settings {
         column-count: 2;
+    }
+}
+
+/* An ultrawide page: three columns, the cards of the lists and the panels of the settings. */
+@container main (min-width: 1700px) {
+    .queue {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .history > .history__list,
+    .anime__search > .history__list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .settings {
+        column-count: 3;
     }
 }
 

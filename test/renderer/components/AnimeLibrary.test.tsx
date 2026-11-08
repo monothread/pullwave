@@ -1116,11 +1116,11 @@ describe('AnimeLibrary', () => {
             expect(rows[0]).not.toHaveClass('history__item--error');
         });
 
-        it('marks only the watched episode with a visual indicator, not with a word', async () => {
+        it('marks only the watched episode with the seal of a ✓ and the word, not in its description', async () => {
             const { rows } = await expand();
             const watched = within(rows[2] as HTMLElement).getByRole('img', { name: 'WATCHED' });
             expect(watched).toHaveClass('watched-mark');
-            expect(watched).toHaveTextContent('✓');
+            expect(watched).toHaveTextContent('✓WATCHED');
             expect(watched).toHaveAttribute('title', 'WATCHED');
             expect(rows[2]).toHaveClass('history__item--watched');
             expect(rows[2]?.querySelector('.history__meta')?.textContent).not.toContain('WATCHED');

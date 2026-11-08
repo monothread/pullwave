@@ -11,9 +11,9 @@ const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
-// The sizes of the windows on screens of 1366x768 up to 1920x1080 (the taskbar takes some of the height), and
-// narrow ones.
-const SIZES: Array<[number, number]> = [[480, 800], [600, 800], [768, 1000], [1024, 768], [1366, 768], [1920, 1050]];
+// The sizes of the windows on screens of 1366x768 up to 1920x1080 (the taskbar takes some of the height), narrow ones, a screen turned to
+// stand up (1080x1920) and an ultrawide one (3440x1440, where the interface is magnified a fifth).
+const SIZES: Array<[number, number]> = [[480, 800], [600, 800], [768, 1000], [1024, 768], [1080, 1850], [1366, 768], [1920, 1050], [3440, 1400]];
 // Every theme: the font of the neon ones is wider than the others and their boxes are cut differently.
 const THEMES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
 // Day to day the audit runs on a few themes and sizes that stand for the others; the whole matrix runs before a release, in the test tagged
@@ -25,6 +25,7 @@ interface AuditMatrix {
 }
 const MATRICES: readonly AuditMatrix[] = [
     { tag: '(cyberpunk, light, synthwave at 480 and 1366 px)', themes: ['cyberpunk', 'light', 'synthwave'], sizes: [[480, 800], [1366, 768]] },
+    { tag: '(cyberpunk, light at 1080x1850 and 3440x1400)', themes: ['cyberpunk', 'light'], sizes: [[1080, 1850], [3440, 1400]] },
     { tag: '(every theme and size) @full', themes: THEMES, sizes: SIZES }
 ];
 test.setTimeout(600000);
@@ -309,8 +310,20 @@ test('puts the search of the top bar in the middle of the window when there is r
         expect(medium.search.right).toBeLessThanOrEqual(medium.end.left);
         expect(medium.search.top).toBeLessThan(medium.start.bottom);
 
-        // With less room the search goes under the name, as wide as the bar.
-        await resize(1024, 768);
+        // A screen turned to stand up (1080 px wide) and a window down to 1000 px have the bar on one line: the search takes what is left between
+        // the start and the end, which never get less than their content, and the bar does not go past the window.
+        for (const [width, height] of [[1080, 1850], [1024, 768], [1000, 768]]) {
+            await resize(width as number, height as number);
+            const oneLine = await boxes();
+            expect(oneLine.search.left, `${String(width)}: the search is not over the start`).toBeGreaterThanOrEqual(oneLine.start.right);
+            expect(oneLine.search.right, `${String(width)}: the search is not over the end`).toBeLessThanOrEqual(oneLine.end.left);
+            expect(oneLine.search.top, `${String(width)}: the search is on the line of the name`).toBeLessThan(oneLine.start.bottom);
+            expect(oneLine.search.right - oneLine.search.left, `${String(width)}: the search keeps its least width`).toBeGreaterThanOrEqual(160);
+            expect(oneLine.end.right, `${String(width)}: the bar is inside the window`).toBeLessThanOrEqual(oneLine.window);
+        }
+
+        // With less room (under 1000 px) the search goes under the name, as wide as the bar.
+        await resize(999, 768);
         const narrow = await boxes();
         expect(narrow.search.top).toBeGreaterThanOrEqual(narrow.start.bottom);
         expect(narrow.search.top).toBeGreaterThanOrEqual(narrow.end.bottom);

@@ -72,12 +72,13 @@
     min-width: 0;
 }
 
-/* With room the bar is three columns: the start and the end take the same width, so the search is in the middle of the window (a start or an
-   end wider than its share takes what it needs, and the search moves aside rather than covering it). */
-@media (min-width: 1101px) {
+/* With room the bar is three columns, on one line from 1000 px (a screen turned to stand up is 1080 px wide): the start and the end take the same
+   width, so the search is in the middle of the window. A start or an end never gets less than its content (max-content): a wider one takes what it
+   needs, the search takes what is left (down to 160 px) and moves aside rather than covering it. */
+@media (min-width: 1000px) {
     .topbar {
         display: grid;
-        grid-template-columns: 1fr minmax(240px, 560px) 1fr;
+        grid-template-columns: minmax(max-content, 1fr) minmax(160px, 560px) minmax(max-content, 1fr);
         /* The same room on both sides, or the middle of the bar is not the middle of the window. */
         padding-inline: 24px;
     }
@@ -405,7 +406,7 @@
 
 /* The open menu widens over the page, with the names; the gear says its name too. */
 .sidenav--open {
-    width: min(var(--rail-open), calc(100vw - 40px));
+    width: min(var(--rail-open), calc(100vw / var(--ui-zoom) - 40px));
     box-shadow: 18px 0 48px -18px rgba(0, 0, 0, 0.7);
 }
 
@@ -503,7 +504,7 @@
 }
 
 /* --- Less room: the menu becomes a dock at the bottom, and the search goes under the name ------------------------------------------ */
-@media (max-width: 1100px) {
+@media (max-width: 999px) {
     .topbar {
         flex-wrap: wrap;
         row-gap: 10px;

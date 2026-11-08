@@ -1275,9 +1275,9 @@ describe('MangaDetail what was read', () => {
         expect(screen.getByRole('button', { name: 'Mark as read: Second' })).toHaveAttribute('aria-pressed', 'false');
         await user.click(screen.getByRole('button', { name: 'Mark as read: Second' }));
         expect(useMangaStore.getState().readKeys).toEqual([progressKey('One Piece', 12)]);
-        expect(within(second()).getByRole('img', { name: 'Read' })).toHaveTextContent('✓');
+        expect(within(second()).getByRole('img', { name: 'Read' })).toHaveTextContent('✓Read');
         expect(within(second()).getByRole('img', { name: 'Read' })).toHaveClass('watched-mark');
-        expect(within(second()).queryByText('Read')).not.toBeInTheDocument();
+        expect(second().querySelector('.history__meta')).not.toHaveTextContent('Read');
         expect(second()).toHaveClass('history__item', 'history__item--watched');
         expect(screen.getByRole('button', { name: 'Mark as not read: Second' })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByRole('button', { name: 'Mark as not read: Second' })).not.toHaveClass('btn--ghost');

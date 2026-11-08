@@ -29,11 +29,14 @@ export interface ReaderPrefs {
     pageGap: number;
     // In the scroll modes the next (or previous) chapter opens by itself when the user scrolls through the zone between chapters.
     chapterSwitch: boolean;
+    // In the single page mode two pages are shown side by side (the first one on the side the reading starts from, see `direction`).
+    twoPages: boolean;
 }
 
-export const DEFAULT_READER_PREFS: ReaderPrefs = { mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true };
+export const DEFAULT_READER_PREFS: ReaderPrefs = { mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false };
 
 export const PREFS_KEY = 'pullwave.manga.reader';
+export const PREFS_BY_MANGA_KEY = 'pullwave.manga.readerByManga';
 export const PROGRESS_KEY = 'pullwave.manga.progress';
 export const MAX_REMEMBERED_CHAPTERS = 500;
 
@@ -49,26 +52,62 @@ function pickGap(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? Math.min(MAX_PAGE_GAP, Math.max(MIN_PAGE_GAP, Math.round(value))) : fallback;
 }
 
-export function loadReaderPrefs(): ReaderPrefs {
+function parsePrefs(raw: Record<string, unknown>): ReaderPrefs {
+    return {
+        mode: pick(raw['mode'], READER_MODES, DEFAULT_READER_PREFS.mode),
+        direction: pick(raw['direction'], READER_DIRECTIONS, DEFAULT_READER_PREFS.direction),
+        scale: pick(raw['scale'], READER_SCALES, DEFAULT_READER_PREFS.scale),
+        background: pick(raw['background'], READER_BACKGROUNDS, DEFAULT_READER_PREFS.background),
+        autoScrollSpeed: pickSpeed(raw['autoScrollSpeed'], DEFAULT_READER_PREFS.autoScrollSpeed),
+        pageGap: pickGap(raw['pageGap'], DEFAULT_READER_PREFS.pageGap),
+        chapterSwitch: typeof raw['chapterSwitch'] === 'boolean' ? raw['chapterSwitch'] : DEFAULT_READER_PREFS.chapterSwitch,
+        twoPages: typeof raw['twoPages'] === 'boolean' ? raw['twoPages'] : DEFAULT_READER_PREFS.twoPages
+    };
+}
+
+// The preferences each manga was given (by its title, as the progress is kept), read once.
+function readPrefsByManga(): Record<string, Record<string, unknown>> {
     try {
-        const raw = JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}') as Record<string, unknown>;
-        return {
-            mode: pick(raw['mode'], READER_MODES, DEFAULT_READER_PREFS.mode),
-            direction: pick(raw['direction'], READER_DIRECTIONS, DEFAULT_READER_PREFS.direction),
-            scale: pick(raw['scale'], READER_SCALES, DEFAULT_READER_PREFS.scale),
-            background: pick(raw['background'], READER_BACKGROUNDS, DEFAULT_READER_PREFS.background),
-            autoScrollSpeed: pickSpeed(raw['autoScrollSpeed'], DEFAULT_READER_PREFS.autoScrollSpeed),
-            pageGap: pickGap(raw['pageGap'], DEFAULT_READER_PREFS.pageGap),
-            chapterSwitch: typeof raw['chapterSwitch'] === 'boolean' ? raw['chapterSwitch'] : DEFAULT_READER_PREFS.chapterSwitch
-        };
+        const raw = JSON.parse(window.localStorage.getItem(PREFS_BY_MANGA_KEY) ?? '{}') as unknown;
+        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+            return {};
+        }
+        return Object.fromEntries(
+            Object.entries(raw).filter((entry): entry is [string, Record<string, unknown>] => {
+                return typeof entry[1] === 'object' && entry[1] !== null && !Array.isArray(entry[1]);
+            })
+        );
+    } catch {
+        return {};
+    }
+}
+
+// How a manga is read: the preferences it was given, and for a manga that has none yet, the ones chosen last in any manga (they were the only
+// preferences before each manga had its own, so a reader that is updated keeps reading the way it did).
+export function loadReaderPrefs(mangaTitle?: string): ReaderPrefs {
+    try {
+        const own = mangaTitle === undefined ? undefined : readPrefsByManga()[mangaTitle];
+        if (own !== undefined) {
+            return parsePrefs(own);
+        }
+        return parsePrefs(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}') as Record<string, unknown>);
     } catch {
         return DEFAULT_READER_PREFS;
     }
 }
 
-export function saveReaderPrefs(prefs: ReaderPrefs): void {
+// Keeps the preferences for the manga (what it was set to stays with it, whatever another manga is set to) and as the ones chosen last, which
+// a manga that was never set starts with. Without a manga only the last ones are kept.
+export function saveReaderPrefs(prefs: ReaderPrefs, mangaTitle?: string): void {
     try {
         window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+        if (mangaTitle !== undefined) {
+            const all = readPrefsByManga();
+            delete all[mangaTitle];
+            // The latest are kept last: the oldest go first when there are too many.
+            const entries = [...Object.entries(all), [mangaTitle, prefs] as [string, unknown]].slice(-MAX_REMEMBERED_MANGAS);
+            window.localStorage.setItem(PREFS_BY_MANGA_KEY, JSON.stringify(Object.fromEntries(entries)));
+        }
     } catch {
         // Not kept: the next time the reader starts from its defaults.
     }

@@ -32,6 +32,8 @@ import {
 } from './readerPrefs';
 import { SETTINGS_ICON } from './TabButton';
 import { neighbourChapter } from './mangaText';
+import { buildSpreads, singleSpreads, spreadIndexOf, type Spread } from './readerSpreads';
+import { clickZone, type ClickZone } from './readerClickZones';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { useScrollFraction } from '../hooks/useScrollFraction';
 import { useChapterZones } from '../hooks/useChapterZones';
@@ -40,7 +42,8 @@ import { chapterStartScrollTop, zoneHeight } from './chapterZones';
 import { noop, scrollToTopSmoothly } from '../hooks/smoothScroll';
 import { useReaderFullscreen } from '../hooks/useReaderFullscreen';
 
-const PRELOAD_AHEAD = 2;
+// How many pages after the ones on screen are loaded before they are needed.
+const PRELOAD_AHEAD = 3;
 // The longest the place of a chapter is corrected while its pictures arrive, if the user has not taken over before.
 const RESTORE_LIMIT_MS = 8000;
 // How long the page has to stay the same before the history of reading is written.
@@ -86,9 +89,19 @@ export function MangaReader() {
     const recordReading = useMangaStore((state) => {
         return state.recordReading;
     });
-    const [prefs, setPrefs] = useState<ReaderPrefs>(loadReaderPrefs);
+    const [prefs, setPrefs] = useState<ReaderPrefs>(() => {
+        return loadReaderPrefs(reader.mangaTitle);
+    });
+    // The manga the preferences on the screen belong to: each manga is read the way it was set, so they are read again when another one opens.
+    const [prefsOf, setPrefsOf] = useState(reader.mangaTitle);
+    if (prefsOf !== reader.mangaTitle) {
+        setPrefsOf(reader.mangaTitle);
+        setPrefs(loadReaderPrefs(reader.mangaTitle));
+    }
     const [page, setPage] = useState(0);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const settingsRef = useRef<HTMLDivElement | null>(null);
+    const gearRef = useRef<HTMLButtonElement | null>(null);
     const [failed, setFailed] = useState<number[]>([]);
     // The pages whose picture arrived: until then the place of a page holds a block that says it is loading, so the pages below do not move.
     const [loaded, setLoaded] = useState<number[]>([]);
@@ -144,6 +157,15 @@ export function MangaReader() {
     const total = reader.pages.length;
     const continuous = prefs.mode !== 'single';
     const scale = prefs.mode === 'webtoon' ? 'width' : prefs.scale;
+    // Two pages side by side only in the single page mode. `page` is the first page on screen; `view` is what is on screen together.
+    const twoPages = prefs.twoPages && !continuous;
+    const spreads = useMemo((): Spread[] => {
+        return twoPages ? buildSpreads(total) : singleSpreads(total);
+    }, [twoPages, total]);
+    const spreadIndex = spreadIndexOf(spreads, page);
+    const view: Spread = spreads[spreadIndex] ?? [page];
+    const firstShown = view[0] ?? page;
+    const lastShown = view[view.length - 1] ?? page;
     // The chapters on both sides of this one. At the edge of a season the reading goes on in the neighbour season of the series, when there is one.
     const previousChapter = neighbourChapter(library, reader, -1);
     const nextChapter = neighbourChapter(library, reader, 1);
@@ -194,9 +216,9 @@ export function MangaReader() {
 
     useEffect(() => {
         if (reader.status === 'ready' && total > 0) {
-            saveProgress(key, page >= total - 1 ? 0 : page);
+            saveProgress(key, lastShown >= total - 1 ? 0 : page);
         }
-    }, [reader.status, key, page, total]);
+    }, [reader.status, key, page, lastShown, total]);
 
     // The history of reading keeps where the user is: written a moment after the page stops changing, and when the chapter or the reader
     // closes, so turning the pages does not write at every page.
@@ -247,10 +269,10 @@ export function MangaReader() {
         }
     }, [reader.status, reader.mangaTitle, chapter, page, total]);
     useEffect(() => {
-        if (reader.status === 'ready' && total > 0 && page >= total - 1) {
+        if (reader.status === 'ready' && total > 0 && lastShown >= total - 1) {
             markRead([key], true);
         }
-    }, [reader.status, total, page, key, markRead]);
+    }, [reader.status, total, lastShown, key, markRead]);
 
     // A chapter reached from the one after it is brought to the end of its last page (the user goes on upwards), the others to the top of theirs.
     const toTheEnd = reader.entry === 'end';
@@ -353,25 +375,41 @@ export function MangaReader() {
         };
     }, [continuous, reader.pages, attempt, loaded]);
 
-    // The pages that come next are loaded before they are needed.
+    // The pages that come next (the three after the ones on screen, one or two) are loaded and decoded before they are needed, so turning the
+    // page does not show the block that says it is loading. The pictures are held while the chapter is open: one that nobody holds can be
+    // dropped before it arrives.
+    const preloaded = useRef(new Map<string, HTMLImageElement>());
+    useEffect(() => {
+        const held = preloaded.current;
+        return () => {
+            held.clear();
+        };
+    }, [key]);
     useEffect(() => {
         if (reader.status !== 'ready' || continuous) {
             return;
         }
         for (let ahead = 1; ahead <= PRELOAD_AHEAD; ahead += 1) {
-            const address = reader.pages[page + ahead];
-            if (address !== undefined) {
-                new Image().src = address;
+            const address = reader.pages[lastShown + ahead];
+            if (address !== undefined && !preloaded.current.has(address)) {
+                const image = new Image();
+                image.src = address;
+                if (typeof image.decode === 'function') {
+                    image.decode().catch(() => {
+                        // A picture that cannot be decoded ahead of time is decoded when it is shown.
+                    });
+                }
+                preloaded.current.set(address, image);
             }
         }
-    }, [reader.status, reader.pages, page, continuous]);
+    }, [reader.status, reader.pages, lastShown, continuous]);
 
     // The zones are only there in the scroll modes, with the chapter on the screen.
     const zonesOn = continuous && reader.status === 'ready' && total > 0;
-    // A double click on the pages puts the area that scrolls them in fullscreen, in the scroll modes only (one page at a time, a click on a
-    // side turns the page). Another double click or Escape leaves it. It stays while the next chapter loads (or fails to): only closing the
-    // reader or going to one page at a time ends it.
-    const fullscreen = useReaderFullscreen(scroller, continuous && reader.status !== 'closed');
+    // A double click puts the area of the pages in fullscreen: anywhere on them in the scroll modes, and in the strip in the middle when the
+    // pages are turned by clicks on the sides (one page at a time, or two). Another double click or Escape leaves it. It stays while the next
+    // chapter loads (or fails to): only closing the reader ends it.
+    const fullscreen = useReaderFullscreen(scroller, reader.status !== 'closed');
     const scrolledDown = useScrolledDown(scroller, () => {
         return TOP_BUTTON_THRESHOLD + startTopRef.current;
     });
@@ -384,7 +422,7 @@ export function MangaReader() {
     }, []);
     // In the scroll the bar follows how far down the pages the scroll is; one page at a time it follows the page.
     const scrolled = useScrollFraction(scroller, scrollRef, continuous && reader.status === 'ready');
-    const progress = continuous ? scrolled : (page + 1) / total;
+    const progress = continuous ? scrolled : (lastShown + 1) / total;
     // Auto scroll only makes sense where the pages are in a scroll; it stops at the end of the chapter.
     const scrolling = autoScrolling && continuous && reader.status === 'ready';
     const stopAutoScroll = useCallback(() => {
@@ -421,7 +459,7 @@ export function MangaReader() {
 
     // A chapter read to its end is celebrated once: confetti and a stamp. One that was reached from the one after it (the user comes back
     // through it) is not: the end is where they came from. In the scroll the end is the zone below the last page coming into view.
-    const reachedEnd = reader.status === 'ready' && total > 0 && reader.entry !== 'end' && (continuous ? zones.end >= CHAPTER_END_ZONE_SHARE : page >= total - 1 && turn.direction === 'forward');
+    const reachedEnd = reader.status === 'ready' && total > 0 && reader.entry !== 'end' && (continuous ? zones.end >= CHAPTER_END_ZONE_SHARE : lastShown >= total - 1 && turn.direction === 'forward');
     const [celebratedKey, setCelebratedKey] = useState('');
     if (reachedEnd && celebratedKey !== key) {
         setCelebratedKey(key);
@@ -471,26 +509,29 @@ export function MangaReader() {
     const changePrefs = useCallback((patch: Partial<ReaderPrefs>) => {
         setPrefs((current) => {
             const next = { ...current, ...patch };
-            saveReaderPrefs(next);
+            saveReaderPrefs(next, reader.mangaTitle);
             return next;
         });
-    }, []);
+    }, [reader.mangaTitle]);
 
+    // A turn goes to the first page of the next (or the previous) view, and past the edge of the chapter to the next (or the previous) chapter.
     const next = useCallback(() => {
-        if (page < total - 1) {
-            setPage(page + 1);
+        const following = spreads[spreadIndex + 1]?.[0];
+        if (following !== undefined) {
+            setPage(following);
         } else {
             void goToChapter(1);
         }
-    }, [page, total, goToChapter]);
+    }, [spreads, spreadIndex, goToChapter]);
 
     const previous = useCallback(() => {
-        if (page > 0) {
-            setPage(page - 1);
+        const preceding = spreads[spreadIndex - 1]?.[0];
+        if (preceding !== undefined) {
+            setPage(preceding);
         } else {
             void goToChapter(-1);
         }
-    }, [page, goToChapter]);
+    }, [spreads, spreadIndex, goToChapter]);
 
     useEffect(() => {
         function handleKey(event: KeyboardEvent): void {
@@ -542,6 +583,26 @@ export function MangaReader() {
         };
     }, [settingsOpen, continuous, reader.status, prefs.direction, total, next, previous, goToChapter, closeReader, fullscreen]);
 
+    // A click outside the settings closes them (the gear and Escape do too). That click only closes the panel: it does not turn a page or press
+    // a button under it.
+    useEffect(() => {
+        if (!settingsOpen) {
+            return undefined;
+        }
+        const closeOutside = (event: Event): void => {
+            const target = event.target as Node | null;
+            if (target !== null && (settingsRef.current?.contains(target) === true || gearRef.current?.contains(target) === true)) {
+                return;
+            }
+            event.stopPropagation();
+            setSettingsOpen(false);
+        };
+        document.addEventListener('click', closeOutside, true);
+        return () => {
+            document.removeEventListener('click', closeOutside, true);
+        };
+    }, [settingsOpen]);
+
     const pageError = useMemo(() => {
         return (index: number) => {
             return failed.includes(index);
@@ -552,13 +613,25 @@ export function MangaReader() {
         return null;
     }
 
-    function handleStageClick(event: MouseEvent<HTMLDivElement>): void {
+    // Where on the stage a click was: a side turns the page, the strip in the middle is for the double click of the fullscreen.
+    function zoneOf(event: MouseEvent<HTMLDivElement>): ClickZone {
         const box = event.currentTarget.getBoundingClientRect();
-        const onLeft = event.clientX - box.left < box.width / 2;
-        if (onLeft === (prefs.direction === 'ltr')) {
+        return clickZone((event.clientX - box.left) / box.width, twoPages, prefs.direction);
+    }
+
+    function handleStageClick(event: MouseEvent<HTMLDivElement>): void {
+        const zone = zoneOf(event);
+        if (zone === 'previous') {
             previous();
-        } else {
+        } else if (zone === 'next') {
             next();
+        }
+    }
+
+    function handleStageDoubleClick(event: MouseEvent<HTMLDivElement>): void {
+        // The buttons of a page that did not load keep their clicks.
+        if ((event.target as HTMLElement).closest('button') === null && zoneOf(event) === 'middle') {
+            fullscreen.toggle();
         }
     }
 
@@ -670,8 +743,8 @@ export function MangaReader() {
                 <span className="reader__title history__title">{`${reader.mangaTitle} · ${chapterTitle(chapter.name, chapter.number)}`}</span>
                 {reader.status === 'ready' && total > 0 && (
                     <span className="reader__page" aria-live="polite">
-                        <span key={page} className="reader__page-text">
-                            {`${String(page + 1)} / ${String(total)}`}
+                        <span key={firstShown} className="reader__page-text">
+                            {`${view.length === 2 ? `${String(firstShown + 1)}–${String(lastShown + 1)}` : String(firstShown + 1)} / ${String(total)}`}
                         </span>
                     </span>
                 )}
@@ -700,6 +773,7 @@ export function MangaReader() {
                     </button>
                     <button
                         type="button"
+                        ref={gearRef}
                         className="btn btn--ghost manga__gear"
                         aria-label={t('manga.reader.settings')}
                         title={t('manga.reader.settings')}
@@ -724,7 +798,7 @@ export function MangaReader() {
                     </div>
                 )}
             {settingsOpen && (
-                <div className="panel reader__settings">
+                <div ref={settingsRef} className="panel reader__settings">
                     <SelectField
                         label={t('manga.reader.mode')}
                         value={prefs.mode}
@@ -746,6 +820,14 @@ export function MangaReader() {
                         }}
                         onChange={(direction) => {
                             changePrefs({ direction });
+                        }}
+                    />
+                    <ToggleField
+                        label={t('manga.reader.twoPages')}
+                        checked={prefs.twoPages}
+                        hint={t('manga.reader.twoPagesHint')}
+                        onChange={(value) => {
+                            changePrefs({ twoPages: value });
                         }}
                     />
                     <SelectField
@@ -821,8 +903,17 @@ export function MangaReader() {
                     data-turn={turn.direction ?? undefined}
                     data-direction={prefs.direction}
                     onClick={handleStageClick}
+                    onDoubleClick={handleStageDoubleClick}
                 >
-                    {renderPage(page)}
+                    {twoPages ? (
+                        <div className={`reader__spread reader__spread--${view.length === 2 ? 'pair' : 'single'}`} data-testid="reader-spread" data-direction={prefs.direction}>
+                            {view.map((index) => {
+                                return renderPage(index);
+                            })}
+                        </div>
+                    ) : (
+                        renderPage(page)
+                    )}
                 </div>
             )}
             {reader.status === 'ready' && total > 0 && continuous && (

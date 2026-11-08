@@ -1030,6 +1030,8 @@ export const zh: Messages = {
     'manga.reader.zone.goPrevious': '前往上一章',
     'manga.reader.chapterSwitch': '滚动时切换章节',
     'manga.reader.chapterSwitchHint': '在滚动模式下，穿过章节末尾（或开头）的区域会打开下一章（或上一章）。关闭后只有区域中的按钮可以切换。',
+    'manga.reader.twoPages': '双页并排显示',
+    'manga.reader.twoPagesHint': '在单页模式下，每次并排显示两页（第1和第2页、第3和第4页，依此类推）。阅读方向决定哪一页在左边。',
     'manga.reader.autoScroll': '自动滚动',
     'manga.reader.autoScrollStop': '停止滚动',
     'manga.reader.autoScrollOnlyScroll': '自动滚动适用于垂直滚动和条漫模式。',

@@ -128,7 +128,7 @@ describe('bp-shell.css', () => {
     });
 
     it('opens the menu over the page, never wider than the window', () => {
-        expect(styleOf(shell, '.sidenav--open')).toMatchObject({ width: 'min(var(--rail-open), calc(100vw - 40px))' });
+        expect(styleOf(shell, '.sidenav--open')).toMatchObject({ width: 'min(var(--rail-open), calc(100vw / var(--ui-zoom) - 40px))' });
         expect(styleOf(shell, '.sidenav:not(.sidenav--open) .tab__label')).toMatchObject({ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', 'clip-path': 'inset(50%)' });
         expect(styleOf(shell, '.sidenav--open .tab__label')).toEqual({ 'min-width': '0', overflow: 'hidden', 'text-overflow': 'ellipsis' });
         expect(styleOf(shell, '.sidenav--open .tab--icon::after')).toEqual({});
@@ -155,12 +155,21 @@ describe('bp-shell.css', () => {
         expect(styleOf(shell, '.topbar__start')).toEqual({ display: 'flex', 'align-items': 'center', gap: 'inherit', 'min-width': '0' });
     });
 
-    it('centers the search in the window with room: three columns, the start and the end as wide as each other', () => {
-        const WIDE = '(min-width: 1101px)';
-        expect(mediaStyleOf(shell, WIDE, '.topbar')).toEqual({ display: 'grid', 'grid-template-columns': '1fr minmax(240px, 560px) 1fr', 'padding-inline': '24px' });
+    it('centers the search in the window with room, on one line from 1000 px: three columns, the start and the end never less than their content', () => {
+        const WIDE = '(min-width: 1000px)';
+        expect(mediaStyleOf(shell, WIDE, '.topbar')).toEqual({
+            display: 'grid',
+            'grid-template-columns': 'minmax(max-content, 1fr) minmax(160px, 560px) minmax(max-content, 1fr)',
+            'padding-inline': '24px'
+        });
         expect(mediaStyleOf(shell, WIDE, '.topbar .global-search')).toEqual({ width: '100%' });
         expect(mediaStyleOf(shell, WIDE, '.topbar__end')).toEqual({ 'justify-self': 'end' });
-        expect(mediaStyleOf(shell, '(max-width: 1100px)', '.global-search')).toEqual({ order: '10', flex: '1 1 100%', 'max-width': 'none' });
+    });
+
+    it('wraps the top bar and sends the search to a line of its own only under 1000 px', () => {
+        expect(mediaStyleOf(shell, '(max-width: 999px)', '.topbar')).toEqual({ 'flex-wrap': 'wrap', 'row-gap': '10px' });
+        expect(mediaStyleOf(shell, '(max-width: 999px)', '.global-search')).toEqual({ order: '10', flex: '1 1 100%', 'max-width': 'none' });
+        expect(shell.rules.some((rule) => { return rule.media?.includes('1100px') === true || rule.media?.includes('1101px') === true; })).toBe(false);
     });
 
     it('keeps the player over the shell, under the windows (200) and the notices (250)', () => {
@@ -221,6 +230,26 @@ describe('bp-home.css', () => {
         expect(styleOf(home, '.section-card__actions')).toMatchObject({ 'margin-top': 'auto', 'flex-wrap': 'wrap' });
     });
 
+    it('keeps the home in one column on an ultrawide page, as wide as the page: no grid, no column for the blocks, no taller hero', () => {
+        const inContainer = home.rules.filter((rule) => {
+            return rule.media?.startsWith('@container') === true;
+        });
+        expect(inContainer).toEqual([]);
+        expect(styleOf(home, '.home')).toEqual({ display: 'flex', 'flex-direction': 'column', gap: '28px', 'padding-bottom': '12px' });
+        expect(styleOf(home, '.hero')).toMatchObject({ display: 'grid', 'min-height': '280px' });
+        expect(styleOf(home, '.section-cards')).toMatchObject({ display: 'grid', 'grid-template-columns': 'repeat(auto-fit, minmax(240px, 1fr))' });
+    });
+
+    it('grows the hero with the height of a screen turned to stand up, and puts the blocks of the sections one on each row', () => {
+        const TALL = '(orientation: portrait) and (min-height: 1200px)';
+        expect(mediaStyleOf(home, TALL, '.home')).toEqual({ gap: '40px' });
+        expect(mediaStyleOf(home, TALL, '.hero')).toEqual({ 'min-height': 'clamp(280px, 24vh, 480px)', padding: '36px 40px' });
+        expect(mediaStyleOf(home, TALL, '.hero__art .cover')).toEqual({ width: '200px' });
+        expect(mediaStyleOf(home, TALL, '.hero__title')).toEqual({ 'font-size': '42px' });
+        expect(mediaStyleOf(home, TALL, '.section-cards')).toEqual({ 'grid-template-columns': 'minmax(0, 1fr)', gap: '24px' });
+        expect(mediaStyleOf(home, TALL, '.section-card')).toEqual({ padding: '28px 30px 26px' });
+    });
+
     it('draws the chips of a library as pills, the one chosen lit, and keeps their words on one line', () => {
         expect(styleOf(home, '.chip-toggle')).toMatchObject({ 'border-radius': 'var(--bp-radius-pill)', 'white-space': 'nowrap' });
         expect(styleOf(home, '.chip-toggle--on')).toEqual({ 'border-color': 'var(--cyan)', background: 'var(--tint-cyan)', color: 'var(--cyan)', 'box-shadow': 'var(--glow)' });
@@ -250,6 +279,66 @@ describe('bp-library.css', () => {
 
     it('lets the audio of a season go under its chip when the tile is narrow', () => {
         expect(styleOf(library, '.season-card__top')).toEqual({ 'flex-wrap': 'wrap', 'row-gap': '6px' });
+    });
+
+    it('makes the tiles of the covers bigger on an ultrawide page', () => {
+        expect(mediaStyleOf(library, '@container main (min-width: 1700px)', '.cover-grid')).toEqual({ 'grid-template-columns': 'repeat(auto-fill, minmax(200px, 1fr))' });
+    });
+
+    it('makes what is still to be watched or read stand out: a cyan top edge and a bold name', () => {
+        expect(styleOf(library, '.episode-cards > .history__item')).toEqual({ 'border-top-color': 'var(--cyan)' });
+        expect(styleOf(library, '.episode-cards > .history__item:not(.history__item--watched) .history__title')).toEqual({ 'font-weight': '700' });
+    });
+
+    it('makes what was watched or read quieter: a green edge, a tint of the green, a grey name of normal weight', () => {
+        expect(styleOf(library, '.episode-cards > .history__item--watched')).toEqual({ 'border-top-color': 'var(--green)', background: 'color-mix(in srgb, var(--green) 9%, var(--panel))' });
+        expect(styleOf(library, '.episode-cards > .history__item--watched .history__title')).toEqual({ color: 'var(--muted)', 'font-weight': '400' });
+    });
+
+    it('keeps the red edge of a card that failed over the state of what was watched', () => {
+        const order = library.rules.map((rule) => {
+            return rule.selector;
+        });
+        expect(styleOf(library, '.episode-cards > .history__item--error')).toEqual({ 'border-top-color': 'var(--red)' });
+        expect(order.indexOf('.episode-cards > .history__item--error')).toBeGreaterThan(order.indexOf('.episode-cards > .history__item--watched'));
+        expect(order.indexOf('.episode-cards > .history__item--watched')).toBeGreaterThan(order.indexOf('.episode-cards > .history__item'));
+    });
+
+    it('drops a long name of a card under the seal of the watched instead of squeezing it, and takes the margin off the seal in a card', () => {
+        expect(styleOf(library, '.episode-cards .history__title')).toEqual({ 'flex-wrap': 'wrap', 'row-gap': '6px' });
+        expect(styleOf(library, '.episode-cards .watched-mark')).toEqual({ 'margin-right': '0' });
+    });
+});
+
+describe('the seal of what was watched or read (cyberpunk.css)', () => {
+    const cyberpunk = readStylesheet('cyberpunk.css');
+
+    it('is a solid green pill that is not shrunk, with the ✓ and the word in capitals on the colour of the screen', () => {
+        expect(styleOf(cyberpunk, '.watched-mark')).toEqual({
+            display: 'inline-flex',
+            flex: 'none',
+            'align-items': 'center',
+            'justify-content': 'center',
+            gap: '5px',
+            'min-height': '22px',
+            'margin-right': '8px',
+            padding: '2px 10px 2px 7px',
+            'border-radius': '999px',
+            background: 'var(--green)',
+            color: 'var(--bg)',
+            'box-shadow': 'var(--glow-green)',
+            'font-size': '11px',
+            'font-weight': '800',
+            'letter-spacing': '1px',
+            'line-height': '1',
+            'text-transform': 'uppercase',
+            'white-space': 'nowrap',
+            'vertical-align': 'middle'
+        });
+    });
+
+    it('draws the ✓ bigger than the word', () => {
+        expect(styleOf(cyberpunk, '.watched-mark__check')).toEqual({ 'font-size': '14px', 'font-weight': '900' });
     });
 });
 

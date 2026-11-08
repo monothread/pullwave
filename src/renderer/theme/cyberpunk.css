@@ -503,7 +503,7 @@ body::after {
 .series-menu__section { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
 .series-menu__panel:has(.series-menu__section) { min-width: 260px; }
 /* The panel never goes past the window, whatever is in it (a long name of a group or of a series wraps). */
-.series-menu__panel { box-sizing: border-box; max-width: min(360px, calc(100vw - 32px)); overflow-wrap: anywhere; }
+.series-menu__panel { box-sizing: border-box; max-width: min(360px, calc(100vw / var(--ui-zoom, 1) - 32px)); overflow-wrap: anywhere; }
 .series-menu__panel .manga__tags { min-width: 0; }
 .series-menu__panel .anime-remove { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .series-picker { display: flex; flex-direction: column; gap: 8px; }
@@ -532,21 +532,32 @@ body::after {
     vertical-align: middle;
 }
 
+/* The seal of what was watched or read: a ✓ and the word in a solid pill (WatchedMark). */
 .watched-mark {
     display: inline-flex;
+    flex: none;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    gap: 5px;
+    min-height: 22px;
     margin-right: 8px;
-    border-radius: 50%;
+    padding: 2px 10px 2px 7px;
+    border-radius: 999px;
     background: var(--green);
     color: var(--bg);
     box-shadow: var(--glow-green);
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: 1px;
     line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
     vertical-align: middle;
+}
+
+.watched-mark__check {
+    font-size: 14px;
+    font-weight: 900;
 }
 .history__main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 /* What is beside the title keeps its size, however long the title is. */
@@ -1374,7 +1385,7 @@ body::after {
 .reader__float { position: fixed; right: 24px; bottom: 24px; z-index: 5; display: flex; align-items: center; gap: 10px; }
 .reader__auto { height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .reader__top { width: 44px; height: 44px; padding: 0; font-size: 22px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
-.reader__stage, .reader__scroll { position: relative; display: flex; flex-direction: column; align-items: center; min-height: 40vh; padding: 8px; border: 1px solid var(--line); }
+.reader__stage, .reader__scroll { position: relative; display: flex; flex-direction: column; align-items: center; min-height: calc(40vh / var(--ui-zoom, 1)); padding: 8px; border: 1px solid var(--line); }
 .reader__stage { cursor: pointer; justify-content: center; }
 .reader__scroll { gap: 8px; }
 .reader__scroll--webtoon { gap: 0; padding: 0; }
@@ -1384,22 +1395,31 @@ body::after {
 .reader--white .reader__stage, .reader--white .reader__scroll { background: #fff; }
 .reader__img { display: block; }
 .reader__stage--width .reader__img { width: 100%; height: auto; }
-.reader__stage--height .reader__img { height: calc(100vh - 160px); width: auto; max-width: 100%; object-fit: contain; }
-.reader__stage--screen .reader__img { max-width: 100%; max-height: calc(100vh - 160px); width: auto; height: auto; object-fit: contain; }
+.reader__stage--height .reader__img { height: calc(100vh / var(--ui-zoom, 1) - 160px); width: auto; max-width: 100%; object-fit: contain; }
+.reader__stage--screen .reader__img { max-width: 100%; max-height: calc(100vh / var(--ui-zoom, 1) - 160px); width: auto; height: auto; object-fit: contain; }
 .reader__stage--original .reader__img { max-width: none; width: auto; height: auto; }
 .reader__stage--original { overflow: auto; align-items: flex-start; }
+/* Two pages side by side (the option of the reader, single page mode): the pair is a row as wide as the stage, the first page on the side the
+   reading starts from (the other way round when it goes from the right: a manga). Each page takes half of the row, whatever the scale; a page
+   that is alone (a wide one, or the last) is like the pages of the single page mode. */
+.reader__spread { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; }
+.reader__spread[data-direction='rtl'] { flex-direction: row-reverse; }
+.reader__spread--pair .reader__img { min-width: 0; }
+.reader__spread--pair .reader__slot--pending { flex: 1 1 0; width: auto; min-width: 0; }
+.reader__stage--width .reader__spread--pair .reader__img { width: calc(50% - 2px); max-width: none; }
+.reader__stage--height .reader__spread--pair .reader__img, .reader__stage--screen .reader__spread--pair .reader__img { max-width: calc(50% - 2px); }
 .reader__failed { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; }
 /* A page whose picture is still on its way holds its place with a block, and the picture waits beside it (it still loads, but takes no room). */
 /* The slot of a page: while its picture is on its way it is the box of the page (the picture waits inside it, so a picture loaded lazily starts when
    the page comes near); once it arrives the slot leaves no box and the picture is a page of the flow. */
 .reader__slot { display: contents; }
 .reader__slot--pending { position: relative; display: block; width: 100%; }
-.reader__loading-page { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 70vh; box-sizing: border-box; padding: 24px; color: var(--muted); letter-spacing: 2px; background: var(--line); }
+.reader__loading-page { display: flex; align-items: center; justify-content: center; width: 100%; min-height: calc(70vh / var(--ui-zoom, 1)); box-sizing: border-box; padding: 24px; color: var(--muted); letter-spacing: 2px; background: var(--line); }
 /* Stronger than the sizes of the scales (.reader__stage--width .reader__img and the others): a picture on its way at its full size, out of the
    flow, made the page scroll for a moment. */
 .reader__img.reader__img--pending { position: absolute; top: 0; left: 0; width: 1px; height: 1px; max-width: 1px; max-height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 /* The chapter is opening: the pages are not known yet, the block holds the place of the reading. */
-.reader__chapter-loading { justify-content: center; min-height: 70vh; color: var(--muted); letter-spacing: 2px; cursor: default; }
+.reader__chapter-loading { justify-content: center; min-height: calc(70vh / var(--ui-zoom, 1)); color: var(--muted); letter-spacing: 2px; cursor: default; }
 
 /* The options of a group of filters, picked by typing: a field with a list of what matches, and what was picked as chips. */
 .manga__picker { position: relative; }

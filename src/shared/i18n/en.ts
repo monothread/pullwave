@@ -1052,6 +1052,8 @@ export const en = {
     'manga.reader.zone.goPrevious': 'GO TO THE PREVIOUS CHAPTER',
     'manga.reader.chapterSwitch': 'Switch chapter while scrolling',
     'manga.reader.chapterSwitchHint': 'In the scroll modes, going through the zone at the end (or the start) of the chapter opens the next (or previous) one. Off: only the button in the zone does.',
+    'manga.reader.twoPages': 'Two pages side by side',
+    'manga.reader.twoPagesHint': 'In the single page mode, shows two pages at a time (1 and 2, 3 and 4, and so on). The direction decides which one is on the left.',
     'manga.reader.autoScroll': 'AUTO SCROLL',
     'manga.reader.autoScrollStop': 'STOP SCROLL',
     'manga.reader.autoScrollOnlyScroll': 'Auto scroll works in the vertical scroll and webtoon modes.',

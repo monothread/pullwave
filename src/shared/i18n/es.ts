@@ -1036,6 +1036,8 @@ export const es: Messages = {
     'manga.reader.zone.goPrevious': 'IR AL CAPÍTULO ANTERIOR',
     'manga.reader.chapterSwitch': 'Cambiar de capítulo al desplazarse',
     'manga.reader.chapterSwitchHint': 'En los modos de desplazamiento, atravesar la zona del final (o del principio) del capítulo abre el siguiente (o el anterior). Desactivado: solo lo hace el botón de la zona.',
+    'manga.reader.twoPages': 'Dos páginas lado a lado',
+    'manga.reader.twoPagesHint': 'En el modo de una página, muestra dos páginas a la vez (1 y 2, 3 y 4, y así sucesivamente). La dirección decide cuál queda a la izquierda.',
     'manga.reader.autoScroll': 'DESPLAZAMIENTO AUTOMÁTICO',
     'manga.reader.autoScrollStop': 'DETENER DESPLAZAMIENTO',
     'manga.reader.autoScrollOnlyScroll': 'El desplazamiento automático funciona en los modos de desplazamiento vertical y webtoon.',

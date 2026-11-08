@@ -948,6 +948,73 @@ test.describe('manga section', () => {
         await expect(session.page.getByRole('region', { name: 'Reader' }).getByRole('img')).toHaveCount(3);
     });
 
+    test('shows two pages side by side when the option is on, the first on the side the direction says, and turns two at a time', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await expect(reader.getByTestId('reader-spread')).toHaveCount(0);
+
+        // Off by default; the switch is in the settings and puts the first two pages in a row.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByRole('switch', { name: 'Two pages side by side' })).not.toBeChecked();
+        await reader.getByRole('switch', { name: 'Two pages side by side' }).check();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+        const spread = reader.getByTestId('reader-spread');
+        await expect(spread).toHaveClass(/reader__spread--pair/);
+        await expect(spread).toHaveAttribute('data-direction', 'ltr');
+        await expect(reader.getByText('1–2 / 3')).toBeVisible();
+        const pictures = spread.getByRole('img');
+        await expect(pictures).toHaveCount(2);
+        await expect(pictures.nth(0)).toHaveAttribute('src', `${fake.url}/api/v1/chapter/101/page/0`);
+        await expect(pictures.nth(1)).toHaveAttribute('src', `${fake.url}/api/v1/chapter/101/page/1`);
+        await expect.poll(() => {
+            return pictures.evaluateAll((images) => {
+                return images.every((image) => {
+                    return (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0;
+                });
+            });
+        }).toBe(true);
+        const lefts = async (): Promise<number[]> => {
+            return pictures.evaluateAll((images) => {
+                return images.map((image) => {
+                    return image.getBoundingClientRect().left;
+                });
+            });
+        };
+        const [firstLeft = 0, secondLeft = 0] = await lefts();
+        expect(firstLeft).toBeLessThan(secondLeft);
+
+        // From the right the first page is on the right.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading direction').selectOption('rtl');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+        await expect(spread).toHaveAttribute('data-direction', 'rtl');
+        await expect(pictures.nth(0)).toHaveAttribute('src', `${fake.url}/api/v1/chapter/101/page/0`);
+        const [rtlFirstLeft = 0, rtlSecondLeft = 0] = await lefts();
+        expect(rtlFirstLeft).toBeGreaterThan(rtlSecondLeft);
+
+        // The key of the reading turns two pages at a time: the third page is alone, the chapter has three.
+        await session.page.keyboard.press('ArrowLeft');
+        await expect(reader.getByText('3 / 3')).toBeVisible();
+        await expect(spread).toHaveClass(/reader__spread--single/);
+        await expect(spread.getByRole('img')).toHaveCount(1);
+        await expect(spread.getByRole('img')).toHaveAttribute('src', `${fake.url}/api/v1/chapter/101/page/2`);
+        await session.page.keyboard.press('ArrowRight');
+        await expect(reader.getByText('1–2 / 3')).toBeVisible();
+
+        // It is remembered: opened again, the pages are still in a row.
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        await expect(session.page.getByRole('region', { name: 'Reader' }).getByTestId('reader-spread')).toHaveAttribute('data-direction', 'rtl');
+        await expect(session.page.getByRole('region', { name: 'Reader' }).getByRole('img')).toHaveCount(2);
+    });
+
     test('shows the progress of the chapter, lets the user jump to a chapter and tries again only the page that failed', async () => {
         fake.pagesArePicture = true;
         fake.failTimes.set('/api/v1/chapter/101/page/1', 2);
@@ -2177,7 +2244,7 @@ test.describe('manga section', () => {
         await expect(reader.getByText('3 / 3')).toBeVisible();
         await session.page.keyboard.press('Escape');
         const great = session.page.getByTestId('manga-chapter').filter({ hasText: 'The Great Race' });
-        await expect(great.getByRole('img', { name: 'Read' })).toHaveText('✓');
+        await expect(great.getByRole('img', { name: 'Read' })).toHaveText('✓Read');
         await expect(great).toHaveClass(/history__item--watched/);
         await expect(great.getByRole('button', { name: 'Mark as not read: The Great Race' })).toHaveAttribute('aria-pressed', 'true');
 
@@ -2416,7 +2483,7 @@ test.describe('manga section', () => {
         await expect(reader).toHaveCount(0);
     });
 
-    test('does not go in fullscreen with a double click one page at a time, where a click turns the page', async () => {
+    test('puts the reader in fullscreen with a double click in the strip in the middle, one page at a time, and not on the sides, where a click turns the page', async () => {
         fake.pagesArePicture = true;
         session = await launch();
         await openManga(session.page);
@@ -2424,12 +2491,124 @@ test.describe('manga section', () => {
         await openOnePieceInLibrary(session.page);
         await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
         const reader = session.page.getByRole('region', { name: 'Reader' });
-        await expect(reader.getByTestId('reader-stage')).toBeVisible();
-        await reader.getByTestId('reader-stage').dblclick();
+        const stage = reader.getByTestId('reader-stage');
+        await expect(stage).toBeVisible();
+        const fullscreenOf = async (): Promise<string | null> => {
+            return session.page.evaluate(() => {
+                return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+            });
+        };
+        const box = (await stage.boundingBox()) as { width: number; height: number };
+        // On a side a double click is two clicks that turn the page: no fullscreen.
+        await stage.dblclick({ position: { x: box.width * 0.05, y: 60 } });
         await session.page.waitForTimeout(500);
-        expect(await session.page.evaluate(() => {
-            return document.fullscreenElement;
-        })).toBeNull();
+        expect(await fullscreenOf()).toBeNull();
+        // In the middle a click turns nothing, and the double click puts the reader in fullscreen.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading direction').selectOption('ltr');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        const before = await reader.locator('.reader__page').textContent();
+        await stage.click({ position: { x: box.width * 0.5, y: 60 } });
+        await expect(reader.locator('.reader__page')).toHaveText(before ?? '');
+        await stage.dblclick({ position: { x: box.width * 0.5, y: 60 } });
+        await expect.poll(fullscreenOf).toContain('app__main');
+        await stage.dblclick({ position: { x: box.width * 0.5, y: 60 } });
+        await expect.poll(fullscreenOf).toBeNull();
+        await expect(reader).toBeVisible();
+    });
+
+    test('turns two pages only in the corners, and the strip in the middle puts the reader in fullscreen', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByRole('switch', { name: 'Two pages side by side' }).check();
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        const stage = reader.getByTestId('reader-stage');
+        await expect(reader.getByText('1–2 / 3')).toBeVisible();
+        const box = (await stage.boundingBox()) as { width: number };
+        // A click on the pages, between the corners and the middle, turns nothing.
+        await stage.click({ position: { x: box.width * 0.32, y: 80 } });
+        await stage.click({ position: { x: box.width * 0.68, y: 80 } });
+        await expect(reader.getByText('1–2 / 3')).toBeVisible();
+        // The right corner goes forward (the pages go from the left), the left corner back.
+        await stage.click({ position: { x: box.width * 0.95, y: 80 } });
+        await expect(reader.getByText('3 / 3')).toBeVisible();
+        await stage.click({ position: { x: box.width * 0.05, y: 80 } });
+        await expect(reader.getByText('1–2 / 3')).toBeVisible();
+        // The double click in the middle strip.
+        await stage.dblclick({ position: { x: box.width * 0.5, y: 80 } });
+        await expect.poll(() => {
+            return session.page.evaluate(() => {
+                return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+            });
+        }).toContain('app__main');
+        await expect(reader.getByText('1–2 / 3')).toBeVisible();
+    });
+
+    test('closes the settings of the reader with a click outside them, and that click does nothing else', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const stage = reader.getByTestId('reader-stage');
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        const box = (await stage.boundingBox()) as { width: number; height: number };
+        // Down the page: the panel of the settings covers the top of it and the button of the auto scroll floats at the bottom.
+        const low = box.height * 0.6;
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByLabel('Reading mode')).toBeVisible();
+        // A click inside keeps them open.
+        await reader.getByLabel('Background').selectOption('gray');
+        await expect(reader.getByLabel('Reading mode')).toBeVisible();
+        // A click on the right side of the page, outside, closes them and does not turn the page.
+        await stage.click({ position: { x: box.width * 0.95, y: low } });
+        await expect(reader.getByLabel('Reading mode')).toHaveCount(0);
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await stage.click({ position: { x: box.width * 0.95, y: low } });
+        await expect(reader.getByText('2 / 3')).toBeVisible();
+        // The gear and Escape close them, and Escape does not close the reader.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await session.page.keyboard.press('Escape');
+        await expect(reader.getByLabel('Reading mode')).toHaveCount(0);
+        await expect(reader).toBeVisible();
+    });
+
+    test('keeps what was set for each manga: a manga in the webtoon mode stays so after the reader is opened for the same manga again', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await expect(reader.getByTestId('reader-scroll')).toBeVisible();
+        const stored = await session.page.evaluate(() => {
+            return JSON.parse(window.localStorage.getItem('pullwave.manga.readerByManga') ?? '{}') as Record<string, { mode: string }>;
+        });
+        expect(Object.keys(stored)).toEqual(['One Piece']);
+        expect(stored['One Piece']?.mode).toBe('webtoon');
+        // Another manga is set to one page at a time (its own key), and One Piece is still read as a webtoon.
+        await session.page.evaluate(() => {
+            const all = JSON.parse(window.localStorage.getItem('pullwave.manga.readerByManga') ?? '{}') as Record<string, unknown>;
+            all['Naruto'] = { mode: 'single' };
+            window.localStorage.setItem('pullwave.manga.readerByManga', JSON.stringify(all));
+        });
+        await session.page.keyboard.press('Escape');
+        await expect(reader).toHaveCount(0);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        await expect(session.page.getByRole('region', { name: 'Reader' }).getByTestId('reader-scroll')).toBeVisible();
+        await expect(session.page.getByRole('region', { name: 'Reader' }).getByTestId('reader-stage')).toHaveCount(0);
     });
 
     test('keeps the bar of the reader flush with the top of the page while the chapter is scrolled, so nothing of the pages shows above it', async () => {

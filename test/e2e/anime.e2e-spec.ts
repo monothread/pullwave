@@ -2155,7 +2155,7 @@ test.describe('layout for every size of window @resize', () => {
         await expect(page.getByTestId('anime-job')).toHaveCount(3);
     }
 
-    // How the page is laid out at a size: the scale of the interface (never changed), the widest the content may be (--app-max), the width of
+    // How the page is laid out at a size: the magnification of the interface (a fifth on an ultrawide screen with 1440 lines or more), the widest the content may be (--app-max), the width of
     // the header (the content, in the middle), the width of the part that scrolls (the whole window, so the wheel works on the sides too) and
     // the columns of a list.
     async function layout(
@@ -2188,36 +2188,39 @@ test.describe('layout for every size of window @resize', () => {
         expect([width, height]).toEqual([480, 520]);
     });
 
-    test('grows the page with the window up to a 1920x1080 screen, and keeps it there on a bigger one', async () => {
+    test('grows the page with the window: 1400 px up to a 1920x1080 screen, 2400 px on an ultrawide one, magnified a fifth from 1440 lines', async () => {
         const { page } = session;
         await threeDownloads(page);
 
         // The page is beside the rail of the menu (84 pixels): the part that scrolls is the rest of the window. Its sides are the gutter of
-        // responsive.css (20 pixels, or what centres --app-max) and 4 more, and its scrollbar takes its own room.
-        const sizes: Array<[number, number, string, number]> = [
-            [1100, 780, '1000px', 1],
-            [1366, 768, '1240px', 2],
-            [1920, 1080, '1400px', 2],
-            // Bigger screens are not a target: the content stops growing.
-            [2560, 1440, '1400px', 2],
-            [3440, 1440, '1400px', 2]
+        // responsive.css (20 pixels, or what centres --app-max) and 4 more, and its scrollbar takes its own room. Measures come in screen
+        // pixels, so under the magnification of the interface they are divided by it to be the pixels of the page.
+        const sizes: Array<[number, number, string, number, number]> = [
+            [1100, 780, '1000px', 1, 1],
+            [1366, 768, '1240px', 2, 1],
+            [1920, 1080, '1400px', 2, 1],
+            // An ultrawide screen as tall as a 1080p one: the page grows to 2400 px, three columns, and the interface is not magnified.
+            [2560, 1080, '2400px', 3, 1],
+            // 1440 lines tall: the interface is magnified a fifth.
+            [2560, 1440, '2400px', 3, 1.2],
+            [3440, 1440, '2400px', 3, 1.2]
         ];
-        for (const [width, height, appMax, columns] of sizes) {
+        for (const [width, height, appMax, columns, zoom] of sizes) {
             const measured = await layout(page, width, height);
-            const area = width - 84;
+            const area = width / zoom - 84;
             const gutter = Math.max(20, (area - parseInt(appMax, 10)) / 2 + 20);
-            expect(measured).toMatchObject({ zoom: '1', appMax, columns, railWidth: 84 });
-            expect(measured.scrollerWidth).toBe(area);
-            expect(Math.abs(measured.contentWidth - (area - 2 * (gutter + 4) - measured.scrollbar))).toBeLessThanOrEqual(1);
+            expect(measured).toMatchObject({ zoom: String(zoom), appMax, columns, railWidth: Math.round(84 * zoom), overflow: false });
+            expect(Math.abs(measured.scrollerWidth / zoom - area)).toBeLessThanOrEqual(1);
+            expect(Math.abs(measured.contentWidth / zoom - (area - 2 * (gutter + 4) - measured.scrollbar / zoom))).toBeLessThanOrEqual(1);
             // Never wider than --app-max less its sides, however big the window.
-            expect(measured.contentWidth).toBeLessThanOrEqual(parseInt(appMax, 10) - 48);
+            expect(measured.contentWidth / zoom).toBeLessThanOrEqual(parseInt(appMax, 10) - 48 + 1);
         }
     });
 
     test('never needs to scroll sideways, from the smallest window up', async () => {
         const { page } = session;
         await threeDownloads(page);
-        for (const [width, height] of [[480, 800], [600, 800], [768, 1024], [1024, 768], [1366, 768], [1920, 1080]]) {
+        for (const [width, height] of [[480, 800], [600, 800], [768, 1024], [1024, 768], [1080, 1850], [1366, 768], [1920, 1080], [2560, 1080], [3440, 1440]]) {
             expect(await layout(page, width as number, height as number)).toMatchObject({ overflow: false });
         }
     });

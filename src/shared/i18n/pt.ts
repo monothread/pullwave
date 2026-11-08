@@ -1036,6 +1036,8 @@ export const pt: Messages = {
     'manga.reader.zone.goPrevious': 'IR PARA O CAPÍTULO ANTERIOR',
     'manga.reader.chapterSwitch': 'Trocar de capítulo ao rolar',
     'manga.reader.chapterSwitchHint': 'Nos modos de rolagem, atravessar a zona do fim (ou do começo) do capítulo abre o próximo (ou o anterior). Desligado: só o botão da zona faz isso.',
+    'manga.reader.twoPages': 'Duas páginas lado a lado',
+    'manga.reader.twoPagesHint': 'No modo de página única, mostra duas páginas por vez (1 e 2, 3 e 4, e assim por diante). A direção decide qual fica à esquerda.',
     'manga.reader.autoScroll': 'ROLAGEM AUTOMÁTICA',
     'manga.reader.autoScrollStop': 'PARAR ROLAGEM',
     'manga.reader.autoScrollOnlyScroll': 'A rolagem automática funciona nos modos de rolagem vertical e webtoon.',

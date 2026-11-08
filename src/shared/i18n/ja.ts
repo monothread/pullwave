@@ -1031,6 +1031,8 @@ export const ja: Messages = {
     'manga.reader.zone.goPrevious': '前の章へ',
     'manga.reader.chapterSwitch': 'スクロールで章を切り替える',
     'manga.reader.chapterSwitchHint': 'スクロールモードでは、章の終わり（または始まり）のゾーンを通過すると次（または前）の章が開きます。オフ：ゾーンのボタンだけで切り替わります。',
+    'manga.reader.twoPages': '見開き（2ページ並べて表示）',
+    'manga.reader.twoPagesHint': '1ページ表示モードで、2ページずつ表示します（1と2、3と4…）。読む方向で左に置くページが決まります。',
     'manga.reader.autoScroll': '自動スクロール',
     'manga.reader.autoScrollStop': 'スクロール停止',
     'manga.reader.autoScrollOnlyScroll': '自動スクロールは縦スクロールとウェブトゥーンのモードで使えます。',

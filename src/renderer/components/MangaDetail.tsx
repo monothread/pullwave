@@ -19,6 +19,7 @@ import { SETTINGS_ICON } from './TabButton';
 import { canDownload, compareChaptersAscending, withLibraryChapters, chapterState, chapterStatusKey, continueIndex, downloadablePicks, isNewChapter, isCloudflareError, libraryEntriesByTitle, libraryEntry, mangaErrorReport, mangaStatusKey, otherSourceNames, sourceIsMissing } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { ErrorNotice } from './ErrorNotice';
+import { WatchedMark } from './WatchedMark';
 
 function chapterLabel(name: string, number: number | null): string {
     if (name.length > 0) {
@@ -545,11 +546,7 @@ export function MangaDetail() {
                                 <li key={chapter.remoteId} className={`history__item row--link${read ? ' history__item--watched' : ''}`} data-testid="manga-chapter">
                                     <div className="history__main">
                                         <span className="history__title">
-                                            {read && (
-                                                <span className="watched-mark" role="img" aria-label={t('manga.detail.read')} title={t('manga.detail.read')}>
-                                                    ✓
-                                                </span>
-                                            )}
+                                            {read && <WatchedMark label={t('manga.detail.read')} />}
                                             <RowLink label={`${t('manga.reader.read')}: ${label}`} title={label} onClick={open}>
                                                 {label}
                                             </RowLink>

@@ -55,3 +55,39 @@ describe('the reader in fullscreen', () => {
         expect(styleOf(cyberpunk, '.app__main:fullscreen')).toEqual({ background: 'var(--bg)' });
     });
 });
+
+describe('two pages side by side in the reader', () => {
+    it('lays the pair out as a row as wide as the stage, the pages in the middle and four pixels apart', () => {
+        expect(styleOf(cyberpunk, '.reader__spread')).toEqual({ display: 'flex', 'align-items': 'center', 'justify-content': 'center', gap: '4px', width: '100%' });
+    });
+
+    it('reverses the row when the reading goes from the right, so the first page is on the right', () => {
+        expect(styleOf(cyberpunk, ".reader__spread[data-direction='rtl']")).toEqual({ 'flex-direction': 'row-reverse' });
+    });
+
+    it('lets the pages of a pair shrink to half of the row, and their blocks of loading too', () => {
+        expect(styleOf(cyberpunk, '.reader__spread--pair .reader__img')).toEqual({ 'min-width': '0' });
+        expect(styleOf(cyberpunk, '.reader__spread--pair .reader__slot--pending')).toEqual({ flex: '1 1 0', width: 'auto', 'min-width': '0' });
+    });
+
+    it('gives each page of a pair half of the row, less its half of the gap, in the scale that fits the width, the height and the screen', () => {
+        expect(styleOf(cyberpunk, '.reader__stage--width .reader__spread--pair .reader__img')).toEqual({ width: 'calc(50% - 2px)', 'max-width': 'none' });
+        expect(styleOf(cyberpunk, '.reader__stage--height .reader__spread--pair .reader__img')).toEqual({ 'max-width': 'calc(50% - 2px)' });
+        expect(styleOf(cyberpunk, '.reader__stage--screen .reader__spread--pair .reader__img')).toEqual({ 'max-width': 'calc(50% - 2px)' });
+    });
+
+    it('has no rule for the page that is alone: it is like the page of the single page mode', () => {
+        const rules = cyberpunk.rules.filter((rule) => {
+            return rule.selector.includes('reader__spread--single');
+        });
+        expect(rules).toEqual([]);
+    });
+
+    it('has rules stronger than the ones of the scales, and after them', () => {
+        const order = cyberpunk.rules.map((rule) => {
+            return rule.selector;
+        });
+        expect(order.indexOf('.reader__stage--width .reader__spread--pair .reader__img')).toBeGreaterThan(order.indexOf('.reader__stage--width .reader__img'));
+        expect(order.indexOf('.reader__stage--height .reader__spread--pair .reader__img')).toBeGreaterThan(order.indexOf('.reader__stage--height .reader__img'));
+    });
+});

@@ -16,6 +16,7 @@ import {
     saveReadKeys,
     loadReaderPrefs,
     MAX_REMEMBERED_CHAPTERS,
+    PREFS_BY_MANGA_KEY,
     PREFS_KEY,
     PROGRESS_KEY,
     progressKey,
@@ -29,19 +30,33 @@ beforeEach(() => {
 
 describe('reader preferences', () => {
     it('start from the defaults', () => {
-        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
-        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        expect(loadReaderPrefs()).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
+        expect(DEFAULT_READER_PREFS).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
     });
 
     it('are kept and read back', () => {
-        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0, chapterSwitch: false });
-        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black","autoScrollSpeed":150,"pageGap":0,"chapterSwitch":false}');
-        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0, chapterSwitch: false });
+        saveReaderPrefs({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0, chapterSwitch: false, twoPages: true });
+        expect(window.localStorage.getItem(PREFS_KEY)).toBe('{"mode":"webtoon","direction":"rtl","scale":"width","background":"black","autoScrollSpeed":150,"pageGap":0,"chapterSwitch":false,"twoPages":true}');
+        expect(loadReaderPrefs()).toEqual({ mode: 'webtoon', direction: 'rtl', scale: 'width', background: 'black', autoScrollSpeed: 150, pageGap: 0, chapterSwitch: false, twoPages: true });
+    });
+
+    it('have two pages side by side off by default, and keep it as it was saved', () => {
+        expect(DEFAULT_READER_PREFS.twoPages).toBe(false);
+        expect(loadReaderPrefs().twoPages).toBe(false);
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ twoPages: true }));
+        expect(loadReaderPrefs().twoPages).toBe(true);
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ twoPages: false }));
+        expect(loadReaderPrefs().twoPages).toBe(false);
+    });
+
+    it.each([['true'], [1], [null], [undefined], [{}]])('fall back to two pages off for %j', (stored) => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ twoPages: stored }));
+        expect(loadReaderPrefs().twoPages).toBe(false);
     });
 
     it('fall back to the default for each value that is not valid', () => {
         window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'vertical', direction: 'up', scale: 5, background: null, autoScrollSpeed: 'fast', pageGap: 'wide' }));
-        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        expect(loadReaderPrefs()).toEqual({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
     });
 
     it.each([
@@ -328,3 +343,90 @@ describe('the chapter and the page each manga was last read on', () => {
     });
 });
 
+describe('reader preferences of each manga', () => {
+    const webtoon = { ...DEFAULT_READER_PREFS, mode: 'webtoon' as const, direction: 'rtl' as const, twoPages: true };
+    const single = { ...DEFAULT_READER_PREFS, mode: 'single' as const, background: 'black' as const };
+
+    it('are the ones chosen last for a manga that has none, and the defaults when nothing was ever chosen', () => {
+        expect(loadReaderPrefs('One Piece')).toEqual(DEFAULT_READER_PREFS);
+        saveReaderPrefs(webtoon);
+        expect(loadReaderPrefs('One Piece')).toEqual(webtoon);
+        expect(loadReaderPrefs()).toEqual(webtoon);
+    });
+
+    it('are kept for the manga and as the ones chosen last, in two keys of the storage', () => {
+        saveReaderPrefs(webtoon, 'One Piece');
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual(webtoon);
+        expect(JSON.parse(window.localStorage.getItem(PREFS_BY_MANGA_KEY) ?? '{}')).toEqual({ 'One Piece': webtoon });
+        expect(loadReaderPrefs('One Piece')).toEqual(webtoon);
+    });
+
+    it('stay with each manga whatever another one is set to', () => {
+        saveReaderPrefs(webtoon, 'One Piece');
+        saveReaderPrefs(single, 'Naruto');
+        expect(loadReaderPrefs('One Piece')).toEqual(webtoon);
+        expect(loadReaderPrefs('Naruto')).toEqual(single);
+        expect(loadReaderPrefs('Bleach')).toEqual(single);
+        expect(loadReaderPrefs()).toEqual(single);
+    });
+
+    it('are changed for the manga that is set again, and only for it', () => {
+        saveReaderPrefs(webtoon, 'One Piece');
+        saveReaderPrefs(single, 'Naruto');
+        saveReaderPrefs({ ...webtoon, mode: 'vertical' }, 'One Piece');
+        expect(loadReaderPrefs('One Piece').mode).toBe('vertical');
+        expect(loadReaderPrefs('Naruto')).toEqual(single);
+    });
+
+    it('are not touched by what is saved with no manga', () => {
+        saveReaderPrefs(webtoon, 'One Piece');
+        saveReaderPrefs(single);
+        expect(loadReaderPrefs('One Piece')).toEqual(webtoon);
+        expect(loadReaderPrefs('Other')).toEqual(single);
+        expect(JSON.parse(window.localStorage.getItem(PREFS_BY_MANGA_KEY) ?? '{}')).toEqual({ 'One Piece': webtoon });
+    });
+
+    it('fall back to the default for each value of a manga that is not valid', () => {
+        window.localStorage.setItem(PREFS_BY_MANGA_KEY, JSON.stringify({ 'One Piece': { mode: 'sideways', direction: 'rtl', scale: 9, twoPages: 'yes', pageGap: 400 } }));
+        expect(loadReaderPrefs('One Piece')).toEqual({ ...DEFAULT_READER_PREFS, direction: 'rtl', pageGap: 100 });
+    });
+
+    it.each([['not json'], ['null'], ['[1,2]'], ['5'], ['{"One Piece":"webtoon"}'], ['{"One Piece":null}'], ['{"One Piece":[1]}']])('read the shared ones when the storage of the mangas holds %s', (stored) => {
+        saveReaderPrefs(webtoon);
+        window.localStorage.setItem(PREFS_BY_MANGA_KEY, stored);
+        expect(loadReaderPrefs('One Piece')).toEqual(webtoon);
+    });
+
+    it('keep the last mangas set, and let the oldest go when there are too many', () => {
+        for (let index = 0; index < MAX_REMEMBERED_MANGAS + 3; index += 1) {
+            saveReaderPrefs({ ...single, autoScrollSpeed: 10 + index }, `Manga ${String(index)}`);
+        }
+        const kept = JSON.parse(window.localStorage.getItem(PREFS_BY_MANGA_KEY) ?? '{}') as Record<string, unknown>;
+        expect(Object.keys(kept)).toHaveLength(MAX_REMEMBERED_MANGAS);
+        expect(kept['Manga 0']).toBeUndefined();
+        expect(kept['Manga 2']).toBeUndefined();
+        expect(kept['Manga 3']).toBeDefined();
+        expect(kept[`Manga ${String(MAX_REMEMBERED_MANGAS + 2)}`]).toBeDefined();
+    });
+
+    it('put a manga that is set again at the end, so it is the last to go', () => {
+        saveReaderPrefs(single, 'First');
+        saveReaderPrefs(single, 'Second');
+        saveReaderPrefs(webtoon, 'First');
+        expect(Object.keys(JSON.parse(window.localStorage.getItem(PREFS_BY_MANGA_KEY) ?? '{}') as Record<string, unknown>)).toEqual(['Second', 'First']);
+    });
+
+    it('are not kept, with no error, when the storage refuses', () => {
+        const refuse = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('full');
+        });
+        try {
+            expect(() => {
+                saveReaderPrefs(webtoon, 'One Piece');
+            }).not.toThrow();
+        } finally {
+            refuse.mockRestore();
+        }
+        expect(loadReaderPrefs('One Piece')).toEqual(DEFAULT_READER_PREFS);
+    });
+});

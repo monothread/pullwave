@@ -125,7 +125,7 @@ describe('MangaReader single page', () => {
         expect(shownPage()).toBe(PAGES[0]);
     });
 
-    it('moves by the click on the half of the page, by the direction', async () => {
+    it('moves by the click on the sides of the page, by the direction', async () => {
         const user = userEvent.setup();
         open();
         render(<MangaReader />);
@@ -139,6 +139,7 @@ describe('MangaReader single page', () => {
         expect(shownPage()).toBe(PAGES[0]);
         await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
         await user.selectOptions(screen.getByLabelText('Reading direction'), 'rtl');
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
         fireEvent.click(stage, { clientX: 50 });
         expect(shownPage()).toBe(PAGES[1]);
         fireEvent.click(stage, { clientX: 150 });
@@ -524,6 +525,256 @@ describe('MangaReader a downloaded chapter that lacks pages', () => {
     });
 });
 
+const SIX_PAGES = [0, 1, 2, 3, 4, 5].map((index) => {
+    return `http://127.0.0.1:4321/p/${String(index)}`;
+});
+const FIVE_PAGES = SIX_PAGES.slice(0, 5);
+
+function twoPagesOn(patch: Partial<ReturnType<typeof loadReaderPrefs>> = {}): void {
+    saveReaderPrefs({ ...loadReaderPrefs(), twoPages: true, ...patch });
+}
+
+function shownPages(): Array<string | null> {
+    return screen.getAllByRole('img').map((image) => {
+        return image.getAttribute('src');
+    });
+}
+
+function loadWith(image: HTMLElement, width: number, height: number): void {
+    Object.defineProperty(image, 'naturalWidth', { value: width, configurable: true });
+    Object.defineProperty(image, 'naturalHeight', { value: height, configurable: true });
+    fireEvent.load(image);
+}
+
+// The stage of the reader with a box of 200 pixels, so a clientX is its place in percent (twice).
+function stageOf200(): HTMLElement {
+    const stage = screen.getByTestId('reader-stage');
+    stage.getBoundingClientRect = () => {
+        return { left: 0, width: 200, top: 0, right: 200, bottom: 100, height: 100, x: 0, y: 0, toJSON: () => {return undefined} };
+    };
+    return stage;
+}
+
+describe('MangaReader two pages side by side', () => {
+    it('is off by default: one page at a time, with no row of pages', () => {
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        expect(screen.queryByTestId('reader-spread')).not.toBeInTheDocument();
+        expect(shownPages()).toEqual([SIX_PAGES[0]]);
+        expect(screen.getByText('1 / 6')).toBeInTheDocument();
+    });
+
+    it('is a switch of the settings, off at first, with its hint, kept as it is chosen', async () => {
+        const user = userEvent.setup();
+        open({ pages: SIX_PAGES });
+        const { unmount } = render(<MangaReader />);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        const toggle = screen.getByRole('switch', { name: 'Two pages side by side' });
+        expect(toggle).not.toBeChecked();
+        expect(screen.getByText('In the single page mode, shows two pages at a time (1 and 2, 3 and 4, and so on). The direction decides which one is on the left.')).toBeInTheDocument();
+        await user.click(toggle);
+        expect(toggle).toBeChecked();
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: true });
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+        unmount();
+        render(<MangaReader />);
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.click(screen.getByRole('switch', { name: 'Two pages side by side' }));
+        expect(screen.getAllByRole('img')).toHaveLength(1);
+        expect(screen.queryByTestId('reader-spread')).not.toBeInTheDocument();
+    });
+
+    it('shows the first two pages in a row, the cover with its pair, and says both in the bar and in the progress', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        const row = screen.getByTestId('reader-spread');
+        expect(row).toHaveClass('reader__spread', 'reader__spread--pair');
+        expect(row).toHaveAttribute('data-direction', 'ltr');
+        expect(within(row).getAllByRole('img').map((image) => { return image.getAttribute('src'); })).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+        expect(within(row).getByRole('img', { name: 'Page 1' })).toBeInTheDocument();
+        expect(within(row).getByRole('img', { name: 'Page 2' })).toBeInTheDocument();
+        expect(screen.getByText('1–2 / 6')).toBeInTheDocument();
+        expect(screen.getByRole('progressbar', { name: 'Reading progress' })).toHaveAttribute('aria-valuenow', '33');
+        expect(screen.getByTestId('reader-stage')).toContainElement(row);
+    });
+
+    it('puts the direction of the reading in the row, so the first page is on the right when it goes from the right', () => {
+        twoPagesOn({ direction: 'rtl' });
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        expect(screen.getByTestId('reader-spread')).toHaveAttribute('data-direction', 'rtl');
+        expect(screen.getByTestId('reader-stage')).toHaveAttribute('data-direction', 'rtl');
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+    });
+
+    it('turns two pages at a time with the keys', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(shownPages()).toEqual([SIX_PAGES[2], SIX_PAGES[3]]);
+        expect(screen.getByText('3–4 / 6')).toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'ArrowDown' });
+        expect(shownPages()).toEqual([SIX_PAGES[4], SIX_PAGES[5]]);
+        expect(screen.getByText('5–6 / 6')).toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        expect(shownPages()).toEqual([SIX_PAGES[2], SIX_PAGES[3]]);
+        fireEvent.keyDown(window, { key: 'PageUp' });
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(shownPages()).toEqual([SIX_PAGES[2], SIX_PAGES[3]]);
+        fireEvent.keyDown(window, { key: ' ', shiftKey: true });
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+    });
+
+    it('goes to the previous chapter before the first pair', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 1, libraryChapterId: null });
+    });
+
+    it('goes to the next chapter past the last pair', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'End' });
+        expect(shownPages()).toEqual([SIX_PAGES[4], SIX_PAGES[5]]);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(mock.api.manga.readPages).toHaveBeenLastCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+    });
+
+    it('goes to the first view with Home and to the last one with End', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'End' });
+        expect(shownPages()).toEqual([SIX_PAGES[4], SIX_PAGES[5]]);
+        fireEvent.keyDown(window, { key: 'Home' });
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+    });
+
+    it('turns by the click in the corners of the stage, by the direction, and not on the pages in between', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        const stage = stageOf200();
+        fireEvent.click(stage, { clientX: 190 });
+        expect(shownPages()).toEqual([SIX_PAGES[2], SIX_PAGES[3]]);
+        fireEvent.click(stage, { clientX: 10 });
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+        [60, 100, 140].forEach((clientX) => {
+            fireEvent.click(stage, { clientX });
+            expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+        });
+    });
+
+    it('turns the other way in the corners when the reading goes from the right', () => {
+        twoPagesOn({ direction: 'rtl' });
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        const stage = stageOf200();
+        fireEvent.click(stage, { clientX: 10 });
+        expect(shownPages()).toEqual([SIX_PAGES[2], SIX_PAGES[3]]);
+        fireEvent.click(stage, { clientX: 190 });
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+    });
+
+    it('leaves the last page alone when the chapter has an odd number of pages', () => {
+        twoPagesOn();
+        open({ pages: FIVE_PAGES });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'End' });
+        expect(screen.getByTestId('reader-spread')).toHaveClass('reader__spread--single');
+        expect(screen.getByTestId('reader-spread')).not.toHaveClass('reader__spread--pair');
+        expect(shownPages()).toEqual([FIVE_PAGES[4]]);
+        expect(screen.getByText('5 / 5')).toBeInTheDocument();
+    });
+
+    it('puts two pages side by side whatever their shape: a page cut by its source, wider than it is tall, goes beside its pair', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        const [first, second] = screen.getAllByRole('img');
+        loadWith(first as HTMLElement, 1200, 300);
+        loadWith(second as HTMLElement, 1200, 250);
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+        expect(screen.getByTestId('reader-spread')).toHaveClass('reader__spread--pair');
+        expect(screen.getByText('1–2 / 6')).toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        const [third, fourth] = screen.getAllByRole('img');
+        loadWith(third as HTMLElement, 2000, 100);
+        loadWith(fourth as HTMLElement, 100, 2000);
+        expect(shownPages()).toEqual([SIX_PAGES[2], SIX_PAGES[3]]);
+        expect(screen.getByText('3–4 / 6')).toBeInTheDocument();
+    });
+
+    it('keeps two pages together when the first is wide and the second tall, and when both are square', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        const [first, second] = screen.getAllByRole('img');
+        loadWith(first as HTMLElement, 300, 150);
+        loadWith(second as HTMLElement, 150, 150);
+        expect(shownPages()).toEqual([SIX_PAGES[0], SIX_PAGES[1]]);
+    });
+
+    it('starts on the pair that holds the page the chapter was left on', () => {
+        saveProgress('One Piece|2', 3);
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        expect(shownPages()).toEqual([SIX_PAGES[2], SIX_PAGES[3]]);
+        expect(screen.getByText('3–4 / 6')).toBeInTheDocument();
+    });
+
+    it('remembers the first page of the pair, and the end only when the last page is on screen', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(loadProgress('One Piece|2')).toBe(2);
+        expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 2, page: 2 });
+        expect(useMangaStore.getState().readKeys).toEqual([]);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(loadProgress('One Piece|2')).toBe(0);
+        expect(useMangaStore.getState().readKeys).toEqual([progressKey('One Piece', 2)]);
+    });
+
+    it('counts a chapter of an odd number of pages as read when its last page, alone, is on screen', () => {
+        twoPagesOn();
+        open({ pages: FIVE_PAGES });
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(screen.getByText('5 / 5')).toBeInTheDocument();
+        expect(useMangaStore.getState().readKeys).toEqual([progressKey('One Piece', 2)]);
+    });
+
+    it('does nothing in the scroll modes: every page is in the column, with no row of pages', () => {
+        twoPagesOn({ mode: 'vertical' });
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        expect(screen.queryByTestId('reader-spread')).not.toBeInTheDocument();
+        expect(screen.getByTestId('reader-scroll')).toBeInTheDocument();
+        expect(screen.getAllByRole('img')).toHaveLength(6);
+    });
+
+    it('says the page that is loading in the place of each one of the pair', () => {
+        twoPagesOn();
+        open({ pages: SIX_PAGES });
+        render(<MangaReader />);
+        expect(screen.getByText('Loading page 1…')).toBeInTheDocument();
+        expect(screen.getByText('Loading page 2…')).toBeInTheDocument();
+        fireEvent.load(screen.getAllByRole('img')[0] as HTMLElement);
+        expect(screen.queryByText('Loading page 1…')).not.toBeInTheDocument();
+        expect(screen.getByText('Loading page 2…')).toBeInTheDocument();
+    });
+});
+
 describe('MangaReader progress', () => {
     it('starts on the page the chapter was left on and keeps the page as it moves', () => {
         saveProgress('One Piece|2', 1);
@@ -646,7 +897,7 @@ describe('MangaReader settings', () => {
         await user.selectOptions(screen.getByLabelText('Background'), 'white');
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
         expect(screen.getByRole('region', { name: 'Reader' })).toHaveClass('reader--white');
-        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ mode: 'single', direction: 'ltr', scale: 'original', background: 'white', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
         unmount();
         render(<MangaReader />);
         expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--original');
@@ -1991,9 +2242,51 @@ describe('MangaReader fullscreen', () => {
         expect(scroll).toHaveAttribute('data-fullscreen', 'false');
     });
 
-    it('does nothing with a double click one page at a time, where a click turns the page', async () => {
+    it('puts the reader in fullscreen with a double click in the strip in the middle, one page at a time, and takes it out with another', async () => {
+        const main = await renderInMode('single');
+        const stage = stageOf200();
+        fireEvent.doubleClick(stage, { clientX: 100 });
+        expect(fake.requests).toEqual([main]);
+        fireEvent.doubleClick(stage, { clientX: 90 });
+        expect(fake.exits()).toBe(1);
+    });
+
+    it('does nothing with a double click on the sides, one page at a time, where a click turns the page', async () => {
         await renderInMode('single');
-        fireEvent.doubleClick(screen.getByTestId('reader-stage'));
+        const stage = stageOf200();
+        [10, 50, 150, 190].forEach((clientX) => {
+            fireEvent.doubleClick(stage, { clientX });
+        });
+        expect(fake.requests).toEqual([]);
+    });
+
+    it('puts the reader in fullscreen with a double click in the strip in the middle with two pages, and not beside it, where the pages are', async () => {
+        saveReaderPrefs({ ...loadReaderPrefs(), twoPages: true });
+        const main = await renderInMode('single');
+        const stage = stageOf200();
+        [10, 60, 140, 190].forEach((clientX) => {
+            fireEvent.doubleClick(stage, { clientX });
+        });
+        expect(fake.requests).toEqual([]);
+        fireEvent.doubleClick(stage, { clientX: 100 });
+        expect(fake.requests).toEqual([main]);
+    });
+
+    it('does not turn the page with a click in the strip in the middle', async () => {
+        await renderInMode('single');
+        const stage = stageOf200();
+        [80, 100, 120].forEach((clientX) => {
+            fireEvent.click(stage, { clientX });
+        });
+        expect(shownPage()).toBe(PAGES[0]);
+    });
+
+    it('does nothing with a double click on a button of a page that did not load, in the strip in the middle too', async () => {
+        await renderInMode('single');
+        const stage = stageOf200();
+        fireEvent.error(screen.getByRole('img'));
+        fireEvent.doubleClick(screen.getByRole('button', { name: 'TRY AGAIN' }), { clientX: 100 });
+        expect(stage).toBeInTheDocument();
         expect(fake.requests).toEqual([]);
     });
 
@@ -2055,19 +2348,20 @@ describe('MangaReader fullscreen', () => {
         expect(screen.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'true');
     });
 
-    it('leaves the fullscreen when the mode becomes one page at a time, and when the reader closes', async () => {
+    it('stays in fullscreen when the mode changes, and leaves it when the reader closes', async () => {
         const user = userEvent.setup();
         await renderInMode('vertical');
         fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
         await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
         await user.selectOptions(screen.getByLabelText('Reading mode'), 'single');
-        expect(fake.exits()).toBe(1);
-        expect(fake.current()).toBeNull();
+        expect(fake.exits()).toBe(0);
+        expect(fake.current()).not.toBeNull();
         await user.selectOptions(screen.getByLabelText('Reading mode'), 'webtoon');
-        fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+        expect(fake.exits()).toBe(0);
+        expect(screen.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'true');
         await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
         await user.click(screen.getByRole('button', { name: '← CLOSE' }));
-        expect(fake.exits()).toBe(2);
+        expect(fake.exits()).toBe(1);
         expect(fake.current()).toBeNull();
     });
 });
@@ -2086,7 +2380,7 @@ describe('MangaReader: the pages turn', () => {
     });
 
     it('tells the style sheet the direction of the reading, so the pages come from the side the reading goes to', () => {
-        saveReaderPrefs({ mode: 'single', direction: 'rtl', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        saveReaderPrefs({ mode: 'single', direction: 'rtl', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
         open();
         render(<MangaReader />);
         expect(screen.getByTestId('reader-stage')).toHaveAttribute('data-direction', 'rtl');
@@ -2125,7 +2419,7 @@ describe('MangaReader: the sound of a page', () => {
     });
 
     it('plays nothing in the scroll, where pages are not turned', () => {
-        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
         open();
         render(<MangaReader />);
         fireEvent.keyDown(window, { key: 'ArrowRight' });
@@ -2189,7 +2483,7 @@ describe('MangaReader: the scroll shows what it does', () => {
         Object.defineProperty(area, 'scrollHeight', { value: 5000, configurable: true });
         area.scrollTo = vi.fn() as unknown as typeof area.scrollTo;
         document.body.appendChild(area);
-        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 120, pageGap: 8, chapterSwitch: true });
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 120, pageGap: 8, chapterSwitch: true, twoPages: false });
     });
 
     afterEach(() => {
@@ -2233,7 +2527,7 @@ describe('MangaReader: the scroll shows what it does', () => {
 
 describe('MangaReader: the page a chapter was brought to', () => {
     it('glows when its picture arrives, and only that one', () => {
-        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
         saveProgress(progressKey('One Piece', 2), 2);
         open();
         render(<MangaReader />);
@@ -2249,12 +2543,293 @@ describe('MangaReader: the page a chapter was brought to', () => {
     });
 
     it('is nothing special when the chapter starts at its first page', () => {
-        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
         open();
         render(<MangaReader />);
         document.querySelectorAll('img.reader__img').forEach((image) => {
             fireEvent.load(image);
         });
         expect(document.querySelectorAll('.reader__img--restored')).toHaveLength(0);
+    });
+});
+
+describe('MangaReader the settings close with a click outside them', () => {
+    async function openSettings(): Promise<ReturnType<typeof userEvent.setup>> {
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        expect(screen.getByLabelText('Reading mode')).toBeInTheDocument();
+        return user;
+    }
+
+    it('closes them with a click on the pages, and the click does not turn the page', async () => {
+        open();
+        render(<MangaReader />);
+        await openSettings();
+        const stage = stageOf200();
+        fireEvent.click(stage, { clientX: 190 });
+        expect(screen.queryByLabelText('Reading mode')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'READER SETTINGS' })).toHaveAttribute('aria-expanded', 'false');
+        expect(shownPage()).toBe(PAGES[0]);
+        fireEvent.click(stage, { clientX: 190 });
+        expect(shownPage()).toBe(PAGES[1]);
+    });
+
+    it('closes them with a click on the title of the bar, and on anything else outside', async () => {
+        open();
+        render(<MangaReader />);
+        const user = await openSettings();
+        await user.click(screen.getByText('One Piece · Chapter 2'));
+        expect(screen.queryByLabelText('Reading mode')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        expect(screen.getByLabelText('Reading mode')).toBeInTheDocument();
+        fireEvent.click(document.body);
+        expect(screen.queryByLabelText('Reading mode')).not.toBeInTheDocument();
+    });
+
+    it('only closes them with a click on a button outside, which does not do what it says', async () => {
+        open();
+        render(<MangaReader />);
+        const user = await openSettings();
+        await user.click(screen.getByRole('button', { name: 'NEXT CHAPTER' }));
+        expect(screen.queryByLabelText('Reading mode')).not.toBeInTheDocument();
+        expect(mock.api.manga.readPages).not.toHaveBeenCalled();
+        expect(useMangaStore.getState().reader.index).toBe(1);
+        await user.click(screen.getByRole('button', { name: 'NEXT CHAPTER' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+    });
+
+    it('keeps them open with a click inside them: on a field, on a choice, on a label', async () => {
+        open();
+        render(<MangaReader />);
+        const user = await openSettings();
+        await user.selectOptions(screen.getByLabelText('Background'), 'white');
+        await user.click(screen.getByLabelText('Reading mode'));
+        await user.click(screen.getByText('Reading mode'));
+        expect(screen.getByLabelText('Reading mode')).toBeInTheDocument();
+        expect(screen.getByRole('region', { name: 'Reader' })).toHaveClass('reader--white');
+    });
+
+    it('closes them with the gear, as before, and with Escape without closing the reader', async () => {
+        open();
+        render(<MangaReader />);
+        const user = await openSettings();
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        expect(screen.queryByLabelText('Reading mode')).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(screen.queryByLabelText('Reading mode')).not.toBeInTheDocument();
+        expect(useMangaStore.getState().reader.status).toBe('ready');
+    });
+
+    it('stops listening once they are closed: a click outside works as usual', async () => {
+        open();
+        render(<MangaReader />);
+        const user = await openSettings();
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.click(screen.getByRole('button', { name: 'NEXT CHAPTER' }));
+        expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 3, libraryChapterId: null });
+    });
+});
+
+describe('MangaReader the pages loaded before they are needed', () => {
+    function fakeImages(): { sources: string[]; decoded: string[]; restore: () => void } {
+        const sources: string[] = [];
+        const decoded: string[] = [];
+        const original = window.Image;
+        class FakeImage {
+            private address = '';
+            set src(value: string) {
+                this.address = value;
+                sources.push(value);
+            }
+            decode(): Promise<void> {
+                decoded.push(this.address);
+                return Promise.resolve();
+            }
+        }
+        window.Image = FakeImage as unknown as typeof Image;
+        return {
+            sources,
+            decoded,
+            restore: () => {
+                window.Image = original;
+            }
+        };
+    }
+
+    it('loads and decodes the three pages after the page on screen, and one more for each page turned, never twice', () => {
+        const images = fakeImages();
+        try {
+            open({ pages: SIX_PAGES });
+            render(<MangaReader />);
+            expect(images.sources).toEqual([SIX_PAGES[1], SIX_PAGES[2], SIX_PAGES[3]]);
+            expect(images.decoded).toEqual([SIX_PAGES[1], SIX_PAGES[2], SIX_PAGES[3]]);
+            fireEvent.keyDown(window, { key: 'ArrowRight' });
+            expect(images.sources).toEqual([SIX_PAGES[1], SIX_PAGES[2], SIX_PAGES[3], SIX_PAGES[4]]);
+            fireEvent.keyDown(window, { key: 'ArrowRight' });
+            fireEvent.keyDown(window, { key: 'ArrowRight' });
+            expect(images.sources).toEqual([SIX_PAGES[1], SIX_PAGES[2], SIX_PAGES[3], SIX_PAGES[4], SIX_PAGES[5]]);
+            fireEvent.keyDown(window, { key: 'ArrowLeft' });
+            expect(images.sources).toHaveLength(5);
+        } finally {
+            images.restore();
+        }
+    });
+
+    it('loads the three pages after the pair on screen with two pages side by side', () => {
+        const images = fakeImages();
+        try {
+            twoPagesOn();
+            open({ pages: SIX_PAGES });
+            render(<MangaReader />);
+            expect(images.sources).toEqual([SIX_PAGES[2], SIX_PAGES[3], SIX_PAGES[4]]);
+            fireEvent.keyDown(window, { key: 'ArrowRight' });
+            expect(images.sources).toEqual([SIX_PAGES[2], SIX_PAGES[3], SIX_PAGES[4], SIX_PAGES[5]]);
+        } finally {
+            images.restore();
+        }
+    });
+
+    it('loads only the pages the chapter has', () => {
+        const images = fakeImages();
+        try {
+            open({ pages: PAGES });
+            render(<MangaReader />);
+            expect(images.sources).toEqual([PAGES[1], PAGES[2]]);
+            fireEvent.keyDown(window, { key: 'End' });
+            expect(images.sources).toEqual([PAGES[1], PAGES[2]]);
+        } finally {
+            images.restore();
+        }
+    });
+
+    it('loads nothing ahead in the scroll modes, where the pages are all on the page, and while the chapter loads', () => {
+        const images = fakeImages();
+        try {
+            saveReaderPrefs({ ...loadReaderPrefs(), mode: 'vertical' });
+            open({ pages: SIX_PAGES });
+            const { rerender } = render(<MangaReader />);
+            expect(images.sources).toEqual([]);
+            saveReaderPrefs({ ...loadReaderPrefs(), mode: 'single' });
+            open({ status: 'loading', pages: [] });
+            rerender(<MangaReader />);
+            expect(images.sources).toEqual([]);
+        } finally {
+            images.restore();
+        }
+    });
+
+    it('does not break where the browser has no decode', () => {
+        const images = fakeImages();
+        try {
+            (window.Image.prototype as { decode?: unknown }).decode = undefined;
+            open({ pages: SIX_PAGES });
+            render(<MangaReader />);
+            expect(images.sources).toHaveLength(3);
+            expect(images.decoded).toEqual([]);
+        } finally {
+            images.restore();
+        }
+    });
+
+    it('forgets what it held when the chapter changes, so the same address is loaded again in the next one', () => {
+        const images = fakeImages();
+        try {
+            open({ pages: SIX_PAGES });
+            render(<MangaReader />);
+            expect(images.sources).toHaveLength(3);
+            act(() => {
+                open({ pages: [...SIX_PAGES], index: 2 });
+            });
+            expect(images.sources).toHaveLength(6);
+            expect(images.sources.slice(3)).toEqual([SIX_PAGES[1], SIX_PAGES[2], SIX_PAGES[3]]);
+        } finally {
+            images.restore();
+        }
+    });
+});
+
+describe('MangaReader each manga is read the way it was set', () => {
+    async function setMode(user: ReturnType<typeof userEvent.setup>, mode: string): Promise<void> {
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading mode'), mode);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+    }
+
+    it('keeps a manga as webtoon when another one is changed to one page at a time', async () => {
+        const user = userEvent.setup();
+        open({ mangaTitle: 'One Piece' });
+        render(<MangaReader />);
+        await setMode(user, 'webtoon');
+        expect(screen.getByTestId('reader-scroll')).toHaveClass('reader__scroll--webtoon');
+        act(() => {
+            open({ mangaTitle: 'Naruto' });
+        });
+        await setMode(user, 'single');
+        expect(screen.getByTestId('reader-stage')).toBeInTheDocument();
+        act(() => {
+            open({ mangaTitle: 'One Piece' });
+        });
+        expect(screen.getByTestId('reader-scroll')).toHaveClass('reader__scroll--webtoon');
+        expect(screen.queryByTestId('reader-stage')).not.toBeInTheDocument();
+        act(() => {
+            open({ mangaTitle: 'Naruto' });
+        });
+        expect(screen.getByTestId('reader-stage')).toBeInTheDocument();
+        expect(screen.queryByTestId('reader-scroll')).not.toBeInTheDocument();
+    });
+
+    it('keeps every setting of a manga: the direction, the size, the background and two pages', async () => {
+        const user = userEvent.setup();
+        open({ mangaTitle: 'One Piece', pages: SIX_PAGES });
+        render(<MangaReader />);
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading direction'), 'rtl');
+        await user.selectOptions(screen.getByLabelText('Page size'), 'height');
+        await user.selectOptions(screen.getByLabelText('Background'), 'gray');
+        await user.click(screen.getByRole('switch', { name: 'Two pages side by side' }));
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        act(() => {
+            open({ mangaTitle: 'Naruto', pages: SIX_PAGES });
+        });
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        await user.selectOptions(screen.getByLabelText('Reading direction'), 'ltr');
+        await user.selectOptions(screen.getByLabelText('Background'), 'black');
+        await user.click(screen.getByRole('switch', { name: 'Two pages side by side' }));
+        await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+        expect(screen.queryByTestId('reader-spread')).not.toBeInTheDocument();
+        act(() => {
+            open({ mangaTitle: 'One Piece', pages: SIX_PAGES });
+        });
+        expect(screen.getByTestId('reader-spread')).toHaveAttribute('data-direction', 'rtl');
+        expect(screen.getByTestId('reader-stage')).toHaveClass('reader__stage--height');
+        expect(screen.getByRole('region', { name: 'Reader' })).toHaveClass('reader--gray');
+        expect(loadReaderPrefs('One Piece')).toEqual({ mode: 'single', direction: 'rtl', scale: 'height', background: 'gray', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: true });
+        expect(loadReaderPrefs('Naruto')).toEqual({ mode: 'single', direction: 'ltr', scale: 'height', background: 'black', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true, twoPages: false });
+    });
+
+    it('starts a manga that was never set with what was chosen last, and reads again the preferences of each manga when the reader is opened again', async () => {
+        const user = userEvent.setup();
+        saveReaderPrefs({ ...loadReaderPrefs(), mode: 'vertical' });
+        open({ mangaTitle: 'Bleach' });
+        const { rerender } = render(<MangaReader />);
+        expect(screen.getByTestId('reader-scroll')).toBeInTheDocument();
+        await setMode(user, 'single');
+        act(() => {
+            useMangaStore.getState().closeReader();
+        });
+        rerender(<MangaReader />);
+        act(() => {
+            open({ mangaTitle: 'Bleach' });
+        });
+        expect(screen.getByTestId('reader-stage')).toBeInTheDocument();
+    });
+
+    it('reads a manga with preferences it was given before this version as the ones kept for every manga', () => {
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: 'webtoon', direction: 'rtl' }));
+        open({ mangaTitle: 'Old Manga' });
+        render(<MangaReader />);
+        expect(screen.getByTestId('reader-scroll')).toHaveClass('reader__scroll--webtoon');
+        expect(loadReaderPrefs('Old Manga').direction).toBe('rtl');
     });
 });

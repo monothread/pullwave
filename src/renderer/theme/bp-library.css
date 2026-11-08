@@ -147,6 +147,47 @@
     transition: border-color 0.2s, box-shadow 0.25s, background 0.2s;
 }
 
+/* What is still to be watched or read stands out (a cyan top edge, a bold name); what was is quieter (a green edge, a grey name and a tint),
+   and says so with the seal of WatchedMark. The edge keeps its colour under the mouse: it is the state of the card. */
+.episode-cards > .history__item {
+    border-top-color: var(--cyan);
+}
+
+.episode-cards > .history__item:not(.history__item--watched) .history__title {
+    font-weight: 700;
+}
+
+.episode-cards > .history__item--watched {
+    border-top-color: var(--green);
+    background: color-mix(in srgb, var(--green) 9%, var(--panel));
+}
+
+.episode-cards > .history__item--watched .history__title {
+    color: var(--muted);
+    font-weight: 400;
+}
+
+.episode-cards > .history__item--error {
+    border-top-color: var(--red);
+}
+
+/* The seal goes first; a long name drops under it instead of being squeezed beside it. */
+.episode-cards .history__title {
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+
+.episode-cards .watched-mark {
+    margin-right: 0;
+}
+
+/* --- An ultrawide page: bigger tiles, so the covers do not shrink next to the width ------------------------------------------------ */
+@container main (min-width: 1700px) {
+    .cover-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+}
+
 /* --- Less room --------------------------------------------------------------------------------------------------------------------- */
 @media (max-width: 760px) {
     .cover-grid {

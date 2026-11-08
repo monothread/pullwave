@@ -20,6 +20,7 @@ import { AnimeLibrarySpotlight } from '../library/LibrarySpotlights';
 import { animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
 import { inListOrder, useLibrarySort, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
+import { WatchedMark } from './WatchedMark';
 import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
 import { useSeriesCoverTitle } from '../hooks/useSeriesCoverTitle';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
@@ -79,11 +80,7 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
         >
             <div className="history__main">
                 <span className="history__title">
-                    {episode.watched && (
-                        <span className="watched-mark" role="img" aria-label={t('anime.watched')} title={t('anime.watched')}>
-                            ✓
-                        </span>
-                    )}
+                    {episode.watched && <WatchedMark label={t('anime.watched')} />}
                     {openable ? (
                         <RowLink
                             label={`${t('anime.play')}: ${anime.title} ${label}`}
