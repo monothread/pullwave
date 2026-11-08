@@ -420,10 +420,10 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         }
     }
 
-    // The tooltip sits in the bar, so its position is measured from the bar: the timeline's own offset plus the mouse on it.
+    // The tooltip sits in the box of the timeline, right above the bar, at the part of the bar the mouse is on (a percentage, not pixels: when
+    // the interface is magnified the mouse is measured in other pixels than the ones the tooltip is placed in).
     function hoverTimeline(input: HTMLInputElement, clientX: number): void {
-        const found = seekHover(clientX, input.getBoundingClientRect(), duration);
-        setHover(found === null ? null : { time: found.time, offset: (input.parentElement?.offsetLeft ?? input.offsetLeft) + found.offset });
+        setHover(seekHover(clientX, input.getBoundingClientRect(), duration));
     }
 
     const silent = state.muted || state.volume === 0;
@@ -475,11 +475,6 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                 >
                     {state.paused ? <PlayerIcon key="play" name="play" /> : <PlayerIcon key="pause" name="pause" />}
                 </button>
-                {hover !== null && (
-                    <span className="player__hover" role="tooltip" style={{ left: hover.offset }}>
-                        {formatClock(hover.time)}
-                    </span>
-                )}
                 <span className="player__time">{formatClock(currentTime)}</span>
                 <div className="player__timeline">
                     <div className="progress" aria-hidden="true">
@@ -506,6 +501,11 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                             seekTo(Number(event.target.value));
                         }}
                     />
+                    {hover !== null && (
+                        <span className="player__hover" role="tooltip" style={{ left: `${String(hover.fraction * 100)}%` }}>
+                            {formatClock(hover.time)}
+                        </span>
+                    )}
                 </div>
                 <span className="player__time">{formatClock(duration)}</span>
                 <button

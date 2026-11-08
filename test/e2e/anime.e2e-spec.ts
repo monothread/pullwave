@@ -3174,6 +3174,51 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         await expect(cards.nth(1)).toHaveAttribute('aria-label', 'Fake Anime 2');
     });
 
+    // The time under the mouse is a part of the box of the timeline, right above the bar, and it is centered on the mouse wherever the mouse is on the
+    // bar: at the size of the window the test has, and with the interface magnified (see --ui-zoom), where the mouse and the page are measured in
+    // other pixels.
+    async function expectTheTimeOverTheMouse(page: Page): Promise<void> {
+        await watchEpisode(page, '1');
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        await expect(dialog.locator('video')).toBeVisible();
+        const seek = dialog.getByRole('slider', { name: 'Seek' });
+        await expect.poll(async () => {
+            return Number(await seek.getAttribute('max'));
+        }).toBeGreaterThan(5);
+        const zoom = Number(await page.evaluate(() => {
+            return getComputedStyle(document.documentElement).zoom;
+        }));
+        const bar = await seek.boundingBox();
+        expect(bar).not.toBeNull();
+        const { x, y, width, height } = bar as { x: number; y: number; width: number; height: number };
+        const tooltip = dialog.getByRole('tooltip');
+        // The tooltip is a part of the box of the timeline, not of the whole bar of the controls (it would float far above the thin bar).
+        await page.mouse.move(x + width / 2, y + height / 2);
+        await expect(tooltip).toBeVisible();
+        expect(await tooltip.evaluate((element) => { return element.parentElement?.className; })).toBe('player__timeline');
+
+        for (const fraction of [0.05, 0.25, 0.5, 0.75, 0.95]) {
+            const mouseX = x + width * fraction;
+            await page.mouse.move(mouseX, y + height / 2);
+            await expect(tooltip).toHaveText(/^0:0\d$/);
+            const tip = (await tooltip.boundingBox()) as { x: number; y: number; width: number; height: number };
+            const line = (await dialog.locator('.player__timeline').boundingBox()) as { x: number; y: number; width: number; height: number };
+            // Centered on the mouse (the box is as wide as the text), and 6px of the page above the top of the timeline.
+            expect(Math.abs(tip.x + tip.width / 2 - mouseX)).toBeLessThanOrEqual(1.5);
+            expect(Math.abs(tip.y + tip.height - (line.y - 6 * zoom))).toBeLessThanOrEqual(1.5);
+        }
+    }
+
+    test('puts the time under the mouse right above the timeline, centered on the mouse, wherever it is on the bar', async () => {
+        await expectTheTimeOverTheMouse(session.page);
+    });
+
+    test('puts the time under the mouse over the mouse also when the interface is magnified on a wide screen, and not further to the right the further it goes @resize', async () => {
+        await session.page.setViewportSize({ width: 3440, height: 1400 });
+        expect(await session.page.evaluate(() => { return getComputedStyle(document.documentElement).zoom; })).toBe('1.2');
+        await expectTheTimeOverTheMouse(session.page);
+    });
+
     test('closes the player with Escape while it plays', async () => {
         const { page } = session;
         await watchEpisode(page, '1');

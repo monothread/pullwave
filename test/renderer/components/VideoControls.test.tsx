@@ -808,6 +808,7 @@ describe('VideoControls', () => {
             bar.getBoundingClientRect = () => {
                 return { left: 100, width: 200, right: 300, top: 0, bottom: 6, height: 6, x: 100, y: 0, toJSON: () => { return {}; } };
             };
+            // Where the box of the timeline is in the bar of the controls must not matter: the tooltip is in the box, so it is placed in it.
             Object.defineProperty(bar.parentElement as HTMLElement, 'offsetLeft', { value: 60, configurable: true });
         }
 
@@ -820,14 +821,60 @@ describe('VideoControls', () => {
             fireEvent.mouseMove(bar, { clientX: 150 });
             const tooltip = screen.getByRole('tooltip');
             expect(tooltip).toHaveTextContent('0:50');
-            expect(tooltip).toHaveStyle({ left: '110px' });
+            expect(tooltip).toHaveStyle({ left: '25%' });
 
             fireEvent.mouseMove(bar, { clientX: 300 });
             expect(screen.getByRole('tooltip')).toHaveTextContent('3:20');
-            expect(screen.getByRole('tooltip')).toHaveStyle({ left: '260px' });
+            expect(screen.getByRole('tooltip')).toHaveStyle({ left: '100%' });
+
+            fireEvent.mouseMove(bar, { clientX: 100 });
+            expect(screen.getByRole('tooltip')).toHaveTextContent('0:00');
+            expect(screen.getByRole('tooltip')).toHaveStyle({ left: '0%' });
 
             fireEvent.mouseLeave(bar);
             expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+        });
+
+        it('keeps the tooltip in the box of the timeline, after the slider, so it stands right above the bar and not above the whole bar of the controls', () => {
+            setup([], 200);
+            const bar = timeline();
+            measure(bar);
+            fireEvent.mouseMove(bar, { clientX: 150 });
+
+            const box = bar.parentElement as HTMLElement;
+            const tooltip = screen.getByRole('tooltip');
+            expect(tooltip.parentElement).toBe(box);
+            expect(tooltip).toHaveClass('player__hover');
+            expect(Array.from(box.children).map((child) => { return child.className; })).toEqual(['progress', 'player__range player__seek', 'player__hover']);
+            // The bar of the controls is the parent of the box, not of the tooltip.
+            expect(box.parentElement).toHaveClass('player__controls');
+            expect(tooltip.parentElement).not.toBe(box.parentElement);
+        });
+
+        it('places the tooltip by the part of the bar the mouse is on, so a magnified interface (the bar measured wider than it is laid out) does not move it', () => {
+            setup([], 200);
+            const bar = timeline();
+            bar.getBoundingClientRect = () => {
+                return { left: 190, width: 2824, right: 3014, top: 0, bottom: 10, height: 10, x: 190, y: 0, toJSON: () => { return {}; } };
+            };
+            fireEvent.mouseMove(bar, { clientX: 190 + 2824 * 0.5 });
+            expect(screen.getByRole('tooltip')).toHaveTextContent('1:40');
+            expect(screen.getByRole('tooltip')).toHaveStyle({ left: '50%' });
+            fireEvent.mouseMove(bar, { clientX: 190 + 2824 * 0.9 });
+            expect(screen.getByRole('tooltip')).toHaveTextContent('3:00');
+            expect(screen.getByRole('tooltip')).toHaveStyle({ left: '90%' });
+        });
+
+        it('clamps the mouse to the bar: past its ends the tooltip stays at the end', () => {
+            setup([], 200);
+            const bar = timeline();
+            measure(bar);
+            fireEvent.mouseMove(bar, { clientX: 20 });
+            expect(screen.getByRole('tooltip')).toHaveTextContent('0:00');
+            expect(screen.getByRole('tooltip')).toHaveStyle({ left: '0%' });
+            fireEvent.mouseMove(bar, { clientX: 900 });
+            expect(screen.getByRole('tooltip')).toHaveTextContent('3:20');
+            expect(screen.getByRole('tooltip')).toHaveStyle({ left: '100%' });
         });
 
         it('shows nothing under the mouse while the length of the video is not known', () => {
