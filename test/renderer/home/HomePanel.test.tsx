@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { HomePanel } from '@renderer/home/HomePanel';
 import { useAnimeStore } from '@renderer/store/animeStore';
@@ -110,16 +110,38 @@ describe('HomePanel', () => {
         expect(within(screen.getByRole('region', { name: 'Highlights' })).getByRole('heading', { level: 2 })).toHaveTextContent('Watching');
     });
 
-    it('reads the history of reading and the sources once the manga server runs, and not before', () => {
+    it('reads the history of reading as soon as the home screen opens, even with the manga server stopped or starting', () => {
+        [{ server: 'stopped' }, { server: 'starting' }].forEach((status) => {
+            vi.clearAllMocks();
+            useMangaStore.setState({ status: makeMangaStatus(status as { server: 'stopped' | 'starting' }) });
+            const { unmount } = render(<HomePanel />);
+            expect(loadHistory).toHaveBeenCalledTimes(1);
+            unmount();
+        });
+    });
+
+    it('reads the sources once the manga server runs, and not before', () => {
         useMangaStore.setState({ status: makeMangaStatus({ server: 'starting' }) });
         const { unmount } = render(<HomePanel />);
-        expect(loadHistory).not.toHaveBeenCalled();
         expect(loadSources).not.toHaveBeenCalled();
         unmount();
+        vi.clearAllMocks();
         useMangaStore.setState({ status: makeMangaStatus() });
         render(<HomePanel />);
         expect(loadHistory).toHaveBeenCalledTimes(1);
         expect(loadSources).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads the sources when the server comes up while the home screen is open, without reading the history again', async () => {
+        useMangaStore.setState({ status: makeMangaStatus({ server: 'starting' }) });
+        render(<HomePanel />);
+        expect(loadHistory).toHaveBeenCalledTimes(1);
+        expect(loadSources).not.toHaveBeenCalled();
+        await act(async () => {
+            useMangaStore.setState({ status: makeMangaStatus() });
+        });
+        expect(loadSources).toHaveBeenCalledTimes(1);
+        expect(loadHistory).toHaveBeenCalledTimes(1);
     });
 
     it.each(['loading', 'ready', 'error'] as const)('does not read the sources again when they were asked for already (%s)', (sourcesStatus) => {

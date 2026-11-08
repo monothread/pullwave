@@ -600,13 +600,16 @@ body::before {
 /* --- Disk space ----------------------------------------------------------------------------------------------------------------- */
 /* The ring of the disk space in the settings of the anime and of the manga. The segments are drawn by the component (they grow with the
    numbers), so only the colours, the glow and the entrance of the panel are set here. The folder of the other section is warm (red and
-   yellow of the theme), which no theme uses in its cyan and magenta; the three themes whose cyan or magenta is warm too (synthwave,
-   sakura and sakura-dark) use their green for it. */
+   yellow of the theme), which no theme uses in its cyan and magenta; the themes whose cyan or magenta is warm too (synthwave, sakura,
+   sakura-dark, amber-city, pink-noir and cyber-gold) use their green for it. */
 .disk {
     --disk-sibling: color-mix(in srgb, var(--red) 45%, var(--yellow));
 }
 
 :root[data-theme='synthwave'] .disk,
+:root[data-theme='amber-city'] .disk,
+:root[data-theme='pink-noir'] .disk,
+:root[data-theme='cyber-gold'] .disk,
 :root[data-theme='sakura'] .disk,
 :root[data-theme='sakura-dark'] .disk {
     --disk-sibling: var(--green);

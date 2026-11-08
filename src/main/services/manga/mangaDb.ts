@@ -290,6 +290,12 @@ export class MangaDb {
         this.db.close();
     }
 
+    // Whether the user has used the manga section: a manga is in the library or something was read.
+    get wasUsed(): boolean {
+        const row = this.one('SELECT EXISTS (SELECT 1 FROM manga) OR EXISTS (SELECT 1 FROM reading_history) AS used');
+        return row !== null && numeric(row, 'used') === 1;
+    }
+
     // The same manga of the same source is the same entry: its title and cover are refreshed.
     upsertManga(manga: MangaSummary): MangaRecord {
         const row = this.one(

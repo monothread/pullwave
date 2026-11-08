@@ -309,6 +309,14 @@ describe('createMangaRuntime downloading the program', () => {
         await Promise.resolve();
         expect(download).not.toHaveBeenCalled();
     });
+
+    it('leaves the server that is given alone when the app opens, even with a manga in the library', async () => {
+        const { runtime, requests } = setup();
+        runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });
+        runtime!.prepare();
+        await Promise.resolve();
+        expect(requests).toEqual([]);
+    });
 });
 
 describe('createMangaRuntime downloading a chapter', () => {
@@ -1021,6 +1029,89 @@ describe('createMangaRuntime Cloudflare helper', () => {
         expect(runtime.service.status().helper).toMatchObject({ id: 'flaresolverr', status: 'ready' });
         await runtime.shutdown();
         expect(docker.calls).toContainEqual(['stop', '--time', '3', 'c0ffee']);
+    });
+
+    describe('starting the server when the app opens', () => {
+        const ONE_PIECE = { remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null };
+        const READING = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: null, chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+
+        it('starts the server, and the container of the helper with it, when a manga is in the library', async () => {
+            const { runtime, children, docker } = setupInstalled();
+            runtime.db.upsertManga(ONE_PIECE);
+            expect(runtime.service.status().server).toBe('stopped');
+            runtime.prepare();
+            await vi.waitFor(() => {
+                expect(runtime.service.status().server).toBe('running');
+            });
+            expect(children).toHaveLength(1);
+            expect(docker.calls).toContainEqual(['ps', '--all', '--filter', 'label=pullwave.helper=flaresolverr', '--format', '{{.ID}} {{.Names}}']);
+            expect(runtime.hasProcessesToEnd()).toBe(true);
+            await runtime.shutdown();
+        });
+
+        it('starts the server when something was read, even with nothing in the library', async () => {
+            const { runtime, children } = setupInstalled();
+            runtime.db.recordReading(READING);
+            runtime.prepare();
+            await vi.waitFor(() => {
+                expect(runtime.service.status().server).toBe('running');
+            });
+            expect(children).toHaveLength(1);
+            await runtime.shutdown();
+        });
+
+        it('does not start the server when the section was never used, and starts it when the section is opened', async () => {
+            const { runtime, children, docker } = setupInstalled();
+            runtime.prepare();
+            await vi.waitFor(() => {
+                expect(runtime.service.status().helper).toMatchObject({ id: 'flaresolverr', status: 'ready' });
+            });
+            expect(runtime.service.status().server).toBe('stopped');
+            expect(children).toHaveLength(0);
+            expect(
+                docker.calls.filter((call) => {
+                    return call[0] === 'run';
+                })
+            ).toEqual([]);
+            expect(runtime.hasProcessesToEnd()).toBe(false);
+            await runtime.service.requireServer();
+            expect(runtime.service.status().server).toBe('running');
+            expect(children).toHaveLength(1);
+            await runtime.shutdown();
+        });
+
+        it('does not start the server when the program could not be downloaded', async () => {
+            const dir = makeTempDir();
+            const spawn = vi.fn();
+            const runtime = createMangaRuntime({
+                platform: 'linux',
+                arch: 'x64',
+                dataDir: dir,
+                defaultDownloadDir: dir,
+                getSettings: () => {
+                    return DEFAULT_SETTINGS;
+                },
+                send: () => {
+                    return undefined;
+                },
+                openFolder: () => {
+                    return undefined;
+                },
+                toolDependencies: {
+                    download: () => {
+                        return Promise.reject(new Error('offline'));
+                    }
+                },
+                serverDependencies: { spawn }
+            })!;
+            runtime.db.upsertManga(ONE_PIECE);
+            runtime.prepare();
+            await vi.waitFor(() => {
+                expect(runtime.service.status().tool?.status).toBe('error');
+            });
+            expect(spawn).not.toHaveBeenCalled();
+            expect(runtime.service.status().server).toBe('stopped');
+        });
     });
 
     it('has processes to end while the container and the server run, and none once they are stopped', async () => {

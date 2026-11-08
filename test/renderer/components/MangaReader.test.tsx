@@ -1761,6 +1761,35 @@ describe('MangaReader the zones between chapters', () => {
             expect(within(screen.getByTestId('reader-zone-end')).getByRole('progressbar')).toHaveAttribute('data-full', 'true');
         });
 
+        it.each(['vertical', 'webtoon'] as const)('is not stamped again at the start of the next chapter, in the %s mode, when the user goes on to it', async (mode) => {
+            const user = userEvent.setup();
+            show({}, mode);
+            runFrames(5);
+            bringEndIntoView(764 - 400);
+            expect(screen.getByTestId('reader-complete')).toHaveTextContent('CHAPTER COMPLETE');
+            expect(useFxStore.getState().celebrations).toBe(1);
+            await user.click(within(screen.getByTestId('reader-zone-end')).getByRole('button', { name: 'GO TO THE NEXT CHAPTER' }));
+            expect(await screen.findByText('1 / 3')).toBeInTheDocument();
+            expect(useMangaStore.getState().reader).toMatchObject({ index: 2, entry: 'start', status: 'ready' });
+            runFrames(10);
+            expect(screen.queryByTestId('reader-complete')).toBeNull();
+            expect(useFxStore.getState().celebrations).toBe(1);
+        });
+
+        it('is stamped in the next chapter too, once its own end is reached', async () => {
+            const user = userEvent.setup();
+            show();
+            runFrames(5);
+            bringEndIntoView(764 - 400);
+            await user.click(within(screen.getByTestId('reader-zone-end')).getByRole('button', { name: 'GO TO THE NEXT CHAPTER' }));
+            expect(await screen.findByText('1 / 3')).toBeInTheDocument();
+            runFrames(10);
+            expect(screen.queryByTestId('reader-complete')).toBeNull();
+            bringEndIntoView(764 - 400);
+            expect(screen.getByTestId('reader-complete')).toHaveTextContent('CHAPTER COMPLETE');
+            expect(useFxStore.getState().celebrations).toBe(2);
+        });
+
         it('is not celebrated in a chapter reached from the one after it', () => {
             show({ entry: 'end' });
             runFrames(5);

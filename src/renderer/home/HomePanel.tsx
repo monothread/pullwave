@@ -10,10 +10,11 @@ import { SectionCards } from './SectionCards';
 import { StatsCard } from './StatsCard';
 import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
-// The history of reading and the sources of the manga are only read by their own screens: the home screen asks for them once the manga
-// server runs (the highlights show what is being read; the block of the manga goes to the browse once an extension gives a source). The
-// sources are asked for once: the screens of the section keep them up to date.
-function useMangaHomeData(mangaReady: boolean): void {
+// The history of reading is read from the library of the app, which does not need the manga server: the home screen asks for it as soon as
+// it opens, so the numbers of the week are right at once. The sources of the manga (which tell what to hide, and send the block of the manga
+// to the browse once an extension gives one) need the server: they are asked for once it runs, and the screens of the section keep them up
+// to date.
+function useMangaHomeData(mangaSupported: boolean, mangaReady: boolean): void {
     const loadHistory = useMangaStore((state) => {
         return state.loadHistory;
     });
@@ -21,14 +22,15 @@ function useMangaHomeData(mangaReady: boolean): void {
         return state.loadSources;
     });
     useEffect(() => {
-        if (!mangaReady) {
-            return;
+        if (mangaSupported) {
+            void loadHistory();
         }
-        void loadHistory();
-        if (useMangaStore.getState().browse.sourcesStatus === 'idle') {
+    }, [mangaSupported, loadHistory]);
+    useEffect(() => {
+        if (mangaReady && useMangaStore.getState().browse.sourcesStatus === 'idle') {
             void loadSources();
         }
-    }, [mangaReady, loadHistory, loadSources]);
+    }, [mangaReady, loadSources]);
 }
 
 // The highlights of both sections, the anime first.
@@ -64,10 +66,13 @@ function useHomeSpotlight() {
 // The home screen: the highlights (or a welcome when there are none yet), then a big block for each section.
 export function HomePanel() {
     const t = useTranslator();
+    const mangaSupported = useMangaStore((state) => {
+        return state.status.supported;
+    });
     const mangaReady = useMangaStore((state) => {
         return state.status.supported && state.status.server === 'running';
     });
-    useMangaHomeData(mangaReady);
+    useMangaHomeData(mangaSupported, mangaReady);
     const slides = useHomeSpotlight();
 
     return (

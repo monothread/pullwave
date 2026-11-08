@@ -146,7 +146,7 @@ async function openFirstResult(page: Page): Promise<void> {
 
 test.skip(!['linux', 'win32'].includes(process.platform) || !HAS_ANI_TOOLS, 'the anime section exists on Linux and Windows and needs `npm run fetch-binaries`');
 
-const PLAYER_THEMES = ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
+const PLAYER_THEMES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
 
 test.beforeEach(async () => {
     workDir = mkdtempSync(join(tmpdir(), 'pullwave-anime-e2e-'));

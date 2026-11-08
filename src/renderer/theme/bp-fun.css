@@ -107,6 +107,13 @@
     display: none;
 }
 
+/* The bar of the reader and the timeline of the player are thin and they reach their end: the head would stick out of the bar there, so
+   they have none. */
+.reader__progress.progress .progress__bar:not([style*='width: 0%'])::after,
+.player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after {
+    display: none;
+}
+
 @keyframes bp-comet {
     from { opacity: 0.55; transform: scaleX(0.8); }
     to { opacity: 1; transform: scaleX(1.3); }

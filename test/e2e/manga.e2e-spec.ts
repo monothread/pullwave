@@ -2197,6 +2197,31 @@ test.describe('manga section', () => {
         await expect(session.page.getByRole('img', { name: 'Read' })).toHaveCount(2);
     });
 
+    test('stamps a chapter read to its end in the scroll once, and not again at the start of the next chapter', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('vertical');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+        const stamp = session.page.getByTestId('reader-complete');
+        await expect(stamp).toHaveCount(0);
+        // The zone below the last page comes into view: the chapter is stamped, once.
+        await reader.getByTestId('reader-zone-end').scrollIntoViewIfNeeded();
+        await expect(stamp).toHaveText('CHAPTER COMPLETE');
+        await expect(stamp).toHaveCount(1);
+        // Going on to the next chapter, the new one starts with no stamp, and keeps none while it is at its start.
+        await reader.getByTestId('reader-zone-end').getByRole('button', { name: 'GO TO THE NEXT CHAPTER' }).click();
+        await expect(reader.getByText('One Piece · The Great Race')).toBeVisible();
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        await session.page.waitForTimeout(1000);
+        await expect(stamp).toHaveCount(0);
+    });
+
     test('continues in the chapter the manga was last read in, on the page it was left on, even when the chapter is marked as read', async () => {
         fake.pagesArePicture = true;
         fake.pageTotal = 10;

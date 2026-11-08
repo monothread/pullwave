@@ -313,7 +313,7 @@ describe('the console layer: the disk space', () => {
         });
     });
 
-    it.each(['synthwave', 'sakura', 'sakura-dark'])('uses the green of the %s theme for the folder of the other section, because its cyan or magenta is warm', (theme) => {
+    it.each(['synthwave', 'amber-city', 'pink-noir', 'cyber-gold', 'sakura', 'sakura-dark'])('uses the green of the %s theme for the folder of the other section, because its cyan or magenta is warm', (theme) => {
         expect(styleOf(sheet, `:root[data-theme='${theme}'] .disk`)).toEqual({ '--disk-sibling': 'var(--green)' });
     });
 
@@ -325,7 +325,7 @@ describe('the console layer: the disk space', () => {
             .map((rule) => {
                 return rule.selector;
             });
-        expect(overridden.sort()).toEqual([".disk", ":root[data-theme='sakura'] .disk", ":root[data-theme='sakura-dark'] .disk", ":root[data-theme='synthwave'] .disk"].sort());
+        expect(overridden.sort()).toEqual([".disk", ":root[data-theme='amber-city'] .disk", ":root[data-theme='cyber-gold'] .disk", ":root[data-theme='pink-noir'] .disk", ":root[data-theme='sakura'] .disk", ":root[data-theme='sakura-dark'] .disk", ":root[data-theme='synthwave'] .disk"].sort());
     });
 
     it('lights the part of the ring of the line of the legend that is pointed at, and dims the others', () => {

@@ -328,3 +328,28 @@ test('a change of theme opens as a circle from where it was chosen, and ends wit
     expect(await page.evaluate(() => { return document.documentElement.dataset.theme; })).toBe('dark');
     expect(await page.evaluate(() => { return document.documentElement.dataset.themeStyle; })).toBe('flat');
 });
+
+test('the bar of a download has a comet at its head, and the bar of the reader and the timeline of the player have none', async () => {
+    const { page } = session;
+    const heads = await page.evaluate(() => {
+        const host = document.createElement('div');
+        host.innerHTML = [
+            '<div id="probe-download" class="progress"><div class="progress__bar" style="width: 40%"></div></div>',
+            '<div id="probe-reader" class="progress reader__progress"><div class="progress__bar" style="width: 100%"></div></div>',
+            '<div id="probe-player" class="player__timeline"><div class="progress"><div class="progress__bar" style="width: 100%"></div></div></div>'
+        ].join('');
+        document.body.append(host);
+        const headOf = (selector: string) => {
+            const style = getComputedStyle(document.querySelector(`${selector} .progress__bar`) as Element, '::after');
+            return { display: style.display, animation: style.animationName };
+        };
+        const result = { download: headOf('#probe-download'), reader: headOf('#probe-reader'), player: headOf('#probe-player') };
+        host.remove();
+        return result;
+    });
+    expect(heads).toEqual({
+        download: { display: 'block', animation: 'bp-comet' },
+        reader: { display: 'none', animation: 'bp-comet' },
+        player: { display: 'none', animation: 'bp-comet' }
+    });
+});

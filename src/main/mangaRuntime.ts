@@ -459,10 +459,14 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             return service.hasProcessesToEnd;
         },
         prepare: () => {
-            // Once the program that runs is there, the versions that were left from before an update go.
+            // Once the program that runs is there, the versions that were left from before an update go, and the server starts when the
+            // user has used the section (otherwise it starts when the section is first opened).
             void service.install().then(() => {
                 if (spec !== null && installer.isReady(spec)) {
                     installer.removeOthers(spec);
+                    if (db.wasUsed) {
+                        service.warmUp();
+                    }
                 }
             });
             checker.start();

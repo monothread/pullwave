@@ -407,6 +407,7 @@ export function MangaReader() {
         startZone: startZoneRef,
         endZone: endZoneRef,
         enabled: zonesOn,
+        chapterKey: key,
         automatic: prefs.chapterSwitch,
         hasPrevious,
         hasNext,

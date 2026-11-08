@@ -443,6 +443,265 @@
     color-scheme: dark;
 }
 
+/* Neon Tokyo: neon, on a very dark background. */
+:root[data-theme='neon-tokyo'] {
+    --bg: #070b1f;
+    --panel: #0c1230;
+    --panel-2: #121a42;
+    --line: #2f46a8;
+    --text: #e6edff;
+    --muted: #8fa0dc;
+    --cyan: #ff2e97;
+    --magenta: #3d94ff;
+    --yellow: #ffe14d;
+    --red: #ff4d6d;
+    --green: #3dffb0;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #050818;
+    --code-bg: #04061a;
+    --on-accent: #0a0620;
+    --glow: 0 0 14px rgba(255, 46, 151, 0.4);
+    --glow-strong: 0 0 16px rgba(255, 46, 151, 0.65);
+    --glow-hot: 0 0 18px rgba(61, 148, 255, 0.7);
+    --glow-red: 0 0 14px rgba(255, 77, 109, 0.25);
+    --glow-yellow: 0 0 14px rgba(255, 225, 77, 0.25);
+    --glow-green: 0 0 14px rgba(61, 255, 176, 0.25);
+    --glow-inset: inset 0 0 30px rgba(255, 46, 151, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(255, 46, 151, 0.5);
+    --tint-cyan: rgba(255, 46, 151, 0.06);
+    --tint-red: rgba(255, 77, 109, 0.08);
+    --tint-yellow: rgba(255, 225, 77, 0.07);
+    --tint-green: rgba(61, 255, 176, 0.06);
+    --toast-error-text: #ffdbe6;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #1a0a3a 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #0a1a4a 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(255, 46, 151, 0.14) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
+/* Acid Rain: neon, on a very dark background. */
+:root[data-theme='acid-rain'] {
+    --bg: #030a08;
+    --panel: #07140f;
+    --panel-2: #0c1f18;
+    --line: #1a6b45;
+    --text: #dcffec;
+    --muted: #74d6a5;
+    --cyan: #b6ff00;
+    --magenta: #00e5ff;
+    --yellow: #f0ff3d;
+    --red: #ff5470;
+    --green: #2dff9a;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #020807;
+    --code-bg: #010504;
+    --on-accent: #041208;
+    --glow: 0 0 14px rgba(182, 255, 0, 0.4);
+    --glow-strong: 0 0 16px rgba(182, 255, 0, 0.65);
+    --glow-hot: 0 0 18px rgba(0, 229, 255, 0.7);
+    --glow-red: 0 0 14px rgba(255, 84, 112, 0.25);
+    --glow-yellow: 0 0 14px rgba(240, 255, 61, 0.25);
+    --glow-green: 0 0 14px rgba(45, 255, 154, 0.25);
+    --glow-inset: inset 0 0 30px rgba(182, 255, 0, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(182, 255, 0, 0.5);
+    --tint-cyan: rgba(182, 255, 0, 0.06);
+    --tint-red: rgba(255, 84, 112, 0.08);
+    --tint-yellow: rgba(240, 255, 61, 0.07);
+    --tint-green: rgba(45, 255, 154, 0.06);
+    --toast-error-text: #ffdbe0;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #0a2a1a 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #031f2a 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(182, 255, 0, 0.14) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
+/* Amber City: neon, on a very dark background. */
+:root[data-theme='amber-city'] {
+    --bg: #0d0805;
+    --panel: #1a0f09;
+    --panel-2: #26160d;
+    --line: #7a4220;
+    --text: #ffe9d2;
+    --muted: #d2a47f;
+    --cyan: #ff8a1f;
+    --magenta: #19d3da;
+    --yellow: #ffd23d;
+    --red: #ff5252;
+    --green: #5dffa0;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #080503;
+    --code-bg: #050301;
+    --on-accent: #1a0c02;
+    --glow: 0 0 14px rgba(255, 138, 31, 0.4);
+    --glow-strong: 0 0 16px rgba(255, 138, 31, 0.65);
+    --glow-hot: 0 0 18px rgba(25, 211, 218, 0.7);
+    --glow-red: 0 0 14px rgba(255, 82, 82, 0.25);
+    --glow-yellow: 0 0 14px rgba(255, 210, 61, 0.25);
+    --glow-green: 0 0 14px rgba(93, 255, 160, 0.25);
+    --glow-inset: inset 0 0 30px rgba(255, 138, 31, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(255, 138, 31, 0.5);
+    --tint-cyan: rgba(255, 138, 31, 0.06);
+    --tint-red: rgba(255, 82, 82, 0.08);
+    --tint-yellow: rgba(255, 210, 61, 0.07);
+    --tint-green: rgba(93, 255, 160, 0.06);
+    --toast-error-text: #ffdcd6;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #06262a 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #2b0f08 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(255, 138, 31, 0.14) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
+/* Ultraviolet: neon, on a very dark background. */
+:root[data-theme='ultraviolet'] {
+    --bg: #0a0518;
+    --panel: #130a2b;
+    --panel-2: #1c0f40;
+    --line: #5a2bc4;
+    --text: #f0e6ff;
+    --muted: #ad96e8;
+    --cyan: #a96dff;
+    --magenta: #ff3df2;
+    --yellow: #ffe45e;
+    --red: #ff5d8f;
+    --green: #4dffb8;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #070312;
+    --code-bg: #05020d;
+    --on-accent: #12052b;
+    --glow: 0 0 14px rgba(169, 109, 255, 0.4);
+    --glow-strong: 0 0 16px rgba(169, 109, 255, 0.65);
+    --glow-hot: 0 0 18px rgba(255, 61, 242, 0.7);
+    --glow-red: 0 0 14px rgba(255, 93, 143, 0.25);
+    --glow-yellow: 0 0 14px rgba(255, 228, 94, 0.25);
+    --glow-green: 0 0 14px rgba(77, 255, 184, 0.25);
+    --glow-inset: inset 0 0 30px rgba(169, 109, 255, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(169, 109, 255, 0.5);
+    --tint-cyan: rgba(169, 109, 255, 0.06);
+    --tint-red: rgba(255, 93, 143, 0.08);
+    --tint-yellow: rgba(255, 228, 94, 0.07);
+    --tint-green: rgba(77, 255, 184, 0.06);
+    --toast-error-text: #ffdbe8;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #3a0a48 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #14073a 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(169, 109, 255, 0.14) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
+/* Pink Noir: neon, on a very dark background. */
+:root[data-theme='pink-noir'] {
+    --bg: #050505;
+    --panel: #0f0b0e;
+    --panel-2: #1a1217;
+    --line: #6a244b;
+    --text: #fff0f7;
+    --muted: #d0a0ba;
+    --cyan: #ff3d9a;
+    --magenta: #ffe6f3;
+    --yellow: #ffe45e;
+    --red: #ff5470;
+    --green: #5dffb1;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #030303;
+    --code-bg: #020202;
+    --on-accent: #1a0510;
+    --glow: 0 0 14px rgba(255, 61, 154, 0.4);
+    --glow-strong: 0 0 16px rgba(255, 61, 154, 0.65);
+    --glow-hot: 0 0 18px rgba(255, 230, 243, 0.7);
+    --glow-red: 0 0 14px rgba(255, 84, 112, 0.25);
+    --glow-yellow: 0 0 14px rgba(255, 228, 94, 0.25);
+    --glow-green: 0 0 14px rgba(93, 255, 177, 0.25);
+    --glow-inset: inset 0 0 30px rgba(255, 61, 154, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(255, 61, 154, 0.5);
+    --tint-cyan: rgba(255, 61, 154, 0.06);
+    --tint-red: rgba(255, 84, 112, 0.08);
+    --tint-yellow: rgba(255, 228, 94, 0.07);
+    --tint-green: rgba(93, 255, 177, 0.06);
+    --toast-error-text: #ffdbe3;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #1a1a1a 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #240a18 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(255, 61, 154, 0.14) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
+/* Cyber Gold: neon, on a very dark background. */
+:root[data-theme='cyber-gold'] {
+    --bg: #080600;
+    --panel: #120e02;
+    --panel-2: #1c1604;
+    --line: #78601a;
+    --text: #fff6cf;
+    --muted: #d0ba6e;
+    --cyan: #fcee0a;
+    --magenta: #ff9100;
+    --yellow: #ffd400;
+    --red: #ff4545;
+    --green: #7dff6a;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #050400;
+    --code-bg: #030200;
+    --on-accent: #140f00;
+    --glow: 0 0 14px rgba(252, 238, 10, 0.4);
+    --glow-strong: 0 0 16px rgba(252, 238, 10, 0.65);
+    --glow-hot: 0 0 18px rgba(255, 145, 0, 0.7);
+    --glow-red: 0 0 14px rgba(255, 69, 69, 0.25);
+    --glow-yellow: 0 0 14px rgba(255, 212, 0, 0.25);
+    --glow-green: 0 0 14px rgba(125, 255, 106, 0.25);
+    --glow-inset: inset 0 0 30px rgba(252, 238, 10, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(252, 238, 10, 0.5);
+    --tint-cyan: rgba(252, 238, 10, 0.06);
+    --tint-red: rgba(255, 69, 69, 0.08);
+    --tint-yellow: rgba(255, 212, 0, 0.07);
+    --tint-green: rgba(125, 255, 106, 0.06);
+    --toast-error-text: #ffdcd2;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #2a1400 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #1f1a02 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(252, 238, 10, 0.14) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
+/* Ice Neon: neon, on a very dark background. */
+:root[data-theme='ice-neon'] {
+    --bg: #02111a;
+    --panel: #071c2a;
+    --panel-2: #0c2a3f;
+    --line: #1f6a8f;
+    --text: #eafcff;
+    --muted: #86c2d6;
+    --cyan: #8ff3ff;
+    --magenta: #6fb2ff;
+    --yellow: #ffe45e;
+    --red: #ff5a78;
+    --green: #3dffa0;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #010b12;
+    --code-bg: #010710;
+    --on-accent: #021822;
+    --glow: 0 0 14px rgba(143, 243, 255, 0.4);
+    --glow-strong: 0 0 16px rgba(143, 243, 255, 0.65);
+    --glow-hot: 0 0 18px rgba(111, 178, 255, 0.7);
+    --glow-red: 0 0 14px rgba(255, 90, 120, 0.25);
+    --glow-yellow: 0 0 14px rgba(255, 228, 94, 0.25);
+    --glow-green: 0 0 14px rgba(61, 255, 160, 0.25);
+    --glow-inset: inset 0 0 30px rgba(143, 243, 255, 0.05);
+    --text-glow: 0 0 8px var(--cyan);
+    --logo-glow: 0 0 8px var(--cyan), 0 0 22px rgba(143, 243, 255, 0.5);
+    --tint-cyan: rgba(143, 243, 255, 0.06);
+    --tint-red: rgba(255, 90, 120, 0.08);
+    --tint-yellow: rgba(255, 228, 94, 0.07);
+    --tint-green: rgba(61, 255, 160, 0.06);
+    --toast-error-text: #ffdbe2;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #0a1a50 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #043a4a 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(143, 243, 255, 0.14) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: dark;
+}
+
 :root[data-theme-style='flat'] .logo {
     letter-spacing: 2px;
 }

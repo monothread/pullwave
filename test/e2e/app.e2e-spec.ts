@@ -1297,7 +1297,7 @@ test.describe('themes', () => {
     test('no theme has a neon glow that follows the mouse, the cyberpunk one included', async () => {
         const { page } = session;
         await openGlobalSettings(page);
-        for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']) {
+        for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']) {
             await page.getByLabel('Theme').selectOption(theme);
             await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
             const before = await glowOf(page);
@@ -1315,6 +1315,13 @@ test.describe('themes', () => {
         ['cyberpunk', 'rgb(7, 6, 15)', 'neon'],
         ['synthwave', 'rgb(18, 12, 42)', 'neon'],
         ['terminal', 'rgb(2, 10, 4)', 'neon'],
+        ['neon-tokyo', 'rgb(7, 11, 31)', 'neon'],
+        ['acid-rain', 'rgb(3, 10, 8)', 'neon'],
+        ['amber-city', 'rgb(13, 8, 5)', 'neon'],
+        ['ultraviolet', 'rgb(10, 5, 24)', 'neon'],
+        ['pink-noir', 'rgb(5, 5, 5)', 'neon'],
+        ['cyber-gold', 'rgb(8, 6, 0)', 'neon'],
+        ['ice-neon', 'rgb(2, 17, 26)', 'neon'],
         ['dark', 'rgb(22, 24, 29)', 'flat'],
         ['tokyo-night', 'rgb(26, 27, 38)', 'flat'],
         ['nord', 'rgb(46, 52, 64)', 'flat'],

@@ -34,6 +34,13 @@ describe('resolveTheme', () => {
         ['cyberpunk', false, 'cyberpunk'],
         ['synthwave', true, 'synthwave'],
         ['terminal', false, 'terminal'],
+        ['neon-tokyo', true, 'neon-tokyo'],
+        ['acid-rain', false, 'acid-rain'],
+        ['amber-city', true, 'amber-city'],
+        ['ultraviolet', false, 'ultraviolet'],
+        ['pink-noir', true, 'pink-noir'],
+        ['cyber-gold', false, 'cyber-gold'],
+        ['ice-neon', true, 'ice-neon'],
         ['tokyo-night', false, 'tokyo-night'],
         ['nord', true, 'nord'],
         ['dracula', false, 'dracula'],
@@ -82,6 +89,13 @@ describe('applyTheme', () => {
         ['cyberpunk', 'neon'],
         ['synthwave', 'neon'],
         ['terminal', 'neon'],
+        ['neon-tokyo', 'neon'],
+        ['acid-rain', 'neon'],
+        ['amber-city', 'neon'],
+        ['ultraviolet', 'neon'],
+        ['pink-noir', 'neon'],
+        ['cyber-gold', 'neon'],
+        ['ice-neon', 'neon'],
         ['dark', 'flat'],
         ['tokyo-night', 'flat'],
         ['nord', 'flat'],
@@ -124,7 +138,7 @@ describe('remembering the theme', () => {
         expect(rememberedTheme()).toBe('light');
     });
 
-    it.each(['synthwave', 'terminal', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'sakura', 'sakura-dark'] as const)('stores %s and reads it back', (theme) => {
+    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'sakura', 'sakura-dark'] as const)('stores %s and reads it back', (theme) => {
         rememberTheme(theme);
         expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe(theme);
         expect(rememberedTheme()).toBe(theme);

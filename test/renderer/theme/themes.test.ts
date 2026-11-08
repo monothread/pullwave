@@ -109,6 +109,73 @@ describe('Sakura Dark', () => {
     });
 });
 
+describe('the neon variations of the cyberpunk theme', () => {
+    // The two colors that paint each variation (--cyan is the main accent, --magenta the second), its background and the color of its glow.
+    const VARIATIONS = [
+        { theme: 'neon-tokyo', main: '#ff2e97', second: '#3d94ff', bg: '#070b1f', glow: '255, 46, 151' },
+        { theme: 'acid-rain', main: '#b6ff00', second: '#00e5ff', bg: '#030a08', glow: '182, 255, 0' },
+        { theme: 'amber-city', main: '#ff8a1f', second: '#19d3da', bg: '#0d0805', glow: '255, 138, 31' },
+        { theme: 'ultraviolet', main: '#a96dff', second: '#ff3df2', bg: '#0a0518', glow: '169, 109, 255' },
+        { theme: 'pink-noir', main: '#ff3d9a', second: '#ffe6f3', bg: '#050505', glow: '255, 61, 154' },
+        { theme: 'cyber-gold', main: '#fcee0a', second: '#ff9100', bg: '#080600', glow: '252, 238, 10' },
+        { theme: 'ice-neon', main: '#8ff3ff', second: '#6fb2ff', bg: '#02111a', glow: '143, 243, 255' }
+    ] as const;
+
+    it('has seven of them, all of the neon style', () => {
+        expect(
+            VARIATIONS.map((variation) => {
+                return THEME_STYLES[variation.theme];
+            })
+        ).toEqual(['neon', 'neon', 'neon', 'neon', 'neon', 'neon', 'neon']);
+        expect(THEMES.slice(THEMES.indexOf('terminal') + 1, THEMES.indexOf('terminal') + 8)).toEqual(
+            VARIATIONS.map((variation) => {
+                return variation.theme;
+            })
+        );
+    });
+
+    it.each(VARIATIONS)('$theme paints its main accent, its second one and its background', ({ theme, main, second, bg }) => {
+        const variables = themeVariables(theme);
+        expect(variables['--cyan']).toBe(main);
+        expect(variables['--magenta']).toBe(second);
+        expect(variables['--bg']).toBe(bg);
+        expect(variables['color-scheme']).toBe('dark');
+        // A neon theme sits on a very dark background, darker than a tenth of the luminance of its main accent.
+        expect(luminance(color(variables, '--bg'))).toBeLessThan(0.02);
+        expect(luminance(color(variables, '--bg'))).toBeLessThan(luminance(main) / 10);
+    });
+
+    it.each(VARIATIONS)('$theme glows in its main accent, and its logo too', ({ theme, glow }) => {
+        const variables = themeVariables(theme);
+        expect(variables['--glow']).toBe(`0 0 14px rgba(${glow}, 0.4)`);
+        expect(variables['--glow-strong']).toBe(`0 0 16px rgba(${glow}, 0.65)`);
+        expect(variables['--glow-inset']).toBe(`inset 0 0 30px rgba(${glow}, 0.05)`);
+        expect(variables['--logo-glow']).toBe(`0 0 8px var(--cyan), 0 0 22px rgba(${glow}, 0.5)`);
+        expect(variables['--tint-cyan']).toBe(`rgba(${glow}, 0.06)`);
+        expect(variables['--text-glow']).toBe('0 0 8px var(--cyan)');
+    });
+
+    it.each(VARIATIONS)('$theme keeps the cut corners and the scanlines of the cyberpunk theme', ({ theme }) => {
+        const variables = themeVariables(theme);
+        expect(variables['--cut']).toBe('8px');
+        expect(variables['--scanlines']).toBe(themeVariables('cyberpunk')['--scanlines']);
+        expect(variables['--font']).toBe(themeVariables('cyberpunk')['--font']);
+    });
+
+    it('does not look like the cyberpunk theme, synthwave or terminal: no variation shares their main accent or background', () => {
+        const taken = ['cyberpunk', 'synthwave', 'terminal'].map((theme) => {
+            return themeVariables(theme as ThemeName)['--cyan'];
+        });
+        VARIATIONS.forEach((variation) => {
+            expect(taken, variation.theme).not.toContain(variation.main);
+        });
+        const mains = VARIATIONS.map((variation) => {
+            return variation.main;
+        });
+        expect(new Set(mains).size).toBe(VARIATIONS.length);
+    });
+});
+
 describe('the style of each theme', () => {
     it.each(LISTED.filter((theme) => {
         return THEME_STYLES[theme] === 'flat';
@@ -122,7 +189,7 @@ describe('the style of each theme', () => {
         expect(variables['--body-bg']).toBe('var(--bg)');
     });
 
-    it.each(['synthwave', 'terminal'] as const)('%s is neon: it has a glow and scanlines, and the monospace font of the cyberpunk theme', (theme) => {
+    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon'] as const)('%s is neon: it has a glow and scanlines, and the monospace font of the cyberpunk theme', (theme) => {
         const variables = themeVariables(theme);
         ['--glow', '--glow-strong', '--glow-hot', '--glow-red', '--glow-yellow', '--glow-green', '--glow-inset', '--text-glow', '--logo-glow', '--scanlines'].forEach((name) => {
             expect(variables[name], name).not.toBe('none');

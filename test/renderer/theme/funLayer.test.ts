@@ -150,6 +150,18 @@ describe('bp-fun.css: the bars and the notices', () => {
         expect(sheet.rules.find((rule) => { return rule.selector === '.job--error .progress__bar::after'; })?.declarations).toEqual({ display: 'none' });
     });
 
+    it('has no comet on the bar of the reader nor on the timeline of the player, which would stick out of them at their end', () => {
+        expect(styleOf(sheet, ".reader__progress.progress .progress__bar:not([style*='width: 0%'])::after")).toEqual({ display: 'none' });
+        expect(styleOf(sheet, ".player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after")).toEqual({ display: 'none' });
+        // They come after the rule of the comet, with the same weight or more, so they win.
+        const selectors = sheet.rules.map((rule) => {
+            return rule.selector;
+        });
+        const comet = selectors.indexOf(".progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after");
+        expect(selectors.indexOf(".reader__progress.progress .progress__bar:not([style*='width: 0%'])::after")).toBeGreaterThan(comet);
+        expect(selectors.indexOf(".player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after")).toBeGreaterThan(comet);
+    });
+
     it('flashes the bar of a download that is done and stamps its badge', () => {
         expect(styleOf(sheet, '.job--done .progress')).toEqual({ animation: 'bp-bar-flash 0.8s ease-out' });
         expect(styleOf(sheet, '.badge--done')).toEqual({ animation: 'bp-stamp 0.55s var(--bp-ease-spring) backwards' });

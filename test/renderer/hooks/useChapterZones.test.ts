@@ -100,9 +100,11 @@ function setup(patch: Partial<ChapterZonesOptions> = {}, initialScroll = 0) {
     const bar = (): HTMLElement => {
         return scene.bar;
     };
+    // What every render of the hook was given, in order.
+    const renders: Array<{ start: number; end: number }> = [];
     const hook = renderHook(
         (options: Partial<ChapterZonesOptions>) => {
-            return useChapterZones({
+            const zones = useChapterZones({
                 area,
                 bar,
                 startZone,
@@ -115,11 +117,13 @@ function setup(patch: Partial<ChapterZonesOptions> = {}, initialScroll = 0) {
                 onNext,
                 ...options
             });
+            renders.push(zones);
+            return zones;
         },
         { initialProps: patch }
     );
     flushFrames();
-    return { ...scene, ...hook, onPrevious, onNext };
+    return { ...scene, ...hook, onPrevious, onNext, renders };
 }
 
 // The scroll that puts the end zone all in view (the area ends at 700): zone top at 700 - 400.
@@ -154,6 +158,36 @@ describe('useChapterZones how much of each zone is in view', () => {
         expect(result.current.start).toBeCloseTo(0.25, 5);
         scrollTo(START_ALL_IN_VIEW);
         expect(result.current.start).toBe(1);
+    });
+
+    it('gives nothing of what was measured in another chapter, at the very render of the new chapter', () => {
+        const { result, scrollTo, rerender, renders } = setup({ chapterKey: 'One Piece|1' });
+        scrollTo(END_ALL_IN_VIEW + 100);
+        expect(result.current).toEqual({ start: 0, end: 1 });
+        const before = renders.length;
+        // The new chapter comes: until it is measured the zones count as out of view, though the area is where it was.
+        rerender({ chapterKey: 'One Piece|2' });
+        expect(renders[before]).toEqual({ start: 0, end: 0 });
+    });
+
+    it('measures the zones again for the new chapter, and gives them once they are measured', () => {
+        const { result, scrollTo, rerender, renders } = setup({ chapterKey: 'One Piece|1' });
+        scrollTo(END_ALL_IN_VIEW + 100);
+        expect(result.current.end).toBe(1);
+        const before = renders.length;
+        rerender({ chapterKey: 'One Piece|2' });
+        expect(renders[before]).toEqual({ start: 0, end: 0 });
+        // The area is still all the way down: the new chapter is measured as it is.
+        expect(result.current).toEqual({ start: 0, end: 1 });
+        scrollTo(MIDDLE);
+        expect(result.current).toEqual({ start: 0, end: 0 });
+    });
+
+    it('keeps what it measured while the chapter stays the same', () => {
+        const { result, scrollTo, rerender } = setup({ chapterKey: 'One Piece|1' });
+        scrollTo(2490 - 700 + 200);
+        rerender({ chapterKey: 'One Piece|1' });
+        expect(result.current.end).toBeCloseTo(0.5, 5);
     });
 
     it('is none while the zones are not on', () => {

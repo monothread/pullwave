@@ -121,6 +121,30 @@ describe('MangaDb mangas', () => {
     });
 });
 
+describe('MangaDb whether the section was used', () => {
+    const RECORD = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: null, chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+
+    it('was not used while there is no manga and nothing was read', () => {
+        expect(new MangaDb(':memory:').wasUsed).toBe(false);
+    });
+
+    it('was used once a manga is in the library', () => {
+        expect(setup().db.wasUsed).toBe(true);
+    });
+
+    it('was used once something was read, with nothing in the library', () => {
+        const db = new MangaDb(':memory:');
+        db.recordReading(RECORD);
+        expect(db.wasUsed).toBe(true);
+    });
+
+    it('was not used again after the manga is removed and the history is empty', () => {
+        const { db, manga } = setup();
+        db.removeManga(manga.id);
+        expect(db.wasUsed).toBe(false);
+    });
+});
+
 describe('MangaDb chapters', () => {
     it('registers the chapters as idle, newest first', () => {
         const { db, manga } = setup();

@@ -847,6 +847,13 @@ describe('SettingsPanel theme', () => {
             ['cyberpunk', 'Cyberpunk (neon)'],
             ['synthwave', 'Synthwave (neon)'],
             ['terminal', 'Terminal (green)'],
+            ['neon-tokyo', 'Neon Tokyo (pink and blue)'],
+            ['acid-rain', 'Acid Rain (lime)'],
+            ['amber-city', 'Amber City (orange and teal)'],
+            ['ultraviolet', 'Ultraviolet (violet)'],
+            ['pink-noir', 'Pink Noir (pink on black)'],
+            ['cyber-gold', 'Cyber Gold (yellow)'],
+            ['ice-neon', 'Ice Neon (icy cyan)'],
             ['dark', 'Dark'],
             ['tokyo-night', 'Tokyo Night'],
             ['nord', 'Nord'],
@@ -861,7 +868,7 @@ describe('SettingsPanel theme', () => {
         expect(screen.getByText('Device follows the light or dark mode of your system. Saved and restored the next time the app opens.')).toBeInTheDocument();
     });
 
-    it.each(['cyberpunk', 'synthwave', 'terminal', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('saves right away when %s is chosen', async (theme) => {
+    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('saves right away when %s is chosen', async (theme) => {
         render(<SettingsPanel scope="global" />);
         fireEvent.change(screen.getByLabelText('Theme'), { target: { value: theme } });
         await flushPromises();
