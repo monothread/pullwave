@@ -1,4 +1,4 @@
-import { NEWS_WINDOW_MS, SPOTLIGHT_LIMIT, LIBRARY_SORTS, animeLastSeen, animeNews, animeSpotlight, filterGroups, isRecent, mangaLastSeen, mangaNews, mangaSpotlight, mixSpotlight, sortGroups, type SpotlightItem } from '@renderer/spotlight/spotlightData';
+import { NEWS_WINDOW_MS, SPOTLIGHT_LIMIT, LIBRARY_SORTS, animeLastSeen, animeNews, animeSpotlight, animeGroupComplete, filterGroups, isRecent, mangaLastSeen, mangaNews, mangaSpotlight, mixSpotlight, sortGroups, type SpotlightItem } from '@renderer/spotlight/spotlightData';
 import { groupLibrary } from '@renderer/components/mangaText';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { makeAnimeHistory, makeReading } from '../../helpers/homeFixtures';
@@ -213,6 +213,56 @@ describe('sortGroups and filterGroups', () => {
         expect(filterGroups(groups, 'all', news)).toEqual(groups);
         expect(filterGroups(groups, 'all', news)).not.toBe(groups);
         expect(filterGroups(groups, 'news', news)).toEqual([groups[0]]);
+    });
+
+    it('keeps the complete groups with COMPLETE and all the others with ONGOING', () => {
+        const complete = (group: { series: string }): boolean => {
+            return group.series === 'beta' || group.series === 'Same';
+        };
+        expect(filterGroups(groups, 'complete', never, complete)).toEqual([groups[0], groups[3]]);
+        expect(filterGroups(groups, 'ongoing', never, complete)).toEqual([groups[1], groups[2]]);
+        expect(filterGroups(groups, 'all', never, complete)).toEqual(groups);
+        expect(filterGroups(groups, 'news', never, complete)).toEqual([]);
+    });
+
+    it('calls the call of COMPLETE with each group, and keeps the filtered list apart from the one it was given', () => {
+        const complete = vi.fn((group: { series: string }): boolean => {
+            return group.series === 'beta';
+        });
+        const kept = filterGroups(groups, 'complete', never, complete);
+        expect(complete.mock.calls).toEqual(groups.map((group) => {
+            return [group];
+        }));
+        expect(kept).toEqual([groups[0]]);
+        expect(kept).not.toBe(groups);
+    });
+
+    it('keeps nothing with COMPLETE and everything with ONGOING when no group can be complete, as in the manga library', () => {
+        expect(filterGroups(groups, 'complete', never)).toEqual([]);
+        expect(filterGroups(groups, 'ongoing', never)).toEqual(groups);
+    });
+});
+
+describe('animeGroupComplete', () => {
+    const finished = { status: 'finished', override: null, complete: true } as const;
+    const releasing = { status: 'ongoing', override: null, complete: false } as const;
+    const unknown = { status: null, override: null, complete: false } as const;
+    const setComplete = { status: 'ongoing', override: 'complete', complete: true } as const;
+
+    it('is true when every season is complete, by AniList or as the user said it', () => {
+        expect(animeGroupComplete([makeAnime([], { id: 1, airing: finished })])).toBe(true);
+        expect(animeGroupComplete([makeAnime([], { id: 1, airing: finished }), makeAnime([], { id: 2, airing: setComplete })])).toBe(true);
+    });
+
+    it('is false when a season is still coming out or AniList knows nothing about it', () => {
+        expect(animeGroupComplete([makeAnime([], { id: 1, airing: releasing })])).toBe(false);
+        expect(animeGroupComplete([makeAnime([], { id: 1, airing: unknown })])).toBe(false);
+        expect(animeGroupComplete([makeAnime([], { id: 1, airing: finished }), makeAnime([], { id: 2, airing: releasing })])).toBe(false);
+        expect(animeGroupComplete([makeAnime([], { id: 1, airing: finished }), makeAnime([], { id: 2, airing: unknown })])).toBe(false);
+    });
+
+    it('is false for a group with no season', () => {
+        expect(animeGroupComplete([])).toBe(false);
     });
 });
 

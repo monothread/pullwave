@@ -4710,6 +4710,73 @@ test.describe('the look for new episodes', () => {
         await expect(reopened.getByTestId('anime-season').getByTestId('anime-complete')).toHaveText('COMPLETE');
     });
 
+    async function openAnimeLibrary(page: Page): Promise<void> {
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
+    }
+
+    // The chips over the grid of the library: ALL and NEW (how many are new depends on when the episodes of the test arrived), then the ones of the releases.
+    function filterChips(complete: number, ongoing: number): Array<string | RegExp> {
+        return ['ALL (1)', /^NEW \(\d+\)$/, `COMPLETE (${String(complete)})`, `ONGOING (${String(ongoing)})`];
+    }
+
+    test('filters the library by the releases: the anime AniList says ended are COMPLETE, and none is ONGOING', async () => {
+        const aniList = await startAniList('FINISHED');
+        try {
+            const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS, PULLWAVE_ANILIST_URL: aniList.url });
+            await addFakeAnime(page);
+            await expect.poll(() => {
+                return aniList.searched();
+            }, { timeout: 20000 }).toContain('Fake Anime');
+            await openAnimeLibrary(page);
+
+            const chips = page.getByRole('group', { name: 'Show' });
+            await expect(chips.getByRole('button')).toHaveText(filterChips(1, 0), { timeout: 20000 });
+            await expect(chips.getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('title', 'With every season over: AniList says it ended, or you set it as complete');
+            await expect(chips.getByRole('button', { name: 'ONGOING (0)' })).toHaveAttribute('title', 'Still coming out, or AniList does not know yet');
+
+            await chips.getByRole('button', { name: 'COMPLETE (1)' }).click();
+            await expect(chips.getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('aria-pressed', 'true');
+            await expect(page.getByTestId('anime-card')).toHaveCount(1);
+            await expect(page.getByTestId('anime-card')).toHaveAttribute('aria-label', 'Fake Anime');
+
+            await chips.getByRole('button', { name: 'ONGOING (0)' }).click();
+            await expect(chips.getByRole('button', { name: 'ONGOING (0)' })).toHaveAttribute('aria-pressed', 'true');
+            await expect(chips.getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('aria-pressed', 'false');
+            await expect(page.getByTestId('anime-card')).toHaveCount(0);
+            await expect(page.getByText('Nothing ongoing in the library.')).toHaveClass('empty');
+        } finally {
+            await aniList.close();
+        }
+    });
+
+    test('puts in ONGOING the anime AniList says nothing sure about, and moves it to COMPLETE when the user says it is complete', async () => {
+        const page = await relaunch({ animeCheckNewEpisodes: false }, {});
+        await addFakeAnime(page);
+        await openAnimeLibrary(page);
+        const chips = page.getByRole('group', { name: 'Show' });
+        await expect(chips.getByRole('button')).toHaveText(filterChips(0, 1));
+
+        await chips.getByRole('button', { name: 'ONGOING (1)' }).click();
+        await expect(page.getByTestId('anime-card')).toHaveCount(1);
+        await expect(page.getByTestId('anime-card')).toHaveAttribute('aria-label', 'Fake Anime');
+        await chips.getByRole('button', { name: 'COMPLETE (0)' }).click();
+        await expect(page.getByTestId('anime-card')).toHaveCount(0);
+        await expect(page.getByText('Nothing complete in the library.')).toHaveClass('empty');
+
+        await chips.getByRole('button', { name: 'ALL (1)' }).click();
+        await openFakeAnimeSeason(page);
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('combobox', { name: 'Releases' }).selectOption('complete');
+        await expect(page.getByRole('combobox', { name: 'Releases' })).toHaveValue('complete');
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+        await page.getByRole('button', { name: 'BACK TO LIBRARY' }).click();
+
+        await expect(chips.getByRole('button')).toHaveText(filterChips(1, 0));
+        await chips.getByRole('button', { name: 'COMPLETE (1)' }).click();
+        await expect(page.getByTestId('anime-card')).toHaveCount(1);
+        await expect(page.getByTestId('anime-card')).toHaveAttribute('aria-label', 'Fake Anime');
+    });
+
     test('does not show the availability of the anime of the schedule in the source any more', async () => {
         const { page } = session;
         await openAnimeToday(page);

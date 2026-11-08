@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { AnimeAiring } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeLibrary } from '@renderer/components/AnimeLibrary';
 import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
@@ -2289,6 +2290,133 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
         await userEvent.click(screen.getByRole('button', { name: 'NEW (0)' }));
         expect(screen.getByText('Nothing new in the last 7 days.')).toHaveClass('empty');
         expect(screen.queryAllByTestId('anime-card')).toEqual([]);
+    });
+
+    describe('the chips COMPLETE and ONGOING', () => {
+        const FINISHED = { status: 'finished', override: null, complete: true } as const;
+        const RELEASING = { status: 'ongoing', override: null, complete: false } as const;
+        const UNKNOWN = { status: null, override: null, complete: false } as const;
+        const SET_COMPLETE = { status: 'ongoing', override: 'complete', complete: true } as const;
+        const SET_ONGOING = { status: 'finished', override: 'ongoing', complete: false } as const;
+
+        const solo = (airing: AnimeAiring) => {
+            return makeAnime([makeEpisode({ id: 1, number: '1', addedAt: Date.now() - DAY })], { id: 1, title: 'Solo', createdAt: 5, airing });
+        };
+        const saga = (first: AnimeAiring, second: AnimeAiring) => {
+            return [
+                makeAnime([makeEpisode({ id: 2, animeId: 2 })], { id: 2, title: 'Saga', series: 'Saga', season: 1, createdAt: 9, airing: first }),
+                makeAnime([makeEpisode({ id: 3, animeId: 3 })], { id: 3, title: 'Saga 2', series: 'Saga', season: 2, createdAt: 1, airing: second })
+            ];
+        };
+        const old = (airing: AnimeAiring) => {
+            return makeAnime([makeEpisode({ id: 4, animeId: 4, addedAt: Date.now() - 30 * DAY })], { id: 4, title: 'Alpha Old', createdAt: 2, airing });
+        };
+
+        it('has the chips next to ALL and NEW, with how many titles each keeps and what it stands for', () => {
+            useAnimeStore.setState({ library: [solo(FINISHED), ...saga(FINISHED, RELEASING), old(UNKNOWN)] });
+            render(<AnimeLibrary />);
+
+            const chips = screen.getByRole('group', { name: 'Show' });
+            expect(
+                within(chips)
+                    .getAllByRole('button')
+                    .map((chip) => {
+                        return chip.textContent;
+                    })
+            ).toEqual(['ALL (3)', 'NEW (1)', 'COMPLETE (1)', 'ONGOING (2)']);
+            expect(within(chips).getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('title', 'With every season over: AniList says it ended, or you set it as complete');
+            expect(within(chips).getByRole('button', { name: 'ONGOING (2)' })).toHaveAttribute('title', 'Still coming out, or AniList does not know yet');
+            expect(within(chips).getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('aria-pressed', 'false');
+            expect(within(chips).getByRole('button', { name: 'ONGOING (2)' })).toHaveAttribute('aria-pressed', 'false');
+        });
+
+        it('keeps only the titles whose releases are over with COMPLETE', async () => {
+            useAnimeStore.setState({ library: [solo(FINISHED), ...saga(FINISHED, RELEASING), old(UNKNOWN)] });
+            render(<AnimeLibrary />);
+
+            await userEvent.click(screen.getByRole('button', { name: 'COMPLETE (1)' }));
+
+            expect(screen.getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: 'ALL (3)' })).toHaveAttribute('aria-pressed', 'false');
+            expect(cardNames()).toEqual(['Solo']);
+            expect(screen.getByText('1 ANIMES')).toBeInTheDocument();
+        });
+
+        it('keeps the ones still coming out and the ones AniList knows nothing about with ONGOING', async () => {
+            useAnimeStore.setState({ library: [solo(FINISHED), ...saga(FINISHED, RELEASING), old(UNKNOWN)] });
+            render(<AnimeLibrary />);
+
+            await userEvent.click(screen.getByRole('button', { name: 'ONGOING (2)' }));
+
+            expect(screen.getByRole('button', { name: 'ONGOING (2)' })).toHaveAttribute('aria-pressed', 'true');
+            expect(cardNames()).toEqual(['Saga', 'Alpha Old']);
+            expect(screen.getByText('2 ANIMES')).toBeInTheDocument();
+
+            await userEvent.click(screen.getByRole('button', { name: 'ALL (3)' }));
+            expect(cardNames()).toEqual(['Saga', 'Solo', 'Alpha Old']);
+        });
+
+        it('counts a series as complete only when every one of its seasons is', async () => {
+            useAnimeStore.setState({ library: [solo(UNKNOWN), ...saga(FINISHED, FINISHED), old(UNKNOWN)] });
+            render(<AnimeLibrary />);
+
+            await userEvent.click(screen.getByRole('button', { name: 'COMPLETE (1)' }));
+            expect(cardNames()).toEqual(['Saga']);
+
+            await userEvent.click(screen.getByRole('button', { name: 'ONGOING (2)' }));
+            expect(cardNames()).toEqual(['Solo', 'Alpha Old']);
+        });
+
+        it('puts a series with one season still coming out, or without an answer, with the ongoing ones', async () => {
+            useAnimeStore.setState({ library: saga(FINISHED, UNKNOWN) });
+            render(<AnimeLibrary />);
+
+            expect(screen.getByRole('button', { name: 'COMPLETE (0)' })).toBeInTheDocument();
+            await userEvent.click(screen.getByRole('button', { name: 'ONGOING (1)' }));
+            expect(cardNames()).toEqual(['Saga']);
+        });
+
+        it('follows what the user said about the releases over what AniList says', async () => {
+            useAnimeStore.setState({ library: [solo(SET_COMPLETE), ...saga(SET_ONGOING, FINISHED), old(SET_ONGOING)] });
+            render(<AnimeLibrary />);
+
+            await userEvent.click(screen.getByRole('button', { name: 'COMPLETE (1)' }));
+            expect(cardNames()).toEqual(['Solo']);
+
+            await userEvent.click(screen.getByRole('button', { name: 'ONGOING (2)' }));
+            expect(cardNames()).toEqual(['Saga', 'Alpha Old']);
+        });
+
+        it('counts only the titles the search found', async () => {
+            useAnimeStore.setState({ library: [solo(FINISHED), ...saga(FINISHED, RELEASING), old(UNKNOWN)] });
+            render(<AnimeLibrary />);
+
+            await userEvent.type(screen.getByLabelText('Search the library'), 'sol');
+
+            expect(screen.getByRole('button', { name: 'ALL (1)' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'COMPLETE (1)' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'ONGOING (0)' })).toBeInTheDocument();
+        });
+
+        it('says there is no complete anime when none is', async () => {
+            useAnimeStore.setState({ library: [solo(RELEASING), old(UNKNOWN)] });
+            render(<AnimeLibrary />);
+
+            await userEvent.click(screen.getByRole('button', { name: 'COMPLETE (0)' }));
+
+            expect(screen.getByText('Nothing complete in the library.')).toHaveClass('empty');
+            expect(screen.queryAllByTestId('anime-card')).toEqual([]);
+        });
+
+        it('says there is no ongoing anime when all of them are complete', async () => {
+            useAnimeStore.setState({ library: [solo(FINISHED), old(SET_COMPLETE)] });
+            render(<AnimeLibrary />);
+
+            await userEvent.click(screen.getByRole('button', { name: 'ONGOING (0)' }));
+
+            expect(screen.getByText('Nothing ongoing in the library.')).toHaveClass('empty');
+            expect(screen.queryAllByTestId('anime-card')).toEqual([]);
+        });
     });
 
     it('hides the highlights while a search is typed, and keeps the filters', async () => {

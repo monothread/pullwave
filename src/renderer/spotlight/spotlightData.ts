@@ -143,7 +143,8 @@ export function mixSpotlight(anime: readonly SpotlightItem[], manga: readonly Sp
     return mixed.slice(0, limit);
 }
 
-export type LibraryFilter = 'all' | 'news';
+// The chips over the grid of a library: every title, the ones with something new, and (anime only) the ones whose releases are over or not.
+export type LibraryFilter = 'all' | 'news' | 'complete' | 'ongoing';
 // The order of the grid of a library: the titles added last, the ones watched or read last, or by name (A to Z or Z to A).
 export type LibrarySort = 'recent' | 'last' | 'az' | 'za';
 
@@ -210,12 +211,35 @@ export function mangaLastSeen(entries: readonly LibraryManga[], history: readonl
     }, 0);
 }
 
-// The groups the filter keeps: all of them, or the ones with something new in the last seven days.
-export function filterGroups<G>(groups: readonly G[], filter: LibraryFilter, newsOf: (group: G) => number): G[] {
-    if (filter === 'all') {
-        return [...groups];
-    }
-    return groups.filter((group) => {
-        return newsOf(group) > 0;
+// Whether the releases of a series are over: every one of its seasons is complete (by AniList, or as the user said it). A series with a season
+// that is still coming out, or that AniList knows nothing about, is not complete, so each series is in one of COMPLETE and ONGOING only.
+export function animeGroupComplete(entries: readonly LibraryAnime[]): boolean {
+    return entries.length > 0 && entries.every((anime) => {
+        return anime.airing.complete;
     });
+}
+
+// Nothing is complete when the library has no such thing (the manga have no releases to be over).
+function noneComplete(): boolean {
+    return false;
+}
+
+// The groups the filter keeps: all of them, the ones with something new in the last seven days, the complete ones or all the others.
+export function filterGroups<G>(groups: readonly G[], filter: LibraryFilter, newsOf: (group: G) => number, completeOf: (group: G) => boolean = noneComplete): G[] {
+    switch (filter) {
+        case 'all':
+            return [...groups];
+        case 'news':
+            return groups.filter((group) => {
+                return newsOf(group) > 0;
+            });
+        case 'complete':
+            return groups.filter((group) => {
+                return completeOf(group);
+            });
+        case 'ongoing':
+            return groups.filter((group) => {
+                return !completeOf(group);
+            });
+    }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AnimeAiringOverride, AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
-import type { Translator } from '@shared/i18n';
+import type { MessageKey, Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { animeErrorReport, animeStatusKey, downloadedCount, groupLibrary, isNewEpisode, matchesSearch, newEpisodeCount, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
@@ -17,7 +17,7 @@ import { SeriesMenu } from './SeriesMenu';
 import { ErrorNotice } from './ErrorNotice';
 import { LibraryControls } from '../library/LibraryControls';
 import { AnimeLibrarySpotlight } from '../library/LibrarySpotlights';
-import { animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
+import { animeGroupComplete, animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
 import { inListOrder, useLibrarySort, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
 import { WatchedMark } from './WatchedMark';
@@ -341,6 +341,14 @@ function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; 
         </section>
     );
 }
+
+// What the library says when the chip chosen keeps no title (with the filter ALL there is always one, when the search found any).
+const NO_MATCH_MESSAGES: Record<LibraryFilter, MessageKey> = {
+    all: 'anime.library.search.none',
+    news: 'library.filter.noNews',
+    complete: 'library.filter.noComplete',
+    ongoing: 'library.filter.noOngoing'
+};
 
 // The screen of one season: what can be done with it and its episodes, as cards. The way back goes to the screen of the series.
 type AiringChoice = 'auto' | AnimeAiringOverride;
@@ -794,10 +802,16 @@ export function AnimeLibrary() {
     const newsOf = (group: LibraryGroup): number => {
         return animeNews(group.entries, openedAt).count;
     };
+    const completeOf = (group: LibraryGroup): boolean => {
+        return animeGroupComplete(group.entries);
+    };
     const lastSeenOf = (group: LibraryGroup): number => {
         return animeLastSeen(group.entries, history);
     };
-    const groups = sortGroups(filterGroups(all, filter, newsOf), sort, lastSeenOf);
+    const countOf = (counted: LibraryFilter): number => {
+        return filterGroups(all, counted, newsOf, completeOf).length;
+    };
+    const groups = sortGroups(filterGroups(all, filter, newsOf, completeOf), sort, lastSeenOf);
     const searching = search.trim().length > 0;
     return (
         <section className="queue library" aria-label={t('anime.library.aria')}>
@@ -806,10 +820,20 @@ export function AnimeLibrary() {
                 <TextField search label={t('anime.library.search.label')} value={search} placeholder={t('anime.library.search.placeholder')} onChange={setSearch} />
                 {importButton}
             </div>
-            <LibraryControls kind="anime" filter={filter} sort={sort} allCount={all.length} newsCount={filterGroups(all, 'news', newsOf).length} onFilter={setFilter} onSort={setSort} />
+            <LibraryControls
+                kind="anime"
+                filter={filter}
+                sort={sort}
+                allCount={all.length}
+                newsCount={countOf('news')}
+                completeCount={countOf('complete')}
+                ongoingCount={countOf('ongoing')}
+                onFilter={setFilter}
+                onSort={setSort}
+            />
             <span className="section-label">{t('anime.library.label', { count: groups.length })}</span>
             {shown.length === 0 && <p className="empty">{t('anime.library.search.none')}</p>}
-            {shown.length > 0 && groups.length === 0 && <p className="empty">{t('library.filter.noNews')}</p>}
+            {shown.length > 0 && groups.length === 0 && <p className="empty">{t(NO_MATCH_MESSAGES[filter])}</p>}
             <div className="cover-grid">
                 {groups.map((group) => {
                     return (

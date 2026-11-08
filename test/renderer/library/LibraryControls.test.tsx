@@ -3,10 +3,10 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { LibraryControls } from '@renderer/library/LibraryControls';
 import type { LibraryFilter, LibrarySort } from '@renderer/spotlight/spotlightData';
 
-function renderControls(filter: LibraryFilter = 'all', sort: LibrarySort = 'recent', kind: 'anime' | 'manga' = 'anime') {
+function renderControls(filter: LibraryFilter = 'all', sort: LibrarySort = 'recent', kind: 'anime' | 'manga' = 'anime', airing = false) {
     const onFilter = vi.fn();
     const onSort = vi.fn();
-    render(<LibraryControls kind={kind} filter={filter} sort={sort} allCount={12} newsCount={3} onFilter={onFilter} onSort={onSort} />);
+    render(<LibraryControls kind={kind} filter={filter} sort={sort} allCount={12} newsCount={3} completeCount={airing ? 7 : undefined} ongoingCount={airing ? 5 : undefined} onFilter={onFilter} onSort={onSort} />);
     return { onFilter, onSort };
 }
 
@@ -34,6 +34,59 @@ describe('LibraryControls', () => {
         fireEvent.click(screen.getByRole('button', { name: 'NEW (3)' }));
         fireEvent.click(screen.getByRole('button', { name: 'ALL (12)' }));
         expect(onFilter.mock.calls).toEqual([['news'], ['all']]);
+    });
+
+    it('has only ALL and NEW when the releases are not counted, as in the manga library', () => {
+        renderControls('all', 'recent', 'manga');
+        const chips = screen.getByRole('group', { name: 'Show' });
+        expect(
+            within(chips)
+                .getAllByRole('button')
+                .map((chip) => {
+                    return chip.textContent;
+                })
+        ).toEqual(['ALL (12)', 'NEW (3)']);
+        expect(screen.queryByRole('button', { name: /COMPLETE/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /ONGOING/ })).not.toBeInTheDocument();
+    });
+
+    it('has the chips COMPLETE and ONGOING with their counts and hints after ALL and NEW when the releases are counted', () => {
+        renderControls('all', 'recent', 'anime', true);
+        const chips = screen.getByRole('group', { name: 'Show' });
+        expect(
+            within(chips)
+                .getAllByRole('button')
+                .map((chip) => {
+                    return chip.textContent;
+                })
+        ).toEqual(['ALL (12)', 'NEW (3)', 'COMPLETE (7)', 'ONGOING (5)']);
+        const complete = within(chips).getByRole('button', { name: 'COMPLETE (7)' });
+        const ongoing = within(chips).getByRole('button', { name: 'ONGOING (5)' });
+        expect(complete).toHaveAttribute('title', 'With every season over: AniList says it ended, or you set it as complete');
+        expect(ongoing).toHaveAttribute('title', 'Still coming out, or AniList does not know yet');
+        expect(complete).toHaveClass('chip-toggle');
+        expect(complete).not.toHaveClass('chip-toggle--on');
+        expect(ongoing).not.toHaveClass('chip-toggle--on');
+        expect(within(chips).getByRole('button', { name: 'ALL (12)' })).not.toHaveAttribute('title');
+    });
+
+    it.each([
+        ['complete', 'COMPLETE (7)', 'ONGOING (5)'],
+        ['ongoing', 'ONGOING (5)', 'COMPLETE (7)']
+    ] as const)('marks only %s when it is the filter', (filter, pressed, other) => {
+        renderControls(filter, 'recent', 'anime', true);
+        expect(screen.getByRole('button', { name: pressed })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: pressed })).toHaveClass('chip-toggle--on');
+        expect(screen.getByRole('button', { name: other })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('button', { name: 'ALL (12)' })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('button', { name: 'NEW (3)' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('chooses COMPLETE and ONGOING', () => {
+        const { onFilter } = renderControls('all', 'recent', 'anime', true);
+        fireEvent.click(screen.getByRole('button', { name: 'COMPLETE (7)' }));
+        fireEvent.click(screen.getByRole('button', { name: 'ONGOING (5)' }));
+        expect(onFilter.mock.calls).toEqual([['complete'], ['ongoing']]);
     });
 
     it('chooses the order among the ones there are, the last one watched for the anime', () => {
