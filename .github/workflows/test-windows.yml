@@ -2,8 +2,14 @@ name: Test Windows
 
 # Runs what is specific to the anime section on a real Windows runner: the unit tests that do not assume POSIX paths, the
 # end-to-end tests with a fake ani-cli (BusyBox for Windows runs the shell script, the tools are found through Path, cancelling
-# ends the process tree, the protocols serve files) and, on request, a run against the real source ani-cli reads.
-# Run it manually from the Actions tab (live=true also runs the real-source tests).
+# ends the process tree, the protocols serve files, the folders and the disks are told apart) and, on request, a run against the
+# real source ani-cli reads.
+# Run it manually from the Actions tab. The inputs:
+#   scope   windows (default): only the end-to-end tests tagged @windows, the ones that depend on the system;
+#           all: every end-to-end test of the anime section and of the buttons, as before.
+#   workers how many tests run side by side on the machine (it has 4 cores; lower it if tests run out of time).
+#   live    also runs the tests that use the real source (needs the network; the source can change or block).
+# The type check, the lint and the unit tests that do not depend on the system run on Linux (Release Linux), not here.
 on:
   workflow_dispatch:
     inputs:
@@ -11,13 +17,26 @@ on:
         description: 'Also run the tests that use the real source (needs the network; the source can change or block)'
         type: boolean
         default: false
+      scope:
+        description: 'windows: only the tests that depend on the system (@windows); all: every end-to-end test of the anime section and of the buttons'
+        type: choice
+        options:
+          - windows
+          - all
+        default: windows
+      workers:
+        description: 'Tests run side by side (the machine has 4 cores)'
+        type: string
+        default: '4'
 
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     env:
       PULLWAVE_LIVE: ${{ inputs.live && '1' || '0' }}
+      SCOPE: ${{ inputs.scope }}
+      WORKERS: ${{ inputs.workers }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,20 +51,26 @@ jobs:
       - name: Fetch the programs the tests run for real (yt-dlp, ffmpeg, deno, ani-cli, busybox, curl)
         run: node scripts/fetch-binaries.mjs
 
-      - name: Type check and lint
-        run: |
-          npm run typecheck
-          npm run lint
-
-      - name: Unit tests of the anime section and of the interface
-        run: npx vitest run test/main/services/ani test/main/services/anime mediaProtocol streamProxy registerAnimeHandlers animeRuntime test/shared test/renderer
+      - name: Unit tests of the anime section that depend on the system
+        run: npx vitest run test/main/services/ani test/main/services/anime mediaProtocol streamProxy registerAnimeHandlers animeRuntime
 
       - name: Build
         run: npm run build
 
-      - name: End-to-end tests of the anime section
-        # One at a time: the tests in fullscreen lose it when another window opens (D-133).
-        run: npx playwright test --workers=1 test/e2e/anime.e2e-spec.ts test/e2e/buttons.e2e-spec.ts test/e2e/anime-live.e2e-spec.ts
+      - name: End-to-end tests of the anime section, side by side
+        shell: bash
+        # Everything but the tests that resize the window or put it in fullscreen (@resize): another window that opens takes the
+        # fullscreen from them (D-133), so those run alone in the next step. With scope windows only the tests tagged @windows run.
+        run: |
+          grep_args=()
+          if [ "$SCOPE" = "windows" ]; then
+            grep_args=(--grep @windows)
+          fi
+          npx playwright test --project=secondary --workers="$WORKERS" "${grep_args[@]}" test/e2e/anime.e2e-spec.ts test/e2e/buttons.e2e-spec.ts test/e2e/anime-live.e2e-spec.ts
+
+      - name: End-to-end tests of the anime section that resize the window, one at a time
+        if: ${{ inputs.scope == 'all' }}
+        run: npx playwright test --project=primary-tagged --workers=1 test/e2e/anime.e2e-spec.ts
 
       - name: Keep the results when something failed
         if: failure()

@@ -53,12 +53,12 @@ async function openFirstResult(): Promise<void> {
     await expect(page.getByRole('button', { name: 'EP 1', exact: true })).toBeVisible({ timeout: 60000 });
 }
 
-test('finds the anime and its episodes in the real source', async () => {
+test('finds the anime and its episodes in the real source', { tag: '@windows' }, async () => {
     await openFirstResult();
     await expect(page.getByText('10 EPISODES', { exact: true })).toBeVisible();
 });
 
-test('downloads an episode at the lowest quality, with its subtitles, and plays it', async () => {
+test('downloads an episode at the lowest quality, with its subtitles, and plays it', { tag: '@windows' }, async () => {
     await page.getByRole('button', { name: 'ADD TO LIBRARY', exact: true }).click();
     await page.getByRole('button', { name: 'CONFIRM' }).click();
     await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
@@ -98,7 +98,7 @@ test('downloads an episode at the lowest quality, with its subtitles, and plays 
     await page.keyboard.press('Escape');
 });
 
-test('watches an episode without downloading it', async () => {
+test('watches an episode without downloading it', { tag: '@windows' }, async () => {
     await page.getByRole('button', { name: 'SEARCH', exact: true }).first().click();
     await page.getByRole('button', { name: 'OPEN: Cyberpunk: Edgerunners', exact: true }).click();
     await page.getByRole('button', { name: 'EP 2', exact: true }).click();

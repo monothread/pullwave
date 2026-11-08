@@ -194,3 +194,4 @@
 - 2026-11-07 · The disk space shows the folder of the other section too (manga in the anime settings, anime in the manga ones), with a note when it is on another disk or overlaps, reads the folders side by side (716 → 189 ms on 17 thousand files), waits for a MIGRATE FOLDER to end, and lights the part of the ring that is pointed at (D-146).
 - 2026-11-07 · The design was improved (D-147).
 - Released 0.25.10 (tag `v0.25.10` = `fa98506`), the design improved (D-147) and the folder of the other section in the disk space (D-146): type check, lint and all the unit tests (353 files, 11196) OK; e2e only of what the design touches (the `playful` spec and the design audits, passed). The Linux and Windows workflows uploaded their files and the Release was published.
+- 2026-11-07 · The Test Windows workflow runs the end-to-end tests side by side and, by default, only the ones that depend on the system (D-148).
