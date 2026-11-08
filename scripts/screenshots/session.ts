@@ -111,7 +111,7 @@ export async function launch(assets: Assets, options: LaunchOptions = {}): Promi
         join(userData, 'settings.json'),
         JSON.stringify({
             language: 'en',
-            theme: options.theme ?? 'cyberpunk',
+            theme: options.theme ?? 'neon-tokyo',
             checkUpdatesOnStart: false,
             verifyLiveEnd: false,
             downloadDir: downloads,
@@ -184,6 +184,14 @@ export async function snap(page: Page, name: string): Promise<void> {
 }
 
 export { VIDEO_TITLES };
+
+// One box of the screen (the episodes of a season, for instance), not the whole window.
+export async function snapElement(page: Page, selector: string, name: string): Promise<void> {
+    await closeNotices(page);
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(700);
+    await page.locator(selector).first().screenshot({ path: join(SCREENSHOTS_DIRECTORY, `${name}.png`) });
+}
 
 export async function snapFullscreen(page: Page, name: string): Promise<void> {
     await page.screenshot({ path: join(SCREENSHOTS_DIRECTORY, `${name}.png`) });

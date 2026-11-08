@@ -21,7 +21,7 @@
     "test:e2e:full": "npm run build && npm run e2e:side-by-side; side=$?; npm run e2e:screen; exit $(( side || $? ))",
     "e2e:side-by-side": "playwright test --project=secondary --project=primary-files",
     "e2e:screen": "playwright test --project=primary-tagged",
-    "screenshots": "npm run build && xvfb-run -a -s \"-screen 0 1920x1080x24\" playwright test -c scripts/screenshots/playwright.config.ts",
+    "screenshots": "npm run build && xvfb-run -a -s \"-screen 0 3440x1440x24\" playwright test -c scripts/screenshots/playwright.config.ts",
     "dist": "npm run build && electron-builder --linux AppImage --publish never",
     "fetch-binaries": "node scripts/fetch-binaries.mjs",
     "release": "npm run build && electron-builder --linux AppImage --publish always",

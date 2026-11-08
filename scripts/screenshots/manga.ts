@@ -146,3 +146,18 @@ export async function shootMangaSettings(shot: Shot): Promise<void> {
     await shot.page.waitForTimeout(1000);
     await snap(shot.page, 'manga-settings');
 }
+
+// The reader with two pages side by side (a setting of the reader), then back to one page for the screens that come next.
+export async function shootMangaTwoPages(shot: Shot): Promise<void> {
+    const { page } = shot;
+    const reader = page.getByRole('region', { name: 'Reader' });
+    await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+    await reader.getByRole('switch', { name: 'Two pages side by side' }).check();
+    await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+    await page.waitForTimeout(2500);
+    await snap(page, 'manga-two-pages');
+    await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+    await reader.getByRole('switch', { name: 'Two pages side by side' }).uncheck();
+    await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+    await page.keyboard.press('Escape');
+}

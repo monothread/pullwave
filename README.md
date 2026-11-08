@@ -1,17 +1,18 @@
 # PULLWAVE — video downloader and anime player for Linux and Windows
 
-Pullwave is a desktop app with a cyberpunk look (and light and dark themes too) for downloading videos and for keeping and watching anime. It has two parts, side by side:
+Pullwave is a desktop app with a neon look (and light and dark themes too) for downloading videos, for keeping and watching anime and for reading manga. It has three parts, side by side:
 
 - **Video downloader:** download videos and audio from the sites [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports, with a queue, a history and live-stream recording.
 - **Anime:** search, download, a library of your own and a player, built on [ani-cli](https://github.com/pystardust/ani-cli). On Linux and on Windows 10 (version 1903) or newer.
+- **Manga:** the sources of the [Mihon/Tachiyomi](https://mihon.app) extensions, a library of your own and a reader (one page, two pages side by side, vertical scroll or webtoon). On Linux and Windows (64 bits).
 
 There is nothing else to install: everything the app needs comes with it.
 
 > **Disclaimer:** every download made with this program is **at the user's own risk and responsibility**. The authors and contributors are not responsible for what is downloaded or for how it is used. You must only download content you have the right to download. See [DISCLAIMER.md](DISCLAIMER.md).
 
-| Cyberpunk | Dark | Light |
+| Neon Tokyo | Dark | Light |
 |---|---|---|
-| ![Cyberpunk theme](docs/screenshots/cyberpunk-downloads.png) | ![Dark theme](docs/screenshots/dark-downloads.png) | ![Light theme](docs/screenshots/light-downloads.png) |
+| ![Neon Tokyo theme](docs/screenshots/neon-tokyo-downloads.png) | ![Dark theme](docs/screenshots/dark-downloads.png) | ![Light theme](docs/screenshots/light-downloads.png) |
 
 ## Highlights
 - Choose the quality, the format and the subtitles of each download, or download only the audio.
@@ -20,6 +21,8 @@ There is nothing else to install: everything the app needs comes with it.
 - A **player** inside the app, or watch an episode **without downloading** it.
 - **Subtitles made for you:** translate a subtitle into another language, or create one from the audio of an episode that has none, with your own account at OpenAI, Claude, Gemini and others.
 - **Manga** from the sources of the Mihon/Tachiyomi extensions: search them all at once, keep a library of cards, read in the app and download as CBZ.
+- Made for **every screen**: from a half-screen window to an **ultrawide 3440x1440** monitor, and to a monitor turned to stand up (**1080x1920**).
+- Twenty themes (ten neon and ten flat, light and dark).
 - The whole app in **English, Português, Español, 中文 and 日本語**.
 - Updates itself, and downloads and updates its video and anime tools from inside the app (the package stays small).
 
@@ -49,6 +52,10 @@ The app looks and moves like the TV mode of a game console.
 
 ![The home screen](docs/screenshots/home.png)
 
+On an ultrawide screen (here 3440x1440) the page is wider, the interface a fifth bigger and the lists have three columns:
+
+![The home screen on an ultrawide screen](docs/screenshots/home-ultrawide.png)
+
 - **HOME** is the first screen: a carousel of highlights that changes every 5 seconds (what you left half way, then the anime and manga that got something new in the last 7 days; a chapter read to its end gives its place to the next one not read, and a manga that is up to date leaves the carousel) and a big block for each section, in the order of the menu, with what goes on in it (downloads, news of the week) and quick buttons (VIDEO DOWNLOADER: PASTE A LINK, CUT; ANIME and MANGA: UPDATES, LIBRARY). While a library is empty, ANIME offers SEARCH instead of UPDATES, and MANGA offers EXTENSIONS (or BROWSE, once an extension gives a source). With nothing to highlight yet, a welcome takes the place of the carousel.
 - **The menu on the left** has HOME, **VIDEO DOWNLOADER**, **ANIME**, **MANGA** and a ⚙ for the settings of the whole app. It is a rail of pictures; ☰ opens it with the names. On a narrow window it is a dock at the bottom.
 - **The top bar** has a search in the middle (titles of your libraries, or a search in the anime or manga section), the downloads of the whole app (⬇ with how many are going on), a button for the sounds of the navigation, and the clock.
@@ -67,7 +74,7 @@ Each part has its own bar and its own ⚙:
 The back and forward buttons of the mouse take you through the screens you have been to.
 
 ## Video downloader
-![The queue downloading](docs/screenshots/cyberpunk-downloads.png)
+![The queue downloading](docs/screenshots/neon-tokyo-downloads.png)
 
 ### Queue
 - Paste a link, or several: **+ ADD LINK** gives you one field per link. **FOLDER** sends that download to another folder, and **OPTIONS** changes the quality, the format and the live-stream behavior for that download only.
@@ -75,20 +82,20 @@ The back and forward buttons of the mouse take you through the screens you have 
 - **PAUSE** stops a download and keeps what was already downloaded; **RESUME** goes on from there, and a paused download leaves its place in the queue to the next one. A live recording cannot be paused (STOP & SAVE ends it). A paused download is still there, paused, when you open the app again, and RESUME goes on from its partial files. Closing the app while downloads are running cancels them and deletes their unfinished files (paused downloads are kept, with theirs); the app asks before it does.
 - If something goes wrong, a clear message explains what happened. **SHOW DETAILS** here, and the words of the error everywhere else in the app (the history, the anime, the manga and the programs), open a window that shows everything the app knows about it: what was being done, the address, the HTTP status, the command, the exit code, the cause and the technical text, with a **COPY** button that copies that text (the window stays open).
 
-  ![An error explained in the queue](docs/screenshots/cyberpunk-error.png)
+  ![An error explained in the queue](docs/screenshots/neon-tokyo-error.png)
 
-  ![The window with the details of an error](docs/screenshots/cyberpunk-error-details.png)
+  ![The window with the details of an error](docs/screenshots/neon-tokyo-error-details.png)
 
 - Failed or cancelled downloads clean up after themselves; live recordings are always kept.
 
 ### History
-![History of the video downloader](docs/screenshots/cyberpunk-history.png)
+![History of the video downloader](docs/screenshots/neon-tokyo-history.png)
 
 Every download, finished or failed, with the time and a button to show the file.
 
 ### Cut
 
-![The CUT tab with two parts marked](docs/screenshots/cyberpunk-cut.png)
+![The CUT tab with two parts marked](docs/screenshots/neon-tokyo-cut.png)
 
 The **CUT** tab cuts a video or audio file you already have (any file, not only the ones the app downloaded) into the parts you mark.
 
@@ -115,7 +122,7 @@ Use the cookies of your browser for age-restricted, private or members-only vide
 - If the stream drops, the app keeps looking for it for a few seconds. If it comes back, the recording goes on in a new file of the same download.
 
 ### Settings of the video downloader (⚙)
-![Settings of the video downloader](docs/screenshots/cyberpunk-settings.png)
+![Settings of the video downloader](docs/screenshots/neon-tokyo-settings.png)
 
 Where downloads are saved and how files are named, quality and format, playlists and subtitles, live streams, browser cookies, and advanced options such as a speed limit or using your own yt-dlp and ffmpeg. The **Status of the programs** box shows yt-dlp and deno (which it runs the scripts of some sites with): whether they are installed, their version, the latest one (**CHECK FOR NEW VERSIONS**) and **UPDATE TO** it, which installs the release beside the one that works, checks it (the list of checksums of yt-dlp has to be signed by the yt-dlp project, with the key that comes with the app) and only then uses it. **USE THE VERSION OF THE APP** goes back to the version the app was made with. If a program failed to download or does not run, the box says why and has **TRY AGAIN** or **INSTALL AGAIN**. A yt-dlp you chose by its path is yours: the app does not download or update it.
 
@@ -166,12 +173,16 @@ Everything you downloaded, with sizes, where you stopped watching and what faile
 ### Series and seasons
 ![A series with its episodes](docs/screenshots/anime-series.png)
 
+The episodes are cards. One that was **watched** has a green seal (a check and the word) and a quieter card, so what is still to be watched stands out (an edge in the accent colour of the theme and a bold name); the chapters of a manga that were read are marked the same way.
+
+![The episodes, the first two watched](docs/screenshots/anime-episodes.png)
+
 The source lists every season as a separate anime. Give them the same **series** name and an **order**, and they become one series with its seasons in order. The app suggests the names from the title, and you can change them before adding the anime to the library. After that the series cannot change (rename it from its screen); EDIT SEASON changes the order and the name of a season. A season can have a name of its own instead of "SEASON N".
 
 Click a season to show or hide its episodes, and click a downloaded episode to play it. Changing a season does not move files you already have.
 
 ### Player
-![The player in fullscreen, cyberpunk theme](docs/screenshots/anime-player.png)
+![The player in fullscreen, Neon Tokyo theme](docs/screenshots/anime-player.png)
 
 Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next episode, and a ⚙ with the subtitle settings (which one to show and the size) and **Next episode automatically**. When an episode ends and the next one is downloaded, a panel over the video counts 10 seconds down to it, with PLAY NOW and CANCEL (on by default; the switch in the ⚙ turns it off, and the choice is kept). It remembers where you stopped. Click the video to pause and double-click it for fullscreen; in fullscreen the controls hide when the mouse is still for 3 seconds. In every theme they float over the video, taking no room. The progress bar is the same as the one of a download: the part already watched is a neon wave that flows (also when the video is paused), and the glow is the one of every bar. Escape closes the player.
 
@@ -228,6 +239,7 @@ Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](http
   ![The library of the manga](docs/screenshots/manga-library.png)
   ![The page of a manga](docs/screenshots/manga-page.png)
   ![The reader](docs/screenshots/manga-reader.png)
+  ![The reader with two pages side by side](docs/screenshots/manga-two-pages.png)
 - **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: the sources are the ones in the language of the settings (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number.
 - **The folder:** as with the anime, once there are mangas in the library the folder is fixed and only **MIGRATE FOLDER** changes it (it moves the files, checks them and then removes the old ones).
 - **Disk space:** the manga settings have the same ring, for the manga folder, with the anime folder shown next to it.

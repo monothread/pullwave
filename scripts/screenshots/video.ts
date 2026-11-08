@@ -53,10 +53,10 @@ export async function shootError(shot: Shot): Promise<void> {
     await submitLink(page, 'https://videos.example/watch?v=Kx9s2LqPz&fail=forbidden');
     const banner = page.getByRole('alert').filter({ hasText: 'Forbidden' });
     await expect(banner).toBeVisible();
-    await snap(page, 'cyberpunk-error');
+    await snap(page, 'neon-tokyo-error');
     await banner.getByRole('button', { name: 'SHOW DETAILS' }).click();
     await expect(page.getByRole('dialog', { name: 'ERROR DETAILS' })).toBeVisible();
-    await snap(page, 'cyberpunk-error-details');
+    await snap(page, 'neon-tokyo-error-details');
     await page.getByRole('dialog', { name: 'ERROR DETAILS' }).getByRole('button', { name: 'CLOSE' }).click();
     await page.getByTestId('job-card').getByRole('button', { name: 'REMOVE' }).click();
     await page.getByRole('dialog', { name: 'Remove this download from the list?' }).getByRole('button', { name: 'REMOVE', exact: true }).click();
@@ -66,7 +66,7 @@ export async function shootError(shot: Shot): Promise<void> {
 export async function shootHistory(shot: Shot): Promise<void> {
     await shot.page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'HISTORY', exact: true }).click();
     await expect(shot.page.locator('.history__item--done').first()).toBeVisible();
-    await snap(shot.page, 'cyberpunk-history');
+    await snap(shot.page, 'neon-tokyo-history');
 }
 
 export async function shootCut(shot: Shot): Promise<void> {
@@ -82,7 +82,7 @@ export async function shootCut(shot: Shot): Promise<void> {
     await page.getByLabel('Start of part 2').fill('2:10');
     await page.getByLabel('End of part 2').fill('2:40');
     await page.waitForTimeout(1000);
-    await snap(page, 'cyberpunk-cut');
+    await snap(page, 'neon-tokyo-cut');
     await resize(shot.app, page, WINDOW.width, WINDOW.height);
 }
 
@@ -90,7 +90,7 @@ export async function shootVideoSettings(shot: Shot): Promise<void> {
     await openVideoDownloader(shot.page);
     await shot.page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: /SETTINGS/ }).click();
     await shot.page.waitForTimeout(800);
-    await snap(shot.page, 'cyberpunk-settings');
+    await snap(shot.page, 'neon-tokyo-settings');
 }
 
 export type { Assets };

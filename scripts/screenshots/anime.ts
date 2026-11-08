@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { snap, snapFullscreen, type Shot } from './session';
+import { snap, snapElement, snapFullscreen, type Shot } from './session';
 
 // The screens of the anime section.
 
@@ -120,6 +120,16 @@ export async function shootSeries(shot: Shot): Promise<void> {
     await page.getByRole('button', { name: 'OPEN SERIES: Neon Harbor Nights', exact: true }).click();
     await page.waitForTimeout(1500);
     await snap(page, 'anime-series');
+}
+
+// The episodes of a season as cards: the first two watched, so the seal of what was watched is seen next to the ones still to watch.
+export async function shootEpisodes(shot: Shot): Promise<void> {
+    const { page } = shot;
+    for (const episode of [1, 2]) {
+        await page.getByRole('button', { name: `MARK AS WATCHED: Neon Harbor Nights EP ${String(episode)}`, exact: true }).click();
+    }
+    await expect(page.getByRole('img', { name: 'WATCHED' })).toHaveCount(2);
+    await snapElement(page, '.episode-cards', 'anime-episodes');
 }
 
 export async function shootPlayer(shot: Shot): Promise<void> {
