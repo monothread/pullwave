@@ -1,6 +1,6 @@
 # PULLWAVE — video downloader and anime player for Linux and Windows
 
-Pullwave is a desktop app with a neon look (and light and dark themes too) for downloading videos, for keeping and watching anime and for reading manga. It has three parts, side by side:
+Pullwave is a desktop app with a cyberpunk look (and light and dark themes too) for downloading videos, for keeping and watching anime and for reading manga. It has three parts, side by side:
 
 - **Video downloader:** download videos and audio from the sites [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports, with a queue, a history and live-stream recording.
 - **Anime:** search, download, a library of your own and a player, built on [ani-cli](https://github.com/pystardust/ani-cli). On Linux and on Windows 10 (version 1903) or newer.
@@ -22,7 +22,7 @@ There is nothing else to install: everything the app needs comes with it.
 - **Subtitles made for you:** translate a subtitle into another language, or create one from the audio of an episode that has none, with your own account at OpenAI, Claude, Gemini and others.
 - **Manga** from the sources of the Mihon/Tachiyomi extensions: search them all at once, keep a library of cards, read in the app and download as CBZ.
 - Made for **every screen**: from a half-screen window to an **ultrawide 3440x1440** monitor, and to a monitor turned to stand up (**1080x1920**).
-- Twenty themes (ten neon and ten flat, light and dark).
+- Twenty themes: cyberpunk ones and flat ones, light and dark.
 - The whole app in **English, Português, Español, 中文 and 日本語**.
 - Updates itself, and downloads and updates its video and anime tools from inside the app (the package stays small).
 
