@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AnimeSearchResult } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
@@ -56,13 +56,14 @@ describe('AnimeSearch form', () => {
 
     it('searches when the form is submitted', async () => {
         const user = userEvent.setup();
-        mock.api.searchAnime.mockResolvedValue({ ok: true, results: RESULTS });
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: RESULTS, hasNextPage: false, limited: false });
         render(<AnimeSearch />);
 
         await user.type(screen.getByLabelText('Anime name'), 'cyberpunk');
         await user.selectOptions(screen.getByLabelText('Audio'), 'dub');
         await user.click(screen.getByRole('button', { name: 'SEARCH' }));
 
+        expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
         expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk', 'dub');
         expect(await screen.findByText('2 RESULTS')).toBeInTheDocument();
     });
@@ -199,6 +200,193 @@ describe('AnimeSearch results', () => {
         expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('cyberpunk', 2, 'dub');
         expect(await screen.findByText('3 EPISODES', { selector: '.section-label' })).toBeInTheDocument();
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
+    });
+});
+
+describe('AnimeSearch the next results', () => {
+    type Observed = { callback: IntersectionObserverCallback; target: Element | null; disconnected: boolean };
+    let observers: Observed[] = [];
+    const THIRD: AnimeSearchResult = { index: 3, title: 'Cyberpunk: Edgerunners 3' };
+
+    beforeEach(() => {
+        observers = [];
+        vi.stubGlobal(
+            'IntersectionObserver',
+            class {
+                private readonly record: Observed;
+                constructor(callback: IntersectionObserverCallback) {
+                    this.record = { callback, target: null, disconnected: false };
+                    observers.push(this.record);
+                }
+                observe(target: Element): void {
+                    this.record.target = target;
+                }
+                disconnect(): void {
+                    this.record.disconnected = true;
+                }
+                unobserve(): void {
+                    return undefined;
+                }
+            }
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function reachTheEnd(): void {
+        const live = observers.filter((observer) => {
+            return !observer.disconnected && observer.target !== null;
+        });
+        act(() => {
+            live.at(-1)!.callback([{ isIntersecting: true, target: live.at(-1)!.target! } as IntersectionObserverEntry], {} as IntersectionObserver);
+        });
+    }
+
+    function listed(overrides: Partial<ReturnType<typeof useAnimeStore.getState>['search']> = {}): void {
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'cyberpunk', status: 'done', results: RESULTS, searchedQuery: 'cyberpunk', hasNextPage: true, ...overrides } });
+    }
+
+    it('has no end of the list to watch when the source has no more results', () => {
+        listed({ hasNextPage: false });
+        render(<AnimeSearch />);
+        expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
+        expect(observers.filter((observer) => { return observer.target !== null; })).toEqual([]);
+    });
+
+    it('watches the end of the list, with no button to ask for more, when the source has more', () => {
+        listed();
+        render(<AnimeSearch />);
+        const end = screen.getByTestId('anime-end-of-list');
+        expect(end).toHaveClass('manga__more');
+        expect(within(end).queryByText('LOADING…')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'LOAD MORE' })).not.toBeInTheDocument();
+        expect(observers.at(-1)?.target).toBe(end);
+        expect(mock.api.searchAnime).not.toHaveBeenCalled();
+    });
+
+    it('asks for the results after the ones listed when the end is reached, and adds them to the list', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [...RESULTS, THIRD], hasNextPage: false, limited: false });
+        render(<AnimeSearch />);
+        expect(screen.getByText('2 RESULTS')).toBeInTheDocument();
+
+        reachTheEnd();
+
+        expect(await screen.findByText('3 RESULTS')).toBeInTheDocument();
+        expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk', 'sub', 2);
+        expect(screen.getByRole('button', { name: 'OPEN: Cyberpunk: Edgerunners 3' })).toBeInTheDocument();
+        expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
+    });
+
+    it('goes on watching the end while the source has more, and asks again from the new last position', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValueOnce({ ok: true, results: [...RESULTS, THIRD], hasNextPage: true, limited: false });
+        mock.api.searchAnime.mockResolvedValueOnce({ ok: true, results: [...RESULTS, THIRD, { index: 4, title: 'Cyberpunk: Edgerunners 4' }], hasNextPage: false, limited: false });
+        render(<AnimeSearch />);
+
+        reachTheEnd();
+        expect(await screen.findByText('3 RESULTS')).toBeInTheDocument();
+        await waitFor(() => {
+            expect(observers.filter((observer) => { return !observer.disconnected && observer.target !== null; }).at(-1)?.target).toBe(screen.getByTestId('anime-end-of-list'));
+        });
+        reachTheEnd();
+
+        expect(await screen.findByText('4 RESULTS')).toBeInTheDocument();
+        expect(mock.api.searchAnime.mock.calls).toEqual([
+            ['cyberpunk', 'sub', 2],
+            ['cyberpunk', 'sub', 3]
+        ]);
+    });
+
+    it('says it is loading at the end of the list while the next results come', async () => {
+        let answer: (value: unknown) => void = () => {
+            return undefined;
+        };
+        listed();
+        mock.api.searchAnime.mockReturnValue(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        render(<AnimeSearch />);
+
+        reachTheEnd();
+
+        expect(await within(screen.getByTestId('anime-end-of-list')).findByText('LOADING…')).toBeInTheDocument();
+        answer({ ok: true, results: [...RESULTS, THIRD], hasNextPage: false, limited: false });
+        await waitFor(() => {
+            expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
+        });
+    });
+
+    it('is not asked for twice while one is on its way', async () => {
+        listed();
+        mock.api.searchAnime.mockReturnValue(new Promise(() => { return undefined; }));
+        render(<AnimeSearch />);
+
+        reachTheEnd();
+        await within(screen.getByTestId('anime-end-of-list')).findByText('LOADING…');
+        const watching = observers.filter((observer) => { return !observer.disconnected && observer.target !== null; });
+
+        expect(watching).toEqual([]);
+        expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks to make the search more specific, and watches nothing, when the list reached the most it lists', () => {
+        listed({ hasNextPage: false, limited: true });
+        render(<AnimeSearch />);
+
+        expect(screen.getByTestId('anime-results-limit')).toHaveTextContent('Showing the first 2 results. Make the search more specific to see the others.');
+        expect(screen.getByTestId('anime-results-limit')).toHaveClass('empty');
+        expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
+    });
+
+    it('says nothing about a limit when the list is not limited', () => {
+        listed({ hasNextPage: true, limited: false });
+        render(<AnimeSearch />);
+        expect(screen.queryByTestId('anime-results-limit')).not.toBeInTheDocument();
+    });
+
+    it('shows the limit once the last results that fit arrive', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [...RESULTS, THIRD], hasNextPage: false, limited: true });
+        render(<AnimeSearch />);
+
+        reachTheEnd();
+
+        expect(await screen.findByTestId('anime-results-limit')).toHaveTextContent('Showing the first 3 results. Make the search more specific to see the others.');
+        expect(screen.getByText('3 RESULTS')).toBeInTheDocument();
+    });
+
+    it('keeps the results and explains the error when the next ones cannot be loaded', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: false, error: { code: 'BLOCKED', raw: 'Blocked by cloudflare.' } });
+        render(<AnimeSearch />);
+
+        reachTheEnd();
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('The source blocked the request. Try again later.');
+        expect(screen.getByText('2 RESULTS')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'OPEN: Cyberpunk: Edgerunners 2' })).toBeInTheDocument();
+        expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
+        expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks again from the start, with the first results only, when the search is made again', async () => {
+        const user = userEvent.setup();
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [THIRD], hasNextPage: false, limited: false });
+        render(<AnimeSearch />);
+
+        await user.click(screen.getByRole('button', { name: 'SEARCH' }));
+
+        expect(await screen.findByText('1 RESULTS')).toBeInTheDocument();
+        expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk', 'sub');
+        expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
     });
 });
 

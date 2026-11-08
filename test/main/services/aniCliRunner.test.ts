@@ -66,9 +66,49 @@ describe('runAniCli', () => {
                     { prompt: 'Select anime:', choice: '1 Naruto' },
                     { prompt: 'Select anime:', choice: '2 Naruto Shippuden' }
                 ],
-                destination: null
+                destination: null,
+                moreResults: false
             }
         });
+    });
+
+    it('tells that the source has more results from the line of the search, which is not part of the output', async () => {
+        const { fake, handle } = start();
+        fake.stderr.write('PULLWAVE_MENU\tSelect anime: \t1 Naruto\n');
+        fake.stderr.write('PULLWAVE_SEARCH_MORE\n');
+        fake.stderr.write('Invalid anime selection\n');
+        fake.emitter.emit('close', 1);
+
+        expect(await handle.result).toEqual({
+            status: 'done',
+            value: {
+                exitCode: 1,
+                output: 'Invalid anime selection\n',
+                menuChoices: [{ prompt: 'Select anime:', choice: '1 Naruto' }],
+                destination: null,
+                moreResults: true
+            }
+        });
+    });
+
+    it('tells it also when the line has terminal codes and spaces around it', async () => {
+        const { fake, handle } = start();
+        fake.stderr.write(`${ESC}[2K\r${ESC}[1;34m PULLWAVE_SEARCH_MORE ${ESC}[0m\n`);
+        fake.emitter.emit('close', 1);
+
+        const result = await handle.result;
+        expect(result.status === 'done' && result.value.moreResults).toBe(true);
+        expect(result.status === 'done' && result.value.output).toBe('');
+    });
+
+    it('does not tell that the source has more results when a line only mentions the words', async () => {
+        const { fake, handle } = start();
+        fake.stderr.write('the PULLWAVE_SEARCH_MORE marker is not here\n');
+        fake.emitter.emit('close', 1);
+
+        const result = await handle.result;
+        expect(result.status === 'done' && result.value.moreResults).toBe(false);
+        expect(result.status === 'done' && result.value.output).toBe('the PULLWAVE_SEARCH_MORE marker is not here\n');
     });
 
     it('reports progress and the destination file from stdout', async () => {
@@ -90,7 +130,8 @@ describe('runAniCli', () => {
                 exitCode: 0,
                 output: '[download] Destination: /home/me/Anime/Naruto Episode 1.mp4\n',
                 menuChoices: [],
-                destination: '/home/me/Anime/Naruto Episode 1.mp4'
+                destination: '/home/me/Anime/Naruto Episode 1.mp4',
+                moreResults: false
             }
         });
     });
@@ -113,7 +154,7 @@ describe('runAniCli', () => {
         fake.emitter.emit('close', 0);
         expect(await handle.result).toEqual({
             status: 'done',
-            value: { exitCode: 0, output: '[download] Destination: /a.mp4\n', menuChoices: [], destination: '/a.mp4' }
+            value: { exitCode: 0, output: '[download] Destination: /a.mp4\n', menuChoices: [], destination: '/a.mp4', moreResults: false }
         });
     });
 
@@ -216,7 +257,7 @@ describe('runAniCli', () => {
             expect(stderrDestroy).toHaveBeenCalledTimes(1);
             expect(await handle.result).toEqual({
                 status: 'done',
-                value: { exitCode: 0, output: 'links fetched\n', menuChoices: [], destination: null }
+                value: { exitCode: 0, output: 'links fetched\n', menuChoices: [], destination: null, moreResults: false }
             });
         });
 
@@ -247,7 +288,7 @@ describe('runAniCli', () => {
 });
 
 describe('asDownloadResult', () => {
-    const outcome: AniRunOutcome = { exitCode: 0, output: 'ok\n', menuChoices: [], destination: '/a.mp4' };
+    const outcome: AniRunOutcome = { exitCode: 0, output: 'ok\n', menuChoices: [], destination: '/a.mp4', moreResults: false };
 
     it('keeps a clean exit as done', () => {
         expect(asDownloadResult(outcome)).toEqual({ status: 'done', value: outcome });

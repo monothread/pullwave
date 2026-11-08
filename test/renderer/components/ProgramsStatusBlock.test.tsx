@@ -357,6 +357,12 @@ describe('ProgramsStatusBlock updates', () => {
         expect(row('anicli')).toHaveTextContent('The latest ani-cli works, but some changes of the app do not fit it (the choice of the subtitle, saving every subtitle, the address of the stream), so some subtitles may be missing.');
     });
 
+    it('names the change of the pages of the search among the ones that do not fit', () => {
+        version('anicli', { latest: 'abcdef0123456789abcdef0123456789abcdef01', updatable: true, unfit: ['menuIds', 'singleResult', 'searchPages'] });
+        render(<ProgramsStatusBlock place="anime" />);
+        expect(row('anicli')).toHaveTextContent('The latest ani-cli works, but some changes of the app do not fit it (telling apart the anime that have the same name, the title of the anime the source picks on its own, the pages of the search after the first), so some subtitles may be missing.');
+    });
+
     it('does not warn about the changes when there is nothing to update to', () => {
         version('anicli', { updatable: false, unfit: ['allSubtitles'] });
         render(<ProgramsStatusBlock place="anime" />);

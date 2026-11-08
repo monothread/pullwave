@@ -4,6 +4,7 @@ import type { AniCliInfo, AnimeAudio } from '@shared/anime';
 import { patchAniCli } from './aniPatches';
 import { providerOf } from './aniProvider';
 import { parseAniCliVersion } from './aniVersion';
+import { SEARCH_MIN_VARIABLE } from './aniSearchPages';
 import { SUBTITLE_LABELS_VARIABLE } from './aniSubtitles';
 import type { ResolvedBinary } from './binaryResolver';
 
@@ -95,6 +96,9 @@ export interface AniEnvOptions {
     player?: string;
     // Which yt-dlp and ffmpeg ani-cli finds. On Windows their folders go on Path (there are no links to make there).
     tools?: AniTools;
+    // How many results of the search ani-cli must have read at least (it reads one page after the other until it has them): the position of
+    // the anime it was asked to open, or what the list of the screen needs. Left out, only the first page is read.
+    searchMin?: number;
 }
 
 // The text of a file, or null when it cannot be read.
@@ -301,6 +305,9 @@ export class AniCliLocator {
             ANI_CLI_DOWNLOAD_DIR: this.forScript(options.downloadDir),
             [SUBTITLE_LABELS_VARIABLE]: options.subtitleLabels.join('|')
         };
+        if (options.searchMin !== undefined) {
+            env[SEARCH_MIN_VARIABLE] = String(options.searchMin);
+        }
         // yt-dlp keeps its cache under HOME (the user profile on Windows) and the locale decides how titles are written.
         const passed = this.platform === 'win32' ? [...WINDOWS_SYSTEM_VARIABLES, 'HOME', 'LANG', 'LC_ALL'] : ['HOME', 'LANG', 'LC_ALL', 'TMPDIR'];
         passed.forEach((key) => {

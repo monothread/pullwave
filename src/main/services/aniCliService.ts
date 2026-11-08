@@ -1,4 +1,4 @@
-import type { AniCliInfo, AniRunResult, AnimeAudio, AnimeSearchResult } from '@shared/anime';
+import { MAX_SEARCH_RESULTS, type AniCliInfo, type AniRunResult, type AnimeAudio, type AnimeSearchListing, type AnimeSearchResult } from '@shared/anime';
 import type { ResolvedBinary } from './binaryResolver';
 import { AniCliLocator, type AniTools } from './aniCliLocator';
 import {
@@ -45,6 +45,7 @@ function doNothing(): void {
 }
 
 const SINGLE_EPISODE = '1';
+const FIRST_RESULT = 1;
 const MISSING_SCRIPT = 'ani-cli is not installed.';
 
 function choicesFor(outcome: AniRunOutcome, prompt: string): string[] {
@@ -55,6 +56,13 @@ function choicesFor(outcome: AniRunOutcome, prompt: string): string[] {
         .map((entry) => {
             return entry.choice;
         });
+}
+
+// The part of the results the screen can list: no more than MAX_SEARCH_RESULTS, and what is left out says the list is limited (not that the
+// source has no more).
+function listingOf(results: AnimeSearchResult[], moreResults: boolean): AnimeSearchListing {
+    const limited = results.length > MAX_SEARCH_RESULTS || (results.length === MAX_SEARCH_RESULTS && moreResults);
+    return { results: results.slice(0, MAX_SEARCH_RESULTS), hasNextPage: moreResults && !limited, limited };
 }
 
 function failure<T>(raw: string): AniRunResult<T> {
@@ -78,7 +86,7 @@ export class AniCliService {
         return this.deps.locator.isReady(this.deps.customScriptPath());
     }
 
-    private start(args: string[], audio: AnimeAudio, downloadDir: string, extra: Partial<AniRunOptions> = {}, player?: string): AniRunHandle | null {
+    private start(args: string[], audio: AnimeAudio, downloadDir: string, extra: Partial<AniRunOptions> = {}, player?: string, searchMin?: number): AniRunHandle | null {
         const script: ResolvedBinary | null = this.deps.locator.script(this.deps.customScriptPath());
         if (script === null) {
             return null;
@@ -89,7 +97,7 @@ export class AniCliService {
         return this.run({
             binary: command.binary,
             args: [...command.args, ...args],
-            env: this.deps.locator.env({ audio, downloadDir, subtitleLabels: this.deps.subtitleLabels?.() ?? [], player, tools }),
+            env: this.deps.locator.env({ audio, downloadDir, subtitleLabels: this.deps.subtitleLabels?.() ?? [], player, tools, searchMin }),
             ...extra
         });
     }
@@ -99,11 +107,19 @@ export class AniCliService {
         return this.deps.locator.provider;
     }
 
-    async search(query: string, audio: AnimeAudio): Promise<AniRunResult<AnimeSearchResult[]>> {
+    // The results of the search from the first one up to at least the position `atLeast` (the source gives them a page at a time, and the
+    // positions are the ones ani-cli takes to open an anime), never more than MAX_SEARCH_RESULTS.
+    async search(query: string, audio: AnimeAudio, atLeast = FIRST_RESULT): Promise<AniRunResult<AnimeSearchResult[]>> {
+        const listing = await this.searchListing(query, audio, atLeast);
+        return listing.status === 'done' ? { status: 'done', value: listing.value.results } : listing;
+    }
+
+    // The same, with whether the source has more results after the ones listed.
+    async searchListing(query: string, audio: AnimeAudio, atLeast = FIRST_RESULT): Promise<AniRunResult<AnimeSearchListing>> {
         if (sanitizeQuery(query).length === 0) {
             return failure('The search is empty.');
         }
-        const handle = this.start(buildSearchArgs(query), audio, '.');
+        const handle = this.start(buildSearchArgs(query), audio, '.', {}, undefined, Math.min(Math.max(FIRST_RESULT, Math.floor(atLeast)), MAX_SEARCH_RESULTS));
         if (handle === null) {
             return failure(MISSING_SCRIPT);
         }
@@ -118,20 +134,20 @@ export class AniCliService {
             });
         if (results.length > 0) {
             // The results that share a title are told apart by what the id of the source says (see tellResultsApart).
-            return { status: 'done', value: tellResultsApart(results) };
+            return { status: 'done', value: listingOf(tellResultsApart(results), outcome.value.moreResults) };
         }
         // A single result is picked by ani-cli itself, without asking, so all that shows is the list of its episodes (or,
         // when it has just one, nothing at all: ani-cli goes on to fetch it and ends cleanly). The script of the app lists it too (see
         // aniSingleResult.ts); this is a script it does not fit, where the anime the source picked is not known: the title is only what was
         // searched, and the result says so.
         if (choicesFor(outcome.value, EPISODE_PROMPT).length > 0 || outcome.value.exitCode === 0) {
-            return { status: 'done', value: [{ index: 1, title: sanitizeQuery(query), unconfirmed: true }] };
+            return { status: 'done', value: { results: [{ index: 1, title: sanitizeQuery(query), unconfirmed: true }], hasNextPage: false, limited: false } };
         }
         return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Searching for the anime with ani-cli' }) };
     }
 
     async episodes(query: string, index: number, audio: AnimeAudio): Promise<AniRunResult<string[]>> {
-        const handle = this.start(buildEpisodesArgs(query, index), audio, '.');
+        const handle = this.start(buildEpisodesArgs(query, index), audio, '.', {}, undefined, index);
         if (handle === null) {
             return failure(MISSING_SCRIPT);
         }
@@ -152,7 +168,7 @@ export class AniCliService {
     // An anime with one episode (a film) is not listed: ani-cli picks it on its own. Its number is not shown either, so
     // episode 1 is tried; the answer is only trusted if ani-cli accepts it.
     private async singleEpisode(query: string, index: number, audio: AnimeAudio): Promise<AniRunResult<string[]>> {
-        const handle = this.start([...buildEpisodesArgs(query, index).slice(0, 2), '-e', SINGLE_EPISODE, sanitizeQuery(query)], audio, '.');
+        const handle = this.start([...buildEpisodesArgs(query, index).slice(0, 2), '-e', SINGLE_EPISODE, sanitizeQuery(query)], audio, '.', {}, undefined, index);
         if (handle === null) {
             return failure(MISSING_SCRIPT);
         }
@@ -173,7 +189,7 @@ export class AniCliService {
         if (invalid !== null) {
             return failure(invalid);
         }
-        const handle = this.start(buildStreamArgs(request.query, request.index, request.episode, request.quality), request.audio, '.', {}, 'debug');
+        const handle = this.start(buildStreamArgs(request.query, request.index, request.episode, request.quality), request.audio, '.', {}, 'debug', request.index);
         if (handle === null) {
             return failure(MISSING_SCRIPT);
         }
@@ -206,10 +222,17 @@ export class AniCliService {
         if (invalid !== null) {
             return { result: Promise.resolve(failure(invalid)), cancel: doNothing };
         }
-        const handle = this.start(buildDownloadArgs(options), options.audio, options.downloadDir, {
-            onProgress: options.onProgress,
-            onDestination: options.onDestination
-        });
+        const handle = this.start(
+            buildDownloadArgs(options),
+            options.audio,
+            options.downloadDir,
+            {
+                onProgress: options.onProgress,
+                onDestination: options.onDestination
+            },
+            undefined,
+            options.index
+        );
         if (handle === null) {
             return { result: Promise.resolve(failure(MISSING_SCRIPT)), cancel: doNothing };
         }

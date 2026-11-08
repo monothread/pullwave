@@ -423,7 +423,8 @@ export interface CyberApi {
     // Null when the disk of the folder cannot be read.
     getDiskUsage: (section: DiskSection) => Promise<DiskUsage | null>;
     getAnimeStatus: () => Promise<AnimeStatus>;
-    searchAnime: (query: string, audio: AnimeAudio) => Promise<AnimeSearchResponse>;
+    // `loaded` is how many results the screen already lists: the answer is the whole list up to one more result, at least, with whether the source has more.
+    searchAnime: (query: string, audio: AnimeAudio, loaded?: number) => Promise<AnimeSearchResponse>;
     listAnimeEpisodes: (query: string, index: number, audio: AnimeAudio) => Promise<AnimeEpisodesResponse>;
     downloadAnime: (request: AnimeDownloadRequest) => Promise<AnimeDownloadResponse>;
     listAnimeLibrary: () => Promise<LibraryAnime[]>;

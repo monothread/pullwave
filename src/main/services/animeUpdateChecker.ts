@@ -26,7 +26,8 @@ export const BACKOFF_LIMIT_MS = 6 * 60 * 60 * 1000;
 export interface AnimeUpdateCheckerDependencies {
     db: Pick<AnimeDb, 'list' | 'getLibraryAnime' | 'hasEpisodesBaseline' | 'registerEpisodesBaseline' | 'registerNewEpisodes' | 'updateSearchIndex'>;
     // What the source lists now: the results of a search, and the episodes of one of them.
-    search: (query: string, audio: AnimeAudio) => Promise<AniRunResult<AnimeSearchResult[]>>;
+    // `atLeast` is the position the anime was saved at: the list has to reach it for the anime to be found past the first page.
+    search: (query: string, audio: AnimeAudio, atLeast?: number) => Promise<AniRunResult<AnimeSearchResult[]>>;
     episodes: (query: string, index: number, audio: AnimeAudio) => Promise<AniRunResult<string[]>>;
     // Whether the hourly check is turned on (read at every check).
     isEnabled: () => boolean;
@@ -258,7 +259,7 @@ export class AnimeUpdateChecker {
     // Asks the source about one anime; what is new is put in the library (and downloaded, when the user wants that). The first reading of
     // the episodes of an anime only registers them: they are not new, and so they are not announced nor downloaded.
     private async check(anime: LibraryAnime, origin: AnimeArrivalOrigin, news: AnimeNewEpisodes): Promise<Outcome> {
-        const searched = answerOf(await this.deps.search(anime.query, anime.audio));
+        const searched = answerOf(await this.deps.search(anime.query, anime.audio, anime.searchIndex));
         if (!searched.ok) {
             return searched.outcome;
         }

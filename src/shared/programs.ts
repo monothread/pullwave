@@ -1,7 +1,7 @@
 import type { ProgramId, ToolState } from './tools';
 
 // The changes the app makes to ani-cli (see aniPatches.ts in the main process).
-export type AniPatchName = 'subtitleSelection' | 'allSubtitles' | 'debugReferer' | 'menuIds' | 'singleResult';
+export type AniPatchName = 'subtitleSelection' | 'allSubtitles' | 'debugReferer' | 'menuIds' | 'singleResult' | 'searchPages';
 
 // The programs the app downloads on its first run (see tools.ts), as the screen sees them.
 

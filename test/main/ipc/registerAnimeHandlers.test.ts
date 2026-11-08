@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AniRunResult, AnimeCheckResponse, AnimeCheckState, AnimeImportResponse, AnimeMigrationResponse, AnimeScheduleResponse, AnimeSearchResult, AnimeSubtitleCheckResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleTranslateResponse } from '@shared/anime';
+import { MAX_SEARCH_RESULTS, type AniRunResult, type AnimeCheckResponse, type AnimeCheckState, type AnimeImportResponse, type AnimeMigrationResponse, type AnimeScheduleResponse, type AnimeSearchListing, type AnimeSubtitleCheckResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack, type LibraryAnime, type SubtitleEstimateResponse, type SubtitleGenerateEstimateResponse, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
 import { MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
@@ -94,8 +94,8 @@ function setup(available = true) {
     const db = new AnimeDb(':memory:', () => {
         return 5;
     });
-    const search = vi.fn(async (): Promise<AniRunResult<AnimeSearchResult[]>> => {
-        return { status: 'done', value: [{ index: 1, title: 'Naruto' }] };
+    const search = vi.fn<(query: string, audio: string, atLeast: number) => Promise<AniRunResult<AnimeSearchListing>>>(async () => {
+        return { status: 'done', value: { results: [{ index: 1, title: 'Naruto' }], hasNextPage: false, limited: false } };
     });
     const episodes = vi.fn(async (): Promise<AniRunResult<string[]>> => {
         return { status: 'done', value: ['1', '2'] };
@@ -202,7 +202,7 @@ function setup(available = true) {
         cancelGeneration: vi.fn()
     };
     const deps = {
-        service: { isAvailable: vi.fn(() => { return available; }), info: vi.fn(() => { return aniCliInfo; }), search, episodes, resolveStream },
+        service: { isAvailable: vi.fn(() => { return available; }), info: vi.fn(() => { return aniCliInfo; }), searchListing: search, episodes, resolveStream },
         schedule,
         covers,
         updates,
@@ -245,25 +245,54 @@ describe('registerAnimeHandlers', () => {
     });
 
     describe('search', () => {
-        it('cleans the query and returns the results', async () => {
+        it('cleans the query and returns the results with whether the source has more, asking for the first ones', async () => {
             const { call, search } = setup();
-            expect(await call(IPC.animeSearch, ' -d naruto &', 'dub')).toEqual({ ok: true, results: [{ index: 1, title: 'Naruto' }] });
-            expect(search).toHaveBeenCalledWith('d naruto', 'dub');
+            expect(await call(IPC.animeSearch, ' -d naruto &', 'dub')).toEqual({ ok: true, results: [{ index: 1, title: 'Naruto' }], hasNextPage: false, limited: false });
+            expect(search).toHaveBeenCalledTimes(1);
+            expect(search).toHaveBeenCalledWith('d naruto', 'dub', 1);
+        });
+
+        it('asks for the results after the ones the screen already has, and tells that the source has more', async () => {
+            const { call, search } = setup();
+            search.mockResolvedValueOnce({ status: 'done', value: { results: [{ index: 29, title: 'Last' }, { index: 30, title: 'Next' }], hasNextPage: true, limited: false } });
+            expect(await call(IPC.animeSearch, 'naruto', 'sub', 29)).toEqual({ ok: true, results: [{ index: 29, title: 'Last' }, { index: 30, title: 'Next' }], hasNextPage: true, limited: false });
+            expect(search).toHaveBeenCalledWith('naruto', 'sub', 30);
+        });
+
+        it('passes on that the list reached the most results it lists', async () => {
+            const { call, search } = setup();
+            search.mockResolvedValueOnce({ status: 'done', value: { results: [{ index: MAX_SEARCH_RESULTS, title: 'Edge' }], hasNextPage: false, limited: true } });
+            expect(await call(IPC.animeSearch, 'a', 'sub', MAX_SEARCH_RESULTS - 1)).toEqual({ ok: true, results: [{ index: MAX_SEARCH_RESULTS, title: 'Edge' }], hasNextPage: false, limited: true });
+            expect(search).toHaveBeenCalledWith('a', 'sub', MAX_SEARCH_RESULTS);
         });
 
         it('cuts a very long query', async () => {
             const { call, search } = setup();
             await call(IPC.animeSearch, 'a'.repeat(MAX_TEXT_LENGTH + 50), 'sub');
-            expect(search).toHaveBeenCalledWith('a'.repeat(MAX_TEXT_LENGTH), 'sub');
+            expect(search).toHaveBeenCalledWith('a'.repeat(MAX_TEXT_LENGTH), 'sub', 1);
         });
 
-        it('refuses an empty query or an unknown audio without searching', async () => {
+        it('refuses an empty query, an unknown audio or a bad count of results already listed without searching', async () => {
             const { call, search } = setup();
-            const refusal = { ok: false, error: { code: 'INVALID_SELECTION', raw: 'The search is empty or the audio is invalid.' } };
+            const refusal = { ok: false, error: { code: 'INVALID_SELECTION', raw: 'The search is empty, the audio is invalid or the number of results already listed is.' } };
             expect(await call(IPC.animeSearch, '  &&& ', 'sub')).toEqual(refusal);
             expect(await call(IPC.animeSearch, 'naruto', 'both')).toEqual(refusal);
             expect(await call(IPC.animeSearch, 42, 'sub')).toEqual(refusal);
+            expect(await call(IPC.animeSearch, 'naruto', 'sub', -1)).toEqual(refusal);
+            expect(await call(IPC.animeSearch, 'naruto', 'sub', 1.5)).toEqual(refusal);
+            expect(await call(IPC.animeSearch, 'naruto', 'sub', '30')).toEqual(refusal);
+            expect(await call(IPC.animeSearch, 'naruto', 'sub', MAX_SEARCH_RESULTS + 1)).toEqual(refusal);
             expect(search).not.toHaveBeenCalled();
+        });
+
+        it('accepts none listed yet, as the first search does, and the most that can be listed', async () => {
+            const { call, search } = setup();
+            await call(IPC.animeSearch, 'naruto', 'sub', 0);
+            await call(IPC.animeSearch, 'naruto', 'sub', MAX_SEARCH_RESULTS);
+            expect(search.mock.calls).toEqual([
+                ['naruto', 'sub', 1],
+                ['naruto', 'sub', MAX_SEARCH_RESULTS + 1]
+            ]);
         });
 
         it('passes on an error', async () => {

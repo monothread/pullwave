@@ -173,7 +173,19 @@ export interface AnimeStatus {
     aniCli: AniCliInfo | null;
 }
 
-export type AnimeSearchResponse = { ok: true; results: AnimeSearchResult[] } | { ok: false; error: AniError };
+// The most results the search lists, however many the source has: a search that matches almost everything ("a", "tsu") would otherwise read
+// page after page of the source. Past this the screen asks to refine the search.
+export const MAX_SEARCH_RESULTS = 120;
+
+// A part of the results of a search, from the first one on: `hasNextPage` says the source has more to list (and it is asked for them as the
+// list is scrolled to its end); `limited` says there are more but the list reached MAX_SEARCH_RESULTS, so no more are listed.
+export interface AnimeSearchListing {
+    results: AnimeSearchResult[];
+    hasNextPage: boolean;
+    limited: boolean;
+}
+
+export type AnimeSearchResponse = ({ ok: true } & AnimeSearchListing) | { ok: false; error: AniError };
 export type AnimeEpisodesResponse = { ok: true; episodes: string[] } | { ok: false; error: AniError };
 
 export interface AnimeDownloadRequest {

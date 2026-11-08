@@ -267,6 +267,20 @@ describe('AniCliLocator.env player', () => {
     });
 });
 
+describe('AniCliLocator.env search', () => {
+    const locator = newLinuxLocator(LOCATIONS, makeFs().fs);
+
+    it('tells ani-cli how many results to read at least, as text', () => {
+        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [], searchMin: 45 }, {}).PULLWAVE_SEARCH_MIN).toBe('45');
+        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [], searchMin: 1 }, {}).PULLWAVE_SEARCH_MIN).toBe('1');
+    });
+
+    it('leaves the variable out when no number of results is asked for, so only the first page is read', () => {
+        const env = locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [] }, { PULLWAVE_SEARCH_MIN: '99' });
+        expect(env).not.toHaveProperty('PULLWAVE_SEARCH_MIN');
+    });
+});
+
 describe('AniCliLocator.env subtitles', () => {
     const locator = newLinuxLocator(LOCATIONS, makeFs().fs);
 

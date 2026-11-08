@@ -386,8 +386,8 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 lastCheck.write({ lastCheckAt: time });
             }
         },
-        search: (query, audio) => {
-            return service.search(query, audio);
+        search: (query, audio, atLeast) => {
+            return service.search(query, audio, atLeast);
         },
         episodes: (query, index, audio) => {
             return service.episodes(query, index, audio);

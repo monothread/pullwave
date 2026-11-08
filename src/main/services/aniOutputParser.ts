@@ -1,6 +1,7 @@
 import type { ErrorDetails } from '@shared/errorDetails';
 import type { AniDownloadProgress, AniError, AniErrorCode, AnimeSearchResult } from '@shared/anime';
 import { SOURCE_ID_MARKER } from './aniMenuIds';
+import { SEARCH_MORE_MARKER } from './aniSearchPages';
 import { describeError } from './errorDetails';
 
 // Prefix of every choice that `pullwave_menu` (the stand-in for fzf, see pullwave-run.sh) reports on stderr: PULLWAVE_MENU<TAB>prompt<TAB>line.
@@ -64,6 +65,11 @@ export function mapAniError(output: string, exitCode: number | null, known: Part
 
 export function mapAniSpawnError(error: NodeJS.ErrnoException, known: Partial<ErrorDetails> = {}): AniError {
     return { code: error.code === 'ENOENT' ? 'BINARY_MISSING' : 'UNKNOWN', raw: error.message, details: describeError(error, known) };
+}
+
+// Whether the line is the one the search of the app prints when the source has a page after the last one it read (see aniSearchPages.ts).
+export function isSearchMoreLine(line: string): boolean {
+    return stripAnsi(line).trim() === SEARCH_MORE_MARKER;
 }
 
 // One choice reported by `pullwave-menu`, or null when the line is anything else ani-cli printed.

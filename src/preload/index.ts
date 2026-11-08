@@ -379,8 +379,8 @@ const api: CyberApi = {
     getAnimeStatus: () => {
         return ipcRenderer.invoke(IPC.animeStatus);
     },
-    searchAnime: (query, audio) => {
-        return ipcRenderer.invoke(IPC.animeSearch, query, audio);
+    searchAnime: (query, audio, loaded) => {
+        return ipcRenderer.invoke(IPC.animeSearch, query, audio, loaded);
     },
     listAnimeEpisodes: (query, index, audio) => {
         return ipcRenderer.invoke(IPC.animeEpisodes, query, index, audio);

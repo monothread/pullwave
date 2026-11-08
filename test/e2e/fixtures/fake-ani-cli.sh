@@ -5,6 +5,8 @@ version_number="0.0.0-fake"
 #   search:    <words>                       lists "1 Fake Anime" and "2 Fake Anime 2" (words with "zzz": nothing found; with "turtle": two seconds before it answers, here and in the episodes;
 #                                            with "twin": two anime with the same title that only differ by the id the source gives them, as the patched ani-cli lists them,
 #                                            "1 pwid:twin-anime-10 Twin Anime" and "2 pwid:twin-anime-season-2-11 Twin Anime", the first with 3 episodes and the second with 2)
+#                                            with "many": 70 results and with "endless": 300, "Many Anime 1" and so on, as the source gives them: 30 to a page, and as many pages as
+#                                            PULLWAVE_SEARCH_MIN asks for (the number of results to read at least); when there are more pages it says so on stderr
 #   episodes:  -S <n> <words>                lists episodes 1 to 3, or 1 to 4 once a test wrote more-episodes in the history folder (words with "single": the one episode is picked silently)
 #   stream:    -S <n> -e <ep> -q <q> ...     (with the debug player) prints the address of the episode, the subtitle and the list of subtitles
 #   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists,
@@ -15,6 +17,8 @@ mkdir -p "$ANI_CLI_HIST_DIR"
 printf '%s | %s\n' "$ANI_CLI_MODE" "$*" >> "$ANI_CLI_HIST_DIR/calls.log"
 printf '%s\n' "$PULLWAVE_SUB_LABELS" >> "$ANI_CLI_HIST_DIR/subtitle-labels.log"
 printf '%s\n' "$ANI_CLI_PLAYER" >> "$ANI_CLI_HIST_DIR/players.log"
+# The least number of results it was asked to read (PULLWAVE_SEARCH_MIN, "-" when none), with the arguments of the call.
+printf '%s | %s\n' "${PULLWAVE_SEARCH_MIN:--}" "$*" >> "$ANI_CLI_HIST_DIR/search-min.log"
 
 download=0
 index=""
@@ -111,6 +115,19 @@ if [ -n "$index" ]; then
 fi
 
 case "$query" in
+    *many*|*endless*)
+        total=70
+        case "$query" in *endless*) total=300 ;; esac
+        listed=$(( ( ${PULLWAVE_SEARCH_MIN:-1} + 29 ) / 30 * 30 ))
+        [ "$listed" -gt "$total" ] && listed=$total
+        n=1
+        while [ "$n" -le "$listed" ]; do
+            printf '%s Many Anime %s\n' "$n" "$n"
+            n=$((n + 1))
+        done | "$ANI_CLI_MENU" 'Select anime: '
+        [ "$listed" -lt "$total" ] && printf 'PULLWAVE_SEARCH_MORE\n' >&2
+        exit 1
+        ;;
     # The source has only one anime for the words searched: the script of the app lists it, with its own title (the title is not the words).
     *loneshown*)
         printf '1 pwid:picked-anime-12 Picked Anime\n' | "$ANI_CLI_MENU" 'Select anime: '

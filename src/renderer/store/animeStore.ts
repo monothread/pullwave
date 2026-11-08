@@ -25,7 +25,16 @@ export interface AnimeSearchState {
     // What the results belong to: positions mean something only for the search that produced them.
     searchedQuery: string;
     searchedAudio: AnimeAudio;
+    // The source has more results after the ones listed, and they are asked for as the list is scrolled to its end.
+    hasNextPage: boolean;
+    // The list reached the most results the search lists, though the source has more: the screen asks to make the search more specific.
+    limited: boolean;
+    // More results are being asked for.
+    loadingMore: boolean;
 }
+
+// What the search says of the results it does not list: it has no more of them to ask for, and nothing is being asked.
+const NO_MORE_RESULTS = { hasNextPage: false, limited: false, loadingMore: false } as const;
 
 // What is known about the cover of an anime: it was found, AniList has none, or it could not be asked for (it is asked again the next
 // time the card is shown).
@@ -116,6 +125,8 @@ export interface AnimeState {
     setQuery: (query: string) => void;
     setAudio: (audio: AnimeAudio) => void;
     runSearch: () => Promise<void>;
+    // Asks for the results after the ones listed, when the source has more (the list is scrolled to its end).
+    loadMoreSearch: () => Promise<void>;
     // Looks the cover of an anime up by its title. A cover that was found is not asked for again; one that was not found (or could not be asked
     // for) is, every time a screen that shows it opens (the main process decides when AniList is asked again).
     loadCover: (title: string) => Promise<void>;
@@ -194,7 +205,8 @@ export const INITIAL_SEARCH: AnimeSearchState = {
     results: [],
     error: null,
     searchedQuery: '',
-    searchedAudio: 'sub'
+    searchedAudio: 'sub',
+    ...NO_MORE_RESULTS
 };
 
 export const INITIAL_SCHEDULE: AnimeScheduleState = {
@@ -217,6 +229,8 @@ export function coverKey(title: string): string {
 const coversAsked = new Set<string>();
 // The last listing that was asked for: the answer of an older one is not shown.
 let scheduleRequest = 0;
+// The last search that was made: the answer of an older one, or the one that asks for more results of an older one, is not shown.
+let searchGeneration = 0;
 
 export const UNSUPPORTED_STATUS: AnimeStatus = { supported: false, available: false, aniCli: null };
 
@@ -407,7 +421,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             set((state) => {
                 // An empty name leaves nothing to show: the results (and the error) of the last search go away.
                 if (query.trim().length === 0) {
-                    return { search: { ...state.search, query, status: 'idle', results: [], error: null } };
+                    return { search: { ...state.search, query, status: 'idle', results: [], error: null, ...NO_MORE_RESULTS } };
                 }
                 return { search: { ...state.search, query } };
             });
@@ -420,6 +434,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         runSearch: async () => {
+            searchGeneration += 1;
+            const generation = searchGeneration;
             const { search } = get();
             const query = search.query.trim();
             if (query.length === 0) {
@@ -427,18 +443,58 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             }
             const audio = effectiveAudio(search, useAppStore.getState().settings.animeAudio);
             set((state) => {
-                return { selection: null, search: { ...state.search, status: 'searching', error: null, results: [] } };
+                return { selection: null, search: { ...state.search, status: 'searching', error: null, results: [], ...NO_MORE_RESULTS } };
             });
             const response = await window.api.searchAnime(query, audio);
             set((state) => {
-                // The name was emptied while the search ran: its answer is not shown.
-                if (state.search.query.trim().length === 0) {
+                // The name was emptied, or another search was made, while this one ran: its answer is not shown.
+                if (state.search.query.trim().length === 0 || generation !== searchGeneration) {
                     return state;
                 }
                 if (response.ok) {
-                    return { search: { ...state.search, status: 'done', results: response.results, searchedQuery: query, searchedAudio: audio } };
+                    return { search: { ...state.search, status: 'done', results: response.results, searchedQuery: query, searchedAudio: audio, hasNextPage: response.hasNextPage, limited: response.limited, loadingMore: false } };
                 }
                 return { search: { ...state.search, status: 'error', error: response.error, searchedQuery: query, searchedAudio: audio } };
+            });
+        },
+
+        loadMoreSearch: async () => {
+            const { search } = get();
+            if (search.status !== 'done' || !search.hasNextPage || search.loadingMore) {
+                return;
+            }
+            const { searchedQuery, searchedAudio, results } = search;
+            const generation = searchGeneration;
+            set((state) => {
+                return { search: { ...state.search, loadingMore: true } };
+            });
+            const response = await window.api.searchAnime(searchedQuery, searchedAudio, results.length);
+            // Another search was made, or the list was replaced, while this one ran: the positions of this answer are not the ones of the list now.
+            const now = get().search;
+            if (generation !== searchGeneration || now.searchedQuery !== searchedQuery || now.searchedAudio !== searchedAudio || now.results.length !== results.length) {
+                return;
+            }
+            set((state) => {
+                if (!response.ok) {
+                    // No more is asked for after a failure: it would be asked again at once, as the end of the list is still in view.
+                    return { search: { ...state.search, loadingMore: false, hasNextPage: false, error: response.error } };
+                }
+                const lastIndex = state.search.results.reduce((last, result) => {
+                    return Math.max(last, result.index);
+                }, 0);
+                const arrived = response.results.filter((result) => {
+                    return result.index > lastIndex;
+                });
+                return {
+                    search: {
+                        ...state.search,
+                        results: [...state.search.results, ...arrived],
+                        // An answer with nothing new would be asked for again forever.
+                        hasNextPage: response.hasNextPage && arrived.length > 0,
+                        limited: response.limited,
+                        loadingMore: false
+                    }
+                };
             });
         },
 
@@ -505,7 +561,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         openScheduleEntry: async (entry) => {
             const names = (entry.names.length > 0 ? entry.names : [entry.title]).slice(0, MAX_SCHEDULE_SEARCH_NAMES);
             set((state) => {
-                return { view: 'search', returnView: 'search', selection: null, search: { ...state.search, query: names[0] as string, status: 'idle', error: null, results: [] } };
+                return { view: 'search', returnView: 'search', selection: null, search: { ...state.search, query: names[0] as string, status: 'idle', error: null, results: [], ...NO_MORE_RESULTS } };
             });
             for (const name of names) {
                 get().setQuery(name);
@@ -578,7 +634,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                         view: 'search',
                         returnView: 'search',
                         selection: null,
-                        search: { ...state.search, query: anime.query, audio: anime.audio, status: 'idle', error: null, results: [] }
+                        search: { ...state.search, query: anime.query, audio: anime.audio, status: 'idle', error: null, results: [], ...NO_MORE_RESULTS }
                     };
                 });
                 await get().runSearch();
@@ -600,7 +656,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                         error: null,
                         results: [result],
                         searchedQuery: anime.query,
-                        searchedAudio: anime.audio
+                        searchedAudio: anime.audio,
+                        ...NO_MORE_RESULTS
                     }
                 };
                 });

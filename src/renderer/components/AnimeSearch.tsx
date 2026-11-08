@@ -1,5 +1,6 @@
 import { ANIME_AUDIOS, type AnimeAudio } from '@shared/anime';
 import type { Translator } from '@shared/i18n';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { effectiveAudio, useAnimeStore } from '../store/animeStore';
@@ -31,6 +32,9 @@ export function AnimeSearch() {
     const runSearch = useAnimeStore((state) => {
         return state.runSearch;
     });
+    const loadMoreSearch = useAnimeStore((state) => {
+        return state.loadMoreSearch;
+    });
     const openResult = useAnimeStore((state) => {
         return state.openResult;
     });
@@ -43,6 +47,14 @@ export function AnimeSearch() {
     const settingsAudio = useAppStore((state) => {
         return state.settings.animeAudio;
     });
+    // The next results come when the end of the list is reached.
+    const endOfList = useInfiniteScroll(
+        () => {
+            void loadMoreSearch();
+        },
+        search.status === 'done' && search.hasNextPage && !search.loadingMore,
+        search.results.length
+    );
 
     if (selection) {
         return <AnimeDetail />;
@@ -72,7 +84,7 @@ export function AnimeSearch() {
                     {searching ? t('anime.search.searching') : t('anime.search.button')}
                 </button>
             </form>
-            {search.status === 'error' && search.error && (
+            {search.error !== null && (
                 <p className="field__warning" role="alert">
                     <ErrorNotice report={animeErrorReport(t, search.error)} />
                 </p>
@@ -131,6 +143,16 @@ export function AnimeSearch() {
                             );
                         })}
                     </ul>
+                    {search.hasNextPage && (
+                        <div ref={endOfList} className="manga__more" data-testid="anime-end-of-list">
+                            {search.loadingMore && <p className="empty">{t('anime.results.loading')}</p>}
+                        </div>
+                    )}
+                    {search.limited && (
+                        <p className="empty" data-testid="anime-results-limit">
+                            {t('anime.results.limit', { count: search.results.length })}
+                        </p>
+                    )}
                 </>
             )}
         </section>

@@ -912,6 +912,67 @@ test('tells two anime that have the same title apart by the id of the source, an
     await expect(page.getByTestId('anime-episode')).toHaveCount(2);
 });
 
+// What ani-cli was asked to read of the search in each call (see search-min.log of the fake): the number of results, and the arguments.
+function searchMinCalls(userData: string, words: string): string[] {
+    return readFileSync(join(userData, 'anime', 'history', 'search-min.log'), 'utf-8')
+        .split('\n')
+        .filter((line) => {
+            return line.endsWith(` ${words}`);
+        });
+}
+
+test('lists the results past the first page as the list is scrolled to its end, and opens one that is on a later page', { tag: '@windows' }, async () => {
+    const { page, userData } = session;
+    await openAnimeTab(page);
+    await search(page, 'many');
+
+    // The source gives 30 results to a page: the next ones come when the end of the list is reached, with no button to ask for them.
+    await expect(page.getByText('30 RESULTS', { exact: true })).toBeVisible();
+    await expect(page.locator('.history__title').first()).toHaveText('Many Anime 1');
+    await expect(page.locator('.history__title').last()).toHaveText('Many Anime 30');
+    await expect(page.getByRole('button', { name: /LOAD MORE/ })).toHaveCount(0);
+    await page.getByTestId('anime-end-of-list').scrollIntoViewIfNeeded();
+    await expect(page.getByText('60 RESULTS', { exact: true })).toBeVisible();
+    await page.getByTestId('anime-end-of-list').scrollIntoViewIfNeeded();
+    await expect(page.getByText('70 RESULTS', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('anime-end-of-list')).toHaveCount(0);
+    await expect(page.getByTestId('anime-results-limit')).toHaveCount(0);
+    await expect(page.locator('.history__title')).toHaveCount(70);
+    await expect(page.locator('.history__title').nth(30)).toHaveText('Many Anime 31');
+    await expect(page.locator('.history__title').last()).toHaveText('Many Anime 70');
+    // Each time the list asked for one result more than it had: ani-cli read the pages until it had it.
+    expect(searchMinCalls(userData, 'many')).toEqual(['1 | many', '31 | many', '61 | many']);
+
+    // A result of the third page is opened by its position: the episodes are asked for with the search read up to it.
+    await page.getByRole('button', { name: 'OPEN: Many Anime 45', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+    expect(searchMinCalls(userData, '-S 45 many')).toEqual(['45 | -S 45 many']);
+});
+
+test('lists no more than the most results of a search and asks to make it more specific', { tag: '@windows' }, async () => {
+    const { page, userData } = session;
+    await openAnimeTab(page);
+    await search(page, 'endless');
+
+    await expect(page.getByText('30 RESULTS', { exact: true })).toBeVisible();
+    for (const count of [60, 90]) {
+        await page.getByTestId('anime-end-of-list').scrollIntoViewIfNeeded();
+        await expect(page.getByText(`${String(count)} RESULTS`, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByTestId('anime-results-limit')).toHaveCount(0);
+    await page.getByTestId('anime-end-of-list').scrollIntoViewIfNeeded();
+
+    // The source has 300, the list stops at 120 and says so; nothing more is asked for.
+    await expect(page.getByText('120 RESULTS', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('anime-results-limit')).toHaveText('Showing the first 120 results. Make the search more specific to see the others.');
+    await expect(page.getByTestId('anime-end-of-list')).toHaveCount(0);
+    await expect(page.locator('.history__title')).toHaveCount(120);
+    await expect(page.locator('.history__title').last()).toHaveText('Many Anime 120');
+    await page.waitForTimeout(1500);
+    expect(searchMinCalls(userData, 'endless')).toEqual(['1 | endless', '31 | endless', '61 | endless', '91 | endless']);
+    await expect(page.locator('.history__title')).toHaveCount(120);
+});
+
 test('searches an anime, lists the results and reports when nothing is found', { tag: '@windows' }, async () => {
     const { page } = session;
     await openAnimeTab(page);
@@ -4322,6 +4383,31 @@ test.describe('the look for new episodes', () => {
     }
 
     const EMPTY = 'No new episodes yet. The check that runs every 3 hours, and the buttons that look for new episodes, list here what they find.';
+
+    test('reads the search up to the place an anime was saved at when it looks for its new episodes, so one past the first page is found', async () => {
+        const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
+        await openAnimeTab(page);
+        await search(page, 'many');
+        await expect(page.getByText('30 RESULTS', { exact: true })).toBeVisible();
+        await page.getByTestId('anime-end-of-list').scrollIntoViewIfNeeded();
+        await expect(page.getByText('60 RESULTS', { exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'OPEN: Many Anime 45', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+        await confirmAdd(page);
+        await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+
+        // The look at the library asks for the search up to the place the anime has in it (45), and then for its episodes.
+        await expect.poll(() => {
+            return searchMinCalls(session.userData, 'many').filter((line) => {
+                return line.startsWith('45 |');
+            }).length;
+        }, { timeout: 20000 }).toBeGreaterThan(0);
+        await expect.poll(() => {
+            return searchMinCalls(session.userData, '-S 45 many').length;
+        }, { timeout: 20000 }).toBeGreaterThan(1);
+        expect(searchMinCalls(session.userData, 'many')).toContain('45 | many');
+        expect(new Set(searchMinCalls(session.userData, '-S 45 many'))).toEqual(new Set(['45 | -S 45 many']));
+    });
 
     test('finds the episode the source got after the anime was added, puts it in the library without downloading it, lists it and tells the screen', async () => {
         const page = await relaunch({}, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });

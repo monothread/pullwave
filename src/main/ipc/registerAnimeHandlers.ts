@@ -2,6 +2,7 @@ import {
     ANIME_AIRING_OVERRIDES,
     ANIME_AUDIOS,
     IDLE_CHECK_STATE,
+    MAX_SEARCH_RESULTS,
     type AniError,
     type AnimeAudio,
     type AnimeCheckResponse,
@@ -52,7 +53,7 @@ export const MAX_EPISODES_PER_REQUEST = 2000;
 export const MAX_SCHEDULE_SPAN_SECONDS = 8 * 24 * 60 * 60;
 
 export interface AnimeHandlerDependencies {
-    service: Pick<AniCliService, 'isAvailable' | 'info' | 'search' | 'episodes' | 'resolveStream'>;
+    service: Pick<AniCliService, 'isAvailable' | 'info' | 'searchListing' | 'episodes' | 'resolveStream'>;
     // The cover of an anime by its title (null when there is none).
     covers: { find: (title: string) => Promise<string | null> };
     // The check for new episodes: of all the anime of the library, or of one.
@@ -112,6 +113,14 @@ function asAudio(value: unknown): AnimeAudio | null {
     return ANIME_AUDIOS.find((audio) => {
         return audio === value;
     }) ?? null;
+}
+
+// How many results of the search the screen already lists: none when it is not said, otherwise a whole number up to the most the search lists.
+function asLoadedCount(value: unknown): number | null {
+    if (value === undefined) {
+        return 0;
+    }
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_SEARCH_RESULTS ? value : null;
 }
 
 function asId(value: unknown): number | null {
@@ -392,15 +401,17 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     ipcMain.handle(IPC.animeStatus, (): AnimeStatus => {
         return { supported: true, available: service.isAvailable(), aniCli: service.info() };
     });
-    ipcMain.handle(IPC.animeSearch, async (_event, query, audio) => {
+    ipcMain.handle(IPC.animeSearch, async (_event, query, audio, loaded) => {
         const cleaned = validQuery(query);
         const chosen = asAudio(audio);
-        if (cleaned === null || chosen === null) {
-            return invalid('The search is empty or the audio is invalid.');
+        const already = asLoadedCount(loaded);
+        if (cleaned === null || chosen === null || already === null) {
+            return invalid('The search is empty, the audio is invalid or the number of results already listed is.');
         }
-        const result = await service.search(cleaned, chosen);
+        // The search asks for the results after the ones the screen already has: ani-cli reads pages until it has one more.
+        const result = await service.searchListing(cleaned, chosen, already + 1);
         if (result.status === 'done') {
-            return { ok: true, results: result.value };
+            return { ok: true, ...result.value };
         }
         return { ok: false, error: result.status === 'error' ? result.error : { code: 'UNKNOWN', raw: 'The search was cancelled.' } };
     });

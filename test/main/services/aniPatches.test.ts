@@ -55,27 +55,27 @@ describe('patchAniCli', () => {
 
 describe('patchReport', () => {
     it('says which of the changes fit a script', () => {
-        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: true, menuIds: false, singleResult: false });
+        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: true, menuIds: false, singleResult: false, searchPages: false });
     });
 
     it('says the choice of the subtitle language does not fit when that line changed, and the others still do', () => {
         const changed = SUBTITLES.replace('s|}\\].*||', 's|\\].*||');
         expect(changed).not.toBe(SUBTITLES);
-        expect(patchReport(`${changed}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: true, debugReferer: true, menuIds: false, singleResult: false });
+        expect(patchReport(`${changed}\n${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: true, debugReferer: true, menuIds: false, singleResult: false, searchPages: false });
     });
 
     it('says the saving of every subtitle does not fit without its two lines or without the function it hooks into', () => {
-        expect(patchReport(`${SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: false, debugReferer: true, menuIds: false, singleResult: false });
-        expect(patchReport(`${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: true, menuIds: false, singleResult: false });
+        expect(patchReport(`${SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: true, allSubtitles: false, debugReferer: true, menuIds: false, singleResult: false, searchPages: false });
+        expect(patchReport(`${ALL_SUBTITLES}\n${DEBUG}`)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: true, menuIds: false, singleResult: false, searchPages: false });
     });
 
     it('says the address of the stream does not fit when its line changed', () => {
-        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG.replace('Subtitles:', 'Subs:')}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: false, menuIds: false, singleResult: false });
+        expect(patchReport(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG.replace('Subtitles:', 'Subs:')}`)).toEqual({ subtitleSelection: true, allSubtitles: true, debugReferer: false, menuIds: false, singleResult: false, searchPages: false });
     });
 
     it('says none of them fit a script it knows nothing about, even an empty one', () => {
-        expect(patchReport('a different script')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false });
-        expect(patchReport('')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false });
+        expect(patchReport('a different script')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false, searchPages: false });
+        expect(patchReport('')).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false, searchPages: false });
     });
 
     it('agrees with what patchAniCli does: it gives null exactly when none fit', () => {
@@ -91,7 +91,7 @@ describe('the id of the source in the lists of the menu', () => {
         const patched = patchAniCli(MENU) as string;
         expect(patched).toContain(`cut -f 1,2,3 | sed -E 's/^([^\\t]*)\\t([^\\t]*)\\t/\\1 pwid:\\2 /' | tr '\\t' ' ' | menu "$_prompt"`);
         expect(patched).not.toContain('cut -f 1,3');
-        expect(patchReport(MENU)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: true, singleResult: false });
+        expect(patchReport(MENU)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: true, singleResult: false, searchPages: false });
     });
 
     it('is applied with the others, each on its own', () => {
@@ -147,7 +147,7 @@ describe('the lone result shown in the menu', () => {
         const patched = patchAniCli(SINGLE_RESULT) as string;
         expect(patched).toContain(SHOWN);
         expect(patched).not.toBe(SINGLE_RESULT);
-        expect(patchReport(SINGLE_RESULT)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: true });
+        expect(patchReport(SINGLE_RESULT)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: true, searchPages: false });
     });
 
     it('is applied with the others, each on its own', () => {

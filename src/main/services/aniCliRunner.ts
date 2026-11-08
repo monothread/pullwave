@@ -1,5 +1,5 @@
 import type { AniDownloadProgress, AniRunResult } from '@shared/anime';
-import { mapAniError, mapAniSpawnError, parseDestinationLine, parseMenuLine, parseProgressLine, stripAnsi } from './aniOutputParser';
+import { isSearchMoreLine, mapAniError, mapAniSpawnError, parseDestinationLine, parseMenuLine, parseProgressLine, stripAnsi } from './aniOutputParser';
 import { commandLine } from './errorDetails';
 import { killProcessTree, type GroupKill } from './processTree';
 import { createLineSplitter, defaultSpawn, EXIT_GRACE_MS, KILL_ESCALATION_MS, type SpawnFn } from './ytdlpRunner';
@@ -16,6 +16,8 @@ export interface AniRunOutcome {
     menuChoices: MenuChoice[];
     // The file yt-dlp reported as the target of the download.
     destination: string | null;
+    // The search read the pages it was asked for and the source has one more (see aniSearchPages.ts); it is not part of `output`.
+    moreResults: boolean;
 }
 
 export interface AniRunOptions {
@@ -43,6 +45,7 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     const menuChoices: MenuChoice[] = [];
     let output = '';
     let destination: string | null = null;
+    let moreResults = false;
     let cancelled = false;
     let settled = false;
     let escalation: ReturnType<typeof setTimeout> | null = null;
@@ -52,6 +55,10 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
         const menu = parseMenuLine(line);
         if (menu) {
             menuChoices.push({ prompt: menu.prompt, choice: menu.choice });
+            return;
+        }
+        if (isSearchMoreLine(line)) {
+            moreResults = true;
             return;
         }
         const clean = stripAnsi(line);
@@ -103,7 +110,7 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
                 settle({ status: 'cancelled' });
                 return;
             }
-            settle({ status: 'done', value: { exitCode: code, output, menuChoices, destination } });
+            settle({ status: 'done', value: { exitCode: code, output, menuChoices, destination, moreResults } });
         };
         child.once('exit', (code: number | null) => {
             // The pipes may stay open if something ani-cli started is still running: end it and give the result anyway.

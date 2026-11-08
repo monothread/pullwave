@@ -1,6 +1,7 @@
 import {
     ANIME_PROMPT,
     EPISODE_PROMPT,
+    isSearchMoreLine,
     MENU_PREFIX,
     mapAniError,
     mapAniSpawnError,
@@ -112,6 +113,22 @@ describe('mapAniSpawnError', () => {
             raw: 'spawn busybox EACCES',
             details: { occurredAt: NOW, errorName: 'Error', stack: error.stack, systemCode: 'EACCES' }
         });
+    });
+});
+
+describe('isSearchMoreLine', () => {
+    it('is true for the line the search prints when the source has more results, with or without codes and spaces around it', () => {
+        expect(isSearchMoreLine('PULLWAVE_SEARCH_MORE')).toBe(true);
+        expect(isSearchMoreLine('  PULLWAVE_SEARCH_MORE \r')).toBe(true);
+        expect(isSearchMoreLine(`${String.fromCharCode(27)}[2K\r${String.fromCharCode(27)}[1;34mPULLWAVE_SEARCH_MORE${String.fromCharCode(27)}[0m`)).toBe(true);
+    });
+
+    it('is false for any other line, even one that mentions it', () => {
+        expect(isSearchMoreLine('')).toBe(false);
+        expect(isSearchMoreLine('PULLWAVE_SEARCH_MORE now')).toBe(false);
+        expect(isSearchMoreLine('the PULLWAVE_SEARCH_MORE line')).toBe(false);
+        expect(isSearchMoreLine('pullwave_search_more')).toBe(false);
+        expect(isSearchMoreLine('PULLWAVE_MENU\tSelect anime: \t1 Naruto')).toBe(false);
     });
 });
 

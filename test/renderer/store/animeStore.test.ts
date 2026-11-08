@@ -39,7 +39,7 @@ describe('useAnimeStore initial state', () => {
         expect(initialAnime.queueHeld).toBe(false);
         expect(initialAnime.library).toEqual([]);
         expect(initialAnime.history).toEqual([]);
-        expect(initialAnime.search).toEqual({ query: '', audio: null, status: 'idle', results: [], error: null, searchedQuery: '', searchedAudio: 'sub' });
+        expect(initialAnime.search).toEqual({ query: '', audio: null, status: 'idle', results: [], error: null, searchedQuery: '', searchedAudio: 'sub', hasNextPage: false, limited: false, loadingMore: false });
         expect(initialAnime.selection).toBeNull();
         expect(initialAnime.playing).toBeNull();
         expect(initialAnime.streaming).toBeNull();
@@ -523,15 +523,49 @@ describe('runSearch', () => {
 
     it('searches with the audio of the settings and keeps the results with what they belong to', async () => {
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeAudio: 'dub' } });
-        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [RESULT] });
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [RESULT], hasNextPage: true, limited: false });
         useAnimeStore.getState().setQuery('  naruto ');
 
         const running = useAnimeStore.getState().runSearch();
         expect(useAnimeStore.getState().search.status).toBe('searching');
         await running;
 
+        expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
         expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'dub');
-        expect(useAnimeStore.getState().search).toMatchObject({ status: 'done', results: [RESULT], searchedQuery: 'naruto', searchedAudio: 'dub', error: null });
+        expect(useAnimeStore.getState().search).toEqual({ query: '  naruto ', audio: null, status: 'done', results: [RESULT], error: null, searchedQuery: 'naruto', searchedAudio: 'dub', hasNextPage: true, limited: false, loadingMore: false });
+    });
+
+    it('keeps whether the source has more results and whether the list reached its limit', async () => {
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [RESULT], hasNextPage: false, limited: true });
+        useAnimeStore.getState().setQuery('a');
+        await useAnimeStore.getState().runSearch();
+        expect(useAnimeStore.getState().search).toMatchObject({ status: 'done', results: [RESULT], hasNextPage: false, limited: true, loadingMore: false });
+    });
+
+    it('forgets that the previous search had more results while it searches again', async () => {
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'naruto', results: [RESULT], status: 'done', searchedQuery: 'naruto', hasNextPage: true, limited: true, loadingMore: true } });
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [], hasNextPage: false, limited: false });
+        const running = useAnimeStore.getState().runSearch();
+        expect(useAnimeStore.getState().search).toMatchObject({ status: 'searching', results: [], hasNextPage: false, limited: false, loadingMore: false });
+        await running;
+    });
+
+    it('shows only the answer of the last search when two ran together', async () => {
+        const answers: Array<(response: { ok: true; results: typeof RESULT[]; hasNextPage: boolean; limited: boolean }) => void> = [];
+        mock.api.searchAnime.mockImplementation(() => {
+            return new Promise((resolve) => {
+                answers.push(resolve);
+            });
+        });
+        useAnimeStore.getState().setQuery('first');
+        const first = useAnimeStore.getState().runSearch();
+        useAnimeStore.getState().setQuery('second');
+        const second = useAnimeStore.getState().runSearch();
+        answers[1]?.({ ok: true, results: [{ index: 1, title: 'Second' }], hasNextPage: false, limited: false });
+        await second;
+        answers[0]?.({ ok: true, results: [{ index: 1, title: 'First' }], hasNextPage: true, limited: false });
+        await first;
+        expect(useAnimeStore.getState().search).toMatchObject({ status: 'done', results: [{ index: 1, title: 'Second' }], searchedQuery: 'second', hasNextPage: false });
     });
 
     it('prefers the audio picked on the screen', async () => {
@@ -560,6 +594,143 @@ describe('runSearch', () => {
         useAnimeStore.getState().setQuery('zzz');
         await useAnimeStore.getState().runSearch();
         expect(useAnimeStore.getState().search).toMatchObject({ status: 'error', error, results: [], searchedQuery: 'zzz', searchedAudio: 'sub' });
+    });
+});
+
+describe('loadMoreSearch', () => {
+    const FIRST: AnimeSearchResult[] = [{ index: 1, title: 'One' }, { index: 2, title: 'Two' }];
+
+    function listed(overrides: Partial<ReturnType<typeof useAnimeStore.getState>['search']> = {}): void {
+        useAnimeStore.setState({
+            search: { ...INITIAL_SEARCH, query: 'typed later', audio: 'dub', status: 'done', results: FIRST, searchedQuery: 'naruto', searchedAudio: 'dub', hasNextPage: true, ...overrides }
+        });
+    }
+
+    it('asks for the results after the ones listed, for what was searched and not for what is typed now, and adds the new ones', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [...FIRST, { index: 3, title: 'Three' }, { index: 4, title: 'Four' }], hasNextPage: true, limited: false });
+
+        const loading = useAnimeStore.getState().loadMoreSearch();
+        expect(useAnimeStore.getState().search.loadingMore).toBe(true);
+        await loading;
+
+        expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'dub', 2);
+        expect(useAnimeStore.getState().search).toEqual({
+            query: 'typed later',
+            audio: 'dub',
+            status: 'done',
+            results: [...FIRST, { index: 3, title: 'Three' }, { index: 4, title: 'Four' }],
+            error: null,
+            searchedQuery: 'naruto',
+            searchedAudio: 'dub',
+            hasNextPage: true,
+            limited: false,
+            loadingMore: false
+        });
+    });
+
+    it('does not repeat a result it already has, and goes on from the last position', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 2, title: 'Two' }, { index: 3, title: 'Three' }], hasNextPage: false, limited: false });
+
+        await useAnimeStore.getState().loadMoreSearch();
+
+        expect(useAnimeStore.getState().search.results).toEqual([...FIRST, { index: 3, title: 'Three' }]);
+        expect(useAnimeStore.getState().search.hasNextPage).toBe(false);
+    });
+
+    it('says the list reached its limit and asks for no more', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [...FIRST, { index: 3, title: 'Three' }], hasNextPage: false, limited: true });
+
+        await useAnimeStore.getState().loadMoreSearch();
+
+        expect(useAnimeStore.getState().search).toMatchObject({ results: [...FIRST, { index: 3, title: 'Three' }], hasNextPage: false, limited: true, loadingMore: false });
+    });
+
+    it('stops asking when an answer has nothing new, which would be asked for again forever', async () => {
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: true, results: FIRST, hasNextPage: true, limited: false });
+
+        await useAnimeStore.getState().loadMoreSearch();
+
+        expect(useAnimeStore.getState().search).toMatchObject({ results: FIRST, hasNextPage: false, loadingMore: false });
+    });
+
+    it.each([
+        ['the search is not done', { status: 'searching' as const }],
+        ['the source has no more', { hasNextPage: false }],
+        ['more are already being asked for', { loadingMore: true }]
+    ])('asks for nothing when %s', async (_name, overrides) => {
+        listed(overrides);
+        await useAnimeStore.getState().loadMoreSearch();
+        expect(mock.api.searchAnime).not.toHaveBeenCalled();
+    });
+
+    it('keeps the results and shows the error when it fails, and asks for no more so it is not asked again at once', async () => {
+        const error = { code: 'BLOCKED' as const, raw: 'Blocked by cloudflare.' };
+        listed();
+        mock.api.searchAnime.mockResolvedValue({ ok: false, error });
+
+        await useAnimeStore.getState().loadMoreSearch();
+
+        expect(useAnimeStore.getState().search).toMatchObject({ status: 'done', results: FIRST, error, hasNextPage: false, loadingMore: false });
+    });
+
+    it('does not use the answer when another search was made while it ran', async () => {
+        let answer: (response: { ok: true; results: AnimeSearchResult[]; hasNextPage: boolean; limited: boolean }) => void = () => {
+            return;
+        };
+        listed();
+        mock.api.searchAnime.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const loading = useAnimeStore.getState().loadMoreSearch();
+        mock.api.searchAnime.mockResolvedValueOnce({ ok: true, results: [{ index: 1, title: 'Fresh' }], hasNextPage: false, limited: false });
+        await useAnimeStore.getState().runSearch();
+        answer({ ok: true, results: [...FIRST, { index: 3, title: 'Stale' }], hasNextPage: true, limited: false });
+        await loading;
+
+        expect(useAnimeStore.getState().search).toMatchObject({ results: [{ index: 1, title: 'Fresh' }], hasNextPage: false, loadingMore: false });
+    });
+
+    it('does not use the answer when the list was replaced by the anime of the library while it ran', async () => {
+        let answer: (response: { ok: true; results: AnimeSearchResult[]; hasNextPage: boolean; limited: boolean }) => void = () => {
+            return;
+        };
+        listed();
+        mock.api.searchAnime.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const loading = useAnimeStore.getState().loadMoreSearch();
+        useAnimeStore.setState({ search: { ...useAnimeStore.getState().search, results: [{ index: 9, title: 'Opened' }], hasNextPage: false, loadingMore: false } });
+        answer({ ok: true, results: [...FIRST, { index: 3, title: 'Stale' }], hasNextPage: true, limited: false });
+        await loading;
+
+        expect(useAnimeStore.getState().search).toMatchObject({ results: [{ index: 9, title: 'Opened' }], hasNextPage: false });
+    });
+
+    it('does not use the answer when the name was emptied while it ran', async () => {
+        let answer: (response: { ok: true; results: AnimeSearchResult[]; hasNextPage: boolean; limited: boolean }) => void = () => {
+            return;
+        };
+        listed();
+        mock.api.searchAnime.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve;
+            })
+        );
+        const loading = useAnimeStore.getState().loadMoreSearch();
+        useAnimeStore.getState().setQuery('');
+        answer({ ok: true, results: [...FIRST, { index: 3, title: 'Stale' }], hasNextPage: true, limited: false });
+        await loading;
+
+        expect(useAnimeStore.getState().search).toMatchObject({ status: 'idle', results: [], hasNextPage: false, loadingMore: false });
     });
 });
 
@@ -626,7 +797,10 @@ describe('openLibraryAnime', () => {
             results: [OPENED],
             error: null,
             searchedQuery: 'naruto shippuden',
-            searchedAudio: 'dub'
+            searchedAudio: 'dub',
+            hasNextPage: false,
+            limited: false,
+            loadingMore: false
         });
         expect(useAnimeStore.getState().selection).toEqual({ result: OPENED, query: 'naruto shippuden', audio: 'dub', status: 'loading', episodes: [], error: null });
         await opening;

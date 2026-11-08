@@ -1,4 +1,4 @@
-import type { AniRunResult } from '@shared/anime';
+import { MAX_SEARCH_RESULTS, type AniRunResult } from '@shared/anime';
 import { AniCliLocator, type AniLocations, type AniPrograms, type AniTools, type AniToolsFs } from '@main/services/aniCliLocator';
 import { AniCliService, type AniDownloadOptions } from '@main/services/aniCliService';
 import type { AniRunHandle, AniRunOptions, AniRunOutcome, MenuChoice } from '@main/services/aniCliRunner';
@@ -29,7 +29,7 @@ const TOOLS: AniTools = {
 };
 
 function outcome(partial: Partial<AniRunOutcome> = {}): AniRunOutcome {
-    return { exitCode: 1, output: '', menuChoices: [], destination: null, ...partial };
+    return { exitCode: 1, output: '', menuChoices: [], destination: null, moreResults: false, ...partial };
 }
 
 function animeChoices(...titles: string[]): MenuChoice[] {
@@ -190,7 +190,14 @@ describe('AniCliService.resolveSubtitles', () => {
         });
         const [call] = callsOf();
         expect(call?.args).toEqual(['sh', RUNNER, SCRIPT, '-S', '2', '-e', '4', '-q', '720p', 'naruto']);
-        expect(call?.env).toMatchObject({ ANI_CLI_PLAYER: 'debug', ANI_CLI_MODE: 'dub', ANI_CLI_DOWNLOAD_DIR: '.' });
+        expect(call?.env).toMatchObject({ ANI_CLI_PLAYER: 'debug', ANI_CLI_MODE: 'dub', ANI_CLI_DOWNLOAD_DIR: '.', PULLWAVE_SEARCH_MIN: '2' });
+    });
+
+    it('asks ani-cli to read the search up to the position of the anime whose subtitles are asked for', async () => {
+        const { service, callsOf } = setup([done(outcome({ exitCode: 0, output: printed }))]);
+        await service.resolveSubtitles({ ...request, index: 33 });
+        expect(callsOf()[0]?.args).toEqual(['sh', RUNNER, SCRIPT, '-S', '33', '-e', '4', '-q', '720p', 'naruto']);
+        expect(callsOf()[0]?.env).toMatchObject({ PULLWAVE_SEARCH_MIN: '33' });
     });
 
     it('gives an empty list when the script reports no subtitles', async () => {
@@ -243,7 +250,14 @@ describe('AniCliService.resolveStream', () => {
 
         const [call] = callsOf();
         expect(call?.args).toEqual(['sh', RUNNER, SCRIPT, '-S', '2', '-e', '4', '-q', '720p', 'naruto']);
-        expect(call?.env).toMatchObject({ ANI_CLI_PLAYER: 'debug', ANI_CLI_MODE: 'dub', ANI_CLI_DOWNLOAD_DIR: '.' });
+        expect(call?.env).toMatchObject({ ANI_CLI_PLAYER: 'debug', ANI_CLI_MODE: 'dub', ANI_CLI_DOWNLOAD_DIR: '.', PULLWAVE_SEARCH_MIN: '2' });
+    });
+
+    it('asks ani-cli to read the search up to the position of the anime to watch', async () => {
+        const { service, callsOf } = setup([done(outcome({ exitCode: 0, output: printed }))]);
+        await service.resolveStream({ ...request, index: 33 });
+        expect(callsOf()[0]?.args).toEqual(['sh', RUNNER, SCRIPT, '-S', '33', '-e', '4', '-q', '720p', 'naruto']);
+        expect(callsOf()[0]?.env).toMatchObject({ PULLWAVE_SEARCH_MIN: '33' });
     });
 
     it('maps what ani-cli reports when there is no address', async () => {
@@ -306,7 +320,96 @@ describe('AniCliService.search', () => {
             PATH: '/data/anime/tools',
             ANI_CLI_MODE: 'dub',
             ANI_CLI_DOWNLOAD_DIR: '.',
-            ANI_CLI_MENU: 'pullwave_menu'
+            ANI_CLI_MENU: 'pullwave_menu',
+            PULLWAVE_SEARCH_MIN: '1'
+        });
+    });
+
+    it.each([
+        [undefined, '1'],
+        [1, '1'],
+        [30, '30'],
+        [2.7, '2'],
+        [0, '1'],
+        [-4, '1'],
+        [MAX_SEARCH_RESULTS, String(MAX_SEARCH_RESULTS)],
+        [MAX_SEARCH_RESULTS + 400, String(MAX_SEARCH_RESULTS)]
+    ])('asks ani-cli for at least the position %s of the search, never past the most results listed (%s)', async (atLeast, asked) => {
+        const { service, callsOf } = setup([done(outcome({ menuChoices: animeChoices('Naruto') }))]);
+        await service.search('naruto', 'sub', atLeast);
+
+        expect(callsOf()).toHaveLength(1);
+        expect(callsOf()[0]?.args).toEqual(['sh', RUNNER, SCRIPT, 'naruto']);
+        expect(callsOf()[0]?.env).toMatchObject({ PULLWAVE_SEARCH_MIN: asked });
+    });
+
+    it('lists the results with whether the source has more after them', async () => {
+        const { service } = setup([done(outcome({ menuChoices: animeChoices('One', 'Two'), moreResults: true }))]);
+        expect(await service.searchListing('naruto', 'sub', 1)).toEqual({
+            status: 'done',
+            value: { results: [{ index: 1, title: 'One' }, { index: 2, title: 'Two' }], hasNextPage: true, limited: false }
+        });
+    });
+
+    it('says the source has no more when ani-cli did not say so', async () => {
+        const { service } = setup([done(outcome({ menuChoices: animeChoices('One'), moreResults: false }))]);
+        expect(await service.searchListing('naruto', 'sub')).toEqual({ status: 'done', value: { results: [{ index: 1, title: 'One' }], hasNextPage: false, limited: false } });
+    });
+
+    it('gives only the results from `search`, without the listing', async () => {
+        const { service } = setup([done(outcome({ menuChoices: animeChoices('One', 'Two'), moreResults: true }))]);
+        expect(await service.search('naruto', 'sub')).toEqual({ status: 'done', value: [{ index: 1, title: 'One' }, { index: 2, title: 'Two' }] });
+    });
+
+    describe('when the source has more results than the most that are listed', () => {
+        function titles(count: number): string[] {
+            return Array.from({ length: count }, (_value, position) => {
+                return `Anime ${String(position + 1)}`;
+            });
+        }
+
+        it('lists no more than the most allowed and says the list is limited, not that the source has no more', async () => {
+            const { service } = setup([done(outcome({ menuChoices: animeChoices(...titles(MAX_SEARCH_RESULTS + 15)), moreResults: true }))]);
+            const answer = await service.searchListing('a', 'sub', MAX_SEARCH_RESULTS);
+
+            expect(answer.status).toBe('done');
+            const listing = answer.status === 'done' ? answer.value : null;
+            expect(listing?.results).toHaveLength(MAX_SEARCH_RESULTS);
+            expect(listing?.results[0]).toEqual({ index: 1, title: 'Anime 1' });
+            expect(listing?.results[MAX_SEARCH_RESULTS - 1]).toEqual({ index: MAX_SEARCH_RESULTS, title: `Anime ${String(MAX_SEARCH_RESULTS)}` });
+            expect(listing?.hasNextPage).toBe(false);
+            expect(listing?.limited).toBe(true);
+        });
+
+        it('is limited when it reaches the most allowed and the source has more', async () => {
+            const { service } = setup([done(outcome({ menuChoices: animeChoices(...titles(MAX_SEARCH_RESULTS)), moreResults: true }))]);
+            const answer = await service.searchListing('a', 'sub');
+            expect(answer.status === 'done' && answer.value.results).toHaveLength(MAX_SEARCH_RESULTS);
+            expect(answer.status === 'done' && answer.value.hasNextPage).toBe(false);
+            expect(answer.status === 'done' && answer.value.limited).toBe(true);
+        });
+
+        it('is not limited when the most allowed are exactly all the source has', async () => {
+            const { service } = setup([done(outcome({ menuChoices: animeChoices(...titles(MAX_SEARCH_RESULTS)), moreResults: false }))]);
+            const answer = await service.searchListing('a', 'sub');
+            expect(answer.status === 'done' && answer.value.results).toHaveLength(MAX_SEARCH_RESULTS);
+            expect(answer.status === 'done' && answer.value.hasNextPage).toBe(false);
+            expect(answer.status === 'done' && answer.value.limited).toBe(false);
+        });
+
+        it('is limited when ani-cli gave more than the most allowed even if it did not say the source has more', async () => {
+            const { service } = setup([done(outcome({ menuChoices: animeChoices(...titles(MAX_SEARCH_RESULTS + 1)), moreResults: false }))]);
+            const answer = await service.searchListing('a', 'sub');
+            expect(answer.status === 'done' && answer.value.results).toHaveLength(MAX_SEARCH_RESULTS);
+            expect(answer.status === 'done' && answer.value.hasNextPage).toBe(false);
+            expect(answer.status === 'done' && answer.value.limited).toBe(true);
+        });
+
+        it('keeps asking for more while the list is under the most allowed', async () => {
+            const { service } = setup([done(outcome({ menuChoices: animeChoices(...titles(MAX_SEARCH_RESULTS - 1)), moreResults: true }))]);
+            const answer = await service.searchListing('a', 'sub');
+            expect(answer.status === 'done' && answer.value.hasNextPage).toBe(true);
+            expect(answer.status === 'done' && answer.value.limited).toBe(false);
         });
     });
 
@@ -428,6 +531,22 @@ describe('AniCliService.episodes', () => {
         expect(callsOf()[0]?.env).toMatchObject({ ANI_CLI_MODE: 'sub' });
     });
 
+    it('asks ani-cli to read the search up to the position of the result, so one past the first page is found', async () => {
+        const { service, callsOf } = setup([done(outcome({ menuChoices: episodeChoices('1', '2') }))]);
+        expect(await service.episodes('naruto', 45, 'sub')).toEqual({ status: 'done', value: ['1', '2'] });
+        expect(callsOf()[0]?.args).toEqual(['sh', RUNNER, SCRIPT, '-S', '45', 'naruto']);
+        expect(callsOf()[0]?.env).toMatchObject({ PULLWAVE_SEARCH_MIN: '45' });
+    });
+
+    it('asks for the same position when it confirms episode 1 of an anime that ani-cli does not list', async () => {
+        const { service, callsOf } = setup([done(outcome({ exitCode: 0, output: 'links fetched\n' })), done(outcome({ exitCode: 0 }))]);
+        await service.episodes('naruto', 45, 'sub');
+        expect(callsOf()).toHaveLength(2);
+        expect(callsOf()[0]?.env).toMatchObject({ PULLWAVE_SEARCH_MIN: '45' });
+        expect(callsOf()[1]?.args).toEqual(['sh', RUNNER, SCRIPT, '-S', '45', '-e', '1', 'naruto']);
+        expect(callsOf()[1]?.env).toMatchObject({ PULLWAVE_SEARCH_MIN: '45' });
+    });
+
     it('confirms episode 1 for an anime that ani-cli does not list (a film)', async () => {
         const { service, callsOf } = setup([done(outcome({ exitCode: 0, output: 'links fetched\n' })), done(outcome({ exitCode: 0 }))]);
         expect(await service.episodes('kimi no na wa', 1, 'sub')).toEqual({ status: 'done', value: ['1'] });
@@ -490,7 +609,14 @@ describe('AniCliService.download', () => {
         expect(await handle.result).toEqual({ status: 'done', value: { filePath: '/home/me/Anime/Cyberpunk_ Edgerunners Episode 3.mp4' } });
         expect(prepareTools).toHaveBeenCalledWith(TOOLS);
         expect(callsOf()[0]?.args).toEqual(['sh', RUNNER, SCRIPT, '-d', '-S', '1', '-e', '3', '-q', '720p', 'cyberpunk edgerunners']);
-        expect(callsOf()[0]?.env).toMatchObject({ ANI_CLI_MODE: 'dub', ANI_CLI_DOWNLOAD_DIR: '/home/me/Anime' });
+        expect(callsOf()[0]?.env).toMatchObject({ ANI_CLI_MODE: 'dub', ANI_CLI_DOWNLOAD_DIR: '/home/me/Anime', PULLWAVE_SEARCH_MIN: '1' });
+    });
+
+    it('asks ani-cli to read the search up to the position of the anime to download', async () => {
+        const { service, callsOf } = setup([done(outcome({ exitCode: 0 }))]);
+        await service.download({ ...request, index: 61 }).result;
+        expect(callsOf()[0]?.args).toEqual(['sh', RUNNER, SCRIPT, '-d', '-S', '61', '-e', '3', '-q', '720p', 'cyberpunk edgerunners']);
+        expect(callsOf()[0]?.env).toMatchObject({ PULLWAVE_SEARCH_MIN: '61' });
     });
 
     it('reports no file when yt-dlp never said where it wrote', async () => {
