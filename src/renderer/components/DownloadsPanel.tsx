@@ -16,6 +16,11 @@ const VIEWS: ReadonlyArray<{ id: DownloadsView; label: MessageKey; icon?: string
     { id: 'settings', label: 'downloads.nav.settings', icon: SETTINGS_ICON }
 ];
 
+// The tabs of the video downloader, in the order of the bar (the gear last): what Ctrl+Page Up and Ctrl+Page Down move through.
+export const DOWNLOADS_TAB_IDS: readonly DownloadsView[] = VIEWS.map((item) => {
+    return item.id;
+});
+
 // The video downloader: the queue (with the field for links), the history, the cutter of video and audio files of what was downloaded and its settings.
 export function DownloadsPanel() {
     const t = useTranslator();
@@ -36,6 +41,7 @@ export function DownloadsPanel() {
                             label={t(item.label)}
                             icon={item.icon}
                             active={view === item.id}
+                            pillId="downloads-tab-pill"
                             onClick={() => {
                                 setView(item.id);
                             }}

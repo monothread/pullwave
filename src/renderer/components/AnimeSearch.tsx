@@ -58,7 +58,7 @@ export function AnimeSearch() {
                     void runSearch();
                 }}
             >
-                <TextField label={t('anime.search.label')} value={search.query} placeholder={t('anime.search.placeholder')} onChange={setQuery} />
+                <TextField search label={t('anime.search.label')} value={search.query} placeholder={t('anime.search.placeholder')} onChange={setQuery} />
                 <SelectField
                     label={t('anime.audio.label')}
                     value={effectiveAudio(search, settingsAudio)}

@@ -293,7 +293,7 @@ export function MangaLibrary() {
         <section className="manga__library" aria-label={t('manga.nav.library')}>
             {!searching && <MangaLibrarySpotlight />}
             <div className="field-row">
-                <TextField label={t('manga.library.search.label')} value={search} placeholder={t('manga.library.search.placeholder')} onChange={setSearch} />
+                <TextField search label={t('manga.library.search.label')} value={search} placeholder={t('manga.library.search.placeholder')} onChange={setSearch} />
                 <button
                     type="button"
                     className="btn btn--small"

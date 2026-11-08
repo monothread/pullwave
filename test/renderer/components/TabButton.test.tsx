@@ -102,3 +102,34 @@ describe('TabButton with a picture', () => {
         expect(button.textContent).toBe('QUEUE');
     });
 });
+
+describe('TabButton with a pill and a section', () => {
+    it('shows the pill that slides behind the active tab, hidden from the screen readers, and puts it first', () => {
+        render(<TabButton label="ANIME" active pillId="nav-pill" decoration={<svg />} onClick={vi.fn()} />);
+        const button = screen.getByRole('button', { name: 'ANIME' });
+        const parts = Array.from(button.children);
+        expect(parts.map((part) => {
+            return part.className;
+        })).toEqual(['tab__pill', 'tab__decoration', 'tab__label']);
+        expect(parts[0]).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('shows the pill on a tab with only a glyph too', () => {
+        render(<TabButton label="SETTINGS" icon={SETTINGS_ICON} active pillId="bar-pill" onClick={vi.fn()} />);
+        expect(screen.getByRole('button', { name: 'SETTINGS' }).querySelector('.tab__pill')).not.toBeNull();
+    });
+
+    it('shows no pill on a tab that is not active, nor on one with no pill id', () => {
+        const { rerender } = render(<TabButton label="ANIME" active={false} pillId="nav-pill" onClick={vi.fn()} />);
+        expect(screen.getByRole('button', { name: 'ANIME' }).querySelector('.tab__pill')).toBeNull();
+        rerender(<TabButton label="ANIME" active onClick={vi.fn()} />);
+        expect(screen.getByRole('button', { name: 'ANIME' }).querySelector('.tab__pill')).toBeNull();
+    });
+
+    it('carries the section it leads to, for what has to find the tab', () => {
+        const { rerender } = render(<TabButton label="ANIME" active={false} sectionId="anime" onClick={vi.fn()} />);
+        expect(screen.getByRole('button', { name: 'ANIME' })).toHaveAttribute('data-section-id', 'anime');
+        rerender(<TabButton label="ANIME" active={false} onClick={vi.fn()} />);
+        expect(screen.getByRole('button', { name: 'ANIME' })).not.toHaveAttribute('data-section-id');
+    });
+});

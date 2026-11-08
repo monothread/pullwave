@@ -1,3 +1,4 @@
+import { findCover, flyCoverToLibrary } from '../fx/flyCover';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 import { inListOrder, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
@@ -81,6 +82,13 @@ export function MangaDetail() {
     const addToLibrary = useMangaStore((state) => {
         return state.addToLibrary;
     });
+    // Adds the manga and, once it is in, sends its cover to the library in the menu.
+    const addAndFly = async (): Promise<void> => {
+        const cover = findCover();
+        if (await addToLibrary()) {
+            flyCoverToLibrary('manga', cover);
+        }
+    };
     const openReader = useMangaStore((state) => {
         return state.openReader;
     });
@@ -478,7 +486,7 @@ export function MangaDetail() {
                                                 setConfirmingDuplicate(true);
                                                 return;
                                             }
-                                            void addToLibrary();
+                                            void addAndFly();
                                         }}
                                     >
                                         {t('manga.detail.add')}
@@ -508,7 +516,7 @@ export function MangaDetail() {
                             cancelLabel={t('manga.detail.addDuplicate.cancel')}
                             onConfirm={() => {
                                 setConfirmingDuplicate(false);
-                                void addToLibrary();
+                                void addAndFly();
                             }}
                             onCancel={() => {
                                 setConfirmingDuplicate(false);

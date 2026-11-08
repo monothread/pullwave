@@ -2,7 +2,16 @@
 import { act, fireEvent, render } from '@testing-library/react';
 import type { Mock } from 'vitest';
 import { runIntent, useGamepadNavigation, type GamepadSections } from '@renderer/hooks/useGamepadNavigation';
+import { RUMBLE_EDGE } from '@renderer/fx/gamepadRumble';
 import { GAMEPAD_BUTTON } from '@renderer/navigation/gamepad';
+
+const { rumbleMock } = vi.hoisted(() => {
+    return { rumbleMock: vi.fn() };
+});
+vi.mock('@renderer/fx/gamepadRumble', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@renderer/fx/gamepadRumble')>();
+    return { ...actual, rumbleGamepads: rumbleMock };
+});
 
 const BUTTON_COUNT = 17;
 const scrollIntoView = vi.fn();
@@ -111,6 +120,7 @@ function placeGrid(): void {
 }
 
 beforeEach(() => {
+    rumbleMock.mockClear();
     frames = [];
     pads = [];
     requestFrame.mockClear();
@@ -217,6 +227,20 @@ describe('useGamepadNavigation: what the presses do', () => {
         expect(document.activeElement).toBe(spot('first'));
         hold([GAMEPAD_BUTTON.down]);
         expect(document.activeElement).toBe(spot('A'));
+    });
+
+    it('buzzes the gamepad at the end of a list, where there is nowhere to move, and not when the focus moves', () => {
+        pads = [gamepad()];
+        render(<Screen sections={sectionsMock()} />);
+        placeGrid();
+        spot('B').focus();
+        hold([GAMEPAD_BUTTON.right]);
+        expect(document.activeElement).toBe(spot('B'));
+        expect(rumbleMock.mock.calls).toEqual([[RUMBLE_EDGE]]);
+        hold([]);
+        hold([GAMEPAD_BUTTON.left]);
+        expect(document.activeElement).toBe(spot('A'));
+        expect(rumbleMock).toHaveBeenCalledTimes(1);
     });
 
     it('moves the focus with the left stick', () => {

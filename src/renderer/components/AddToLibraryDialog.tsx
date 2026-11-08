@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { flyCoverToLibrary } from '../fx/flyCover';
 import { useTranslator } from '../i18n/useTranslator';
 import { nextFreeOrder, orderFor } from './animeText';
 import { SeriesFields } from './SeriesFields';
@@ -60,6 +61,7 @@ export function AddToLibraryDialog({ initial, suggestions, usedOrders, onConfirm
         const added = await onConfirm(series.trim().length > 0 ? { series, season, seasonName } : null);
         setBusy(false);
         if (added) {
+            flyCoverToLibrary('anime');
             onClose();
         }
     }

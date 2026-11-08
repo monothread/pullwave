@@ -290,6 +290,30 @@ describe('VideoControls', () => {
             expect(video.currentTime).toBe(to);
         });
 
+        it('flashes the seek over the video: forward on the right, backward on the left, and not for the other keys', () => {
+            const { video } = setup();
+            setVideoState(video, { currentTime: 50 });
+            expect(screen.queryByTestId('player-skip')).toBeNull();
+            pressOn(document.body, { key: 'ArrowRight' });
+            const forward = screen.getByTestId('player-skip');
+            expect(forward).toHaveClass('player__skip', 'player__skip--forward');
+            expect(forward).toHaveAttribute('aria-hidden', 'true');
+            expect(forward).toHaveTextContent('5s ❯❯');
+            pressOn(document.body, { key: 'ArrowLeft' });
+            const backward = screen.getByTestId('player-skip');
+            expect(backward).toHaveClass('player__skip', 'player__skip--backward');
+            expect(backward).toHaveTextContent('❮❮ 5s');
+            expect(backward).not.toBe(forward);
+            // jsdom has no animations: React listens for whichever name of the event the style declaration of the window knows.
+            ['animationend', 'webkitAnimationEnd'].forEach((name) => {
+                fireEvent(backward, new Event(name, { bubbles: true }));
+            });
+            expect(screen.queryByTestId('player-skip')).toBeNull();
+            pressOn(document.body, { key: 'ArrowUp' });
+            pressOn(document.body, { key: ' ' });
+            expect(screen.queryByTestId('player-skip')).toBeNull();
+        });
+
         it.each([
             ['ArrowUp', 0.5, 0.55],
             ['ArrowDown', 0.5, 0.45],
@@ -776,7 +800,7 @@ describe('VideoControls', () => {
             expect(Array.from(box.children).map((child) => { return child.className; })).toEqual(['progress', 'player__range player__seek']);
             const bar = box.querySelector('.progress') as HTMLElement;
             expect(bar).toHaveAttribute('aria-hidden', 'true');
-            expect(Array.from(bar.children).map((child) => { return child.className; })).toEqual(['progress__bar']);
+            expect(Array.from(bar.children).map((child) => { return child.className; })).toEqual(['player__buffered', 'progress__bar']);
             expect(fill().style.width).toBe('0%');
         });
 
@@ -978,7 +1002,7 @@ describe('VideoControls', () => {
         })).toEqual([
             'seeking', 'waiting', 'playing', 'seeked', 'canplay', 'emptied', 'error',
             'progress', 'timeupdate', 'seeked', 'loadedmetadata', 'durationchange', 'emptied',
-            'play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'seeked', 'ended', 'click', 'dblclick'
+            'play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'seeked', 'ended', 'play', 'pause', 'click', 'dblclick'
         ]);
         expect(add).not.toHaveBeenCalled();
     });
@@ -1213,3 +1237,104 @@ describe('VideoControls: the icons and the switch of the next episode', () => {
     });
 });
 
+describe('VideoControls: the playful extras', () => {
+    function lastPlayed(video: HTMLVideoElement, event: 'play' | 'pause'): void {
+        act(() => {
+            video.dispatchEvent(new Event(event));
+        });
+    }
+
+    it('pops a big mark in the middle of the video when it plays or pauses, and takes it away when it is over', () => {
+        const { video } = setup();
+        expect(screen.queryByTestId('player-center')).toBeNull();
+        lastPlayed(video, 'play');
+        const played = screen.getByTestId('player-center');
+        expect(played).toHaveClass('player__center', 'player__center--play');
+        expect(played).toHaveAttribute('aria-hidden', 'true');
+        expect(played).toHaveTextContent('▶');
+        lastPlayed(video, 'pause');
+        const paused = screen.getByTestId('player-center');
+        expect(paused).toHaveClass('player__center', 'player__center--pause');
+        expect(paused).toHaveTextContent('❚❚');
+        expect(paused).not.toBe(played);
+        ['animationend', 'webkitAnimationEnd'].forEach((name) => {
+            fireEvent(paused, new Event(name, { bubbles: true }));
+        });
+        expect(screen.queryByTestId('player-center')).toBeNull();
+    });
+
+    it('says the volume in a bubble beside the slider while it changes, with the keys and with the slider', () => {
+        const { video } = setup();
+        expect(screen.queryByTestId('player-volume-bubble')).toBeNull();
+        fireEvent.change(screen.getByRole('slider', { name: 'Volume' }), { target: { value: '0.55' } });
+        const bubble = screen.getByTestId('player-volume-bubble');
+        expect(bubble).toHaveClass('player__volume-bubble');
+        expect(bubble).toHaveAttribute('aria-hidden', 'true');
+        expect(bubble).toHaveTextContent('55%');
+        expect(bubble.parentElement).toHaveClass('player__volume-wrap');
+        fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+        expect(screen.getByTestId('player-volume-bubble')).toHaveTextContent('50%');
+        expect(video.volume).toBe(0.5);
+        ['animationend', 'webkitAnimationEnd'].forEach((name) => {
+            fireEvent(screen.getByTestId('player-volume-bubble'), new Event(name, { bubbles: true }));
+        });
+        expect(screen.queryByTestId('player-volume-bubble')).toBeNull();
+    });
+
+    it('puts no mark over the video for the pause that comes when the episode ends, where the panel of the next one shows', () => {
+        const { video } = setup();
+        Object.defineProperty(video, 'ended', { configurable: true, value: true });
+        lastPlayed(video, 'pause');
+        expect(screen.queryByTestId('player-center')).toBeNull();
+        Object.defineProperty(video, 'ended', { configurable: true, value: false });
+        lastPlayed(video, 'pause');
+        expect(screen.getByTestId('player-center')).toHaveClass('player__center--pause');
+    });
+
+    it('still puts the mark for a play after the episode ended', () => {
+        const { video } = setup();
+        Object.defineProperty(video, 'ended', { configurable: true, value: true });
+        lastPlayed(video, 'play');
+        expect(screen.getByTestId('player-center')).toHaveClass('player__center--play');
+    });
+
+    it('shows no bubble for a key that is not about the volume', () => {
+        setup();
+        fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+        expect(screen.queryByTestId('player-volume-bubble')).toBeNull();
+    });
+
+    it.each([
+        [0.8, false, 'volume', '🔊'],
+        [0.3, false, 'volume-low', '🔉'],
+        [0.8, true, 'mute', '🔇'],
+        [0, false, 'mute', '🔇']
+    ] as const)('draws the volume %s (muted: %s) with the %s icon', (volume, muted, name, glyph) => {
+        const { video } = setup();
+        video.volume = volume;
+        video.muted = muted;
+        act(() => {
+            video.dispatchEvent(new Event('volumechange'));
+        });
+        const button = screen.getByRole('button', { name: muted || volume === 0 ? 'Unmute' : 'Mute' });
+        const icon = button.querySelector('.player__icon') as HTMLElement;
+        expect(icon).toHaveClass(`player__icon--${name}`);
+        expect(icon).toHaveTextContent(glyph);
+    });
+
+    it('shows how much is loaded as a lighter stretch under the part watched', () => {
+        const { video } = setup([], 200);
+        const stretch = document.querySelector('.player__buffered') as HTMLElement;
+        expect(stretch).toHaveStyle({ width: '0%' });
+        Object.defineProperty(video, 'buffered', { configurable: true, value: { length: 1, start: () => { return 0; }, end: () => { return 50; } } });
+        act(() => {
+            video.dispatchEvent(new Event('progress'));
+        });
+        expect(document.querySelector('.player__buffered')).toHaveStyle({ width: '25%' });
+    });
+
+    it('shows no loaded stretch when the timeline is of a part of the media', () => {
+        setupRange();
+        expect(document.querySelector('.player__buffered')).toBeNull();
+    });
+});

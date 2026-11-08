@@ -7,6 +7,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { useMangaStore } from '../store/mangaStore';
 import { HomeWelcome } from './HomeWelcome';
 import { SectionCards } from './SectionCards';
+import { StatsCard } from './StatsCard';
 import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
 // The history of reading and the sources of the manga are only read by their own screens: the home screen asks for them once the manga
@@ -72,6 +73,7 @@ export function HomePanel() {
     return (
         <section className="home" aria-label={t('home.aria')}>
             {slides.length > 0 ? <Spotlight slides={slides} label={t('spotlight.home')} /> : <HomeWelcome />}
+            <StatsCard />
             <SectionCards />
         </section>
     );

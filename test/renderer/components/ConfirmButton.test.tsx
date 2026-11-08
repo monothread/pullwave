@@ -33,6 +33,7 @@ describe('ConfirmButton', () => {
         const button = screen.getByRole('button', { name: 'REMOVE' });
         expect(button).toHaveClass('btn', 'btn--hot');
         expect(button).toHaveAttribute('type', 'button');
+        expect(button).toHaveAttribute('data-hold', 'confirm');
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(onConfirm).not.toHaveBeenCalled();
     });

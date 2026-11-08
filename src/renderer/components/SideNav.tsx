@@ -61,6 +61,8 @@ export function SideNav({ tabs, active, open, onSelect, onClose }: SideNavProps)
                             label={t(item.label)}
                             decoration={<SectionIcon name={item.picture} />}
                             active={active === item.id}
+                            sectionId={item.id}
+                            pillId="nav-pill"
                             onClick={() => {
                                 onSelect(item.id);
                                 onClose();

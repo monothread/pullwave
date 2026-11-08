@@ -104,7 +104,7 @@ export function MangaSearch() {
                         void runSearch();
                     }}
                 >
-                    <TextField label={t('manga.search.name')} value={search.query} placeholder={t('manga.search.namePlaceholder')} onChange={setSearchQuery} />
+                    <TextField search label={t('manga.search.name')} value={search.query} placeholder={t('manga.search.namePlaceholder')} onChange={setSearchQuery} />
                     <button type="submit" className="btn btn--primary" disabled={search.query.trim().length === 0 || targets === 0 || searching}>
                         {t('manga.search.button')}
                     </button>

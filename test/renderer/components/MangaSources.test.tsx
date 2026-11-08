@@ -105,6 +105,8 @@ describe('MangaSources', () => {
     it('filters the sources by what is typed in the search, and counts what is left', async () => {
         const user = userEvent.setup();
         render(<MangaSources />);
+        // Ctrl+F goes to this field.
+        expect(screen.getByLabelText('Search sources')).toHaveAttribute('data-search-field', '');
         await user.type(screen.getByLabelText('Search sources'), 'scans');
         expect(screen.getByText('Sources: 3')).toBeInTheDocument();
         expect(

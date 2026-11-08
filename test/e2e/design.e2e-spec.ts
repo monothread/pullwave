@@ -562,7 +562,7 @@ test('the animations run, also when the system asks for less motion (D-130)', as
             primary: getComputedStyle(document.querySelector('.btn--primary') as Element, '::after').animationName
         };
     });
-    expect(moving).toEqual({ aurora: 'bp-aurora-drift', wave: 'bp-wave-bar', primary: 'bp-sheen' });
+    expect(moving).toEqual({ aurora: 'bp-aurora-drift', wave: 'bp-wave-idle', primary: 'bp-sheen' });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const still = await page.evaluate(() => {
         return {
@@ -571,7 +571,7 @@ test('the animations run, also when the system asks for less motion (D-130)', as
             primary: getComputedStyle(document.querySelector('.btn--primary') as Element, '::after').animationName
         };
     });
-    expect(still).toEqual({ aurora: 'bp-aurora-drift', wave: 'bp-wave-bar', primary: 'bp-sheen' });
+    expect(still).toEqual({ aurora: 'bp-aurora-drift', wave: 'bp-wave-idle', primary: 'bp-sheen' });
 });
 
 test('every theme keeps its own colours under the layer: background, accent of the active section and style', async () => {

@@ -109,7 +109,7 @@ export function AnimeSchedule() {
                     {t('anime.schedule.refresh')}
                 </button>
             </div>
-            <TextField label={t('anime.schedule.search.label')} value={query} placeholder={t('anime.schedule.search.placeholder')} onChange={setQuery} />
+            <TextField search label={t('anime.schedule.search.label')} value={query} placeholder={t('anime.schedule.search.placeholder')} onChange={setQuery} />
             <div className="queue__toolbar">
                 <span className="section-label">{t('anime.schedule.count', { count: entries.length })}</span>
             </div>

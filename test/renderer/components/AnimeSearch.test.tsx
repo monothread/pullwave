@@ -33,6 +33,8 @@ describe('AnimeSearch form', () => {
     it('starts with an empty form and a disabled button', () => {
         render(<AnimeSearch />);
         expect(screen.getByLabelText('Anime name')).toHaveValue('');
+        // Ctrl+F goes to this field.
+        expect(screen.getByLabelText('Anime name')).toHaveAttribute('data-search-field', '');
         expect(screen.getByLabelText('Anime name')).toHaveAttribute('placeholder', 'Search an anime…');
         expect(screen.getByLabelText('Audio')).toHaveValue('sub');
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeDisabled();

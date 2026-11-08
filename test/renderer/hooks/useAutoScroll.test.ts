@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
-import { useAutoScroll } from '@renderer/hooks/useAutoScroll';
+import { AUTO_SCROLL_RAMP_MS, rampFactor, useAutoScroll } from '@renderer/hooks/useAutoScroll';
 
 let frames: Array<(time: number) => void> = [];
 const cancel = vi.fn();
@@ -173,5 +173,40 @@ describe('useAutoScroll', () => {
         tick(1000);
         tick(2000);
         expect(element.scrollTop).toBe(200);
+    });
+});
+
+describe('rampFactor', () => {
+    it('is zero at the start, one at the end of the ramp and after it, and grows slowly at first', () => {
+        expect(AUTO_SCROLL_RAMP_MS).toBe(600);
+        expect(rampFactor(0, 600)).toBe(0);
+        expect(rampFactor(300, 600)).toBe(0.25);
+        expect(rampFactor(600, 600)).toBe(1);
+        expect(rampFactor(9000, 600)).toBe(1);
+    });
+
+    it('is one with no ramp, and never below zero', () => {
+        expect(rampFactor(0, 0)).toBe(1);
+        expect(rampFactor(100, -5)).toBe(1);
+        expect(rampFactor(-50, 600)).toBe(0);
+    });
+});
+
+describe('useAutoScroll with a ramp', () => {
+    it('eases in: it scrolls less at first and reaches the full speed when the ramp ends', () => {
+        const element = makeElement();
+        renderHook(() => {
+            useAutoScroll(() => {return element}, true, 1000, vi.fn(), 1000);
+        });
+        tick(0);
+        expect(element.scrollTop).toBe(0);
+        tick(500);
+        // Half of the ramp: a quarter of the speed over the half second that went by.
+        expect(element.scrollTop).toBe(125);
+        tick(1000);
+        // The end of the ramp: the full speed over the last half second.
+        expect(element.scrollTop).toBe(125 + 500);
+        tick(1500);
+        expect(element.scrollTop).toBe(125 + 500 + 500);
     });
 });

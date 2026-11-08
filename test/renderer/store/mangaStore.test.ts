@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useFxStore } from '@renderer/fx/fxStore';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaError, MangaFilter } from '@shared/manga';
 import { useAppStore } from '@renderer/store/appStore';
@@ -190,6 +191,19 @@ describe('mangaStore init', () => {
                         return job.chapterId;
                     })
                 ).toEqual([2]);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('celebrates a chapter that is complete, not one that ended without some pages', () => {
+            vi.useFakeTimers();
+            try {
+                useFxStore.setState({ celebrations: 0 });
+                mock.emitMangaJob(makeMangaJob({ chapterId: 1, status: 'done', percent: 100, missingPages: 2 }));
+                expect(useFxStore.getState().celebrations).toBe(0);
+                mock.emitMangaJob(makeMangaJob({ chapterId: 2, status: 'done', percent: 100 }));
+                expect(useFxStore.getState().celebrations).toBe(1);
             } finally {
                 vi.useRealTimers();
             }

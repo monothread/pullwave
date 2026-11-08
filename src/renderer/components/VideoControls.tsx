@@ -5,7 +5,7 @@ import { useVideoBuffer } from '../hooks/useVideoBuffer';
 import { useTranslator } from '../i18n/useTranslator';
 import { seekHover, type SeekHover } from './seekHover';
 import { hasPlayerSettings, PlayerSettings, type AutoNextSetting, type SubtitleOption } from './PlayerSettings';
-import { clamp, SEEK_STEP_SECONDS, shortcutOf, VOLUME_STEP, type PlayerShortcut } from './playerShortcuts';
+import { clamp, SEEK_STEP_SECONDS, shortcutOf, skipFlashOf, VOLUME_STEP, type PlayerShortcut, type SkipFlashDirection } from './playerShortcuts';
 import { atRangeEnd, mediaTimeOf, outsideRange, rangeLength, timeInRange, type PlaybackRange } from './playbackRange';
 import { PlayerIcon } from './PlayerIcon';
 
@@ -49,6 +49,23 @@ export function formatClock(seconds: number): string {
         return `${hours}:${String(minutes).padStart(2, '0')}:${rest}`;
     }
     return `${minutes}:${rest}`;
+}
+
+// The icon that pops over the video when it starts or stops, and the number that tells one pop from the next.
+interface CenterFlash {
+    kind: 'play' | 'pause';
+    id: number;
+}
+
+// The volume shown for a moment beside the slider.
+interface VolumeBubble {
+    percent: number;
+    id: number;
+}
+
+// The flash of a seek that is on the screen: which way, and a number that tells one flash from the next (so the animation starts again).
+interface SkipFlash extends SkipFlashDirection {
+    id: number;
 }
 
 function readState(element: HTMLVideoElement): PlaybackState {
@@ -198,7 +215,12 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
     const subtitleStyle = useSubtitleStyle(video);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [hover, setHover] = useState<SeekHover | null>(null);
-    const { loading } = useVideoBuffer(video);
+    const [skip, setSkip] = useState<SkipFlash | null>(null);
+    // The big icon that pops in the middle of the video when it plays or pauses, and the percent that shows while the volume changes.
+    const [centerFlash, setCenterFlash] = useState<CenterFlash | null>(null);
+    const [volumeBubble, setVolumeBubble] = useState<VolumeBubble | null>(null);
+    const bubbleCount = useRef(0);
+    const { loading, bufferedPercent } = useVideoBuffer(video);
     // The bar stays while the settings are open: they are part of it.
     const hidden = useFullscreenIdle(video) && !settingsOpen;
     useRangeLimits(video, range);
@@ -225,6 +247,32 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
             SYNC_EVENTS.forEach((name) => {
                 element.removeEventListener(name, sync);
             });
+        };
+    }, [video]);
+
+    useEffect(() => {
+        const element = video.current;
+        if (!element) {
+            return undefined;
+        }
+        let count = 0;
+        const flash = (kind: CenterFlash['kind']) => {
+            return (): void => {
+                // The pause at the end of an episode is not one the viewer asked for: the panel of the next episode comes then, with no mark over it.
+                if (kind === 'pause' && element.ended) {
+                    return;
+                }
+                count += 1;
+                setCenterFlash({ kind, id: count });
+            };
+        };
+        const onPlay = flash('play');
+        const onPause = flash('pause');
+        element.addEventListener('play', onPlay);
+        element.addEventListener('pause', onPause);
+        return () => {
+            element.removeEventListener('play', onPlay);
+            element.removeEventListener('pause', onPause);
         };
     }, [video]);
 
@@ -272,6 +320,11 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         if (!element) {
             return undefined;
         }
+        let skipCount = 0;
+        const showVolume = (percent: number): void => {
+            bubbleCount.current += 1;
+            setVolumeBubble({ percent: Math.round(percent), id: bubbleCount.current });
+        };
         const onKeyDown = (event: globalThis.KeyboardEvent): void => {
             const shortcut = shortcutOf(event);
             if (shortcut === null) {
@@ -279,6 +332,14 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
             }
             event.preventDefault();
             runShortcut(element, shortcut, rangeRef.current);
+            const flash = skipFlashOf(shortcut);
+            if (flash !== null) {
+                skipCount += 1;
+                setSkip({ ...flash, id: skipCount });
+            }
+            if (shortcut === 'volume-up' || shortcut === 'volume-down') {
+                showVolume((element.muted ? 0 : element.volume) * 100);
+            }
         };
         // A button is pressed when the space is released, so that is held back too, or it would press the focused button after the pause.
         const onKeyUp = (event: globalThis.KeyboardEvent): void => {
@@ -333,10 +394,16 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         }
     }
 
+    function showVolume(percent: number): void {
+        bubbleCount.current += 1;
+        setVolumeBubble({ percent: Math.round(percent), id: bubbleCount.current });
+    }
+
     function changeVolume(value: number): void {
         const element = video.current;
         if (element) {
             setVolume(element, value);
+            showVolume(value * 100);
         }
     }
 
@@ -373,6 +440,32 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     <span className="player__spinner" aria-hidden="true" />
                 </div>
             )}
+            {skip !== null && (
+                <span
+                    key={skip.id}
+                    className={`player__skip player__skip--${skip.direction}`}
+                    aria-hidden="true"
+                    data-testid="player-skip"
+                    onAnimationEnd={() => {
+                        setSkip(null);
+                    }}
+                >
+                    {skip.direction === 'forward' ? `${String(SEEK_STEP_SECONDS)}s ❯❯` : `❮❮ ${String(SEEK_STEP_SECONDS)}s`}
+                </span>
+            )}
+            {centerFlash !== null && (
+                <span
+                    key={centerFlash.id}
+                    className={`player__center player__center--${centerFlash.kind}`}
+                    aria-hidden="true"
+                    data-testid="player-center"
+                    onAnimationEnd={() => {
+                        setCenterFlash(null);
+                    }}
+                >
+                    {centerFlash.kind === 'play' ? '▶' : '❚❚'}
+                </span>
+            )}
             <div className="player__controls" data-playing={!state.paused} data-hidden={hidden}>
                 <button
                     type="button"
@@ -380,7 +473,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     aria-label={state.paused ? t('anime.player.play') : t('anime.player.pause')}
                     onClick={togglePlay}
                 >
-                    {state.paused ? <PlayerIcon name="play" /> : <PlayerIcon name="pause" />}
+                    {state.paused ? <PlayerIcon key="play" name="play" /> : <PlayerIcon key="pause" name="pause" />}
                 </button>
                 {hover !== null && (
                     <span className="player__hover" role="tooltip" style={{ left: hover.offset }}>
@@ -390,6 +483,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                 <span className="player__time">{formatClock(currentTime)}</span>
                 <div className="player__timeline">
                     <div className="progress" aria-hidden="true">
+                        {range === undefined && <div className="player__buffered" style={{ width: `${String(bufferedPercent)}%` }} />}
                         <div className="progress__bar" style={{ width: `${seekPercent}%` }} />
                     </div>
                     {/* Any step: the thumb stands at the very time of the video, as the bar does; with a step it went in jumps (a tenth of a
@@ -420,8 +514,22 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     aria-label={silent ? t('anime.player.unmute') : t('anime.player.mute')}
                     onClick={toggleMute}
                 >
-                    {silent ? <PlayerIcon name="mute" /> : <PlayerIcon name="volume" />}
+                    {silent ? <PlayerIcon key="mute" name="mute" /> : <PlayerIcon key={state.volume < 0.5 ? 'volume-low' : 'volume'} name={state.volume < 0.5 ? 'volume-low' : 'volume'} />}
                 </button>
+                <span className="player__volume-wrap">
+                {volumeBubble !== null && (
+                    <span
+                        key={volumeBubble.id}
+                        className="player__volume-bubble"
+                        aria-hidden="true"
+                        data-testid="player-volume-bubble"
+                        onAnimationEnd={() => {
+                            setVolumeBubble(null);
+                        }}
+                    >
+                        {`${String(volumeBubble.percent)}%`}
+                    </span>
+                )}
                 <input
                     type="range"
                     className="player__range player__volume"
@@ -435,6 +543,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                         changeVolume(Number(event.target.value));
                     }}
                 />
+                </span>
                 {hasPlayerSettings(subtitles, autoNext) && (
                     <PlayerSettings
                         open={settingsOpen}

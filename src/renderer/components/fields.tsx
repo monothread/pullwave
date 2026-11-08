@@ -22,10 +22,12 @@ interface TextFieldProps {
     hint?: string;
     placeholder?: string;
     disabled?: boolean;
+    // The field searches what the screen shows: Ctrl+F goes to it.
+    search?: boolean;
     onChange: (value: string) => void;
 }
 
-export function TextField({ label, value, hint, placeholder, disabled = false, onChange }: TextFieldProps) {
+export function TextField({ label, value, hint, placeholder, disabled = false, search = false, onChange }: TextFieldProps) {
     return (
         <FieldShell label={label} hint={hint}>
             <input
@@ -35,6 +37,7 @@ export function TextField({ label, value, hint, placeholder, disabled = false, o
                 value={value}
                 placeholder={placeholder}
                 disabled={disabled}
+                data-search-field={search ? '' : undefined}
                 onChange={(event) => {
                     onChange(event.target.value);
                 }}

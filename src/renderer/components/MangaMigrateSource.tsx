@@ -172,7 +172,7 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
                             }}
                             onChange={setChoice}
                         />
-                        <TextField label={t('manga.migrateSource.query')} value={query} onChange={setQuery} />
+                        <TextField search label={t('manga.migrateSource.query')} value={query} onChange={setQuery} />
                         <button type="submit" className="btn btn--primary" disabled={searching !== null || sources.length === 0 || query.trim().length === 0}>
                             {t('manga.migrateSource.search')}
                         </button>

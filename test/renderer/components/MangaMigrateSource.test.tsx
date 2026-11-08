@@ -60,6 +60,8 @@ describe('MangaMigrateSource', () => {
             });
         expect(options).toEqual(['All sources', 'Other Dex (en)', 'Third Scans (pt)']);
         expect(screen.getByLabelText('Title to look for')).toHaveValue('One Piece');
+        // Ctrl+F goes to this field, inside the window.
+        expect(screen.getByLabelText('Title to look for')).toHaveAttribute('data-search-field', '');
         expect(screen.getByRole('button', { name: 'MIGRATE' })).toBeDisabled();
     });
 

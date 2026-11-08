@@ -92,3 +92,31 @@ describe('ReaderChapterZone in the language of the app', () => {
         expect(screen.getByRole('button', { name: 'IR PARA O PRÓXIMO CAPÍTULO' })).toBeInTheDocument();
     });
 });
+
+describe('ReaderChapterZone: the arrow and the shine', () => {
+    it('beckons with an arrow down at the end and up at the start, hidden from the screen readers', () => {
+        const { unmount } = zone();
+        const down = screen.getByRole('region', { name: 'NEXT CHAPTER' }).querySelector('.reader__zone-arrow') as HTMLElement;
+        expect(down).toHaveTextContent('↓');
+        expect(down).toHaveAttribute('aria-hidden', 'true');
+        unmount();
+        zone({ edge: 'start' });
+        const up = screen.getByRole('region', { name: 'PREVIOUS CHAPTER' }).querySelector('.reader__zone-arrow') as HTMLElement;
+        expect(up).toHaveTextContent('↑');
+        expect(up).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('has no arrow where there is no chapter on the other side', () => {
+        zone({ title: null });
+        expect(document.querySelector('.reader__zone-arrow')).toBeNull();
+    });
+
+    it('marks the bar as full once the user is nearly through the zone', () => {
+        const { rerender, zoneRef } = zone({ progress: 0.94 });
+        expect(screen.getByRole('progressbar')).toHaveAttribute('data-full', 'false');
+        rerender(<ReaderChapterZone edge="end" title="The Great Race" progress={0.95} automatic height={468} onGo={vi.fn()} zoneRef={zoneRef} />);
+        expect(screen.getByRole('progressbar')).toHaveAttribute('data-full', 'true');
+        rerender(<ReaderChapterZone edge="end" title="The Great Race" progress={1} automatic height={468} onGo={vi.fn()} zoneRef={zoneRef} />);
+        expect(screen.getByRole('progressbar')).toHaveAttribute('data-full', 'true');
+    });
+});

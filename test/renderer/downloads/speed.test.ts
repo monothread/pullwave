@@ -1,4 +1,4 @@
-import { SPEED_SAMPLES, formatSpeed, graphPoints, parseSpeed, pushSample } from '@renderer/downloads/speed';
+import { FLOW_FASTEST_SECONDS, FLOW_NORMAL_SECONDS, FLOW_SLOWEST_SECONDS, FLOW_TOP_BYTES_PER_SECOND, SPEED_SAMPLES, flowSeconds, formatSpeed, graphPoints, parseSpeed, pushSample } from '@renderer/downloads/speed';
 
 describe('parseSpeed', () => {
     it.each([
@@ -69,5 +69,28 @@ describe('graphPoints', () => {
 
     it('keeps a line of zeros at the bottom', () => {
         expect(graphPoints([0, 0], 100, 40)).toBe('0.0,40.0 100.0,40.0');
+    });
+});
+
+describe('flowSeconds', () => {
+    it('keeps the normal pace of the bar when the speed is not known', () => {
+        expect(FLOW_NORMAL_SECONDS).toBe(1.4);
+        expect(flowSeconds(null)).toBe(1.4);
+    });
+
+    it('is the slowest turn for a download that has not started and the fastest from 20 MiB/s on', () => {
+        expect([FLOW_SLOWEST_SECONDS, FLOW_FASTEST_SECONDS, FLOW_TOP_BYTES_PER_SECOND]).toEqual([2.4, 0.5, 20 * 1024 ** 2]);
+        expect(flowSeconds(0)).toBe(2.4);
+        expect(flowSeconds(FLOW_TOP_BYTES_PER_SECOND)).toBe(0.5);
+        expect(flowSeconds(FLOW_TOP_BYTES_PER_SECOND * 10)).toBe(0.5);
+    });
+
+    it('goes down in a straight line between them', () => {
+        expect(flowSeconds(FLOW_TOP_BYTES_PER_SECOND / 2)).toBe(1.45);
+        expect(flowSeconds(2 * 1024 ** 2)).toBe(2.21);
+    });
+
+    it('does not go past the slowest turn for a speed below zero', () => {
+        expect(flowSeconds(-5)).toBe(2.4);
     });
 });

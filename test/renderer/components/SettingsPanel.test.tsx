@@ -8,6 +8,7 @@ import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { INITIAL_APP_UPDATE, useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { useProgramsStore } from '@renderer/store/programsStore';
+import { useUiPrefsStore } from '@renderer/store/uiPrefsStore';
 import { makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
 import { makeChapterRecord, makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { APP_UPDATE_IDLE, installMockApi, makeProgramsStatus, type MockApiHandle } from '../../helpers/mockApi';
@@ -1842,5 +1843,36 @@ describe('SettingsPanel disk space', () => {
             expect(mock.api.getDiskUsage).toHaveBeenCalledTimes(3);
             expect(mock.api.getDiskUsage).toHaveBeenLastCalledWith('manga');
         });
+    });
+});
+
+describe('SettingsPanel: the volume of the sounds', () => {
+    beforeEach(() => {
+        useUiPrefsStore.setState({ soundVolume: 1 });
+    });
+
+    it('is in the appearance of the whole app, a slider from 0 to 1 that shows the volume kept', () => {
+        useUiPrefsStore.setState({ soundVolume: 0.4 });
+        render(<SettingsPanel scope="global" />);
+        const slider = screen.getByLabelText('Sound volume');
+        expect(slider).toHaveAttribute('type', 'range');
+        expect(slider).toHaveAttribute('min', '0');
+        expect(slider).toHaveAttribute('max', '1');
+        expect(slider).toHaveAttribute('step', '0.05');
+        expect(slider).toHaveValue('0.4');
+        expect(screen.getByText('How loud the short sounds of the navigation and of the events are. The button of the top bar turns them on and off.')).toBeInTheDocument();
+    });
+
+    it('changes the volume of the window as it moves, without touching the settings of the app', () => {
+        render(<SettingsPanel scope="global" />);
+        fireEvent.change(screen.getByLabelText('Sound volume'), { target: { value: '0.25' } });
+        expect(useUiPrefsStore.getState().soundVolume).toBe(0.25);
+        expect(screen.getByLabelText('Sound volume')).toHaveValue('0.25');
+        expect(mock.api.saveSettings).not.toHaveBeenCalled();
+    });
+
+    it('is not in the settings of a section', () => {
+        render(<SettingsPanel scope="downloads" />);
+        expect(screen.queryByLabelText('Sound volume')).not.toBeInTheDocument();
     });
 });

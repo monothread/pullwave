@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useFxStore } from '@renderer/fx/fxStore';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { HistoryEntry } from '@shared/types';
 import { INITIAL_APP_UPDATE, upsertJob, useAppStore } from '@renderer/store/appStore';
@@ -165,6 +166,36 @@ describe('the settings being loaded', () => {
         await useAppStore.getState().init();
         expect(useAppStore.getState().settingsLoaded).toBe(true);
         expect(useAppStore.getState().settings).toEqual({ ...DEFAULT_SETTINGS, theme: 'nord' });
+    });
+});
+
+describe('the effects of the store', () => {
+    beforeEach(() => {
+        useFxStore.setState({ celebrations: 0, failures: 0, dances: 0, rainbow: false });
+    });
+
+    it('celebrates a download that is complete, once for each, and not one that is still going', async () => {
+        await useAppStore.getState().init();
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'running', percent: 50 }));
+        expect(useFxStore.getState().celebrations).toBe(0);
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'done', percent: 100 }));
+        expect(useFxStore.getState().celebrations).toBe(1);
+        mock.emitJobUpdate(makeJob({ id: 'b', status: 'done', percent: 100 }));
+        expect(useFxStore.getState().celebrations).toBe(2);
+    });
+
+    it('does not celebrate a download that fails', async () => {
+        await useAppStore.getState().init();
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'error' }));
+        expect(useFxStore.getState().celebrations).toBe(0);
+    });
+
+    it('makes the sound of an error for a notice that is an error, not for the other notices or for none', () => {
+        useAppStore.getState().setNotice({ kind: 'info', message: 'saved' });
+        useAppStore.getState().setNotice(null);
+        expect(useFxStore.getState().failures).toBe(0);
+        useAppStore.getState().setNotice({ kind: 'error', message: 'boom' });
+        expect(useFxStore.getState().failures).toBe(1);
     });
 });
 

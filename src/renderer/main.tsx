@@ -10,6 +10,7 @@ import './theme/bp-shell.css';
 import './theme/bp-home.css';
 import './theme/bp-library.css';
 import './theme/bp-downloads.css';
+import './theme/bp-fun.css';
 import { applyTheme, rememberedTheme } from './theme/resolveTheme';
 
 applyTheme(rememberedTheme());

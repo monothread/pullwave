@@ -4,7 +4,7 @@ import { PLAYER_ICONS, PlayerIcon, type PlayerIconName } from '@renderer/compone
 
 describe('PLAYER_ICONS', () => {
     it('has the character of each button of the player', () => {
-        expect(PLAYER_ICONS).toEqual({ play: '▶', pause: '❚❚', volume: '🔊', mute: '🔇', settings: '⚙', fullscreen: '⛶' });
+        expect(PLAYER_ICONS).toEqual({ play: '▶', pause: '❚❚', volume: '🔊', 'volume-low': '🔉', mute: '🔇', settings: '⚙', fullscreen: '⛶' });
     });
 });
 

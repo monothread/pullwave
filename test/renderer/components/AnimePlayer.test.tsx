@@ -107,6 +107,20 @@ describe('AnimePlayer', () => {
         expect(video.currentTime).toBe(600);
     });
 
+    it('says for a moment where the episode picked up, over the video', () => {
+        render(<AnimePlayer />);
+        const chip = screen.getByTestId('player-resumed');
+        expect(chip).toHaveClass('player__resumed');
+        expect(chip).toHaveTextContent('Resumed at 10:00');
+        expect(chip.parentElement).toHaveClass('player__stage');
+    });
+
+    it('says nothing about resuming when the episode starts from the beginning', () => {
+        useAnimeStore.setState({ playing: { animeId: 5, episodeId: 2 } });
+        render(<AnimePlayer />);
+        expect(screen.queryByTestId('player-resumed')).toBeNull();
+    });
+
     it('starts from the beginning when there is nothing to resume', () => {
         useAnimeStore.setState({ playing: { animeId: 5, episodeId: 2 } });
         render(<AnimePlayer />);
@@ -267,6 +281,14 @@ describe('AnimePlayer', () => {
             expect(panel.parentElement).toHaveClass('player__stage');
             expect(within(panel).getByText('Naruto · EP 2')).toBeInTheDocument();
             expect(within(panel).getByText('Starts in 10s')).toBeInTheDocument();
+        });
+
+        it('shows the cover of the anime beside the name of the next episode', () => {
+            render(<AnimePlayer />);
+            endEpisode();
+            const panel = screen.getByRole('region', { name: 'NEXT EPISODE' });
+            expect(panel).toHaveClass('player__auto-next--cover');
+            expect(panel.querySelector('.player__auto-next-cover')).toHaveAttribute('aria-hidden', 'true');
         });
 
         it('plays the next episode by itself when the count is over', () => {

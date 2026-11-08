@@ -18,7 +18,7 @@ import {
 import { subtitleDisplayNames } from './subtitleName';
 import { SubtitleGenerateDialog } from './SubtitleGenerateDialog';
 import { SubtitleTranslateDialog } from './SubtitleTranslateDialog';
-import { VideoControls } from './VideoControls';
+import { formatClock, VideoControls } from './VideoControls';
 import { AutoNextPanel } from './AutoNextPanel';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
 import { animeErrorKey, isWatched, nextDownloadedEpisode, previousDownloadedEpisode, resumePosition, type PlayableEpisode } from './animeText';
@@ -176,6 +176,8 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
     const previous = previousDownloadedEpisode(library, anime, episode);
     const next = nextDownloadedEpisode(library, anime, episode);
     const title = t('anime.job.title', { title: anime.title, episode: episode.number });
+    // Where an episode that was left half way picks up again: said for a moment when it opens.
+    const resumedAt = resumePosition(episode);
 
     return (
         <div className="player" role="dialog" aria-modal="true" aria-label={title}>
@@ -284,6 +286,11 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                     </p>
                 )}
                 <div className="player__stage">
+                    {resumedAt !== null && (
+                        <span className="player__resumed" data-testid="player-resumed">
+                            {t('anime.player.resumedAt', { time: formatClock(resumedAt) })}
+                        </span>
+                    )}
                     <video
                         ref={video}
                         className="player__video"
@@ -332,6 +339,7 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
                     {upNext && next !== null && (
                         <AutoNextPanel
                             title={t('anime.job.title', { title: next.anime.title, episode: next.episode.number })}
+                            coverTitle={next.anime.title}
                             onGo={() => {
                                 goTo(next);
                             }}

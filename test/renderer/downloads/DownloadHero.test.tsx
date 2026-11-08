@@ -76,6 +76,15 @@ describe('DownloadHero', () => {
         expect(hero.querySelector('.download-hero__next')).toHaveTextContent('UP NEXT: 2');
     });
 
+    it('makes the wave of the bar flow faster the faster the download goes', () => {
+        const { rerender } = render(<DownloadHero {...BASE} />);
+        expect(document.querySelector('.download-hero__bar .progress__bar')).toHaveStyle({ animationDuration: '2.21s' });
+        rerender(<DownloadHero {...BASE} speed="20.00MiB/s" />);
+        expect(document.querySelector('.download-hero__bar .progress__bar')).toHaveStyle({ animationDuration: '0.5s' });
+        rerender(<DownloadHero {...BASE} speed="" />);
+        expect(document.querySelector('.download-hero__bar .progress__bar')).toHaveStyle({ animationDuration: '1.4s' });
+    });
+
     it('shows the peak of the last minute once the speed was read', async () => {
         render(<DownloadHero {...BASE} />);
         await act(async () => {

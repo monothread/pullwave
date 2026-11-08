@@ -14,7 +14,8 @@ const SHORTCUT_BY_KEY: Readonly<Record<string, PlayerShortcut>> = {
 // The seek slider is the one field that leaves its arrows to the player: its own step is a tenth of a second.
 const SEEK_SLIDER_CLASS = 'player__seek';
 
-const SETTINGS_PANEL_CLASS = 'player__settings';
+// The panels over the video whose buttons are pressed with the space bar: the settings and the panel of the next episode.
+const BUTTON_PANELS_SELECTOR = '.player__settings, .player__auto-next';
 
 // Whether the focused element already does something with the key: a field is typed or moved in, a button of the settings is pressed with
 // the space. Any other button (the player opens with the focus on its close button, a click leaves it on the bar's) gives the space up,
@@ -29,7 +30,7 @@ function ownsKey(target: EventTarget | null, key: string): boolean {
     if (target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
         return true;
     }
-    return key === ' ' && target instanceof HTMLButtonElement && target.closest(`.${SETTINGS_PANEL_CLASS}`) !== null;
+    return key === ' ' && target instanceof HTMLButtonElement && target.closest(BUTTON_PANELS_SELECTOR) !== null;
 }
 
 // The shortcut a key press stands for, or null when it is not one or the focused element keeps it for itself.
@@ -46,4 +47,16 @@ export function shortcutOf(event: KeyboardEvent): PlayerShortcut | null {
 
 export function clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max);
+}
+
+// What the screen shows for a seek by the keys: which way it went (the little "5s ❯❯" that flies over the video).
+export interface SkipFlashDirection {
+    direction: 'forward' | 'backward';
+}
+
+export function skipFlashOf(shortcut: PlayerShortcut): SkipFlashDirection | null {
+    if (shortcut === 'seek-forward') {
+        return { direction: 'forward' };
+    }
+    return shortcut === 'seek-backward' ? { direction: 'backward' } : null;
 }

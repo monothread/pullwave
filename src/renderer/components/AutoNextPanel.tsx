@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
+import { AnimeCover } from './AnimeCover';
 
 // How long the panel counts before the next episode starts by itself.
 export const AUTO_NEXT_DELAY_MS = 10_000;
@@ -12,11 +13,13 @@ interface AutoNextPanelProps {
     onGo: () => void;
     onCancel: () => void;
     delayMs?: number;
+    // The anime whose cover is shown beside the name (left out: no cover).
+    coverTitle?: string;
 }
 
 // Over the video, once an episode ended: which episode comes next, a bar that fills as the time passes (as the zone between two chapters of
 // the reader does), a button to go at once and one to stay. When the bar is full the next episode starts.
-export function AutoNextPanel({ title, onGo, onCancel, delayMs = AUTO_NEXT_DELAY_MS }: AutoNextPanelProps) {
+export function AutoNextPanel({ title, onGo, onCancel, delayMs = AUTO_NEXT_DELAY_MS, coverTitle }: AutoNextPanelProps) {
     const t = useTranslator();
     const [elapsed, setElapsed] = useState(0);
     // The last onGo given: the count is not started again when the player draws itself again.
@@ -43,7 +46,16 @@ export function AutoNextPanel({ title, onGo, onCancel, delayMs = AUTO_NEXT_DELAY
     const fraction = delayMs > 0 ? elapsed / delayMs : 1;
     const secondsLeft = Math.ceil((delayMs - elapsed) / 1000);
     return (
-        <div className="player__auto-next" role="region" aria-label={t('anime.player.next')} data-testid="auto-next">
+        <div className={`player__auto-next${coverTitle === undefined ? '' : ' player__auto-next--cover'}`} role="region" aria-label={t('anime.player.next')} data-testid="auto-next">
+            <svg className="player__auto-next-ring" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+                <circle className="player__auto-next-ring-track" cx="18" cy="18" r="15.9" />
+                <circle className="player__auto-next-ring-fill" cx="18" cy="18" r="15.9" pathLength={100} strokeDasharray={100} strokeDashoffset={100 - fraction * 100} />
+            </svg>
+            {coverTitle !== undefined && (
+                <span className="player__auto-next-cover" aria-hidden="true">
+                    <AnimeCover title={coverTitle} />
+                </span>
+            )}
             <span className="player__auto-next-label">{t('anime.player.next')}</span>
             <strong className="player__auto-next-title">{title}</strong>
             <div

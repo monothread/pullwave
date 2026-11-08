@@ -5,8 +5,16 @@ import type { SeriesChoice } from '@shared/series';
 import { AddToLibraryDialog } from '@renderer/components/AddToLibraryDialog';
 import { installMockApi } from '../../helpers/mockApi';
 
+const { flyMock } = vi.hoisted(() => {
+    return { flyMock: vi.fn() };
+});
+vi.mock('@renderer/fx/flyCover', () => {
+    return { flyCoverToLibrary: flyMock };
+});
+
 beforeEach(() => {
     installMockApi();
+    flyMock.mockClear();
 });
 
 // The orders each series uses (the series are compared as the library does: without regard to case).
@@ -348,5 +356,30 @@ describe('AddToLibraryDialog', () => {
             await user.tab({ shift: true });
             expect(dialog.getByRole('button', { name: 'CONFIRM' })).toHaveFocus();
         });
+    });
+});
+
+describe('AddToLibraryDialog: the cover that flies to the library', () => {
+    it('sends the cover to the anime of the menu once the anime was added, and then closes', async () => {
+        const user = userEvent.setup();
+        const { dialog, onClose } = setup({ series: 'Cyberpunk', season: 1 });
+        await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+        expect(flyMock.mock.calls).toEqual([['anime']]);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fly when the anime was not added', async () => {
+        const user = userEvent.setup();
+        const { dialog, onClose } = setup({ series: 'Cyberpunk', season: 1 }, { onConfirm: async () => { return false; } });
+        await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
+        expect(flyMock).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('does not fly when the window is only closed', async () => {
+        const user = userEvent.setup();
+        const { dialog } = setup({ series: 'Cyberpunk', season: 1 });
+        await user.click(dialog.getByRole('button', { name: 'CANCEL' }));
+        expect(flyMock).not.toHaveBeenCalled();
     });
 });

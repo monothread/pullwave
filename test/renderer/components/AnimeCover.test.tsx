@@ -77,6 +77,15 @@ describe('AnimeCover with an address it was given', () => {
         expect(screen.queryByText('COVER NOT FOUND')).not.toBeInTheDocument();
     });
 
+    it('arrives blurred and comes into focus once the picture has loaded', () => {
+        const { container } = render(<AnimeCover title="Naruto" url={COVER} />);
+        const picture = image(container) as HTMLImageElement;
+        expect(picture).toHaveClass('cover', 'cover--loading');
+        fireEvent.load(picture);
+        expect(picture).toHaveClass('cover');
+        expect(picture).not.toHaveClass('cover--loading');
+    });
+
     it('does not look the cover up: it was given', () => {
         render(<AnimeCover title="Naruto" url={COVER} />);
 

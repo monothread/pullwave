@@ -20,6 +20,7 @@ import { useAutoSaveSettings, type SaveStatus } from '../hooks/useAutoSaveSettin
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
+import { useUiPrefsStore } from '../store/uiPrefsStore';
 import { useMangaStore } from '../store/mangaStore';
 import { NumberField, SelectField, TextField, ToggleField } from './fields';
 import { DiskUsageChart } from './DiskUsageChart';
@@ -32,6 +33,35 @@ import { formatResolution } from './settingsFormat';
 import { TranslationSettings } from './TranslationSettings';
 import { UpdateActions } from './UpdateActions';
 import { updateSummary } from './updateText';
+
+// The volume of the short sounds (a choice of the window, not a setting: it is kept in its storage, like the button of the sounds).
+function SoundVolumeField() {
+    const t = useTranslator();
+    const volume = useUiPrefsStore((state) => {
+        return state.soundVolume;
+    });
+    const setVolume = useUiPrefsStore((state) => {
+        return state.setSoundVolume;
+    });
+    return (
+        <label className="field">
+            <span className="field__label">{t('settings.soundVolume')}</span>
+            <input
+                type="range"
+                className="settings__volume"
+                aria-label={t('settings.soundVolume')}
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={(event) => {
+                    setVolume(Number(event.target.value));
+                }}
+            />
+            <span className="field__hint">{t('settings.soundVolume.hint')}</span>
+        </label>
+    );
+}
 
 function formatSaveStatus(status: SaveStatus, t: Translator): string {
     return t(`settings.save.${status}`);
@@ -280,6 +310,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                                 change('language', value);
                             }}
                         />
+                        <SoundVolumeField />
                         <ToggleField
                             label={t('settings.closeToTray')}
                             checked={draft.closeToTray}

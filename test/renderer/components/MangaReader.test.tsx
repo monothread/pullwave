@@ -10,6 +10,15 @@ import { useMangaStore, type MangaReaderState, type ReaderChapter } from '@rende
 import { makeChapterRecord, makeLibraryManga } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { installFakeFullscreen, type FakeFullscreen } from '../../helpers/fakeFullscreen';
+import { useFxStore } from '@renderer/fx/fxStore';
+import { useUiPrefsStore } from '@renderer/store/uiPrefsStore';
+
+const { playUiSoundMock } = vi.hoisted(() => {
+    return { playUiSoundMock: vi.fn() };
+});
+vi.mock('@renderer/sound/uiSound', () => {
+    return { playUiSound: playUiSoundMock, setUiSoundVolume: vi.fn() };
+});
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -32,6 +41,9 @@ function shownPage(): string | null {
 
 beforeEach(() => {
     window.localStorage.clear();
+    playUiSoundMock.mockClear();
+    useFxStore.setState({ celebrations: 0, failures: 0, dances: 0, rainbow: false });
+    useUiPrefsStore.setState({ sounds: true });
     mock = installMockApi();
     mock.api.manga.readPages.mockResolvedValue({ ok: true, value: { pages: PAGES, local: false, missing: [] } });
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
@@ -1715,6 +1727,49 @@ describe('MangaReader the zones between chapters', () => {
         });
     });
 
+    describe('a chapter read to its end in the scroll', () => {
+        function bringEndIntoView(top: number): void {
+            const end = screen.getByTestId('reader-zone-end');
+            end.getBoundingClientRect = () => {
+                return box(top, 468);
+            };
+            fireEvent.scroll(area);
+            runFrames(10);
+        }
+
+        it('is stamped and celebrated when the zone below its last page comes into view, and only then', () => {
+            show();
+            runFrames(5);
+            expect(screen.queryByTestId('reader-complete')).toBeNull();
+            // The zone has just come into view: a tenth of it, not enough.
+            bringEndIntoView(764 - 46);
+            expect(screen.queryByTestId('reader-complete')).toBeNull();
+            expect(useFxStore.getState().celebrations).toBe(0);
+            bringEndIntoView(764 - 120);
+            expect(screen.getByTestId('reader-complete')).toHaveTextContent('CHAPTER COMPLETE');
+            expect(useFxStore.getState().celebrations).toBe(1);
+            bringEndIntoView(764 - 400);
+            expect(useFxStore.getState().celebrations).toBe(1);
+        });
+
+        it('makes the bar of the zone shine once it is nearly full', () => {
+            show();
+            runFrames(5);
+            bringEndIntoView(764 - 200);
+            expect(within(screen.getByTestId('reader-zone-end')).getByRole('progressbar')).toHaveAttribute('data-full', 'false');
+            bringEndIntoView(764 - 450);
+            expect(within(screen.getByTestId('reader-zone-end')).getByRole('progressbar')).toHaveAttribute('data-full', 'true');
+        });
+
+        it('is not celebrated in a chapter reached from the one after it', () => {
+            show({ entry: 'end' });
+            runFrames(5);
+            bringEndIntoView(764 - 300);
+            expect(screen.queryByTestId('reader-complete')).toBeNull();
+            expect(useFxStore.getState().celebrations).toBe(0);
+        });
+    });
+
     it('has no zone one page at a time', () => {
         show({}, 'single');
         expect(screen.queryByTestId('reader-zone-start')).not.toBeInTheDocument();
@@ -1985,5 +2040,192 @@ describe('MangaReader fullscreen', () => {
         await user.click(screen.getByRole('button', { name: '← CLOSE' }));
         expect(fake.exits()).toBe(2);
         expect(fake.current()).toBeNull();
+    });
+});
+
+describe('MangaReader: the pages turn', () => {
+    it('says no way for the first page, and then which way each page was turned', () => {
+        open();
+        render(<MangaReader />);
+        const stage = screen.getByTestId('reader-stage');
+        expect(stage).not.toHaveAttribute('data-turn');
+        expect(stage).toHaveAttribute('data-direction', 'ltr');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(screen.getByTestId('reader-stage')).toHaveAttribute('data-turn', 'forward');
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        expect(screen.getByTestId('reader-stage')).toHaveAttribute('data-turn', 'back');
+    });
+
+    it('tells the style sheet the direction of the reading, so the pages come from the side the reading goes to', () => {
+        saveReaderPrefs({ mode: 'single', direction: 'rtl', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        open();
+        render(<MangaReader />);
+        expect(screen.getByTestId('reader-stage')).toHaveAttribute('data-direction', 'rtl');
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        expect(screen.getByTestId('reader-stage')).toHaveAttribute('data-turn', 'forward');
+    });
+
+    it('makes a new element of the number of the page for each page, so its flip starts again', () => {
+        open();
+        render(<MangaReader />);
+        const before = document.querySelector('.reader__page-text') as HTMLElement;
+        expect(before).toHaveTextContent('1 / 3');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        const after = document.querySelector('.reader__page-text') as HTMLElement;
+        expect(after).toHaveTextContent('2 / 3');
+        expect(after).not.toBe(before);
+    });
+});
+
+describe('MangaReader: the sound of a page', () => {
+    it('plays a soft note for each page turned, and none for the first page', () => {
+        open();
+        render(<MangaReader />);
+        expect(playUiSoundMock).not.toHaveBeenCalled();
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(playUiSoundMock.mock.calls).toEqual([['page'], ['page']]);
+    });
+
+    it('is quiet while the sounds are off', () => {
+        useUiPrefsStore.setState({ sounds: false });
+        open();
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(playUiSoundMock).not.toHaveBeenCalled();
+    });
+
+    it('plays nothing in the scroll, where pages are not turned', () => {
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        open();
+        render(<MangaReader />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(playUiSoundMock).not.toHaveBeenCalled();
+    });
+});
+
+describe('MangaReader: a chapter read to its end', () => {
+    function stamp(): HTMLElement | null {
+        return screen.queryByTestId('reader-complete');
+    }
+
+    it('is stamped and celebrated when its last page is reached by turning the pages, once', () => {
+        open();
+        render(<MangaReader />);
+        expect(stamp()).toBeNull();
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(stamp()).toBeNull();
+        expect(useFxStore.getState().celebrations).toBe(0);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(stamp()).toHaveTextContent('CHAPTER COMPLETE');
+        expect(stamp()).toHaveAttribute('role', 'status');
+        expect(stamp()).toHaveClass('reader__complete');
+        expect(useFxStore.getState().celebrations).toBe(1);
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(useFxStore.getState().celebrations).toBe(1);
+    });
+
+    it('is not celebrated when the user comes back into it from the chapter after it, which starts on its last page', () => {
+        open({ entry: 'end' });
+        render(<MangaReader />);
+        expect(screen.getByText('3 / 3')).toBeInTheDocument();
+        expect(stamp()).toBeNull();
+        expect(useFxStore.getState().celebrations).toBe(0);
+    });
+
+    it('is not celebrated just by being opened on its first page', () => {
+        open();
+        render(<MangaReader />);
+        expect(useFxStore.getState().celebrations).toBe(0);
+    });
+});
+
+describe('MangaReader: the scroll shows what it does', () => {
+    let area: HTMLElement;
+    let frames: Array<(time: number) => void> = [];
+
+    beforeEach(() => {
+        frames = [];
+        vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) => {
+            frames.push(callback);
+            return frames.length;
+        });
+        vi.stubGlobal('cancelAnimationFrame', () => {
+            return undefined;
+        });
+        area = document.createElement('div');
+        area.className = 'app__main';
+        Object.defineProperty(area, 'clientHeight', { value: 500, configurable: true });
+        Object.defineProperty(area, 'scrollHeight', { value: 5000, configurable: true });
+        area.scrollTo = vi.fn() as unknown as typeof area.scrollTo;
+        document.body.appendChild(area);
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 120, pageGap: 8, chapterSwitch: true });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        area.remove();
+    });
+
+    it('runs chevrons down the button of the auto scroll, with the speed, while it goes', async () => {
+        const user = userEvent.setup();
+        open();
+        render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
+        expect(screen.queryByTestId('reader-auto-flow')).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
+        const flow = screen.getByTestId('reader-auto-flow');
+        expect(flow).toHaveAttribute('aria-hidden', 'true');
+        expect(flow.querySelectorAll('span:not(.reader__auto-speed)')).toHaveLength(3);
+        expect(flow.querySelector('.reader__auto-speed')).toHaveTextContent('120 px/s');
+        // The name of the button is still only what it says.
+        expect(screen.getByRole('button', { name: 'STOP SCROLL' })).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'STOP SCROLL' }));
+        expect(screen.queryByTestId('reader-auto-flow')).toBeNull();
+    });
+
+    it('draws a ring around the button back to the top that fills as the chapter is read', async () => {
+        open();
+        render(<MangaReader />, { container: area.appendChild(document.createElement('div')) });
+        area.scrollTop = 900;
+        fireEvent.scroll(area);
+        const button = await screen.findByRole('button', { name: 'Back to the top' });
+        const ring = button.querySelector('svg.reader__top-ring') as SVGElement;
+        expect(ring).toHaveAttribute('aria-hidden', 'true');
+        expect(ring.querySelector('circle.reader__top-ring-track')).toHaveAttribute('r', '19');
+        const fill = ring.querySelector('circle.reader__top-ring-fill') as SVGElement;
+        expect(fill).toHaveAttribute('stroke-dasharray', '100');
+        expect(fill).toHaveAttribute('stroke-dashoffset');
+        const offset = Number(fill.getAttribute('stroke-dashoffset'));
+        expect(offset).toBeGreaterThanOrEqual(0);
+        expect(offset).toBeLessThanOrEqual(100);
+    });
+});
+
+describe('MangaReader: the page a chapter was brought to', () => {
+    it('glows when its picture arrives, and only that one', () => {
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        saveProgress(progressKey('One Piece', 2), 2);
+        open();
+        render(<MangaReader />);
+        const images = Array.from(document.querySelectorAll('img.reader__img'));
+        images.forEach((image) => {
+            fireEvent.load(image);
+        });
+        expect(
+            Array.from(document.querySelectorAll('img.reader__img')).map((image) => {
+                return image.classList.contains('reader__img--restored');
+            })
+        ).toEqual([false, false, true]);
+    });
+
+    it('is nothing special when the chapter starts at its first page', () => {
+        saveReaderPrefs({ mode: 'vertical', direction: 'ltr', scale: 'width', background: 'dark', autoScrollSpeed: 80, pageGap: 8, chapterSwitch: true });
+        open();
+        render(<MangaReader />);
+        document.querySelectorAll('img.reader__img').forEach((image) => {
+            fireEvent.load(image);
+        });
+        expect(document.querySelectorAll('.reader__img--restored')).toHaveLength(0);
     });
 });

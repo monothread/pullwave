@@ -90,6 +90,9 @@ The banner of a download repeats its card. Its words are drawn by the theme from
 ### Buttons of the mouse
 Every page is in the history of the back and forward buttons (`useMouseNavigation`): the section, the screen of each section, the series and the season of the anime, the manga, the source and its settings. A change of page made of several steps is one page (`navigation/navigationBatch.ts`).
 
+### Design improvements (D-147)
+`bp-fun.css`, loaded last, and `src/renderer/fx/`. It only adds; the rules above stay. Tests: `test/renderer/theme/funLayer.test.ts` (every rule of the sheet), `test/renderer/fx/*` and `test/e2e/playful.e2e-spec.ts`.
+
 ## 3. Navigation like a console
 - `src/renderer/navigation/spatialNavigation.ts`: the next control in a direction (distance along the direction plus three times the distance across), the scope (an open modal window, else the app), the controls that count (buttons, links, summaries, role button, tabindex; never fields), the screens that keep the arrows (`.player`, `.reader`).
 - `useSpatialNavigation`: the arrows move the focus while a control has it; a field, the player and the reader keep their arrows.

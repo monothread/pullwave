@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useFxStore } from '@renderer/fx/fxStore';
 import type { AnimeCheckState, AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, AnimeSearchResult, AnimeUpdateEntry } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
@@ -138,6 +139,16 @@ describe('init and the jobs that are done', () => {
         expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, episode: '2', status: 'running' })]);
         expect(toastMessages()).toEqual(['Download complete: Naruto · EP 1']);
         expect(useAppStore.getState().notice).toBeNull();
+    });
+
+    it('celebrates each episode that is done, and not one that is going on', async () => {
+        useFxStore.setState({ celebrations: 0 });
+        await useAnimeStore.getState().init();
+        mock.emitAnimeJob(makeAnimeJob({ status: 'running' }));
+        expect(useFxStore.getState().celebrations).toBe(0);
+        mock.emitAnimeJob(makeAnimeJob({ status: 'done' }));
+        mock.emitAnimeJob(makeAnimeJob({ episodeId: 2, episode: '2', status: 'done' }));
+        expect(useFxStore.getState().celebrations).toBe(2);
     });
 
     it('stacks the toasts of the downloads that finish together', async () => {

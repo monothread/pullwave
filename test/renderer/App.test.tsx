@@ -142,6 +142,36 @@ describe('App', () => {
     });
 });
 
+describe('App: the playful layer', () => {
+    afterEach(() => {
+        delete document.documentElement.dataset.section;
+    });
+
+    it('puts the section on <html> for the colour of the aurora, and follows the user', async () => {
+        const user = userEvent.setup();
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        expect(document.documentElement.dataset.section).toBe('home');
+        await user.click(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' }));
+        expect(document.documentElement.dataset.section).toBe('downloads');
+    });
+
+    it('has the halo of the focus and a pill behind the active section', async () => {
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        expect(document.querySelector('.focus-halo')).toHaveAttribute('aria-hidden', 'true');
+        expect(screen.getByRole('button', { name: 'HOME' }).querySelector('.tab__pill')).not.toBeNull();
+        expect(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' }).querySelector('.tab__pill')).toBeNull();
+        expect(screen.getByRole('button', { name: 'HOME' })).toHaveAttribute('data-section-id', 'home');
+    });
+
+    it('shows the week in numbers on the home screen', async () => {
+        render(<App />);
+        await screen.findByRole('region', { name: 'Home' });
+        expect(screen.getByRole('region', { name: 'Your week in numbers' })).toBeInTheDocument();
+    });
+});
+
 describe('App theme', () => {
     let prefersDark = false;
     const listeners = new Set<() => void>();
@@ -241,6 +271,30 @@ describe('App theme', () => {
             expect(document.documentElement.dataset.theme).toBe('dark');
         });
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, theme: 'dark' });
+    });
+
+    it('opens a circle to change the theme when the browser can, and not for the first theme it applies', async () => {
+        const user = userEvent.setup();
+        const start = vi.fn((update: () => void) => {
+            update();
+            return { finished: Promise.resolve() };
+        });
+        Object.defineProperty(document, 'startViewTransition', { configurable: true, value: start, writable: true });
+        try {
+            render(<App />);
+            await openDownloader();
+            await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
+            // The changes of page use the transitions too; the first theme applied (when the settings arrive) does not.
+            const pageChanges = start.mock.calls.length;
+            expect(document.documentElement.classList.contains('vt-theme')).toBe(false);
+            await user.selectOptions(screen.getByLabelText('Theme'), 'dark');
+            await waitFor(() => {
+                expect(document.documentElement.dataset.theme).toBe('dark');
+            });
+            expect(start).toHaveBeenCalledTimes(pageChanges + 1);
+        } finally {
+            Reflect.deleteProperty(document, 'startViewTransition');
+        }
     });
 
     it('remembers the applied theme for the next start', async () => {

@@ -1,3 +1,4 @@
+import { RUMBLE_EDGE, rumbleGamepads } from '../fx/gamepadRumble';
 import { useEffect, useRef } from 'react';
 import { heldInputs, intentsOf, type GamepadIntent, type GamepadSnapshot, type HeldInputs } from '../navigation/gamepad';
 import { arrowsAreOwned, firstFocusTarget, isNavigable, moveFocus, scopeOf } from '../navigation/spatialNavigation';
@@ -34,7 +35,10 @@ function move(direction: keyof typeof KEY_BY_DIRECTION): void {
     }
     const active = document.activeElement;
     if (isNavigable(active) && scopeOf(active) !== null) {
-        moveFocus(active, direction);
+        // The end of a list: nothing to move to, so the gamepad gives a short buzz.
+        if (!moveFocus(active, direction)) {
+            rumbleGamepads(RUMBLE_EDGE);
+        }
         return;
     }
     firstFocusTarget()?.focus();

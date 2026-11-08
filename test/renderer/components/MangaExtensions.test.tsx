@@ -160,6 +160,8 @@ describe('MangaExtensions', () => {
         const user = userEvent.setup();
         render(<MangaExtensions />);
         await screen.findByText('Alpha');
+        // Ctrl+F goes to this field.
+        expect(screen.getByLabelText('Filter extensions')).toHaveAttribute('data-search-field', '');
         await user.type(screen.getByLabelText('Filter extensions'), 'ta');
         expect(names()).toEqual(['Beta', 'Delta']);
         await user.clear(screen.getByLabelText('Filter extensions'));

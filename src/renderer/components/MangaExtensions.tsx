@@ -85,6 +85,7 @@ export function MangaExtensions() {
                 <>
                     <div className="field-row">
                         <TextField
+                            search
                             label={t('manga.ext.filter')}
                             value={filter.query}
                             onChange={(query) => {

@@ -296,6 +296,8 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByTestId('series-view')).not.toBeInTheDocument();
             expect(screen.getAllByTestId('anime-card')).toHaveLength(2);
             expect(screen.getByRole('textbox', { name: 'Search the library' })).toBeInTheDocument();
+            // Ctrl+F goes to this field.
+            expect(screen.getByRole('textbox', { name: 'Search the library' })).toHaveAttribute('data-search-field', '');
         });
 
         it('opens and closes the screen of the series as the store says, as when the buttons of the mouse go back and forward', () => {

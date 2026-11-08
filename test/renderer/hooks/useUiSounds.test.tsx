@@ -8,7 +8,8 @@ vi.mock('@renderer/sound/uiSound', () => {
     return {
         playUiSound: (sound: string) => {
             playUiSound(sound);
-        }
+        },
+        setUiSoundVolume: vi.fn()
     };
 });
 
@@ -19,6 +20,7 @@ function Screen() {
             <button type="button">PRESS</button>
             <span data-testid="text">TEXT</span>
             <input aria-label="field" />
+            <input type="checkbox" className="switch" aria-label="switch" />
         </div>
     );
 }
@@ -87,6 +89,22 @@ describe('useUiSounds', () => {
         fireEvent.mouseUp(window, { button: 0 });
         fireEvent.keyDown(document, { key: 'Enter' });
         expect(playUiSound.mock.calls).toEqual([['back'], ['back']]);
+    });
+
+    it('plays the sound of a switch when one is changed, and not for other fields', () => {
+        render(<Screen />);
+        fireEvent.click(document.querySelector('input.switch') as HTMLElement);
+        expect(playUiSound.mock.calls).toEqual([['toggle']]);
+        playUiSound.mockClear();
+        fireEvent.change(document.querySelector('input[aria-label="field"]') as HTMLElement, { target: { value: 'abc' } });
+        expect(playUiSound).not.toHaveBeenCalled();
+    });
+
+    it('is quiet for a switch while the sounds are off', () => {
+        useUiPrefsStore.setState({ sounds: false });
+        render(<Screen />);
+        fireEvent.click(document.querySelector('input.switch') as HTMLElement);
+        expect(playUiSound).not.toHaveBeenCalled();
     });
 
     it('is quiet while the sounds are off', () => {

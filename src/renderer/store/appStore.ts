@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
+import { useFxStore } from '../fx/fxStore';
 import { resolveAppLanguage } from '../i18n/language';
 import type {
     AddJobResult,
@@ -130,6 +131,9 @@ export const useAppStore = create<AppState>((set, get) => {
 
         setNotice: (notice) => {
             set({ notice });
+            if (notice?.kind === 'error') {
+                useFxStore.getState().fail();
+            }
         },
 
         pushToast: (message) => {
@@ -173,6 +177,7 @@ export const useAppStore = create<AppState>((set, get) => {
                     if (finishedNow) {
                         // A download that is complete says so for a few seconds and leaves the queue (it stays in the history).
                         get().pushToast(translateNow(get().settings, 'notice.downloadDone', { title: job.title ?? job.url }));
+                        useFxStore.getState().celebrate();
                         void get().removeJob(job.id);
                     }
                 }),

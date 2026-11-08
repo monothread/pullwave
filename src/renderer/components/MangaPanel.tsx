@@ -35,6 +35,11 @@ const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'm
 // instead of each one saying it is loading and then that the server is not ready.
 const SERVER_VIEWS: ReadonlySet<MangaBrowseView> = new Set<MangaBrowseView>(['browse', 'search', 'extensions']);
 
+// The tabs of the section, in the order of the bar (the gear last): what Ctrl+Page Up and Ctrl+Page Down move through.
+export const MANGA_TAB_IDS: readonly MangaBrowseView[] = VIEWS.map((item) => {
+    return item.id;
+});
+
 export function MangaPanel() {
     const t = useTranslator();
     const status = useMangaStore((state) => {
@@ -140,6 +145,7 @@ export function MangaPanel() {
                                     label={t(item.label)}
                                     icon={item.icon}
                                     active={view === item.id}
+                                    pillId="manga-tab-pill"
                                     onClick={() => {
                                         setView(item.id);
                                     }}

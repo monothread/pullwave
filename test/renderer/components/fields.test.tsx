@@ -15,6 +15,15 @@ describe('TextField', () => {
         expect(onChange).toHaveBeenCalledWith('abcd');
     });
 
+    it('is a field that searches only when it says so, which is what Ctrl+F looks for', () => {
+        const { rerender } = render(<TextField label="Folder" value="" onChange={vi.fn()} />);
+        expect(screen.getByLabelText('Folder')).not.toHaveAttribute('data-search-field');
+        rerender(<TextField label="Folder" value="" search onChange={vi.fn()} />);
+        expect(screen.getByLabelText('Folder')).toHaveAttribute('data-search-field', '');
+        rerender(<TextField label="Folder" value="" search={false} onChange={vi.fn()} />);
+        expect(screen.getByLabelText('Folder')).not.toHaveAttribute('data-search-field');
+    });
+
     it('renders without a hint', () => {
         render(<TextField label="Folder" value="" onChange={vi.fn()} />);
         expect(document.querySelector('.field__hint')).toBeNull();

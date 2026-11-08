@@ -355,6 +355,8 @@ describe('AnimeSchedule', () => {
             await screen.findByText('Sousou no Frieren');
 
             const field = screen.getByRole('textbox', { name: 'Search the schedule' });
+            // Ctrl+F goes to this field.
+            expect(field).toHaveAttribute('data-search-field', '');
             expect(field).toHaveValue('');
             expect(field).toHaveAttribute('placeholder', 'Anime name…');
             expect(screen.getByText('AIRING [2]')).toBeInTheDocument();

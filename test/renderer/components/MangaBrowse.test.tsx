@@ -130,6 +130,8 @@ describe('MangaBrowse a source', () => {
             return button.getAttribute('type') === 'submit';
         })!;
         expect(submit).toBeDisabled();
+        // Ctrl+F goes to this field.
+        expect(screen.getByLabelText('Manga name')).toHaveAttribute('data-search-field', '');
         await user.type(screen.getByLabelText('Manga name'), '  one piece ');
         expect(mock.api.manga.list).not.toHaveBeenCalled();
         await user.click(submit);

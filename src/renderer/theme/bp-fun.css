@@ -1,0 +1,954 @@
+/* The playful layer (D-147): the wave of the name that follows the app, the comet at the head of the bars, the soft pill that slides between
+   the tabs, the tiles that lean toward the pointer, the ripple of the presses, the halo that trails the focus, the confetti's neighbours
+   (the toast's timer, the stamp of a finished download), the numbers of the week, the pictures of the empty screens, the player's little
+   extras and the circle that opens when the theme changes. It only adds: the rules of the other sheets are untouched, and it reads only
+   their variables. Boxes never keep a transform (see console.css); everything that moves here is a control, a picture or a pseudo-element. */
+
+/* --- Tokens of motion ------------------------------------------------------------------------------------------------------------- */
+:root {
+    --bp-dur-fast: 0.15s;
+    --bp-dur-base: 0.3s;
+    --bp-dur-slow: 0.6s;
+}
+
+/* --- The colour of the aurora follows the section ----------------------------------------------------------------------------------
+   The three lights are registered colours, so the change from one section to the next is a slow blend and not a jump. */
+@property --bp-aurora-a { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --bp-aurora-b { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --bp-aurora-c { syntax: '<color>'; inherits: true; initial-value: transparent; }
+
+:root {
+    transition: --bp-aurora-a 0.9s ease, --bp-aurora-b 0.9s ease, --bp-aurora-c 0.9s ease;
+}
+
+:root[data-section='downloads'] {
+    --bp-aurora-a: color-mix(in srgb, var(--cyan) 30%, transparent);
+    --bp-aurora-b: color-mix(in srgb, var(--cyan) 14%, transparent);
+}
+
+:root[data-section='anime'] {
+    --bp-aurora-a: color-mix(in srgb, var(--magenta) 28%, transparent);
+    --bp-aurora-b: color-mix(in srgb, var(--cyan) 14%, transparent);
+}
+
+:root[data-section='manga'] {
+    --bp-aurora-a: color-mix(in srgb, var(--yellow) 24%, transparent);
+    --bp-aurora-c: color-mix(in srgb, var(--green) 20%, transparent);
+}
+
+/* --- The wave of the name ------------------------------------------------------------------------------------------------------------
+   Nothing going on: it lies almost flat and breathes slowly. Downloads going on: it rises. Many: it races. Something finished or the name
+   clicked five times: it dances. The Konami code: it runs through every colour. The delays of each bar (console.css) are kept. */
+.brand__wave--idle .brand__bar {
+    animation-name: bp-wave-idle;
+    animation-duration: 3.4s;
+}
+
+.brand__wave--busy .brand__bar {
+    animation-duration: 0.9s;
+}
+
+.brand__wave--rush .brand__bar {
+    animation-duration: 0.5s;
+}
+
+.brand__wave--dance .brand__bar {
+    animation-name: bp-wave-dance;
+    animation-duration: 0.45s;
+    animation-iteration-count: 3;
+    animation-timing-function: var(--bp-ease-spring);
+}
+
+.brand__wave--rainbow .brand__bar {
+    animation-name: bp-wave-bar, bp-hue;
+    animation-duration: 0.9s, 2.4s;
+    animation-iteration-count: infinite, infinite;
+    animation-timing-function: ease-in-out, linear;
+}
+
+.brand {
+    cursor: pointer;
+}
+
+@keyframes bp-wave-idle {
+    0%, 100% { transform: scaleY(0.18); }
+    50% { transform: scaleY(0.34); }
+}
+
+@keyframes bp-wave-dance {
+    0%, 100% { transform: scaleY(0.4) translateY(0); }
+    50% { transform: scaleY(1.1) translateY(-3px); }
+}
+
+@keyframes bp-hue {
+    from { filter: hue-rotate(0deg); }
+    to { filter: hue-rotate(360deg); }
+}
+
+/* --- The bars: a comet at the head, a flash when they fill ------------------------------------------------------------------------ */
+.progress__bar {
+    position: relative;
+}
+
+.progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    right: -2px;
+    bottom: -3px;
+    width: 18px;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.95) 0%, color-mix(in srgb, var(--cyan) 55%, transparent) 55%, transparent 100%);
+    animation: bp-comet 0.9s ease-in-out infinite alternate;
+}
+
+.job--done .progress__bar::after,
+.job--error .progress__bar::after {
+    display: none;
+}
+
+@keyframes bp-comet {
+    from { opacity: 0.55; transform: scaleX(0.8); }
+    to { opacity: 1; transform: scaleX(1.3); }
+}
+
+.job--done .progress {
+    animation: bp-bar-flash 0.8s ease-out;
+}
+
+@keyframes bp-bar-flash {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 80%, transparent); }
+    100% { box-shadow: 0 0 0 14px transparent; }
+}
+
+/* A finished download is stamped. */
+.badge--done {
+    animation: bp-stamp 0.55s var(--bp-ease-spring) backwards;
+}
+
+@keyframes bp-stamp {
+    0% { opacity: 0; transform: scale(2.2) rotate(-12deg); }
+    100% { opacity: 1; transform: none; }
+}
+
+/* --- The notice has a timer ------------------------------------------------------------------------------------------------------- */
+.toast--info::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 0;
+    height: 3px;
+    border-radius: var(--bp-radius-pill);
+    background: var(--bp-accent-gradient);
+    transform-origin: left center;
+    animation: bp-toast-drain 5s linear forwards;
+}
+
+@keyframes bp-toast-drain {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+
+/* --- Pictures that load: a shimmer while they are looked for, then they come into focus ---------------------------------------------- */
+.cover--none:empty {
+    background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--cyan) 18%, transparent) 50%, transparent 70%);
+    background-size: 250% 100%;
+    animation: bp-shimmer 1.4s linear infinite;
+}
+
+@keyframes bp-shimmer {
+    from { background-position: 150% 0; }
+    to { background-position: -50% 0; }
+}
+
+.cover--loading {
+    filter: blur(14px) saturate(1.4);
+    opacity: 0.6;
+}
+
+img.cover:not(.cover--loading) {
+    animation: bp-cover-focus 0.6s var(--bp-ease-out) backwards;
+}
+
+@keyframes bp-cover-focus {
+    from { filter: blur(14px) saturate(1.4); opacity: 0.6; }
+    to { filter: none; opacity: 1; }
+}
+
+/* --- The pictures of the sections each play their own little trick ------------------------------------------------------------------- */
+.sidenav .tab:hover .section-icon--home,
+.sidenav .tab--active .section-icon--home {
+    animation: bp-icon-hop 0.7s var(--bp-ease-spring);
+}
+
+.sidenav .tab:hover .section-icon--downloads,
+.sidenav .tab--active .section-icon--downloads {
+    animation: bp-icon-drop 0.8s var(--bp-ease-out);
+}
+
+.sidenav .tab:hover .section-icon--anime,
+.sidenav .tab--active .section-icon--anime {
+    animation: bp-icon-pulse 0.8s var(--bp-ease-out);
+}
+
+.sidenav .tab:hover .section-icon--manga,
+.sidenav .tab--active .section-icon--manga {
+    animation: bp-icon-page 0.8s var(--bp-ease-out);
+}
+
+@keyframes bp-icon-hop {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-4px) scale(1.1); }
+}
+
+@keyframes bp-icon-drop {
+    0% { transform: translateY(-5px); opacity: 0.3; }
+    60% { transform: translateY(3px); opacity: 1; }
+    100% { transform: translateY(0); }
+}
+
+/* It grows only a little and never overshoots: the picture has to stay inside the box of the tab, also halfway through. */
+@keyframes bp-icon-pulse {
+    0%, 100% { transform: scale(1); }
+    40% { transform: scale(1.08); filter: drop-shadow(0 0 6px var(--magenta)); }
+}
+
+@keyframes bp-icon-page {
+    0%, 100% { transform: scaleX(1); }
+    45% { transform: scaleX(0.15); }
+}
+
+/* --- An error shakes once ------------------------------------------------------------------------------------------------------------ */
+.error-banner {
+    animation: bp-shake 0.5s ease-in-out;
+}
+
+@keyframes bp-shake {
+    0%, 100% { transform: none; }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+}
+
+/* --- The ripple of a press ----------------------------------------------------------------------------------------------------------
+   The press gives the place (--rx, --ry); the radius and the strength are registered numbers the animation moves. */
+@property --bp-ripple { syntax: '<number>'; inherits: false; initial-value: 0; }
+@property --bp-ripple-alpha { syntax: '<number>'; inherits: false; initial-value: 0; }
+
+.is-rippling {
+    background-image: radial-gradient(circle at var(--rx, 50%) var(--ry, 50%), rgba(255, 255, 255, var(--bp-ripple-alpha)) 0, rgba(255, 255, 255, var(--bp-ripple-alpha)) calc(var(--bp-ripple) * 0.55px), transparent calc(var(--bp-ripple) * 1px));
+    animation: bp-ripple 0.6s var(--bp-ease-out);
+}
+
+@keyframes bp-ripple {
+    from { --bp-ripple: 0; --bp-ripple-alpha: 0.4; }
+    to { --bp-ripple: 260; --bp-ripple-alpha: 0; }
+}
+
+/* What takes something away fills with red while it is held, so the press feels like it costs something. */
+[data-hold='confirm']:active:not(:disabled) {
+    background-image: linear-gradient(90deg, color-mix(in srgb, var(--red) 45%, transparent), color-mix(in srgb, var(--red) 25%, transparent));
+    background-repeat: no-repeat;
+    background-size: 0% 100%;
+    animation: bp-hold-fill 0.7s linear forwards;
+}
+
+@keyframes bp-hold-fill {
+    to { background-size: 100% 100%; }
+}
+
+/* --- The tiles lean toward the pointer, with a light that follows it ------------------------------------------------------------------ */
+.cover-grid > .cover-card:hover > .cover {
+    transform: perspective(700px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(-4px) scale(1.04);
+    transition: transform 0.12s linear, box-shadow 0.3s, filter 0.3s;
+}
+
+.cover-grid > .cover-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    aspect-ratio: 90 / 128;
+    pointer-events: none;
+    border-radius: var(--bp-radius-small);
+    background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 50%), var(--bp-sheen) 0%, transparent 55%);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.cover-grid > .cover-card:hover::after {
+    opacity: 1;
+}
+
+/* --- The carousel: the cover moves against the pointer; the current dot fills as the five seconds pass ---------------------------------- */
+.spotlight__stage {
+    --px: 0;
+    --py: 0;
+}
+
+.spotlight__slide .hero__art {
+    transform: translate3d(calc(var(--px) * -10px), calc(var(--py) * -8px), 0);
+    transition: transform 0.25s ease-out;
+}
+
+.spotlight__dot--current {
+    position: relative;
+    overflow: hidden;
+}
+
+.spotlight__dot--current::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.55);
+    transform-origin: left center;
+    animation: bp-dot-fill 5s linear forwards;
+}
+
+@keyframes bp-dot-fill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
+/* --- A pill slides behind the active tab ---------------------------------------------------------------------------------------------- */
+.tab {
+    isolation: isolate;
+}
+
+.tab__pill {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--cyan) 13%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 38%, transparent);
+}
+
+/* The item of the menu that a cover has just flown into. */
+.tab--pulse {
+    animation: bp-nav-pulse 0.9s var(--bp-ease-out);
+}
+
+@keyframes bp-nav-pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--magenta) 70%, transparent); }
+    100% { box-shadow: 0 0 0 18px transparent; }
+}
+
+/* --- The halo that trails the focus -------------------------------------------------------------------------------------------------- */
+/* The generic margin of the children of .app (responsive.css) is not for a halo that is laid on the window. */
+.app > .focus-halo {
+    margin: 0;
+}
+
+.focus-halo {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 150;
+    pointer-events: none;
+    border-radius: var(--bp-radius-small);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--bp-focus) 45%, transparent), 0 0 26px color-mix(in srgb, var(--bp-focus) 40%, transparent);
+    opacity: 0;
+}
+
+/* --- The digits of the clock flip ----------------------------------------------------------------------------------------------------- */
+.flip__char {
+    display: inline-block;
+    white-space: pre;
+    animation: bp-flip 0.45s var(--bp-ease-spring) backwards;
+}
+
+@keyframes bp-flip {
+    from { opacity: 0; transform: translateY(-40%) rotateX(80deg); }
+    to { opacity: 1; transform: none; }
+}
+
+/* --- The week in numbers --------------------------------------------------------------------------------------------------------------- */
+.stats {
+    display: grid;
+    gap: 14px;
+    padding: 18px 22px;
+    border: 1px solid color-mix(in srgb, var(--cyan) 30%, var(--line));
+    border-radius: var(--bp-radius);
+    background: var(--bp-surface);
+    box-shadow: var(--bp-shadow), var(--glow-inset);
+    animation: bp-fade-in 0.35s var(--bp-ease-out) backwards;
+}
+
+.stats__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 14px;
+}
+
+.stats__greeting {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    text-shadow: var(--text-glow);
+}
+
+.stats__title {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 2px;
+}
+
+.stats__numbers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px 18px;
+    margin: 0;
+}
+
+.stats__number {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 2px;
+    min-width: 0;
+}
+
+.stats__number dt {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+.stats__number dd {
+    margin: 0;
+    color: var(--cyan);
+    font-size: 30px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-shadow: var(--text-glow);
+}
+
+/* --- The player: a flash for the seek, a swap for the icons, a spring for the sliders, a ring for the next episode ------------------------- */
+.player__skip {
+    position: absolute;
+    top: 50%;
+    z-index: 5;
+    padding: 10px 18px;
+    border-radius: var(--bp-radius-pill);
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    color: var(--text);
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    pointer-events: none;
+    text-shadow: var(--text-glow);
+    animation: bp-skip 0.65s var(--bp-ease-out) forwards;
+}
+
+.player__skip--forward { right: 14%; }
+.player__skip--backward { left: 14%; }
+
+@keyframes bp-skip {
+    0% { opacity: 0; transform: translateY(-50%) scale(0.7); }
+    25% { opacity: 1; transform: translateY(-50%) scale(1.1); }
+    100% { opacity: 0; transform: translateY(-50%) scale(1); }
+}
+
+.player__button .player__icon {
+    animation: bp-icon-swap 0.3s var(--bp-ease-spring) backwards;
+}
+
+@keyframes bp-icon-swap {
+    from { opacity: 0; transform: scale(0.4) rotate(-90deg); }
+    to { opacity: 1; transform: none; }
+}
+
+.player__range::-webkit-slider-thumb {
+    transition: transform 0.2s var(--bp-ease-spring);
+}
+
+.player__range:active::-webkit-slider-thumb {
+    transform: scale(1.4);
+}
+
+.player__auto-next-ring {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 34px;
+    height: 34px;
+    transform: rotate(-90deg);
+}
+
+.player__auto-next-title {
+    padding-right: 44px;
+}
+
+.player__auto-next-ring circle {
+    fill: none;
+    stroke-width: 3;
+}
+
+.player__auto-next-ring-track {
+    stroke: var(--line);
+}
+
+.player__auto-next-ring-fill {
+    stroke: var(--magenta);
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px var(--magenta));
+    transition: stroke-dashoffset 0.1s linear;
+}
+
+/* --- The volume of the sounds, in the settings --------------------------------------------------------------------------------------- */
+.settings__volume {
+    width: 100%;
+    max-width: 320px;
+    accent-color: var(--magenta);
+}
+
+/* --- A change of theme opens as a circle from where it was chosen ----------------------------------------------------------------------- */
+.vt-theme::view-transition-old(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+.vt-theme::view-transition-new(root) {
+    mix-blend-mode: normal;
+    animation: bp-reveal 0.75s var(--bp-ease-out) both;
+}
+
+@keyframes bp-reveal {
+    from { clip-path: circle(0% at var(--reveal-x, 50%) var(--reveal-y, 50%)); }
+    to { clip-path: circle(150% at var(--reveal-x, 50%) var(--reveal-y, 50%)); }
+}
+
+/* --- The player: it opens with a rise, the bar slides, the video answers a press, the volume says its number ------------------------------ */
+.player {
+    animation: bp-fade-in 0.25s ease-out backwards;
+}
+
+/* A rise, not a pop: a scale would change the size of every control while it opens, and the sizes of the controls are measured. */
+.player__box {
+    animation: bp-rise 0.4s var(--bp-ease-out) backwards;
+}
+
+.player__controls {
+    transition: opacity 0.25s ease, transform 0.3s var(--bp-ease-out);
+}
+
+.player__controls[data-hidden='true'] {
+    transform: translateY(16px);
+}
+
+/* A big mark pops in the middle of the video when it plays or pauses, and grows as it goes. */
+.player__center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+    color: var(--text);
+    font-size: 34px;
+    text-shadow: var(--text-glow);
+    pointer-events: none;
+    animation: bp-center 0.6s var(--bp-ease-out) forwards;
+}
+
+@keyframes bp-center {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+    30% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+.player__volume-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.player__volume-bubble {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    padding: 2px 10px;
+    border: 1px solid var(--cyan);
+    border-radius: var(--bp-radius-pill);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    animation: bp-bubble 1s var(--bp-ease-out) forwards;
+}
+
+@keyframes bp-bubble {
+    0% { opacity: 0; transform: translate(-50%, 6px); }
+    15%, 80% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -4px); }
+}
+
+.player__icon--volume-low {
+    font-size: 1em;
+}
+
+/* What is already loaded shows on the timeline as a lighter stretch under the part watched. */
+.player__timeline .progress {
+    position: relative;
+}
+
+.player__buffered {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    background: color-mix(in srgb, var(--text) 22%, transparent);
+    pointer-events: none;
+    transition: width 0.3s ease;
+}
+
+.player__settings {
+    animation: bp-rise 0.35s var(--bp-ease-out) backwards;
+}
+
+.player__settings > * {
+    animation: bp-rise 0.35s var(--bp-ease-out) backwards;
+}
+
+.player__settings > :nth-child(2) { animation-delay: 0.05s; }
+.player__settings > :nth-child(3) { animation-delay: 0.1s; }
+.player__settings > :nth-child(n + 4) { animation-delay: 0.15s; }
+
+/* An episode that was left half way says where it picked up, for a moment. */
+.player__resumed {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 5;
+    padding: 6px 14px;
+    border: 1px solid var(--cyan);
+    border-radius: var(--bp-radius-pill);
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    pointer-events: none;
+    animation: bp-resumed 4s var(--bp-ease-out) forwards;
+}
+
+@keyframes bp-resumed {
+    0% { opacity: 0; transform: translateY(-8px); }
+    8%, 85% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: translateY(-4px); }
+}
+
+/* The panel of the next episode comes in from the side, with the cover of the anime beside its name. */
+.player__auto-next {
+    animation: bp-slide-left 0.5s var(--bp-ease-spring) backwards;
+}
+
+@keyframes bp-slide-left {
+    from { opacity: 0; transform: translateX(60px); }
+    to { opacity: 1; transform: none; }
+}
+
+.player__auto-next--cover {
+    min-height: 96px;
+    padding-left: 84px;
+}
+
+.player__auto-next-cover {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: 56px;
+    height: 80px;
+    overflow: hidden;
+    border-radius: var(--bp-radius-small);
+    box-shadow: var(--bp-shadow);
+}
+
+.player__auto-next-cover .cover {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: cover;
+}
+
+/* --- The reader: pages turn, loading shimmers, the zone between chapters beckons, a read chapter is stamped ---------------------------- */
+/* A page turned one at a time comes in from the side the reading goes to (forward in a left to right reading: from the right). */
+.reader__stage[data-turn] .reader__img:not(.reader__img--pending) {
+    --turn-from: 40px;
+    animation: bp-page-turn 0.35s var(--bp-ease-out) backwards;
+}
+
+.reader__stage[data-turn='forward'][data-direction='rtl'] .reader__img:not(.reader__img--pending),
+.reader__stage[data-turn='back'][data-direction='ltr'] .reader__img:not(.reader__img--pending) {
+    --turn-from: -40px;
+}
+
+@keyframes bp-page-turn {
+    from { opacity: 0; transform: translateX(var(--turn-from)); }
+    to { opacity: 1; transform: none; }
+}
+
+/* The number of the page flips when the page changes (the element is new for each page, so the animation starts again). */
+.reader__page-text {
+    display: inline-block;
+    animation: bp-flip 0.4s var(--bp-ease-spring) backwards;
+}
+
+/* The first page of a chapter, and the pages of the scroll, only fade in: a filter on hundreds of pictures would be too much. */
+.reader__stage:not([data-turn]) .reader__img:not(.reader__img--pending),
+.reader__scroll .reader__img:not(.reader__img--pending) {
+    animation: bp-reader-fade 0.5s ease-out backwards;
+}
+
+@keyframes bp-reader-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.reader__loading-page {
+    background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--cyan) 14%, transparent) 50%, transparent 70%);
+    background-size: 250% 100%;
+    animation: bp-shimmer 1.4s linear infinite;
+}
+
+/* The page a chapter was brought to glows when its picture arrives. */
+.reader__scroll .reader__img.reader__img--restored:not(.reader__img--pending) {
+    animation: bp-reader-fade 0.5s ease-out backwards, bp-restored 1.4s ease-out;
+}
+
+@keyframes bp-restored {
+    0% { box-shadow: 0 0 0 4px var(--cyan), 0 0 30px var(--cyan); }
+    100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
+}
+
+.reader__stage,
+.reader__scroll {
+    transition: background 0.4s ease;
+}
+
+.reader__settings {
+    animation: bp-rise 0.4s var(--bp-ease-out) backwards;
+}
+
+.reader__settings > .field:nth-child(2) { animation: bp-rise 0.4s var(--bp-ease-out) 0.04s backwards; }
+.reader__settings > .field:nth-child(3) { animation: bp-rise 0.4s var(--bp-ease-out) 0.08s backwards; }
+.reader__settings > .field:nth-child(4) { animation: bp-rise 0.4s var(--bp-ease-out) 0.12s backwards; }
+.reader__settings > .field:nth-child(n + 5) { animation: bp-rise 0.4s var(--bp-ease-out) 0.16s backwards; }
+
+.reader__zone-arrow {
+    color: var(--cyan);
+    font-size: 26px;
+    line-height: 1;
+    animation: bp-zone-arrow 1.2s ease-in-out infinite;
+}
+
+.reader__zone--start .reader__zone-arrow {
+    animation-name: bp-zone-arrow-up;
+}
+
+@keyframes bp-zone-arrow {
+    0%, 100% { opacity: 0.5; transform: translateY(-4px); }
+    50% { opacity: 1; transform: translateY(4px); }
+}
+
+@keyframes bp-zone-arrow-up {
+    0%, 100% { opacity: 0.5; transform: translateY(4px); }
+    50% { opacity: 1; transform: translateY(-4px); }
+}
+
+/* The bar of the zone shines when it is nearly full, as the chapter is about to change. */
+.reader__zone-bar[data-full='true'] .progress__bar {
+    animation-name: bar-wave-flow, bp-zone-full;
+    animation-duration: 1.4s, 0.5s;
+    animation-iteration-count: infinite, infinite;
+    animation-direction: normal, alternate;
+    animation-timing-function: linear, ease-in-out;
+}
+
+@keyframes bp-zone-full {
+    from { filter: brightness(1); }
+    to { filter: brightness(1.5); }
+}
+
+/* The auto scroll shows it is going: chevrons run down the button, with the speed beside them. */
+.reader__auto-flow {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 8px;
+}
+
+.reader__auto-flow > span:not(.reader__auto-speed) {
+    display: inline-block;
+    font-size: 10px;
+    animation: bp-flow-down 0.9s ease-in-out infinite;
+}
+
+.reader__auto-flow > :nth-child(2) { animation-delay: 0.15s; }
+.reader__auto-flow > :nth-child(3) { animation-delay: 0.3s; }
+
+.reader__auto-speed {
+    margin-left: 8px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+}
+
+@keyframes bp-flow-down {
+    0% { opacity: 0.2; transform: translateY(-3px); }
+    50% { opacity: 1; transform: translateY(2px); }
+    100% { opacity: 0.2; transform: translateY(5px); }
+}
+
+/* The button to go back to the top springs in, with a ring that fills as the chapter is read. */
+.reader__top {
+    animation: bp-top-pop 0.4s var(--bp-ease-spring) backwards;
+}
+
+@keyframes bp-top-pop {
+    from { opacity: 0; transform: scale(0.4) translateY(20px); }
+    to { opacity: 1; transform: none; }
+}
+
+.reader__top-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+    pointer-events: none;
+}
+
+.reader__top-ring circle {
+    fill: none;
+    stroke-width: 3;
+}
+
+.reader__top-ring-track {
+    stroke: rgba(0, 0, 0, 0.2);
+}
+
+.reader__top-ring-fill {
+    stroke: var(--magenta);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.15s linear;
+}
+
+/* A chapter read to its end is stamped over the page. */
+.reader__complete {
+    position: fixed;
+    top: 42%;
+    left: 50%;
+    z-index: 6;
+    padding: 14px 28px;
+    border: 3px solid var(--green);
+    border-radius: var(--bp-radius-small);
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    color: var(--green);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--green) 60%, transparent);
+    pointer-events: none;
+    animation: bp-complete 2.2s var(--bp-ease-out) forwards;
+}
+
+@keyframes bp-complete {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(2.4) rotate(-14deg); }
+    14%, 75% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(-6deg); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1) rotate(-6deg); }
+}
+
+/* --- The pointer ------------------------------------------------------------------------------------------------------------------------
+   The pointer of the system (the theme the person chose) is used for every shape: this only says which shape each thing gets. The arrow is
+   the shape of the app; the hand is for what can be pressed; the text shape is only for fields and for the text meant to be copied. */
+body {
+    cursor: default;
+}
+
+button,
+summary,
+select,
+[role='button'],
+[role='option'],
+[role='tab'],
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'],
+input[type='color'] {
+    cursor: pointer;
+}
+
+/* An on/off setting is pressed on its whole line, not only on the box. */
+label:has(> input[type='checkbox']),
+label:has(> input[type='radio']),
+label:has(input.switch),
+.toggle {
+    cursor: pointer;
+}
+
+/* What cannot be pressed now shows it (the busy shape is for what is working: it comes from aria-busy). */
+button:disabled,
+select:disabled,
+input:disabled,
+.btn:disabled,
+.player__button:disabled,
+label:has(> input:disabled),
+label:has(input.switch:disabled) {
+    cursor: not-allowed;
+}
+
+.btn[aria-busy='true'],
+button[aria-busy='true'] {
+    cursor: progress;
+}
+
+/* Fields keep the text shape, and so does the text a person may want to copy. */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='button']):not([type='submit']):not(:disabled),
+textarea:not(:disabled),
+.error-details__text,
+.error-details dd {
+    cursor: text;
+}
+
+/* --- The wave of the name is bigger ------------------------------------------------------------------------------------------------------ */
+.brand__wave {
+    height: 40px;
+    gap: 4px;
+}
+
+.brand__bar {
+    width: 6px;
+}
+
+/* --- Things that were in each other's way over the player and the reader ----------------------------------------------------------------- */
+/* The part watched of the timeline starts crisp at the very start of the bar: its glow and the light at its head (which is wider than the bar when
+   the video has only just begun) no longer spill out on the left. */
+.player__timeline .progress__bar {
+    clip-path: inset(-8px -14px -8px 0);
+}
+
+/* The notices that come while a video plays (a download that finished) sit at the top of the video, out of the way of the panel of the next episode
+   and of the buttons of the bar; over the reader they sit above its buttons. */
+body:has(.player) .toasts {
+    top: 124px;
+    right: 36px;
+    bottom: auto;
+}
+
+body:has(.reader) .toasts {
+    bottom: 88px;
+}

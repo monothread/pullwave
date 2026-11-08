@@ -28,3 +28,14 @@ describe('MangaCover', () => {
         expect(container.querySelector('img')).toHaveAttribute('src', 'http://127.0.0.1:2/b.jpg');
     });
 });
+
+describe('MangaCover coming into focus', () => {
+    it('arrives blurred and comes into focus once the picture has loaded', () => {
+        const { container } = render(<MangaCover url="http://127.0.0.1:4321/api/v1/manga/7/thumbnail" />);
+        const image = container.querySelector('img.cover') as HTMLImageElement;
+        expect(image).toHaveClass('cover', 'cover--loading');
+        fireEvent.load(image);
+        expect(image).toHaveClass('cover');
+        expect(image).not.toHaveClass('cover--loading');
+    });
+});

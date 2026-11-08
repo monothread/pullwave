@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { TopBar } from '@renderer/components/TopBar';
+import { useFxStore } from '@renderer/fx/fxStore';
 import { installMockApi } from '../../helpers/mockApi';
 
 beforeEach(() => {
@@ -41,5 +42,25 @@ describe('TopBar', () => {
         expect(onToggleMenu).toHaveBeenCalledTimes(1);
         rerender(<TopBar menuOpen onToggleMenu={onToggleMenu} />);
         expect(screen.getByRole('button', { name: 'Close the menu' })).toHaveAttribute('aria-expanded', 'true');
+    });
+});
+
+describe('TopBar: the wave and the name', () => {
+    it('lies flat while nothing goes on', () => {
+        render(<TopBar menuOpen={false} onToggleMenu={vi.fn()} />);
+        expect(document.querySelector('.brand__wave')).toHaveClass('brand__wave--idle');
+    });
+
+    it('makes the wave dance after five quick clicks on the name', () => {
+        useFxStore.setState({ celebrations: 0, failures: 0, dances: 0, rainbow: false });
+        render(<TopBar menuOpen={false} onToggleMenu={vi.fn()} />);
+        const brand = document.querySelector('.brand') as HTMLElement;
+        for (let click = 0; click < 4; click += 1) {
+            fireEvent.click(brand);
+        }
+        expect(useFxStore.getState().dances).toBe(0);
+        fireEvent.click(brand);
+        expect(useFxStore.getState().dances).toBe(1);
+        expect(document.querySelector('.brand__wave')).toHaveClass('brand__wave--dance');
     });
 });

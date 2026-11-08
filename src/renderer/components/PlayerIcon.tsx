@@ -4,6 +4,7 @@ export const PLAYER_ICONS = {
     play: '▶',
     pause: '❚❚',
     volume: '🔊',
+    'volume-low': '🔉',
     mute: '🔇',
     settings: '⚙',
     fullscreen: '⛶'

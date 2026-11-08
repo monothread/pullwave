@@ -71,3 +71,24 @@ describe('SideNav', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 });
+
+describe('SideNav: the sections and the pill', () => {
+    it('gives each tab the section it leads to', () => {
+        renderNav(false);
+        const nav = screen.getByRole('navigation', { name: 'Sections' });
+        expect(
+            Array.from(nav.querySelectorAll('button')).map((button) => {
+                return button.getAttribute('data-section-id');
+            })
+        ).toEqual(['home', 'downloads', 'anime', 'manga', 'settings']);
+    });
+
+    it('puts the pill that slides in the active tab only', () => {
+        renderNav(false, 'downloads');
+        const nav = screen.getByRole('navigation', { name: 'Sections' });
+        const withPill = Array.from(nav.querySelectorAll('button')).filter((button) => {
+            return button.querySelector('.tab__pill') !== null;
+        });
+        expect(withPill.map((button) => { return button.getAttribute('data-section-id'); })).toEqual(['downloads']);
+    });
+});

@@ -28,6 +28,7 @@ export function ConfirmButton({ className, children, ariaLabel, title, disabled,
             <button
                 type="button"
                 className={className}
+                data-hold="confirm"
                 aria-label={ariaLabel}
                 title={title}
                 disabled={disabled}

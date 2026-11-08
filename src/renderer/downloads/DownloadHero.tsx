@@ -3,7 +3,7 @@ import { useSpeedHistory } from '../hooks/useSpeedHistory';
 import { useTranslator } from '../i18n/useTranslator';
 import { Drawn } from '../components/Drawn';
 import { SectionIcon, type SectionIconName } from '../components/SectionIcon';
-import { formatSpeed, parseSpeed } from './speed';
+import { flowSeconds, formatSpeed, parseSpeed } from './speed';
 import { SpeedGraph } from './SpeedGraph';
 
 export interface DownloadHeroProps {
@@ -48,7 +48,7 @@ export function DownloadHero({ id, title, detail, percent, speed, eta, kind, cov
                 <Drawn className="download-hero__title" text={title} />
                 {detail !== null && <Drawn className="download-hero__detail" text={detail} />}
                 <div className="download-hero__bar progress" aria-hidden="true">
-                    <div className="progress__bar" style={{ width: `${String(shown)}%` }} />
+                    <div className="progress__bar" style={{ width: `${String(shown)}%`, animationDuration: `${String(flowSeconds(parseSpeed(speed)))}s` }} />
                 </div>
                 <dl className="download-hero__stats">
                     <div className="download-hero__stat">

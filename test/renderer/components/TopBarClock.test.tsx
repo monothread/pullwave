@@ -61,3 +61,31 @@ describe('TopBarClock', () => {
         expect(clock).toHaveAttribute('datetime', '14:06');
     });
 });
+
+describe('TopBarClock: the flipping digits', () => {
+    it('draws every character of the time in its own element, with the same text as before', () => {
+        useLanguage('pt');
+        render(<TopBarClock />);
+        const clock = screen.getByLabelText('Hora: 14:05');
+        expect(
+            Array.from(clock.querySelectorAll('.flip__char')).map((char) => {
+                return char.textContent;
+            })
+        ).toEqual(['1', '4', ':', '0', '5']);
+        expect(clock).toHaveTextContent('14:05');
+    });
+
+    it('flips only the characters that changed when the minute goes by', () => {
+        useLanguage('pt');
+        render(<TopBarClock />);
+        const clock = screen.getByLabelText('Hora: 14:05');
+        const before = Array.from(clock.querySelectorAll('.flip__char'));
+        act(() => {
+            vi.advanceTimersByTime(CLOCK_TICK_MS);
+        });
+        const after = Array.from(screen.getByLabelText('Hora: 14:06').querySelectorAll('.flip__char'));
+        expect(after.slice(0, 4)).toEqual(before.slice(0, 4));
+        expect(after[4]).not.toBe(before[4]);
+        expect(after[4]).toHaveTextContent('6');
+    });
+});

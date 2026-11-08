@@ -2,6 +2,14 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { AUTO_NEXT_DELAY_MS, AUTO_NEXT_TICK_MS, AutoNextPanel } from '@renderer/components/AutoNextPanel';
 
+vi.mock('@renderer/components/AnimeCover', () => {
+    return {
+        AnimeCover: ({ title }: { title: string }) => {
+            return <img data-testid="cover" alt="" data-title={title} />;
+        }
+    };
+});
+
 beforeEach(() => {
     vi.useFakeTimers();
 });
@@ -48,6 +56,21 @@ describe('AutoNextPanel', () => {
         expect(go).toHaveClass('btn', 'btn--small', 'btn--primary');
         expect(go).toHaveFocus();
         expect(within(panel).getByRole('button', { name: 'CANCEL' })).toHaveClass('btn', 'btn--small');
+    });
+
+    it('draws a ring that empties as the time passes, hidden from the screen readers', () => {
+        renderPanel();
+        const panel = screen.getByRole('region', { name: 'NEXT EPISODE' });
+        const ring = panel.querySelector('svg.player__auto-next-ring') as SVGElement;
+        expect(ring).toHaveAttribute('aria-hidden', 'true');
+        expect(ring.querySelector('circle.player__auto-next-ring-track')).toHaveAttribute('r', '15.9');
+        const fill = ring.querySelector('circle.player__auto-next-ring-fill') as SVGElement;
+        expect(fill).toHaveAttribute('stroke-dasharray', '100');
+        expect(fill).toHaveAttribute('stroke-dashoffset', '100');
+        advance(2_500);
+        expect(fill).toHaveAttribute('stroke-dashoffset', '75');
+        advance(7_500);
+        expect(fill).toHaveAttribute('stroke-dashoffset', '0');
     });
 
     it('fills the bar and counts the seconds down as the time passes', () => {
@@ -107,5 +130,22 @@ describe('AutoNextPanel', () => {
         advance(4_000);
         expect(first).not.toHaveBeenCalled();
         expect(second).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('AutoNextPanel: the cover', () => {
+    it('shows the cover of the anime beside the name, hidden from the screen readers, when it is given the anime', () => {
+        render(<AutoNextPanel title="Frieren · EP 5" coverTitle="Frieren" onGo={vi.fn()} onCancel={vi.fn()} />);
+        const panel = screen.getByRole('region', { name: 'NEXT EPISODE' });
+        expect(panel).toHaveClass('player__auto-next', 'player__auto-next--cover');
+        const holder = panel.querySelector('.player__auto-next-cover') as HTMLElement;
+        expect(holder).toHaveAttribute('aria-hidden', 'true');
+        expect(within(holder).getByTestId('cover')).toHaveAttribute('data-title', 'Frieren');
+    });
+
+    it('shows no cover without the anime', () => {
+        renderPanel();
+        expect(screen.getByRole('region', { name: 'NEXT EPISODE' })).not.toHaveClass('player__auto-next--cover');
+        expect(document.querySelector('.player__auto-next-cover')).toBeNull();
     });
 });

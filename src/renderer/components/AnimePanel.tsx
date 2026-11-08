@@ -24,6 +24,11 @@ const VIEWS: ReadonlyArray<{ id: AnimeBrowseView; label: 'anime.nav.schedule' | 
     { id: 'settings', label: 'anime.nav.settings', icon: SETTINGS_ICON }
 ];
 
+// The tabs of the section, in the order of the bar (the gear last): what Ctrl+Page Up and Ctrl+Page Down move through.
+export const ANIME_TAB_IDS: readonly AnimeBrowseView[] = VIEWS.map((item) => {
+    return item.id;
+});
+
 export function AnimePanel() {
     const t = useTranslator();
     const view = useAnimeStore((state) => {
@@ -84,6 +89,7 @@ export function AnimePanel() {
                                     label={t(item.label)}
                                     icon={item.icon}
                                     active={view === item.id}
+                                    pillId="anime-tab-pill"
                                     onClick={() => {
                                         setView(item.id);
                                     }}

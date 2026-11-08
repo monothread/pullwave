@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaError } from '@shared/manga';
@@ -13,6 +13,13 @@ import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSour
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
+
+const { flyMock, coverElement } = vi.hoisted(() => {
+    return { flyMock: vi.fn(), coverElement: { id: 'the-cover' } };
+});
+vi.mock('@renderer/fx/flyCover', () => {
+    return { flyCoverToLibrary: flyMock, findCover: () => { return coverElement; } };
+});
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -692,6 +699,22 @@ describe('MangaDetail in the page of the browse', () => {
         expect(screen.queryByRole('button', { name: /ADD MISSING CHAPTERS/ })).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
         expect(mock.api.manga.addToLibrary).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: CHAPTERS });
+    });
+
+    it('sends the cover to the manga of the menu once it is in the library, and not when nothing was added', async () => {
+        const user = userEvent.setup();
+        flyMock.mockClear();
+        mock.api.manga.addToLibrary.mockResolvedValueOnce(null);
+        open();
+        render(<MangaDetail />);
+        await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
+        expect(mock.api.manga.addToLibrary).toHaveBeenCalledTimes(1);
+        expect(flyMock).not.toHaveBeenCalled();
+        mock.api.manga.addToLibrary.mockResolvedValueOnce(makeLibraryManga([]));
+        await user.click(screen.getByRole('button', { name: 'ADD TO LIBRARY' }));
+        await waitFor(() => {
+            expect(flyMock.mock.calls).toEqual([['manga', coverElement]]);
+        });
     });
 
     describe('when the title is in the library from another source', () => {

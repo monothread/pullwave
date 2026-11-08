@@ -231,6 +231,8 @@ describe('MangaLibrary series, groups and search', () => {
         const user = userEvent.setup();
         render(<MangaLibrary />);
         const field = screen.getByLabelText('Search the library');
+        // Ctrl+F goes to this field.
+        expect(field).toHaveAttribute('data-search-field', '');
         await user.type(field, 'SOUSOU');
         expect(screen.queryByTestId('manga-entry')).not.toBeInTheDocument();
         expect(screen.getByTestId('manga-series')).toBeInTheDocument();

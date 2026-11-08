@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useImageReveal } from '../fx/useImageReveal';
 import { useTranslator } from '../i18n/useTranslator';
 import { coverKey, useAnimeStore } from '../store/animeStore';
 
@@ -23,6 +24,7 @@ export function AnimeCover({ title, url, onBroken }: AnimeCoverProps) {
     // The address that failed to load, if any: a cover that does not load is told like one that was not found.
     const [failedUrl, setFailedUrl] = useState<string | null>(null);
     const lookUp = url === undefined;
+    const reveal = useImageReveal();
 
     useEffect(() => {
         if (lookUp) {
@@ -34,8 +36,9 @@ export function AnimeCover({ title, url, onBroken }: AnimeCoverProps) {
     if (typeof source === 'string' && source !== failedUrl) {
         return (
             <img
-                className="cover"
+                className={reveal.className('cover')}
                 src={source}
+                onLoad={reveal.onLoad}
                 alt=""
                 loading="lazy"
                 width={90}

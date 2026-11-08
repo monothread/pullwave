@@ -111,7 +111,7 @@ export function MangaSources() {
     return (
         <section className="manga__sources" aria-label={t('manga.nav.browse')}>
             <div className="field-row">
-                <TextField label={t('manga.sources.search')} value={search} placeholder={t('manga.sources.searchPlaceholder')} onChange={setSearch} />
+                <TextField search label={t('manga.sources.search')} value={search} placeholder={t('manga.sources.searchPlaceholder')} onChange={setSearch} />
             </div>
             <span className="section-label">{t('manga.sources.count', { count: shown.length })}</span>
             {shown.length === 0 && <p className="empty">{t('manga.sources.noMatch')}</p>}

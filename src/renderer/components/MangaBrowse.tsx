@@ -186,7 +186,7 @@ export function MangaBrowse() {
                         void runList();
                     }}
                 >
-                    <TextField label={t('manga.browse.query')} value={query} placeholder={t('manga.browse.placeholder')} onChange={setQuery} />
+                    <TextField search label={t('manga.browse.query')} value={query} placeholder={t('manga.browse.placeholder')} onChange={setQuery} />
                     <button type="submit" className="btn btn--primary" disabled={loading || (query.trim().length === 0 && !hasFilters)}>
                         {t('manga.browse.search')}
                     </button>

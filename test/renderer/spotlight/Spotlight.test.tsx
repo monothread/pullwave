@@ -249,3 +249,17 @@ describe('Spotlight', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 });
+
+describe('Spotlight: the parallax', () => {
+    it('gives the pointer to the style sheet, from -1 to 1 across the carousel, and puts it back at the middle when it leaves', () => {
+        render(<Spotlight slides={[slide(1), slide(2)]} label="Highlights" />);
+        const stage = document.querySelector('.spotlight__stage') as HTMLElement;
+        stage.getBoundingClientRect = () => { return { left: 0, top: 0, width: 400, height: 200 } as DOMRect; };
+        fireEvent.pointerMove(stage, { clientX: 300, clientY: 50 });
+        expect(stage.style.getPropertyValue('--px')).toBe('0.500');
+        expect(stage.style.getPropertyValue('--py')).toBe('-0.500');
+        fireEvent.pointerLeave(stage);
+        expect(stage.style.getPropertyValue('--px')).toBe('0');
+        expect(stage.style.getPropertyValue('--py')).toBe('0');
+    });
+});

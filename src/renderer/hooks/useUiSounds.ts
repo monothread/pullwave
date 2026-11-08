@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { isNavigable } from '../navigation/spatialNavigation';
-import { playUiSound, type UiSound } from '../sound/uiSound';
+import { playUiSound, type EventSound, type UiSound } from '../sound/uiSound';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
 import { MOUSE_BACK_BUTTON } from './useMouseNavigation';
 
@@ -17,7 +17,7 @@ export function useUiSounds(): void {
     useEffect(() => {
         let lastPointer = 0;
         let lastMove = 0;
-        const play = (sound: UiSound): void => {
+        const play = (sound: UiSound | EventSound): void => {
             if (useUiPrefsStore.getState().sounds) {
                 playUiSound(sound);
             }
@@ -38,6 +38,11 @@ export function useUiSounds(): void {
                 play('select');
             }
         };
+        const onChange = (event: Event): void => {
+            if (event.target instanceof HTMLInputElement && event.target.classList.contains('switch')) {
+                play('toggle');
+            }
+        };
         const onKeyDown = (event: KeyboardEvent): void => {
             if (event.key === 'Escape') {
                 play('back');
@@ -51,12 +56,14 @@ export function useUiSounds(): void {
         document.addEventListener('pointerdown', onPointerDown, true);
         document.addEventListener('focusin', onFocusIn);
         document.addEventListener('click', onClick, true);
+        document.addEventListener('change', onChange, true);
         document.addEventListener('keydown', onKeyDown);
         window.addEventListener('mouseup', onMouseUp);
         return () => {
             document.removeEventListener('pointerdown', onPointerDown, true);
             document.removeEventListener('focusin', onFocusIn);
             document.removeEventListener('click', onClick, true);
+            document.removeEventListener('change', onChange, true);
             document.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('mouseup', onMouseUp);
         };

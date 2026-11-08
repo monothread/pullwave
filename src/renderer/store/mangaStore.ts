@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useFxStore } from '../fx/fxStore';
 import { batchNavigation } from '../navigation/navigationBatch';
 import { hasChapterFile, IDLE_MANGA_CHECK_STATE } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
@@ -557,6 +558,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
                             toast('manga.notice.downloadIncomplete', { title, count: job.missingPages });
                         } else {
                             toast('notice.downloadDone', { title });
+                            useFxStore.getState().celebrate();
                         }
                         return;
                     }

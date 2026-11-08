@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useBackdropStore } from '../store/backdropStore';
+import { parallaxOf } from './parallax';
 
 // How long a highlight stays before the next one comes by itself.
 export const SPOTLIGHT_ROTATE_MS = 5000;
@@ -171,7 +172,18 @@ export function Spotlight({ slides, label }: SpotlightProps) {
     }
     return (
         <section className="spotlight" aria-roledescription="carousel" aria-label={label}>
-            <div className="spotlight__stage">
+            <div
+                className="spotlight__stage"
+                onPointerMove={(event) => {
+                    const { x, y } = parallaxOf(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
+                    event.currentTarget.style.setProperty('--px', x.toFixed(3));
+                    event.currentTarget.style.setProperty('--py', y.toFixed(3));
+                }}
+                onPointerLeave={(event) => {
+                    event.currentTarget.style.setProperty('--px', '0');
+                    event.currentTarget.style.setProperty('--py', '0');
+                }}
+            >
                 {leaving !== null && <SlideView key={`leaving-${leaving.slide.key}`} slide={leaving.slide} label="" leaving={leaving.direction} />}
                 <SlideView key={current.key} slide={current} label={t('spotlight.position', { n: position + 1, total: count })} entering={entering ?? undefined} />
             </div>

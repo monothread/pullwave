@@ -48,6 +48,8 @@ describe('MangaSearch', () => {
         render(<MangaSearch />);
         expect(screen.getByRole('region', { name: 'SEARCH' })).toBeInTheDocument();
         expect(screen.getByLabelText('Manga name')).toHaveValue('');
+        // Ctrl+F goes to this field.
+        expect(screen.getByLabelText('Manga name')).toHaveAttribute('data-search-field', '');
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeDisabled();
         await user.type(screen.getByLabelText('Manga name'), '   ');
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeDisabled();

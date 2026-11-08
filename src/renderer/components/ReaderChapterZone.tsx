@@ -25,6 +25,9 @@ export function ReaderChapterZone({ edge, title, progress, automatic, height, on
                 <p className="reader__zone-none">{edge === 'end' ? t('manga.reader.zone.noNext') : t('manga.reader.zone.noPrevious')}</p>
             ) : (
                 <>
+                    <span className="reader__zone-arrow" aria-hidden="true">
+                        {edge === 'end' ? '↓' : '↑'}
+                    </span>
                     <span className="reader__zone-label">{label}</span>
                     <strong className="reader__zone-title">{title}</strong>
                     {automatic && (
@@ -36,6 +39,7 @@ export function ReaderChapterZone({ edge, title, progress, automatic, height, on
                                 aria-valuemin={0}
                                 aria-valuemax={100}
                                 aria-valuenow={Math.round(progress * 100)}
+                                data-full={progress >= 0.95}
                             >
                                 <div className="progress__bar progress__bar--smooth" style={{ width: `${String(progress * 100)}%` }} />
                             </div>

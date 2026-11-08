@@ -61,3 +61,19 @@ export function graphPoints(samples: readonly number[], width: number, height: n
         })
         .join(' ');
 }
+
+// How long one turn of the wave of the bar takes, in seconds: the faster the download, the faster the wave flows (between a lazy 2.4 s and
+// a lively 0.5 s). A download with no speed known keeps the normal pace of the bar.
+export const FLOW_SLOWEST_SECONDS = 2.4;
+export const FLOW_FASTEST_SECONDS = 0.5;
+export const FLOW_NORMAL_SECONDS = 1.4;
+// The speed at which the wave flows at its fastest: 20 MiB/s.
+export const FLOW_TOP_BYTES_PER_SECOND = 20 * 1024 ** 2;
+
+export function flowSeconds(bytesPerSecond: number | null): number {
+    if (bytesPerSecond === null) {
+        return FLOW_NORMAL_SECONDS;
+    }
+    const share = Math.min(1, Math.max(0, bytesPerSecond / FLOW_TOP_BYTES_PER_SECOND));
+    return Number((FLOW_SLOWEST_SECONDS - share * (FLOW_SLOWEST_SECONDS - FLOW_FASTEST_SECONDS)).toFixed(2));
+}

@@ -809,7 +809,7 @@ export function AnimeLibrary() {
         <section className="queue library" aria-label={t('anime.library.aria')}>
             {!searching && <AnimeLibrarySpotlight />}
             <div className="field-row">
-                <TextField label={t('anime.library.search.label')} value={search} placeholder={t('anime.library.search.placeholder')} onChange={setSearch} />
+                <TextField search label={t('anime.library.search.label')} value={search} placeholder={t('anime.library.search.placeholder')} onChange={setSearch} />
                 {importButton}
             </div>
             <LibraryControls kind="anime" filter={filter} sort={sort} allCount={all.length} newsCount={filterGroups(all, 'news', newsOf).length} onFilter={setFilter} onSort={setSort} />

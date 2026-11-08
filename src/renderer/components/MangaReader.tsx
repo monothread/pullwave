@@ -1,9 +1,12 @@
 import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReadingRecord } from '@shared/manga';
-import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useFxStore } from '../fx/fxStore';
+import { AUTO_SCROLL_RAMP_MS, useAutoScroll } from '../hooks/useAutoScroll';
 import { useScrolledDown } from '../hooks/useScrolledDown';
 import { useTranslator } from '../i18n/useTranslator';
+import { playUiSound } from '../sound/uiSound';
 import { useMangaStore } from '../store/mangaStore';
+import { useUiPrefsStore } from '../store/uiPrefsStore';
 import { NumberField, SelectField, ToggleField } from './fields';
 import { MangaCloudflareNotice } from './MangaCloudflareNotice';
 import {
@@ -42,6 +45,8 @@ const PRELOAD_AHEAD = 2;
 const RESTORE_LIMIT_MS = 8000;
 // How long the page has to stay the same before the history of reading is written.
 const READING_RECORD_DELAY_MS = 800;
+// How much of the zone below the last page has to be in view for the chapter to count as read to its end.
+export const CHAPTER_END_ZONE_SHARE = 0.25;
 const FIELD_TAGS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
 // How far down the page is scrolled before the button to go back to the top shows.
 const TOP_BUTTON_THRESHOLD = 400;
@@ -97,6 +102,8 @@ export function MangaReader() {
     // The page a chapter in the scroll is being brought to (null when it is not). The pages above it have no height until their pictures
     // arrive, so the place moves while they do: the chapter is brought back to the page until they are all there, or the user takes over.
     const [restoreTo, setRestoreTo] = useState<number | null>(null);
+    // The page a chapter was brought to when it opened: it glows for a moment when its picture arrives, so the user sees where they are.
+    const [restoredPage, setRestoredPage] = useState<number | null>(null);
     const restoringRef = useRef(false);
     const settledRef = useRef(new Set<number>());
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -162,11 +169,28 @@ export function MangaReader() {
         }
         setPage(start);
         setRestoreTo(continuous && start > 0 ? start : null);
+        setRestoredPage(continuous && start > 0 ? start : null);
         setFailed([]);
         setLoaded([]);
         setRetries({});
         setRepairFailed([]);
     }
+
+    // Which way the page was turned, so the new one comes in from the side it is on: forward, from the side the reading goes to. Done while
+    // rendering, as the start of the chapter above, so the first picture of the new page is already the right one.
+    const [turn, setTurn] = useState<{ page: number; direction: 'forward' | 'back' | null }>({ page: 0, direction: null });
+    if (turn.page !== page) {
+        setTurn({ page, direction: page > turn.page ? 'forward' : 'back' });
+    }
+
+    // A soft note when a page is turned (one page at a time), while the sounds are on.
+    const soundedPage = useRef(page);
+    useEffect(() => {
+        if (!continuous && reader.status === 'ready' && soundedPage.current !== page && useUiPrefsStore.getState().sounds) {
+            playUiSound('page');
+        }
+        soundedPage.current = page;
+    }, [page, continuous, reader.status]);
 
     useEffect(() => {
         if (reader.status === 'ready' && total > 0) {
@@ -374,7 +398,7 @@ export function MangaReader() {
         setAutoScrolling(false);
         return false;
     }, [hasNext, prefs.chapterSwitch]);
-    useAutoScroll(scroller, scrolling, prefs.autoScrollSpeed, handleAutoScrollEnd);
+    useAutoScroll(scroller, scrolling, prefs.autoScrollSpeed, handleAutoScrollEnd, AUTO_SCROLL_RAMP_MS);
 
     // The zones between chapters: how much of each is in view, and the switch when the user goes through one.
     const zones = useChapterZones({
@@ -393,6 +417,19 @@ export function MangaReader() {
             void goToChapter(1, true);
         }
     });
+
+    // A chapter read to its end is celebrated once: confetti and a stamp. One that was reached from the one after it (the user comes back
+    // through it) is not: the end is where they came from. In the scroll the end is the zone below the last page coming into view.
+    const reachedEnd = reader.status === 'ready' && total > 0 && reader.entry !== 'end' && (continuous ? zones.end >= CHAPTER_END_ZONE_SHARE : page >= total - 1 && turn.direction === 'forward');
+    const [celebratedKey, setCelebratedKey] = useState('');
+    if (reachedEnd && celebratedKey !== key) {
+        setCelebratedKey(key);
+    }
+    useEffect(() => {
+        if (celebratedKey !== '') {
+            useFxStore.getState().celebrate();
+        }
+    }, [celebratedKey]);
 
     // A chapter starts with its first page under the bar, the zone above it out of view.
     useLayoutEffect(() => {
@@ -602,7 +639,7 @@ export function MangaReader() {
                     </div>
                 )}
                 <img
-                    className={`reader__img${arrived ? '' : ' reader__img--pending'}`}
+                    className={`reader__img${arrived ? '' : ' reader__img--pending'}${arrived && restoredPage === index ? ' reader__img--restored' : ''}`}
                     src={address}
                     alt={t('manga.reader.pageAlt', { page: index + 1 })}
                     data-page={arrived ? index : undefined}
@@ -632,7 +669,9 @@ export function MangaReader() {
                 <span className="reader__title history__title">{`${reader.mangaTitle} · ${chapterTitle(chapter.name, chapter.number)}`}</span>
                 {reader.status === 'ready' && total > 0 && (
                     <span className="reader__page" aria-live="polite">
-                        {`${String(page + 1)} / ${String(total)}`}
+                        <span key={page} className="reader__page-text">
+                            {`${String(page + 1)} / ${String(total)}`}
+                        </span>
                     </span>
                 )}
                 <span className="job__actions">
@@ -778,6 +817,8 @@ export function MangaReader() {
                 <div
                     className={`reader__stage reader__stage--${scale}`}
                     data-testid="reader-stage"
+                    data-turn={turn.direction ?? undefined}
+                    data-direction={prefs.direction}
                     onClick={handleStageClick}
                 >
                     {renderPage(page)}
@@ -826,6 +867,11 @@ export function MangaReader() {
                     />
                 </div>
             )}
+            {celebratedKey === key && (
+                <div key={celebratedKey} className="reader__complete" role="status" data-testid="reader-complete">
+                    {t('manga.reader.complete')}
+                </div>
+            )}
             {reader.status === 'ready' && total > 0 && (
                 <div className="reader__float">
                     <button
@@ -839,6 +885,14 @@ export function MangaReader() {
                         }}
                     >
                         {scrolling ? t('manga.reader.autoScrollStop') : t('manga.reader.autoScroll')}
+                        {scrolling && (
+                            <span className="reader__auto-flow" aria-hidden="true" data-testid="reader-auto-flow">
+                                <span>▼</span>
+                                <span>▼</span>
+                                <span>▼</span>
+                                <span className="reader__auto-speed">{`${String(prefs.autoScrollSpeed)} px/s`}</span>
+                            </span>
+                        )}
                     </button>
                     {scrolledDown && (
                         <button
@@ -852,6 +906,10 @@ export function MangaReader() {
                                 stopTopScroll.current = scrollToTopSmoothly(scroller(), startTopRef.current);
                             }}
                         >
+                            <svg className="reader__top-ring" viewBox="0 0 44 44" aria-hidden="true" focusable="false" data-testid="reader-top-ring">
+                                <circle className="reader__top-ring-track" cx="22" cy="22" r="19" />
+                                <circle className="reader__top-ring-fill" cx="22" cy="22" r="19" pathLength={100} strokeDasharray={100} strokeDashoffset={100 - Math.min(1, Math.max(0, progress)) * 100} />
+                            </svg>
                             <span aria-hidden="true">↑</span>
                         </button>
                     )}

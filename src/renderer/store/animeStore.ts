@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useFxStore } from '../fx/fxStore';
 import { batchNavigation } from '../navigation/navigationBatch';
 import type { AniError, AnimeAiringOverride, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
 import { IDLE_CHECK_STATE } from '@shared/anime';
@@ -321,6 +322,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                             };
                         });
                         useAppStore.getState().pushToast(translateNow('notice.downloadDone', { title: translateNow('anime.job.title', { title: job.animeTitle, episode: job.episode }) }));
+                        useFxStore.getState().celebrate();
                         return;
                     }
                     set((state) => {
