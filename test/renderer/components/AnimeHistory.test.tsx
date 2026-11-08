@@ -14,8 +14,8 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 let mock: MockApiHandle;
 
-const OPENED: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 1700000000000 };
-const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub', episode: '12', openedAt: 1700000001000 };
+const OPENED: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 1700000000000, watchedAt: null };
+const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub', episode: '12', openedAt: 1700000001000, watchedAt: 1700000001000 };
 
 beforeEach(() => {
     mock = installMockApi();

@@ -1301,8 +1301,8 @@ describe('jobs and library actions', () => {
 });
 
 describe('the history', () => {
-    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 10 };
-    const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub', episode: '12', openedAt: 20 };
+    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 10, watchedAt: null };
+    const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub', episode: '12', openedAt: 20, watchedAt: 20 };
 
     it('is loaded with the section', async () => {
         mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
@@ -1419,7 +1419,7 @@ describe('the history', () => {
 });
 
 describe('openHistoryEntry', () => {
-    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 10 };
+    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 10, watchedAt: null };
 
     beforeEach(() => {
         mock.api.listAnimeLibrary.mockResolvedValue([]);

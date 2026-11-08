@@ -189,13 +189,14 @@ export function sortGroups<T extends { createdAt: number }, G extends SortableGr
     });
 }
 
-// When a season of these anime was last opened or watched (0: never), from the history of the anime section.
+// When an episode of a season of these anime was last watched (0: never), from the history of the anime section. Opening an anime (to add it to
+// the library, or to look at it) is not watching it, so it does not count.
 export function animeLastSeen(entries: readonly LibraryAnime[], history: readonly AnimeHistoryEntry[]): number {
     return history.reduce((latest, entry) => {
         const ofGroup = entries.some((anime) => {
             return anime.title === entry.title && anime.audio === entry.audio;
         });
-        return ofGroup ? Math.max(latest, entry.openedAt) : latest;
+        return ofGroup ? Math.max(latest, entry.watchedAt ?? 0) : latest;
     }, 0);
 }
 

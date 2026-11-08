@@ -128,7 +128,10 @@ export interface AnimeHistoryEntry {
     audio: AnimeAudio;
     // The last episode watched; null when it was only opened.
     episode: string | null;
+    // When the anime was last opened or watched.
     openedAt: number;
+    // When an episode of it was last watched; null when none was since this was kept (opening the anime does not count).
+    watchedAt: number | null;
 }
 
 export interface AnimeHistoryRequest {

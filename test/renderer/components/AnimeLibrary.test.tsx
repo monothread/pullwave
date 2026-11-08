@@ -2267,11 +2267,38 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
         expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
     });
 
-    it('shows the titles watched last first, then the ones never opened as the ones added last', async () => {
-        useAnimeStore.setState({ history: [makeAnimeHistory({ title: 'Alpha Old', openedAt: 50 }), makeAnimeHistory({ title: 'Saga 2', openedAt: 20 })] });
+    it('shows the titles watched last first, then the ones never watched as the ones added last', async () => {
+        useAnimeStore.setState({ history: [makeAnimeHistory({ title: 'Alpha Old', openedAt: 50, watchedAt: 50 }), makeAnimeHistory({ title: 'Saga 2', openedAt: 20, watchedAt: 20 })] });
         render(<AnimeLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'last');
         expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
+    });
+
+    it('does not put in front of the ones watched the titles that were only opened or added, however recently', async () => {
+        // Solo and Saga 2 were opened last (when they were added or looked at); only Alpha Old, long ago, and Saga, before, were watched.
+        useAnimeStore.setState({
+            history: [
+                makeAnimeHistory({ id: 1, title: 'Solo', episode: null, openedAt: 900, watchedAt: null }),
+                makeAnimeHistory({ id: 2, title: 'Saga 2', episode: null, openedAt: 800, watchedAt: null }),
+                makeAnimeHistory({ id: 3, title: 'Alpha Old', episode: '4', openedAt: 700, watchedAt: 30 }),
+                makeAnimeHistory({ id: 4, title: 'Saga', episode: '2', openedAt: 100, watchedAt: 60 })
+            ]
+        });
+        render(<AnimeLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'last');
+        expect(cardNames()).toEqual(['Saga', 'Alpha Old', 'Solo']);
+    });
+
+    it('goes by the moment an episode was watched, not by the last time the anime was opened', async () => {
+        useAnimeStore.setState({
+            history: [
+                makeAnimeHistory({ id: 1, title: 'Alpha Old', episode: '4', openedAt: 900, watchedAt: 10 }),
+                makeAnimeHistory({ id: 2, title: 'Solo', episode: '1', openedAt: 100, watchedAt: 100 })
+            ]
+        });
+        render(<AnimeLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'last');
+        expect(cardNames()).toEqual(['Solo', 'Alpha Old', 'Saga']);
     });
 
     it('keeps only the titles with something new in the last seven days with NEW, and all of them again with ALL', async () => {

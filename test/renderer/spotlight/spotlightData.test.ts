@@ -267,11 +267,37 @@ describe('animeGroupComplete', () => {
 });
 
 describe('animeLastSeen and mangaLastSeen', () => {
-    it('say when a season of the group was last opened, by its title and audio, and 0 when never', () => {
+    it('say when an episode of a season of the group was last watched, by its title and audio, and 0 when never', () => {
         const saga = [makeAnime([], { id: 1, title: 'Saga', audio: 'sub' }), makeAnime([], { id: 2, title: 'Saga 2', audio: 'sub' })];
         const history = [makeAnimeHistory({ title: 'Saga', openedAt: 10 }), makeAnimeHistory({ title: 'Saga 2', openedAt: 30 }), makeAnimeHistory({ title: 'Saga', audio: 'dub', openedAt: 99 }), makeAnimeHistory({ title: 'Other', openedAt: 80 })];
         expect(animeLastSeen(saga, history)).toBe(30);
         expect(animeLastSeen([makeAnime([], { title: 'Never' })], history)).toBe(0);
+    });
+
+    it('count the moment an episode was watched, not the moment the anime was opened last', () => {
+        const saga = [makeAnime([], { id: 1, title: 'Saga', audio: 'sub' })];
+        const watchedLongAgoOpenedToday = [makeAnimeHistory({ title: 'Saga', episode: '3', openedAt: 900, watchedAt: 100 })];
+        expect(animeLastSeen(saga, watchedLongAgoOpenedToday)).toBe(100);
+    });
+
+    it('count an anime that was only opened as never watched', () => {
+        const saga = [makeAnime([], { id: 1, title: 'Saga', audio: 'sub' })];
+        expect(animeLastSeen(saga, [makeAnimeHistory({ title: 'Saga', episode: null, openedAt: 900, watchedAt: null })])).toBe(0);
+        expect(animeLastSeen(saga, [makeAnimeHistory({ title: 'Saga', episode: '2', openedAt: 900, watchedAt: null })])).toBe(0);
+    });
+
+    it('take the latest watched moment among the seasons of the group, and ignore what was opened later', () => {
+        const saga = [makeAnime([], { id: 1, title: 'Saga', audio: 'sub' }), makeAnime([], { id: 2, title: 'Saga 2', audio: 'sub' })];
+        const history = [
+            makeAnimeHistory({ id: 1, title: 'Saga', openedAt: 500, watchedAt: 40 }),
+            makeAnimeHistory({ id: 2, title: 'Saga 2', episode: null, openedAt: 800, watchedAt: null }),
+            makeAnimeHistory({ id: 3, title: 'Saga 2', audio: 'dub', openedAt: 900, watchedAt: 900 })
+        ];
+        expect(animeLastSeen(saga, history)).toBe(40);
+    });
+
+    it('say 0 for an empty history', () => {
+        expect(animeLastSeen([makeAnime([], { title: 'Saga' })], [])).toBe(0);
     });
 
     it('say when a manga of the group was last read, by its id in the library, and 0 when never', () => {

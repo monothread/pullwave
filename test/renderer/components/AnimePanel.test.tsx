@@ -134,7 +134,7 @@ describe('AnimePanel', () => {
 
     it('has a history, then the downloads button and the gear of the settings at the right end, and shows the history in place of the search', async () => {
         const user = userEvent.setup();
-        useAnimeStore.setState({ history: [{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: '3', openedAt: 1700000000000 }] });
+        useAnimeStore.setState({ history: [{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: '3', openedAt: 1700000000000, watchedAt: 1700000000000 }] });
         render(<AnimePanel />);
         expect(
             within(subNav())

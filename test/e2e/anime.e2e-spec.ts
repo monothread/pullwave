@@ -3138,6 +3138,42 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         await expect(page.getByRole('dialog')).toBeHidden();
     });
 
+    test('sorts the library by the last watched with the anime that was really watched in front, not the one that was only opened or added last', async () => {
+        const { page } = session;
+        await openAnimeTab(page);
+        await search(page, 'fake');
+        // Both anime are opened, and so are in the history, when they are added; none was watched yet.
+        await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+        await confirmAdd(page);
+        await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+        await confirmAdd(page);
+        await expect(page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true })).toBeVisible();
+
+        // An episode of the first one is watched; then the second one is only opened again, so it was opened last.
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+        await page.getByRole('button', { name: 'EP 1', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 1' }).locator('video')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toBeHidden();
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN: Fake Anime 2', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
+
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('combobox', { name: 'Sort by' }).selectOption('last');
+        await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('last');
+        const cards = page.getByTestId('anime-card');
+        await expect(cards).toHaveCount(2);
+        // The one that was watched comes first, though the other was opened and added after it.
+        await expect(cards.nth(0)).toHaveAttribute('aria-label', 'Fake Anime');
+        await expect(cards.nth(1)).toHaveAttribute('aria-label', 'Fake Anime 2');
+    });
+
     test('closes the player with Escape while it plays', async () => {
         const { page } = session;
         await watchEpisode(page, '1');

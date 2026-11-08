@@ -2077,8 +2077,8 @@ describe('the history of the anime section', () => {
         call(IPC.animeHistoryRecord, { title: 'Bleach', query: 'bleach', index: 0, audio: 'dub', episode: '12' });
 
         expect(call(IPC.animeHistoryList)).toEqual([
-            { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 0, audio: 'dub', episode: '12', openedAt: 5 },
-            { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub', episode: null, openedAt: 5 }
+            { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 0, audio: 'dub', episode: '12', openedAt: 5, watchedAt: 5 },
+            { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub', episode: null, openedAt: 5, watchedAt: null }
         ]);
     });
 

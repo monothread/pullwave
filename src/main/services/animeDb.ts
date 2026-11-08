@@ -119,7 +119,10 @@ const MIGRATIONS: readonly string[] = [
     // ani-cli moves to another site the ids are not comparable any more, and an anime with the same title is the same anime.
     `ALTER TABLE anime ADD COLUMN source_id TEXT;
     ALTER TABLE anime ADD COLUMN source_provider TEXT;
-    CREATE INDEX anime_source_id ON anime (source_id, audio);`
+    CREATE INDEX anime_source_id ON anime (source_id, audio);`,
+    // When the viewer last watched an episode of an anime of the history, apart from when it was last opened (`opened_at` moves when the anime is
+    // only opened too). It is empty until an episode is watched: what the history already had is not guessed.
+    `ALTER TABLE anime_history ADD COLUMN watched_at INTEGER;`
 ];
 
 // The history keeps the most recent anime only.
@@ -246,7 +249,8 @@ function toHistoryEntry(row: Row): AnimeHistoryEntry {
         searchIndex: numeric(row, 'search_index'),
         audio: text(row, 'audio') === 'dub' ? 'dub' : 'sub',
         episode: nullableText(row, 'episode'),
-        openedAt: numeric(row, 'opened_at')
+        openedAt: numeric(row, 'opened_at'),
+        watchedAt: nullableNumeric(row, 'watched_at')
     };
 }
 
@@ -800,19 +804,23 @@ export class AnimeDb {
     // The anime goes to the top of the history. Opening it without an episode keeps the last episode watched; the oldest entries beyond
     // the limit are dropped.
     recordHistory(request: AnimeHistoryRequest): void {
+        const now = this.now();
         this.run(
-            `INSERT INTO anime_history (title, query, search_index, audio, episode, opened_at) VALUES (?, ?, ?, ?, ?, ?)
+            `INSERT INTO anime_history (title, query, search_index, audio, episode, opened_at, watched_at) VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (title, audio) DO UPDATE SET
                 query = excluded.query,
                 search_index = excluded.search_index,
                 episode = COALESCE(excluded.episode, anime_history.episode),
-                opened_at = excluded.opened_at`,
+                opened_at = excluded.opened_at,
+                watched_at = COALESCE(excluded.watched_at, anime_history.watched_at)`,
             request.title,
             request.query,
             request.index,
             request.audio,
             request.episode,
-            this.now()
+            now,
+            // Only watching an episode is watching: opening the anime leaves the moment it was last watched as it was.
+            request.episode === null ? null : now
         );
         this.run(
             `DELETE FROM anime_history WHERE id NOT IN (SELECT id FROM anime_history ORDER BY opened_at DESC, id DESC LIMIT ?)`,
