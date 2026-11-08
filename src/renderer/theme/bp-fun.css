@@ -107,9 +107,8 @@
     display: none;
 }
 
-/* The bar of the reader and the timeline of the player are thin and they reach their end: the head would stick out of the bar there, so
-   they have none. */
-.reader__progress.progress .progress__bar:not([style*='width: 0%'])::after,
+/* The timeline of the player is thin and it reaches its end: the head would stick out of the bar there, so it has none. The bar of the
+   reader has the head like the bars of the downloads. */
 .player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after {
     display: none;
 }

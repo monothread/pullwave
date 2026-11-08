@@ -329,7 +329,7 @@ test('a change of theme opens as a circle from where it was chosen, and ends wit
     expect(await page.evaluate(() => { return document.documentElement.dataset.themeStyle; })).toBe('flat');
 });
 
-test('the bar of a download has a comet at its head, and the bar of the reader and the timeline of the player have none', async () => {
+test('the bar of a download and the bar of the reader have a comet at their head, and the timeline of the player has none', async () => {
     const { page } = session;
     const heads = await page.evaluate(() => {
         const host = document.createElement('div');
@@ -349,7 +349,7 @@ test('the bar of a download has a comet at its head, and the bar of the reader a
     });
     expect(heads).toEqual({
         download: { display: 'block', animation: 'bp-comet' },
-        reader: { display: 'none', animation: 'bp-comet' },
+        reader: { display: 'block', animation: 'bp-comet' },
         player: { display: 'none', animation: 'bp-comet' }
     });
 });

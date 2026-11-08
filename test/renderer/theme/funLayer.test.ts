@@ -150,16 +150,20 @@ describe('bp-fun.css: the bars and the notices', () => {
         expect(sheet.rules.find((rule) => { return rule.selector === '.job--error .progress__bar::after'; })?.declarations).toEqual({ display: 'none' });
     });
 
-    it('has no comet on the bar of the reader nor on the timeline of the player, which would stick out of them at their end', () => {
-        expect(styleOf(sheet, ".reader__progress.progress .progress__bar:not([style*='width: 0%'])::after")).toEqual({ display: 'none' });
+    it('has no comet on the timeline of the player, which would stick out of it at its end, and has it on the bar of the reader', () => {
         expect(styleOf(sheet, ".player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after")).toEqual({ display: 'none' });
-        // They come after the rule of the comet, with the same weight or more, so they win.
+        // The rule of the timeline comes after the rule of the comet, with more weight, so it wins.
         const selectors = sheet.rules.map((rule) => {
             return rule.selector;
         });
         const comet = selectors.indexOf(".progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after");
-        expect(selectors.indexOf(".reader__progress.progress .progress__bar:not([style*='width: 0%'])::after")).toBeGreaterThan(comet);
         expect(selectors.indexOf(".player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after")).toBeGreaterThan(comet);
+        // Nothing hides the head of the bar of the reader.
+        expect(
+            selectors.filter((selector) => {
+                return selector.includes('reader__progress');
+            })
+        ).toEqual([]);
     });
 
     it('flashes the bar of a download that is done and stamps its badge', () => {
