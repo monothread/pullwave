@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ORIGINAL_MASTER_FETCH, ORIGINAL_YTDLP, patchSeparateAudio } from '@main/services/aniAudio';
+import { parseDestinationLine } from '@main/services/aniOutputParser';
 import { patchAniCli, patchReport, REQUIRED_PATCHES } from '@main/services/aniPatches';
 import { aniCliScript, aniCliScriptWithout, SEPARATE_AUDIO_PART } from '../../helpers/aniCliScripts';
 
@@ -149,9 +150,10 @@ describe.skipIf(process.platform === 'win32')('the download in the shell', () =>
             [
                 '#!/bin/sh',
                 'printf "yt-dlp %s\\n" "$*" >> "$CALLS_LOG"',
-                'if [ -n "$FAIL_YTDLP" ]; then case "$*" in *"$FAIL_YTDLP"*) exit 1 ;; esac; fi',
                 'out=""; prev=""',
                 'for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done',
+                'printf "[download] Destination: %s\\n" "$out"',
+                'if [ -n "$FAIL_YTDLP" ]; then case "$*" in *"$FAIL_YTDLP"*) exit 1 ;; esac; fi',
                 'case "$*" in *master*) printf AUDIO > "$out" ;; *) printf VIDEO > "$out" ;; esac'
             ].join('\n')
         );
@@ -166,6 +168,8 @@ describe.skipIf(process.platform === 'win32')('the download in the shell', () =>
     });
 
     interface Outcome {
+        // The file the app takes as the one of the episode: the last "Destination" line of the output, read the way the app reads it.
+        destination: string | null;
         log: string[];
         files: string[];
         video: string;
@@ -187,7 +191,7 @@ describe.skipIf(process.platform === 'win32')('the download in the shell', () =>
             `download_fn "${VARIANT}" "Ep 1" ""`,
             'printf "%s" "$?" > "$STATUS_FILE"'
         ].join('\n');
-        execFileSync('sh', ['-c', script], {
+        const output = execFileSync('sh', ['-c', script], {
             env: { PATH: `${tools}:${process.env.PATH ?? ''}`, CALLS_LOG: logFile, FAIL_YTDLP: options.failYtDlp ?? '', FAIL_FFMPEG: options.failFfmpeg ? '1' : '', STATUS_FILE: join(tools, 'status') }
         });
         const log = existsSync(logFile)
@@ -198,7 +202,16 @@ describe.skipIf(process.platform === 'win32')('the download in the shell', () =>
                   })
             : [];
         const videoPath = join(directory, 'Ep 1.mp4');
-        return { log, files: readdirSync(directory).sort(), video: existsSync(videoPath) ? readFileSync(videoPath, 'utf-8') : '', status: readFileSync(join(tools, 'status'), 'utf-8') };
+        const destinations = output
+            .toString()
+            .split('\n')
+            .map((line) => {
+                return parseDestinationLine(line);
+            })
+            .filter((path): path is string => {
+                return path !== null;
+            });
+        return { destination: destinations.at(-1) ?? null, log, files: readdirSync(directory).sort(), video: existsSync(videoPath) ? readFileSync(videoPath, 'utf-8') : '', status: readFileSync(join(tools, 'status'), 'utf-8') };
     }
 
     const PICTURE_CALL = `yt-dlp --referer https://r.example/ ${VARIANT} --no-skip-unavailable-fragments --fragment-retries infinite -N 16 -o `;
@@ -216,6 +229,25 @@ describe.skipIf(process.platform === 'win32')('the download in the shell', () =>
         expect(outcome.status).toBe('0');
     });
 
+    it('tells the app the file of the episode, and not the audio track that is deleted, as the file that was downloaded', () => {
+        const outcome = download({ audioMaster: true, mode: 'sub' });
+
+        // The last "Destination" line is the one the app reads: the audio track went through one before it, and is not there any more.
+        expect(outcome.destination).toBe(`${directory}/Ep 1.mp4`);
+        expect(existsSync(outcome.destination as string)).toBe(true);
+        expect(outcome.destination).not.toContain('.audio.');
+    });
+
+    it.each([
+        ['the audio could not be downloaded', { failYtDlp: 'master' }],
+        ['ffmpeg could not join them', { failFfmpeg: true }]
+    ])('tells the app the file of the episode, which is there, when %s', (_name, failure) => {
+        const outcome = download({ audioMaster: true, mode: 'sub', ...failure });
+
+        expect(outcome.destination).toBe(`${directory}/Ep 1.mp4`);
+        expect(existsSync(outcome.destination as string)).toBe(true);
+    });
+
     it('asks for the English track of a dubbed episode, and for the first one when there is none of the language', () => {
         const outcome = download({ audioMaster: true, mode: 'dub' });
 
@@ -230,6 +262,8 @@ describe.skipIf(process.platform === 'win32')('the download in the shell', () =>
         expect(outcome.files).toEqual(['Ep 1.mp4']);
         expect(outcome.video).toBe('VIDEO');
         expect(outcome.status).toBe('0');
+        // Nothing is added to what yt-dlp printed: the picture is the file of the episode.
+        expect(outcome.destination).toBe(`${directory}/Ep 1.mp4`);
     });
 
     it('keeps the episode with the picture only, and no file left over, when the audio could not be downloaded', () => {

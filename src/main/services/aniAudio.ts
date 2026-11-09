@@ -4,7 +4,8 @@
 // downloaded (as it always was) it downloads the audio track of the language from the master (Japanese for the subtitled, English for the dubbed, the
 // first one there is when the source has no track of that language) and joins the two with ffmpeg. yt-dlp is not left to join them: the pictures of such
 // a master have an unknown codec, so it takes them for pictures that already have their sound and asks ffmpeg for an audio stream the file does not have.
-// When the audio cannot be had the episode stays as it was, with the picture only. When the master gives no separate audio nothing changes.
+// When the audio cannot be had the episode stays as it was, with the picture only. The app finds the file of the episode in the last "Destination" line that
+// yt-dlp printed, so the script prints one for the file of the episode when it is done. When the master gives no separate audio nothing changes.
 
 // Where ani-cli reads the master playlist (the start of the line that builds the list of qualities).
 export const ORIGINAL_MASTER_FETCH = 'links="$(hianime_curl "$_m3u8_master" -e "$refr" | ';
@@ -36,6 +37,8 @@ const PATCHED_YTDLP = [
     '                mv "$_pullwave_joined" "$download_dir/$_name.mp4"',
     '            fi',
     '            rm -f "$_pullwave_audio" "$_pullwave_joined"',
+    '            # The app takes the file of the episode from the last "Destination" line of the output: the last one now is the audio track, which is gone.',
+    "            printf '[download] Destination: %s\\n' \"$download_dir/$_name.mp4\"",
     '        fi',
     '        return 0',
     '    }'
