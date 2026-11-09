@@ -7,7 +7,7 @@ import {
     type TranslationLanguage
 } from '@shared/anime';
 import type { LlmCompletionResult } from '@shared/llm';
-import { defaultSubtitleFileSystem, listSubtitleFiles, toWebVtt, translatedSubtitlePath, type SubtitleFile, type SubtitleFileSystem } from './subtitleFiles';
+import { defaultSubtitleFileSystem, hasTranslatedSubtitle, listSubtitleFiles, toWebVtt, translatedSubtitlePath, type SubtitleFile, type SubtitleFileSystem } from './subtitleFiles';
 import { estimateTranslation, translateTexts } from './subtitleTranslator';
 import { parseVtt, serializeVtt, type ParsedVtt } from './vttCues';
 
@@ -82,16 +82,20 @@ export function estimateSubtitleTranslation(videoPath: string, request: Pick<Sub
 
 export type TranslationProgress = (done: number, total: number) => void;
 
-// Translates a subtitle of an episode into a language and saves it next to the video, as a subtitle of its own: what was there for
-// that language is replaced.
+// Translates a subtitle of an episode into a language and saves it next to the video, as a subtitle of its own. An episode that has the
+// subtitle in that language already is left as it is (`exists`), before the model is asked anything (a translation costs the user's token),
+// unless the request says to replace it.
 export async function translateEpisodeSubtitle(
     videoPath: string,
-    request: Pick<SubtitleTranslateRequest, 'trackId'> & { language: TranslationLanguage },
+    request: Pick<SubtitleTranslateRequest, 'trackId' | 'replace'> & { language: TranslationLanguage },
     dependencies: SubtitleTranslationDependencies,
     onProgress: TranslationProgress,
     signal?: AbortSignal
 ): Promise<SubtitleTranslateResponse> {
     const files = dependencies.files ?? defaultSubtitleFileSystem;
+    if (request.replace !== true && hasTranslatedSubtitle(videoPath, request.language, files)) {
+        return { ok: false, reason: 'exists' };
+    }
     const access = dependencies.llm();
     if (!access.ok) {
         return { ok: false, reason: access.reason };

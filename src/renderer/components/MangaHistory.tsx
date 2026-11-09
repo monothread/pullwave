@@ -3,8 +3,8 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { MangaCover } from './MangaCover';
 import { ConfirmButton } from './ConfirmButton';
+import { LibraryCard } from '../library/LibraryCard';
 import { MangaRemove } from './MangaRemove';
-import { RowLink } from './RowLink';
 import { chapterLabel, groupByDay } from './mangaText';
 import type { ReadingEntry } from '@shared/manga';
 import { useShownHistory } from '../hooks/useShownManga';
@@ -73,39 +73,37 @@ export function MangaHistory() {
                 return (
                     <section key={group.day} className="manga__history-day" aria-label={dayName(group.day)} data-testid="manga-history-day">
                         <span className="section-label">{dayName(group.day)}</span>
-                        <ul className="history__list">
+                        <ul className="cover-grid">
                             {group.entries.map((entry) => {
                                 return (
-                                    <li key={entry.id} className="history__item row--link" data-testid="manga-history-entry">
-                                        <MangaCover url={entry.thumbnailUrl} />
-                                        <div className="history__main">
-                                            <span className="history__title">
-                                                <RowLink
-                                                    label={`${t('manga.browse.open')}: ${entry.title}`}
-                                                    title={entry.title}
-                                                    onClick={() => {
-                                                        void openFromHistory(entry);
-                                                    }}
-                                                >
-                                                    {entry.title}
-                                                </RowLink>
-                                            </span>
+                                    <LibraryCard
+                                        key={entry.id}
+                                        testId="manga-history-entry"
+                                        cover={<MangaCover url={entry.thumbnailUrl} />}
+                                        title={entry.title}
+                                        openLabel={`${t('manga.browse.open')}: ${entry.title}`}
+                                        onOpen={() => {
+                                            void openFromHistory(entry);
+                                        }}
+                                        meta={
                                             <span className="history__meta">
                                                 {t('manga.history.left', { chapter: chapterLabel(entry.chapterName, entry.chapterNumber), page: entry.page + 1, total: entry.pageCount })}
                                             </span>
-                                        </div>
-                                        {entry.libraryMangaId !== null && <span className="badge badge--done">{t('manga.history.inLibrary')}</span>}
-                                        <ConfirmButton
-                                            className="btn btn--small btn--ghost"
-                                            ariaLabel={`${t('manga.history.removeOne')}: ${entry.title}`}
-                                            dialog={{ title: t('confirm.historyRemove.title', { name: entry.title }), message: t('confirm.historyRemove.message'), confirmLabel: t('manga.history.remove') }}
-                                            onConfirm={() => {
-                                                void removeReading(entry.id);
-                                            }}
-                                        >
-                                            {t('manga.history.remove')}
-                                        </ConfirmButton>
-                                    </li>
+                                        }
+                                        badges={entry.libraryMangaId === null ? undefined : <span className="badge badge--done">{t('manga.history.inLibrary')}</span>}
+                                        actions={
+                                            <ConfirmButton
+                                                className="btn btn--small btn--ghost"
+                                                ariaLabel={`${t('manga.history.removeOne')}: ${entry.title}`}
+                                                dialog={{ title: t('confirm.historyRemove.title', { name: entry.title }), message: t('confirm.historyRemove.message'), confirmLabel: t('manga.history.remove') }}
+                                                onConfirm={() => {
+                                                    void removeReading(entry.id);
+                                                }}
+                                            >
+                                                {t('manga.history.remove')}
+                                            </ConfirmButton>
+                                        }
+                                    />
                                 );
                             })}
                         </ul>

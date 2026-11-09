@@ -3307,9 +3307,10 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         });
         await expect(dialog.locator('video')).toHaveCSS('--subtitle-scale', '1');
 
-        await dialog.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
+        const manager = await openSubtitleManager(dialog);
+        await manager.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
         await expect(page.locator('.toast--info .toast__message', { hasText: 'NEW SUBTITLES' })).toHaveText('NEW SUBTITLES ADDED (3): English, Portuguese, Spanish');
-        await expect(dialog.getByRole('button', { name: 'CHECK SUBTITLES' })).toBeEnabled();
+        await expect(manager.getByRole('button', { name: 'CHECK SUBTITLES' })).toBeEnabled();
         expect(readFileSync(join(folder, 'Fake Anime Episode 1.subtitle-English.vtt'), 'utf-8')).toContain('Hello from the stream');
         expect(readFileSync(join(folder, 'Fake Anime Episode 1.subtitle-Portuguese.vtt'), 'utf-8')).toContain('Ola do stream');
         expect(readFileSync(join(folder, 'Fake Anime Episode 1.subtitle-Spanish.vtt'), 'utf-8')).toContain('Hola del stream');
@@ -3326,13 +3327,13 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
             ['/es.vtt', REFERER]
         ]);
         // The player offers them at once.
-        await dialog.getByRole('button', { name: 'Settings' }).click();
+        await openPlayerSettingsAfter(manager, dialog);
         const options = await dialog.getByRole('combobox', { name: 'Subtitles' }).locator('option').allTextContents();
         expect(options).toEqual(expect.arrayContaining(['English', 'Portuguese', 'Spanish']));
 
         // Asking again finds nothing new and downloads nothing.
         const asked = seen.length;
-        await dialog.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
+        await (await openSubtitleManager(dialog)).getByRole('button', { name: 'CHECK SUBTITLES' }).click();
         await expect(page.locator('.toast--info .toast__message', { hasText: 'NO NEW SUBTITLES' })).toHaveText('NO NEW SUBTITLES: THE SOURCE OFFERS NO OTHERS.');
         expect(
             seen.slice(asked).filter((entry) => {
@@ -3357,10 +3358,11 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
         await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
         const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
-        await dialog.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
+        const manager = await openSubtitleManager(dialog);
+        await manager.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
 
         await expect(page.locator('.toast--info .toast__message', { hasText: 'NEW SUBTITLES' })).toHaveText('NEW SUBTITLES ADDED (2): Portuguese (Brazil), Spanish (Latin America)');
-        await dialog.getByRole('button', { name: 'Settings' }).click();
+        await openPlayerSettingsAfter(manager, dialog);
         const options = await dialog.getByRole('combobox', { name: 'Subtitles' }).locator('option').allTextContents();
         expect(options).toEqual(expect.arrayContaining(['Portuguese (Brazil)', 'Spanish (Latin America)']));
         expect(options.some((name) => {
@@ -3371,6 +3373,46 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         expect(existsSync(join(folder, 'Fake Anime Episode 1.subtitle-Spanish (- Spanish(Latin America)).vtt'))).toBe(true);
     });
 
+    test('has the subtitle buttons in a window opened from the gear of the player, not in the header, and the window goes with the stage to fullscreen', async () => {
+        const { page } = session;
+        await downloadFirstEpisode(page);
+        await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        await expect(dialog).toBeVisible();
+        for (const name of ['LOAD SUBTITLE', 'CHECK SUBTITLES', 'TRANSLATE SUBTITLE', 'CREATE SUBTITLE']) {
+            await expect(dialog.getByRole('button', { name })).toHaveCount(0);
+        }
+        await expect(page.getByRole('dialog', { name: 'Manage subtitles' })).toHaveCount(0);
+
+        const manager = await openSubtitleManager(dialog);
+        await expect(dialog.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
+        for (const name of ['LOAD SUBTITLE', 'CHECK SUBTITLES']) {
+            await expect(manager.getByRole('button', { name })).toBeVisible();
+        }
+        // Only the buttons: the menu of the subtitles and their size are in the settings.
+        await expect(manager.getByRole('combobox')).toHaveCount(0);
+        await expect(manager.getByRole('group', { name: 'Subtitle size' })).toHaveCount(0);
+        // It is inside the part of the player that goes to fullscreen, so it is there too.
+        const insideStage = await manager.evaluate((element) => {
+            return document.querySelector('video')?.parentElement?.contains(element) ?? false;
+        });
+        expect(insideStage).toBe(true);
+
+        // Esc closes the window and leaves the player where it was.
+        await page.keyboard.press('Escape');
+        await expect(manager).toBeHidden();
+        await expect(dialog).toBeVisible();
+
+        // The size of the subtitles is in the settings.
+        await expect(dialog.locator('video')).toHaveCSS('--subtitle-scale', '1');
+        await dialog.getByRole('button', { name: 'Settings' }).click();
+        await dialog.getByRole('button', { name: 'Larger subtitles' }).click();
+        await expect(dialog.locator('video')).not.toHaveCSS('--subtitle-scale', '1');
+    });
+
     test('says so when the source offers no subtitles for the episode that was checked', async () => {
         const { page } = session;
         await downloadFirstEpisode(page);
@@ -3379,7 +3421,8 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
         await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
         const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
-        await dialog.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
+        const manager = await openSubtitleManager(dialog);
+        await manager.getByRole('button', { name: 'CHECK SUBTITLES' }).click();
         // The message is the notice of the app, in the corner of the screen and not above the video, and it goes away by itself.
         const toast = page.locator('.toast--info').filter({ hasText: 'NO NEW SUBTITLES' });
         await expect(toast.locator('.toast__message')).toHaveText('NO NEW SUBTITLES: THE SOURCE OFFERS NO OTHERS.');
@@ -3867,6 +3910,30 @@ test.describe('library of the search', () => {
     });
 });
 
+// The window of the subtitles of the player: opened from the gear, it has the buttons that load, translate, create and check subtitles, and the
+// menu with the subtitles of the episode (the gear's own menu is closed while it is open).
+async function openSubtitleManager(player: Locator): Promise<Locator> {
+    const gear = player.getByRole('button', { name: 'Settings' });
+    if ((await gear.getAttribute('aria-expanded')) !== 'true') {
+        await gear.click();
+    }
+    await player.getByRole('button', { name: 'MANAGE SUBTITLES' }).click();
+    const manager = player.page().getByRole('dialog', { name: 'Manage subtitles' });
+    await expect(manager).toBeVisible();
+    return manager;
+}
+
+// Closes the window of the subtitles and opens the settings of the player, where the menu of the subtitles and their size are (the window
+// covers the player while it is open).
+async function openPlayerSettingsAfter(manager: Locator, player: Locator): Promise<void> {
+    await manager.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(manager).toBeHidden();
+    const gear = player.getByRole('button', { name: 'Settings' });
+    if ((await gear.getAttribute('aria-expanded')) !== 'true') {
+        await gear.click();
+    }
+}
+
 test.describe('translating subtitles with a language model', () => {
     const TOKEN = 'sk-e2e-token';
     const ENGLISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nHello there\n\n2\n00:00:04.000 --> 00:00:06.000\nSee you\n';
@@ -4016,7 +4083,7 @@ test.describe('translating subtitles with a language model', () => {
         await saveToken(page);
         await downloadWithSubtitles(page, [1]);
         const dialog = await openPlayer(page);
-        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
         await expect(translate).toBeVisible();
         await expect(translate.getByText('Provider: Other (OpenAI-compatible) · Model: fake-model')).toBeVisible();
@@ -4049,7 +4116,7 @@ test.describe('translating subtitles with a language model', () => {
         expect(readFileSync(join(episodeFolder(1), 'Fake Anime Episode 1.subtitle-English.vtt'), 'utf-8')).toBe(ENGLISH_SUBTITLE);
 
         // The player has it, shows it, and the app serves it like any other subtitle of the episode.
-        await dialog.getByRole('button', { name: 'Settings' }).click();
+        await openPlayerSettingsAfter(page.getByRole('dialog', { name: 'Manage subtitles' }), dialog);
         const menu = dialog.getByRole('combobox', { name: 'Subtitles' });
         await expect(menu).toHaveValue('translated-Spanish');
         expect(await menu.locator('option').allTextContents()).toEqual(expect.arrayContaining(['English', 'Spanish']));
@@ -4063,7 +4130,7 @@ test.describe('translating subtitles with a language model', () => {
         const { page } = session;
         await downloadWithSubtitles(page, [1]);
         const dialog = await openPlayer(page);
-        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
         await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
@@ -4079,7 +4146,7 @@ test.describe('translating subtitles with a language model', () => {
         await saveToken(page);
         await downloadWithSubtitles(page, [1]);
         const dialog = await openPlayer(page);
-        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
         await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
@@ -4097,7 +4164,7 @@ test.describe('translating subtitles with a language model', () => {
         await saveToken(page);
         await downloadWithSubtitles(page, [1]);
         const dialog = await openPlayer(page);
-        await dialog.getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
         await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
@@ -4122,7 +4189,7 @@ test.describe('translating subtitles with a language model', () => {
         await downloadWithSubtitles(page, [1, 2]);
         await showEpisodes(page);
         await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
-        await expect(page.getByText('Translate the subtitles of 2 episodes into Spanish with your account? Each episode is a request to the provider, and the cost is yours.')).toBeVisible();
+        await expect(page.getByText('Translate the subtitles of up to 2 episodes into Spanish with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeVisible();
         expect(received).toEqual([]);
 
         await page.getByRole('button', { name: 'CANCEL', exact: true }).click();
@@ -4144,6 +4211,71 @@ test.describe('translating subtitles with a language model', () => {
             ['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']
         ]);
         await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
+        await expect(page.getByRole('alert')).toHaveCount(0);
+    });
+
+    const OLD_SPANISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nHola de antes\n';
+
+    test('translates again in the player an episode that has the subtitle in the language already, and replaces it', async () => {
+        const { page } = session;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1]);
+        writeFileSync(translatedFile(1), OLD_SPANISH_SUBTITLE);
+        const dialog = await openPlayer(page);
+        await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
+        const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
+        await expect(translate.getByLabel('Translate into')).toHaveValue('Spanish');
+        await expect(translate.getByTestId('translate-replace-note')).toHaveText('This episode already has the subtitle in this language. Translating again replaces it.');
+        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
+        await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
+
+        await expect(translate).toBeHidden();
+        await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE TRANSLATED' })).toHaveText('SUBTITLE TRANSLATED INTO Spanish.');
+        expect(received).toHaveLength(1);
+        expect(received.map((request) => {
+            return [request.path, request.authorization, request.body.messages[1]?.content];
+        })).toEqual([['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']]);
+        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(SPANISH_SUBTITLE);
+    });
+
+    test('translates only the episodes of a season that do not have the subtitle in the language yet, and says how many were skipped', async () => {
+        const { page } = session;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1, 2]);
+        writeFileSync(translatedFile(1), OLD_SPANISH_SUBTITLE);
+        await showEpisodes(page);
+        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+
+        await expect.poll(() => {
+            return existsSync(translatedFile(2));
+        }, { timeout: 20000 }).toBe(true);
+        await expect(page.getByTestId('season-translation-skipped')).toHaveText('1 episodes already had the subtitle in Spanish and were skipped.');
+        expect(readFileSync(translatedFile(2), 'utf-8')).toBe(SPANISH_SUBTITLE);
+        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
+        expect(received).toHaveLength(1);
+        expect(received.map((request) => {
+            return [request.path, request.authorization, request.body.messages[1]?.content];
+        })).toEqual([['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']]);
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
+        await expect(page.getByRole('alert')).toHaveCount(0);
+    });
+
+    test('asks the provider for nothing when every episode of a season has the subtitle in the language already', async () => {
+        const { page } = session;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1, 2]);
+        writeFileSync(translatedFile(1), OLD_SPANISH_SUBTITLE);
+        writeFileSync(translatedFile(2), OLD_SPANISH_SUBTITLE);
+        await showEpisodes(page);
+        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+
+        await expect(page.getByTestId('season-translation-skipped')).toHaveText('2 episodes already had the subtitle in Spanish and were skipped.');
+        expect(received).toEqual([]);
+        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
+        expect(readFileSync(translatedFile(2), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
         await expect(page.getByRole('alert')).toHaveCount(0);
     });
 });
@@ -4368,8 +4500,9 @@ test.describe('creating the subtitle of an episode from its audio', () => {
 
     async function openGenerateDialog(page: Page, audio: string, subtitle: string, audioText: RegExp = AUDIO_TEXT): Promise<{ player: Locator; create: Locator }> {
         const player = await openPlayer(page);
-        await expect(player.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toHaveCount(0);
-        await player.getByRole('button', { name: 'CREATE SUBTITLE' }).click();
+        const manager = await openSubtitleManager(player);
+        await expect(manager.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toHaveCount(0);
+        await manager.getByRole('button', { name: 'CREATE SUBTITLE' }).click();
         const create = page.getByRole('dialog', { name: 'Create a subtitle' });
         await expect(create).toBeVisible();
         await create.getByLabel('Language of the audio', { exact: true }).selectOption(audio);
@@ -4429,10 +4562,11 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         expect(readFileSync(generatedFile('Japanese'), 'utf-8')).toBe(TRANSCRIBED);
 
         // The player has it and shows it, the app serves it, and the button now offers to translate it.
-        await player.getByRole('button', { name: 'Settings' }).click();
+        const manager = session.page.getByRole('dialog', { name: 'Manage subtitles' });
+        await expect(manager.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toBeVisible();
+        await expect(manager.getByRole('button', { name: 'CREATE SUBTITLE' })).toHaveCount(0);
+        await openPlayerSettingsAfter(manager, player);
         await expect(player.getByRole('combobox', { name: 'Subtitles' })).toHaveValue('generated-Japanese');
-        await expect(player.getByRole('button', { name: 'TRANSLATE SUBTITLE' })).toBeVisible();
-        await expect(player.getByRole('button', { name: 'CREATE SUBTITLE' })).toHaveCount(0);
         const served = await session.app.evaluate(async ({ net }, target) => {
             const response = await net.fetch(target);
             const headers: Record<string, string> = {};
@@ -4592,7 +4726,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         expectPiecesAsked();
         expect(chats).toEqual([]);
         expect(readFileSync(generatedFile('Japanese'), 'utf-8')).toBe(linesVtt(''));
-        await player.getByRole('button', { name: 'Settings' }).click();
+        await openPlayerSettingsAfter(player.page().getByRole('dialog', { name: 'Manage subtitles' }), player);
         await expect(player.getByRole('combobox', { name: 'Subtitles' })).toHaveValue('generated-Japanese');
     });
 
@@ -4804,7 +4938,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await saveTokens(page);
         await downloadWithoutSubtitle(page, false);
         const player = await openPlayer(page);
-        await player.getByRole('button', { name: 'CREATE SUBTITLE' }).click();
+        await (await openSubtitleManager(player)).getByRole('button', { name: 'CREATE SUBTITLE' }).click();
         const create = page.getByRole('dialog', { name: 'Create a subtitle' });
         await expect(create.getByText('This video has no audio to transcribe.')).toBeVisible();
         await expect(create.getByRole('button', { name: 'CREATE', exact: true })).toBeDisabled();
@@ -4906,6 +5040,11 @@ test.describe('the look for new episodes', () => {
         await expect(update.locator('.history__meta')).toHaveText(/^EP 4 · Found at \d{1,2}:\d{2}( [AP]M)?$/);
         await expect(update.locator('.badge')).toHaveText(['AUTOMATIC', 'NOT DOWNLOADED']);
         await expect(page.getByTestId('anime-update-day')).toHaveAttribute('aria-label', 'Today');
+        // The episode is a card of a grid, like the ones of the library: the badges at the bottom of the card.
+        await expect(page.getByTestId('anime-update-day').locator('ul.cover-grid')).toHaveCount(1);
+        await expect(update).toHaveClass(/\bcover-card\b/);
+        await expect(update.locator('.cover-card__body > .job__head .history__meta')).toHaveText(/^EP 4 · Found at /);
+        await expect(update.locator('.cover-card__footer .job__badges .badge')).toHaveText(['AUTOMATIC', 'NOT DOWNLOADED']);
         // Nothing was downloaded.
         expect(
             calls().filter((line) => {
@@ -5278,9 +5417,9 @@ test.describe('the look for new episodes', () => {
         await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true }).click();
     }
 
-    // The chips over the grid of the library: ALL and NEW (how many are new depends on when the episodes of the test arrived), then the ones of the releases.
+    // The chips over the grid of the library: ALL and NEW (how many are new depends on when the episodes of the test arrived), then the ones of the releases (ONGOING before COMPLETE).
     function filterChips(complete: number, ongoing: number): Array<string | RegExp> {
-        return ['ALL (1)', /^NEW \(\d+\)$/, `COMPLETE (${String(complete)})`, `ONGOING (${String(ongoing)})`];
+        return ['ALL (1)', /^NEW \(\d+\)$/, `ONGOING (${String(ongoing)})`, `COMPLETE (${String(complete)})`];
     }
 
     test('filters the library by the releases: the anime AniList says ended are COMPLETE, and none is ONGOING', async () => {

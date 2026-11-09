@@ -137,9 +137,9 @@ describe('AnimeHistory cards with a cover', () => {
 
         expect(screen.getByRole('list')).toHaveClass('cover-grid');
         screen.getAllByRole('listitem').forEach((card) => {
-            expect(card).toHaveClass('history__item', 'cover-card', 'row--link');
+            expect(card).toHaveClass('job', 'job--done', 'series', 'cover-card', 'row--link');
             expect(card.firstElementChild).toHaveClass('cover');
-            expect(card.querySelector('.history__title .row-link')).not.toBeNull();
+            expect(card.querySelector('.series__title .row-link')).not.toBeNull();
         });
     });
 
@@ -154,20 +154,25 @@ describe('AnimeHistory cards with a cover', () => {
         });
     });
 
-    it('puts what was watched and the button that removes at the bottom of the card, what was watched just above the button', () => {
+    it('puts what was watched under the title and the button that removes in the actions at the bottom of the card, like the library card', () => {
         useAnimeStore.setState({ history: [WATCHED] });
         render(<AnimeHistory />);
 
         const [card] = screen.getAllByRole('listitem');
-        const main = (card as HTMLElement).querySelector('.history__main') as HTMLElement;
-        const footer = main.querySelector('.cover-card__footer') as HTMLElement;
-        expect(main.lastElementChild).toBe(footer);
-        expect(footer.children).toHaveLength(2);
-        expect(footer.firstElementChild).toHaveClass('history__meta');
-        expect(footer.firstElementChild).toHaveTextContent(/^SUB · EP 12 · /);
-        expect(footer.lastElementChild).toHaveClass('anime__actions');
+        const body = (card as HTMLElement).querySelector('.cover-card__body') as HTMLElement;
+        const head = body.querySelector('.job__head') as HTMLElement;
+        const footer = body.querySelector('.cover-card__footer') as HTMLElement;
+        expect(body.children).toHaveLength(2);
+        expect(body.firstElementChild).toBe(head);
+        expect(body.lastElementChild).toBe(footer);
+        expect(head.children).toHaveLength(2);
+        expect(head.firstElementChild).toHaveClass('series__title');
+        expect(head.lastElementChild).toHaveClass('history__meta');
+        expect(head.lastElementChild).toHaveTextContent(/^SUB · EP 12 · /);
+        expect(footer.children).toHaveLength(1);
+        expect(footer.firstElementChild).toHaveClass('job__actions', 'library__footer');
+        expect(footer.querySelector('.job__badges')).toBeNull();
         expect(within(footer).getByRole('button', { name: 'REMOVE FROM HISTORY: Bleach' })).toBeInTheDocument();
-        expect(main.firstElementChild).toHaveClass('history__title');
     });
 
     it('opens an entry by its title, wherever the card is clicked, and removing does not open it', async () => {

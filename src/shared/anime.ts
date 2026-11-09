@@ -449,15 +449,19 @@ export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number];
 export const DEFAULT_TRANSLATION_LANGUAGE: TranslationLanguage = 'Portuguese (Brazil)';
 
 // A subtitle of an episode to translate: `trackId` is the one to start from (null lets the app pick, the English one when it has it).
+// `replace` says what to do when the episode has the translation into that language already: true translates again and replaces it (what the
+// user asks for in the player), false or left out leaves it as it is (the translation of many episodes at once).
 export interface SubtitleTranslateRequest {
     episodeId: number;
     trackId: string | null;
     language: TranslationLanguage;
+    replace?: boolean;
 }
 
 // Why a subtitle was not translated: the episode or the subtitle is not there, the settings have no token, no model or (for a
-// provider of one's own) no address, the file cannot be read, is too big or has no cues, the episode is being translated already, or the user cancelled.
-export type SubtitleTranslateFailure = 'missing' | 'no-source' | 'no-token' | 'no-model' | 'no-address' | 'unreadable' | 'too-large' | 'empty' | 'busy' | 'cancelled';
+// provider of one's own) no address, the file cannot be read, is too big or has no cues, the episode is being translated already, the episode has
+// the subtitle in that language already (nothing is asked of the model then), or the user cancelled.
+export type SubtitleTranslateFailure = 'missing' | 'no-source' | 'no-token' | 'no-model' | 'no-address' | 'unreadable' | 'too-large' | 'empty' | 'busy' | 'exists' | 'cancelled';
 
 export type SubtitleTranslateResponse =
     | { ok: true; tracks: AnimeSubtitleTrack[]; translated: AnimeSubtitleTrack }
@@ -481,7 +485,8 @@ export interface SubtitleTranslateManyRequest {
     language: TranslationLanguage;
 }
 
-export type SubtitleTranslationStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
+// `skipped`: there was nothing to do (the episode has the subtitle in that language already).
+export type SubtitleTranslationStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled' | 'skipped';
 
 // How the translation of the subtitle of an episode is going: the cues translated out of all of them; `reason` says why it failed.
 export interface SubtitleTranslationJob {

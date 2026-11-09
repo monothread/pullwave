@@ -47,12 +47,15 @@ function statusOf(response: SubtitleJobResponse): SubtitleTranslationStatus {
     if (response.ok) {
         return 'done';
     }
+    if (response.reason === 'exists') {
+        return 'skipped';
+    }
     return response.reason === 'cancelled' ? 'cancelled' : 'error';
 }
 
 // The episodes whose subtitle is waiting to be worked on or being worked on, one after the other. An episode has one job at a time; the
 // ones that ended are forgotten (the screen learns about them through the updates). The answers for `busy` and `cancelled` are the same
-// in every kind of job, which is why the response types of the jobs have to have them.
+// in every kind of job, which is why the response types of the jobs have to have them; `exists` (nothing to do) ends the job as skipped.
 export class SubtitleJobQueue<Request extends SubtitleJobRequest, Response extends SubtitleJobResponse> {
     private readonly entries = new Map<number, Entry<Request, Response>>();
     private readonly waiting: number[] = [];

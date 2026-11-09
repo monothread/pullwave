@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { openedPlayerSettings } from '../../helpers/playerSettings';
 import { fakeTextTrackList, type FakeTextTrack } from '../../helpers/textTracks';
 import type { PlaybackRange } from '@renderer/components/playbackRange';
+import type { SubtitleManagerSetting } from '@renderer/components/PlayerSettings';
 import { VideoControls, formatClock, type SubtitleOption } from '@renderer/components/VideoControls';
 
 interface Harness {
@@ -1281,6 +1282,108 @@ describe('VideoControls: the icons and the switch of the next episode', () => {
         expect(toggle).toHaveProperty('checked', false);
         await user.click(toggle);
         expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('VideoControls: the window of the subtitles', () => {
+    function renderWithManager(overrides: Partial<SubtitleManagerSetting> = {}, subtitles: SubtitleOption[] = OPTIONS) {
+        const ref = createRef<HTMLVideoElement>();
+        const stage = document.createElement('div');
+        const video = document.createElement('video');
+        stage.appendChild(video);
+        document.body.appendChild(stage);
+        (ref as { current: HTMLVideoElement | null }).current = video;
+        const manager: SubtitleManagerSetting = { loaded: true, hasSubtitles: true, checking: false, failure: null, onLoad: vi.fn(), onCreate: vi.fn(), onCheck: vi.fn(), ...overrides };
+        const onSelectSubtitle = vi.fn();
+        const view = render(<VideoControls video={ref} subtitles={subtitles} selectedSubtitle="default" onSelectSubtitle={onSelectSubtitle} subtitleManager={manager} />);
+        return { manager, onSelectSubtitle, video, view };
+    }
+
+    it('has the gear even for an episode with no subtitles, since the way to get one is in the window', () => {
+        renderWithManager({ hasSubtitles: false }, []);
+        expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+    });
+
+    it('has no window and no way into it when the player is not given one (the stream of the search)', async () => {
+        const user = userEvent.setup();
+        setup();
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        expect(screen.queryByRole('button', { name: 'MANAGE SUBTITLES' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+    });
+
+    it('opens it from the gear, closing the panel of the settings, and not before', async () => {
+        const user = userEvent.setup();
+        renderWithManager();
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+        expect(screen.getByRole('dialog', { name: 'Manage subtitles' })).toBeInTheDocument();
+        expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('hands it what the screen can do about the subtitles, and only that: the menu and the size stay in the settings', async () => {
+        const user = userEvent.setup();
+        const { manager } = renderWithManager();
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+        const window = screen.getByRole('dialog', { name: 'Manage subtitles' });
+        expect(within(window).queryByRole('combobox')).not.toBeInTheDocument();
+        expect(within(window).queryByRole('group', { name: 'Subtitle size' })).not.toBeInTheDocument();
+        await user.click(within(window).getByRole('button', { name: 'LOAD SUBTITLE' }));
+        await user.click(within(window).getByRole('button', { name: 'TRANSLATE SUBTITLE' }));
+        await user.click(within(window).getByRole('button', { name: 'CHECK SUBTITLES' }));
+        expect([manager.onLoad, manager.onCreate, manager.onCheck].map((callback) => {
+            return vi.mocked(callback).mock.calls.length;
+        })).toEqual([1, 1, 1]);
+    });
+
+    it('keeps the menu of the subtitles and the size in the settings, next to the way into the window', async () => {
+        const user = userEvent.setup();
+        const { onSelectSubtitle, video } = renderWithManager();
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        const panel = screen.getByRole('dialog', { name: 'Settings' });
+        expect(within(panel).getByRole('combobox', { name: 'Subtitles' })).toHaveValue('default');
+        await user.selectOptions(within(panel).getByRole('combobox', { name: 'Subtitles' }), 'subtitle-Japanese');
+        expect(onSelectSubtitle).toHaveBeenCalledWith('subtitle-Japanese');
+        expect(video.style.getPropertyValue('--subtitle-scale')).toBe('1');
+        await user.click(within(panel).getByRole('button', { name: 'Larger subtitles' }));
+        expect(video.style.getPropertyValue('--subtitle-scale')).toBe('1.25');
+        expect(within(panel).getByRole('button', { name: 'MANAGE SUBTITLES' })).toBeInTheDocument();
+    });
+
+    it('puts the window next to the bar, not inside it, so the bar hiding does not hide it', async () => {
+        const user = userEvent.setup();
+        renderWithManager();
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+        const backdrop = screen.getByRole('dialog', { name: 'Manage subtitles' }).parentElement as HTMLElement;
+        expect(backdrop).toHaveClass('modal-backdrop');
+        expect(backdrop.closest('.player__controls')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Settings' }).closest('.player__controls')).not.toBeNull();
+    });
+
+    it('closes with its button and with Esc, and the gear stays', async () => {
+        const user = userEvent.setup();
+        renderWithManager();
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+        await user.click(screen.getByRole('button', { name: 'CLOSE' }));
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+        fireEvent.keyDown(screen.getByRole('dialog', { name: 'Manage subtitles' }), { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+    });
+
+    it('shows what the screen says went wrong in the window', async () => {
+        const user = userEvent.setup();
+        renderWithManager({ failure: 'The subtitle file could not be read.' });
+        await user.click(screen.getByRole('button', { name: 'Settings' }));
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+        expect(within(screen.getByRole('dialog', { name: 'Manage subtitles' })).getByRole('alert')).toHaveTextContent('The subtitle file could not be read.');
     });
 });
 

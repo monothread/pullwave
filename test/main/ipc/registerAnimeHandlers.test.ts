@@ -637,12 +637,12 @@ describe('registerAnimeHandlers', () => {
                 translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
             };
 
-            it('asks for the translation with what the screen sent and gives the answer as it is', async () => {
+            it('asks for the translation with what the screen sent, replacing the one the episode has, and gives the answer as it is', async () => {
                 const { call, subtitles } = setup();
                 subtitles.translate.mockResolvedValueOnce(translated);
                 expect(await call(IPC.animeSubtitleTranslate, { episodeId: 4, trackId: 'subtitle-English', language: 'Spanish' })).toEqual(translated);
                 expect(subtitles.translate).toHaveBeenCalledTimes(1);
-                expect(subtitles.translate).toHaveBeenCalledWith({ episodeId: 4, trackId: 'subtitle-English', language: 'Spanish' });
+                expect(subtitles.translate).toHaveBeenCalledWith({ episodeId: 4, trackId: 'subtitle-English', language: 'Spanish', replace: true });
             });
 
             it('lets the app pick the subtitle when none is given, and also accepts the default one (an empty id)', async () => {
@@ -651,9 +651,9 @@ describe('registerAnimeHandlers', () => {
                 await call(IPC.animeSubtitleTranslate, { episodeId: 4, language: 'Portuguese (Brazil)' });
                 await call(IPC.animeSubtitleTranslate, { episodeId: 4, trackId: '', language: 'French' });
                 expect(subtitles.translate.mock.calls).toEqual([
-                    [{ episodeId: 4, trackId: null, language: 'Portuguese' }],
-                    [{ episodeId: 4, trackId: null, language: 'Portuguese (Brazil)' }],
-                    [{ episodeId: 4, trackId: '', language: 'French' }]
+                    [{ episodeId: 4, trackId: null, language: 'Portuguese', replace: true }],
+                    [{ episodeId: 4, trackId: null, language: 'Portuguese (Brazil)', replace: true }],
+                    [{ episodeId: 4, trackId: '', language: 'French', replace: true }]
                 ]);
             });
 
@@ -719,14 +719,14 @@ describe('registerAnimeHandlers', () => {
         });
 
         describe('translating many', () => {
-            it('queues the translation of each episode, with the subtitle picked by the app, and says how many', async () => {
+            it('queues the translation of each episode, with the subtitle picked by the app and without replacing what it has, and says how many', async () => {
                 const { call, subtitles } = setup();
                 expect(call(IPC.animeSubtitleTranslateMany, { episodeIds: [4, 5, 6], language: 'German' })).toBe(3);
                 await Promise.resolve();
                 expect(subtitles.translate.mock.calls).toEqual([
-                    [{ episodeId: 4, trackId: null, language: 'German' }],
-                    [{ episodeId: 5, trackId: null, language: 'German' }],
-                    [{ episodeId: 6, trackId: null, language: 'German' }]
+                    [{ episodeId: 4, trackId: null, language: 'German', replace: false }],
+                    [{ episodeId: 5, trackId: null, language: 'German', replace: false }],
+                    [{ episodeId: 6, trackId: null, language: 'German', replace: false }]
                 ]);
             });
 
@@ -734,8 +734,8 @@ describe('registerAnimeHandlers', () => {
                 const { call, subtitles } = setup();
                 expect(call(IPC.animeSubtitleTranslateMany, { episodeIds: [4, '5', 0, 4, -1, 1.5, 7], language: 'German' })).toBe(2);
                 expect(subtitles.translate.mock.calls).toEqual([
-                    [{ episodeId: 4, trackId: null, language: 'German' }],
-                    [{ episodeId: 7, trackId: null, language: 'German' }]
+                    [{ episodeId: 4, trackId: null, language: 'German', replace: false }],
+                    [{ episodeId: 7, trackId: null, language: 'German', replace: false }]
                 ]);
             });
 

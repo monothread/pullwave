@@ -2,7 +2,7 @@
 import { render, screen, within } from '@testing-library/react';
 import type { Mock } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { hasPlayerSettings, PlayerSettings, SUBTITLES_OFF, type SubtitleOption } from '@renderer/components/PlayerSettings';
+import { hasPlayerSettings, PlayerSettings, SUBTITLES_OFF, type SubtitleManagerSetting, type SubtitleOption } from '@renderer/components/PlayerSettings';
 import type { SubtitleStyle } from '@renderer/hooks/useSubtitleStyle';
 
 const OPTIONS: SubtitleOption[] = [
@@ -49,6 +49,79 @@ describe('hasPlayerSettings', () => {
     it('is true when there is the switch of the next episode, even with no subtitles', () => {
         expect(hasPlayerSettings([], { enabled: true, onToggle: vi.fn() })).toBe(true);
         expect(hasPlayerSettings(OPTIONS, { enabled: false, onToggle: vi.fn() })).toBe(true);
+    });
+});
+
+const MANAGER: SubtitleManagerSetting = { loaded: true, hasSubtitles: true, checking: false, failure: null, onLoad: vi.fn(), onCreate: vi.fn(), onCheck: vi.fn() };
+
+describe('hasPlayerSettings with the window of the subtitles', () => {
+    it('is true when there is the window of the subtitles, even with no subtitles and no switch of the next episode', () => {
+        expect(hasPlayerSettings([], undefined, MANAGER)).toBe(true);
+        expect(hasPlayerSettings(OPTIONS, undefined, MANAGER)).toBe(true);
+    });
+
+    it('is still false when there is nothing at all', () => {
+        expect(hasPlayerSettings([], undefined, undefined)).toBe(false);
+    });
+});
+
+describe('PlayerSettings and the way into the window of the subtitles', () => {
+    function setupManage(subtitles: SubtitleOption[] = OPTIONS, withWindow = true) {
+        const onOpenChange = vi.fn<(open: boolean) => void>();
+        const onManageSubtitles = vi.fn<() => void>();
+        render(
+            <PlayerSettings
+                open
+                onOpenChange={onOpenChange}
+                subtitles={subtitles}
+                selectedSubtitle="default"
+                onSelectSubtitle={vi.fn()}
+                subtitleStyle={makeStyle()}
+                autoNext={{ enabled: true, onToggle: vi.fn() }}
+                onManageSubtitles={withWindow ? onManageSubtitles : undefined}
+            />
+        );
+        return { onOpenChange, onManageSubtitles };
+    }
+
+    it('has a button that opens it, in the panel of the settings, after the other settings', () => {
+        setupManage();
+        const panel = screen.getByRole('dialog', { name: 'Settings' });
+        const button = within(panel).getByRole('button', { name: 'MANAGE SUBTITLES' });
+        expect(button).toHaveClass('btn', 'btn--small');
+        expect(panel.lastElementChild).toContainElement(button);
+        expect(panel.lastElementChild).toHaveClass('player__setting');
+    });
+
+    it('closes the panel and opens the window when the button is pressed, once', async () => {
+        const user = userEvent.setup();
+        const { onOpenChange, onManageSubtitles } = setupManage();
+        await user.click(screen.getByRole('button', { name: 'MANAGE SUBTITLES' }));
+        expect(onOpenChange.mock.calls).toEqual([[false]]);
+        expect(onManageSubtitles).toHaveBeenCalledTimes(1);
+    });
+
+    it('has no such button when there is no window to open', () => {
+        setupManage(OPTIONS, false);
+        expect(screen.queryByRole('button', { name: 'MANAGE SUBTITLES' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the menu and the size of the subtitles in the panel, next to the button', () => {
+        setupManage();
+        const panel = screen.getByRole('dialog', { name: 'Settings' });
+        expect(within(panel).getByRole('combobox', { name: 'Subtitles' })).toBeInTheDocument();
+        expect(within(panel).getByRole('group', { name: 'Subtitle size' })).toHaveClass('player__size');
+        expect(within(panel).getByRole('button', { name: 'Smaller subtitles' })).toHaveClass('player__button');
+        expect(within(panel).getByRole('button', { name: 'MANAGE SUBTITLES' })).toBeInTheDocument();
+    });
+
+    it('has the button alone, with no menu and no size, when the episode has no subtitle', () => {
+        setupManage([]);
+        const panel = screen.getByRole('dialog', { name: 'Settings' });
+        expect(within(panel).queryByRole('combobox', { name: 'Subtitles' })).not.toBeInTheDocument();
+        expect(within(panel).queryByRole('group', { name: 'Subtitle size' })).not.toBeInTheDocument();
+        expect(within(panel).getByRole('button', { name: 'MANAGE SUBTITLES' })).toBeInTheDocument();
+        expect(within(panel).getByRole('switch', { name: 'Next episode automatically' })).toBeInTheDocument();
     });
 });
 

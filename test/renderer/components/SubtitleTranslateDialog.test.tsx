@@ -162,6 +162,59 @@ describe('SubtitleTranslateDialog', () => {
         });
     });
 
+    describe('when the episode has a translation into the language already', () => {
+        const SPANISH_TRACK: AnimeSubtitleTrack = { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' };
+
+        function renderWith(tracks: readonly AnimeSubtitleTrack[]) {
+            const onTranslated = vi.fn();
+            render(<SubtitleTranslateDialog episodeId={7} tracks={tracks} onTranslated={onTranslated} onClose={vi.fn()} />);
+            return { onTranslated };
+        }
+
+        it('says translating again replaces it, with the button ready to translate', async () => {
+            renderWith([...TRACKS, SPANISH_TRACK]);
+            await screen.findByText('120 lines, 3 requests, about 5400 tokens of your account.');
+            expect(screen.getByTestId('translate-replace-note')).toHaveTextContent('This episode already has the subtitle in this language. Translating again replaces it.');
+            expect(screen.getByRole('button', { name: 'TRANSLATE' })).toBeEnabled();
+        });
+
+        it('says nothing when the episode has no translation into the language', async () => {
+            renderWith(TRACKS);
+            await screen.findByText('120 lines, 3 requests, about 5400 tokens of your account.');
+            expect(screen.queryByTestId('translate-replace-note')).not.toBeInTheDocument();
+        });
+
+        it('says nothing for a translation into another language, and follows the language chosen', async () => {
+            const user = userEvent.setup();
+            renderWith([...TRACKS, SPANISH_TRACK]);
+            await screen.findByText('120 lines, 3 requests, about 5400 tokens of your account.');
+            await user.selectOptions(screen.getByLabelText('Translate into'), 'German');
+            expect(screen.queryByTestId('translate-replace-note')).not.toBeInTheDocument();
+            await user.selectOptions(screen.getByLabelText('Translate into'), 'Spanish');
+            expect(screen.getByTestId('translate-replace-note')).toBeInTheDocument();
+        });
+
+        it('does not take a subtitle of the same language that is not a translation for one', async () => {
+            renderWith([ENGLISH, { id: 'subtitle-Spanish', label: 'Spanish', kind: 'source' }, { id: 'imported-Spanish', label: 'Spanish', kind: 'imported' }]);
+            await screen.findByText('120 lines, 3 requests, about 5400 tokens of your account.');
+            expect(screen.queryByTestId('translate-replace-note')).not.toBeInTheDocument();
+        });
+
+        it('asks for the translation as it does for any other, and gives the new subtitles when it is done', async () => {
+            const user = userEvent.setup();
+            const replaced: SubtitleTranslateResponse = { ok: true, tracks: [ENGLISH, JAPANESE, SPANISH_TRACK], translated: SPANISH_TRACK };
+            mock.api.translateAnimeSubtitle.mockResolvedValue(replaced);
+            const { onTranslated } = renderWith([...TRACKS, SPANISH_TRACK]);
+            await screen.findByText('120 lines, 3 requests, about 5400 tokens of your account.');
+            await user.click(screen.getByRole('button', { name: 'TRANSLATE' }));
+            await vi.waitFor(() => {
+                expect(onTranslated).toHaveBeenCalledTimes(1);
+            });
+            expect(mock.api.translateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 7, trackId: null, language: 'Spanish' });
+            expect(onTranslated).toHaveBeenCalledWith(replaced.tracks, SPANISH_TRACK);
+        });
+    });
+
     describe('translating', () => {
         it('asks for the translation with the subtitle and the language chosen and gives the new subtitles when it is done', async () => {
             const user = userEvent.setup();
@@ -285,6 +338,7 @@ describe('SubtitleTranslateDialog', () => {
             [{ ok: false, reason: 'no-token' }, 'There is no token for this provider. Add one in the anime settings.'],
             [{ ok: false, reason: 'no-model' }, 'No model is set. Write the name of the model in the anime settings.'],
             [{ ok: false, reason: 'busy' }, 'This episode is being translated already.'],
+            [{ ok: false, reason: 'exists' }, 'This episode already has the subtitle in this language, so it was not translated again.'],
             [{ ok: false, reason: 'failed', error: { code: 'QUOTA_EXCEEDED', raw: 'no credit' } }, 'The translation failed. The account has no credit or quota left.']
         ] as const)('says why when it did not work (%j), and lets the user try again', async (response, text) => {
             const user = userEvent.setup();
@@ -294,6 +348,21 @@ describe('SubtitleTranslateDialog', () => {
             expect(await screen.findByRole('alert')).toHaveTextContent(text);
             expect(screen.getByRole('button', { name: 'TRANSLATE' })).toBeEnabled();
             expect(onTranslated).not.toHaveBeenCalled();
+        });
+
+        it('says the subtitle exists in the language chosen, saves nothing and gives no new subtitle, when the episode has it already', async () => {
+            const user = userEvent.setup();
+            mock.api.translateAnimeSubtitle.mockResolvedValue({ ok: false, reason: 'exists' });
+            const { onTranslated, onClose } = await ready();
+            await user.selectOptions(screen.getByLabelText('Translate into'), 'German');
+            await user.click(screen.getByRole('button', { name: 'TRANSLATE' }));
+            expect(await screen.findByRole('alert')).toHaveTextContent('This episode already has the subtitle in this language, so it was not translated again.');
+            expect(mock.api.translateAnimeSubtitle).toHaveBeenCalledTimes(1);
+            expect(mock.api.translateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 7, trackId: null, language: 'German' });
+            expect(screen.queryByTestId('translate-progress')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'TRANSLATE' })).toBeEnabled();
+            expect(onTranslated).not.toHaveBeenCalled();
+            expect(onClose).not.toHaveBeenCalled();
         });
 
         it('clears the message when it tries again', async () => {

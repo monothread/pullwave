@@ -4,7 +4,8 @@ import { useSubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useVideoBuffer } from '../hooks/useVideoBuffer';
 import { useTranslator } from '../i18n/useTranslator';
 import { seekHover, type SeekHover } from './seekHover';
-import { hasPlayerSettings, PlayerSettings, type AutoNextSetting, type SubtitleOption } from './PlayerSettings';
+import { hasPlayerSettings, PlayerSettings, type AutoNextSetting, type SubtitleManagerSetting, type SubtitleOption } from './PlayerSettings';
+import { SubtitleManagerDialog } from './SubtitleManagerDialog';
 import { clamp, SEEK_STEP_SECONDS, shortcutOf, skipFlashOf, VOLUME_STEP, type PlayerShortcut, type SkipFlashDirection } from './playerShortcuts';
 import { atRangeEnd, mediaTimeOf, outsideRange, rangeLength, timeInRange, type PlaybackRange } from './playbackRange';
 import { PlayerIcon } from './PlayerIcon';
@@ -22,6 +23,8 @@ interface VideoControlsProps {
     range?: PlaybackRange;
     // The switch of the next episode that starts by itself, in the settings of the player; left out, there is none.
     autoNext?: AutoNextSetting;
+    // The window of the subtitles, opened from the settings of the player; left out, the settings have no way into it.
+    subtitleManager?: SubtitleManagerSetting;
 }
 
 interface PlaybackState {
@@ -209,11 +212,12 @@ function useRangeLimits(video: RefObject<HTMLVideoElement | null>, range: Playba
 }
 
 // The control bar of the player. It drives the <video> through its own API, so it looks the same in every theme.
-export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range, autoNext }: VideoControlsProps) {
+export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range, autoNext, subtitleManager }: VideoControlsProps) {
     const t = useTranslator();
     const [state, setState] = useState<PlaybackState>(INITIAL_STATE);
     const subtitleStyle = useSubtitleStyle(video);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [managerOpen, setManagerOpen] = useState(false);
     const [hover, setHover] = useState<SeekHover | null>(null);
     const [skip, setSkip] = useState<SkipFlash | null>(null);
     // The big icon that pops in the middle of the video when it plays or pauses, and the percent that shows while the volume changes.
@@ -544,7 +548,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     }}
                 />
                 </span>
-                {hasPlayerSettings(subtitles, autoNext) && (
+                {hasPlayerSettings(subtitles, autoNext, subtitleManager) && (
                     <PlayerSettings
                         open={settingsOpen}
                         onOpenChange={setSettingsOpen}
@@ -553,12 +557,27 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                         onSelectSubtitle={onSelectSubtitle}
                         subtitleStyle={subtitleStyle}
                         autoNext={autoNext}
+                        onManageSubtitles={
+                            subtitleManager === undefined
+                                ? undefined
+                                : () => {
+                                    setManagerOpen(true);
+                                }
+                        }
                     />
                 )}
                 <button type="button" className="player__button" aria-label={t('anime.player.fullscreen')} onClick={toggleFullscreen}>
                     <PlayerIcon name="fullscreen" />
                 </button>
             </div>
+            {managerOpen && subtitleManager !== undefined && (
+                <SubtitleManagerDialog
+                    manager={subtitleManager}
+                    onClose={() => {
+                        setManagerOpen(false);
+                    }}
+                />
+            )}
         </>
     );
 }

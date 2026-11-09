@@ -9,11 +9,11 @@ import { MangaRemove } from './MangaRemove';
 import { MangaDetail } from './MangaDetail';
 import { MangaGroupsPanel } from './MangaGroupsPanel';
 import { MangaSeriesView } from './MangaSeriesView';
+import { LibraryCard } from '../library/LibraryCard';
 import { LibraryControls } from '../library/LibraryControls';
 import { MangaLibrarySpotlight } from '../library/LibrarySpotlights';
 import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
 import { useLibrarySort } from '../store/sortPrefsStore';
-import { RowLink } from './RowLink';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
@@ -57,41 +57,38 @@ interface MangaCardProps {
 // the badges at the bottom (the seasons of a series, the chapters that are new) with what can be done to it.
 function MangaCard({ testId, title, openLabel, thumbnailUrl, done, total, newChapters, seasons, sourceMissing, sourceLabels, onOpen, actions }: MangaCardProps) {
     const t = useTranslator();
+    const hasBadges = seasons !== undefined || newChapters > 0 || sourceMissing || sourceLabels.length > 0;
     return (
-        <li className="job job--done series cover-card row--link manga__entry" data-testid={testId}>
-            <MangaCover url={thumbnailUrl} />
-            <div className="cover-card__body">
-                <header className="job__head">
-                    <h3 className="series__title">
-                        <RowLink label={openLabel} title={title} onClick={onOpen}>
-                            {title}
-                        </RowLink>
-                    </h3>
-                    <span className="history__meta">{t('manga.library.progress', { done, total })}</span>
-                </header>
-                <div className="cover-card__footer">
-                    {(seasons !== undefined || newChapters > 0 || sourceMissing || sourceLabels.length > 0) && (
-                        <span className="job__badges">
-                            {seasons !== undefined && <span className="badge">{seasons === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: seasons })}</span>}
-                            <NewChaptersBadge count={newChapters} />
-                            {sourceLabels.map((label) => {
-                                return (
-                                    <span key={label} className="badge badge--source" data-testid="manga-source-name" title={t('manga.library.source')}>
-                                        {label}
-                                    </span>
-                                );
-                            })}
-                            {sourceMissing && (
-                                <span className="badge badge--error" data-testid="manga-source-missing" title={t('manga.detail.sourceMissing')}>
-                                    {t('manga.library.sourceMissing')}
+        <LibraryCard
+            className="manga__entry"
+            testId={testId}
+            cover={<MangaCover url={thumbnailUrl} />}
+            title={title}
+            openLabel={openLabel}
+            onOpen={onOpen}
+            meta={<span className="history__meta">{t('manga.library.progress', { done, total })}</span>}
+            badges={
+                hasBadges ? (
+                    <>
+                        {seasons !== undefined && <span className="badge">{seasons === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: seasons })}</span>}
+                        <NewChaptersBadge count={newChapters} />
+                        {sourceLabels.map((label) => {
+                            return (
+                                <span key={label} className="badge badge--source" data-testid="manga-source-name" title={t('manga.library.source')}>
+                                    {label}
                                 </span>
-                            )}
-                        </span>
-                    )}
-                    {actions !== undefined && <div className="job__actions library__footer">{actions}</div>}
-                </div>
-            </div>
-        </li>
+                            );
+                        })}
+                        {sourceMissing && (
+                            <span className="badge badge--error" data-testid="manga-source-missing" title={t('manga.detail.sourceMissing')}>
+                                {t('manga.library.sourceMissing')}
+                            </span>
+                        )}
+                    </>
+                ) : undefined
+            }
+            actions={actions}
+        />
     );
 }
 

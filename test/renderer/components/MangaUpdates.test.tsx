@@ -151,6 +151,35 @@ describe('MangaUpdates', () => {
         expect(screen.queryByTestId('manga-update')).not.toBeInTheDocument();
     });
 
+    it('lists each day as a grid of cards, like the library, with the cover, the title and what was found in the head, and the badges at the bottom', async () => {
+        mock.api.manga.updates.mockResolvedValue([entry({ origin: 'move', status: 'idle' })]);
+        render(<MangaUpdates />);
+        const card = await screen.findByTestId('manga-update');
+        const day = screen.getByTestId('manga-update-day');
+        expect(day.querySelector('ul')).toHaveClass('cover-grid');
+        expect(day.querySelector('ul')).not.toHaveClass('history__list');
+        expect(card.tagName).toBe('LI');
+        expect(card).toHaveClass('job', 'job--done', 'series', 'cover-card', 'row--link');
+        expect(card).not.toHaveClass('history__item');
+        expect(card.firstElementChild).toHaveClass('cover');
+        const head = card.querySelector('.cover-card__body > .job__head') as HTMLElement;
+        expect(head.firstElementChild).toHaveClass('series__title');
+        expect(head.lastElementChild).toHaveClass('history__meta');
+        expect(head.lastElementChild).toHaveTextContent(/^The Great Race · Found at /);
+        const footer = card.querySelector('.cover-card__body > .cover-card__footer') as HTMLElement;
+        expect(footer.children).toHaveLength(1);
+        expect(footer.firstElementChild).toHaveClass('job__badges');
+        expect(
+            Array.from(footer.querySelectorAll('.badge')).map((badge) => {
+                return [badge.textContent, badge.className];
+            })
+        ).toEqual([
+            ['SOURCE MOVE', 'badge'],
+            ['Not downloaded', 'badge badge--idle']
+        ]);
+        expect(card.querySelector('.job__actions')).toBeNull();
+    });
+
     it('is a region named after the tab', () => {
         render(<MangaUpdates />);
         expect(screen.getByRole('region', { name: 'UPDATES' })).toBeInTheDocument();

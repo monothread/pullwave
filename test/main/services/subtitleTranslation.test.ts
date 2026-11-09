@@ -219,11 +219,129 @@ describe('translateEpisodeSubtitle', () => {
         expect(files.written[TRANSLATED_FILE]).toBe('WEBVTT - fansub\n\nSTYLE\n::cue { color: red }\n\n00:00:01.000 --> 00:00:02.000\n[Hi]\n\n00:00:03.000 --> 00:00:04.000\n\n');
     });
 
-    it('replaces the translation into the same language that was there', async () => {
-        const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nold\n' });
-        const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access()}, files }, vi.fn());
-        expect(files.written[TRANSLATED_FILE]).toContain('[Hello]');
-        expect(result).toMatchObject({ ok: true, translated: { id: 'translated-Spanish' } });
+    describe('when the episode has the subtitle in that language already', () => {
+        const OLD = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nold\n';
+
+        it('says it exists, asks the model for nothing, and leaves the file as it was', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: OLD });
+            const ask = bracketing();
+            const onProgress = vi.fn();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access(ask)}, files }, onProgress);
+            expect(result).toEqual({ ok: false, reason: 'exists' });
+            expect(ask).not.toHaveBeenCalled();
+            expect(onProgress).not.toHaveBeenCalled();
+            expect(files.written).toEqual({});
+            expect(files.read(TRANSLATED_FILE)).toBe(OLD);
+        });
+
+        it('says it exists before looking at the settings and at the subtitle to start from, so nothing else is asked of the user', async () => {
+            const llm = vi.fn((): LlmAccess => {
+                return { ok: false, reason: 'no-token' };
+            });
+            const read = vi.fn(() => {
+                return VTT;
+            });
+            const files = memory({ [VIDEO]: 'v', [TRANSLATED_FILE]: OLD }, { read });
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: 'subtitle-English', language: 'Spanish' }, { llm, files }, vi.fn());
+            expect(result).toEqual({ ok: false, reason: 'exists' });
+            expect(llm).not.toHaveBeenCalled();
+            expect(read).not.toHaveBeenCalled();
+        });
+
+        it('says it exists whichever subtitle it was asked to start from', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [ENGLISH_FILE]: VTT, [FRENCH_FILE]: VTT, [TRANSLATED_FILE]: OLD });
+            const ask = bracketing();
+            for (const trackId of [null, 'subtitle-English', 'subtitle-French']) {
+                const result = await translateEpisodeSubtitle(VIDEO, { trackId, language: 'Spanish' }, { llm: () => {return access(ask)}, files }, vi.fn());
+                expect(result).toEqual({ ok: false, reason: 'exists' });
+            }
+            expect(ask).not.toHaveBeenCalled();
+            expect(files.written).toEqual({});
+        });
+
+        it('translates into another language the episode does not have yet, keeping the one it has', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: OLD });
+            const ask = bracketing();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'German' }, { llm: () => {return access(ask)}, files }, vi.fn());
+            expect(result).toMatchObject({ ok: true, translated: { id: 'translated-German' } });
+            expect(ask).toHaveBeenCalledTimes(1);
+            expect(Object.keys(files.written)).toEqual([join(DIR, 'Naruto Episode 1.translated-German.vtt')]);
+            expect(files.read(TRANSLATED_FILE)).toBe(OLD);
+        });
+
+        it('does not take a subtitle of that language that is not a translation (the one of the source) for the translation', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, 'Naruto Episode 1.subtitle-Spanish.vtt')]: SRT });
+            const ask = bracketing();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: 'subtitle-Spanish', language: 'Spanish' }, { llm: () => {return access(ask)}, files }, vi.fn());
+            expect(result).toMatchObject({ ok: true, translated: { id: 'translated-Spanish' } });
+            expect(ask).toHaveBeenCalledTimes(1);
+            expect(files.written[TRANSLATED_FILE]).toContain('[Hello]');
+        });
+
+        it('says it exists when the request says not to replace, as when it says nothing', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: OLD });
+            const ask = bracketing();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish', replace: false }, { llm: () => {return access(ask)}, files }, vi.fn());
+            expect(result).toEqual({ ok: false, reason: 'exists' });
+            expect(ask).not.toHaveBeenCalled();
+            expect(files.written).toEqual({});
+        });
+
+        it('translates again and replaces the translation that was there when the request says to replace', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: OLD });
+            const ask = bracketing();
+            const onProgress = vi.fn();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish', replace: true }, { llm: () => {return access(ask)}, files }, onProgress);
+            expect(result).toEqual({
+                ok: true,
+                tracks: [
+                    { id: '', label: 'Default', kind: 'default' },
+                    { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+                ],
+                translated: { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' }
+            });
+            expect(ask).toHaveBeenCalledTimes(1);
+            expect(ask).toHaveBeenCalledWith(systemPromptFor('Spanish'), '["Hello","Bye\\nnow"]', undefined);
+            expect(onProgress.mock.calls).toEqual([[0, 2], [2, 2]]);
+            expect(files.written).toEqual({
+                [TRANSLATED_FILE]: 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\n[Hello]\n\n00:00:04.000 --> 00:00:06.000 align:start\n[Bye\nnow]\n'
+            });
+            expect(files.read(TRANSLATED_FILE)).not.toBe(OLD);
+        });
+
+        it('keeps the translation that was there when replacing it fails', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: OLD });
+            const ask = vi.fn(async (): Promise<LlmCompletionResult> => {
+                return { ok: false, error: { code: 'INVALID_TOKEN', raw: 'bad key' } };
+            });
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish', replace: true }, { llm: () => {return access(ask)}, files }, vi.fn());
+            expect(result).toEqual({ ok: false, reason: 'failed', error: { code: 'INVALID_TOKEN', raw: 'bad key' } });
+            expect(files.written).toEqual({});
+            expect(files.read(TRANSLATED_FILE)).toBe(OLD);
+        });
+
+        it('still needs the settings to replace: with no token nothing is asked and the translation is kept', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: OLD });
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish', replace: true }, { llm: () => {return { ok: false, reason: 'no-token' }}, files }, vi.fn());
+            expect(result).toEqual({ ok: false, reason: 'no-token' });
+            expect(files.written).toEqual({});
+            expect(files.read(TRANSLATED_FILE)).toBe(OLD);
+        });
+
+        it('translates as usual when the request says to replace and there is nothing to replace', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT });
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish', replace: true }, { llm: () => {return access()}, files }, vi.fn());
+            expect(result).toMatchObject({ ok: true, translated: { id: 'translated-Spanish' } });
+            expect(files.written[TRANSLATED_FILE]).toContain('[Hello]');
+        });
+
+        it('translates it again after the translation is gone', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT });
+            const first = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access()}, files }, vi.fn());
+            expect(first).toMatchObject({ ok: true });
+            const second = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access()}, files }, vi.fn());
+            expect(second).toEqual({ ok: false, reason: 'exists' });
+        });
     });
 
     it('keeps the translations into other languages apart', async () => {

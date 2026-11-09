@@ -819,7 +819,8 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         if (episodeId === null || trackId === undefined || language === null) {
             return Promise.resolve({ ok: false, reason: 'missing' });
         }
-        return translateAndRefresh({ episodeId, trackId, language });
+        // Asked for in the player, one episode: the user wants it translated, so a translation that was there is replaced.
+        return translateAndRefresh({ episodeId, trackId, language, replace: true });
     });
     ipcMain.handle(IPC.animeSubtitleTranslateEstimate, (_event, input): Promise<SubtitleEstimateResponse> => {
         const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
@@ -839,7 +840,8 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             return 0;
         }
         ids.forEach((episodeId) => {
-            void translateAndRefresh({ episodeId, trackId: null, language });
+            // Many at once: the ones that have the subtitle in that language already are skipped.
+            void translateAndRefresh({ episodeId, trackId: null, language, replace: false });
         });
         return ids.length;
     });

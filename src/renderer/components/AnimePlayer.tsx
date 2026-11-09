@@ -216,82 +216,14 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
                             {t('anime.player.next')}
                         </button>
                     )}
-                    <button
-                        type="button"
-                        className="btn btn--small"
-                        onClick={() => {
-                            void loadSubtitle();
-                        }}
-                    >
-                        {t('anime.player.loadSubtitle')}
-                    </button>
-                    {tracksLoaded && (
-                        <button
-                            type="button"
-                            className="btn btn--small"
-                            onClick={() => {
-                                if (tracks.length > 0) {
-                                    setTranslating(true);
-                                } else {
-                                    setGenerating(true);
-                                }
-                            }}
-                        >
-                            {tracks.length > 0 ? t('anime.player.translate') : t('anime.player.generate')}
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        className="btn btn--small"
-                        disabled={checking}
-                        onClick={() => {
-                            void checkSubtitles();
-                        }}
-                    >
-                        {checking ? t('anime.player.checkingSubtitles') : t('anime.player.checkSubtitles')}
-                    </button>
                     <button type="button" className="btn btn--small btn--hot" autoFocus onClick={close}>
                         {t('anime.player.close')}
                     </button>
                 </span>
             </header>
-            {translating && (
-                <SubtitleTranslateDialog
-                    episodeId={episode.id}
-                    tracks={tracks}
-                    onTranslated={(updated, translated) => {
-                        setTracks(updated);
-                        chooseSubtitle(optionIdOf(translated));
-                        setTranslating(false);
-                        setNotice({ kind: 'info', message: t('anime.translate.done', { language: translated.label }) });
-                    }}
-                    onClose={() => {
-                        setTranslating(false);
-                    }}
-                />
-            )}
-            {generating && (
-                <SubtitleGenerateDialog
-                    episodeId={episode.id}
-                    onGenerated={(updated, generated) => {
-                        setTracks(updated);
-                        chooseSubtitle(optionIdOf(generated));
-                        setGenerating(false);
-                        setNotice({ kind: 'info', message: t('anime.generate.done', { language: generated.label }) });
-                    }}
-                    onClose={() => {
-                        setGenerating(false);
-                    }}
-                />
-            )}
             {failed && (
                 <p className="field__warning" role="alert">
                     {t('anime.player.error')}
-                </p>
-            )}
-            {importFailure !== null && (
-                <p className="field__warning" role="alert">
-                    {t(importFailureKey(importFailure))}
                 </p>
             )}
         </>
@@ -367,7 +299,55 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
                 selectedSubtitle={subtitle}
                 onSelectSubtitle={chooseSubtitle}
                 autoNext={{ enabled: autoNext, onToggle: toggleAutoNext }}
+                subtitleManager={{
+                    loaded: tracksLoaded,
+                    hasSubtitles: tracks.length > 0,
+                    checking,
+                    failure: importFailure === null ? null : t(importFailureKey(importFailure)),
+                    onLoad: () => {
+                        void loadSubtitle();
+                    },
+                    onCreate: () => {
+                        if (tracks.length > 0) {
+                            setTranslating(true);
+                        } else {
+                            setGenerating(true);
+                        }
+                    },
+                    onCheck: () => {
+                        void checkSubtitles();
+                    }
+                }}
             />
+            {translating && (
+                <SubtitleTranslateDialog
+                    episodeId={episode.id}
+                    tracks={tracks}
+                    onTranslated={(updated, translated) => {
+                        setTracks(updated);
+                        chooseSubtitle(optionIdOf(translated));
+                        setTranslating(false);
+                        setNotice({ kind: 'info', message: t('anime.translate.done', { language: translated.label }) });
+                    }}
+                    onClose={() => {
+                        setTranslating(false);
+                    }}
+                />
+            )}
+            {generating && (
+                <SubtitleGenerateDialog
+                    episodeId={episode.id}
+                    onGenerated={(updated, generated) => {
+                        setTracks(updated);
+                        chooseSubtitle(optionIdOf(generated));
+                        setGenerating(false);
+                        setNotice({ kind: 'info', message: t('anime.generate.done', { language: generated.label }) });
+                    }}
+                    onClose={() => {
+                        setGenerating(false);
+                    }}
+                />
+            )}
         </>
     );
 

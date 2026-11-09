@@ -25,6 +25,7 @@ const FAILURE_TEXTS: Record<Exclude<SubtitleTranslateFailure, 'failed'>, string>
     'too-large': 'This subtitle file is too large.',
     empty: 'This subtitle has no lines to translate.',
     busy: 'This episode is being translated already.',
+    exists: 'This episode already has the subtitle in this language, so it was not translated again.',
     cancelled: 'The translation was cancelled.'
 };
 

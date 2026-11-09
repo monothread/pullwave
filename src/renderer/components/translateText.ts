@@ -12,6 +12,7 @@ const FAILURE_KEYS: Record<Exclude<SubtitleTranslateFailure, 'failed'>, MessageK
     'too-large': 'anime.translate.error.too-large',
     empty: 'anime.translate.error.empty',
     busy: 'anime.translate.error.busy',
+    exists: 'anime.translate.error.exists',
     cancelled: 'anime.translate.error.cancelled'
 };
 

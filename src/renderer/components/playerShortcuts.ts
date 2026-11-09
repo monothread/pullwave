@@ -14,8 +14,9 @@ const SHORTCUT_BY_KEY: Readonly<Record<string, PlayerShortcut>> = {
 // The seek slider is the one field that leaves its arrows to the player: its own step is a tenth of a second.
 const SEEK_SLIDER_CLASS = 'player__seek';
 
-// The panels over the video whose buttons are pressed with the space bar: the settings and the panel of the next episode.
-const BUTTON_PANELS_SELECTOR = '.player__settings, .player__auto-next';
+// The panels over the video whose buttons are pressed with the space bar: the settings, the window of the subtitles and the panel of the
+// next episode.
+const BUTTON_PANELS_SELECTOR = '.player__settings, .player__manager, .player__auto-next';
 
 // Whether the focused element already does something with the key: a field is typed or moved in, a button of the settings is pressed with
 // the space. Any other button (the player opens with the focus on its close button, a click leaves it on the bar's) gives the space up,

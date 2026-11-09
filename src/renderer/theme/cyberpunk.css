@@ -869,13 +869,11 @@ body::after {
 /* Manga section: in a row (the library, the head of a manga) the cover has a size of its own; as wide as the row it would push the rest out. */
 .manga__head .cover { width: 72px; }
 .manga__head { align-items: flex-start; }
-/* The updates and the history are lists of rows with a small cover, split by day. */
+/* The updates and the history are grids of cards, like the library's (the covers are the size of the grid's), split by day. */
 .manga__updates, .manga__history { display: flex; flex-direction: column; gap: 12px; }
 .manga__updates-day, .manga__history-day { display: flex; flex-direction: column; gap: 8px; }
-.manga__updates .cover, .manga__history .cover { width: 56px; }
 .anime__updates { display: flex; flex-direction: column; gap: 12px; }
 .anime__updates-day { display: flex; flex-direction: column; gap: 8px; }
-.anime__updates .cover { width: 56px; }
 /* The title of the anime or manga a look for new ones is asking about, beside its button: one line, cut with an ellipsis. */
 .anime__updates .queue__toolbar { gap: 10px; }
 .check-current { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }

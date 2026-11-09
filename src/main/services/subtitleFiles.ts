@@ -190,6 +190,12 @@ export function translatedSubtitlePath(videoPath: string, language: string): str
     return join(dirname(videoPath), `${baseNameOf(videoPath)}.${TRANSLATED_SUBTITLE_PREFIX}${importedLabel(language)}.vtt`);
 }
 
+// Whether the episode has the translation into a language already: the file the translation would be saved in is there.
+export function hasTranslatedSubtitle(videoPath: string, language: string, files: SubtitleFileSystem = defaultSubtitleFileSystem): boolean {
+    const target = translatedSubtitlePath(videoPath, language);
+    return files.list(dirname(target)).includes(basename(target));
+}
+
 // The text as WebVTT, or null when it is neither WebVTT nor SubRip (the player only understands the first; the second is the
 // usual format of subtitles found online and only differs in a few details).
 export function toWebVtt(text: string): string | null {

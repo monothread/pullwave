@@ -64,6 +64,39 @@ describe('SubtitleTranslationQueue', () => {
         ]);
     });
 
+    it('ends the job as skipped, with the reason, when the episode has the subtitle in that language already', async () => {
+        const { queue, pending, updates } = setup();
+        const answer = queue.enqueue(SPANISH(4));
+        pending[0]?.finish({ ok: false, reason: 'exists' });
+        expect(await answer).toEqual({ ok: false, reason: 'exists' });
+        expect(queue.list()).toEqual([]);
+        expect(updates).toEqual([
+            { episodeId: 4, language: 'Spanish', status: 'queued', done: 0, total: 0, reason: null },
+            { episodeId: 4, language: 'Spanish', status: 'running', done: 0, total: 0, reason: null },
+            { episodeId: 4, language: 'Spanish', status: 'skipped', done: 0, total: 0, reason: 'exists' }
+        ]);
+    });
+
+    it('goes on with the next episode after one is skipped', async () => {
+        const { queue, pending, run, updates } = setup();
+        const first = queue.enqueue(SPANISH(1));
+        const second = queue.enqueue(SPANISH(2));
+        pending[0]?.finish({ ok: false, reason: 'exists' });
+        await first;
+        expect(run).toHaveBeenCalledTimes(2);
+        expect(run.mock.calls[1]?.[0]).toEqual(SPANISH(2));
+        pending[1]?.finish(DONE);
+        await second;
+        expect(
+            updates.filter((job) => {
+                return job.status === 'skipped' || job.status === 'done';
+            })
+        ).toEqual([
+            { episodeId: 1, language: 'Spanish', status: 'skipped', done: 0, total: 0, reason: 'exists' },
+            { episodeId: 2, language: 'Spanish', status: 'done', done: 0, total: 0, reason: null }
+        ]);
+    });
+
     it('does one episode at a time by default, and starts the next when one ends', async () => {
         const { queue, pending, run } = setup();
         const first = queue.enqueue(SPANISH(1));

@@ -2153,7 +2153,7 @@ describe('AnimeLibrary translating the subtitles of a season', () => {
         const user = await openSeason([DOWNLOADED]);
         await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
         await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
-        expect(screen.getByText('Translate the subtitles of 2 episodes into French with your account? Each episode is a request to the provider, and the cost is yours.')).toBeInTheDocument();
+        expect(screen.getByText('Translate the subtitles of up to 2 episodes into French with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeInTheDocument();
         expect(mock.api.translateAnimeSubtitles).not.toHaveBeenCalled();
         await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
         expect(mock.api.translateAnimeSubtitles).toHaveBeenCalledTimes(1);
@@ -2471,7 +2471,7 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
             return makeAnime([makeEpisode({ id: 4, animeId: 4, addedAt: Date.now() - 30 * DAY })], { id: 4, title: 'Alpha Old', createdAt: 2, airing });
         };
 
-        it('has the chips next to ALL and NEW, with how many titles each keeps and what it stands for', () => {
+        it('has the chips ONGOING and COMPLETE, in this order, next to ALL and NEW, with how many titles each keeps and what it stands for', () => {
             useAnimeStore.setState({ library: [solo(FINISHED), ...saga(FINISHED, RELEASING), old(UNKNOWN)] });
             render(<AnimeLibrary />);
 
@@ -2482,7 +2482,7 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
                     .map((chip) => {
                         return chip.textContent;
                     })
-            ).toEqual(['ALL (3)', 'NEW (1)', 'COMPLETE (1)', 'ONGOING (2)']);
+            ).toEqual(['ALL (3)', 'NEW (1)', 'ONGOING (2)', 'COMPLETE (1)']);
             expect(within(chips).getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('title', 'With every season over: AniList says it ended, or you set it as complete');
             expect(within(chips).getByRole('button', { name: 'ONGOING (2)' })).toHaveAttribute('title', 'Still coming out, or AniList does not know yet');
             expect(within(chips).getByRole('button', { name: 'COMPLETE (1)' })).toHaveAttribute('aria-pressed', 'false');

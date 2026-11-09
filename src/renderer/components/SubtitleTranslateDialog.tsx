@@ -89,6 +89,10 @@ export function SubtitleTranslateDialog({ episodeId, tracks, onTranslated, onClo
     }));
     const estimate = counted !== null && counted.trackId === trackId ? counted.response : null;
     const ready = estimate?.ok === true;
+    // Translating again replaces the translation the episode has into that language.
+    const willReplace = tracks.some((track) => {
+        return track.kind === 'translated' && track.label === target;
+    });
 
     return (
         <div className="modal-backdrop">
@@ -115,6 +119,11 @@ export function SubtitleTranslateDialog({ episodeId, tracks, onTranslated, onClo
                     {estimate?.ok === true && t('anime.translate.estimate', { cues: estimate.cues, batches: estimate.batches, tokens: estimate.approxTokens })}
                     {estimate?.ok === false && estimateFailureText(estimate.reason, t)}
                 </p>
+                {willReplace && (
+                    <p className="field__hint" data-testid="translate-replace-note">
+                        {t('anime.translate.replaceNote')}
+                    </p>
+                )}
                 {running && (
                     <p className="field__hint" aria-live="polite" data-testid="translate-progress">
                         {job === null || job.status === 'queued' ? t('anime.translate.queued') : t('anime.translate.progress', { done: job.done, total: job.total })}

@@ -10,7 +10,7 @@ interface LibraryControlsProps {
     // How many titles each filter shows.
     allCount: number;
     newsCount: number;
-    // The chips COMPLETE and ONGOING are the anime's (what the releases are): they show when both are counted.
+    // The chips ONGOING and COMPLETE are the anime's (what the releases are): they show when both are counted.
     completeCount?: number;
     ongoingCount?: number;
     onFilter: (filter: LibraryFilter) => void;
@@ -49,7 +49,7 @@ function FilterChip({ filter, current, count, label, hint, onFilter }: FilterChi
     );
 }
 
-// Over the grid of a library: the chips ALL and NEW (with what arrived in the last seven days), for the anime COMPLETE and ONGOING (whether
+// Over the grid of a library: the chips ALL and NEW (with what arrived in the last seven days), for the anime ONGOING and COMPLETE (whether
 // the releases are over), and the order of the cards.
 export function LibraryControls({ kind, filter, sort, allCount, newsCount, completeCount, ongoingCount, onFilter, onSort }: LibraryControlsProps) {
     const t = useTranslator();
@@ -60,8 +60,8 @@ export function LibraryControls({ kind, filter, sort, allCount, newsCount, compl
                 <FilterChip filter="news" current={filter} count={newsCount} label="library.filter.news" hint="library.filter.newsHint" onFilter={onFilter} />
                 {completeCount !== undefined && ongoingCount !== undefined && (
                     <>
-                        <FilterChip filter="complete" current={filter} count={completeCount} label="library.filter.complete" hint="library.filter.completeHint" onFilter={onFilter} />
                         <FilterChip filter="ongoing" current={filter} count={ongoingCount} label="library.filter.ongoing" hint="library.filter.ongoingHint" onFilter={onFilter} />
+                        <FilterChip filter="complete" current={filter} count={completeCount} label="library.filter.complete" hint="library.filter.completeHint" onFilter={onFilter} />
                     </>
                 )}
             </div>

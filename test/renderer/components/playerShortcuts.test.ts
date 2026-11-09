@@ -61,6 +61,17 @@ describe('shortcutOf', () => {
         expect(shortcutOf(press(' ', {}, document.createElement('button')))).toBe('toggle-play');
     });
 
+    it('leaves the space to a button of the window of the subtitles, which it presses, and not the other keys', () => {
+        const window = document.createElement('div');
+        window.className = 'modal player__manager';
+        const button = document.createElement('button');
+        window.appendChild(button);
+        expect(shortcutOf(press(' ', {}, button))).toBeNull();
+        expect(shortcutOf(press('ArrowRight', {}, button))).toBe('seek-forward');
+        expect(shortcutOf(press('ArrowDown', {}, button))).toBe('volume-down');
+        expect(shortcutOf(press(' ', {}, document.createElement('button')))).toBe('toggle-play');
+    });
+
     it('leaves the space to a button of the settings, but not to another button', () => {
         const settings = document.createElement('div');
         settings.className = 'player__settings';

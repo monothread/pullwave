@@ -143,6 +143,37 @@ describe('MangaHistory', () => {
         expect(screen.queryByTestId('manga-history-entry')).not.toBeInTheDocument();
     });
 
+    it('lists each day as a grid of cards, like the library, with the chapter and page in the head, the library badge at the bottom and the button that removes under it', async () => {
+        mock.api.manga.readingHistory.mockResolvedValue([line({ libraryMangaId: 9 })]);
+        render(<MangaHistory />);
+        const card = await screen.findByTestId('manga-history-entry');
+        const day = screen.getByTestId('manga-history-day');
+        expect(day.querySelector('ul')).toHaveClass('cover-grid');
+        expect(day.querySelector('ul')).not.toHaveClass('history__list');
+        expect(card.tagName).toBe('LI');
+        expect(card).toHaveClass('job', 'job--done', 'series', 'cover-card', 'row--link');
+        expect(card).not.toHaveClass('history__item');
+        expect(card.firstElementChild).toHaveClass('cover');
+        const head = card.querySelector('.cover-card__body > .job__head') as HTMLElement;
+        expect(head.firstElementChild).toHaveClass('series__title');
+        expect(head.lastElementChild).toHaveClass('history__meta');
+        expect(head.lastElementChild).toHaveTextContent('Romance Dawn · page 4 of 20');
+        const footer = card.querySelector('.cover-card__body > .cover-card__footer') as HTMLElement;
+        expect(footer.children).toHaveLength(2);
+        expect(footer.firstElementChild).toHaveClass('job__badges');
+        expect(footer.firstElementChild).toHaveTextContent('IN THE LIBRARY');
+        expect(footer.lastElementChild).toHaveClass('job__actions', 'library__footer');
+        expect(within(footer.lastElementChild as HTMLElement).getByRole('button', { name: 'Remove from the history: One Piece' })).toBeInTheDocument();
+    });
+
+    it('has no row of badges in the card of a manga that is not in the library', async () => {
+        mock.api.manga.readingHistory.mockResolvedValue([line({ libraryMangaId: null })]);
+        render(<MangaHistory />);
+        const card = await screen.findByTestId('manga-history-entry');
+        expect(card.querySelector('.job__badges')).toBeNull();
+        expect(card.querySelector('.job__actions')).not.toBeNull();
+    });
+
     it('is a region named after the tab', () => {
         render(<MangaHistory />);
         expect(screen.getByRole('region', { name: 'HISTORY' })).toBeInTheDocument();

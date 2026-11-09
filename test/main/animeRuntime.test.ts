@@ -283,6 +283,65 @@ describe('createAnimeRuntime', () => {
                 ]);
             });
 
+            describe('when the episode has the subtitle in that language already', () => {
+                const OLD = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola de antes\n';
+
+                function withTranslation() {
+                    const llmFetch = vi.fn(async () => {
+                        return openAiAnswer();
+                    });
+                    const getLlmToken = vi.fn(() => {
+                        return 'sk-1';
+                    });
+                    const { folder, video, given } = downloaded({ 'Naruto Episode 1.vtt': SOURCE, 'Naruto Episode 1.translated-Spanish.vtt': OLD });
+                    const runtime = open({ ...given, getSettings: () => { return { ...DEFAULT_SETTINGS, translateModel: 'model-1' }; }, getLlmToken, llmFetch });
+                    return { runtime, episode: addEpisode(runtime, video), folder, llmFetch, getLlmToken, send: given.send as ReturnType<typeof vi.fn> };
+                }
+
+                it('skips it: it asks the provider for nothing, and the file it has is not touched', async () => {
+                    const { runtime, episode, folder, llmFetch, getLlmToken } = withTranslation();
+                    expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'exists' });
+                    expect(llmFetch).not.toHaveBeenCalled();
+                    expect(getLlmToken).not.toHaveBeenCalled();
+                    expect(readFileSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'), 'utf-8')).toBe(OLD);
+                });
+
+                it('tells the screen the episode was skipped, with the reason', async () => {
+                    const { runtime, episode, send } = withTranslation();
+                    await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                    const job = { episodeId: episode.id, language: 'Spanish', done: 0, total: 0 };
+                    expect(send.mock.calls.filter((call) => {
+                        return call[0] === IPC.eventSubtitleTranslation;
+                    })).toEqual([
+                        [IPC.eventSubtitleTranslation, { ...job, status: 'queued', reason: null }],
+                        [IPC.eventSubtitleTranslation, { ...job, status: 'running', reason: null }],
+                        [IPC.eventSubtitleTranslation, { ...job, status: 'skipped', reason: 'exists' }]
+                    ]);
+                });
+
+                it('replaces it when the request says to: the provider is asked and the file is written again', async () => {
+                    const { runtime, episode, folder, llmFetch, send } = withTranslation();
+                    expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish', replace: true })).toMatchObject({ ok: true, translated: { id: 'translated-Spanish' } });
+                    expect(llmFetch).toHaveBeenCalledTimes(1);
+                    expect(readFileSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'), 'utf-8')).toBe('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola\n');
+                    const statuses = send.mock.calls.filter((call) => {
+                        return call[0] === IPC.eventSubtitleTranslation;
+                    }).map((call) => {
+                        return (call[1] as { status: string }).status;
+                    });
+                    expect(statuses[statuses.length - 1]).toBe('done');
+                    expect(statuses).not.toContain('skipped');
+                });
+
+                it('still translates it into a language the episode does not have', async () => {
+                    const { runtime, episode, folder, llmFetch } = withTranslation();
+                    expect(await runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'German' })).toMatchObject({ ok: true, translated: { id: 'translated-German' } });
+                    expect(llmFetch).toHaveBeenCalledTimes(1);
+                    expect(readFileSync(join(folder, 'Naruto Episode 1.translated-Spanish.vtt'), 'utf-8')).toBe(OLD);
+                    expect(existsSync(join(folder, 'Naruto Episode 1.translated-German.vtt'))).toBe(true);
+                });
+            });
+
             it('uses the address of the settings instead of the one of the provider', async () => {
                 const llmFetch = vi.fn(async () => {
                     return openAiAnswer();

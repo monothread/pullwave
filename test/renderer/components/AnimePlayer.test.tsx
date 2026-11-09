@@ -10,7 +10,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { AUTO_NEXT_STORAGE_KEY, useUiPrefsStore } from '@renderer/store/uiPrefsStore';
 import { AUTO_NEXT_DELAY_MS } from '@renderer/components/AutoNextPanel';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
-import { openedSubtitleMenu, subtitleMenu, subtitleOption } from '../../helpers/playerSettings';
+import { openedPlayerSettings, openedSubtitleMenu, openPlayerSettings, subtitleMenu, subtitleOption } from '../../helpers/playerSettings';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -46,6 +46,26 @@ function getVideo(): HTMLVideoElement {
         throw new Error('No video');
     }
     return video;
+}
+
+interface ManagerNames {
+    gear: string;
+    manage: string;
+    dialog: string;
+}
+
+const ENGLISH_MANAGER: ManagerNames = { gear: 'Settings', manage: 'MANAGE SUBTITLES', dialog: 'Manage subtitles' };
+
+// Opens the window of the subtitles from the gear of the player (the list of the subtitles of the episode is waited for first). The buttons
+// that load, translate, create and check subtitles are in it; the menu of the subtitles and their size are in the gear.
+async function openManager(names: ManagerNames = ENGLISH_MANAGER): Promise<HTMLElement> {
+    await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+    });
+    await openPlayerSettings({ gear: names.gear, menu: 'Subtitles' });
+    fireEvent.click(await screen.findByRole('button', { name: names.manage }));
+    return screen.findByRole('dialog', { name: names.dialog });
 }
 
 function setPlayback(video: HTMLVideoElement, currentTime: number, duration: number): void {
@@ -658,7 +678,7 @@ describe('AnimePlayer', () => {
             mock.api.importAnimeSubtitle.mockResolvedValue({ ok: true, tracks: [ENGLISH, IMPORTED], imported: IMPORTED });
             const user = userEvent.setup();
             render(<AnimePlayer />);
-            await subtitleMenu();
+            await openManager();
 
             await user.click(screen.getByRole('button', { name: 'LOAD SUBTITLE' }));
 
@@ -676,6 +696,7 @@ describe('AnimePlayer', () => {
             mock.api.importAnimeSubtitle.mockResolvedValue({ ok: true, tracks: [IMPORTED], imported: IMPORTED });
             const user = userEvent.setup();
             render(<AnimePlayer />);
+            await openManager();
             await user.click(screen.getByRole('button', { name: 'LOAD SUBTITLE' }));
             expect(await subtitleMenu()).toHaveValue('import-aula');
         });
@@ -684,7 +705,7 @@ describe('AnimePlayer', () => {
             mock.api.importAnimeSubtitle.mockResolvedValue({ ok: false, reason: 'cancelled' });
             const user = userEvent.setup();
             render(<AnimePlayer />);
-            await subtitleMenu();
+            await openManager();
             await user.click(screen.getByRole('button', { name: 'LOAD SUBTITLE' }));
             expect(screen.queryByRole('alert')).not.toBeInTheDocument();
             expect(openedSubtitleMenu()).toHaveValue('default');
@@ -700,7 +721,7 @@ describe('AnimePlayer', () => {
             mock.api.importAnimeSubtitle.mockResolvedValue({ ok: false, reason });
             const user = userEvent.setup();
             render(<AnimePlayer />);
-            await subtitleMenu();
+            await openManager();
             await user.click(screen.getByRole('button', { name: 'LOAD SUBTITLE' }));
             expect(screen.getByRole('alert')).toHaveTextContent(message);
         });
@@ -710,7 +731,7 @@ describe('AnimePlayer', () => {
             mock.api.importAnimeSubtitle.mockResolvedValueOnce({ ok: true, tracks: [ENGLISH, IMPORTED], imported: IMPORTED });
             const user = userEvent.setup();
             render(<AnimePlayer />);
-            await subtitleMenu();
+            await openManager();
             await user.click(screen.getByRole('button', { name: 'LOAD SUBTITLE' }));
             expect(screen.getByRole('alert')).toBeInTheDocument();
             await user.click(screen.getByRole('button', { name: 'LOAD SUBTITLE' }));
@@ -725,12 +746,13 @@ describe('AnimePlayer', () => {
         async function ready() {
             const user = userEvent.setup();
             render(<AnimePlayer />);
-            await subtitleMenu();
+            await openManager();
             return user;
         }
 
-        it('has a button next to LOAD SUBTITLE', async () => {
+        it('has a button next to LOAD SUBTITLE, in the window of the subtitles', async () => {
             await ready();
+            expect(screen.getByRole('dialog', { name: 'Manage subtitles' })).toContainElement(screen.getByRole('button', { name: 'CHECK SUBTITLES' }));
             expect(screen.getByRole('button', { name: 'CHECK SUBTITLES' })).toBeEnabled();
             expect(screen.getByRole('button', { name: 'LOAD SUBTITLE' })).toBeInTheDocument();
             expect(mock.api.checkAnimeSubtitles).not.toHaveBeenCalled();
@@ -858,7 +880,7 @@ describe('AnimePlayer', () => {
                 mock.api.checkAnimeSubtitles.mockResolvedValue({ ok: true, added: ['Portuguese (- Portuguese(Brazil))', 'Spanish (- Spanish(Latin America))'], tracks: [ENGLISH, BRAZIL, LATIN] });
                 const user = userEvent.setup();
                 render(<AnimePlayer />);
-                await subtitleMenu({ gear: 'Configurações', menu: 'Legendas' });
+                await openManager({ gear: 'Configurações', manage: 'GERENCIAR LEGENDAS', dialog: 'Gerenciar legendas' });
                 await user.click(screen.getByRole('button', { name: 'VERIFICAR LEGENDAS' }));
 
                 await vi.waitFor(() => {
@@ -886,7 +908,7 @@ describe('AnimePlayer', () => {
                         <Toast />
                     </>
                 );
-                await subtitleMenu();
+                await openManager();
                 vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
                 await act(async () => {
                     fireEvent.click(screen.getByRole('button', { name: 'CHECK SUBTITLES' }));
@@ -925,6 +947,202 @@ describe('AnimePlayer', () => {
     });
 });
 
+describe('AnimePlayer and the window of the subtitles', () => {
+    const SPANISH: AnimeSubtitleTrack = { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' };
+    const SUBTITLE_BUTTONS = ['LOAD SUBTITLE', 'CHECK SUBTITLES', 'TRANSLATE SUBTITLE', 'CREATE SUBTITLE'];
+
+    beforeEach(() => {
+        mock.api.listAnimeSubtitles.mockResolvedValue([ENGLISH, JAPANESE]);
+        mock.api.estimateAnimeSubtitleTranslation.mockResolvedValue({ ok: true, cues: 12, batches: 1, approxTokens: 350 });
+    });
+
+    it('has no subtitle button in the header, only the ones of the episodes and the one that closes', async () => {
+        render(<AnimePlayer />);
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        SUBTITLE_BUTTONS.forEach((name) => {
+            expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+        });
+        const header = screen.getByRole('heading', { name: 'Naruto · EP 1' }).closest('header') as HTMLElement;
+        expect(within(header).getAllByRole('button').map((button) => {
+            return button.textContent;
+        })).toEqual(['NEXT EPISODE', 'CLOSE']);
+    });
+
+    it('has the way into the window in the gear of the player, also for an episode with no subtitles', async () => {
+        mock.api.listAnimeSubtitles.mockResolvedValue([]);
+        render(<AnimePlayer />);
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+        const panel = openedPlayerSettings();
+        expect(within(panel).getByRole('button', { name: 'MANAGE SUBTITLES' })).toBeInTheDocument();
+        expect(within(panel).queryByRole('combobox', { name: 'Subtitles' })).not.toBeInTheDocument();
+    });
+
+    it('opens from the gear, which closes its panel, and is not there before', async () => {
+        render(<AnimePlayer />);
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+        await openManager();
+        expect(screen.getByRole('dialog', { name: 'Manage subtitles' })).toBeInTheDocument();
+        expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('is in the part of the player that goes to fullscreen, with the video and the bar, so it shows there too', async () => {
+        render(<AnimePlayer />);
+        const manager = await openManager();
+        const stage = getVideo().parentElement as HTMLElement;
+        expect(stage).toContainElement(manager);
+        expect(stage).toContainElement(screen.getByRole('button', { name: 'Fullscreen' }));
+    });
+
+    it('has only the buttons that get more subtitles: the menu of the subtitles and their size stay in the gear', async () => {
+        render(<AnimePlayer />);
+        const manager = await openManager();
+        expect(within(manager).queryByRole('combobox')).not.toBeInTheDocument();
+        expect(within(manager).queryByRole('group', { name: 'Subtitle size' })).not.toBeInTheDocument();
+        expect(within(manager).getAllByRole('button').map((button) => {
+            return button.textContent;
+        })).toEqual(['LOAD SUBTITLE', 'TRANSLATE SUBTITLE', 'CHECK SUBTITLES', 'CLOSE']);
+
+        fireEvent.click(within(manager).getByRole('button', { name: 'CLOSE' }));
+        const panel = openedPlayerSettings();
+        expect(within(panel).getByRole('combobox', { name: 'Subtitles' })).toHaveValue('default');
+        expect(within(panel).getByRole('group', { name: 'Subtitle size' })).toHaveTextContent('100%');
+    });
+
+    it('shows the subtitle chosen in the gear, turns them off, and remembers the choice for the episode', async () => {
+        const user = userEvent.setup();
+        render(<AnimePlayer />);
+        await subtitleMenu();
+        await user.selectOptions(openedSubtitleMenu(), 'subtitle-Japanese');
+        expect(trackElements().map((track) => {
+            return track.hasAttribute('default');
+        })).toEqual([false, true]);
+        expect(window.localStorage.getItem('pullwave-subtitle-1')).toBe('subtitle-Japanese');
+        await user.selectOptions(openedSubtitleMenu(), 'off');
+        expect(window.localStorage.getItem('pullwave-subtitle-1')).toBe('off');
+    });
+
+    it('changes the size of the subtitles of the video from the gear, and remembers it', async () => {
+        const user = userEvent.setup();
+        render(<AnimePlayer />);
+        await subtitleMenu();
+        const panel = openedPlayerSettings();
+        expect(getVideo().style.getPropertyValue('--subtitle-scale')).toBe('1');
+        await user.click(within(panel).getByRole('button', { name: 'Larger subtitles' }));
+        expect(getVideo().style.getPropertyValue('--subtitle-scale')).toBe('1.25');
+        expect(window.localStorage.getItem('pullwave-subtitle-scale')).toBe('1.25');
+        await user.click(within(panel).getByRole('button', { name: 'Smaller subtitles' }));
+        await user.click(within(panel).getByRole('button', { name: 'Smaller subtitles' }));
+        expect(getVideo().style.getPropertyValue('--subtitle-scale')).toBe('0.75');
+        expect(within(panel).getByRole('group', { name: 'Subtitle size' })).toHaveTextContent('75%');
+    });
+
+    it('closes with its button and with Esc, and the player goes on', async () => {
+        const user = userEvent.setup();
+        render(<AnimePlayer />);
+        const manager = await openManager();
+        await user.click(within(manager).getByRole('button', { name: 'CLOSE' }));
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+        expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+
+        const again = await openManager();
+        fireEvent.keyDown(again, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+        expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+        expect(mock.api.saveAnimeProgress).not.toHaveBeenCalled();
+    });
+
+    it('does not seek the video with the arrows pressed in the window', async () => {
+        render(<AnimePlayer />);
+        const manager = await openManager();
+        const video = getVideo();
+        setPlayback(video, 100, 1440);
+        fireEvent.keyDown(within(manager).getByRole('button', { name: 'LOAD SUBTITLE' }), { key: 'ArrowRight' });
+        expect(video.currentTime).toBe(100);
+    });
+
+    it('keeps the window open under the dialog of the translation, which is in the same part of the player and above it', async () => {
+        const user = userEvent.setup();
+        render(<AnimePlayer />);
+        await openManager();
+        await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLE' }));
+        const translate = await screen.findByRole('dialog', { name: 'Translate a subtitle' });
+        const manager = screen.getByRole('dialog', { name: 'Manage subtitles' });
+        const stage = getVideo().parentElement as HTMLElement;
+        expect(stage).toContainElement(translate);
+        expect(stage).toContainElement(manager);
+        expect(manager.compareDocumentPosition(translate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('goes back to the window when the dialog of the translation closes, with the new subtitle chosen in the gear', async () => {
+        const user = userEvent.setup();
+        mock.api.translateAnimeSubtitle.mockResolvedValue({ ok: true, tracks: [ENGLISH, JAPANESE, SPANISH], translated: SPANISH });
+        render(<AnimePlayer />);
+        await openManager();
+        await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLE' }));
+        await screen.findByText('12 lines, 1 requests, about 350 tokens of your account.');
+        await user.click(screen.getByRole('button', { name: 'TRANSLATE' }));
+        await vi.waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Translate a subtitle' })).not.toBeInTheDocument();
+        });
+        expect(screen.getByRole('dialog', { name: 'Manage subtitles' })).toBeInTheDocument();
+        expect(openedSubtitleMenu()).toHaveValue('translated-Spanish');
+        expect(await subtitleOption('Spanish')).toBeInTheDocument();
+        expect(window.localStorage.getItem('pullwave-subtitle-1')).toBe('translated-Spanish');
+    });
+
+    it('closes only the dialog of the translation with Esc, and the window stays', async () => {
+        const user = userEvent.setup();
+        render(<AnimePlayer />);
+        await openManager();
+        await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLE' }));
+        fireEvent.keyDown(await screen.findByRole('dialog', { name: 'Translate a subtitle' }), { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: 'Translate a subtitle' })).not.toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Manage subtitles' })).toBeInTheDocument();
+        expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+    });
+
+    it('opens the dialog to create the subtitle in the same part of the player, over the window', async () => {
+        const user = userEvent.setup();
+        mock.api.listAnimeSubtitles.mockResolvedValue([]);
+        mock.api.estimateAnimeSubtitleGeneration.mockResolvedValue({ ok: true, seconds: 1500, parts: 3, approxBytes: 6_000_000 });
+        render(<AnimePlayer />);
+        await openManager();
+        await user.click(screen.getByRole('button', { name: 'CREATE SUBTITLE' }));
+        const create = await screen.findByRole('dialog', { name: 'Create a subtitle' });
+        const manager = screen.getByRole('dialog', { name: 'Manage subtitles' });
+        expect(getVideo().parentElement).toContainElement(create);
+        expect(manager.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('says why a file could not be loaded inside the window, and not in the header', async () => {
+        const user = userEvent.setup();
+        mock.api.importAnimeSubtitle.mockResolvedValue({ ok: false, reason: 'unreadable' });
+        render(<AnimePlayer />);
+        const manager = await openManager();
+        await user.click(within(manager).getByRole('button', { name: 'LOAD SUBTITLE' }));
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveTextContent('The subtitle file could not be read.');
+        expect(manager).toContainElement(alert);
+        const header = screen.getByRole('heading', { name: 'Naruto · EP 1' }).closest('header') as HTMLElement;
+        expect(header).not.toContainElement(alert);
+    });
+
+    it('goes on saying a video that does not play in the header, with the window closed', () => {
+        render(<AnimePlayer />);
+        fireEvent.error(getVideo());
+        const header = screen.getByRole('heading', { name: 'Naruto · EP 1' }).closest('header')?.parentElement as HTMLElement;
+        expect(within(header).getByRole('alert')).toHaveTextContent('This video could not be played. Its format may not be supported by the app.');
+        expect(screen.queryByRole('dialog', { name: 'Manage subtitles' })).not.toBeInTheDocument();
+    });
+});
+
 describe('AnimePlayer translating subtitles', () => {
     const SPANISH: AnimeSubtitleTrack = { id: 'translated-Spanish', label: 'Spanish', kind: 'translated' };
 
@@ -935,17 +1153,17 @@ describe('AnimePlayer translating subtitles', () => {
     async function opened() {
         const user = userEvent.setup();
         render(<AnimePlayer />);
-        await subtitleMenu();
+        await openManager();
         await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLE' }));
         await screen.findByText('12 lines, 1 requests, about 350 tokens of your account.');
         return user;
     }
 
-    it('has a button next to LOAD SUBTITLE and CHECK SUBTITLES, and no dialog until it is pressed', async () => {
+    it('has a button between LOAD SUBTITLE and CHECK SUBTITLES in the window of the subtitles, and no dialog until it is pressed', async () => {
         render(<AnimePlayer />);
-        await subtitleMenu();
-        await screen.findByRole('button', { name: 'TRANSLATE SUBTITLE' });
-        const labels = screen.getAllByRole('button').map((button) => {
+        const manager = await openManager();
+        await within(manager).findByRole('button', { name: 'TRANSLATE SUBTITLE' });
+        const labels = within(manager).getAllByRole('button').map((button) => {
             return button.textContent;
         });
         expect(labels.indexOf('LOAD SUBTITLE')).toBeLessThan(labels.indexOf('TRANSLATE SUBTITLE'));
@@ -1035,6 +1253,7 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
     async function withoutSubtitles() {
         const user = userEvent.setup();
         render(<AnimePlayer />);
+        await openManager();
         const button = await screen.findByRole('button', { name: 'CREATE SUBTITLE' });
         return { user, button };
     }
@@ -1051,7 +1270,8 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
             return undefined;
         }));
         render(<AnimePlayer />);
-        await screen.findByRole('button', { name: 'LOAD SUBTITLE' });
+        await openManager();
+        expect(screen.getByRole('button', { name: 'LOAD SUBTITLE' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'CREATE SUBTITLE' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLE' })).not.toBeInTheDocument();
     });
@@ -1059,6 +1279,7 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
     it('offers TRANSLATE SUBTITLE, not CREATE SUBTITLE, when the episode has a subtitle', async () => {
         mock.api.listAnimeSubtitles.mockResolvedValue([ENGLISH]);
         render(<AnimePlayer />);
+        await openManager();
         expect(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLE' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'CREATE SUBTITLE' })).not.toBeInTheDocument();
     });

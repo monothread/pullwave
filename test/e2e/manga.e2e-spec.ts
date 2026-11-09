@@ -2997,6 +2997,11 @@ test.describe('manga section', () => {
         await expect(session.page.getByTestId('manga-update').first()).toContainText('One Piece');
         await expect(session.page.getByTestId('manga-update').first().getByText('MANUAL')).toBeVisible();
         await expect(session.page.getByTestId('manga-update').first().getByText('Not downloaded')).toBeVisible();
+        // Each chapter is a card of a grid, like the ones of the library: the cover, the title and what was found, and the badges at the bottom.
+        await expect(session.page.getByTestId('manga-update-day').first().locator('ul.cover-grid')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-update').first()).toHaveClass(/\bcover-card\b/);
+        await expect(session.page.getByTestId('manga-update').first().locator('.cover-card__body > .job__head .history__meta')).toHaveText(/^#?\S.* · Found at /);
+        await expect(session.page.getByTestId('manga-update').first().locator('.cover-card__footer .job__badges .badge')).toHaveText(['MANUAL', 'Not downloaded']);
         await expect(session.page.locator('.toast').filter({ hasText: '2 new chapter(s) added to the library: One Piece' }).first()).toBeVisible();
         // Nothing new the second time.
         await session.page.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' }).click();
@@ -3060,6 +3065,12 @@ test.describe('manga section', () => {
         await expect(entry).toContainText('One Piece');
         await expect(entry).toContainText('Romance Dawn · page 2 of 3');
         await expect(entry.getByText('IN THE LIBRARY')).toBeVisible();
+        // The entry is a card of a grid, like the ones of the library: the badge at the bottom and the button that removes under it.
+        await expect(session.page.getByTestId('manga-history-day').locator('ul.cover-grid')).toHaveCount(1);
+        await expect(entry).toHaveClass(/\bcover-card\b/);
+        await expect(entry.locator('.cover-card__body > .job__head .history__meta')).toHaveText('Romance Dawn · page 2 of 3');
+        await expect(entry.locator('.cover-card__footer .job__badges')).toHaveText('IN THE LIBRARY');
+        await expect(entry.locator('.cover-card__footer .job__actions').getByRole('button', { name: 'Remove from the history: One Piece' })).toBeVisible();
         await entry.getByRole('button', { name: 'Open: One Piece' }).click();
         await expect(session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true })).toBeVisible();
         await expect(session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');

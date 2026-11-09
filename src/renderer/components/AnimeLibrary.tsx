@@ -15,6 +15,7 @@ import { RowLink } from './RowLink';
 import { SeasonTranslation } from './SeasonTranslation';
 import { SeriesMenu } from './SeriesMenu';
 import { ErrorNotice } from './ErrorNotice';
+import { LibraryCard } from '../library/LibraryCard';
 import { LibraryControls } from '../library/LibraryControls';
 import { AnimeLibrarySpotlight } from '../library/LibrarySpotlights';
 import { animeGroupComplete, animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
@@ -540,38 +541,36 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
     const name = group.series;
 
     return (
-        <article className="job job--done series library__card cover-card row--link" data-testid="anime-card" aria-label={name}>
-            <SeriesCover titles={seasonTitles(group)} name={name} />
-            <div className="cover-card__body">
-                <header className="job__head">
-                    <h3 className="series__title">
-                        <RowLink label={`${t('anime.series.open')}: ${name}`} title={name} onClick={onOpen}>
-                            {name}
-                        </RowLink>
-                    </h3>
-                </header>
-                <div className="cover-card__footer">
-                    <span className="job__badges">
-                        <span className="badge">{seasonsText(group, t)}</span>
-                        {newEpisodesOf(group) > 0 && <NewEpisodesBadge count={newEpisodesOf(group)} t={t} />}
-                    </span>
-                    <div className="job__actions library__footer">
-                        <AnimeRemove
-                            label={t('anime.series.remove')}
-                            ariaLabel={`${t('anime.series.remove')}: ${name}`}
-                            title={t('confirm.animeSeriesRemove.title', { name })}
-                            message={t('confirm.animeSeriesRemove.message')}
-                            onRemove={() => {
-                                void group.entries.reduce(async (previous, anime) => {
-                                    await previous;
-                                    await removeAnime(anime.id);
-                                }, Promise.resolve());
-                            }}
-                        />
-                    </div>
-                </div>
-            </div>
-        </article>
+        <LibraryCard
+            as="article"
+            className="library__card"
+            testId="anime-card"
+            ariaLabel={name}
+            cover={<SeriesCover titles={seasonTitles(group)} name={name} />}
+            title={name}
+            openLabel={`${t('anime.series.open')}: ${name}`}
+            onOpen={onOpen}
+            badges={
+                <>
+                    <span className="badge">{seasonsText(group, t)}</span>
+                    {newEpisodesOf(group) > 0 && <NewEpisodesBadge count={newEpisodesOf(group)} t={t} />}
+                </>
+            }
+            actions={
+                <AnimeRemove
+                    label={t('anime.series.remove')}
+                    ariaLabel={`${t('anime.series.remove')}: ${name}`}
+                    title={t('confirm.animeSeriesRemove.title', { name })}
+                    message={t('confirm.animeSeriesRemove.message')}
+                    onRemove={() => {
+                        void group.entries.reduce(async (previous, anime) => {
+                            await previous;
+                            await removeAnime(anime.id);
+                        }, Promise.resolve());
+                    }}
+                />
+            }
+        />
     );
 }
 

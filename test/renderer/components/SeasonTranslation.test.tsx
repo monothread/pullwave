@@ -66,7 +66,7 @@ describe('SeasonTranslation', () => {
             const user = userEvent.setup();
             render(<SeasonTranslation anime={ANIME} />);
             await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
-            expect(screen.getByText('Translate the subtitles of 2 episodes into German with your account? Each episode is a request to the provider, and the cost is yours.')).toBeInTheDocument();
+            expect(screen.getByText('Translate the subtitles of up to 2 episodes into German with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'CONFIRM' })).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'CANCEL' })).toBeInTheDocument();
             expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
@@ -157,6 +157,72 @@ describe('SeasonTranslation', () => {
             emit(job(1, 'cancelled', { reason: 'cancelled' }));
             emit(job(2, 'cancelled', { reason: 'cancelled' }));
             expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        });
+
+        it('says how many episodes already had the subtitle in the language and were skipped, and does not take it for a failure', async () => {
+            await confirmed();
+            emit(job(1, 'skipped', { reason: 'exists' }));
+            emit(job(2, 'done'));
+            expect(screen.getByTestId('season-translation-skipped')).toHaveTextContent('1 episodes already had the subtitle in German and were skipped.');
+            expect(screen.getByTestId('season-translation-skipped')).toHaveAttribute('role', 'status');
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).toBeInTheDocument();
+            expect(screen.queryByTestId('season-translation-progress')).not.toBeInTheDocument();
+        });
+
+        it('says all of them were skipped when none needed a translation', async () => {
+            await confirmed();
+            emit(job(1, 'queued'));
+            emit(job(2, 'queued'));
+            emit(job(1, 'skipped', { reason: 'exists' }));
+            expect(screen.getByTestId('season-translation-progress')).toHaveTextContent('Translating subtitles: 1 of 2 episodes done.');
+            expect(screen.queryByTestId('season-translation-skipped')).not.toBeInTheDocument();
+            emit(job(2, 'skipped', { reason: 'exists' }));
+            expect(screen.getByTestId('season-translation-skipped')).toHaveTextContent('2 episodes already had the subtitle in German and were skipped.');
+            expect(screen.queryByTestId('season-translation-progress')).not.toBeInTheDocument();
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        });
+
+        it('counts a skipped episode as finished while the others are still being translated', async () => {
+            await confirmed();
+            emit(job(1, 'queued'));
+            emit(job(2, 'queued'));
+            emit(job(1, 'skipped', { reason: 'exists' }));
+            emit(job(2, 'running', { done: 3, total: 10 }));
+            expect(screen.getByTestId('season-translation-progress')).toHaveTextContent('Translating subtitles: 1 of 2 episodes done.');
+            expect(screen.getByRole('button', { name: 'STOP' })).toBeInTheDocument();
+            expect(screen.queryByTestId('season-translation-skipped')).not.toBeInTheDocument();
+        });
+
+        it('says the ones skipped and warns about the ones that failed, apart', async () => {
+            await confirmed();
+            emit(job(1, 'skipped', { reason: 'exists' }));
+            emit(job(2, 'error', { reason: 'NETWORK: x' }));
+            expect(screen.getByTestId('season-translation-skipped')).toHaveTextContent('1 episodes already had the subtitle in German and were skipped.');
+            expect(screen.getByRole('alert')).toHaveTextContent('1 episodes could not be translated. Open one to see why.');
+        });
+
+        it('says the language the episodes were skipped in, the one of the jobs', async () => {
+            await confirmed();
+            emit(job(1, 'skipped', { reason: 'exists', language: 'Spanish' }));
+            expect(screen.getByTestId('season-translation-skipped')).toHaveTextContent('1 episodes already had the subtitle in Spanish and were skipped.');
+        });
+
+        it('does not say anything about skipped episodes when none was', async () => {
+            await confirmed();
+            emit(job(1, 'done'));
+            emit(job(2, 'cancelled', { reason: 'cancelled' }));
+            expect(screen.queryByTestId('season-translation-skipped')).not.toBeInTheDocument();
+        });
+
+        it('forgets the skipped episodes when it starts again', async () => {
+            const user = await confirmed();
+            emit(job(1, 'skipped', { reason: 'exists' }));
+            emit(job(2, 'skipped', { reason: 'exists' }));
+            expect(screen.getByTestId('season-translation-skipped')).toBeInTheDocument();
+            await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+            await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+            expect(screen.queryByTestId('season-translation-skipped')).not.toBeInTheDocument();
         });
 
         it('forgets what happened before when it starts again', async () => {

@@ -5,8 +5,8 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { animeStatusKey, groupByDay, startOfDay } from './animeText';
 import { AnimeCover } from './AnimeCover';
+import { LibraryCard } from '../library/LibraryCard';
 import { ConfirmButton } from './ConfirmButton';
-import { RowLink } from './RowLink';
 
 const ORIGIN_KEYS: Record<AnimeArrivalOrigin, MessageKey> = {
     auto: 'anime.recent.origin.auto',
@@ -107,30 +107,28 @@ export function AnimeUpdates() {
                 return (
                     <section key={group.day} className="anime__updates-day" aria-label={dayName(group.day)} data-testid="anime-update-day">
                         <span className="section-label">{dayName(group.day)}</span>
-                        <ul className="history__list">
+                        <ul className="cover-grid">
                             {group.entries.map((entry) => {
                                 const label = t('anime.episode', { number: entry.episodeNumber });
                                 const time = new Date(entry.foundAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 return (
-                                    <li key={entry.id} className="history__item row--link" data-testid="anime-update">
-                                        <AnimeCover title={entry.animeTitle} />
-                                        <div className="history__main">
-                                            <span className="history__title">
-                                                <RowLink
-                                                    label={`${t('anime.library.show')}: ${entry.animeTitle} ${label}`}
-                                                    title={entry.animeTitle}
-                                                    onClick={() => {
-                                                        openFromUpdate(entry);
-                                                    }}
-                                                >
-                                                    {entry.animeTitle}
-                                                </RowLink>
-                                            </span>
-                                            <span className="history__meta">{`${label} · ${t('anime.recent.found', { time })}`}</span>
-                                        </div>
-                                        <span className="badge">{t(ORIGIN_KEYS[entry.origin])}</span>
-                                        <span className={`badge badge--${entry.status}`}>{t(animeStatusKey(entry.status))}</span>
-                                    </li>
+                                    <LibraryCard
+                                        key={entry.id}
+                                        testId="anime-update"
+                                        cover={<AnimeCover title={entry.animeTitle} />}
+                                        title={entry.animeTitle}
+                                        openLabel={`${t('anime.library.show')}: ${entry.animeTitle} ${label}`}
+                                        onOpen={() => {
+                                            openFromUpdate(entry);
+                                        }}
+                                        meta={<span className="history__meta">{`${label} · ${t('anime.recent.found', { time })}`}</span>}
+                                        badges={
+                                            <>
+                                                <span className="badge">{t(ORIGIN_KEYS[entry.origin])}</span>
+                                                <span className={`badge badge--${entry.status}`}>{t(animeStatusKey(entry.status))}</span>
+                                            </>
+                                        }
+                                    />
                                 );
                             })}
                         </ul>

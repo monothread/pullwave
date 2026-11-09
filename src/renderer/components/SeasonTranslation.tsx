@@ -48,6 +48,11 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const failedCount = finished.filter((job) => {
         return job.status === 'error';
     }).length;
+    // The episodes that had the subtitle in the language already are left as they were (nothing was asked of the provider for them).
+    const skipped = finished.filter((job) => {
+        return job.status === 'skipped';
+    });
+    const skippedLanguage = skipped[0]?.language ?? language;
 
     async function start(): Promise<void> {
         setConfirming(false);
@@ -116,6 +121,11 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
             {failedCount > 0 && (
                 <span className="field__warning" role="alert">
                     {t('anime.translateSeason.failed', { count: failedCount })}
+                </span>
+            )}
+            {skipped.length > 0 && (
+                <span className="field__hint" role="status" data-testid="season-translation-skipped">
+                    {t('anime.translateSeason.skipped', { count: skipped.length, language: skippedLanguage })}
                 </span>
             )}
         </>

@@ -6,6 +6,7 @@ import {
     DEFAULT_SUBTITLE_LABEL,
     importedLabel,
     generatedSubtitlePath,
+    hasTranslatedSubtitle,
     importedSubtitlePath,
     importSubtitle,
     listSubtitleFiles,
@@ -211,6 +212,64 @@ describe('translatedSubtitlePath', () => {
 
     it('cleans what a file name does not accept from the language', () => {
         expect(translatedSubtitlePath(VIDEO, 'pt/BR:*')).toBe(join(DIR, 'Naruto Episode 1.translated-pt_BR__.vtt'));
+    });
+});
+
+describe('hasTranslatedSubtitle', () => {
+    const SPANISH_FILE = join(DIR, 'Naruto Episode 1.translated-Spanish.vtt');
+
+    it('is true when the translation into the language is next to the video', () => {
+        const files = memory({ [VIDEO]: 'v', [SPANISH_FILE]: 'WEBVTT\n' });
+        expect(hasTranslatedSubtitle(VIDEO, 'Spanish', files)).toBe(true);
+    });
+
+    it('is false when the episode has no subtitle at all', () => {
+        expect(hasTranslatedSubtitle(VIDEO, 'Spanish', memory({ [VIDEO]: 'v' }))).toBe(false);
+    });
+
+    it('is false for a language the episode has no translation into, even when it has others', () => {
+        const files = memory({ [VIDEO]: 'v', [SPANISH_FILE]: 'WEBVTT\n' });
+        expect(hasTranslatedSubtitle(VIDEO, 'German', files)).toBe(false);
+    });
+
+    it('does not take a subtitle of the same language that is not a translation (the default, the source, an imported or a generated one)', () => {
+        const files = memory({
+            [VIDEO]: 'v',
+            [join(DIR, 'Naruto Episode 1.vtt')]: 'WEBVTT\n',
+            [join(DIR, 'Naruto Episode 1.subtitle-Spanish.vtt')]: 'WEBVTT\n',
+            [join(DIR, 'Naruto Episode 1.imported-Spanish.vtt')]: 'WEBVTT\n',
+            [join(DIR, 'Naruto Episode 1.generated-Spanish.vtt')]: 'WEBVTT\n'
+        });
+        expect(hasTranslatedSubtitle(VIDEO, 'Spanish', files)).toBe(false);
+    });
+
+    it('does not take the translation of another episode', () => {
+        const files = memory({ [VIDEO]: 'v', [join(DIR, 'Naruto Episode 2.translated-Spanish.vtt')]: 'WEBVTT\n' });
+        expect(hasTranslatedSubtitle(VIDEO, 'Spanish', files)).toBe(false);
+    });
+
+    it('looks for the file with the language cleaned the way the file is named', () => {
+        const files = memory({ [VIDEO]: 'v', [join(DIR, 'Naruto Episode 1.translated-pt_BR__.vtt')]: 'WEBVTT\n' });
+        expect(hasTranslatedSubtitle(VIDEO, 'pt/BR:*', files)).toBe(true);
+    });
+
+    it('is true even when the translation has the same text as the default subtitle (which then takes its name in the list)', () => {
+        const files = memory({ [VIDEO]: 'v', [join(DIR, 'Naruto Episode 1.vtt')]: 'WEBVTT\n', [SPANISH_FILE]: 'WEBVTT\n' });
+        expect(hasTranslatedSubtitle(VIDEO, 'Spanish', files)).toBe(true);
+    });
+
+    it('is false when the folder cannot be read', () => {
+        const files: SubtitleFileSystem = { ...memory({}), list: () => { return []; } };
+        expect(hasTranslatedSubtitle(VIDEO, 'Spanish', files)).toBe(false);
+    });
+
+    it('reads the real folder by default', () => {
+        const directory = makeTempDir();
+        const video = join(directory, 'Naruto Episode 1.mp4');
+        expect(hasTranslatedSubtitle(video, 'Spanish')).toBe(false);
+        writeFileSync(join(directory, 'Naruto Episode 1.translated-Spanish.vtt'), 'WEBVTT\n');
+        expect(hasTranslatedSubtitle(video, 'Spanish')).toBe(true);
+        expect(hasTranslatedSubtitle(video, 'German')).toBe(false);
     });
 });
 

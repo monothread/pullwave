@@ -4,8 +4,8 @@ import type { MessageKey, Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { MangaCover } from './MangaCover';
+import { LibraryCard } from '../library/LibraryCard';
 import { MangaRemove } from './MangaRemove';
-import { RowLink } from './RowLink';
 import { chapterLabel, chapterStatusKey, groupByDay } from './mangaText';
 import { useShownUpdates } from '../hooks/useShownManga';
 
@@ -109,29 +109,27 @@ export function MangaUpdates() {
                 return (
                     <section key={group.day} className="manga__updates-day" aria-label={dayName(group.day)} data-testid="manga-update-day">
                         <span className="section-label">{dayName(group.day)}</span>
-                        <ul className="history__list">
+                        <ul className="cover-grid">
                             {group.entries.map((entry) => {
                                 const label = chapterLabel(entry.chapterName, entry.chapterNumber);
                                 return (
-                                    <li key={entry.id} className="history__item row--link" data-testid="manga-update">
-                                        <MangaCover url={entry.thumbnailUrl} />
-                                        <div className="history__main">
-                                            <span className="history__title">
-                                                <RowLink
-                                                    label={`${t('manga.browse.open')}: ${entry.mangaTitle} ${label}`}
-                                                    title={entry.mangaTitle}
-                                                    onClick={() => {
-                                                        void openFromUpdate(entry);
-                                                    }}
-                                                >
-                                                    {entry.mangaTitle}
-                                                </RowLink>
-                                            </span>
-                                            <span className="history__meta">{`${label} · ${t('manga.recent.found', { time: new Date(entry.foundAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}`}</span>
-                                        </div>
-                                        <span className="badge">{t(ORIGIN_KEYS[entry.origin])}</span>
-                                        <span className={`badge badge--${entry.status}`}>{t(chapterStatusKey(entry.status))}</span>
-                                    </li>
+                                    <LibraryCard
+                                        key={entry.id}
+                                        testId="manga-update"
+                                        cover={<MangaCover url={entry.thumbnailUrl} />}
+                                        title={entry.mangaTitle}
+                                        openLabel={`${t('manga.browse.open')}: ${entry.mangaTitle} ${label}`}
+                                        onOpen={() => {
+                                            void openFromUpdate(entry);
+                                        }}
+                                        meta={<span className="history__meta">{`${label} · ${t('manga.recent.found', { time: new Date(entry.foundAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}`}</span>}
+                                        badges={
+                                            <>
+                                                <span className="badge">{t(ORIGIN_KEYS[entry.origin])}</span>
+                                                <span className={`badge badge--${entry.status}`}>{t(chapterStatusKey(entry.status))}</span>
+                                            </>
+                                        }
+                                    />
                                 );
                             })}
                         </ul>

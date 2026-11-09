@@ -1,8 +1,8 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { SubtitleStyle } from '../hooks/useSubtitleStyle';
 import { useTranslator } from '../i18n/useTranslator';
-import { MAX_SUBTITLE_SCALE, MIN_SUBTITLE_SCALE, scalePercent } from './subtitleScale';
 import { PlayerIcon } from './PlayerIcon';
+import { SubtitleSizeControl } from './SubtitleSizeControl';
 
 // A subtitle the viewer can choose. The id is also the id of its <track>, which is how the control finds it.
 export interface SubtitleOption {
@@ -22,12 +22,32 @@ interface PlayerSettingsProps {
     subtitleStyle: SubtitleStyle;
     // The switch of the next episode that starts by itself; left out, the player has none (the stream of the search has no next episode).
     autoNext?: AutoNextSetting;
+    // Opens the window of the subtitles; left out, the settings have no way into it (the stream of the search has no files to manage).
+    onManageSubtitles?: () => void;
 }
 
 // Whether the next episode starts by itself at the end of one, and the way to change it.
 export interface AutoNextSetting {
     enabled: boolean;
     onToggle: () => void;
+}
+
+// What the window of the subtitles needs from the screen that has the subtitles of an episode: what it can do about them, and what it
+// says went wrong. The window is opened from the gear of the player.
+export interface SubtitleManagerSetting {
+    // Whether the list of the subtitles of the episode has arrived: until then it is not known whether it has any, so nothing is offered to
+    // translate or to create.
+    loaded: boolean;
+    // The episode has a subtitle to translate; otherwise the way to get one is to create it from the audio.
+    hasSubtitles: boolean;
+    // The check for the subtitles the source offers is going on.
+    checking: boolean;
+    // Why a subtitle could not be loaded, when it could not.
+    failure: string | null;
+    onLoad: () => void;
+    // Opens the translation of a subtitle, or the creation of one when the episode has none.
+    onCreate: () => void;
+    onCheck: () => void;
 }
 
 interface SettingRowProps {
@@ -45,12 +65,12 @@ function SettingRow({ label, children }: SettingRowProps) {
 }
 
 // Whether the player has anything to set. The gear only shows up when it does, so a setting added later only has to be added here.
-export function hasPlayerSettings(subtitles: readonly SubtitleOption[], autoNext?: AutoNextSetting): boolean {
-    return subtitles.length > 0 || autoNext !== undefined;
+export function hasPlayerSettings(subtitles: readonly SubtitleOption[], autoNext?: AutoNextSetting, subtitleManager?: SubtitleManagerSetting): boolean {
+    return subtitles.length > 0 || autoNext !== undefined || subtitleManager !== undefined;
 }
 
 // The gear of the player and the panel it opens with every setting that is not on the bar (the sound stays there).
-export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle, onSelectSubtitle, subtitleStyle, autoNext }: PlayerSettingsProps) {
+export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle, onSelectSubtitle, subtitleStyle, autoNext, onManageSubtitles }: PlayerSettingsProps) {
     const t = useTranslator();
     const root = useRef<HTMLSpanElement>(null);
 
@@ -136,33 +156,23 @@ export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle
                                 </select>
                             </SettingRow>
                             <SettingRow label={t('anime.player.subtitleSize')}>
-                                <span className="player__size" role="group" aria-label={t('anime.player.subtitleSize')}>
-                                    <button
-                                        type="button"
-                                        className="player__button"
-                                        aria-label={t('anime.player.subtitleSmaller')}
-                                        disabled={subtitleStyle.scale <= MIN_SUBTITLE_SCALE}
-                                        onClick={() => {
-                                            subtitleStyle.resize(-1);
-                                        }}
-                                    >
-                                        A−
-                                    </button>
-                                    <span className="player__time">{scalePercent(subtitleStyle.scale)}</span>
-                                    <button
-                                        type="button"
-                                        className="player__button"
-                                        aria-label={t('anime.player.subtitleLarger')}
-                                        disabled={subtitleStyle.scale >= MAX_SUBTITLE_SCALE}
-                                        onClick={() => {
-                                            subtitleStyle.resize(1);
-                                        }}
-                                    >
-                                        A+
-                                    </button>
-                                </span>
+                                <SubtitleSizeControl subtitleStyle={subtitleStyle} groupClassName="player__size" buttonClassName="player__button" valueClassName="player__time" />
                             </SettingRow>
                         </>
+                    )}
+                    {onManageSubtitles !== undefined && (
+                        <div className="player__setting">
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                onClick={() => {
+                                    onOpenChange(false);
+                                    onManageSubtitles();
+                                }}
+                            >
+                                {t('anime.player.manageSubtitles')}
+                            </button>
+                        </div>
                     )}
                 </div>
             )}
