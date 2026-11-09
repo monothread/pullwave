@@ -1163,7 +1163,7 @@ describe('SettingsPanel anime section', () => {
             await flushPromises();
 
             expect(mock.api.checkAnimeAudio).toHaveBeenCalledTimes(1);
-            expect(useAnimeStore.getState().audioReport).toEqual({ summary: { checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 }, problems: [] });
+            expect(useAnimeStore.getState().audioReport).toEqual({ summary: { checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 }, downloaded: 0, problems: [] });
             useAnimeStore.setState({ audioReport: null });
         });
 

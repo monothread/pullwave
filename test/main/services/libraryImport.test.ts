@@ -64,7 +64,8 @@ describe('importLibrary', () => {
                 watched: false,
                 downloadedAt: 5000,
                 addedAt: null,
-                fileMissing: false
+                fileMissing: false,
+                noAudio: false
             },
             {
                 id: 2,
@@ -79,7 +80,8 @@ describe('importLibrary', () => {
                 watched: false,
                 downloadedAt: 5000,
                 addedAt: null,
-                fileMissing: false
+                fileMissing: false,
+                noAudio: false
             }
         ]);
         expect(saved).toEqual([1, 2]);
