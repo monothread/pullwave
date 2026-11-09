@@ -294,6 +294,13 @@ async function launch(settings: Record<string, unknown> = {}, env: Record<string
     return { app, page, userData };
 }
 
+// The tests of the reader that click on the stage or wait for every page of a chapter were made on the monitor that stands up (1080x1920): the stage is in
+// view with no scroll under the bar of the reader, and all the pages of a chapter are in view (the pictures out of it are loaded when they come near). The
+// window of a virtual screen is shorter than that, so such a test asks for the height it needs.
+async function makeTheWindowTall(page: Page): Promise<void> {
+    await page.setViewportSize({ width: 1080, height: 1850 });
+}
+
 async function openManga(page: Page): Promise<void> {
     await page.getByRole('button', { name: 'MANGA', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Manga' })).toBeVisible();
@@ -2435,6 +2442,7 @@ test.describe('manga section', () => {
         fake.pagesArePicture = true;
         fake.pageTotal = 4;
         session = await launch();
+        await makeTheWindowTall(session.page);
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
@@ -2486,6 +2494,7 @@ test.describe('manga section', () => {
     test('puts the reader in fullscreen with a double click in the strip in the middle, one page at a time, and not on the sides, where a click turns the page', async () => {
         fake.pagesArePicture = true;
         session = await launch();
+        await makeTheWindowTall(session.page);
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);

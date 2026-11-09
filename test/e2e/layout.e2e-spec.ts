@@ -35,6 +35,14 @@ test.setTimeout(600000);
 // width. It resizes the real window of the application (on the primary monitor, see createWindow) instead of emulating a size.
 async function audit(page: Page, where: string): Promise<string[]> {
     return page.evaluate((label) => {
+        // What comes in with an animation (a seal that stamps from twice its size, an icon that rises) is measured where it ends: in a screen with no
+        // compositor the animations go slowly and a box measured on the way is bigger than it is. The ones that never end (the aurora) are left alone.
+        document.getAnimations().forEach((animation) => {
+            const end = animation.effect?.getComputedTiming().endTime;
+            if (typeof end === 'number' && Number.isFinite(end)) {
+                animation.finish();
+            }
+        });
         const problems: string[] = [];
         const name = (element: Element): string => {
             const text = (element.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 24);

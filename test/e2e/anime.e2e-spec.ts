@@ -835,11 +835,15 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
 
     // And it goes away when the mouse stands still, taking the cursor with it, and comes back with the mouse.
     await expect(controls).toHaveAttribute('data-hidden', 'true', { timeout: 6000 });
-    const hidden = await controls.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { opacity: style.opacity, pointerEvents: style.pointerEvents, cursor: getComputedStyle(document.querySelector('.player__video') as HTMLElement).cursor };
-    });
-    expect(hidden).toEqual({ opacity: '0', pointerEvents: 'none', cursor: 'none' });
+    // The opacity goes to 0 in a transition of a quarter of a second that starts when the attribute changes: it is waited for, not read at once.
+    await expect
+        .poll(() => {
+            return controls.evaluate((element) => {
+                const style = getComputedStyle(element);
+                return { opacity: style.opacity, pointerEvents: style.pointerEvents, cursor: getComputedStyle(document.querySelector('.player__video') as HTMLElement).cursor };
+            });
+        })
+        .toEqual({ opacity: '0', pointerEvents: 'none', cursor: 'none' });
     await page.mouse.move(340, 340);
     await expect(controls).toHaveAttribute('data-hidden', 'false');
     await expect.poll(() => {
@@ -3188,24 +3192,33 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         const zoom = Number(await page.evaluate(() => {
             return getComputedStyle(document.documentElement).zoom;
         }));
-        const bar = await seek.boundingBox();
-        expect(bar).not.toBeNull();
-        const { x, y, width, height } = bar as { x: number; y: number; width: number; height: number };
+        type Box = { x: number; y: number; width: number; height: number };
+        // The dialog gets its height from the video once it is known, so the bar is measured again before each move (it is only 8 px thick).
+        const measure = async (): Promise<{ bar: Box; line: Box }> => {
+            return {
+                bar: (await seek.boundingBox()) as Box,
+                line: (await dialog.locator('.player__timeline').boundingBox()) as Box
+            };
+        };
         const tooltip = dialog.getByRole('tooltip');
         // The tooltip is a part of the box of the timeline, not of the whole bar of the controls (it would float far above the thin bar).
-        await page.mouse.move(x + width / 2, y + height / 2);
+        const first = (await measure()).bar;
+        await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
         await expect(tooltip).toBeVisible();
         expect(await tooltip.evaluate((element) => { return element.parentElement?.className; })).toBe('player__timeline');
 
         for (const fraction of [0.05, 0.25, 0.5, 0.75, 0.95]) {
-            const mouseX = x + width * fraction;
-            await page.mouse.move(mouseX, y + height / 2);
-            await expect(tooltip).toHaveText(/^0:0\d$/);
-            const tip = (await tooltip.boundingBox()) as { x: number; y: number; width: number; height: number };
-            const line = (await dialog.locator('.player__timeline').boundingBox()) as { x: number; y: number; width: number; height: number };
-            // Centered on the mouse (the box is as wide as the text), and 6px of the page above the top of the timeline.
-            expect(Math.abs(tip.x + tip.width / 2 - mouseX)).toBeLessThanOrEqual(1.5);
-            expect(Math.abs(tip.y + tip.height - (line.y - 6 * zoom))).toBeLessThanOrEqual(1.5);
+            await expect(async () => {
+                const { bar } = await measure();
+                const mouseX = bar.x + bar.width * fraction;
+                await page.mouse.move(mouseX, bar.y + bar.height / 2);
+                await expect(tooltip).toHaveText(/^0:0\d$/, { timeout: 1000 });
+                const tip = (await tooltip.boundingBox()) as Box;
+                const { line } = await measure();
+                // Centered on the mouse (the box is as wide as the text), and 6px of the page above the top of the timeline.
+                expect(Math.abs(tip.x + tip.width / 2 - mouseX)).toBeLessThanOrEqual(1.5);
+                expect(Math.abs(tip.y + tip.height - (line.y - 6 * zoom))).toBeLessThanOrEqual(1.5);
+            }).toPass({ timeout: 8000 });
         }
     }
 

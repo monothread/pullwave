@@ -604,8 +604,16 @@ test('adds several links with the add button, queues them all and resets the row
     await page.getByLabel('Link 3', { exact: true }).fill('https://example.com/ok3');
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
 
-    await expect(page.getByTestId('job-card')).toHaveCount(3);
+    // The downloads of the fake end at once and a finished one leaves the queue, so the cards cannot be counted without a race: what is seen is that the
+    // three links were downloaded, each one once.
     await expectDownloadsComplete(page, 3);
+    const downloaded = await page.evaluate(async () => {
+        const history = await (window as unknown as { api: { listHistory: () => Promise<Array<{ url: string; status: string }>> } }).api.listHistory();
+        return history.map((entry) => {
+            return `${entry.status} ${entry.url}`;
+        });
+    });
+    expect([...downloaded].sort()).toEqual(['done https://example.com/ok1', 'done https://example.com/ok2', 'done https://example.com/ok3']);
     await expect(page.getByLabel('Link 1', { exact: true })).toHaveValue('');
     await expect(page.getByLabel('Link 2', { exact: true })).toHaveCount(0);
 });
@@ -1248,6 +1256,13 @@ test.describe('themes', () => {
             'Cyberpunk (neon)',
             'Synthwave (neon)',
             'Terminal (green)',
+            'Neon Tokyo (pink and blue)',
+            'Acid Rain (lime)',
+            'Amber City (orange and teal)',
+            'Ultraviolet (violet)',
+            'Pink Noir (pink on black)',
+            'Cyber Gold (yellow)',
+            'Ice Neon (icy cyan)',
             'Dark',
             'Tokyo Night',
             'Nord',
@@ -1294,12 +1309,24 @@ test.describe('themes', () => {
         });
     }
 
+    // A theme change draws as a circle and the colours of the aurora go to the new ones in 0.9 s (`transition` of `--bp-aurora-*`): the colours are read
+    // once nothing of that is going on, or they would be read half way.
+    async function waitForTheThemeToSettle(page: Page): Promise<void> {
+        await page.waitForFunction(() => {
+            const running = document.getAnimations().filter((animation) => {
+                return animation instanceof CSSTransition && animation.playState === 'running';
+            });
+            return !document.documentElement.classList.contains('vt-theme') && running.length === 0;
+        });
+    }
+
     test('no theme has a neon glow that follows the mouse, the cyberpunk one included', async () => {
         const { page } = session;
         await openGlobalSettings(page);
         for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']) {
             await page.getByLabel('Theme').selectOption(theme);
             await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+            await waitForTheThemeToSettle(page);
             const before = await glowOf(page);
             await page.mouse.move(300, 200);
             await page.mouse.move(640, 480);
