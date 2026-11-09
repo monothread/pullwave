@@ -8,7 +8,7 @@ import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { readScheduleChoice, saveScheduleTimeZone, type AnimeScheduleView } from './scheduleChoice';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
 import { resolveAppLanguage } from '../i18n/language';
-import { downloadedEpisodeCount, groupLibrary, libraryEntry, libraryProblems, type AudioReport } from '../components/animeText';
+import { downloadedEpisodeCount, groupLibrary, isRepairable, libraryEntry, libraryProblems, nextListedEpisode, type AudioReport } from '../components/animeText';
 import { useAppStore } from './appStore';
 
 export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads';
@@ -76,6 +76,8 @@ export interface StreamingEpisode {
     status: 'loading' | 'ready' | 'error';
     stream: AnimeStream | null;
     error: AniError | null;
+    // The episode the source lists after this one, which plays by itself when this one ends (null for the last one).
+    nextEpisode: string | null;
 }
 
 export interface AnimeState {
@@ -154,6 +156,8 @@ export interface AnimeState {
     closeAudioReport: () => void;
     // Queues again every episode of the report, and closes it.
     redownloadProblems: () => Promise<void>;
+    // Repairs the videos of the episodes of the report that could not be read (see imageHeaderRepair.ts), and closes it.
+    repairProblems: () => Promise<void>;
     // Goes to the library, to the anime that was being looked at in the search.
     showInLibrary: (animeId: number) => void;
     closeResult: () => void;
@@ -649,8 +653,14 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     return;
                 }
                 const library = await window.api.listAnimeLibrary();
-                const summary = { checked: response.checked, withoutAudio: response.withoutAudio, unreadable: response.unreadable, missing: response.missing };
-                set({ library, audioReport: { summary, downloaded: downloadedEpisodeCount(library), problems: libraryProblems(library) } });
+                const summary = {
+                    checked: response.checked,
+                    withoutAudio: response.withoutAudio,
+                    unreadable: response.unreadable,
+                    unreadableIds: response.unreadableIds,
+                    missing: response.missing
+                };
+                set({ library, audioReport: { summary, downloaded: downloadedEpisodeCount(library), problems: libraryProblems(library, response.unreadableIds) } });
             } finally {
                 set({ checkingAudio: false });
             }
@@ -666,15 +676,44 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return;
             }
             set({ audioReport: null });
-            if (report.problems.length === 0) {
+            // What could not be read is repaired, not downloaded again: the source would give the same video.
+            const problems = report.problems.filter((problem) => {
+                return !isRepairable(problem);
+            });
+            if (problems.length === 0) {
                 return;
             }
             await window.api.redownloadAnimeEpisodes(
-                report.problems.map((problem) => {
+                problems.map((problem) => {
                     return problem.episodeId;
                 })
             );
-            notify('info', translateNow('anime.audio.queued', { count: report.problems.length }));
+            notify('info', translateNow('anime.audio.queued', { count: problems.length }));
+        },
+
+        repairProblems: async () => {
+            const report = get().audioReport;
+            if (report === null) {
+                return;
+            }
+            const unreadable = report.problems.filter(isRepairable);
+            if (unreadable.length === 0) {
+                return;
+            }
+            set({ audioReport: null });
+            const response = await window.api.repairAnimeEpisodes(
+                unreadable.map((problem) => {
+                    return problem.episodeId;
+                })
+            );
+            if (!response.ok) {
+                if (response.reason === 'busy') {
+                    notify('error', translateNow('anime.audio.repairBusy'));
+                }
+                return;
+            }
+            set({ library: await window.api.listAnimeLibrary() });
+            notify('info', translateNow('anime.audio.repaired', { repaired: response.repaired, failed: response.failed }));
         },
 
         openLibraryAnime: async (anime) => {
@@ -922,7 +961,19 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             if (!selection) {
                 return;
             }
-            const loading: StreamingEpisode = { title: selection.result.title, episode, status: 'loading', stream: null, error: null };
+            // Another episode after one that was playing (the next one that starts by itself): the stream of the one before is not needed any more.
+            const before = get().streaming;
+            if (before?.stream) {
+                void window.api.closeAnimeStream(before.stream.sessionId);
+            }
+            const loading: StreamingEpisode = {
+                title: selection.result.title,
+                episode,
+                status: 'loading',
+                stream: null,
+                error: null,
+                nextEpisode: nextListedEpisode(selection.episodes, episode)
+            };
             set({ streaming: loading });
             recordHistory({ title: selection.result.title, query: selection.query, index: selection.result.index, audio: selection.audio, episode });
             const response = await window.api.openAnimeStream({ query: selection.query, index: selection.result.index, audio: selection.audio, episode });

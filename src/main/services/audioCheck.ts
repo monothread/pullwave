@@ -22,7 +22,7 @@ export async function videoHasAudio(path: string, run: FfmpegRunner): Promise<bo
 // again only looks at the ones that were missing or could not be read before). It answers how many it looked at, how many of those have
 // no audio, how many it could not read and how many have no file on the disk.
 export async function checkLibraryAudio(db: AnimeDb, options: AudioCheckOptions): Promise<AnimeAudioCheckSummary> {
-    const summary: AnimeAudioCheckSummary = { checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 };
+    const summary: AnimeAudioCheckSummary = { checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 };
     for (const episode of db.episodesToCheckAudio()) {
         const path = episode.filePath;
         if (path === null || options.fileSize(path) === null) {
@@ -32,6 +32,7 @@ export async function checkLibraryAudio(db: AnimeDb, options: AudioCheckOptions)
         const hasAudio = await probeOrNull(path, options);
         if (hasAudio === null) {
             summary.unreadable += 1;
+            summary.unreadableIds.push(episode.id);
             continue;
         }
         db.markAudioChecked(episode.id, path, hasAudio);

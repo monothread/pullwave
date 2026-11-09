@@ -2,19 +2,26 @@ import { expect, test, _electron as electron, type ElectronApplication, type Loc
 import './display';
 import { leaveHome } from './startScreen';
 import { expectNoSiblingInRing, expectSiblingAfterFolder, makeFolderOnAnotherDisk } from './diskChart';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
 import { systemPromptFor } from '../../src/main/services/subtitleTranslator';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
+// What some sources put in front of every segment of an episode to hide the video: a PNG of 1x1 pixel (70 bytes), the same one every time.
+const HIDING_PICTURE = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da6364f8cf500f00038601805a347d6b0000000049454e44ae426082', 'hex');
+// A segment as the source gives it: the picture, then the segment with its first packet 6 bytes short (as in the real file, which is why ffmpeg takes
+// it for a picture and not for a transport stream).
+function hiddenSegment(segment: Buffer): Buffer {
+    return Buffer.concat([HIDING_PICTURE, segment.subarray(0, 1), segment.subarray(7)]);
+}
 const EXE = process.platform === 'win32' ? '.exe' : '';
 const HAS_ANI_TOOLS = [`busybox${EXE}`, `curl${EXE}`, 'ani-cli'].every((name) => {
     return existsSync(join(ROOT, 'resources', 'bin', 'ani', name));
@@ -1648,7 +1655,7 @@ test.describe('player', { tag: '@windows' }, () => {
 
         const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
         await expect(dialog).toBeVisible();
-        await expect(dialog.locator('video')).toHaveAttribute('src', 'pullwave-media://episode/1');
+        await expect(dialog.locator('video')).toHaveAttribute('src', /^pullwave-media:\/\/episode\/1\?v=\d+$/);
         // The control bar is the app's own, not the browser's, so it follows the theme.
         await expect(dialog.locator('video')).not.toHaveAttribute('controls');
         await expect(dialog.locator('.player__controls')).toBeVisible();
@@ -1891,9 +1898,150 @@ test.describe('the check of the downloaded episodes', () => {
         }).toBe(true);
     });
 
-    test('says there is no problem when the downloaded episodes are fine', async () => {
-        const { page } = session;
+    // The video as yt-dlp saves it when the source hides it behind pictures: a real video of 4 segments, and the picture in front of each one.
+    function hiddenVideoAt(path: string): void {
+        const segments = mkdtempSync(join(tmpdir(), 'pullwave-hidden-'));
+        try {
+            execFileSync(
+                FFMPEG,
+                ['-hide_banner', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=4:size=64x64:rate=10', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-force_key_frames', 'expr:gte(t,n_forced*1)', '-c:a', 'aac', '-f', 'hls', '-hls_time', '1', '-hls_playlist_type', 'vod', '-hls_segment_filename', join(segments, 'seg%d.ts'), join(segments, 'index.m3u8')],
+                { stdio: 'pipe' }
+            );
+            const names = readdirSync(segments)
+                .filter((name) => {
+                    return /^seg\d+\.ts$/.test(name);
+                })
+                .sort((first, second) => {
+                    return Number(first.replace(/\D/g, '')) - Number(second.replace(/\D/g, ''));
+                });
+            expect(names).toHaveLength(4);
+            mkdirSync(dirname(path), { recursive: true });
+            writeFileSync(
+                path,
+                Buffer.concat(
+                    names.map((name) => {
+                        return hiddenSegment(readFileSync(join(segments, name)));
+                    })
+                )
+            );
+        } finally {
+            rmSync(segments, { recursive: true, force: true });
+        }
+    }
+
+    // What ffmpeg says of a video: whether it reads as one, and the streams it has.
+    function describeVideo(path: string): string {
+        return spawnSync(FFMPEG, ['-hide_banner', '-i', path], { encoding: 'utf-8' }).stderr;
+    }
+
+    function startsAsMp4(path: string): boolean {
+        return readFileSync(path).subarray(4, 8).toString('ascii') === 'ftyp';
+    }
+
+    test('lists an episode hidden behind pictures as one that could not be read, and repairs it from the window', async () => {
+        const { page, animeDir } = session;
         await downloadFirstEpisode(page);
+        const video = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4');
+        hiddenVideoAt(video);
+        expect(startsAsMp4(video)).toBe(false);
+        expect(describeVideo(video)).not.toContain('Video: h264');
+        await openAnimeSettings(page);
+
+        await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
+
+        const dialog = page.getByRole('dialog', { name: 'Downloaded episodes' });
+        await expect(dialog.getByTestId('audio-report-summary')).toContainText('1 COULD NOT BE READ');
+        await expect(dialog.getByTestId('audio-problem')).toHaveText(['Fake Anime · EP 1 — COULD NOT BE READ']);
+        await expect(dialog.getByRole('button', { name: 'REPAIR (1)' })).toBeEnabled();
+        await expect(dialog.getByRole('button', { name: /^DOWNLOAD ALL AGAIN/ })).toHaveCount(0);
+
+        await dialog.getByRole('button', { name: 'REPAIR (1)' }).click();
+
+        await expect(dialog).toBeHidden();
+        await expect(page.locator('.toast__message', { hasText: 'repaired' })).toHaveText('1 episode(s) repaired · 0 could not be repaired.');
+        expect(startsAsMp4(video)).toBe(true);
+        const repaired = describeVideo(video);
+        expect(repaired).toContain('Video: h264');
+        expect(repaired).toContain('Audio: aac');
+        expect(repaired).toMatch(/Duration: 00:00:0[34]\./);
+        expect(readdirSync(dirname(video))).not.toContainEqual(expect.stringContaining('.pullwave-repair'));
+        // The check finds nothing wrong with it now.
+        await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
+        await expect(page.getByRole('dialog', { name: 'Downloaded episodes' }).getByRole('status')).toHaveText('No problems found in the downloaded episodes.');
+    });
+
+    test('plays the episode right after it was repaired, though the same address could not be played before', async () => {
+        const { page, animeDir } = session;
+        await downloadFirstEpisode(page);
+        hiddenVideoAt(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'));
+        const play = async (): Promise<Locator> => {
+            await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+            const series = page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' });
+            if ((await series.count()) > 0) {
+                await series.click();
+            }
+            const show = page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true });
+            if ((await show.count()) > 0) {
+                await show.click();
+            }
+            await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+            const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+            await expect(dialog).toBeVisible();
+            return dialog;
+        };
+
+        // The file is not a video yet: the player says so, and the browser learns that about its address.
+        const before = await play();
+        await expect(before.getByRole('alert')).toHaveText('This video could not be played. Its format may not be supported by the app.');
+        await page.keyboard.press('Escape');
+        await expect(before).toBeHidden();
+
+        await openAnimeSettings(page);
+        await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
+        const report = page.getByRole('dialog', { name: 'Downloaded episodes' });
+        await report.getByRole('button', { name: 'REPAIR (1)' }).click();
+        await expect(page.locator('.toast__message', { hasText: 'repaired' })).toHaveText('1 episode(s) repaired · 0 could not be repaired.');
+
+        const after = await play();
+        await expect(after.getByRole('alert')).toHaveCount(0);
+        await expect.poll(() => {
+            return after.locator('video').evaluate((element: HTMLVideoElement) => {
+                return { duration: Math.round(element.duration), time: element.currentTime > 0.3, error: element.error === null };
+            });
+        }, { timeout: 20000 }).toEqual({ duration: 4, time: true, error: true });
+    });
+
+    test('repairs an episode hidden behind pictures by itself when it is downloaded, so it is never listed', async () => {
+        const { page, animeDir, userData } = session;
+        const source = join(workDir, 'hidden-source.mp4');
+        hiddenVideoAt(source);
+        mkdirSync(join(userData, 'anime', 'history'), { recursive: true });
+        writeFileSync(join(userData, 'anime', 'history', 'hidden-video'), source);
+
+        await downloadFirstEpisode(page);
+
+        const video = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4');
+        await expect.poll(() => {
+            return startsAsMp4(video);
+        }, { timeout: 30000 }).toBe(true);
+        const repaired = describeVideo(video);
+        expect(repaired).toContain('Video: h264');
+        expect(repaired).toContain('Audio: aac');
+        expect(readdirSync(dirname(video))).not.toContainEqual(expect.stringContaining('.pullwave-repair'));
+        await openAnimeSettings(page);
+        await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
+        await expect(page.getByRole('dialog', { name: 'Downloaded episodes' }).getByRole('status')).toHaveText('No problems found in the downloaded episodes.');
+    });
+
+    // The video the fake ani-cli wrote is not a real one (it would be listed as one that could not be read): an episode that is fine has a picture and audio.
+    function replaceWithGoodVideo(video: string): void {
+        execFileSync(FFMPEG, ['-hide_banner', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=64x64:rate=10', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', video], { stdio: 'pipe' });
+    }
+
+    test('says there is no problem when the downloaded episodes are fine', async () => {
+        const { page, animeDir } = session;
+        await downloadFirstEpisode(page);
+        replaceWithGoodVideo(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'));
         await openAnimeSettings(page);
 
         await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
@@ -2000,8 +2148,50 @@ test.describe('the next episode that starts by itself, and the icons of the play
             return Number(await bar.getAttribute('aria-valuenow'));
         }).toBeGreaterThan(10);
         await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 2' })).toBeVisible({ timeout: 15000 });
-        await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 2' }).locator('video')).toHaveAttribute('src', 'pullwave-media://episode/2');
+        await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 2' }).locator('video')).toHaveAttribute('src', /^pullwave-media:\/\/episode\/2\?v=\d+$/);
     });
+
+    for (const way of ['by itself when the count is over', 'at once with PLAY NOW']) {
+        test(`stays in fullscreen when the next episode starts ${way} @resize`, async () => {
+            const { page } = session;
+            const fullscreenOf = async (): Promise<string | null> => {
+                return page.evaluate(() => {
+                    return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+                });
+            };
+            // The stage is marked: it must be the very same element after the episode changes, not another one that was put in fullscreen.
+            const markOfStage = (): Promise<string> => {
+                return page.evaluate(() => {
+                    const stage = document.fullscreenElement as HTMLElement & { pullwaveMark?: string };
+                    stage.pullwaveMark = stage.pullwaveMark ?? 'same stage';
+                    return stage.pullwaveMark;
+                });
+            };
+            const dialog = await playFirstOfTwo(page);
+            await dialog.getByRole('button', { name: 'Fullscreen' }).click();
+            await expect.poll(fullscreenOf).toBe('player__stage');
+            expect(await markOfStage()).toBe('same stage');
+
+            await endEpisode(dialog);
+            const panel = dialog.getByRole('region', { name: 'NEXT EPISODE' });
+            await expect(panel).toBeVisible();
+            if (way.endsWith('PLAY NOW')) {
+                await panel.getByRole('button', { name: 'PLAY NOW' }).click();
+            }
+            const second = page.getByRole('dialog', { name: 'Fake Anime · EP 2' });
+            await expect(second).toBeVisible({ timeout: 15000 });
+            await expect(second.locator('video')).toHaveAttribute('src', /^pullwave-media:\/\/episode\/2\?v=\d+$/);
+
+            // The viewer is still in fullscreen, in the same stage, with the controls of the new episode in it.
+            expect(await fullscreenOf()).toBe('player__stage');
+            expect(await markOfStage()).toBe('same stage');
+            await expect(second.locator('.player__stage').getByRole('button', { name: 'Fullscreen' })).toBeVisible();
+
+            // Leaving fullscreen is still up to the viewer.
+            await second.getByRole('button', { name: 'Fullscreen' }).click();
+            await expect.poll(fullscreenOf).toBeNull();
+        });
+    }
 
     test('plays the next episode at once with PLAY NOW, and stays with CANCEL', async () => {
         const { page } = session;
@@ -2131,20 +2321,20 @@ test.describe('series and seasons', () => {
         // Inside the first season the buttons go from one episode to the other.
         const last = page.getByRole('dialog', { name: 'Fake Anime · EP 3' });
         await expect(last).toBeVisible();
-        await expect(last.locator('video')).toHaveAttribute('src', 'pullwave-media://episode/3');
+        await expect(last.locator('video')).toHaveAttribute('src', /^pullwave-media:\/\/episode\/3\?v=\d+$/);
         await expect(last.getByRole('button', { name: 'PREVIOUS EPISODE' })).toBeVisible();
         // The last episode of the first season: NEXT EPISODE goes to the first downloaded one of the second season.
         await last.getByRole('button', { name: 'NEXT EPISODE' }).click();
         const second = page.getByRole('dialog', { name: 'Fake Anime 2 · EP 1' });
         await expect(second).toBeVisible();
-        await expect(second.locator('video')).toHaveAttribute('src', 'pullwave-media://episode/7');
+        await expect(second.locator('video')).toHaveAttribute('src', /^pullwave-media:\/\/episode\/7\?v=\d+$/);
         // The second season is the last one, and its second episode is not downloaded.
         await expect(second.getByRole('button', { name: 'NEXT EPISODE' })).toHaveCount(0);
 
         // PREVIOUS EPISODE, at the start of the second season, goes back to the last downloaded one of the first.
         await second.getByRole('button', { name: 'PREVIOUS EPISODE' }).click();
         await expect(last).toBeVisible();
-        await expect(last.locator('video')).toHaveAttribute('src', 'pullwave-media://episode/3');
+        await expect(last.locator('video')).toHaveAttribute('src', /^pullwave-media:\/\/episode\/3\?v=\d+$/);
     });
 
     test('saves each anime in a season folder, suggesting the series, and joins two entries by hand into one card', { tag: '@windows' }, async () => {
@@ -2880,6 +3070,15 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         writeFileSync(join(hlsDir, 'pt.vtt'), 'WEBVTT\n\n00:00.000 --> 00:08.000\nOla do stream\n');
         writeFileSync(join(hlsDir, 'es.vtt'), 'WEBVTT\n\n00:00.000 --> 00:08.000\nHola del stream\n');
         writeFileSync(join(hlsDir, 'ar.vtt'), 'WEBVTT\n\n00:00.000 --> 00:08.000\nمرحبا من البث\n');
+        // The same episode with every segment behind a picture and named like one, as the source of KAIJU GIRL CARAMELISE gives it.
+        writeFileSync(join(hlsDir, 'hidden.m3u8'), readFileSync(join(hlsDir, 'index.m3u8'), 'utf-8').replace(/seg(\d+)\.ts/g, 'hseg$1.ts.jpg'));
+        readdirSync(hlsDir)
+            .filter((name) => {
+                return /^seg\d+\.ts$/.test(name);
+            })
+            .forEach((name) => {
+                writeFileSync(join(hlsDir, `h${name}.jpg`), hiddenSegment(readFileSync(join(hlsDir, name))));
+            });
         seen = [];
         server = createServer((request, response) => {
             const path = (request.url ?? '/').split('?')[0] ?? '/';
@@ -2890,7 +3089,7 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
                 response.writeHead(request.headers.referer !== REFERER ? 403 : 404).end();
                 return;
             }
-            const types: Record<string, string> = { '.m3u8': 'application/vnd.apple.mpegurl', '.ts': 'video/mp2t', '.vtt': 'text/vtt' };
+            const types: Record<string, string> = { '.m3u8': 'application/vnd.apple.mpegurl', '.ts': 'video/mp2t', '.vtt': 'text/vtt', '.jpg': 'image/jpeg' };
             const extension = path.slice(path.lastIndexOf('.'));
             response.writeHead(200, { 'Content-Type': types[extension] ?? 'application/octet-stream' }).end(readFileSync(file));
         });
@@ -2922,6 +3121,76 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         await openFirstResult(page);
         // A click on an episode of the search opens the player: there is no button to watch what was picked.
         await page.getByRole('button', { name: `EP ${episode}`, exact: true }).click();
+    }
+
+    test('plays an episode whose segments are hidden behind a picture', async () => {
+        const { page, userData } = session;
+        expect(HIDING_PICTURE).toHaveLength(70);
+        writeFileSync(join(userData, 'anime', 'history', 'stream-url'), `${baseUrl}/hidden.m3u8`);
+        await watchEpisode(page, '1');
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        const video = dialog.locator('video');
+        await expect(video).toBeVisible();
+
+        await expect.poll(() => {
+            return video.evaluate((element: HTMLVideoElement) => {
+                return element.currentTime;
+            });
+        }, { timeout: 30000 }).toBeGreaterThan(0.5);
+        await expect(dialog.getByRole('alert')).toHaveCount(0);
+        expect(
+            seen.some((request) => {
+                return request.path.endsWith('.ts.jpg');
+            })
+        ).toBe(true);
+    });
+
+    for (const way of ['by itself when the count is over', 'at once with PLAY NOW']) {
+        test(`plays the next episode ${way}, in the same stage, so a viewer in fullscreen stays in it @resize`, async () => {
+            const { page } = session;
+            const fullscreenOf = async (): Promise<string | null> => {
+                return page.evaluate(() => {
+                    return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+                });
+            };
+            // The stage is marked: it must be the very same element after the episode changes, not another one that was put in fullscreen.
+            const markOfStage = (): Promise<string> => {
+                return page.evaluate(() => {
+                    const stage = document.fullscreenElement as HTMLElement & { pullwaveMark?: string };
+                    stage.pullwaveMark = stage.pullwaveMark ?? 'same stage';
+                    return stage.pullwaveMark;
+                });
+            };
+            await watchEpisode(page, '1');
+            const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+            await expect(dialog.locator('video')).toBeVisible();
+            await dialog.getByRole('button', { name: 'Fullscreen' }).click();
+            await expect.poll(fullscreenOf).toBe('player__stage');
+            expect(await markOfStage()).toBe('same stage');
+
+            await dialog.locator('video').evaluate((video) => {
+                video.dispatchEvent(new Event('ended'));
+            });
+            const panel = dialog.getByRole('region', { name: 'NEXT EPISODE' });
+            await expect(panel).toBeVisible();
+            await expect(panel).toContainText('Fake Anime · EP 2');
+            if (way.endsWith('PLAY NOW')) {
+                await panel.getByRole('button', { name: 'PLAY NOW' }).click();
+            }
+            const second = page.getByRole('dialog', { name: 'Fake Anime · EP 2' });
+            await expect(second).toBeVisible({ timeout: 20000 });
+            await expect(second.locator('video')).toBeVisible();
+
+            // Still in fullscreen, in the same stage, with the video and the controls of the new episode in it.
+            expect(await fullscreenOf()).toBe('player__stage');
+            expect(await markOfStage()).toBe('same stage');
+            await expect(second.locator('.player__stage video')).toHaveCount(1);
+            await expect(second.locator('.player__stage').getByRole('button', { name: 'Fullscreen' })).toBeVisible();
+
+            // Leaving fullscreen is still up to the viewer.
+            await second.getByRole('button', { name: 'Fullscreen' }).click();
+            await expect.poll(fullscreenOf).toBeNull();
+        });
     }
 
     test('offers every language the source lists, shows the one ani-cli picked, and only the one that is chosen', async () => {

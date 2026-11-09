@@ -70,7 +70,12 @@ if [ "$download" = 1 ]; then
         *slow*) printf 'unfinished' > "$file.part"; sleep 5 ;;
     esac
     printf '[download] 100%% of   19.00B in 00:00:01 at 1.00MiB/s\n'
-    printf 'FAKEVIDEO0123456789' > "$file"
+    # A test can give the file the source would write: the one named in hidden-video is copied as the episode (a video behind pictures).
+    if [ -f "$ANI_CLI_HIST_DIR/hidden-video" ]; then
+        cp "$(cat "$ANI_CLI_HIST_DIR/hidden-video")" "$file"
+    else
+        printf 'FAKEVIDEO0123456789' > "$file"
+    fi
     rm -f "$file.part"
     printf 'WEBVTT\n' > "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.vtt"
     exit 0

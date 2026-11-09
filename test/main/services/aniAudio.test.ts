@@ -89,7 +89,11 @@ describe('patchSeparateAudio', () => {
         expect(patched).toContain('Referer:\\n%s\\n');
         expect(patchReport(aniCliScript('5.1.4')).separateAudio).toBe(true);
         expect(patchReport(aniCliScriptWithout('5.1.4', SEPARATE_AUDIO_PART)).separateAudio).toBe(false);
-        expect(patchAniCli(aniCliScriptWithout('5.1.4', SEPARATE_AUDIO_PART))).not.toContain('pullwave_audio_master');
+        const withoutAudio = patchAniCli(aniCliScriptWithout('5.1.4', SEPARATE_AUDIO_PART)) as string;
+        // The debug line reads the variable with a default, so it still works when nothing sets it; nothing else of the audio patch is there.
+        expect(withoutAudio).not.toContain('pullwave_audio_master=""');
+        expect(withoutAudio).not.toContain('_pullwave_master=');
+        expect(withoutAudio).toContain('"${pullwave_audio_master:-$video_link}"');
     });
 
     it('saves the subtitles before the picture is downloaded and the audio joined', () => {

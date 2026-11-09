@@ -778,6 +778,12 @@ export class AnimeDb {
         );
     }
 
+    // The size of the file of a downloaded episode after the file was repaired in place (see imageHeaderRepair.ts). It only counts for the file
+    // that was repaired: an episode that was downloaded again meanwhile (another file) is left as it is.
+    updateFileSize(episodeId: number, filePath: string, sizeBytes: number): void {
+        this.run(`UPDATE episode SET size_bytes = ? WHERE id = ? AND status = 'done' AND file_path = ?`, sizeBytes, episodeId, filePath);
+    }
+
     // What looking at the audio of the video found. It only counts for the file that was looked at: an episode that was downloaded again
     // meanwhile (another file) or is not in the library any more is left as it is.
     markAudioChecked(episodeId: number, filePath: string, hasAudio: boolean): void {

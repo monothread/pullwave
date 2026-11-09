@@ -82,7 +82,7 @@ describe('checkLibraryAudio', () => {
 
         const summary = await checkLibraryAudio(db, { hasAudio, fileSize });
 
-        expect(summary).toEqual({ checked: 3, withoutAudio: 1, unreadable: 0, missing: 0 });
+        expect(summary).toEqual({ checked: 3, withoutAudio: 1, unreadable: 0, unreadableIds: [], missing: 0 });
         expect(hasAudio.mock.calls).toEqual([['/lib/Naruto/1.mp4'], ['/lib/Naruto/2.mp4'], ['/lib/Bleach/1.mp4']]);
         expect(
             db.list().flatMap((anime) => {
@@ -106,7 +106,7 @@ describe('checkLibraryAudio', () => {
         const second = options(paths, {});
         const summary = await checkLibraryAudio(db, second);
 
-        expect(summary).toEqual({ checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 });
+        expect(summary).toEqual({ checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
         expect(second.hasAudio).not.toHaveBeenCalled();
         expect(db.getEpisode(2)).toMatchObject({ noAudio: true });
     });
@@ -117,7 +117,7 @@ describe('checkLibraryAudio', () => {
 
         const summary = await checkLibraryAudio(db, { hasAudio, fileSize });
 
-        expect(summary).toEqual({ checked: 2, withoutAudio: 0, unreadable: 0, missing: 1 });
+        expect(summary).toEqual({ checked: 2, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 1 });
         expect(hasAudio).not.toHaveBeenCalledWith('/lib/Naruto/2.mp4');
         expect(db.episodesToCheckAudio()).toMatchObject([{ id: 2, filePath: '/lib/Naruto/2.mp4' }]);
     });
@@ -128,7 +128,7 @@ describe('checkLibraryAudio', () => {
 
         const summary = await checkLibraryAudio(db, { hasAudio, fileSize });
 
-        expect(summary).toEqual({ checked: 1, withoutAudio: 0, unreadable: 2, missing: 0 });
+        expect(summary).toEqual({ checked: 1, withoutAudio: 0, unreadable: 2, unreadableIds: [1, 2], missing: 0 });
         expect(
             db.episodesToCheckAudio().map((episode) => {
                 return episode.filePath;
@@ -140,7 +140,7 @@ describe('checkLibraryAudio', () => {
         const db = new AnimeDb(':memory:');
         const { hasAudio, fileSize } = options([], {});
 
-        expect(await checkLibraryAudio(db, { hasAudio, fileSize })).toEqual({ checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 });
+        expect(await checkLibraryAudio(db, { hasAudio, fileSize })).toEqual({ checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
         expect(hasAudio).not.toHaveBeenCalled();
         expect(fileSize).not.toHaveBeenCalled();
     });

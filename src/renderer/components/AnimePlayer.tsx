@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { animeMediaUrl, type AnimeEpisodeRecord, type AnimeSubtitleCheckResponse, type AnimeSubtitleTrack, type LibraryAnime } from '@shared/anime';
+import { createPortal } from 'react-dom';
+import { animeMediaUrl, episodeVideoUrl, type AnimeEpisodeRecord, type AnimeSubtitleCheckResponse, type AnimeSubtitleTrack, type LibraryAnime } from '@shared/anime';
 import type { Translator } from '@shared/i18n';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import type { LanguageCode } from '@shared/types';
@@ -45,10 +46,16 @@ function noticeOfCheck(response: AnimeSubtitleCheckResponse, t: Translator, lang
 interface PlayerViewProps {
     anime: LibraryAnime;
     episode: AnimeEpisodeRecord;
+    title: string;
+    // Where the header and the stage of the player are drawn: they belong to AnimePlayer and stay while the episodes change.
+    headSlot: HTMLElement | null;
+    stageSlot: HTMLElement | null;
 }
 
-// One episode being watched. It is created again for each episode (see `key` below), so nothing carries over.
-function PlayerView({ anime, episode }: PlayerViewProps) {
+// One episode being watched. It is created again for each episode (see `key` below), so nothing carries over. What it shows goes into the
+// two slots of AnimePlayer, so the stage (the element that goes to fullscreen) is not removed from the page when the episode changes: the
+// browser leaves fullscreen when its element is removed, and the next episode must come up in fullscreen as the one before.
+function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewProps) {
     const t = useTranslator();
     const language = useAppLanguage();
     const play = useAnimeStore((state) => {
@@ -67,6 +74,10 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
         return state.refreshLibrary;
     });
     const video = useRef<HTMLVideoElement | null>(null);
+    // This opening of the player (see episodeVideoUrl): the video has an address of its own each time it is opened.
+    const [opening] = useState(() => {
+        return Date.now();
+    });
     const lastSaved = useRef(0);
     const [failed, setFailed] = useState(false);
     // Until the list arrives only the subtitle ani-cli picked is known.
@@ -175,193 +186,203 @@ function PlayerView({ anime, episode }: PlayerViewProps) {
 
     const previous = previousDownloadedEpisode(library, anime, episode);
     const next = nextDownloadedEpisode(library, anime, episode);
-    const title = t('anime.job.title', { title: anime.title, episode: episode.number });
     // Where an episode that was left half way picks up again: said for a moment when it opens.
     const resumedAt = resumePosition(episode);
 
-    return (
-        <div className="player" role="dialog" aria-modal="true" aria-label={title}>
-            <div className="player__box">
-                <header className="job__head">
-                    <h2 className="player__title">{title}</h2>
-                    <span className="anime__actions">
-                        {previous && (
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                onClick={() => {
-                                    goTo(previous);
-                                }}
-                            >
-                                {t('anime.player.previous')}
-                            </button>
-                        )}
-                        {next && (
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                onClick={() => {
-                                    goTo(next);
-                                }}
-                            >
-                                {t('anime.player.next')}
-                            </button>
-                        )}
+    const head = (
+        <>
+            <header className="job__head">
+                <h2 className="player__title">{title}</h2>
+                <span className="anime__actions">
+                    {previous && (
                         <button
                             type="button"
                             className="btn btn--small"
                             onClick={() => {
-                                void loadSubtitle();
+                                goTo(previous);
                             }}
                         >
-                            {t('anime.player.loadSubtitle')}
+                            {t('anime.player.previous')}
                         </button>
-                        {tracksLoaded && (
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                onClick={() => {
-                                    if (tracks.length > 0) {
-                                        setTranslating(true);
-                                    } else {
-                                        setGenerating(true);
-                                    }
-                                }}
-                            >
-                                {tracks.length > 0 ? t('anime.player.translate') : t('anime.player.generate')}
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            className="btn btn--small"
-                            disabled={checking}
-                            onClick={() => {
-                                void checkSubtitles();
-                            }}
-                        >
-                            {checking ? t('anime.player.checkingSubtitles') : t('anime.player.checkSubtitles')}
-                        </button>
-                        <button type="button" className="btn btn--small btn--hot" autoFocus onClick={close}>
-                            {t('anime.player.close')}
-                        </button>
-                    </span>
-                </header>
-                {translating && (
-                    <SubtitleTranslateDialog
-                        episodeId={episode.id}
-                        tracks={tracks}
-                        onTranslated={(updated, translated) => {
-                            setTracks(updated);
-                            chooseSubtitle(optionIdOf(translated));
-                            setTranslating(false);
-                            setNotice({ kind: 'info', message: t('anime.translate.done', { language: translated.label }) });
-                        }}
-                        onClose={() => {
-                            setTranslating(false);
-                        }}
-                    />
-                )}
-                {generating && (
-                    <SubtitleGenerateDialog
-                        episodeId={episode.id}
-                        onGenerated={(updated, generated) => {
-                            setTracks(updated);
-                            chooseSubtitle(optionIdOf(generated));
-                            setGenerating(false);
-                            setNotice({ kind: 'info', message: t('anime.generate.done', { language: generated.label }) });
-                        }}
-                        onClose={() => {
-                            setGenerating(false);
-                        }}
-                    />
-                )}
-                {failed && (
-                    <p className="field__warning" role="alert">
-                        {t('anime.player.error')}
-                    </p>
-                )}
-                {importFailure !== null && (
-                    <p className="field__warning" role="alert">
-                        {t(importFailureKey(importFailure))}
-                    </p>
-                )}
-                <div className="player__stage">
-                    {resumedAt !== null && (
-                        <span className="player__resumed" data-testid="player-resumed">
-                            {t('anime.player.resumedAt', { time: formatClock(resumedAt) })}
-                        </span>
                     )}
-                    <video
-                        ref={video}
-                        className="player__video"
-                        src={animeMediaUrl('episode', episode.id)}
-                        crossOrigin="anonymous"
-                        autoPlay
-                        onLoadedMetadata={(event) => {
-                            const position = resumePosition(episode);
-                            if (position !== null) {
-                                event.currentTarget.currentTime = position;
-                            }
-                        }}
-                        onTimeUpdate={(event) => {
-                            if (Math.abs(event.currentTarget.currentTime - lastSaved.current) >= SAVE_INTERVAL_SECONDS) {
-                                save();
-                            }
-                        }}
-                        onPause={save}
-                        onPlay={() => {
-                            // Played again after it ended: the user stays on this episode.
-                            setUpNext(false);
-                        }}
-                        onEnded={() => {
-                            save();
-                            if (autoNext && next !== null) {
-                                setUpNext(true);
-                            }
-                        }}
-                        onError={() => {
-                            setFailed(true);
-                        }}
-                    >
-                        {tracks.map((track) => {
-                        return (
-                            <track
-                                key={optionIdOf(track)}
-                                id={optionIdOf(track)}
-                                kind="subtitles"
-                                src={animeMediaUrl('subtitle', episode.id, track.id)}
-                                label={track.label}
-                                default={optionIdOf(track) === subtitle}
-                            />
-                        );
-                    })}
-                    </video>
-                    {upNext && next !== null && (
-                        <AutoNextPanel
-                            title={t('anime.job.title', { title: next.anime.title, episode: next.episode.number })}
-                            coverTitle={next.anime.title}
-                            onGo={() => {
+                    {next && (
+                        <button
+                            type="button"
+                            className="btn btn--small"
+                            onClick={() => {
                                 goTo(next);
                             }}
-                            onCancel={() => {
-                                setUpNext(false);
-                            }}
-                        />
+                        >
+                            {t('anime.player.next')}
+                        </button>
                     )}
-                    <VideoControls
-                        video={video}
-                        subtitles={optionsOf(tracks, language)}
-                        selectedSubtitle={subtitle}
-                        onSelectSubtitle={chooseSubtitle}
-                        autoNext={{ enabled: autoNext, onToggle: toggleAutoNext }}
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            void loadSubtitle();
+                        }}
+                    >
+                        {t('anime.player.loadSubtitle')}
+                    </button>
+                    {tracksLoaded && (
+                        <button
+                            type="button"
+                            className="btn btn--small"
+                            onClick={() => {
+                                if (tracks.length > 0) {
+                                    setTranslating(true);
+                                } else {
+                                    setGenerating(true);
+                                }
+                            }}
+                        >
+                            {tracks.length > 0 ? t('anime.player.translate') : t('anime.player.generate')}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        disabled={checking}
+                        onClick={() => {
+                            void checkSubtitles();
+                        }}
+                    >
+                        {checking ? t('anime.player.checkingSubtitles') : t('anime.player.checkSubtitles')}
+                    </button>
+                    <button type="button" className="btn btn--small btn--hot" autoFocus onClick={close}>
+                        {t('anime.player.close')}
+                    </button>
+                </span>
+            </header>
+            {translating && (
+                <SubtitleTranslateDialog
+                    episodeId={episode.id}
+                    tracks={tracks}
+                    onTranslated={(updated, translated) => {
+                        setTracks(updated);
+                        chooseSubtitle(optionIdOf(translated));
+                        setTranslating(false);
+                        setNotice({ kind: 'info', message: t('anime.translate.done', { language: translated.label }) });
+                    }}
+                    onClose={() => {
+                        setTranslating(false);
+                    }}
+                />
+            )}
+            {generating && (
+                <SubtitleGenerateDialog
+                    episodeId={episode.id}
+                    onGenerated={(updated, generated) => {
+                        setTracks(updated);
+                        chooseSubtitle(optionIdOf(generated));
+                        setGenerating(false);
+                        setNotice({ kind: 'info', message: t('anime.generate.done', { language: generated.label }) });
+                    }}
+                    onClose={() => {
+                        setGenerating(false);
+                    }}
+                />
+            )}
+            {failed && (
+                <p className="field__warning" role="alert">
+                    {t('anime.player.error')}
+                </p>
+            )}
+            {importFailure !== null && (
+                <p className="field__warning" role="alert">
+                    {t(importFailureKey(importFailure))}
+                </p>
+            )}
+        </>
+    );
+
+    const stage = (
+        <>
+            {resumedAt !== null && (
+                <span className="player__resumed" data-testid="player-resumed">
+                    {t('anime.player.resumedAt', { time: formatClock(resumedAt) })}
+                </span>
+            )}
+            <video
+                ref={video}
+                className="player__video"
+                src={episodeVideoUrl(episode.id, opening)}
+                crossOrigin="anonymous"
+                autoPlay
+                onLoadedMetadata={(event) => {
+                    const position = resumePosition(episode);
+                    if (position !== null) {
+                        event.currentTarget.currentTime = position;
+                    }
+                }}
+                onTimeUpdate={(event) => {
+                    if (Math.abs(event.currentTarget.currentTime - lastSaved.current) >= SAVE_INTERVAL_SECONDS) {
+                        save();
+                    }
+                }}
+                onPause={save}
+                onPlay={() => {
+                    // Played again after it ended: the user stays on this episode.
+                    setUpNext(false);
+                }}
+                onEnded={() => {
+                    save();
+                    if (autoNext && next !== null) {
+                        setUpNext(true);
+                    }
+                }}
+                onError={() => {
+                    setFailed(true);
+                }}
+            >
+                {tracks.map((track) => {
+                return (
+                    <track
+                        key={optionIdOf(track)}
+                        id={optionIdOf(track)}
+                        kind="subtitles"
+                        src={animeMediaUrl('subtitle', episode.id, track.id)}
+                        label={track.label}
+                        default={optionIdOf(track) === subtitle}
                     />
-                </div>
-            </div>
-        </div>
+                );
+            })}
+            </video>
+            {upNext && next !== null && (
+                <AutoNextPanel
+                    title={t('anime.job.title', { title: next.anime.title, episode: next.episode.number })}
+                    coverTitle={next.anime.title}
+                    onGo={() => {
+                        goTo(next);
+                    }}
+                    onCancel={() => {
+                        setUpNext(false);
+                    }}
+                />
+            )}
+            <VideoControls
+                video={video}
+                subtitles={optionsOf(tracks, language)}
+                selectedSubtitle={subtitle}
+                onSelectSubtitle={chooseSubtitle}
+                autoNext={{ enabled: autoNext, onToggle: toggleAutoNext }}
+            />
+        </>
+    );
+
+    return (
+        <>
+            {headSlot !== null && createPortal(head, headSlot)}
+            {stageSlot !== null && createPortal(stage, stageSlot)}
+        </>
     );
 }
 
 export function AnimePlayer() {
+    const t = useTranslator();
+    const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
+    const [stageSlot, setStageSlot] = useState<HTMLElement | null>(null);
     const playing = useAnimeStore((state) => {
         return state.playing;
     });
@@ -377,5 +398,14 @@ export function AnimePlayer() {
     if (!anime || !episode) {
         return null;
     }
-    return <PlayerView key={episode.id} anime={anime} episode={episode} />;
+    const title = t('anime.job.title', { title: anime.title, episode: episode.number });
+    return (
+        <div className="player" role="dialog" aria-modal="true" aria-label={title}>
+            <div className="player__box">
+                <div ref={setHeadSlot} className="player__slot" />
+                <div ref={setStageSlot} className="player__stage" />
+            </div>
+            <PlayerView key={episode.id} anime={anime} episode={episode} title={title} headSlot={headSlot} stageSlot={stageSlot} />
+        </div>
+    );
 }

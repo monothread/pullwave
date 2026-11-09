@@ -11,6 +11,7 @@ import {
     groupByDay,
     groupLibrary,
     isNewEpisode,
+    isRepairable,
     isWatched,
     libraryEntry,
     libraryProblems,
@@ -597,6 +598,55 @@ describe('libraryProblems', () => {
         const library = [makeAnime([makeEpisode({ id: 1, status: 'error', noAudio: true }), makeEpisode({ id: 2, number: '2', status: 'queued', fileMissing: true })])];
 
         expect(libraryProblems(library)).toEqual([]);
+    });
+
+    it('lists the episodes the check could not read, with the others, in the order of the library', () => {
+        const library = [
+            makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, number: '2', noAudio: true }), makeEpisode({ id: 3, number: '3' })], { id: 10, title: 'Naruto' }),
+            makeAnime([makeEpisode({ id: 4, animeId: 20, number: '1' })], { id: 20, title: 'Kaiju' })
+        ];
+
+        expect(libraryProblems(library, [3, 4])).toEqual([
+            { animeId: 10, animeTitle: 'Naruto', episodeId: 2, episode: '2', kind: 'no-audio' },
+            { animeId: 10, animeTitle: 'Naruto', episodeId: 3, episode: '3', kind: 'unreadable' },
+            { animeId: 20, animeTitle: 'Kaiju', episodeId: 4, episode: '1', kind: 'unreadable' }
+        ]);
+    });
+
+    it('says nothing is unreadable when the check gives no episodes, and for an id the library does not have', () => {
+        const library = [makeAnime([makeEpisode({ id: 1 })], { id: 10, title: 'Naruto' })];
+
+        expect(libraryProblems(library)).toEqual([]);
+        expect(libraryProblems(library, [])).toEqual([]);
+        expect(libraryProblems(library, [99])).toEqual([]);
+    });
+
+    it('tells the file that is gone, and the video with no audio, before one that could not be read', () => {
+        const library = [makeAnime([makeEpisode({ id: 1, fileMissing: true }), makeEpisode({ id: 2, number: '2', noAudio: true })], { id: 10, title: 'Naruto' })];
+
+        expect(libraryProblems(library, [1, 2])).toEqual([
+            { animeId: 10, animeTitle: 'Naruto', episodeId: 1, episode: '1', kind: 'file-missing' },
+            { animeId: 10, animeTitle: 'Naruto', episodeId: 2, episode: '2', kind: 'no-audio' }
+        ]);
+    });
+
+    it('leaves out an episode that is not downloaded even when the check said it could not be read', () => {
+        const library = [makeAnime([makeEpisode({ id: 1, status: 'error' }), makeEpisode({ id: 2, number: '2', status: 'queued' })])];
+
+        expect(libraryProblems(library, [1, 2])).toEqual([]);
+    });
+});
+
+describe('isRepairable', () => {
+    const problem = { animeId: 10, animeTitle: 'Naruto', episodeId: 1, episode: '1' };
+
+    it('is true for an episode that could not be read, which a new download would not fix', () => {
+        expect(isRepairable({ ...problem, kind: 'unreadable' })).toBe(true);
+    });
+
+    it('is false for the ones a new download fixes', () => {
+        expect(isRepairable({ ...problem, kind: 'no-audio' })).toBe(false);
+        expect(isRepairable({ ...problem, kind: 'file-missing' })).toBe(false);
     });
 });
 

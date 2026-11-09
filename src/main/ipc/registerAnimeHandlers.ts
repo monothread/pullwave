@@ -13,6 +13,7 @@ import {
     type AnimeDownloadRequest,
     type AnimeDownloadResponse,
     type AnimeAudioCheckResponse,
+    type AnimeRepairResponse,
     type AnimeImportResponse,
     type AnimeMigrationResponse,
     type AnimeProgressUpdate,
@@ -78,6 +79,8 @@ export interface AnimeHandlerDependencies {
     importLibrary: () => Promise<AnimeImportResponse>;
     // Looks at the audio of the downloaded episodes that were never looked at (see audioCheck.ts).
     checkAudio: () => Promise<AnimeAudioCheckResponse>;
+    // Repairs the videos of these downloaded episodes that are hidden behind a picture (see episodeRepair.ts).
+    repairEpisodes: (episodeIds: number[]) => Promise<AnimeRepairResponse>;
     // Asks for the folder the anime are moved to and moves them there (see animeMigration.ts).
     migrateFolder: () => Promise<AnimeMigrationResponse>;
     // Opens a folder in the file manager of the system.
@@ -356,6 +359,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeCheckAudio, (): AnimeAudioCheckResponse => {
         return { ok: false, reason: 'unsupported' };
     });
+    ipcMain.handle(IPC.animeRepairEpisodes, (): AnimeRepairResponse => {
+        return { ok: false, reason: 'unsupported' };
+    });
     ipcMain.handle(IPC.animeMigrateFolder, (): AnimeMigrationResponse => {
         return { ok: false, reason: 'failed' };
     });
@@ -527,6 +533,13 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     });
     ipcMain.handle(IPC.animeCheckAudio, async (): Promise<AnimeAudioCheckResponse> => {
         const result = await deps.checkAudio();
+        if (result.ok) {
+            deps.onLibraryChanged();
+        }
+        return result;
+    });
+    ipcMain.handle(IPC.animeRepairEpisodes, async (_event, ids): Promise<AnimeRepairResponse> => {
+        const result = await deps.repairEpisodes(validIds(ids));
         if (result.ok) {
             deps.onLibraryChanged();
         }

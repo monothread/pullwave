@@ -1223,7 +1223,7 @@ describe('createAnimeRuntime', () => {
             answers[paths[0] as string] = VIDEO_ONLY;
             answers[paths[1] as string] = VIDEO_AND_AUDIO;
 
-            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 2, withoutAudio: 1, unreadable: 0, missing: 0 });
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 2, withoutAudio: 1, unreadable: 0, unreadableIds: [], missing: 0 });
 
             expect(probe.mock.calls).toEqual([
                 [['-hide_banner', '-nostdin', '-i', paths[0]], undefined],
@@ -1242,7 +1242,7 @@ describe('createAnimeRuntime', () => {
             answers[paths[1] as string] = null;
             answers[paths[2] as string] = VIDEO_AND_AUDIO;
 
-            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 1, missing: 1 });
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 1, unreadableIds: [2], missing: 1 });
 
             expect(probe).toHaveBeenCalledTimes(2);
             expect(
@@ -1269,8 +1269,8 @@ describe('createAnimeRuntime', () => {
             expect(await runtime?.handlers.checkAudio()).toEqual({ ok: false, reason: 'busy' });
             release({ code: 1, stderr: VIDEO_AND_AUDIO });
 
-            expect(await first).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, missing: 0 });
-            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 });
+            expect(await first).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
             expect(probe).toHaveBeenCalledTimes(1);
         });
 
@@ -1281,8 +1281,104 @@ describe('createAnimeRuntime', () => {
             const { runtime } = withFiles(['one'], probe);
             probe.mockRejectedValueOnce(new Error('spawn ffmpeg ENOENT'));
 
-            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 0, withoutAudio: 0, unreadable: 1, missing: 0 });
-            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, missing: 0 });
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 0, withoutAudio: 0, unreadable: 1, unreadableIds: [1], missing: 0 });
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
+        });
+
+        describe('repairing the videos that are hidden behind a picture', () => {
+            const chunk = (type: string, size: number): Buffer => {
+                const head = Buffer.alloc(8);
+                head.writeUInt32BE(size, 0);
+                head.write(type, 4, 'ascii');
+                return Buffer.concat([head, Buffer.alloc(size, 7), Buffer.alloc(4, 0xcd)]);
+            };
+            const PICTURE = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', 13), chunk('IDAT', 13), chunk('IEND', 0)]);
+            const SEGMENTS = [1, 2, 3].map((fill) => {
+                return Buffer.concat([Buffer.from([0x47]), Buffer.alloc(999, fill)]);
+            });
+            const VIDEO = Buffer.concat(SEGMENTS);
+            const HIDDEN = Buffer.concat(
+                SEGMENTS.map((segment) => {
+                    return Buffer.concat([PICTURE, segment]);
+                })
+            );
+
+            // An ffmpeg that makes the MP4 by copying what it is given, and reads whatever it is asked to look at as a video with audio.
+            function copying() {
+                return vi.fn<FfmpegRunner>(async (args) => {
+                    if (args.includes('-f')) {
+                        writeFileSync(args[args.length - 1] as string, readFileSync(args[args.indexOf('-i') + 1] as string));
+                        return { code: 0, stderr: '' };
+                    }
+                    return { code: 1, stderr: VIDEO_AND_AUDIO };
+                });
+            }
+
+            it('takes the pictures out of the file of each episode it is asked for, saves the new size and looks at the audio again', async () => {
+                const { runtime, db, paths } = withFiles(['one', 'two'], copying());
+                writeFileSync(paths[0] as string, HIDDEN);
+
+                expect(await runtime?.handlers.repairEpisodes([1, 2])).toEqual({ ok: true, repaired: 1, failed: 0, skipped: 1 });
+
+                expect(readFileSync(paths[0] as string)).toEqual(VIDEO);
+                expect(readFileSync(paths[1] as string, 'utf-8')).toBe('video');
+                expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: paths[0], sizeBytes: VIDEO.length, noAudio: false });
+                expect(db.getEpisode(2)).toMatchObject({ sizeBytes: 5 });
+                expect(db.episodesToCheckAudio().map((episode) => { return episode.id; })).toEqual([2]);
+            });
+
+            it('says how many could not be repaired, and leaves their files as they were', async () => {
+                const failing = vi.fn<FfmpegRunner>(async () => {
+                    return { code: 1, stderr: 'Invalid data found when processing input' };
+                });
+                const { runtime, db, paths } = withFiles(['one'], failing);
+                writeFileSync(paths[0] as string, HIDDEN);
+
+                expect(await runtime?.handlers.repairEpisodes([1])).toEqual({ ok: true, repaired: 0, failed: 1, skipped: 0 });
+
+                expect(readFileSync(paths[0] as string)).toEqual(HIDDEN);
+                expect(db.getEpisode(1)).toMatchObject({ sizeBytes: 5 });
+            });
+
+            it('does not start a second repair while one is going on, and lets another one start after it', async () => {
+                let release: () => void = () => {
+                    return undefined;
+                };
+                const held = new Promise<void>((resolve) => {
+                    release = resolve;
+                });
+                const slow = vi.fn<FfmpegRunner>(async (args) => {
+                    if (args.includes('-f')) {
+                        await held;
+                        writeFileSync(args[args.length - 1] as string, readFileSync(args[args.indexOf('-i') + 1] as string));
+                        return { code: 0, stderr: '' };
+                    }
+                    return { code: 1, stderr: VIDEO_AND_AUDIO };
+                });
+                const { runtime, paths } = withFiles(['one'], slow);
+                writeFileSync(paths[0] as string, HIDDEN);
+
+                const first = runtime?.handlers.repairEpisodes([1]);
+                await new Promise((resolve) => {
+                    setImmediate(resolve);
+                });
+                expect(await runtime?.handlers.repairEpisodes([1])).toEqual({ ok: false, reason: 'busy' });
+
+                release();
+                expect(await first).toEqual({ ok: true, repaired: 1, failed: 0, skipped: 0 });
+                expect(await runtime?.handlers.repairEpisodes([1])).toEqual({ ok: true, repaired: 0, failed: 0, skipped: 1 });
+            });
+
+            it('lets another repair start after one that failed', async () => {
+                const broken = vi.fn<FfmpegRunner>(async () => {
+                    throw new Error('spawn ffmpeg ENOENT');
+                });
+                const { runtime, paths } = withFiles(['one'], broken);
+                writeFileSync(paths[0] as string, HIDDEN);
+
+                expect(await runtime?.handlers.repairEpisodes([1])).toEqual({ ok: true, repaired: 0, failed: 1, skipped: 0 });
+                expect(await runtime?.handlers.repairEpisodes([1])).toEqual({ ok: true, repaired: 0, failed: 1, skipped: 0 });
+            });
         });
 
         it('deletes only the video of an episode with no audio when it is downloaded again, and keeps what is beside it', async () => {

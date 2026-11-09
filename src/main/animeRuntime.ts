@@ -29,6 +29,8 @@ import { importLibrary } from './services/libraryImport';
 import { scanLibraryFolder, type ScanFileSystem } from './services/libraryScan';
 import { createFfmpegRunner, type AudioFiles, type FfmpegRunner } from './services/audioExtractor';
 import { checkLibraryAudio, videoHasAudio } from './services/audioCheck';
+import { repairLibraryEpisodes } from './services/episodeRepair';
+import { repairImageHeader } from './services/imageHeaderRepair';
 import { completeWithLlm, type LlmFetch } from './services/llmProviders';
 import { transcribeWithGemini } from './services/geminiSpeech';
 import { transcribeTextWithSpeechService, transcribeWithSpeechService } from './services/speechProviders';
@@ -222,6 +224,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         hasAudio: (path) => {
             return videoHasAudio(path, runFfmpeg);
         },
+        repairVideo: (path) => {
+            return repairImageHeader(path, runFfmpeg);
+        },
         onJobUpdate: (job) => {
             options.send(IPC.eventAnimeJob, job);
         },
@@ -372,6 +377,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     let migrating = false;
     // The audio of the library is being looked at: another look does not start meanwhile.
     let checkingAudio = false;
+    let repairing = false;
     // Which anime have ended, from AniList: they are not looked at for new episodes. Brought up to date at the start of each look.
     const airing = new AnimeAiringService({
         db,
@@ -516,6 +522,26 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                     return { ok: true, ...summary };
                 } finally {
                     checkingAudio = false;
+                }
+            },
+            repairEpisodes: async (episodeIds) => {
+                if (repairing) {
+                    return { ok: false, reason: 'busy' };
+                }
+                repairing = true;
+                try {
+                    const summary = await repairLibraryEpisodes(db, episodeIds, {
+                        fileSize,
+                        repair: (path) => {
+                            return repairImageHeader(path, runFfmpeg);
+                        },
+                        hasAudio: (path) => {
+                            return videoHasAudio(path, runFfmpeg);
+                        }
+                    });
+                    return { ok: true, ...summary };
+                } finally {
+                    repairing = false;
                 }
             },
             importLibrary: async () => {

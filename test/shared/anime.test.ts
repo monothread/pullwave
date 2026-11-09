@@ -1,4 +1,4 @@
-import { animeMediaUrl, ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, DEFAULT_TRANSCRIPTION_LANGUAGE, DEFAULT_TRANSLATION_LANGUAGE, generatePlanOf, isAnimeSupported, isSpokenLanguage, SPEECH_PART_SECONDS, TRANSCRIPTION_LANGUAGE_CODES, TRANSCRIPTION_LANGUAGES, TRANSLATION_LANGUAGES } from '@shared/anime';
+import { animeMediaUrl, ANIME_MEDIA_SCHEME, episodeVideoUrl, ANIME_STREAM_SCHEME, DEFAULT_TRANSCRIPTION_LANGUAGE, DEFAULT_TRANSLATION_LANGUAGE, generatePlanOf, isAnimeSupported, isSpokenLanguage, SPEECH_PART_SECONDS, TRANSCRIPTION_LANGUAGE_CODES, TRANSCRIPTION_LANGUAGES, TRANSLATION_LANGUAGES } from '@shared/anime';
 
 describe('isAnimeSupported', () => {
     it.each(['linux', 'win32'])('is true on %s', (platform) => {
@@ -19,6 +19,12 @@ describe('animeMediaUrl', () => {
     it('builds the address of the video and of the subtitles of an episode', () => {
         expect(animeMediaUrl('episode', 12)).toBe('pullwave-media://episode/12');
         expect(animeMediaUrl('subtitle', 7)).toBe('pullwave-media://subtitle/7');
+    });
+
+    it('builds an address of the video of an episode for each opening of the player, with the same path', () => {
+        expect(episodeVideoUrl(12, 1700000000000)).toBe('pullwave-media://episode/12?v=1700000000000');
+        expect(episodeVideoUrl(12, 1)).not.toBe(episodeVideoUrl(12, 2));
+        expect(new URL(episodeVideoUrl(12, 5)).pathname).toBe(new URL(animeMediaUrl('episode', 12)).pathname);
     });
 });
 

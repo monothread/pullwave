@@ -99,6 +99,8 @@ describe('parseMediaUrl', () => {
     it('reads the kind and the episode id', () => {
         expect(ANIME_MEDIA_SCHEME).toBe('pullwave-media');
         expect(parseMediaUrl('pullwave-media://episode/12')).toEqual({ kind: 'episode', episodeId: 12, trackId: '' });
+        // The player adds a number of its own to every opening (see episodeVideoUrl): the file is the same.
+        expect(parseMediaUrl('pullwave-media://episode/12?v=1700000000000')).toEqual({ kind: 'episode', episodeId: 12, trackId: '' });
         expect(parseMediaUrl('pullwave-media://subtitle/7')).toEqual({ kind: 'subtitle', episodeId: 7, trackId: '' });
     });
 

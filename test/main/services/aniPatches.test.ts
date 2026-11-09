@@ -27,7 +27,7 @@ describe('patchAniCli', () => {
     it('makes the debug output carry the subtitles the patch kept, and works without that patch', () => {
         const withList = patchAniCli(`${SUBTITLES}\n${ALL_SUBTITLES}\n${DEBUG}`) as string;
         expect(withList).toContain('pullwave_all_subs=');
-        expect(withList).toContain('Subtitle list:\\n%s\\n" "$links" "$video_link" "$sub_link" "$refr" "${pullwave_all_subs:-}"');
+        expect(withList).toContain('Subtitle list:\\n%s\\n" "$links" "${pullwave_audio_master:-$video_link}" "$sub_link" "$refr" "${pullwave_all_subs:-}"');
         expect(patchAniCli(DEBUG)).toContain('"${pullwave_all_subs:-}"');
     });
 

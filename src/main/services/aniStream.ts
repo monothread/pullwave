@@ -11,12 +11,15 @@ export interface ResolvedStream {
 
 // With the "debug" player ani-cli prints the address of the episode instead of playing it, but not the referer the host of
 // the stream wants. This adds it (as "Referer:") so the app can ask for the stream the way ani-cli would.
+// The selected link is the address of one picture (a variant of the master playlist), which has no sound when the source gives the audio as
+// tracks of their own. When the audio patch kept the master (aniAudio.ts), the master is printed instead: the player reads it and plays the
+// picture with its audio. A script without that patch has no such variable and prints the selected link as before.
 const ORIGINAL_DEBUG_OUTPUT =
     'debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;';
 const SUBTITLE_LIST_MARKER = 'Subtitle list:';
 // After the referer it also prints every subtitle the source offers (kept by the patch of aniSubtitles.ts; empty when that patch
 // did not apply).
-const PATCHED_DEBUG_OUTPUT = `debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\nReferer:\\n%s\\n${SUBTITLE_LIST_MARKER}\\n%s\\n" "$links" "$video_link" "$sub_link" "$refr" "\${pullwave_all_subs:-}" ;;`;
+const PATCHED_DEBUG_OUTPUT = `debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\nReferer:\\n%s\\n${SUBTITLE_LIST_MARKER}\\n%s\\n" "$links" "\${pullwave_audio_master:-$video_link}" "$sub_link" "$refr" "\${pullwave_all_subs:-}" ;;`;
 
 // The script with its debug output extended, or null when this is not a version it knows how to change.
 export function patchDebugReferer(source: string): string | null {

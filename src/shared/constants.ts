@@ -68,6 +68,7 @@ export const IPC = {
     animeSetSeries: 'anime:set-series',
     animeImportLibrary: 'anime:import-library',
     animeCheckAudio: 'anime:check-audio',
+    animeRepairEpisodes: 'anime:repair-episodes',
     animeMigrateFolder: 'anime:migrate-folder',
     animeProgress: 'anime:progress',
     animeSubtitles: 'anime:subtitles',

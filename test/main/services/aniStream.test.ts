@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { buildStreamArgs, parseStreamOutput, parseSubtitleList, patchDebugReferer } from '@main/services/aniStream';
 
 const ORIGINAL = [
@@ -11,7 +12,7 @@ describe('patchDebugReferer', () => {
     it('adds the referer to what the debug player prints', () => {
         const patched = patchDebugReferer(ORIGINAL) as string;
         expect(patched).toContain(
-            'debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\nReferer:\\n%s\\nSubtitle list:\\n%s\\n" "$links" "$video_link" "$sub_link" "$refr" "${pullwave_all_subs:-}" ;;'
+            'debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\nReferer:\\n%s\\nSubtitle list:\\n%s\\n" "$links" "${pullwave_audio_master:-$video_link}" "$sub_link" "$refr" "${pullwave_all_subs:-}" ;;'
         );
         expect(patched).not.toContain('Subtitles:\\n%s\\n" "$links"');
         expect(patched.startsWith('case "$player_function" in\n')).toBe(true);
@@ -115,6 +116,39 @@ describe('patchDebugReferer and the subtitles of the source', () => {
         expect(patched.indexOf('Referer:')).toBeLessThan(patched.indexOf('Subtitle list:'));
         // Read with a default, so a script that kept no list does not fail on an unset variable.
         expect(patched).toContain('"${pullwave_all_subs:-}"');
+    });
+});
+
+describe('patchDebugReferer and the audio of the source', () => {
+    const VARIANT = 'https://hls.example.top/v/abc/1080/index.m3u8';
+    const MASTER = 'https://hls.example.top/v/abc/master.m3u8';
+
+    // Runs the debug line the patch writes, the way the script runs it, and reads what the app would read.
+    const printedWith = (assignment: string): ReturnType<typeof parseStreamOutput> => {
+        const patched = patchDebugReferer(ORIGINAL) as string;
+        const line = patched.split('\n').find((candidate) => {
+            return candidate.includes('debug)');
+        }) as string;
+        const statement = line.trim().replace(/^debug\) /, '').replace(/ ;;$/, '');
+        const script = [assignment, 'links="1080 >' + VARIANT + '"', `video_link="${VARIANT}"`, 'sub_link=""', 'refr="https://embed.example/"', statement].join('\n');
+        return parseStreamOutput(execFileSync('sh', ['-c', script], { encoding: 'utf-8' }));
+    };
+
+    it('hands the player the master when the audio patch kept it, so the audio tracks come with the picture', () => {
+        expect(printedWith(`pullwave_audio_master="${MASTER}"`)).toEqual({ url: MASTER, subtitleUrl: null, referer: 'https://embed.example/', subtitles: [] });
+    });
+
+    it('hands the player the selected link when the master has no separate audio', () => {
+        expect(printedWith('pullwave_audio_master=""')?.url).toBe(VARIANT);
+    });
+
+    it('hands the player the selected link when the script has no audio patch and does not set the variable', () => {
+        expect(printedWith(':')?.url).toBe(VARIANT);
+    });
+
+    it('keeps the variant in the list of all links, which is what the quality choice reads', () => {
+        const patched = patchDebugReferer(ORIGINAL) as string;
+        expect(patched).toContain('"$links" "${pullwave_audio_master:-$video_link}"');
     });
 });
 

@@ -909,10 +909,15 @@ describe('importLibrary', () => {
 });
 
 describe('checkAudio', () => {
-    const SUMMARY = { checked: 5, withoutAudio: 2, unreadable: 1, missing: 3 };
+    const SUMMARY = { checked: 5, withoutAudio: 2, unreadable: 1, unreadableIds: [4], missing: 3 };
 
     it('asks the app to look at the audio, reads the library again and opens the report with every episode that has a problem', async () => {
-        const library = [makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, number: '2', noAudio: true }), makeEpisode({ id: 3, number: '3', fileMissing: true })], { id: 10, title: 'Naruto' })];
+        const library = [
+            makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, number: '2', noAudio: true }), makeEpisode({ id: 3, number: '3', fileMissing: true }), makeEpisode({ id: 4, number: '4' })], {
+                id: 10,
+                title: 'Naruto'
+            })
+        ];
         mock.api.checkAnimeAudio.mockResolvedValue({ ok: true, ...SUMMARY });
         mock.api.listAnimeLibrary.mockResolvedValue(library);
 
@@ -923,22 +928,23 @@ describe('checkAudio', () => {
         expect(useAnimeStore.getState().library).toEqual(library);
         expect(useAnimeStore.getState().audioReport).toEqual({
             summary: SUMMARY,
-            downloaded: 3,
+            downloaded: 4,
             problems: [
                 { animeId: 10, animeTitle: 'Naruto', episodeId: 2, episode: '2', kind: 'no-audio' },
-                { animeId: 10, animeTitle: 'Naruto', episodeId: 3, episode: '3', kind: 'file-missing' }
+                { animeId: 10, animeTitle: 'Naruto', episodeId: 3, episode: '3', kind: 'file-missing' },
+                { animeId: 10, animeTitle: 'Naruto', episodeId: 4, episode: '4', kind: 'unreadable' }
             ]
         });
         expect(useAnimeStore.getState().checkingAudio).toBe(false);
     });
 
     it('opens a report with no problems when the library is fine', async () => {
-        mock.api.checkAnimeAudio.mockResolvedValue({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, missing: 0 });
+        mock.api.checkAnimeAudio.mockResolvedValue({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
         mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([makeEpisode({ id: 1 })])]);
 
         await useAnimeStore.getState().checkAudio();
 
-        expect(useAnimeStore.getState().audioReport).toEqual({ summary: { checked: 1, withoutAudio: 0, unreadable: 0, missing: 0 }, downloaded: 1, problems: [] });
+        expect(useAnimeStore.getState().audioReport).toEqual({ summary: { checked: 1, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 }, downloaded: 1, problems: [] });
     });
 
     it('counts only the downloaded episodes of the library, so an empty library can be told from one with no problem', async () => {
@@ -946,7 +952,7 @@ describe('checkAudio', () => {
             makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, number: '2', status: 'error', filePath: null }), makeEpisode({ id: 3, number: '3', status: 'idle', filePath: null })], { id: 10 }),
             makeAnime([makeEpisode({ id: 4, animeId: 20, number: '1' })], { id: 20, title: 'Bleach' })
         ];
-        mock.api.checkAnimeAudio.mockResolvedValue({ ok: true, checked: 2, withoutAudio: 0, unreadable: 0, missing: 0 });
+        mock.api.checkAnimeAudio.mockResolvedValue({ ok: true, checked: 2, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
         mock.api.listAnimeLibrary.mockResolvedValue(library);
 
         await useAnimeStore.getState().checkAudio();
@@ -955,16 +961,16 @@ describe('checkAudio', () => {
     });
 
     it('reports no downloaded episode for an empty library', async () => {
-        mock.api.checkAnimeAudio.mockResolvedValue({ ok: true, checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 });
+        mock.api.checkAnimeAudio.mockResolvedValue({ ok: true, checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
         mock.api.listAnimeLibrary.mockResolvedValue([]);
 
         await useAnimeStore.getState().checkAudio();
 
-        expect(useAnimeStore.getState().audioReport).toEqual({ summary: { checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 }, downloaded: 0, problems: [] });
+        expect(useAnimeStore.getState().audioReport).toEqual({ summary: { checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 }, downloaded: 0, problems: [] });
     });
 
     it('says it is checking while the app looks', async () => {
-        let answer: (response: { ok: true; checked: number; withoutAudio: number; unreadable: number; missing: number }) => void = () => {
+        let answer: (response: { ok: true; checked: number; withoutAudio: number; unreadable: number; unreadableIds: number[]; missing: number }) => void = () => {
             return undefined;
         };
         mock.api.checkAnimeAudio.mockReturnValue(
@@ -976,7 +982,7 @@ describe('checkAudio', () => {
         const running = useAnimeStore.getState().checkAudio();
         expect(useAnimeStore.getState().checkingAudio).toBe(true);
         expect(useAnimeStore.getState().audioReport).toBeNull();
-        answer({ ok: true, checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 });
+        answer({ ok: true, checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 });
         await running;
 
         expect(useAnimeStore.getState().checkingAudio).toBe(false);
@@ -1018,7 +1024,7 @@ describe('the report of the audio check', () => {
         { animeId: 10, animeTitle: 'Naruto', episodeId: 2, episode: '2', kind: 'no-audio' as const },
         { animeId: 10, animeTitle: 'Naruto', episodeId: 3, episode: '3', kind: 'file-missing' as const }
     ];
-    const SUMMARY = { checked: 5, withoutAudio: 1, unreadable: 0, missing: 1 };
+    const SUMMARY = { checked: 5, withoutAudio: 1, unreadable: 0, unreadableIds: [], missing: 1 };
 
     it('closes', () => {
         useAnimeStore.setState({ audioReport: { summary: SUMMARY, downloaded: 5, problems: PROBLEMS } });
@@ -1057,6 +1063,82 @@ describe('the report of the audio check', () => {
 
         expect(mock.api.redownloadAnimeEpisodes).not.toHaveBeenCalled();
         expect(useAppStore.getState().notice).toBeNull();
+    });
+
+    const MIXED = [...PROBLEMS, { animeId: 10, animeTitle: 'Naruto', episodeId: 4, episode: '4', kind: 'unreadable' as const }, { animeId: 11, animeTitle: 'Kaiju', episodeId: 5, episode: '1', kind: 'unreadable' as const }];
+
+    it('does not queue again the episodes that could not be read: they are repaired, and a new download gives the same video', async () => {
+        useAnimeStore.setState({ audioReport: { summary: SUMMARY, downloaded: 5, problems: MIXED } });
+
+        await useAnimeStore.getState().redownloadProblems();
+
+        expect(mock.api.redownloadAnimeEpisodes).toHaveBeenCalledWith([2, 3]);
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Queued 2 episode(s) to be downloaded again.' });
+    });
+
+    it('only closes the report when everything in it could not be read, with nothing to queue again', async () => {
+        useAppStore.setState({ notice: null });
+        useAnimeStore.setState({ audioReport: { summary: SUMMARY, downloaded: 5, problems: MIXED.slice(2) } });
+
+        await useAnimeStore.getState().redownloadProblems();
+
+        expect(mock.api.redownloadAnimeEpisodes).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState().audioReport).toBeNull();
+        expect(useAppStore.getState().notice).toBeNull();
+    });
+
+    it('repairs the episodes that could not be read in one call, closes the report, reads the library again and says how it went', async () => {
+        const library = [makeAnime([makeEpisode({ id: 4 })], { id: 10, title: 'Naruto' })];
+        mock.api.repairAnimeEpisodes.mockResolvedValue({ ok: true, repaired: 1, failed: 1, skipped: 0 });
+        mock.api.listAnimeLibrary.mockResolvedValue(library);
+        useAnimeStore.setState({ audioReport: { summary: SUMMARY, downloaded: 5, problems: MIXED } });
+
+        await useAnimeStore.getState().repairProblems();
+
+        expect(mock.api.repairAnimeEpisodes).toHaveBeenCalledTimes(1);
+        expect(mock.api.repairAnimeEpisodes).toHaveBeenCalledWith([4, 5]);
+        expect(mock.api.redownloadAnimeEpisodes).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState().audioReport).toBeNull();
+        expect(mock.api.listAnimeLibrary).toHaveBeenCalledTimes(1);
+        expect(useAnimeStore.getState().library).toEqual(library);
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: '1 episode(s) repaired · 1 could not be repaired.' });
+    });
+
+    it('says a repair is going on already, and leaves the library alone', async () => {
+        mock.api.repairAnimeEpisodes.mockResolvedValue({ ok: false, reason: 'busy' });
+        useAnimeStore.setState({ audioReport: { summary: SUMMARY, downloaded: 5, problems: MIXED } });
+
+        await useAnimeStore.getState().repairProblems();
+
+        expect(useAnimeStore.getState().audioReport).toBeNull();
+        expect(mock.api.listAnimeLibrary).not.toHaveBeenCalled();
+        expect(useAppStore.getState().notice).toEqual({ kind: 'error', message: 'The episodes are being repaired already.' });
+    });
+
+    it('says nothing when this system cannot repair', async () => {
+        useAppStore.setState({ notice: null });
+        mock.api.repairAnimeEpisodes.mockResolvedValue({ ok: false, reason: 'unsupported' });
+        useAnimeStore.setState({ audioReport: { summary: SUMMARY, downloaded: 5, problems: MIXED } });
+
+        await useAnimeStore.getState().repairProblems();
+
+        expect(mock.api.listAnimeLibrary).not.toHaveBeenCalled();
+        expect(useAppStore.getState().notice).toBeNull();
+    });
+
+    it('does not repair, and keeps the report, when nothing in it could not be read', async () => {
+        useAnimeStore.setState({ audioReport: { summary: SUMMARY, downloaded: 5, problems: PROBLEMS } });
+
+        await useAnimeStore.getState().repairProblems();
+
+        expect(mock.api.repairAnimeEpisodes).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState().audioReport).toEqual({ summary: SUMMARY, downloaded: 5, problems: PROBLEMS });
+    });
+
+    it('does nothing to repair when there is no report', async () => {
+        await useAnimeStore.getState().repairProblems();
+
+        expect(mock.api.repairAnimeEpisodes).not.toHaveBeenCalled();
     });
 
     it('downloads one episode again through the api, and not as a retry', async () => {
@@ -1270,11 +1352,11 @@ describe('watching without downloading', () => {
         useAnimeStore.setState({ selection });
 
         const watching = useAnimeStore.getState().watchEpisode('2');
-        expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null });
+        expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null, nextEpisode: null });
         await watching;
 
         expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'naruto', index: 2, audio: 'dub', episode: '2' });
-        expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '2', status: 'ready', stream: STREAM, error: null });
+        expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '2', status: 'ready', stream: STREAM, error: null, nextEpisode: null });
     });
 
     it('keeps the error when the video cannot be found', async () => {
@@ -1282,7 +1364,7 @@ describe('watching without downloading', () => {
         mock.api.openAnimeStream.mockResolvedValue({ ok: false, error });
         useAnimeStore.setState({ selection });
         await useAnimeStore.getState().watchEpisode('1');
-        expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '1', status: 'error', stream: null, error });
+        expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '1', status: 'error', stream: null, error, nextEpisode: '2' });
     });
 
     it('drops a stream that arrives after the user closed the player', async () => {
@@ -1322,15 +1404,55 @@ describe('watching without downloading', () => {
         expect(mock.api.closeAnimeStream).not.toHaveBeenCalled();
     });
 
+    it('knows the episode the source lists after the one being watched, and none after the last one', async () => {
+        mock.api.openAnimeStream.mockResolvedValue({ ok: true, stream: STREAM });
+        useAnimeStore.setState({ selection: { ...selection, episodes: ['1', '2', '3'] } });
+
+        await useAnimeStore.getState().watchEpisode('1');
+        expect(useAnimeStore.getState().streaming?.nextEpisode).toBe('2');
+        await useAnimeStore.getState().watchEpisode('2');
+        expect(useAnimeStore.getState().streaming?.nextEpisode).toBe('3');
+        await useAnimeStore.getState().watchEpisode('3');
+        expect(useAnimeStore.getState().streaming?.nextEpisode).toBeNull();
+    });
+
+    it('has no next episode for one the list does not have', async () => {
+        mock.api.openAnimeStream.mockResolvedValue({ ok: true, stream: STREAM });
+        useAnimeStore.setState({ selection });
+        await useAnimeStore.getState().watchEpisode('9');
+        expect(useAnimeStore.getState().streaming?.nextEpisode).toBeNull();
+    });
+
+    it('closes the stream of the episode that was playing when another one starts, and not before there was one', async () => {
+        const SECOND_STREAM = { ...STREAM, sessionId: 's2' };
+        mock.api.openAnimeStream.mockResolvedValueOnce({ ok: true, stream: STREAM }).mockResolvedValueOnce({ ok: true, stream: SECOND_STREAM });
+        useAnimeStore.setState({ selection });
+
+        await useAnimeStore.getState().watchEpisode('1');
+        expect(mock.api.closeAnimeStream).not.toHaveBeenCalled();
+
+        await useAnimeStore.getState().watchEpisode('2');
+        expect(mock.api.closeAnimeStream).toHaveBeenCalledTimes(1);
+        expect(mock.api.closeAnimeStream).toHaveBeenCalledWith('s1');
+        expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '2', status: 'ready', stream: SECOND_STREAM, error: null, nextEpisode: null });
+    });
+
+    it('closes nothing when the episode before had no stream (it was loading or failed)', async () => {
+        mock.api.openAnimeStream.mockResolvedValue({ ok: true, stream: STREAM });
+        useAnimeStore.setState({ selection, streaming: { title: 'Naruto', episode: '1', status: 'error', stream: null, error: { code: 'NETWORK', raw: 'x' }, nextEpisode: '2' } });
+        await useAnimeStore.getState().watchEpisode('2');
+        expect(mock.api.closeAnimeStream).not.toHaveBeenCalled();
+    });
+
     it('closes the stream the main process opened', () => {
-        useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '1', status: 'ready', stream: STREAM, error: null } });
+        useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '1', status: 'ready', stream: STREAM, error: null, nextEpisode: null } });
         useAnimeStore.getState().closeStream();
         expect(mock.api.closeAnimeStream).toHaveBeenCalledWith('s1');
         expect(useAnimeStore.getState().streaming).toBeNull();
     });
 
     it('has nothing to tell the main process when no stream was opened yet', () => {
-        useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '1', status: 'loading', stream: null, error: null } });
+        useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '1', status: 'loading', stream: null, error: null, nextEpisode: null } });
         useAnimeStore.getState().closeStream();
         useAnimeStore.getState().closeStream();
         expect(mock.api.closeAnimeStream).not.toHaveBeenCalled();

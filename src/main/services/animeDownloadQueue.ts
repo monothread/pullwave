@@ -1,3 +1,4 @@
+import type { RepairResult } from './imageHeaderRepair';
 import { posix, win32 } from 'node:path';
 import type { AniDownloadProgress, AniError, AniErrorCode, AnimeAddRequest, AnimeAddResponse, AnimeDownloadRequest, AnimeEpisodeRecord, AnimeJob, AnimeRecord, LibraryAnime } from '@shared/anime';
 import type { Settings } from '@shared/types';
@@ -30,6 +31,9 @@ export interface AnimeQueueDependencies {
     onEpisodeDownloaded?: (episodeId: number) => void;
     // Whether the video has an audio stream, or null when that could not be told (the video is not checked when this is not given).
     hasAudio?: (path: string) => Promise<boolean | null>;
+    // Repairs a downloaded video that is hidden behind a picture (see imageHeaderRepair.ts); the file is the same one afterwards, as it was
+    // when nothing had to be done.
+    repairVideo?: (path: string) => Promise<RepairResult>;
     onJobUpdate: (job: AnimeJob) => void;
     onLibraryChanged: () => void;
     // The queue was held (by PAUSE ALL) or let go (by RESUME ALL).
@@ -616,7 +620,30 @@ export class AnimeDownloadQueue {
         this.update(job, { status: 'done', percent: 100, speed: '', eta: '' });
         // The screen of the downloads is for what is going on or went wrong: a download that is complete is in the library.
         this.jobs.delete(job.episodeId);
-        void this.checkAudio(job.episodeId, path);
+        void this.afterDownload(job.episodeId, path);
+    }
+
+    // What is done with a video once it is in the library, one thing after the other (the audio is looked at in the file that is left).
+    private async afterDownload(episodeId: number, path: string): Promise<void> {
+        await this.repairVideo(episodeId, path);
+        await this.checkAudio(episodeId, path);
+    }
+
+    // A video that is hidden behind a picture is repaired in place, and the library gets the new size. It does not wait for the repair, and one
+    // that cannot be made leaves the episode as it is (the check of the library lists it as one that cannot be read).
+    private async repairVideo(episodeId: number, path: string): Promise<void> {
+        if (!this.deps.repairVideo) {
+            return;
+        }
+        try {
+            const result = await this.deps.repairVideo(path);
+            if (result.status === 'repaired') {
+                this.deps.db.updateFileSize(episodeId, path, result.sizeBytes);
+                this.deps.onLibraryChanged();
+            }
+        } catch {
+            // The repair is only a help: when it fails the episode is as it was.
+        }
     }
 
     // Looks for the audio of a video that was downloaded, once, after the episode is in the library (it does not wait for the check, and a

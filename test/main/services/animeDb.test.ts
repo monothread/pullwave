@@ -2709,6 +2709,37 @@ describe('AnimeDb audio of the episodes', () => {
         expect(db.episodesToCheckAudio()).toEqual([]);
     });
 
+    it('saves the size of a file that was repaired in place, and leaves the rest of the episode as it is', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+        db.markAudioChecked(id, '/lib/Naruto/1.mp4', false);
+
+        db.updateFileSize(id, '/lib/Naruto/1.mp4', 4242);
+
+        expect(db.getEpisode(id)).toMatchObject({ status: 'done', filePath: '/lib/Naruto/1.mp4', sizeBytes: 4242, noAudio: true });
+    });
+
+    it('saves the size only for the file that was repaired', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+
+        db.updateFileSize(id, '/lib/Naruto/other.mp4', 4242);
+
+        expect(db.getEpisode(id)).toMatchObject({ filePath: '/lib/Naruto/1.mp4', sizeBytes: 100 });
+    });
+
+    it('saves no size for an episode that is not downloaded or does not exist', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        const waiting = db.ensureEpisode(anime.id, '1');
+
+        db.updateFileSize(waiting.id, '/lib/Naruto/1.mp4', 4242);
+        db.updateFileSize(99, '/lib/Naruto/1.mp4', 4242);
+
+        expect(db.getEpisode(waiting.id)).toMatchObject({ status: 'queued', sizeBytes: null });
+        expect(db.getEpisode(99)).toBeNull();
+    });
+
     it('lists only the downloaded episodes that were never looked at, anime by anime', () => {
         const db = makeDb();
         const checked = downloaded(db, 'Naruto', '1');

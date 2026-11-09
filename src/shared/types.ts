@@ -10,6 +10,7 @@ import type {
     AnimeHistoryEntry,
     AnimeHistoryRequest,
     AnimeAudioCheckResponse,
+    AnimeRepairResponse,
     AnimeImportResponse,
     AnimeJob,
     AnimeMigrationProgress,
@@ -469,6 +470,8 @@ export interface CyberApi {
     importAnimeLibrary: () => Promise<AnimeImportResponse>;
     // Looks at the audio of the downloaded episodes that were never looked at, and says what it found.
     checkAnimeAudio: () => Promise<AnimeAudioCheckResponse>;
+    // Repairs the videos of these downloaded episodes that are hidden behind a picture (see imageHeaderRepair.ts).
+    repairAnimeEpisodes: (episodeIds: number[]) => Promise<AnimeRepairResponse>;
     // Asks for the folder the anime are moved to, copies them there, checks the copies, points the library and the settings to
     // the new folder and then removes the old files.
     migrateAnimeFolder: () => Promise<AnimeMigrationResponse>;

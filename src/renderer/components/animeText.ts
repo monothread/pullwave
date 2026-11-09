@@ -122,6 +122,12 @@ export function previousDownloadedEpisode(library: readonly LibraryAnime[], anim
     return adjacentDownloadedEpisode(library, anime, current, -1);
 }
 
+// The episode that follows `current` in the list a source gives (in the order it gives them), or null for the last one and for one that is not in it.
+export function nextListedEpisode(episodes: readonly string[], current: string): string | null {
+    const position = episodes.indexOf(current);
+    return position === -1 ? null : (episodes[position + 1] ?? null);
+}
+
 export function isWatched(positionSeconds: number, durationSeconds: number): boolean {
     return durationSeconds > 0 && positionSeconds / durationSeconds >= WATCHED_RATIO;
 }
@@ -160,7 +166,7 @@ export interface LibraryGroup {
 
 // What is wrong with a downloaded episode: its video has no audio, or its file is not on the disk (which is told first, as the video
 // cannot be looked at).
-export type LibraryProblemKind = 'no-audio' | 'file-missing';
+export type LibraryProblemKind = 'no-audio' | 'file-missing' | 'unreadable';
 
 export interface LibraryProblem {
     animeId: number;
@@ -190,16 +196,34 @@ export function downloadedEpisodeCount(library: readonly LibraryAnime[]): number
     }, 0);
 }
 
-// The downloaded episodes of the library that have a problem, anime by anime, in the order the library has them.
-export function libraryProblems(library: readonly LibraryAnime[]): LibraryProblem[] {
+// What can be done again for a problem: the video of one with no audio, or whose file is gone, is downloaded again; one that could not be read
+// is repaired (a download again would give the same video).
+export function isRepairable(problem: LibraryProblem): boolean {
+    return problem.kind === 'unreadable';
+}
+
+// The downloaded episodes of the library that have a problem, anime by anime, in the order the library has them. `unreadableIds` are the
+// episodes the last check could not read: they count when the file is there and nothing else is known to be wrong with them.
+export function libraryProblems(library: readonly LibraryAnime[], unreadableIds: readonly number[] = []): LibraryProblem[] {
     return library.flatMap((anime) => {
         return anime.episodes.flatMap((episode): LibraryProblem[] => {
-            if (episode.status !== 'done' || (!episode.fileMissing && !episode.noAudio)) {
+            if (episode.status !== 'done') {
                 return [];
             }
-            return [{ animeId: anime.id, animeTitle: anime.title, episodeId: episode.id, episode: episode.number, kind: episode.fileMissing ? 'file-missing' : 'no-audio' }];
+            const kind = problemKind(episode, unreadableIds);
+            return kind === null ? [] : [{ animeId: anime.id, animeTitle: anime.title, episodeId: episode.id, episode: episode.number, kind }];
         });
     });
+}
+
+function problemKind(episode: AnimeEpisodeRecord, unreadableIds: readonly number[]): LibraryProblemKind | null {
+    if (episode.fileMissing) {
+        return 'file-missing';
+    }
+    if (episode.noAudio) {
+        return 'no-audio';
+    }
+    return unreadableIds.includes(episode.id) ? 'unreadable' : null;
 }
 
 // Joins the animes of the library that are seasons of one series (the same name, whatever the case or the accents); an anime that

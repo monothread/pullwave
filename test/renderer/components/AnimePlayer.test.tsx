@@ -75,7 +75,7 @@ describe('AnimePlayer', () => {
         expect(screen.getByRole('heading', { name: 'Naruto · EP 1' })).toBeInTheDocument();
 
         const video = getVideo();
-        expect(video).toHaveAttribute('src', 'pullwave-media://episode/1');
+        expect(video).toHaveAttribute('src', expect.stringMatching(/^pullwave-media:\/\/episode\/1\?v=\d+$/));
         expect(video).toHaveAttribute('crossorigin', 'anonymous');
         expect(video.controls).toBe(false);
         expect(video.autoplay).toBe(true);
@@ -93,6 +93,33 @@ describe('AnimePlayer', () => {
         expect(track).toHaveAttribute('id', 'default');
         expect(track?.hasAttribute('default')).toBe(true);
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('gives the video an address of its own each time the player is opened, so the browser cannot mistake it for an earlier opening of a file that was not a video yet', () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(1_000);
+            const first = render(<AnimePlayer />);
+            expect(getVideo()).toHaveAttribute('src', 'pullwave-media://episode/1?v=1000');
+            first.unmount();
+
+            vi.setSystemTime(2_000);
+            render(<AnimePlayer />);
+            expect(getVideo()).toHaveAttribute('src', 'pullwave-media://episode/1?v=2000');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('keeps the address of the video while the player stays open, whatever happens to the screen around it', () => {
+        render(<AnimePlayer />);
+        const before = getVideo().getAttribute('src');
+
+        act(() => {
+            useAnimeStore.setState({ library: [{ ...ANIME }] });
+        });
+
+        expect(getVideo().getAttribute('src')).toBe(before);
     });
 
     it('focuses the close button', () => {
@@ -243,8 +270,39 @@ describe('AnimePlayer', () => {
             await user.click(screen.getByRole('button', { name: 'NEXT EPISODE' }));
             const second = getVideo();
             expect(second).not.toBe(first);
-            expect(second).toHaveAttribute('src', 'pullwave-media://episode/2');
+            expect(second).toHaveAttribute('src', expect.stringMatching(/^pullwave-media:\/\/episode\/2\?v=\d+$/));
             expect(screen.getByRole('dialog', { name: 'Naruto · EP 2' })).toBeInTheDocument();
+        });
+
+        it('keeps the stage that goes to fullscreen in the page when the episode changes, so the browser does not leave fullscreen', async () => {
+            const user = userEvent.setup();
+            render(<AnimePlayer />);
+            const stage = getVideo().parentElement as HTMLElement;
+            const dialog = screen.getByRole('dialog');
+            expect(stage).toHaveClass('player__stage');
+
+            await user.click(screen.getByRole('button', { name: 'NEXT EPISODE' }));
+
+            expect(stage.isConnected).toBe(true);
+            expect(getVideo().parentElement).toBe(stage);
+            expect(screen.getByRole('dialog', { name: 'Naruto · EP 2' })).toBe(dialog);
+            expect(within(stage).getByRole('button', { name: 'Fullscreen' })).toBeInTheDocument();
+            expect(within(stage).queryByRole('button', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+            expect(within(dialog).getByRole('heading', { name: 'Naruto · EP 2' })).toBeInTheDocument();
+        });
+
+        it('keeps the stage in the page when the previous episode is played too', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ playing: { animeId: 5, episodeId: 2 } });
+            render(<AnimePlayer />);
+            const stage = getVideo().parentElement as HTMLElement;
+
+            await user.click(screen.getByRole('button', { name: 'PREVIOUS EPISODE' }));
+
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
+            expect(stage.isConnected).toBe(true);
+            expect(getVideo().parentElement).toBe(stage);
+            expect(getVideo()).toHaveAttribute('src', expect.stringMatching(/^pullwave-media:\/\/episode\/1\?v=\d+$/));
         });
 
         it('does not offer it when the next episode is not downloaded or there is none', () => {
@@ -303,6 +361,29 @@ describe('AnimePlayer', () => {
                 expect(screen.getByRole('dialog', { name: 'Naruto · EP 2' })).toBeInTheDocument();
                 expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
             } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('keeps the stage in the page when the next episode starts by itself, so a viewer in fullscreen stays in it', () => {
+            vi.useFakeTimers();
+            try {
+                render(<AnimePlayer />);
+                const stage = getVideo().parentElement as HTMLElement;
+                const first = getVideo();
+                Object.defineProperty(document, 'fullscreenElement', { value: stage, configurable: true });
+                endEpisode();
+                act(() => {
+                    vi.advanceTimersByTime(AUTO_NEXT_DELAY_MS);
+                });
+                expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 2 });
+                expect(stage.isConnected).toBe(true);
+                expect(document.fullscreenElement).toBe(stage);
+                expect(getVideo()).not.toBe(first);
+                expect(getVideo().parentElement).toBe(stage);
+                expect(getVideo()).toHaveAttribute('src', expect.stringMatching(/^pullwave-media:\/\/episode\/2\?v=\d+$/));
+            } finally {
+                Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
                 vi.useRealTimers();
             }
         });
@@ -425,7 +506,7 @@ describe('AnimePlayer', () => {
             expect(mock.api.saveAnimeProgress).toHaveBeenCalledTimes(1);
             expect(mock.api.saveAnimeProgress).toHaveBeenCalledWith({ episodeId: 2, positionSeconds: 300, durationSeconds: 1440, watched: false });
             expect(useAnimeStore.getState().playing).toEqual({ animeId: 5, episodeId: 1 });
-            expect(getVideo()).toHaveAttribute('src', 'pullwave-media://episode/1');
+            expect(getVideo()).toHaveAttribute('src', expect.stringMatching(/^pullwave-media:\/\/episode\/1\?v=\d+$/));
             expect(screen.getByRole('dialog', { name: 'Naruto · EP 1' })).toBeInTheDocument();
         });
 

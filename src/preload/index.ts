@@ -475,6 +475,9 @@ const api: CyberApi = {
     checkAnimeAudio: () => {
         return ipcRenderer.invoke(IPC.animeCheckAudio);
     },
+    repairAnimeEpisodes: (episodeIds) => {
+        return ipcRenderer.invoke(IPC.animeRepairEpisodes, episodeIds);
+    },
     migrateAnimeFolder: () => {
         return ipcRenderer.invoke(IPC.animeMigrateFolder);
     },

@@ -297,13 +297,13 @@ describe('AnimePanel', () => {
 
     it('opens the player of a stream over the section, on the search and on the downloads screen', async () => {
         const user = userEvent.setup();
-        useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null } });
+        useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null, nextEpisode: null } });
         render(<AnimePanel />);
         expect(screen.getByRole('dialog', { name: 'Naruto · EP 2' })).toBeInTheDocument();
         act(() => {
             useAnimeStore.getState().closeStream();
             useAnimeStore.getState().openDownloads();
-            useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '3', status: 'loading', stream: null, error: null } });
+            useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '3', status: 'loading', stream: null, error: null, nextEpisode: null } });
         });
         expect(screen.getByRole('dialog', { name: 'Naruto · EP 3' })).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'CLOSE' }));
@@ -313,7 +313,7 @@ describe('AnimePanel', () => {
     it.each(['library', 'settings', 'updates'] as const)('opens the report of the audio check over the section, on the %s tab', (view) => {
         useAnimeStore.setState({
             view,
-            audioReport: { summary: { checked: 3, withoutAudio: 1, unreadable: 0, missing: 0 }, downloaded: 3, problems: [{ animeId: 1, animeTitle: 'Naruto', episodeId: 4, episode: '4', kind: 'no-audio' }] }
+            audioReport: { summary: { checked: 3, withoutAudio: 1, unreadable: 0, unreadableIds: [], missing: 0 }, downloaded: 3, problems: [{ animeId: 1, animeTitle: 'Naruto', episodeId: 4, episode: '4', kind: 'no-audio' }] }
         });
         render(<AnimePanel />);
 

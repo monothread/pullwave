@@ -6,6 +6,7 @@ import { AnimeDb } from '@main/services/animeDb';
 import { ANIME_MAX_TRIES, AnimeDownloadQueue } from '@main/services/animeDownloadQueue';
 import { DEFAULT_ANIME_FOLDER } from '@main/services/animeFiles';
 import type { AniDownloadHandle, AniDownloadOptions } from '@main/services/aniCliService';
+import type { RepairResult } from '@main/services/imageHeaderRepair';
 
 type DownloadResult = AniRunResult<{ filePath: string | null }>;
 
@@ -23,7 +24,12 @@ function setup(
     files: Record<string, number> = {},
     system: { platform?: NodeJS.Platform; downloads?: string; directories?: string[] } = {},
     site: { provider: string | null } = { provider: null },
-    audio: { hasAudio?: (path: string) => Promise<boolean | null>; removeFile?: (path: string) => void; withoutRemoveFile?: boolean } = {}
+    audio: {
+        hasAudio?: (path: string) => Promise<boolean | null>;
+        repairVideo?: (path: string) => Promise<RepairResult>;
+        removeFile?: (path: string) => void;
+        withoutRemoveFile?: boolean;
+    } = {}
 ) {
     const db = new AnimeDb(':memory:', () => {
         return 1000;
@@ -43,6 +49,7 @@ function setup(
         delete state.files[path];
     });
     const hasAudio = audio.hasAudio ? vi.fn(audio.hasAudio) : undefined;
+    const repairVideo = audio.repairVideo ? vi.fn(audio.repairVideo) : undefined;
     const queue = new AnimeDownloadQueue({
         db,
         download: (options): AniDownloadHandle => {
@@ -68,6 +75,7 @@ function setup(
         removeDirectory,
         removeFile: audio.withoutRemoveFile ? undefined : removeFile,
         hasAudio,
+        repairVideo,
         fileSize: (path) => {
             return state.files[path] ?? null;
         },
@@ -87,7 +95,7 @@ function setup(
             heldChanges.push(held);
         }
     });
-    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory, removeFile, hasAudio, site, heldChanges };
+    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory, removeFile, hasAudio, repairVideo, site, heldChanges };
 }
 
 async function settleResults(): Promise<void> {
@@ -749,6 +757,117 @@ describe('AnimeDownloadQueue looks at the audio of a video that was downloaded',
         await flushAudioCheck();
 
         expect(hasAudio).not.toHaveBeenCalled();
+    });
+});
+
+describe('AnimeDownloadQueue repairs a video that was hidden behind a picture', () => {
+    const FILE = '/a/Naruto Episode 1.mp4';
+
+    async function download(options: Parameters<typeof setup>[4]) {
+        const context = setup({ maxConcurrent: 1 }, { [FILE]: 4096 }, {}, { provider: null }, options);
+        context.queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        context.downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        await flushAudioCheck();
+        await flushAudioCheck();
+        return context;
+    }
+
+    it('repairs the file that was downloaded, saves its new size and tells the screen the library changed', async () => {
+        const { db, repairVideo, state } = await download({ repairVideo: async () => { return { status: 'repaired', sizeBytes: 3000 }; } });
+
+        expect(repairVideo).toHaveBeenCalledTimes(1);
+        expect(repairVideo).toHaveBeenCalledWith(FILE);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 3000 });
+        // Queueing, starting and finishing the download, and then the new size.
+        expect(state.libraryChanges).toBe(4);
+    });
+
+    it('looks at the audio of the file after the repair, and not before: the file the check sees is the repaired one', async () => {
+        const order: string[] = [];
+        const { db } = await download({
+            repairVideo: async () => {
+                order.push('repair start');
+                await flushAudioCheck();
+                order.push('repair end');
+                return { status: 'repaired', sizeBytes: 3000 };
+            },
+            hasAudio: async () => {
+                order.push('audio');
+                return true;
+            }
+        });
+
+        expect(order).toEqual(['repair start', 'repair end', 'audio']);
+        expect(db.getEpisode(1)).toMatchObject({ sizeBytes: 3000, noAudio: false });
+    });
+
+    it.each([['needs nothing', { status: 'not-needed' }], ['could not be repaired', { status: 'failed' }]] as const)('leaves the episode as it was when the video %s, and still looks at its audio', async (_name, result) => {
+        const { db, hasAudio, state } = await download({
+            repairVideo: async () => {
+                return result;
+            },
+            hasAudio: async () => {
+                return false;
+            }
+        });
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: true });
+        expect(hasAudio).toHaveBeenCalledWith(FILE);
+        // The same three changes as with no repair, and what the check found.
+        expect(state.libraryChanges).toBe(4);
+    });
+
+    it('leaves the episode as it is when the repair throws, and still looks at its audio', async () => {
+        const { db, hasAudio, queue } = await download({
+            repairVideo: async () => {
+                throw new Error('ffmpeg is not there');
+            },
+            hasAudio: async () => {
+                return true;
+            }
+        });
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: false });
+        expect(hasAudio).toHaveBeenCalledTimes(1);
+        expect(queue.list()).toEqual([]);
+    });
+
+    it('does not repair anything when the queue was not given a way to', async () => {
+        const { db, repairVideo } = await download({ hasAudio: async () => { return true; } });
+
+        expect(repairVideo).toBeUndefined();
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', sizeBytes: 4096 });
+    });
+
+    it('does not make the episode wait for the repair: it is in the library at once and has its new size when the repair ends', async () => {
+        let finish: (result: RepairResult) => void = () => {
+            return undefined;
+        };
+        const pending = new Promise<RepairResult>((resolve) => {
+            finish = resolve;
+        });
+        const { db, queue } = await download({ repairVideo: () => { return pending; } });
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', sizeBytes: 4096 });
+        expect(queue.list()).toEqual([]);
+
+        finish({ status: 'repaired', sizeBytes: 3000 });
+        await flushAudioCheck();
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', sizeBytes: 3000 });
+    });
+
+    it('does not repair a download that failed, or whose file was not found', async () => {
+        const { queue, downloads, repairVideo } = setup({ maxConcurrent: 1 }, {}, {}, { provider: null }, { repairVideo: async () => { return { status: 'repaired', sizeBytes: 1 }; } });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+        downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked by cloudflare.' } });
+        await settleResults();
+        downloads[1]?.finish(doneAt('/a/missing.mp4'));
+        await settleResults();
+        await flushAudioCheck();
+
+        expect(repairVideo).not.toHaveBeenCalled();
     });
 });
 

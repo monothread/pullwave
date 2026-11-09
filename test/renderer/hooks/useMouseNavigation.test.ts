@@ -438,7 +438,7 @@ describe('useMouseNavigation', () => {
 
     it.each([
         ['playing', { playing: { animeId: 1, episodeId: 2 } }, 'closePlayer'],
-        ['streaming', { streaming: { title: 'Naruto', episode: '1', status: 'loading' as const, stream: null, error: null } }, 'closeStream']
+        ['streaming', { streaming: { title: 'Naruto', episode: '1', status: 'loading' as const, stream: null, error: null, nextEpisode: null } }, 'closeStream']
     ] as const)('only closes the player when it is %s, without leaving the page', (_name, state, closer) => {
         mount();
         setTab('anime');

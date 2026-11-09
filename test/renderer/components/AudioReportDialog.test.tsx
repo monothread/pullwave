@@ -13,15 +13,30 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 
 const WITH_PROBLEMS: AudioReport = {
-    summary: { checked: 5, withoutAudio: 1, unreadable: 2, missing: 1 },
+    summary: { checked: 5, withoutAudio: 1, unreadable: 2, unreadableIds: [4, 5], missing: 1 },
     downloaded: 9,
     problems: [
         { animeId: 10, animeTitle: 'Naruto', episodeId: 2, episode: '2', kind: 'no-audio' },
         { animeId: 10, animeTitle: 'Naruto', episodeId: 3, episode: '3', kind: 'file-missing' }
     ]
 };
-const WITHOUT_PROBLEMS: AudioReport = { summary: { checked: 7, withoutAudio: 0, unreadable: 0, missing: 0 }, downloaded: 7, problems: [] };
-const EMPTY_LIBRARY: AudioReport = { summary: { checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 }, downloaded: 0, problems: [] };
+// Episodes the check could not read, with one that has no audio.
+const WITH_UNREADABLE: AudioReport = {
+    summary: { checked: 5, withoutAudio: 1, unreadable: 2, unreadableIds: [4, 5], missing: 0 },
+    downloaded: 9,
+    problems: [
+        { animeId: 10, animeTitle: 'Naruto', episodeId: 2, episode: '2', kind: 'no-audio' },
+        { animeId: 10, animeTitle: 'Naruto', episodeId: 4, episode: '4', kind: 'unreadable' },
+        { animeId: 11, animeTitle: 'Kaiju', episodeId: 5, episode: '1', kind: 'unreadable' }
+    ]
+};
+const ONLY_UNREADABLE: AudioReport = {
+    summary: { checked: 0, withoutAudio: 0, unreadable: 1, unreadableIds: [5], missing: 0 },
+    downloaded: 3,
+    problems: [{ animeId: 11, animeTitle: 'Kaiju', episodeId: 5, episode: '1', kind: 'unreadable' }]
+};
+const WITHOUT_PROBLEMS: AudioReport = { summary: { checked: 7, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 }, downloaded: 7, problems: [] };
+const EMPTY_LIBRARY: AudioReport = { summary: { checked: 0, withoutAudio: 0, unreadable: 0, unreadableIds: [], missing: 0 }, downloaded: 0, problems: [] };
 
 beforeEach(() => {
     mock = installMockApi();
@@ -99,6 +114,72 @@ describe('AudioReportDialog', () => {
         expect(mock.api.redownloadAnimeEpisodes).toHaveBeenCalledWith([2, 3]);
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Queued 2 episode(s) to be downloaded again.' });
+    });
+
+    it('lists the ones that could not be read with what is wrong, and offers to repair them apart from the ones to download again', () => {
+        useAnimeStore.setState({ audioReport: WITH_UNREADABLE });
+        render(<AudioReportDialog />);
+
+        const dialog = screen.getByRole('dialog', { name: 'Downloaded episodes' });
+        expect(within(dialog).getByText('3 EPISODE(S) WITH A PROBLEM:')).toBeInTheDocument();
+        expect(
+            within(within(dialog).getByTestId('audio-problems'))
+                .getAllByTestId('audio-problem')
+                .map((item) => {
+                    return item.textContent;
+                })
+        ).toEqual(['Naruto · EP 2 — NO AUDIO', 'Naruto · EP 4 — COULD NOT BE READ', 'Kaiju · EP 1 — COULD NOT BE READ']);
+        expect(within(dialog).getByText(/^REPAIR is for a video that some sources hide behind a picture/)).toBeInTheDocument();
+        expect(within(dialog).getByText(/^DOWNLOAD ALL AGAIN deletes only the video of the ones without audio/)).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'REPAIR (2)' })).toBeEnabled();
+        expect(within(dialog).getByRole('button', { name: 'DOWNLOAD ALL AGAIN (1)' })).toBeEnabled();
+    });
+
+    it('has only the repair, and not the download again, when everything that is wrong could not be read', () => {
+        useAnimeStore.setState({ audioReport: ONLY_UNREADABLE });
+        render(<AudioReportDialog />);
+
+        const dialog = screen.getByRole('dialog', { name: 'Downloaded episodes' });
+        expect(within(dialog).getByRole('button', { name: 'REPAIR (1)' })).toBeEnabled();
+        expect(within(dialog).queryByRole('button', { name: /^DOWNLOAD ALL AGAIN/ })).not.toBeInTheDocument();
+        expect(within(dialog).queryByText(/^DOWNLOAD ALL AGAIN deletes only the video/)).not.toBeInTheDocument();
+    });
+
+    it('has no repair when nothing could not be read', () => {
+        useAnimeStore.setState({ audioReport: WITH_PROBLEMS });
+        render(<AudioReportDialog />);
+
+        const dialog = screen.getByRole('dialog', { name: 'Downloaded episodes' });
+        expect(within(dialog).queryByRole('button', { name: /^REPAIR/ })).not.toBeInTheDocument();
+        expect(within(dialog).queryByText(/^REPAIR is for a video/)).not.toBeInTheDocument();
+    });
+
+    it('repairs only the episodes that could not be read, closes, and says how it went', async () => {
+        const user = userEvent.setup();
+        mock.api.repairAnimeEpisodes.mockResolvedValue({ ok: true, repaired: 1, failed: 1, skipped: 0 });
+        useAnimeStore.setState({ audioReport: WITH_UNREADABLE });
+        render(<AudioReportDialog />);
+
+        await user.click(screen.getByRole('button', { name: 'REPAIR (2)' }));
+
+        expect(mock.api.repairAnimeEpisodes).toHaveBeenCalledTimes(1);
+        expect(mock.api.repairAnimeEpisodes).toHaveBeenCalledWith([4, 5]);
+        expect(mock.api.redownloadAnimeEpisodes).not.toHaveBeenCalled();
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(mock.api.listAnimeLibrary).toHaveBeenCalledTimes(1);
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: '1 episode(s) repaired · 1 could not be repaired.' });
+    });
+
+    it('downloads again only the ones that a download can fix, and leaves the ones that could not be read for the repair', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ audioReport: WITH_UNREADABLE });
+        render(<AudioReportDialog />);
+
+        await user.click(screen.getByRole('button', { name: 'DOWNLOAD ALL AGAIN (1)' }));
+
+        expect(mock.api.redownloadAnimeEpisodes).toHaveBeenCalledWith([2]);
+        expect(mock.api.repairAnimeEpisodes).not.toHaveBeenCalled();
+        expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Queued 1 episode(s) to be downloaded again.' });
     });
 
     it('closes with CLOSE, without downloading anything', async () => {

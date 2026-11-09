@@ -975,6 +975,8 @@ body::after {
         0 0.08em 0.1em rgba(0, 0, 0, 0.6);
 }
 
+/* Holds the header of the player (see AnimePlayer): it takes no room of its own, so its content lays out in the box as before. */
+.player__slot { display: contents; }
 .player__stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #000; border: 1px solid var(--line); }
 .player__stage:fullscreen { justify-content: center; }
 

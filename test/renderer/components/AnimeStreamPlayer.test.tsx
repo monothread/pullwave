@@ -6,12 +6,14 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeStreamPlayer, STREAM_BUFFER_SECONDS } from '@renderer/components/AnimeStreamPlayer';
 import { INITIAL_SEARCH, UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
+import { readAutoNextPref, useUiPrefsStore } from '@renderer/store/uiPrefsStore';
+import { AUTO_NEXT_DELAY_MS } from '@renderer/components/AutoNextPanel';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openedSubtitleMenu } from '../../helpers/playerSettings';
 import { openErrorDialog } from '../../helpers/errorDialog';
 
 const hls = vi.hoisted(() => {
-    type Listener = (event: string, data: { fatal: boolean }) => void;
+    type Listener = (event: string, data: { fatal?: boolean; levels?: Array<{ height: number; bitrate: number }> }) => void;
     const state = {
         supported: true,
         instances: [] as Array<{
@@ -20,16 +22,17 @@ const hls = vi.hoisted(() => {
             media: HTMLVideoElement | null;
             destroyed: boolean;
             listeners: Record<string, Listener>;
+            currentLevel: number;
         }>
     };
     class FakeHls {
-        static Events = { ERROR: 'hlsError' };
+        static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed' };
         static isSupported(): boolean {
             return state.supported;
         }
         readonly record: (typeof state.instances)[number];
         constructor(options: unknown) {
-            this.record = { options, source: null, media: null, destroyed: false, listeners: {} };
+            this.record = { options, source: null, media: null, destroyed: false, listeners: {}, currentLevel: -1 };
             state.instances.push(this.record);
         }
         on(event: string, listener: Listener): void {
@@ -43,6 +46,13 @@ const hls = vi.hoisted(() => {
         }
         destroy(): void {
             this.record.destroyed = true;
+        }
+        // The quality hls.js was told to stay on (-1 is its automatic choice).
+        set currentLevel(level: number) {
+            this.record.currentLevel = level;
+        }
+        get currentLevel(): number {
+            return this.record.currentLevel;
         }
     }
     return { state, FakeHls };
@@ -78,10 +88,12 @@ beforeEach(() => {
     hls.state.instances.length = 0;
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
     useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, jobs: [], library: [], search: INITIAL_SEARCH, selection: null, playing: null, streaming: null });
+    window.localStorage.clear();
+    useUiPrefsStore.setState({ autoNext: true });
 });
 
 function stream(overrides: Partial<NonNullable<ReturnType<typeof useAnimeStore.getState>['streaming']>> = {}): void {
-    useAnimeStore.setState({ streaming: { title: 'The Apothecary Diaries', episode: '3', status: 'ready', stream: STREAM, error: null, ...overrides } });
+    useAnimeStore.setState({ streaming: { title: 'The Apothecary Diaries', episode: '3', status: 'ready', stream: STREAM, error: null, nextEpisode: null, ...overrides } });
 }
 
 describe('AnimeStreamPlayer', () => {
@@ -349,6 +361,74 @@ describe('AnimeStreamPlayer', () => {
             expect(hls.state.instances).toHaveLength(0);
         });
 
+        it('stays on the best quality of the master, and does not leave it to the speed of the connection', () => {
+            stream();
+            render(<AnimeStreamPlayer />);
+            const instance = hls.state.instances[0];
+            expect(instance?.currentLevel).toBe(-1);
+
+            act(() => {
+                instance?.listeners.hlsManifestParsed?.('hlsManifestParsed', {
+                    levels: [
+                        { height: 360, bitrate: 900_000 },
+                        { height: 480, bitrate: 1_500_000 },
+                        { height: 720, bitrate: 3_000_000 },
+                        { height: 1080, bitrate: 5_300_000 }
+                    ]
+                });
+            });
+            expect(instance?.currentLevel).toBe(3);
+        });
+
+        it('picks the tallest quality even when the master lists them from the best to the worst', () => {
+            stream();
+            render(<AnimeStreamPlayer />);
+            act(() => {
+                hls.state.instances[0]?.listeners.hlsManifestParsed?.('hlsManifestParsed', {
+                    levels: [
+                        { height: 1080, bitrate: 5_300_000 },
+                        { height: 720, bitrate: 3_000_000 }
+                    ]
+                });
+            });
+            expect(hls.state.instances[0]?.currentLevel).toBe(0);
+        });
+
+        it('stays on the only quality of a stream that has one, and leaves the choice alone when there is none', () => {
+            stream();
+            render(<AnimeStreamPlayer />);
+            act(() => {
+                hls.state.instances[0]?.listeners.hlsManifestParsed?.('hlsManifestParsed', { levels: [{ height: 1080, bitrate: 5_300_000 }] });
+            });
+            expect(hls.state.instances[0]?.currentLevel).toBe(0);
+
+            act(() => {
+                stream({ stream: { sessionId: 's2', url: 'pullwave-stream://p/s2/xyz', subtitleUrl: null, subtitles: [] } });
+            });
+            act(() => {
+                hls.state.instances[1]?.listeners.hlsManifestParsed?.('hlsManifestParsed', { levels: [] });
+            });
+            expect(hls.state.instances[1]?.currentLevel).toBe(-1);
+        });
+
+        it('chooses the quality again for the next episode', () => {
+            stream();
+            render(<AnimeStreamPlayer />);
+            act(() => {
+                stream({ stream: { sessionId: 's2', url: 'pullwave-stream://p/s2/xyz', subtitleUrl: null, subtitles: [] } });
+            });
+            act(() => {
+                hls.state.instances[1]?.listeners.hlsManifestParsed?.('hlsManifestParsed', {
+                    levels: [
+                        { height: 480, bitrate: 1_500_000 },
+                        { height: 1080, bitrate: 5_300_000 }
+                    ]
+                });
+            });
+            expect(hls.state.instances[1]?.currentLevel).toBe(1);
+            expect(hls.state.instances[0]?.currentLevel).toBe(-1);
+        });
+
         it('lets go of hls.js when it is closed', () => {
             stream();
             const { unmount } = render(<AnimeStreamPlayer />);
@@ -365,6 +445,227 @@ describe('AnimeStreamPlayer', () => {
             expect(hls.state.instances).toHaveLength(2);
             expect(hls.state.instances[0]?.destroyed).toBe(true);
             expect(hls.state.instances[1]?.source).toBe('pullwave-stream://p/s2/xyz');
+        });
+    });
+
+    describe('the next episode that starts by itself', () => {
+        const SECOND_STREAM: AnimeStream = { sessionId: 's2', url: 'pullwave-stream://p/s2/xyz', subtitleUrl: null, subtitles: [] };
+
+        // The source lists episodes 3 and 4: the one playing is the 3rd.
+        function withNextEpisode(overrides: Partial<NonNullable<ReturnType<typeof useAnimeStore.getState>['streaming']>> = {}): void {
+            useAnimeStore.setState({
+                selection: { result: { index: 2, title: 'The Apothecary Diaries' }, query: 'apothecary', audio: 'sub', status: 'ready', episodes: ['2', '3', '4'], error: null }
+            });
+            stream({ nextEpisode: '4', ...overrides });
+        }
+
+        function endEpisode(): void {
+            act(() => {
+                fireEvent.ended(document.querySelector('video') as HTMLVideoElement);
+            });
+        }
+
+        it('shows no panel while the episode plays', () => {
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+
+        it('shows the panel of the next episode over the video when the episode ends', () => {
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            endEpisode();
+
+            const panel = screen.getByRole('region', { name: 'NEXT EPISODE' });
+            expect(panel).toHaveTextContent('The Apothecary Diaries · EP 4');
+            expect(document.querySelector('.player__stage')).toContainElement(panel);
+            expect(within(panel).getByRole('button', { name: 'PLAY NOW' })).toBeInTheDocument();
+            expect(within(panel).getByRole('button', { name: 'CANCEL' })).toBeInTheDocument();
+        });
+
+        it('shows no panel when the episode is the last one the source lists', () => {
+            withNextEpisode({ nextEpisode: null });
+            render(<AnimeStreamPlayer />);
+            endEpisode();
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+
+        it('is on by default: with no choice saved the panel shows when the episode ends', () => {
+            window.localStorage.clear();
+            useUiPrefsStore.setState({ autoNext: readAutoNextPref() });
+            expect(useUiPrefsStore.getState().autoNext).toBe(true);
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            endEpisode();
+            expect(screen.getByRole('region', { name: 'NEXT EPISODE' })).toBeInTheDocument();
+        });
+
+        it('shows no panel when it was turned off', () => {
+            useUiPrefsStore.setState({ autoNext: false });
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            endEpisode();
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+
+        it('opens the next episode when the count is over', async () => {
+            vi.useFakeTimers();
+            try {
+                mock.api.openAnimeStream.mockResolvedValue({ ok: true, stream: SECOND_STREAM });
+                withNextEpisode();
+                render(<AnimeStreamPlayer />);
+                endEpisode();
+                await act(async () => {
+                    await vi.advanceTimersByTimeAsync(AUTO_NEXT_DELAY_MS);
+                });
+
+                expect(mock.api.openAnimeStream).toHaveBeenCalledTimes(1);
+                expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'apothecary', index: 2, audio: 'sub', episode: '4' });
+                expect(screen.getByRole('dialog', { name: 'The Apothecary Diaries · EP 4' })).toBeInTheDocument();
+                expect(mock.api.closeAnimeStream).toHaveBeenCalledWith('s1');
+                expect(hls.state.instances[1]?.source).toBe('pullwave-stream://p/s2/xyz');
+                expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('opens the next episode at once with PLAY NOW', async () => {
+            const user = userEvent.setup();
+            mock.api.openAnimeStream.mockResolvedValue({ ok: true, stream: SECOND_STREAM });
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            endEpisode();
+
+            await user.click(screen.getByRole('button', { name: 'PLAY NOW' }));
+
+            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'apothecary', index: 2, audio: 'sub', episode: '4' });
+            expect(await screen.findByRole('dialog', { name: 'The Apothecary Diaries · EP 4' })).toBeInTheDocument();
+            expect(useAnimeStore.getState().streaming).toEqual({
+                title: 'The Apothecary Diaries',
+                episode: '4',
+                status: 'ready',
+                stream: SECOND_STREAM,
+                error: null,
+                nextEpisode: null
+            });
+        });
+
+        it('stays on the episode, with no panel, when the viewer cancels', async () => {
+            const user = userEvent.setup();
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            endEpisode();
+            await user.click(screen.getByRole('button', { name: 'CANCEL' }));
+
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+            expect(mock.api.openAnimeStream).not.toHaveBeenCalled();
+            expect(screen.getByRole('dialog', { name: 'The Apothecary Diaries · EP 3' })).toBeInTheDocument();
+        });
+
+        it('stays on the episode when the viewer plays it again before the count is over', () => {
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            endEpisode();
+            expect(screen.getByRole('region', { name: 'NEXT EPISODE' })).toBeInTheDocument();
+
+            act(() => {
+                fireEvent.play(document.querySelector('video') as HTMLVideoElement);
+            });
+            expect(screen.queryByRole('region', { name: 'NEXT EPISODE' })).not.toBeInTheDocument();
+        });
+
+        it('is turned off and on from the settings of the player, which have it even when the episode has no subtitles', async () => {
+            const user = userEvent.setup();
+            withNextEpisode();
+            render(<AnimeStreamPlayer />);
+            await user.click(screen.getByRole('button', { name: 'Settings' }));
+
+            const toggle = screen.getByRole('switch', { name: 'Next episode automatically' });
+            expect(toggle).toHaveProperty('checked', true);
+            await user.click(toggle);
+            expect(useUiPrefsStore.getState().autoNext).toBe(false);
+            expect(screen.getByRole('switch', { name: 'Next episode automatically' })).toHaveProperty('checked', false);
+        });
+    });
+
+    describe('the stage that goes to fullscreen', () => {
+        const SECOND_STREAM: AnimeStream = { sessionId: 's2', url: 'pullwave-stream://p/s2/xyz', subtitleUrl: null, subtitles: [] };
+
+        function stageOf(): HTMLElement {
+            return document.querySelector('.player__stage') as HTMLElement;
+        }
+
+        it('has no stage while the first video is being found, and gets it with the video', () => {
+            stream({ status: 'loading', stream: null });
+            render(<AnimeStreamPlayer />);
+            expect(stageOf()).toBeNull();
+            expect(screen.getByText('FINDING THE VIDEO…')).toBeInTheDocument();
+
+            act(() => {
+                stream();
+            });
+            expect(stageOf()).not.toBeNull();
+            expect(stageOf()).toContainElement(document.querySelector('video'));
+            expect(screen.queryByText('FINDING THE VIDEO…')).not.toBeInTheDocument();
+        });
+
+        it('keeps the very same stage in the page while the next episode is found and after it comes, so the browser does not leave fullscreen', () => {
+            stream({ nextEpisode: '4' });
+            render(<AnimeStreamPlayer />);
+            const stage = stageOf();
+            const first = document.querySelector('video') as HTMLVideoElement;
+            Object.defineProperty(document, 'fullscreenElement', { value: stage, configurable: true });
+            try {
+                act(() => {
+                    stream({ episode: '4', status: 'loading', stream: null, nextEpisode: null });
+                });
+                expect(stageOf()).toBe(stage);
+                expect(stage.isConnected).toBe(true);
+                expect(first.isConnected).toBe(false);
+                expect(within(stage).getByText('FINDING THE VIDEO…')).toBeInTheDocument();
+                expect(screen.getByRole('dialog', { name: 'The Apothecary Diaries · EP 4' })).toBeInTheDocument();
+
+                act(() => {
+                    stream({ episode: '4', stream: SECOND_STREAM, nextEpisode: null });
+                });
+                expect(stageOf()).toBe(stage);
+                expect(document.fullscreenElement).toBe(stage);
+                expect(stage.isConnected).toBe(true);
+                expect(within(stage).queryByText('FINDING THE VIDEO…')).not.toBeInTheDocument();
+                expect(stage).toContainElement(document.querySelector('video'));
+                expect(document.querySelector('video')).not.toBe(first);
+                expect(hls.state.instances[1]?.source).toBe('pullwave-stream://p/s2/xyz');
+                expect(within(stage).getByRole('button', { name: 'Fullscreen' })).toBeInTheDocument();
+            } finally {
+                Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true });
+            }
+        });
+
+        it('takes the stage away and shows the error when the next episode cannot be found', () => {
+            stream();
+            render(<AnimeStreamPlayer />);
+            expect(stageOf()).not.toBeNull();
+
+            act(() => {
+                stream({ episode: '4', status: 'error', stream: null, error: { code: 'NO_SOURCES', raw: 'No sources found for sub!' } });
+            });
+            expect(stageOf()).toBeNull();
+            expect(screen.getByRole('alert')).toHaveTextContent('No video source was found for this episode.');
+            expect(screen.getByRole('dialog', { name: 'The Apothecary Diaries · EP 4' })).toBeInTheDocument();
+        });
+
+        it('does not keep a stage for the loading of another episode after an error', () => {
+            stream();
+            render(<AnimeStreamPlayer />);
+            act(() => {
+                stream({ episode: '4', status: 'error', stream: null, error: { code: 'NO_SOURCES', raw: 'x' } });
+            });
+            act(() => {
+                stream({ episode: '5', status: 'loading', stream: null });
+            });
+            expect(stageOf()).toBeNull();
+            expect(screen.getByText('FINDING THE VIDEO…')).toBeInTheDocument();
         });
     });
 

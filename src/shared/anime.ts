@@ -344,6 +344,14 @@ export function animeMediaUrl(kind: AnimeMediaKind, episodeId: number, trackId =
     return trackId.length > 0 ? `${base}/${encodeURIComponent(trackId)}` : base;
 }
 
+// The address of the video of an episode for one opening of the player. The browser keeps, for each address, what it learned the first time it
+// opened it, and a video that could not be opened (a file that was not a video yet) is not opened again when the file is repaired or downloaded
+// again, however many times it is tried: the same address answers "could not be played" until the browser lets it go. An address of its own for
+// each opening has nothing to be mistaken for. The main process serves the same file for all of them (it reads the path of the address only).
+export function episodeVideoUrl(episodeId: number, opening: number): string {
+    return `${animeMediaUrl('episode', episodeId)}?v=${opening}`;
+}
+
 // A subtitle file of a downloaded episode: the one ani-cli picked, the others the source offered, one the user loaded, one made from
 // the audio of the episode, or one a language model translated from another.
 export type AnimeSubtitleKind = 'default' | 'source' | 'imported' | 'generated' | 'translated';
@@ -373,8 +381,21 @@ export interface AnimeAudioCheckSummary {
     checked: number;
     withoutAudio: number;
     unreadable: number;
+    // The downloaded episodes that could not be read (as many as `unreadable`).
+    unreadableIds: number[];
     missing: number;
 }
+
+// What repairing the videos of some episodes did: the ones that got back, the ones that could not (they are as they were) and the ones that
+// needed nothing (or that have no file).
+export interface AnimeRepairSummary {
+    repaired: number;
+    failed: number;
+    skipped: number;
+}
+
+// `unsupported`: this system has no anime section. `busy`: a repair is going on already.
+export type AnimeRepairResponse = ({ ok: true } & AnimeRepairSummary) | { ok: false; reason: 'busy' | 'unsupported' };
 
 // `busy`: a check is going on already. `unsupported`: this system has no anime section.
 export type AnimeAudioCheckResponse = ({ ok: true } & AnimeAudioCheckSummary) | { ok: false; reason: 'busy' | 'unsupported' };

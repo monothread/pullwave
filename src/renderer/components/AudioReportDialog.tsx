@@ -4,11 +4,12 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useAnimeStore } from '../store/animeStore';
 import type { MessageKey } from '@shared/i18n';
-import type { AudioReport, LibraryProblemKind } from './animeText';
+import { isRepairable, type AudioReport, type LibraryProblemKind } from './animeText';
 
 const PROBLEM_KEYS: Record<LibraryProblemKind, MessageKey> = {
     'no-audio': 'anime.noAudio',
-    'file-missing': 'anime.fileMissing'
+    'file-missing': 'anime.fileMissing',
+    unreadable: 'anime.unreadable'
 };
 
 interface AudioReportWindowProps {
@@ -16,7 +17,8 @@ interface AudioReportWindowProps {
 }
 
 // The window that opens when the check of the downloaded episodes ends: how it went, every episode that has a problem (its video has no
-// audio, or its file is not on the disk) and a button that downloads all of them again. It is put in the body of the page, over the screen.
+// audio, its file is not on the disk, or it could not be read), a button that downloads again the ones that a new download can fix and a
+// button that repairs the ones that could not be read. It is put in the body of the page, over the screen.
 function AudioReportWindow({ report }: AudioReportWindowProps) {
     const t = useTranslator();
     const titleId = useId();
@@ -26,8 +28,13 @@ function AudioReportWindow({ report }: AudioReportWindowProps) {
     const redownloadProblems = useAnimeStore((state) => {
         return state.redownloadProblems;
     });
+    const repairProblems = useAnimeStore((state) => {
+        return state.repairProblems;
+    });
     const { dialogRef, handleKeyDown } = useModalDialog(closeAudioReport, true);
     const { summary, problems, downloaded } = report;
+    const unreadable = problems.filter(isRepairable).length;
+    const downloadable = problems.length - unreadable;
 
     return createPortal(
         <div
@@ -66,14 +73,26 @@ function AudioReportWindow({ report }: AudioReportWindowProps) {
                                 );
                             })}
                         </ul>
-                        <p className="modal__hint">{t('anime.audio.report.fixHint')}</p>
+                        {downloadable > 0 && <p className="modal__hint">{t('anime.audio.report.fixHint')}</p>}
+                        {unreadable > 0 && <p className="modal__hint">{t('anime.audio.report.unreadableHint')}</p>}
                     </>
                 )}
                 <div className="modal__actions">
                     <button type="button" className="btn btn--small btn--ghost" onClick={closeAudioReport}>
                         {t('anime.audio.report.close')}
                     </button>
-                    {problems.length > 0 && (
+                    {unreadable > 0 && (
+                        <button
+                            type="button"
+                            className="btn btn--small btn--primary"
+                            onClick={() => {
+                                void repairProblems();
+                            }}
+                        >
+                            {t('anime.audio.report.repair', { count: unreadable })}
+                        </button>
+                    )}
+                    {downloadable > 0 && (
                         <button
                             type="button"
                             className="btn btn--small btn--primary"
@@ -81,7 +100,7 @@ function AudioReportWindow({ report }: AudioReportWindowProps) {
                                 void redownloadProblems();
                             }}
                         >
-                            {t('anime.audio.report.fix', { count: problems.length })}
+                            {t('anime.audio.report.fix', { count: downloadable })}
                         </button>
                     )}
                 </div>
