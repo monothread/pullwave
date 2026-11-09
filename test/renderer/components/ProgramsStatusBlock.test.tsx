@@ -363,6 +363,12 @@ describe('ProgramsStatusBlock updates', () => {
         expect(row('anicli')).toHaveTextContent('The latest ani-cli works, but some changes of the app do not fit it (telling apart the anime that have the same name, the title of the anime the source picks on its own, the pages of the search after the first), so some subtitles may be missing.');
     });
 
+    it('names the change of the audio of the episodes among the ones that do not fit', () => {
+        version('anicli', { latest: 'abcdef0123456789abcdef0123456789abcdef01', updatable: true, unfit: ['separateAudio'] });
+        render(<ProgramsStatusBlock place="anime" />);
+        expect(row('anicli')).toHaveTextContent('The latest ani-cli works, but some changes of the app do not fit it (the audio of the episodes that give it as a track of its own), so some subtitles may be missing.');
+    });
+
     it('does not warn about the changes when there is nothing to update to', () => {
         version('anicli', { updatable: false, unfit: ['allSubtitles'] });
         render(<ProgramsStatusBlock place="anime" />);

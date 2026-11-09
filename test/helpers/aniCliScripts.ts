@@ -1,3 +1,4 @@
+import { ORIGINAL_MASTER_FETCH, ORIGINAL_YTDLP } from '@main/services/aniAudio';
 import { ORIGINAL_SEARCH } from '@main/services/aniSearchPages';
 
 // Scripts that look like ani-cli to the changes of Pullwave (see aniPatches.ts): each constant is the part of the script one change looks for.
@@ -8,11 +9,12 @@ export const ALL_SUBTITLES_PART = [LIST_LINE, '    command -v "yt-dlp" >/dev/nul
 export const MENU_PART = `    _line=$(printf "%s" "$_stdin" | cut -f 1,3 | tr '\\t' ' ' | menu "$_prompt" "$_multi_flag" "$menu_extra_flags" | cut -d " " -f 1)`;
 export const SINGLE_RESULT_PART = '    [ "$_line_count" -eq 1 ] && printf "%s" "$_stdin" | cut -f 2,3 && return 0';
 export const SEARCH_PART = ORIGINAL_SEARCH;
+export const SEPARATE_AUDIO_PART = [`    ${ORIGINAL_MASTER_FETCH}sed 's|a|b|')"`, `    ${ORIGINAL_YTDLP}`].join('\n');
 export const DEBUG_PART = '        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;';
 
 // A script every change of Pullwave fits, with the version it says; `extra` tells two scripts of the same version apart.
 export function aniCliScript(version: string, extra = ''): string {
-    return `#!/bin/sh\nversion_number="${version}"\n${SELECTION_PART}\n${ALL_SUBTITLES_PART}\n${DEBUG_PART}\n${MENU_PART}\n${SINGLE_RESULT_PART}\n${SEARCH_PART}\n${extra}`;
+    return `#!/bin/sh\nversion_number="${version}"\n${SELECTION_PART}\n${ALL_SUBTITLES_PART}\n${DEBUG_PART}\n${MENU_PART}\n${SINGLE_RESULT_PART}\n${SEARCH_PART}\n${SEPARATE_AUDIO_PART}\n${extra}`;
 }
 
 // The same without the parts the changes look for, as a script that ani-cli changed under them would be.

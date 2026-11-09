@@ -1,4 +1,4 @@
-import type { AniError, AniErrorCode, AnimeAudio, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
+import type { AniError, AniErrorCode, AnimeAudio, AnimeAudioCheckSummary, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries, MAX_SEASON } from '@shared/series';
 import { codedErrorReport, type ErrorReport } from './errorReport';
@@ -156,6 +156,50 @@ export interface LibraryGroup {
     // The name of the series.
     series: string;
     entries: LibraryAnime[];
+}
+
+// What is wrong with a downloaded episode: its video has no audio, or its file is not on the disk (which is told first, as the video
+// cannot be looked at).
+export type LibraryProblemKind = 'no-audio' | 'file-missing';
+
+export interface LibraryProblem {
+    animeId: number;
+    animeTitle: string;
+    episodeId: number;
+    episode: string;
+    kind: LibraryProblemKind;
+}
+
+// What the check of the audio of the library found: how it went, how many downloaded episodes the library has (none tells an empty library from
+// one with no problem), and every downloaded episode that has a problem now.
+export interface AudioReport {
+    summary: AnimeAudioCheckSummary;
+    downloaded: number;
+    problems: LibraryProblem[];
+}
+
+// How many episodes of the library are downloaded.
+export function downloadedEpisodeCount(library: readonly LibraryAnime[]): number {
+    return library.reduce((total, anime) => {
+        return (
+            total +
+            anime.episodes.filter((episode) => {
+                return episode.status === 'done';
+            }).length
+        );
+    }, 0);
+}
+
+// The downloaded episodes of the library that have a problem, anime by anime, in the order the library has them.
+export function libraryProblems(library: readonly LibraryAnime[]): LibraryProblem[] {
+    return library.flatMap((anime) => {
+        return anime.episodes.flatMap((episode): LibraryProblem[] => {
+            if (episode.status !== 'done' || (!episode.fileMissing && !episode.noAudio)) {
+                return [];
+            }
+            return [{ animeId: anime.id, animeTitle: anime.title, episodeId: episode.id, episode: episode.number, kind: episode.fileMissing ? 'file-missing' : 'no-audio' }];
+        });
+    });
 }
 
 // Joins the animes of the library that are seasons of one series (the same name, whatever the case or the accents); an anime that

@@ -22,7 +22,8 @@ function setup(
     settings: Partial<Settings> = {},
     files: Record<string, number> = {},
     system: { platform?: NodeJS.Platform; downloads?: string; directories?: string[] } = {},
-    site: { provider: string | null } = { provider: null }
+    site: { provider: string | null } = { provider: null },
+    audio: { hasAudio?: (path: string) => Promise<boolean | null>; removeFile?: (path: string) => void; withoutRemoveFile?: boolean } = {}
 ) {
     const db = new AnimeDb(':memory:', () => {
         return 1000;
@@ -35,6 +36,13 @@ function setup(
         state.directories.push(path);
     });
     const removeDirectory = vi.fn();
+    const removeFile = vi.fn((path: string) => {
+        if (audio.removeFile) {
+            audio.removeFile(path);
+        }
+        delete state.files[path];
+    });
+    const hasAudio = audio.hasAudio ? vi.fn(audio.hasAudio) : undefined;
     const queue = new AnimeDownloadQueue({
         db,
         download: (options): AniDownloadHandle => {
@@ -58,6 +66,8 @@ function setup(
         },
         ensureDirectory,
         removeDirectory,
+        removeFile: audio.withoutRemoveFile ? undefined : removeFile,
+        hasAudio,
         fileSize: (path) => {
             return state.files[path] ?? null;
         },
@@ -77,7 +87,7 @@ function setup(
             heldChanges.push(held);
         }
     });
-    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory, site, heldChanges };
+    return { db, queue, downloads, updates, state, ensureDirectory, removeDirectory, removeFile, hasAudio, site, heldChanges };
 }
 
 async function settleResults(): Promise<void> {
@@ -474,6 +484,416 @@ describe('AnimeDownloadQueue.retry', () => {
         queue.retry(99);
 
         expect(downloads).toHaveLength(started);
+    });
+});
+
+describe('AnimeDownloadQueue.redownload', () => {
+    const FILE = '/a/Naruto Episode 1.mp4';
+
+    async function withDownloadedEpisode(maxConcurrent = 1) {
+        const context = setup({ maxConcurrent }, { [FILE]: 4096 });
+        context.queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        context.downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        return context;
+    }
+
+    it('queues a downloaded episode again when its file is not on the disk, and downloads it with the same options as the first time', async () => {
+        const { queue, downloads, db, state } = await withDownloadedEpisode();
+        delete state.files[FILE];
+        const libraryChanges = state.libraryChanges;
+
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(2);
+        expect(downloads[1]?.options).toMatchObject({
+            query: 'naruto',
+            index: 2,
+            episode: '1',
+            quality: DEFAULT_SETTINGS.animeQuality,
+            audio: 'sub',
+            downloadDir: downloads[0]?.options.downloadDir
+        });
+        expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, error: null });
+        expect(queue.list()).toEqual([{ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null }]);
+        expect(state.libraryChanges).toBe(libraryChanges + 2);
+    });
+
+    it('puts the episode back in the library as downloaded once the new download finishes', async () => {
+        const { queue, downloads, db, state } = await withDownloadedEpisode();
+        delete state.files[FILE];
+        queue.redownload(1);
+        state.files[FILE] = 8192;
+
+        downloads[1]?.finish(doneAt(FILE));
+        await settleResults();
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 8192 });
+        expect(queue.list()).toEqual([]);
+        expect(state.downloaded).toEqual([1, 1]);
+    });
+
+    it('keeps the watched mark of the episode', async () => {
+        const { queue, db, state } = await withDownloadedEpisode();
+        db.saveProgress({ episodeId: 1, positionSeconds: 90, durationSeconds: 1420, watched: true });
+        delete state.files[FILE];
+
+        queue.redownload(1);
+
+        expect(db.getEpisode(1)).toMatchObject({ watched: true, positionSeconds: 90, durationSeconds: 1420 });
+    });
+
+    it('queues an episode whose record has no file at all', async () => {
+        const { queue, downloads, db } = await withDownloadedEpisode();
+        const record = db.getEpisode(1) as NonNullable<ReturnType<AnimeDb['getEpisode']>>;
+        vi.spyOn(db, 'getEpisode').mockReturnValueOnce({ ...record, filePath: null });
+
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(2);
+        expect(downloads[1]?.options.episode).toBe('1');
+        expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null });
+    });
+
+    it('does nothing for an episode whose file is on the disk, so a video that exists is never downloaded over', async () => {
+        const { queue, downloads, db, updates, state } = await withDownloadedEpisode();
+        const libraryChanges = state.libraryChanges;
+        const updatesBefore = updates.length;
+
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(1);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096 });
+        expect(updates).toHaveLength(updatesBefore);
+        expect(state.libraryChanges).toBe(libraryChanges);
+    });
+
+    it('does nothing for an episode that is not downloaded', async () => {
+        const { queue, downloads, db, state } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+        downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked by cloudflare.' } });
+        await settleResults();
+        const libraryChanges = state.libraryChanges;
+
+        queue.redownload(1);
+        queue.redownload(2);
+
+        expect(downloads).toHaveLength(2);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked by cloudflare.' } });
+        expect(db.getEpisode(2)).toMatchObject({ status: 'downloading' });
+        expect(state.libraryChanges).toBe(libraryChanges);
+    });
+
+    it('does nothing for an episode that does not exist', async () => {
+        const { queue, downloads, state } = await withDownloadedEpisode();
+        delete state.files[FILE];
+
+        queue.redownload(99);
+
+        expect(downloads).toHaveLength(1);
+    });
+
+    it('does nothing for an episode whose anime is gone', async () => {
+        const { queue, downloads, db, state } = await withDownloadedEpisode();
+        delete state.files[FILE];
+        vi.spyOn(db, 'getAnime').mockReturnValueOnce(null);
+
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(1);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE });
+    });
+
+    it('queues the episode only once when it is asked twice', async () => {
+        const { queue, downloads, state } = await withDownloadedEpisode();
+        delete state.files[FILE];
+
+        queue.redownload(1);
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(2);
+        expect(queue.list()).toHaveLength(1);
+    });
+
+    it('waits its turn when the downloads that are allowed at once are running', async () => {
+        const { queue, downloads, db, state } = setup({ maxConcurrent: 1 }, { [FILE]: 4096 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        queue.enqueue({ ...REQUEST, episodes: ['2'] });
+        delete state.files[FILE];
+
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(2);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'queued', filePath: null });
+        expect(queue.list().map((job) => {
+            return [job.episode, job.status];
+        })).toEqual([['2', 'running'], ['1', 'queued']]);
+
+        downloads[1]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Nothing.' } });
+        await settleResults();
+
+        expect(downloads).toHaveLength(3);
+        expect(downloads[2]?.options.episode).toBe('1');
+    });
+
+    it('starts nothing in a held queue until everything goes on', async () => {
+        const { queue, downloads, state } = await withDownloadedEpisode();
+        delete state.files[FILE];
+        queue.pauseAll();
+
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(1);
+        expect(queue.list()).toMatchObject([{ episodeId: 1, status: 'queued' }]);
+
+        queue.resumeAll();
+
+        expect(downloads).toHaveLength(2);
+        expect(downloads[1]?.options.episode).toBe('1');
+    });
+});
+
+async function flushAudioCheck(): Promise<void> {
+    await new Promise((resolve) => {
+        setImmediate(resolve);
+    });
+}
+
+describe('AnimeDownloadQueue looks at the audio of a video that was downloaded', () => {
+    const FILE = '/a/Naruto Episode 1.mp4';
+
+    async function download(audio: Parameters<typeof setup>[4]) {
+        const context = setup({ maxConcurrent: 1 }, { [FILE]: 4096 }, {}, { provider: null }, audio);
+        context.queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        context.downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        await flushAudioCheck();
+        return context;
+    }
+
+    it('marks the episode when the video has no audio, and tells the screen the library changed', async () => {
+        const { db, hasAudio, state } = await download({ hasAudio: async () => { return false; } });
+
+        expect(hasAudio).toHaveBeenCalledTimes(1);
+        expect(hasAudio).toHaveBeenCalledWith(FILE);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: true });
+        expect(db.episodesToCheckAudio()).toEqual([]);
+        // Queueing, starting and finishing the download, and then what the check found.
+        expect(state.libraryChanges).toBe(4);
+    });
+
+    it('records that the video has audio, without marking the episode', async () => {
+        const { db, hasAudio } = await download({ hasAudio: async () => { return true; } });
+
+        expect(hasAudio).toHaveBeenCalledWith(FILE);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', noAudio: false });
+        expect(db.episodesToCheckAudio()).toEqual([]);
+    });
+
+    it('leaves the episode to be looked at later when the check could not tell', async () => {
+        const { db, state } = await download({ hasAudio: async () => { return null; } });
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', noAudio: false });
+        expect(db.episodesToCheckAudio()).toMatchObject([{ id: 1 }]);
+        expect(state.libraryChanges).toBe(3);
+    });
+
+    it('leaves the episode as it is when the check fails', async () => {
+        const { db, queue, state } = await download({
+            hasAudio: async () => {
+                throw new Error('ffmpeg is not there');
+            }
+        });
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: false });
+        expect(db.episodesToCheckAudio()).toMatchObject([{ id: 1 }]);
+        expect(queue.list()).toEqual([]);
+        expect(state.libraryChanges).toBe(3);
+    });
+
+    it('does not look at anything when the queue was not given a way to', async () => {
+        const { db, hasAudio } = await download({});
+
+        expect(hasAudio).toBeUndefined();
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', noAudio: false });
+        expect(db.episodesToCheckAudio()).toMatchObject([{ id: 1 }]);
+    });
+
+    it('does not make the episode wait for the check: it is in the library at once and is marked when the check ends', async () => {
+        let answer: (hasAudio: boolean) => void = () => {
+            return undefined;
+        };
+        const pending = new Promise<boolean>((resolve) => {
+            answer = resolve;
+        });
+        const { db, queue } = await download({ hasAudio: () => { return pending; } });
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', noAudio: false });
+        expect(queue.list()).toEqual([]);
+
+        answer(false);
+        await flushAudioCheck();
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', noAudio: true });
+    });
+
+    it('does not look at a download that failed, or whose file was not found', async () => {
+        const { queue, downloads, hasAudio } = setup({ maxConcurrent: 1 }, {}, {}, { provider: null }, { hasAudio: async () => { return false; } });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+        downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked by cloudflare.' } });
+        await settleResults();
+        downloads[1]?.finish(doneAt('/a/missing.mp4'));
+        await settleResults();
+        await flushAudioCheck();
+
+        expect(hasAudio).not.toHaveBeenCalled();
+    });
+});
+
+describe('AnimeDownloadQueue.redownload of an episode whose video has no audio', () => {
+    const FILE = '/a/Naruto Episode 1.mp4';
+
+    async function withSilentEpisode(audio: Parameters<typeof setup>[4] = {}, maxConcurrent = 1) {
+        const context = setup({ maxConcurrent }, { [FILE]: 4096 }, {}, { provider: null }, audio);
+        context.queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        context.downloads[0]?.finish(doneAt(FILE));
+        await settleResults();
+        context.db.markAudioChecked(1, FILE, false);
+        return context;
+    }
+
+    it('deletes the video, and only the video, and downloads the episode again', async () => {
+        const { queue, downloads, db, removeFile, removeDirectory, state } = await withSilentEpisode();
+        const libraryChanges = state.libraryChanges;
+
+        queue.redownload(1);
+
+        expect(removeFile).toHaveBeenCalledTimes(1);
+        expect(removeFile).toHaveBeenCalledWith(FILE);
+        expect(removeDirectory).not.toHaveBeenCalled();
+        expect(downloads).toHaveLength(2);
+        expect(downloads[1]?.options).toMatchObject({ query: 'naruto', index: 2, episode: '1', audio: 'sub' });
+        expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, noAudio: false });
+        expect(state.libraryChanges).toBe(libraryChanges + 2);
+    });
+
+    it('looks at the new video when it finishes', async () => {
+        const { queue, downloads, db, state } = await withSilentEpisode({ hasAudio: async () => { return true; } });
+        queue.redownload(1);
+        // The new video is on the disk when the download ends.
+        state.files[FILE] = 8192;
+
+        downloads[1]?.finish(doneAt(FILE));
+        await settleResults();
+        await flushAudioCheck();
+
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 8192, noAudio: false });
+        expect(db.episodesToCheckAudio()).toEqual([]);
+    });
+
+    it('marks the episode again, and keeps offering to download it again, when the source gives the same video with no audio', async () => {
+        const { queue, downloads, db, state } = await withSilentEpisode({ hasAudio: async () => { return false; } });
+        queue.redownload(1);
+        state.files[FILE] = 4096;
+
+        downloads[1]?.finish(doneAt(FILE));
+        await settleResults();
+        await flushAudioCheck();
+
+        // The new video was looked at, found to have no audio again, and the episode can be downloaded again once the source is fixed.
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: true });
+        queue.redownload(1);
+        expect(downloads).toHaveLength(3);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, noAudio: false });
+    });
+
+    it('leaves the video as it is when it cannot be deleted', async () => {
+        const { queue, downloads, db, state } = await withSilentEpisode({
+            removeFile: () => {
+                throw new Error('EACCES: permission denied');
+            }
+        });
+        const libraryChanges = state.libraryChanges;
+
+        queue.redownload(1);
+
+        expect(downloads).toHaveLength(1);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: true });
+        expect(state.libraryChanges).toBe(libraryChanges);
+    });
+
+    it('leaves the video as it is when the queue has no way to delete a file', async () => {
+        const { queue, downloads, db, removeFile } = await withSilentEpisode({ withoutRemoveFile: true });
+
+        queue.redownload(1);
+
+        expect(removeFile).not.toHaveBeenCalled();
+        expect(downloads).toHaveLength(1);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: true });
+    });
+
+    it('does not delete a video that was not found to have no audio', async () => {
+        const { queue, downloads, db, removeFile } = await withSilentEpisode();
+        db.markForRedownload(1);
+        db.markDone(1, FILE, 4096);
+        db.markAudioChecked(1, FILE, true);
+
+        queue.redownload(1);
+
+        expect(removeFile).not.toHaveBeenCalled();
+        expect(downloads).toHaveLength(1);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: false });
+    });
+
+    it('does not delete anything when the file is gone already, and downloads it again', async () => {
+        const { queue, downloads, db, removeFile, state } = await withSilentEpisode();
+        delete state.files[FILE];
+
+        queue.redownload(1);
+
+        expect(removeFile).not.toHaveBeenCalled();
+        expect(downloads).toHaveLength(2);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, noAudio: false });
+    });
+});
+
+describe('AnimeDownloadQueue.redownloadEpisodes', () => {
+    const SILENT = '/a/Naruto Episode 1.mp4';
+    const GONE = '/a/Naruto Episode 2.mp4';
+    const FINE = '/a/Naruto Episode 3.mp4';
+
+    it('queues again the ones whose file is gone or has no audio, and leaves the others as they are', async () => {
+        const { queue, downloads, db, removeFile, state } = setup({ maxConcurrent: 5 }, { [SILENT]: 1, [GONE]: 2, [FINE]: 3 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2', '3'] });
+        downloads[0]?.finish(doneAt(SILENT));
+        downloads[1]?.finish(doneAt(GONE));
+        downloads[2]?.finish(doneAt(FINE));
+        await settleResults();
+        db.markAudioChecked(1, SILENT, false);
+        db.markAudioChecked(3, FINE, true);
+        delete state.files[GONE];
+
+        queue.redownloadEpisodes([1, 2, 3, 99]);
+
+        expect(removeFile.mock.calls).toEqual([[SILENT]]);
+        expect(downloads.slice(3).map((download) => {
+            return download.options.episode;
+        })).toEqual(['1', '2']);
+        expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null });
+        expect(db.getEpisode(2)).toMatchObject({ status: 'downloading', filePath: null });
+        expect(db.getEpisode(3)).toMatchObject({ status: 'done', filePath: FINE, noAudio: false });
+    });
+
+    it('does nothing for an empty list', async () => {
+        const { queue, downloads, state } = setup({ maxConcurrent: 1 });
+        const libraryChanges = state.libraryChanges;
+
+        queue.redownloadEpisodes([]);
+
+        expect(downloads).toEqual([]);
+        expect(state.libraryChanges).toBe(libraryChanges);
     });
 });
 

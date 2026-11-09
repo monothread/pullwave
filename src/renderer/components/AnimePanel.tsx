@@ -10,6 +10,7 @@ import { AnimeSchedule } from './AnimeSchedule';
 import { AnimeSearch } from './AnimeSearch';
 import { AnimeStreamPlayer } from './AnimeStreamPlayer';
 import { AnimeUpdates } from './AnimeUpdates';
+import { AudioReportDialog } from './AudioReportDialog';
 import { ProgramsGate } from './ProgramsSetup';
 import { SettingsPanel } from './SettingsPanel';
 import { SETTINGS_ICON, TabButton } from './TabButton';
@@ -111,6 +112,7 @@ export function AnimePanel() {
             {view === 'settings' && <SettingsPanel scope="anime" />}
             <AnimePlayer />
             <AnimeStreamPlayer />
+            <AudioReportDialog />
         </section>
     );
 }

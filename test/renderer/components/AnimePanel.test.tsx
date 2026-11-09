@@ -310,6 +310,25 @@ describe('AnimePanel', () => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
+    it.each(['library', 'settings', 'updates'] as const)('opens the report of the audio check over the section, on the %s tab', (view) => {
+        useAnimeStore.setState({
+            view,
+            audioReport: { summary: { checked: 3, withoutAudio: 1, unreadable: 0, missing: 0 }, downloaded: 3, problems: [{ animeId: 1, animeTitle: 'Naruto', episodeId: 4, episode: '4', kind: 'no-audio' }] }
+        });
+        render(<AnimePanel />);
+
+        const dialog = screen.getByRole('dialog', { name: 'Downloaded episodes' });
+        expect(within(dialog).getByRole('button', { name: 'DOWNLOAD ALL AGAIN (1)' })).toBeInTheDocument();
+        useAnimeStore.setState({ audioReport: null });
+    });
+
+    it('shows no report of the audio check until there is one', () => {
+        useAnimeStore.setState({ view: 'library', audioReport: null });
+        render(<AnimePanel />);
+
+        expect(screen.queryByRole('dialog', { name: 'Downloaded episodes' })).not.toBeInTheDocument();
+    });
+
     it('opens the player over the section when an episode is played', () => {
         useAnimeStore.setState({ library: [makeAnime([makeEpisode()], { id: 1 })], playing: { animeId: 1, episodeId: 1 } });
         render(<AnimePanel />);

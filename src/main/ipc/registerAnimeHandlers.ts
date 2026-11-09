@@ -12,6 +12,7 @@ import {
     type AnimeHistoryRequest,
     type AnimeDownloadRequest,
     type AnimeDownloadResponse,
+    type AnimeAudioCheckResponse,
     type AnimeImportResponse,
     type AnimeMigrationResponse,
     type AnimeProgressUpdate,
@@ -75,6 +76,8 @@ export interface AnimeHandlerDependencies {
     refreshMetadata: (episodeId: number) => void;
     // Asks for a folder of anime and puts what is in it into the library.
     importLibrary: () => Promise<AnimeImportResponse>;
+    // Looks at the audio of the downloaded episodes that were never looked at (see audioCheck.ts).
+    checkAudio: () => Promise<AnimeAudioCheckResponse>;
     // Asks for the folder the anime are moved to and moves them there (see animeMigration.ts).
     migrateFolder: () => Promise<AnimeMigrationResponse>;
     // Opens a folder in the file manager of the system.
@@ -350,6 +353,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeImportLibrary, (): AnimeImportResponse => {
         return { ok: false, reason: 'cancelled' };
     });
+    ipcMain.handle(IPC.animeCheckAudio, (): AnimeAudioCheckResponse => {
+        return { ok: false, reason: 'unsupported' };
+    });
     ipcMain.handle(IPC.animeMigrateFolder, (): AnimeMigrationResponse => {
         return { ok: false, reason: 'failed' };
     });
@@ -383,7 +389,7 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeQueueHeld, (): boolean => {
         return false;
     });
-    [IPC.animeSubtitleTranslateCancel, IPC.animeSubtitleGenerateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animePauseAll, IPC.animeResumeAll, IPC.animePauseAnimes, IPC.animeResumeAnimes, IPC.animeCancelAnimes, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
+    [IPC.animeSubtitleTranslateCancel, IPC.animeSubtitleGenerateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animeRedownload, IPC.animeRedownloadMany, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animePauseAll, IPC.animeResumeAll, IPC.animePauseAnimes, IPC.animeResumeAnimes, IPC.animeCancelAnimes, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
         ipcMain.handle(channel, (): void => {
             return undefined;
         });
@@ -519,6 +525,13 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             };
         });
     });
+    ipcMain.handle(IPC.animeCheckAudio, async (): Promise<AnimeAudioCheckResponse> => {
+        const result = await deps.checkAudio();
+        if (result.ok) {
+            deps.onLibraryChanged();
+        }
+        return result;
+    });
     ipcMain.handle(IPC.animeImportLibrary, async (): Promise<AnimeImportResponse> => {
         const result = await deps.importLibrary();
         if (result.ok) {
@@ -586,6 +599,15 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         if (id !== null) {
             queue.retry(id);
         }
+    });
+    ipcMain.handle(IPC.animeRedownload, (_event, episodeId): void => {
+        const id = asId(episodeId);
+        if (id !== null) {
+            queue.redownload(id);
+        }
+    });
+    ipcMain.handle(IPC.animeRedownloadMany, (_event, ids): void => {
+        queue.redownloadEpisodes(validIds(ids));
     });
     ipcMain.handle(IPC.animeClearFinished, (): void => {
         queue.clearFinished();

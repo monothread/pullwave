@@ -9,6 +9,7 @@ import type {
     AnimeEpisodesResponse,
     AnimeHistoryEntry,
     AnimeHistoryRequest,
+    AnimeAudioCheckResponse,
     AnimeImportResponse,
     AnimeJob,
     AnimeMigrationProgress,
@@ -435,6 +436,9 @@ export interface CyberApi {
     listAnimeJobs: () => Promise<AnimeJob[]>;
     cancelAnimeJob: (episodeId: number) => Promise<void>;
     retryAnimeJob: (episodeId: number) => Promise<void>;
+    redownloadAnimeEpisode: (episodeId: number) => Promise<void>;
+    // The same for several episodes at once (the ones the check of the library found with a problem).
+    redownloadAnimeEpisodes: (episodeIds: number[]) => Promise<void>;
     pauseAnimeJob: (episodeId: number) => Promise<void>;
     resumeAnimeJob: (episodeId: number) => Promise<void>;
     clearFinishedAnimeJobs: () => Promise<void>;
@@ -463,6 +467,8 @@ export interface CyberApi {
     setAnimeSeries: (animeId: number, series: string | null, season: number | null, seasonName: string | null) => Promise<AnimeSeriesResponse>;
     // Asks for a folder of anime and puts what is in it into the library.
     importAnimeLibrary: () => Promise<AnimeImportResponse>;
+    // Looks at the audio of the downloaded episodes that were never looked at, and says what it found.
+    checkAnimeAudio: () => Promise<AnimeAudioCheckResponse>;
     // Asks for the folder the anime are moved to, copies them there, checks the copies, points the library and the settings to
     // the new folder and then removes the old files.
     migrateAnimeFolder: () => Promise<AnimeMigrationResponse>;

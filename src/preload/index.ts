@@ -418,6 +418,12 @@ const api: CyberApi = {
     retryAnimeJob: (episodeId) => {
         return ipcRenderer.invoke(IPC.animeRetry, episodeId);
     },
+    redownloadAnimeEpisode: (episodeId) => {
+        return ipcRenderer.invoke(IPC.animeRedownload, episodeId);
+    },
+    redownloadAnimeEpisodes: (episodeIds) => {
+        return ipcRenderer.invoke(IPC.animeRedownloadMany, episodeIds);
+    },
     clearFinishedAnimeJobs: () => {
         return ipcRenderer.invoke(IPC.animeClearFinished);
     },
@@ -465,6 +471,9 @@ const api: CyberApi = {
     },
     importAnimeLibrary: () => {
         return ipcRenderer.invoke(IPC.animeImportLibrary);
+    },
+    checkAnimeAudio: () => {
+        return ipcRenderer.invoke(IPC.animeCheckAudio);
     },
     migrateAnimeFolder: () => {
         return ipcRenderer.invoke(IPC.animeMigrateFolder);

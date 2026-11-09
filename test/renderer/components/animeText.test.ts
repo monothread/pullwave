@@ -5,6 +5,7 @@ import {
     animeStatusKey,
     downloadedAnime,
     downloadedCount,
+    downloadedEpisodeCount,
     END_MARGIN_SECONDS,
     compareNames,
     groupByDay,
@@ -12,6 +13,7 @@ import {
     isNewEpisode,
     isWatched,
     libraryEntry,
+    libraryProblems,
     matchesSearch,
     MIN_RESUME_SECONDS,
     newEpisodeCount,
@@ -561,5 +563,56 @@ describe('orderFor', () => {
     it('keeps the order wanted when there is no next one to give (the last order is the largest there is)', () => {
         expect(orderFor([99], 99)).toBe(99);
         expect(orderFor([98], 98)).toBe(99);
+    });
+});
+
+describe('libraryProblems', () => {
+    it('is empty for a library with no problem, whatever the status of the episodes', () => {
+        const library = [makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, number: '2', status: 'error' }), makeEpisode({ id: 3, number: '3', status: 'idle', filePath: null })])];
+
+        expect(libraryProblems(library)).toEqual([]);
+        expect(libraryProblems([])).toEqual([]);
+    });
+
+    it('lists the downloaded episodes whose video has no audio or whose file is gone, anime by anime, in the order of the library', () => {
+        const library = [
+            makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, number: '2', noAudio: true }), makeEpisode({ id: 3, number: '3', fileMissing: true })], { id: 10, title: 'Naruto' }),
+            makeAnime([makeEpisode({ id: 4, animeId: 20, number: '12.5', noAudio: true })], { id: 20, title: 'Bleach' })
+        ];
+
+        expect(libraryProblems(library)).toEqual([
+            { animeId: 10, animeTitle: 'Naruto', episodeId: 2, episode: '2', kind: 'no-audio' },
+            { animeId: 10, animeTitle: 'Naruto', episodeId: 3, episode: '3', kind: 'file-missing' },
+            { animeId: 20, animeTitle: 'Bleach', episodeId: 4, episode: '12.5', kind: 'no-audio' }
+        ]);
+    });
+
+    it('tells the file that is gone first, because a video that is not there cannot be looked at', () => {
+        const library = [makeAnime([makeEpisode({ id: 1, fileMissing: true, noAudio: true })], { id: 10, title: 'Naruto' })];
+
+        expect(libraryProblems(library)).toEqual([{ animeId: 10, animeTitle: 'Naruto', episodeId: 1, episode: '1', kind: 'file-missing' }]);
+    });
+
+    it('leaves out the episodes that are not downloaded, even when they carry a mark', () => {
+        const library = [makeAnime([makeEpisode({ id: 1, status: 'error', noAudio: true }), makeEpisode({ id: 2, number: '2', status: 'queued', fileMissing: true })])];
+
+        expect(libraryProblems(library)).toEqual([]);
+    });
+});
+
+describe('downloadedEpisodeCount', () => {
+    it('counts the downloaded episodes of every anime of the library, and no other', () => {
+        const library = [
+            makeAnime([makeEpisode({ id: 1 }), makeEpisode({ id: 2, number: '2', status: 'error' }), makeEpisode({ id: 3, number: '3', status: 'idle' }), makeEpisode({ id: 4, number: '4', status: 'queued' })], { id: 10 }),
+            makeAnime([makeEpisode({ id: 5, animeId: 20 }), makeEpisode({ id: 6, animeId: 20, number: '2', fileMissing: true })], { id: 20, title: 'Bleach' })
+        ];
+
+        // An episode whose file is gone is still downloaded for the library.
+        expect(downloadedEpisodeCount(library)).toBe(3);
+    });
+
+    it('is zero for an empty library and for anime with nothing downloaded', () => {
+        expect(downloadedEpisodeCount([])).toBe(0);
+        expect(downloadedEpisodeCount([makeAnime([], { id: 1 }), makeAnime([makeEpisode({ id: 2, status: 'paused' })], { id: 2 })])).toBe(0);
     });
 });

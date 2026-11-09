@@ -1147,6 +1147,42 @@ describe('SettingsPanel anime section', () => {
             expect(screen.getByText('Choose a new folder: the app copies all the anime there, checks the copies and then removes the old files')).toHaveClass('field__hint');
         });
 
+        it('has the button that checks the downloaded episodes, with what it does as a visible hint', () => {
+            useAnimeStore.setState({ checkingAudio: false });
+            render(<SettingsPanel scope="anime" />);
+
+            expect(screen.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' })).toBeEnabled();
+            expect(screen.getByText('Looks at every downloaded episode that was never looked at and lists the ones with a problem (no audio, or the file is not on the disk), so you can download them again')).toHaveClass('field__hint');
+        });
+
+        it('checks the downloaded episodes when the button is pressed', async () => {
+            useAnimeStore.setState({ checkingAudio: false });
+            render(<SettingsPanel scope="anime" />);
+
+            fireEvent.click(screen.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }));
+            await flushPromises();
+
+            expect(mock.api.checkAnimeAudio).toHaveBeenCalledTimes(1);
+            expect(useAnimeStore.getState().audioReport).toEqual({ summary: { checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 }, problems: [] });
+            useAnimeStore.setState({ audioReport: null });
+        });
+
+        it('says it is checking, and cannot be pressed again, while the check goes on', () => {
+            useAnimeStore.setState({ checkingAudio: true });
+            render(<SettingsPanel scope="anime" />);
+
+            expect(screen.getByRole('button', { name: 'CHECKING…' })).toBeDisabled();
+            expect(screen.queryByRole('button', { name: 'CHECK DOWNLOADED EPISODES' })).not.toBeInTheDocument();
+            useAnimeStore.setState({ checkingAudio: false });
+        });
+
+        it('cannot check the episodes while the folder is being migrated, because the files are moving', () => {
+            useAnimeStore.setState({ checkingAudio: false, migration: { done: 1, total: 4 } });
+            render(<SettingsPanel scope="anime" />);
+
+            expect(screen.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' })).toBeDisabled();
+        });
+
         it('leaves the folder free to edit while the library is empty', () => {
             render(<SettingsPanel scope="anime" />);
             expect(screen.getByLabelText('Anime download folder')).toBeEnabled();

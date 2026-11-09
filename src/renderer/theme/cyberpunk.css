@@ -799,6 +799,7 @@ body::after {
 .modal__title { margin: 0; font-size: 15px; letter-spacing: 1px; color: var(--cyan); text-shadow: var(--text-glow); overflow-wrap: anywhere; }
 .modal__hint { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .modal__list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--text); font-size: 12px; }
+.modal__list--scroll { max-height: calc(40vh / var(--ui-zoom, 1)); overflow-y: auto; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
 /* Anime section */

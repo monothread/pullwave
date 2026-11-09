@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
@@ -1795,13 +1795,42 @@ test.describe('library and folder in sync', { tag: '@windows' }, () => {
         const row = page.getByTestId('anime-episode');
         await expect(row.getByRole('img', { name: 'FILE NOT FOUND' })).toHaveAttribute(
             'title',
-            'The file of this episode is not on the disk. Use IMPORT LIBRARY to point it to its new place.'
+            'The file of this episode is not on the disk. Use DOWNLOAD AGAIN to get it back, or IMPORT LIBRARY if you moved it.'
         );
+        await expect(row.getByRole('button', { name: 'DOWNLOAD AGAIN: Fake Anime EP 1' })).toBeEnabled();
         await expect(row.getByRole('button', { name: 'PLAY: Fake Anime EP 1' })).toHaveCount(0);
         // Clicking the row does not start the player.
         await row.locator('.history__meta').first().click({ force: true });
         await expect(page.getByRole('dialog')).toHaveCount(0);
     });
+
+    for (const removed of ['the video', 'the whole folder of the episode']) {
+        test(`downloads an episode again with DOWNLOAD AGAIN when ${removed} was removed from the disk`, async () => {
+            const { page, animeDir } = session;
+            await downloadFirstEpisode(page);
+            const folder = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1');
+            const video = join(folder, 'Fake Anime Episode 1.mp4');
+            rmSync(removed === 'the video' ? video : folder, { recursive: true });
+            expect(existsSync(video)).toBe(false);
+
+            await openLibrary(page);
+            await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+            await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+            const row = page.getByTestId('anime-episode').first();
+            await expect(row.getByRole('img', { name: 'FILE NOT FOUND' })).toHaveCount(1);
+            await expect(row.getByRole('button', { name: 'RETRY: Fake Anime EP 1' })).toHaveCount(0);
+
+            await row.getByRole('button', { name: 'DOWNLOAD AGAIN: Fake Anime EP 1' }).click();
+            await waitForDownloaded(page);
+
+            expect(existsSync(video)).toBe(true);
+            await expect(row.getByRole('img', { name: 'FILE NOT FOUND' })).toHaveCount(0);
+            await expect(row.getByRole('button', { name: 'DOWNLOAD AGAIN: Fake Anime EP 1' })).toHaveCount(0);
+            await expect(row.getByRole('button', { name: 'PLAY: Fake Anime EP 1' })).toBeEnabled();
+            await expect(row).toHaveClass(/row--link/);
+            await expect(row).not.toHaveClass(/history__item--error/);
+        });
+    }
 
     test('downloads a new episode into the folder the anime was renamed to, once the library knows about it', async () => {
         const { page, animeDir } = session;
@@ -1818,6 +1847,92 @@ test.describe('library and folder in sync', { tag: '@windows' }, () => {
 
         expect(existsSync(join(animeDir, 'My Renamed Folder', 'Season 1', 'Episode 2', 'Fake Anime Episode 2.mp4'))).toBe(true);
         expect(existsSync(join(animeDir, 'Fake Anime'))).toBe(false);
+    });
+});
+
+test.describe('the check of the downloaded episodes', () => {
+    const FFMPEG = join(ROOT, 'resources', 'bin', `ffmpeg${EXE}`);
+    test.skip(!existsSync(FFMPEG), 'needs the real ffmpeg of resources/bin (node scripts/fetch-binaries.mjs)');
+
+    // The video the fake ani-cli wrote is not a real one: it is replaced by one that has a picture and no audio.
+    function replaceWithSilentVideo(video: string): void {
+        execFileSync(FFMPEG, ['-hide_banner', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', video], { stdio: 'pipe' });
+    }
+
+    async function downloadSilentEpisode(page: Page, animeDir: string): Promise<string> {
+        await downloadFirstEpisode(page);
+        const video = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4');
+        replaceWithSilentVideo(video);
+        return video;
+    }
+
+    test('lists the episodes with a problem from the settings, and downloads them all again', async () => {
+        const { page, animeDir } = session;
+        const video = await downloadSilentEpisode(page, animeDir);
+        const silentSize = statSync(video).size;
+        await openAnimeSettings(page);
+
+        await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
+
+        const dialog = page.getByRole('dialog', { name: 'Downloaded episodes' });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByTestId('audio-report-summary')).toContainText('COULD NOT BE READ');
+        await expect(dialog.getByText('1 EPISODE(S) WITH A PROBLEM:')).toBeVisible();
+        await expect(dialog.getByTestId('audio-problem')).toHaveText(['Fake Anime · EP 1 — NO AUDIO']);
+
+        await dialog.getByRole('button', { name: 'DOWNLOAD ALL AGAIN (1)' }).click();
+
+        await expect(dialog).toBeHidden();
+        await expect(page.locator('.toast__message', { hasText: 'Queued 1 episode(s) to be downloaded again.' })).toBeVisible();
+        await waitForDownloaded(page);
+        // The video with no audio was deleted and the fake ani-cli wrote its own again.
+        await expect.poll(() => {
+            return existsSync(video) && statSync(video).size !== silentSize;
+        }).toBe(true);
+    });
+
+    test('says there is no problem when the downloaded episodes are fine', async () => {
+        const { page } = session;
+        await downloadFirstEpisode(page);
+        await openAnimeSettings(page);
+
+        await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
+
+        const dialog = page.getByRole('dialog', { name: 'Downloaded episodes' });
+        await expect(dialog.getByRole('status')).toHaveText('No problems found in the downloaded episodes.');
+        await expect(dialog.getByTestId('audio-problem')).toHaveCount(0);
+        await expect(dialog.getByRole('button', { name: /^DOWNLOAD ALL AGAIN/ })).toHaveCount(0);
+        await dialog.getByRole('button', { name: 'CLOSE' }).click();
+        await expect(dialog).toBeHidden();
+    });
+
+    test('marks the episode in the library, and replaces its video once the user confirms', async () => {
+        const { page, animeDir } = session;
+        const video = await downloadSilentEpisode(page, animeDir);
+        const silentSize = statSync(video).size;
+        await openAnimeSettings(page);
+        await page.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).click();
+        await page.getByRole('dialog', { name: 'Downloaded episodes' }).getByRole('button', { name: 'CLOSE' }).click();
+
+        await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        const row = page.getByTestId('anime-episode').first();
+        await expect(row.getByRole('img', { name: 'NO AUDIO' })).toHaveAttribute('title', 'The video of this episode has no audio. Use DOWNLOAD AGAIN to replace it.');
+        // The file is there, so the episode can still be played.
+        await expect(row.getByRole('button', { name: 'PLAY: Fake Anime EP 1' })).toBeEnabled();
+
+        await row.getByRole('button', { name: 'DOWNLOAD AGAIN: Fake Anime EP 1' }).click();
+        const confirm = page.getByRole('dialog', { name: 'Download again?' });
+        await expect(confirm).toBeVisible();
+        expect(statSync(video).size).toBe(silentSize);
+        await confirm.getByRole('button', { name: 'DOWNLOAD AGAIN' }).click();
+
+        await waitForDownloaded(page);
+        await expect.poll(() => {
+            return existsSync(video) && statSync(video).size !== silentSize;
+        }).toBe(true);
+        await expect(row.getByRole('img', { name: 'NO AUDIO' })).toHaveCount(0);
     });
 });
 

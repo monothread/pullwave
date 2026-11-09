@@ -115,6 +115,8 @@ export interface AnimeEpisodeRecord {
     addedAt: number | null;
     // The episode is in the library as downloaded but its file is not on the disk any more (filled in when the library is listed).
     fileMissing: boolean;
+    // The video was found to have no audio (false also when it was not looked at: only new downloads and the check the user asks for do it).
+    noAudio: boolean;
 }
 
 // An anime the viewer opened or watched, kept apart from the library: it covers what was only searched or streamed too. The same
@@ -364,6 +366,18 @@ export interface AnimeImportSummary {
 
 // An anime that is not inside the folder of the settings is not accepted: `folder` is the one all the anime have to be in.
 export type AnimeImportResponse = ({ ok: true } & AnimeImportSummary) | { ok: false; reason: 'cancelled' } | { ok: false; reason: 'outside'; folder: string };
+
+// What looking at the audio of the library found: the episodes it looked at, the ones of those that have no audio, the ones it could not
+// read, and the ones that have no file on the disk.
+export interface AnimeAudioCheckSummary {
+    checked: number;
+    withoutAudio: number;
+    unreadable: number;
+    missing: number;
+}
+
+// `busy`: a check is going on already. `unsupported`: this system has no anime section.
+export type AnimeAudioCheckResponse = ({ ok: true } & AnimeAudioCheckSummary) | { ok: false; reason: 'busy' | 'unsupported' };
 
 // How far the copy of the files into the new folder is: the files that were copied out of all the ones that have to be.
 export interface AnimeMigrationProgress {

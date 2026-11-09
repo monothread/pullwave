@@ -16,7 +16,8 @@ const PATCH_KEYS: Record<string, MessageKey> = {
     debugReferer: 'tools.patch.debugReferer',
     menuIds: 'tools.patch.menuIds',
     singleResult: 'tools.patch.singleResult',
-    searchPages: 'tools.patch.searchPages'
+    searchPages: 'tools.patch.searchPages',
+    separateAudio: 'tools.patch.separateAudio'
 };
 
 const HINTS: Record<ProgramPlace, MessageKey> = {

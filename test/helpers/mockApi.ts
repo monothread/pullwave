@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeAddResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
@@ -469,6 +469,12 @@ export function createMockApi(): MockApiHandle {
         retryAnimeJob: vi.fn(async () => {
             return undefined;
         }),
+        redownloadAnimeEpisode: vi.fn(async () => {
+            return undefined;
+        }),
+        redownloadAnimeEpisodes: vi.fn(async () => {
+            return undefined;
+        }),
         clearFinishedAnimeJobs: vi.fn(async () => {
             return undefined;
         }),
@@ -516,6 +522,9 @@ export function createMockApi(): MockApiHandle {
         }),
         importAnimeLibrary: vi.fn(async (): Promise<AnimeImportResponse> => {
             return { ok: false, reason: 'cancelled' };
+        }),
+        checkAnimeAudio: vi.fn(async (): Promise<AnimeAudioCheckResponse> => {
+            return { ok: true, checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 };
         }),
         migrateAnimeFolder: vi.fn(async (): Promise<AnimeMigrationResponse> => {
             return { ok: false, reason: 'cancelled' };

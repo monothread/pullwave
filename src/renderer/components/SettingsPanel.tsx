@@ -199,6 +199,12 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const migrateFolder = useAnimeStore((state) => {
         return state.migrateFolder;
     });
+    const checkingAudio = useAnimeStore((state) => {
+        return state.checkingAudio;
+    });
+    const checkAudio = useAnimeStore((state) => {
+        return state.checkAudio;
+    });
     const mangaLibraryCount = useMangaStore((state) => {
         return state.library.length;
     });
@@ -821,6 +827,21 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             </button>
                         </div>
                         <span className="field__hint">{t('settings.animeMigrate.hint')}</span>
+                    </div>
+                    <div className="field">
+                        <div className="field-row">
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                disabled={checkingAudio || migrating}
+                                onClick={() => {
+                                    void checkAudio();
+                                }}
+                            >
+                                {checkingAudio ? t('settings.animeAudioCheck.running') : t('settings.animeAudioCheck')}
+                            </button>
+                        </div>
+                        <span className="field__hint">{t('settings.animeAudioCheck.hint')}</span>
                     </div>
                     <SelectField
                         label={t('settings.animeQuality')}

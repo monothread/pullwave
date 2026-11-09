@@ -28,12 +28,16 @@ export interface AnimeQueueDependencies {
     directoryExists: (path: string) => boolean;
     // An episode was downloaded and is in the library: what is kept beside the video can be written.
     onEpisodeDownloaded?: (episodeId: number) => void;
+    // Whether the video has an audio stream, or null when that could not be told (the video is not checked when this is not given).
+    hasAudio?: (path: string) => Promise<boolean | null>;
     onJobUpdate: (job: AnimeJob) => void;
     onLibraryChanged: () => void;
     // The queue was held (by PAUSE ALL) or let go (by RESUME ALL).
     onHeldChange?: (held: boolean) => void;
     // Deletes a folder with what is in it (the folder of an episode whose download was cancelled, removed or cut short by closing the app).
     removeDirectory?: (path: string) => void;
+    // Deletes one file and nothing else (the video of an episode that has no audio, so it can be downloaded again).
+    removeFile?: (path: string) => void;
     // The system the files are on (decides the rules of file names); this one by default.
     platform?: NodeJS.Platform;
     // The site ani-cli reads the anime from: the ids it gives them are the ones of that site (null when it is not known).
@@ -155,6 +159,28 @@ export class AnimeDownloadQueue {
         this.queueEpisode(anime, this.deps.db.ensureEpisode(anime.id, episode.number));
         this.deps.onLibraryChanged();
         this.pump();
+    }
+
+    // Queues a downloaded episode again when its file is not on the disk any more (it was deleted or moved away) or when its video was found
+    // to have no audio (the video is deleted first, and only the video: what is beside it stays). An episode whose video is there with its
+    // audio, or that was not found to have none, is left as it is, so a video that is good is never downloaded over.
+    redownload(episodeId: number): void {
+        const episode = this.deps.db.getEpisode(episodeId);
+        const anime = episode ? this.deps.db.getAnime(episode.animeId) : null;
+        if (!episode || !anime || episode.status !== 'done' || this.isActiveJob(episodeId) || !this.canReplaceVideo(episode)) {
+            return;
+        }
+        this.deps.db.markForRedownload(episodeId);
+        this.queueEpisode(anime, this.deps.db.ensureEpisode(anime.id, episode.number));
+        this.deps.onLibraryChanged();
+        this.pump();
+    }
+
+    // Queues each of these episodes again, as `redownload` does for one.
+    redownloadEpisodes(episodeIds: readonly number[]): void {
+        episodeIds.forEach((episodeId) => {
+            this.redownload(episodeId);
+        });
     }
 
     // The episodes that were paused when the app last closed are shown again as paused, so they can go on (from their partial file) or be
@@ -393,6 +419,27 @@ export class AnimeDownloadQueue {
         };
     }
 
+    private isFileMissing(episode: AnimeEpisodeRecord): boolean {
+        return episode.filePath === null || this.deps.fileSize(episode.filePath) === null;
+    }
+
+    // Whether the episode can be downloaded again without losing a video that is good: its file is gone, or it is there with no audio and
+    // could be deleted (the video of an episode that cannot be deleted is left as it is).
+    private canReplaceVideo(episode: AnimeEpisodeRecord): boolean {
+        if (this.isFileMissing(episode)) {
+            return true;
+        }
+        if (!episode.noAudio || episode.filePath === null || !this.deps.removeFile) {
+            return false;
+        }
+        try {
+            this.deps.removeFile(episode.filePath);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     private queueEpisode(anime: AnimeRecord, episode: AnimeEpisodeRecord): void {
         if (episode.status === 'done' || this.isActiveJob(episode.id)) {
             return;
@@ -569,6 +616,25 @@ export class AnimeDownloadQueue {
         this.update(job, { status: 'done', percent: 100, speed: '', eta: '' });
         // The screen of the downloads is for what is going on or went wrong: a download that is complete is in the library.
         this.jobs.delete(job.episodeId);
+        void this.checkAudio(job.episodeId, path);
+    }
+
+    // Looks for the audio of a video that was downloaded, once, after the episode is in the library (it does not wait for the check, and a
+    // check that cannot be made leaves the episode as it is, to be looked at when the user asks). A video with no audio is marked, which the
+    // library shows on its row.
+    private async checkAudio(episodeId: number, path: string): Promise<void> {
+        if (!this.deps.hasAudio) {
+            return;
+        }
+        try {
+            const hasAudio = await this.deps.hasAudio(path);
+            if (hasAudio !== null) {
+                this.deps.db.markAudioChecked(episodeId, path, hasAudio);
+                this.deps.onLibraryChanged();
+            }
+        } catch {
+            // The check is only a help: when it fails (ffmpeg is not there, the database was closed with the app) the episode is as it was.
+        }
     }
 
     private finishWithError(job: AnimeJob, error: AniError): void {

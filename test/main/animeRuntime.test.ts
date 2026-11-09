@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AnimeJob } from '@shared/anime';
 import { DEFAULT_SETTINGS, IPC } from '@shared/constants';
@@ -1187,6 +1187,116 @@ describe('createAnimeRuntime', () => {
             expect(runtime?.handlers.fileExists(join(folder, 'gone.mp4'))).toBe(false);
             runtime?.handlers.refreshMetadata(episode.id);
             expect(JSON.parse(readFileSync(join(folder, 'pullwave.json'), 'utf-8'))).toMatchObject({ title: 'Naruto', searchIndex: 1, number: '1' });
+        });
+    });
+
+    describe('checking the audio of the downloaded episodes', () => {
+        const VIDEO_AND_AUDIO = 'Duration: 00:23:40.04, start: 0.000000, bitrate: 4477 kb/s\n  Stream #0:0(und): Video: h264, 1920x1080\n  Stream #0:1(jpn): Audio: aac (LC), 48000 Hz, stereo';
+        const VIDEO_ONLY = 'Duration: 00:23:40.04, start: 0.000000, bitrate: 4477 kb/s\n  Stream #0:0(und): Video: h264, 1920x1080';
+
+        // A library with an episode downloaded for each file (a real file on the disk, with a size).
+        function withFiles(names: string[], ffmpeg: FfmpegRunner) {
+            const { root, options: given } = options();
+            const runtime = open({ ...given, runFfmpeg: ffmpeg });
+            const db = runtime?.db as AnimeDb;
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const paths = names.map((name, index) => {
+                const path = join(root, `${name}.mp4`);
+                writeFileSync(path, 'video');
+                db.markDone(db.ensureEpisode(anime.id, String(index + 1)).id, path, 5);
+                return path;
+            });
+            return { runtime, db, paths, root, anime };
+        }
+
+        function answering(byPath: Record<string, string | null>) {
+            return vi.fn<FfmpegRunner>(async (args) => {
+                const stderr = byPath[args[3] as string];
+                return stderr === null || stderr === undefined ? { code: null, stderr: '' } : { code: 1, stderr };
+            });
+        }
+
+        it('looks at every downloaded episode with ffmpeg, marks the ones with no audio and says what it found', async () => {
+            const answers: Record<string, string | null> = {};
+            const probe = answering(answers);
+            const { runtime, db, paths } = withFiles(['one', 'two'], probe);
+            answers[paths[0] as string] = VIDEO_ONLY;
+            answers[paths[1] as string] = VIDEO_AND_AUDIO;
+
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 2, withoutAudio: 1, unreadable: 0, missing: 0 });
+
+            expect(probe.mock.calls).toEqual([
+                [['-hide_banner', '-nostdin', '-i', paths[0]], undefined],
+                [['-hide_banner', '-nostdin', '-i', paths[1]], undefined]
+            ]);
+            expect(db.getEpisode(1)).toMatchObject({ noAudio: true });
+            expect(db.getEpisode(2)).toMatchObject({ noAudio: false });
+            expect(db.episodesToCheckAudio()).toEqual([]);
+        });
+
+        it('counts the episodes whose file is not there and the videos ffmpeg could not read, and leaves them to be looked at later', async () => {
+            const answers: Record<string, string | null> = {};
+            const probe = answering(answers);
+            const { runtime, db, paths } = withFiles(['one', 'two', 'three'], probe);
+            rmSync(paths[0] as string);
+            answers[paths[1] as string] = null;
+            answers[paths[2] as string] = VIDEO_AND_AUDIO;
+
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 1, missing: 1 });
+
+            expect(probe).toHaveBeenCalledTimes(2);
+            expect(
+                db.episodesToCheckAudio().map((episode) => {
+                    return episode.filePath;
+                })
+            ).toEqual([paths[0], paths[1]]);
+            expect(db.getEpisode(3)).toMatchObject({ noAudio: false });
+        });
+
+        it('does not start a second check while one is going on, and accepts another once it ends', async () => {
+            let release: (result: { code: number; stderr: string }) => void = () => {
+                return undefined;
+            };
+            const probe = vi.fn<FfmpegRunner>(() => {
+                return new Promise((resolve) => {
+                    release = resolve;
+                });
+            });
+            const { runtime } = withFiles(['one'], probe);
+
+            const first = runtime?.handlers.checkAudio();
+            await flush();
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: false, reason: 'busy' });
+            release({ code: 1, stderr: VIDEO_AND_AUDIO });
+
+            expect(await first).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, missing: 0 });
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 });
+            expect(probe).toHaveBeenCalledTimes(1);
+        });
+
+        it('lets another check start after one that failed', async () => {
+            const probe = vi.fn<FfmpegRunner>(async () => {
+                return { code: 1, stderr: VIDEO_AND_AUDIO };
+            });
+            const { runtime } = withFiles(['one'], probe);
+            probe.mockRejectedValueOnce(new Error('spawn ffmpeg ENOENT'));
+
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 0, withoutAudio: 0, unreadable: 1, missing: 0 });
+            expect(await runtime?.handlers.checkAudio()).toEqual({ ok: true, checked: 1, withoutAudio: 0, unreadable: 0, missing: 0 });
+        });
+
+        it('deletes only the video of an episode with no audio when it is downloaded again, and keeps what is beside it', async () => {
+            const { runtime, db, paths, root } = withFiles(['one'], answering({}));
+            const subtitle = join(root, 'one.vtt');
+            writeFileSync(subtitle, 'WEBVTT');
+            db.markAudioChecked(1, paths[0] as string, false);
+
+            runtime?.queue.redownload(1);
+            await flush();
+
+            expect(existsSync(paths[0] as string)).toBe(false);
+            expect(existsSync(subtitle)).toBe(true);
+            expect(db.getEpisode(1)).toMatchObject({ filePath: null, noAudio: false });
         });
     });
 

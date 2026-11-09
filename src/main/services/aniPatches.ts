@@ -1,4 +1,5 @@
 import { patchAllSubtitles, patchSubtitleSelection } from './aniSubtitles';
+import { patchSeparateAudio } from './aniAudio';
 import { patchMenuIds } from './aniMenuIds';
 import { patchSearchPages } from './aniSearchPages';
 import { patchSingleResult } from './aniSingleResult';
@@ -12,13 +13,15 @@ export interface PatchReport {
     menuIds: boolean;
     singleResult: boolean;
     searchPages: boolean;
+    separateAudio: boolean;
 }
 
 export type PatchName = keyof PatchReport;
 
 // The change without which the app cannot find the stream of an episode: the referer the host of the stream wants. The others only give
 // more subtitles (their language, and all of them), tell apart the anime that have the same title (the id in the lists), show the anime the source
-// picked on its own and read the pages of the search after the first, so a script they do not fit is still worth using.
+// picked on its own, read the pages of the search after the first and download the audio when the source gives it as a track of its own, so a
+// script they do not fit is still worth using.
 export const REQUIRED_PATCHES: readonly PatchName[] = ['debugReferer'];
 
 export function patchReport(source: string): PatchReport {
@@ -28,14 +31,16 @@ export function patchReport(source: string): PatchReport {
         debugReferer: patchDebugReferer(source) !== null,
         menuIds: patchMenuIds(source) !== null,
         singleResult: patchSingleResult(source) !== null,
-        searchPages: patchSearchPages(source) !== null
+        searchPages: patchSearchPages(source) !== null,
+        separateAudio: patchSeparateAudio(source) !== null
     };
 }
 
-// Everything Pullwave changes in the script it runs: the choice of subtitles, saving all of them, the referer in the debug output, the id and the lone result in the lists, the pages of the search. Each change
+// Everything Pullwave changes in the script it runs: the choice of subtitles, saving all of them, the referer in the debug output, the id and the lone result in the lists, the pages of the search, the audio
+// tracks of the master. The audio is last: it goes in front of the command that downloads, after the lines that save the subtitles. Each change
 // is made on its own, so a version of ani-cli that only fits one of them still gets that one. Null when none fits.
 export function patchAniCli(source: string): string | null {
-    const patches = [patchSubtitleSelection, patchAllSubtitles, patchDebugReferer, patchMenuIds, patchSingleResult, patchSearchPages];
+    const patches = [patchSubtitleSelection, patchAllSubtitles, patchDebugReferer, patchMenuIds, patchSingleResult, patchSearchPages, patchSeparateAudio];
     let result = source;
     patches.forEach((patch) => {
         result = patch(result) ?? result;

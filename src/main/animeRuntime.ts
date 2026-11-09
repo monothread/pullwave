@@ -28,6 +28,7 @@ import { refreshEpisodeMetadata } from './services/episodeMetadata';
 import { importLibrary } from './services/libraryImport';
 import { scanLibraryFolder, type ScanFileSystem } from './services/libraryScan';
 import { createFfmpegRunner, type AudioFiles, type FfmpegRunner } from './services/audioExtractor';
+import { checkLibraryAudio, videoHasAudio } from './services/audioCheck';
 import { completeWithLlm, type LlmFetch } from './services/llmProviders';
 import { transcribeWithGemini } from './services/geminiSpeech';
 import { transcribeTextWithSpeechService, transcribeWithSpeechService } from './services/speechProviders';
@@ -212,8 +213,14 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         removeDirectory: (path) => {
             rmSync(path, { recursive: true, force: true });
         },
+        removeFile: (path) => {
+            rmSync(path, { force: true });
+        },
         onEpisodeDownloaded: (episodeId) => {
             refreshEpisodeMetadata(db, episodeId, options.subtitleFiles ?? defaultSubtitleFileSystem, options.platform);
+        },
+        hasAudio: (path) => {
+            return videoHasAudio(path, runFfmpeg);
         },
         onJobUpdate: (job) => {
             options.send(IPC.eventAnimeJob, job);
@@ -363,6 +370,8 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     };
     // The anime folder is being migrated: the files are moving, so nothing is downloaded into it meanwhile.
     let migrating = false;
+    // The audio of the library is being looked at: another look does not start meanwhile.
+    let checkingAudio = false;
     // Which anime have ended, from AniList: they are not looked at for new episodes. Brought up to date at the start of each look.
     const airing = new AnimeAiringService({
         db,
@@ -491,6 +500,23 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             },
             refreshMetadata: (episodeId) => {
                 refreshEpisodeMetadata(db, episodeId, options.subtitleFiles ?? defaultSubtitleFileSystem, options.platform);
+            },
+            checkAudio: async () => {
+                if (checkingAudio) {
+                    return { ok: false, reason: 'busy' };
+                }
+                checkingAudio = true;
+                try {
+                    const summary = await checkLibraryAudio(db, {
+                        fileSize,
+                        hasAudio: (path) => {
+                            return videoHasAudio(path, runFfmpeg);
+                        }
+                    });
+                    return { ok: true, ...summary };
+                } finally {
+                    checkingAudio = false;
+                }
             },
             importLibrary: async () => {
                 const settings = options.getSettings();

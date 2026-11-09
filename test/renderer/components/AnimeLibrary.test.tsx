@@ -12,6 +12,7 @@ import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { makeAnimeHistory } from '../../helpers/homeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
+import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -771,7 +772,7 @@ describe('AnimeLibrary', () => {
 
             const mark = within(gone as HTMLElement).getByRole('img', { name: 'FILE NOT FOUND' });
             expect(mark).toHaveClass('missing-mark');
-            expect(mark).toHaveAttribute('title', 'The file of this episode is not on the disk. Use IMPORT LIBRARY to point it to its new place.');
+            expect(mark).toHaveAttribute('title', 'The file of this episode is not on the disk. Use DOWNLOAD AGAIN to get it back, or IMPORT LIBRARY if you moved it.');
             expect(gone).toHaveClass('history__item--error');
             expect(within(gone as HTMLElement).queryByRole('button', { name: 'PLAY: Naruto EP 1' })).not.toBeInTheDocument();
             expect(gone).not.toHaveClass('row--link');
@@ -780,6 +781,50 @@ describe('AnimeLibrary', () => {
             expect(fine).not.toHaveClass('history__item--error');
             expect(within(fine as HTMLElement).getByRole('button', { name: 'PLAY: Naruto EP 2' })).toBeEnabled();
             expect(fine).toHaveClass('row--link');
+        });
+
+        it('offers DOWNLOAD AGAIN on the row of the episode whose file is gone, and on no other row', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ library: [GONE] });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+            await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+            const [gone, fine] = screen.getAllByTestId('anime-episode');
+
+            const button = within(gone as HTMLElement).getByRole('button', { name: 'DOWNLOAD AGAIN: Naruto EP 1' });
+            expect(button).toBeEnabled();
+            expect(button).toHaveTextContent('DOWNLOAD AGAIN');
+            expect(button).toHaveClass('btn', 'btn--small', 'btn--primary');
+            expect(within(fine as HTMLElement).queryByRole('button', { name: /^DOWNLOAD AGAIN: / })).not.toBeInTheDocument();
+            expect(screen.getAllByRole('button', { name: /^DOWNLOAD AGAIN: / })).toHaveLength(1);
+        });
+
+        it('asks the main process to download the episode again, without retrying a job or playing it', async () => {
+            const user = userEvent.setup();
+            const play = vi.fn();
+            useAnimeStore.setState({ library: [GONE], play });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+            await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+
+            await user.click(screen.getByRole('button', { name: 'DOWNLOAD AGAIN: Naruto EP 1' }));
+
+            expect(mock.api.redownloadAnimeEpisode).toHaveBeenCalledTimes(1);
+            expect(mock.api.redownloadAnimeEpisode).toHaveBeenCalledWith(1);
+            expect(mock.api.retryAnimeJob).not.toHaveBeenCalled();
+            expect(play).not.toHaveBeenCalled();
+        });
+
+        it('keeps MARK AS WATCHED on the row, next to DOWNLOAD AGAIN', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ library: [GONE] });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+            await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+            const [gone] = screen.getAllByTestId('anime-episode');
+
+            expect(within(gone as HTMLElement).getByRole('button', { name: 'MARK AS WATCHED: Naruto EP 1' })).toBeEnabled();
+            expect(within(gone as HTMLElement).getByRole('button', { name: 'DOWNLOAD AGAIN: Naruto EP 1' })).toBeEnabled();
         });
 
         it('does not start the player', async () => {
@@ -791,6 +836,93 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByRole('button', { name: 'PLAY: Naruto EP 1' })).not.toBeInTheDocument();
             await user.click(screen.getByText('EP 1'));
             expect(useAnimeStore.getState().playing).toBeNull();
+        });
+    });
+
+    describe('an episode whose video has no audio', () => {
+        const SILENT = makeAnime([makeEpisode({ id: 1, number: '1', noAudio: true }), makeEpisode({ id: 2, number: '2' })], { id: 31 });
+
+        async function openEpisodes(library: typeof SILENT[]) {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ library });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
+            await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+            return { user, rows: screen.getAllByTestId('anime-episode') };
+        }
+
+        it('is marked, and can still be played because its file is there, while the others have no mark', async () => {
+            const { rows } = await openEpisodes([SILENT]);
+            const [silent, fine] = rows;
+
+            const mark = within(silent as HTMLElement).getByRole('img', { name: 'NO AUDIO' });
+            expect(mark).toHaveClass('missing-mark');
+            expect(mark).toHaveAttribute('title', 'The video of this episode has no audio. Use DOWNLOAD AGAIN to replace it.');
+            expect(silent).toHaveClass('history__item--error');
+            expect(silent).toHaveClass('row--link');
+            expect(within(silent as HTMLElement).getByRole('button', { name: 'PLAY: Naruto EP 1' })).toBeEnabled();
+
+            expect(within(fine as HTMLElement).queryByRole('img', { name: 'NO AUDIO' })).not.toBeInTheDocument();
+            expect(fine).not.toHaveClass('history__item--error');
+            expect(within(fine as HTMLElement).queryByRole('button', { name: /^DOWNLOAD AGAIN: / })).not.toBeInTheDocument();
+        });
+
+        it('offers DOWNLOAD AGAIN only on its row, and asks before it replaces the video', async () => {
+            const { user, rows } = await openEpisodes([SILENT]);
+            const [silent] = rows;
+            expect(screen.getAllByRole('button', { name: /^DOWNLOAD AGAIN: / })).toHaveLength(1);
+
+            await user.click(within(silent as HTMLElement).getByRole('button', { name: 'DOWNLOAD AGAIN: Naruto EP 1' }));
+
+            expect(mock.api.redownloadAnimeEpisode).not.toHaveBeenCalled();
+            expect(within(confirmDialog('Download again?')).getByText('The video of this episode has no audio. It is deleted (only the video) and the episode is downloaded again. If the source gives the same video, it will still have no audio.')).toBeInTheDocument();
+        });
+
+        it('downloads the episode again once the user confirms', async () => {
+            const { user, rows } = await openEpisodes([SILENT]);
+            await user.click(within(rows[0] as HTMLElement).getByRole('button', { name: 'DOWNLOAD AGAIN: Naruto EP 1' }));
+
+            await answerDialog(user, 'Download again?', 'DOWNLOAD AGAIN');
+
+            expect(mock.api.redownloadAnimeEpisode).toHaveBeenCalledTimes(1);
+            expect(mock.api.redownloadAnimeEpisode).toHaveBeenCalledWith(1);
+            expect(mock.api.retryAnimeJob).not.toHaveBeenCalled();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+
+        it('keeps the video when the user goes back', async () => {
+            const { user, rows } = await openEpisodes([SILENT]);
+            await user.click(within(rows[0] as HTMLElement).getByRole('button', { name: 'DOWNLOAD AGAIN: Naruto EP 1' }));
+
+            await answerDialog(user, 'Download again?', 'BACK');
+
+            expect(mock.api.redownloadAnimeEpisode).not.toHaveBeenCalled();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+
+        it('shows only the mark of the missing file, and downloads at once without asking, when the file is gone too', async () => {
+            const both = makeAnime([makeEpisode({ id: 1, number: '1', noAudio: true, fileMissing: true })], { id: 32 });
+            const { user, rows } = await openEpisodes([both]);
+            const [row] = rows;
+
+            expect(within(row as HTMLElement).getByRole('img', { name: 'FILE NOT FOUND' })).toBeInTheDocument();
+            expect(within(row as HTMLElement).queryByRole('img', { name: 'NO AUDIO' })).not.toBeInTheDocument();
+            expect(screen.getAllByRole('button', { name: /^DOWNLOAD AGAIN: / })).toHaveLength(1);
+
+            await user.click(within(row as HTMLElement).getByRole('button', { name: 'DOWNLOAD AGAIN: Naruto EP 1' }));
+
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(mock.api.redownloadAnimeEpisode).toHaveBeenCalledWith(1);
+        });
+
+        it('does not mark an episode that is not downloaded, whatever its mark says', async () => {
+            const waiting = makeAnime([makeEpisode({ id: 1, number: '1', status: 'error', filePath: null, noAudio: true })], { id: 33 });
+            const { rows } = await openEpisodes([waiting]);
+
+            expect(within(rows[0] as HTMLElement).queryByRole('img', { name: 'NO AUDIO' })).not.toBeInTheDocument();
+            expect(within(rows[0] as HTMLElement).queryByRole('button', { name: /^DOWNLOAD AGAIN: / })).not.toBeInTheDocument();
+            expect(rows[0]).toHaveClass('history__item--error');
+            expect(within(rows[0] as HTMLElement).getByRole('button', { name: 'RETRY: Naruto EP 1' })).toBeInTheDocument();
         });
     });
 

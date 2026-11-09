@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_SEARCH_RESULTS, type AniRunResult, type AnimeCheckResponse, type AnimeCheckState, type AnimeImportResponse, type AnimeMigrationResponse, type AnimeScheduleResponse, type AnimeSearchListing, type AnimeSubtitleCheckResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack, type LibraryAnime, type SubtitleEstimateResponse, type SubtitleGenerateEstimateResponse, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
+import { MAX_SEARCH_RESULTS, type AniRunResult, type AnimeAudioCheckResponse, type AnimeCheckResponse, type AnimeCheckState, type AnimeImportResponse, type AnimeMigrationResponse, type AnimeScheduleResponse, type AnimeSearchListing, type AnimeSubtitleCheckResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack, type LibraryAnime, type SubtitleEstimateResponse, type SubtitleGenerateEstimateResponse, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
 import { MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
@@ -38,6 +38,7 @@ function makeIpc(): { ipcMain: IpcMainLike; call: (channel: string, ...args: unk
 const ANIME_CHANNELS = [
     IPC.animeAddToLibrary,
     IPC.animeCancel,
+    IPC.animeCheckAudio,
     IPC.animeCheckNew,
     IPC.animeCheckState,
     IPC.animeClearFinished,
@@ -67,6 +68,8 @@ const ANIME_CHANNELS = [
     IPC.animeRemoveAnime,
     IPC.animeRemoveEpisode,
     IPC.animeRenameSeries,
+    IPC.animeRedownload,
+    IPC.animeRedownloadMany,
     IPC.animeRetry,
     IPC.animeSchedule,
     IPC.animeSearch,
@@ -150,6 +153,8 @@ function setup(available = true) {
         }),
         cancel: vi.fn(),
         retry: vi.fn(),
+        redownload: vi.fn(),
+        redownloadEpisodes: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
         clearFinished: vi.fn(),
@@ -173,6 +178,9 @@ function setup(available = true) {
     });
     const migrateFolder = vi.fn(async (): Promise<AnimeMigrationResponse> => {
         return { ok: false, reason: 'cancelled' };
+    });
+    const checkAudio = vi.fn(async (): Promise<AnimeAudioCheckResponse> => {
+        return { ok: true, checked: 0, withoutAudio: 0, unreadable: 0, missing: 0 };
     });
     const missing = new Set<string>();
     const onLibraryChanged = vi.fn();
@@ -218,6 +226,7 @@ function setup(available = true) {
         openFolder,
         refreshMetadata,
         importLibrary,
+        checkAudio,
         migrateFolder,
         fileExists: (path: string) => {
             return !missing.has(path);
@@ -230,7 +239,7 @@ function setup(available = true) {
         subtitles
     } as unknown as AnimeHandlerDependencies;
     registerAnimeHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, updates, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, migrateFolder, missing, onLibraryChanged, subtitles, deps };
+    return { ...ipc, db, search, episodes, resolveStream, schedule, covers, updates, aniCliInfo, streams, queue, removeFiles, removeFolders, removeEmptyFolders, openFolder, refreshMetadata, importLibrary, checkAudio, migrateFolder, missing, onLibraryChanged, subtitles, deps };
 }
 
 describe('registerAnimeHandlers', () => {
@@ -435,6 +444,42 @@ describe('registerAnimeHandlers', () => {
         expect(queue.clearFinished).toHaveBeenCalledTimes(1);
     });
 
+    it('queues again through the queue an episode whose file is not on the disk', () => {
+        const { call, queue } = setup();
+
+        expect(call(IPC.animeRedownload, 5)).toBeUndefined();
+
+        expect(queue.redownload).toHaveBeenCalledTimes(1);
+        expect(queue.redownload).toHaveBeenCalledWith(5);
+        expect(queue.retry).not.toHaveBeenCalled();
+    });
+
+    it('queues again through the queue every episode of a list, without repeating an id', () => {
+        const { call, queue } = setup();
+
+        expect(call(IPC.animeRedownloadMany, [5, 7, 5, 9])).toBeUndefined();
+
+        expect(queue.redownloadEpisodes).toHaveBeenCalledTimes(1);
+        expect(queue.redownloadEpisodes).toHaveBeenCalledWith([5, 7, 9]);
+    });
+
+    it.each([['text', '5'], ['a number', 5], ['nothing', undefined], ['null', null]])('queues nothing again for a list that is %s', (_name, input) => {
+        const { call, queue } = setup();
+
+        call(IPC.animeRedownloadMany, input);
+
+        expect(queue.redownloadEpisodes).toHaveBeenCalledWith([]);
+        expect(queue.redownload).not.toHaveBeenCalled();
+    });
+
+    it('leaves out of the list the ids that are not a positive whole number', () => {
+        const { call, queue } = setup();
+
+        call(IPC.animeRedownloadMany, ['4', 0, -1, 1.5, null, {}, 3]);
+
+        expect(queue.redownloadEpisodes).toHaveBeenCalledWith([3]);
+    });
+
     it('pauses and resumes through the queue', () => {
         const { call, queue } = setup();
         call(IPC.animePause, 6);
@@ -486,6 +531,7 @@ describe('registerAnimeHandlers', () => {
         ['4', 0, -1, 1.5, null, undefined, {}].forEach((id) => {
             call(IPC.animeCancel, id);
             call(IPC.animeRetry, id);
+            call(IPC.animeRedownload, id);
             call(IPC.animePause, id);
             call(IPC.animeResume, id);
             call(IPC.animeRemoveEpisode, id);
@@ -493,6 +539,7 @@ describe('registerAnimeHandlers', () => {
         });
         expect(queue.cancel).not.toHaveBeenCalled();
         expect(queue.retry).not.toHaveBeenCalled();
+        expect(queue.redownload).not.toHaveBeenCalled();
         expect(queue.pause).not.toHaveBeenCalled();
         expect(queue.resume).not.toHaveBeenCalled();
         expect(queue.forget).not.toHaveBeenCalled();
@@ -1557,6 +1604,28 @@ describe('registerAnimeHandlers', () => {
         });
     });
 
+    describe('checkAudio', () => {
+        it('looks at the audio of the library and tells the screen the library changed', async () => {
+            const { call, checkAudio, onLibraryChanged } = setup();
+            const result: AnimeAudioCheckResponse = { ok: true, checked: 5, withoutAudio: 2, unreadable: 1, missing: 3 };
+            checkAudio.mockResolvedValueOnce(result);
+
+            expect(await call(IPC.animeCheckAudio)).toEqual(result);
+
+            expect(checkAudio).toHaveBeenCalledTimes(1);
+            expect(onLibraryChanged).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not tell the screen when a check is going on already', async () => {
+            const { call, checkAudio, onLibraryChanged } = setup();
+            checkAudio.mockResolvedValueOnce({ ok: false, reason: 'busy' });
+
+            expect(await call(IPC.animeCheckAudio)).toEqual({ ok: false, reason: 'busy' });
+
+            expect(onLibraryChanged).not.toHaveBeenCalled();
+        });
+    });
+
     describe('migrateFolder', () => {
         const MOVED: AnimeMigrationResponse = { ok: true, episodes: 3, files: 6, destination: '/new/anime' };
 
@@ -1946,6 +2015,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeSetSeries, 1, 'Frieren', 1)).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.animeAddToLibrary, {})).toEqual({ ok: false, reason: 'invalid' });
         expect(ipc.call(IPC.animeRenameSeries, [1], 'Frieren')).toEqual({ ok: false, reason: 'invalid' });
+        expect(ipc.call(IPC.animeCheckAudio)).toEqual({ ok: false, reason: 'unsupported' });
         expect(ipc.call(IPC.animeSubtitles, 1)).toEqual([]);
         expect(ipc.call(IPC.animeSubtitleImport, 1)).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitlesCheck, 1)).toEqual({ ok: false, reason: 'missing' });
@@ -1954,7 +2024,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeSubtitleTranslateMany, { episodeIds: [1], language: 'Spanish' })).toBe(0);
         expect(ipc.call(IPC.animeSubtitleGenerate, { episodeId: 1, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitleGenerateEstimate, 1)).toEqual({ ok: false, reason: 'missing' });
-        [IPC.animeSubtitleGenerateCancel, IPC.animeSubtitleTranslateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animePauseAll, IPC.animeResumeAll, IPC.animePauseAnimes, IPC.animeResumeAnimes, IPC.animeCancelAnimes, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
+        [IPC.animeSubtitleGenerateCancel, IPC.animeSubtitleTranslateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animeRedownload, IPC.animeRedownloadMany, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animePauseAll, IPC.animeResumeAll, IPC.animePauseAnimes, IPC.animeResumeAnimes, IPC.animeCancelAnimes, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {
             expect(ipc.call(channel, 1)).toBeUndefined();
         });
     });

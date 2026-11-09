@@ -8,7 +8,7 @@ import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { readScheduleChoice, saveScheduleTimeZone, type AnimeScheduleView } from './scheduleChoice';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
 import { resolveAppLanguage } from '../i18n/language';
-import { groupLibrary, libraryEntry } from '../components/animeText';
+import { downloadedEpisodeCount, groupLibrary, libraryEntry, libraryProblems, type AudioReport } from '../components/animeText';
 import { useAppStore } from './appStore';
 
 export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads';
@@ -83,6 +83,9 @@ export interface AnimeState {
     // ani-cli is being updated.
     // How far the migration of the anime folder is, or null when none is running.
     migration: AnimeMigrationProgress | null;
+    // Whether the audio of the downloaded episodes is being looked at, and what the last look found (shown in a window until it is closed).
+    checkingAudio: boolean;
+    audioReport: AudioReport | null;
     view: AnimeView;
     // Where BACK goes from the downloads screen.
     returnView: AnimeBrowseView;
@@ -146,6 +149,11 @@ export interface AnimeState {
     importLibrary: () => Promise<void>;
     // Moves all the anime to a folder the user chooses, then says how it went. Returns what the migration answered.
     migrateFolder: () => Promise<AnimeMigrationResponse>;
+    // Looks at the audio of the downloaded episodes that were never looked at, then opens the report with every episode that has a problem.
+    checkAudio: () => Promise<void>;
+    closeAudioReport: () => void;
+    // Queues again every episode of the report, and closes it.
+    redownloadProblems: () => Promise<void>;
     // Goes to the library, to the anime that was being looked at in the search.
     showInLibrary: (animeId: number) => void;
     closeResult: () => void;
@@ -162,6 +170,8 @@ export interface AnimeState {
     setSeries: (animeId: number, series: string | null, season: number | null, seasonName: string | null) => Promise<AnimeSeriesResponse>;
     cancelJob: (episodeId: number) => Promise<void>;
     retryJob: (episodeId: number) => Promise<void>;
+    // Queues a downloaded episode again when its file is not on the disk any more.
+    redownloadEpisode: (episodeId: number) => Promise<void>;
     // Stops a download that is going on keeping what it downloaded, and goes on from there later.
     pauseJob: (episodeId: number) => Promise<void>;
     resumeJob: (episodeId: number) => Promise<void>;
@@ -294,6 +304,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
     return {
         status: UNSUPPORTED_STATUS,
         migration: null,
+        checkingAudio: false,
+        audioReport: null,
         view: 'schedule',
         returnView: 'schedule',
         jobs: [],
@@ -626,6 +638,45 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             }
         },
 
+        checkAudio: async () => {
+            set({ checkingAudio: true });
+            try {
+                const response = await window.api.checkAnimeAudio();
+                if (!response.ok) {
+                    if (response.reason === 'busy') {
+                        notify('error', translateNow('anime.audio.busy'));
+                    }
+                    return;
+                }
+                const library = await window.api.listAnimeLibrary();
+                const summary = { checked: response.checked, withoutAudio: response.withoutAudio, unreadable: response.unreadable, missing: response.missing };
+                set({ library, audioReport: { summary, downloaded: downloadedEpisodeCount(library), problems: libraryProblems(library) } });
+            } finally {
+                set({ checkingAudio: false });
+            }
+        },
+
+        closeAudioReport: () => {
+            set({ audioReport: null });
+        },
+
+        redownloadProblems: async () => {
+            const report = get().audioReport;
+            if (report === null) {
+                return;
+            }
+            set({ audioReport: null });
+            if (report.problems.length === 0) {
+                return;
+            }
+            await window.api.redownloadAnimeEpisodes(
+                report.problems.map((problem) => {
+                    return problem.episodeId;
+                })
+            );
+            notify('info', translateNow('anime.audio.queued', { count: report.problems.length }));
+        },
+
         openLibraryAnime: async (anime) => {
             // An anime that was found on the disk does not know its place in the search: it is searched by its title instead.
             if (anime.searchIndex < 1) {
@@ -777,6 +828,10 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         retryJob: async (episodeId) => {
             await window.api.retryAnimeJob(episodeId);
+        },
+
+        redownloadEpisode: async (episodeId) => {
+            await window.api.redownloadAnimeEpisode(episodeId);
         },
 
         pauseJob: async (episodeId) => {

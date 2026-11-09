@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe('AnimeDb schema', () => {
     it('applies the migrations and remembers the version', () => {
-        expect(makeDb().schemaVersion).toBe(12);
+        expect(makeDb().schemaVersion).toBe(13);
     });
 
     it('keeps the data and does not migrate again when the file is opened twice', () => {
@@ -32,7 +32,7 @@ describe('AnimeDb schema', () => {
         first.close();
 
         const second = new AnimeDb(path);
-        expect(second.schemaVersion).toBe(12);
+        expect(second.schemaVersion).toBe(13);
         expect(second.list()).toEqual([
             {
                 id: anime.id,
@@ -60,7 +60,8 @@ describe('AnimeDb schema', () => {
                         watched: false,
                         downloadedAt: null,
                         addedAt: null,
-                        fileMissing: false
+                        fileMissing: false,
+                        noAudio: false
                     }
                 ]
             }
@@ -106,7 +107,7 @@ describe('AnimeDb schema', () => {
 
         new AnimeDb(path).close();
 
-        expect(versionOf(path)).toBe(12);
+        expect(versionOf(path)).toBe(13);
         expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode', 'episode_update']);
     });
 
@@ -342,6 +343,82 @@ describe('AnimeDb.ensureEpisode', () => {
     });
 });
 
+describe('AnimeDb.markForRedownload', () => {
+    it('queues a downloaded episode again and forgets the file that is not there', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        const episode = db.ensureEpisode(anime.id, '1');
+        db.markDone(episode.id, '/a/1.mp4', 100);
+
+        db.markForRedownload(episode.id);
+
+        expect(db.getEpisode(episode.id)).toMatchObject({ id: episode.id, animeId: anime.id, number: '1', status: 'queued', filePath: null, sizeBytes: null, error: null, noAudio: false });
+    });
+
+    it('keeps the watched mark and the position of the episode', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        const episode = db.ensureEpisode(anime.id, '1');
+        db.markDone(episode.id, '/a/1.mp4', 100);
+        db.saveProgress({ episodeId: episode.id, positionSeconds: 120.5, durationSeconds: 1420, watched: true });
+
+        db.markForRedownload(episode.id);
+
+        expect(db.getEpisode(episode.id)).toMatchObject({ status: 'queued', positionSeconds: 120.5, durationSeconds: 1420, watched: true });
+    });
+
+    it('leaves the other episodes of the anime as they are', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        const missing = db.ensureEpisode(anime.id, '1');
+        const other = db.ensureEpisode(anime.id, '2');
+        db.markDone(missing.id, '/a/1.mp4', 100);
+        db.markDone(other.id, '/a/2.mp4', 200);
+
+        db.markForRedownload(missing.id);
+
+        expect(db.getEpisode(other.id)).toMatchObject({ status: 'done', filePath: '/a/2.mp4', sizeBytes: 200 });
+    });
+
+    it('does nothing to an episode that is not downloaded', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        const failed = db.ensureEpisode(anime.id, '1');
+        db.markFailed(failed.id, 'error', { code: 'NETWORK', raw: 'boom' });
+        const paused = db.ensureEpisode(anime.id, '2');
+        db.markPaused(paused.id);
+        const waiting = db.ensureEpisode(anime.id, '3');
+        db.registerEpisodes(anime.id, ['4']);
+        const idle = db.getEpisodeByNumber(anime.id, '4') as { id: number };
+
+        [failed.id, paused.id, waiting.id, idle.id].forEach((id) => {
+            db.markForRedownload(id);
+        });
+
+        expect(
+            db.getLibraryAnime(anime.id)?.episodes.map((episode) => {
+                return [episode.number, episode.status, episode.error?.code ?? null];
+            })
+        ).toEqual([
+            ['1', 'error', 'NETWORK'],
+            ['2', 'paused', null],
+            ['3', 'queued', null],
+            ['4', 'idle', null]
+        ]);
+    });
+
+    it('does nothing for an episode that does not exist', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        db.ensureEpisode(anime.id, '1');
+
+        expect(() => {
+            db.markForRedownload(99);
+        }).not.toThrow();
+        expect(db.getEpisode(99)).toBeNull();
+    });
+});
+
 describe('AnimeDb lookups', () => {
     it('finds an anime, an episode and the anime with its episodes by id', () => {
         const db = makeDb();
@@ -470,10 +547,10 @@ describe('AnimeDb status changes', () => {
         first.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'offline' });
         first.close();
         const raw = new DatabaseSync(path);
-        raw.exec('ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id; ALTER TABLE episode DROP COLUMN error_details; PRAGMA user_version = 9;');
+        raw.exec('ALTER TABLE episode DROP COLUMN no_audio; ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id; ALTER TABLE episode DROP COLUMN error_details; PRAGMA user_version = 9;');
         raw.close();
         const db = new AnimeDb(path);
-        expect(db.schemaVersion).toBe(12);
+        expect(db.schemaVersion).toBe(13);
         expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'NETWORK', raw: 'offline' });
         db.markFailed(episode.id, 'error', { code: 'NETWORK', raw: 'offline again', details: { occurredAt: 7 } });
         expect(db.getEpisode(episode.id)?.error).toEqual({ code: 'NETWORK', raw: 'offline again', details: { occurredAt: 7 } });
@@ -715,7 +792,7 @@ describe('AnimeDb series and seasons', () => {
         const db = new AnimeDb(path, () => {
             return NOW;
         });
-        expect(db.schemaVersion).toBe(12);
+        expect(db.schemaVersion).toBe(13);
         expect(db.list()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, sourceId: null, audio: 'sub', createdAt: 5, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false }, episodes: [] }]);
         db.close();
     });
@@ -851,11 +928,11 @@ describe('AnimeDb series and seasons', () => {
         first.setSeries(anime.id, 'Series', 2);
         first.close();
         const raw = new DatabaseSync(path);
-        raw.exec('ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id; ALTER TABLE episode DROP COLUMN error_details; ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; ALTER TABLE anime DROP COLUMN season_name; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 2;');
+        raw.exec('ALTER TABLE episode DROP COLUMN no_audio; ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id; ALTER TABLE episode DROP COLUMN error_details; ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; ALTER TABLE anime DROP COLUMN season_name; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 2;');
         raw.close();
 
         const db = new AnimeDb(path);
-        expect(db.schemaVersion).toBe(12);
+        expect(db.schemaVersion).toBe(13);
         expect(db.getAnime(anime.id)).toMatchObject({ series: 'Series', season: 2, seasonName: null });
         db.close();
         // Three files are made and one is backed up before the migration: the disk of a Windows machine can take longer than the 5 s of the default.
@@ -1033,13 +1110,13 @@ describe('AnimeDb history', () => {
         old.ensureEpisode(anime.id, '1');
         old.close();
         const raw = new DatabaseSync(path);
-        raw.exec('ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id; ALTER TABLE episode DROP COLUMN error_details; ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 3;');
+        raw.exec('ALTER TABLE episode DROP COLUMN no_audio; ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id; ALTER TABLE episode DROP COLUMN error_details; ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id; DROP TABLE episode_update; ALTER TABLE episode DROP COLUMN added_at; ALTER TABLE anime DROP COLUMN episodes_baseline_at; DROP TABLE anime_history; DROP TABLE anime_cover; DROP TABLE anime_schedule_cache; PRAGMA user_version = 3;');
         raw.close();
 
         const db = new AnimeDb(path, () => {
             return NOW;
         });
-        expect(db.schemaVersion).toBe(12);
+        expect(db.schemaVersion).toBe(13);
         expect(db.listHistory()).toEqual([]);
         expect(db.list()).toHaveLength(1);
         expect(db.list()[0]?.episodes).toHaveLength(1);
@@ -1191,7 +1268,7 @@ describe('AnimeDb upgrade of the last release', () => {
 
         new AnimeDb(path).close();
 
-        expect(versionOf(path)).toBe(12);
+        expect(versionOf(path)).toBe(13);
         expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode', 'episode_update']);
     });
 
@@ -1296,7 +1373,7 @@ describe('AnimeDb upgrade of the last release', () => {
             return NOW;
         });
 
-        expect(second.schemaVersion).toBe(12);
+        expect(second.schemaVersion).toBe(13);
         expect(second.getCover('naruto')).toEqual({ url: null, checkedAt: NOW });
         second.close();
         expect(schemaOf(path)).toEqual(schema);
@@ -1311,7 +1388,7 @@ describe('AnimeDb upgrade of the last release', () => {
 
         new AnimeDb(upgraded).close();
 
-        expect(versionOf(upgraded)).toBe(12);
+        expect(versionOf(upgraded)).toBe(13);
         expect(schemaOf(upgraded)).toEqual(schemaOf(fresh));
     });
 
@@ -1338,15 +1415,15 @@ describe('AnimeDb upgrade of the last release', () => {
         makeReleasedDatabase(path);
         fillReleasedDatabase(path);
         const raw = new DatabaseSync(path);
-        raw.exec('CREATE TABLE from_the_future (id INTEGER); PRAGMA user_version = 13;');
+        raw.exec('CREATE TABLE from_the_future (id INTEGER); PRAGMA user_version = 14;');
         raw.close();
 
         const db = new AnimeDb(path);
 
-        expect(db.schemaVersion).toBe(13);
+        expect(db.schemaVersion).toBe(14);
         expect(db.list()).toHaveLength(4);
         db.close();
-        expect(versionOf(path)).toBe(13);
+        expect(versionOf(path)).toBe(14);
         expect(tablesOf(path)).toContain('from_the_future');
     });
 });
@@ -1429,7 +1506,7 @@ describe('AnimeDb migrations 7 and 8 on a database of the last release', () => {
 
         new AnimeDb(path).close();
 
-        expect(versionOf(path)).toBe(12);
+        expect(versionOf(path)).toBe(13);
         expect(tablesOf(path)).toEqual(['anime', 'anime_cover', 'anime_history', 'anime_schedule_cache', 'episode', 'episode_update']);
         expect(columnsOf(path, 'anime')).toEqual(['id', 'title', 'query', 'search_index', 'audio', 'created_at', 'series', 'season', 'season_name', 'episodes_baseline_at', 'anilist_id', 'airing_status', 'airing_checked_at', 'airing_override', 'source_id', 'source_provider']);
         expect(columnsOf(path, 'episode')).toEqual([
@@ -1446,7 +1523,8 @@ describe('AnimeDb migrations 7 and 8 on a database of the last release', () => {
             'watched',
             'downloaded_at',
             'added_at',
-            'error_details'
+            'error_details',
+            'no_audio'
         ]);
         expect(columnsOf(path, 'episode_update')).toEqual(['id', 'anime_id', 'episode_id', 'found_at', 'origin']);
         expect(
@@ -1492,7 +1570,8 @@ describe('AnimeDb migrations 7 and 8 on a database of the last release', () => {
                         watched: false,
                         downloadedAt: null,
                         addedAt: null,
-                        fileMissing: false
+                        fileMissing: false,
+                        noAudio: false
                     }
                 ]
             }
@@ -2055,7 +2134,8 @@ describe('AnimeDb episodes that are in the library but not downloaded', () => {
                 watched: false,
                 downloadedAt: null,
                 addedAt: null,
-                fileMissing: false
+                fileMissing: false,
+                noAudio: false
             }
         ]);
     });
@@ -2438,7 +2518,7 @@ describe('AnimeDb migration 9 on a database of the last release', () => {
         const raw = new DatabaseSync(path);
         raw.exec(
             `INSERT INTO anime (id, title, query, search_index, audio, created_at) VALUES (1, 'Naruto', 'naruto', 1, 'sub', 1700000000000);
-             ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id;
+             ALTER TABLE episode DROP COLUMN no_audio; ALTER TABLE anime_history DROP COLUMN watched_at; DROP INDEX anime_source_id; ALTER TABLE anime DROP COLUMN source_provider; ALTER TABLE anime DROP COLUMN source_id;
              ALTER TABLE episode DROP COLUMN error_details;
              ALTER TABLE anime DROP COLUMN airing_override; ALTER TABLE anime DROP COLUMN airing_checked_at; ALTER TABLE anime DROP COLUMN airing_status; ALTER TABLE anime DROP COLUMN anilist_id;
              PRAGMA user_version = 8;`
@@ -2453,7 +2533,7 @@ describe('AnimeDb migration 9 on a database of the last release', () => {
 
         const db = new AnimeDb(path);
 
-        expect(db.schemaVersion).toBe(12);
+        expect(db.schemaVersion).toBe(13);
         expect(columnsOf(path).slice(-6)).toEqual(['anilist_id', 'airing_status', 'airing_checked_at', 'airing_override', 'source_id', 'source_provider']);
         expect(db.list()).toEqual([
             {
@@ -2516,7 +2596,7 @@ describe('AnimeDb migration 12: when an episode was last watched', () => {
         first.recordHistory({ title: 'Bleach', query: 'bleach', index: 4, audio: 'dub', episode: '12' });
         first.close();
         const raw = new DatabaseSync(path);
-        raw.exec('ALTER TABLE anime_history DROP COLUMN watched_at; PRAGMA user_version = 11;');
+        raw.exec('ALTER TABLE episode DROP COLUMN no_audio; ALTER TABLE anime_history DROP COLUMN watched_at; PRAGMA user_version = 11;');
         raw.close();
     }
 
@@ -2535,7 +2615,7 @@ describe('AnimeDb migration 12: when an episode was last watched', () => {
             return NOW + 5000;
         });
 
-        expect(db.schemaVersion).toBe(12);
+        expect(db.schemaVersion).toBe(13);
         expect(columnsOf(path)).toEqual(['id', 'title', 'query', 'search_index', 'audio', 'episode', 'opened_at', 'watched_at']);
         // The entry with an episode is not backfilled: the moment it was last watched is not known.
         expect(db.listHistory()).toEqual([
@@ -2565,8 +2645,182 @@ describe('AnimeDb migration 12: when an episode was last watched', () => {
         previousVersionWith(path);
         new AnimeDb(path).close();
         const second = new AnimeDb(path);
-        expect(second.schemaVersion).toBe(12);
+        expect(second.schemaVersion).toBe(13);
         expect(columnsOf(path).filter((name) => { return name === 'watched_at'; })).toHaveLength(1);
+        second.close();
+    });
+});
+
+describe('AnimeDb audio of the episodes', () => {
+    function downloaded(db: AnimeDb, animeTitle = 'Naruto', number = '1', path = `/lib/${animeTitle}/${number}.mp4`): number {
+        const anime = db.upsertAnime({ ...NARUTO, title: animeTitle, query: animeTitle.toLowerCase() });
+        const episode = db.ensureEpisode(anime.id, number);
+        db.markDone(episode.id, path, 100);
+        return episode.id;
+    }
+
+    it('knows nothing about the audio of an episode that was downloaded, and lists it to be looked at', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+
+        expect(db.getEpisode(id)).toMatchObject({ status: 'done', noAudio: false });
+        expect(db.episodesToCheckAudio()).toMatchObject([{ id, number: '1', filePath: '/lib/Naruto/1.mp4' }]);
+    });
+
+    it('marks a video that has no audio, and stops listing it to be looked at', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+
+        db.markAudioChecked(id, '/lib/Naruto/1.mp4', false);
+
+        expect(db.getEpisode(id)).toMatchObject({ noAudio: true });
+        expect(db.episodesToCheckAudio()).toEqual([]);
+    });
+
+    it('records that a video has audio, and stops listing it to be looked at', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+
+        db.markAudioChecked(id, '/lib/Naruto/1.mp4', true);
+
+        expect(db.getEpisode(id)).toMatchObject({ noAudio: false });
+        expect(db.episodesToCheckAudio()).toEqual([]);
+    });
+
+    it('counts only for the file that was looked at', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+
+        db.markAudioChecked(id, '/lib/Naruto/other.mp4', false);
+
+        expect(db.getEpisode(id)).toMatchObject({ noAudio: false, filePath: '/lib/Naruto/1.mp4' });
+        expect(db.episodesToCheckAudio()).toMatchObject([{ id }]);
+    });
+
+    it('does nothing for an episode that is not downloaded or does not exist', () => {
+        const db = makeDb();
+        const anime = db.upsertAnime(NARUTO);
+        const waiting = db.ensureEpisode(anime.id, '1');
+
+        db.markAudioChecked(waiting.id, '/lib/Naruto/1.mp4', false);
+        db.markAudioChecked(99, '/lib/Naruto/1.mp4', false);
+
+        expect(db.getEpisode(waiting.id)).toMatchObject({ status: 'queued', noAudio: false });
+        expect(db.episodesToCheckAudio()).toEqual([]);
+    });
+
+    it('lists only the downloaded episodes that were never looked at, anime by anime', () => {
+        const db = makeDb();
+        const checked = downloaded(db, 'Naruto', '1');
+        const second = downloaded(db, 'Naruto', '2');
+        const other = downloaded(db, 'Bleach', '1');
+        const anime = db.upsertAnime({ ...NARUTO, title: 'Naruto' });
+        const failed = db.ensureEpisode(anime.id, '3');
+        db.markFailed(failed.id, 'error', { code: 'NETWORK', raw: 'boom' });
+        db.markAudioChecked(checked, '/lib/Naruto/1.mp4', true);
+
+        expect(
+            db.episodesToCheckAudio().map((episode) => {
+                return episode.id;
+            })
+        ).toEqual([second, other]);
+    });
+
+    it('keeps what was found when the episode is pointed to its file in a new place', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+        db.markAudioChecked(id, '/lib/Naruto/1.mp4', false);
+
+        db.markDone(id, '/moved/Naruto/1.mp4', 100);
+
+        expect(db.getEpisode(id)).toMatchObject({ filePath: '/moved/Naruto/1.mp4', noAudio: true });
+    });
+
+    it('forgets what was found when the episode is queued to be downloaded again, so the new video is looked at', () => {
+        const db = makeDb();
+        const id = downloaded(db);
+        db.markAudioChecked(id, '/lib/Naruto/1.mp4', false);
+
+        db.markForRedownload(id);
+        db.markDone(id, '/lib/Naruto/1.mp4', 200);
+
+        expect(db.getEpisode(id)).toMatchObject({ status: 'done', sizeBytes: 200, noAudio: false });
+        expect(db.episodesToCheckAudio()).toMatchObject([{ id }]);
+    });
+});
+
+describe('AnimeDb migration 13: audio of an episode', () => {
+    function episodeColumns(path: string): string[] {
+        const raw = new DatabaseSync(path, { readOnly: true });
+        const names = (raw.prepare('PRAGMA table_info(episode)').all() as Array<{ name: string }>).map((column) => {
+            return column.name;
+        });
+        raw.close();
+        return names;
+    }
+
+    function previousVersionWith(path: string): void {
+        const first = new AnimeDb(path, () => {
+            return NOW;
+        });
+        const anime = first.upsertAnime(NARUTO);
+        first.markDone(first.ensureEpisode(anime.id, '1').id, '/lib/Naruto/1.mp4', 100);
+        first.markDone(first.ensureEpisode(anime.id, '2').id, '/lib/Naruto/2.mp4', 200);
+        first.close();
+        const raw = new DatabaseSync(path);
+        raw.exec('ALTER TABLE episode DROP COLUMN no_audio; PRAGMA user_version = 12;');
+        raw.close();
+    }
+
+    it('has the column in a new database', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        new AnimeDb(path).close();
+        expect(episodeColumns(path).at(-1)).toBe('no_audio');
+    });
+
+    it('adds the column to the database of the previous version, keeping every episode, and does not guess about any audio', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        previousVersionWith(path);
+        expect(episodeColumns(path)).not.toContain('no_audio');
+
+        const db = new AnimeDb(path);
+
+        expect(db.schemaVersion).toBe(13);
+        expect(episodeColumns(path).filter((name) => { return name === 'no_audio'; })).toHaveLength(1);
+        expect(
+            db.list()[0]?.episodes.map((episode) => {
+                return [episode.number, episode.status, episode.filePath, episode.sizeBytes, episode.noAudio];
+            })
+        ).toEqual([
+            ['1', 'done', '/lib/Naruto/1.mp4', 100, false],
+            ['2', 'done', '/lib/Naruto/2.mp4', 200, false]
+        ]);
+        // None was looked at: every downloaded episode is left for the check the user asks for.
+        expect(
+            db.episodesToCheckAudio().map((episode) => {
+                return episode.number;
+            })
+        ).toEqual(['1', '2']);
+        db.close();
+    });
+
+    it('does not migrate again when the upgraded database is opened once more, and keeps what the check found', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        previousVersionWith(path);
+        const first = new AnimeDb(path);
+        first.markAudioChecked(1, '/lib/Naruto/1.mp4', false);
+        first.close();
+
+        const second = new AnimeDb(path);
+
+        expect(second.schemaVersion).toBe(13);
+        expect(second.getEpisode(1)).toMatchObject({ noAudio: true });
+        expect(second.getEpisode(2)).toMatchObject({ noAudio: false });
+        expect(
+            second.episodesToCheckAudio().map((episode) => {
+                return episode.id;
+            })
+        ).toEqual([2]);
         second.close();
     });
 });

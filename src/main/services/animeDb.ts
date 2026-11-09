@@ -122,7 +122,10 @@ const MIGRATIONS: readonly string[] = [
     CREATE INDEX anime_source_id ON anime (source_id, audio);`,
     // When the viewer last watched an episode of an anime of the history, apart from when it was last opened (`opened_at` moves when the anime is
     // only opened too). It is empty until an episode is watched: what the history already had is not guessed.
-    `ALTER TABLE anime_history ADD COLUMN watched_at INTEGER;`
+    `ALTER TABLE anime_history ADD COLUMN watched_at INTEGER;`,
+    // Whether the video of a downloaded episode has no audio (1) or has it (0), which is looked at once, when it is downloaded or when the user
+    // asks for the library to be checked. Empty (NULL) until then: the episodes that were downloaded before are not looked at by themselves.
+    `ALTER TABLE episode ADD COLUMN no_audio INTEGER;`
 ];
 
 // The history keeps the most recent anime only.
@@ -237,7 +240,8 @@ function toEpisode(row: Row): AnimeEpisodeRecord {
         watched: numeric(row, 'watched') === 1,
         downloadedAt: nullableNumeric(row, 'downloaded_at'),
         addedAt: nullableNumeric(row, 'added_at'),
-        fileMissing: false
+        fileMissing: false,
+        noAudio: nullableNumeric(row, 'no_audio') === 1
     };
 }
 
@@ -757,6 +761,13 @@ export class AnimeDb {
         this.run(`UPDATE episode SET status = 'paused', error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, episodeId);
     }
 
+    // A downloaded episode whose file is gone goes back to the queue: it forgets the file that is not there (the watched mark and the
+    // position are kept, the video is the same).
+    markForRedownload(episodeId: number): void {
+        this.run(`UPDATE episode SET status = 'queued', file_path = NULL, size_bytes = NULL, no_audio = NULL, error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ? AND status = 'done'`, episodeId);
+    }
+
+    // What is known about the audio of the episode is kept: the import points an episode to its file in a new place with this too.
     markDone(episodeId: number, filePath: string, sizeBytes: number | null): void {
         this.run(
             `UPDATE episode SET status = 'done', file_path = ?, size_bytes = ?, error_code = NULL, error_raw = NULL, error_details = NULL, downloaded_at = ? WHERE id = ?`,
@@ -765,6 +776,17 @@ export class AnimeDb {
             this.now(),
             episodeId
         );
+    }
+
+    // What looking at the audio of the video found. It only counts for the file that was looked at: an episode that was downloaded again
+    // meanwhile (another file) or is not in the library any more is left as it is.
+    markAudioChecked(episodeId: number, filePath: string, hasAudio: boolean): void {
+        this.run(`UPDATE episode SET no_audio = ? WHERE id = ? AND status = 'done' AND file_path = ?`, hasAudio ? 0 : 1, episodeId, filePath);
+    }
+
+    // The downloaded episodes whose audio was never looked at (the ones that were downloaded before it was, or that could not be read).
+    episodesToCheckAudio(): AnimeEpisodeRecord[] {
+        return this.all(`SELECT * FROM episode WHERE status = 'done' AND file_path IS NOT NULL AND no_audio IS NULL ORDER BY anime_id, id`).map(toEpisode);
     }
 
     markFailed(episodeId: number, status: 'error' | 'cancelled', error: AniError | null): void {

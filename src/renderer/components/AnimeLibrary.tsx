@@ -60,6 +60,9 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
     const retryJob = useAnimeStore((state) => {
         return state.retryJob;
     });
+    const redownloadEpisode = useAnimeStore((state) => {
+        return state.redownloadEpisode;
+    });
     const resumeJob = useAnimeStore((state) => {
         return state.resumeJob;
     });
@@ -72,10 +75,12 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
     const label = t('anime.episode', { number: episode.number });
     // A downloaded episode whose file is there is played by clicking on its row.
     const openable = episode.status === 'done' && !episode.fileMissing;
+    // A downloaded episode whose video is there but was found to have no audio.
+    const silent = episode.status === 'done' && !episode.fileMissing && episode.noAudio;
 
     return (
         <li
-            className={`history__item${episode.status === 'error' || episode.fileMissing ? ' history__item--error' : ''}${episode.watched ? ' history__item--watched' : ''}${openable ? ' row--link' : ''}`}
+            className={`history__item${episode.status === 'error' || episode.fileMissing || silent ? ' history__item--error' : ''}${episode.watched ? ' history__item--watched' : ''}${openable ? ' row--link' : ''}`}
             data-testid="anime-episode"
         >
             <div className="history__main">
@@ -103,6 +108,11 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                             !
                         </span>
                     )}
+                    {silent && (
+                        <span className="missing-mark" role="img" aria-label={t('anime.noAudio')} title={t('anime.noAudio.hint')}>
+                            !
+                        </span>
+                    )}
                 </span>
                 <span className="history__meta">{episodeMeta(episode, t)}</span>
                 {episode.error && (
@@ -112,6 +122,30 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
                 )}
             </div>
             <span className="anime__actions">
+                {episode.status === 'done' && episode.fileMissing && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        aria-label={`${t('anime.fileMissing.redownload')}: ${anime.title} ${label}`}
+                        onClick={() => {
+                            void redownloadEpisode(episode.id);
+                        }}
+                    >
+                        {t('anime.fileMissing.redownload')}
+                    </button>
+                )}
+                {silent && (
+                    <ConfirmButton
+                        className="btn btn--small btn--primary"
+                        ariaLabel={`${t('anime.fileMissing.redownload')}: ${anime.title} ${label}`}
+                        dialog={{ title: t('anime.noAudio.redownload.title'), message: t('anime.noAudio.redownload.message'), confirmLabel: t('anime.fileMissing.redownload'), cancelLabel: t('confirm.back') }}
+                        onConfirm={() => {
+                            void redownloadEpisode(episode.id);
+                        }}
+                    >
+                        {t('anime.fileMissing.redownload')}
+                    </ConfirmButton>
+                )}
                 {episode.status === 'done' && (
                     <>
                         <button

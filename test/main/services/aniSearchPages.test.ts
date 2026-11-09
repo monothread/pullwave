@@ -47,7 +47,7 @@ describe('patchSearchPages', () => {
     });
 
     it('is part of the changes of the app, and is reported on its own', () => {
-        expect(patchReport(ORIGINAL_SEARCH)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false, searchPages: true });
+        expect(patchReport(ORIGINAL_SEARCH)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false, searchPages: true, separateAudio: false });
         expect(patchReport('')).toMatchObject({ searchPages: false });
         expect(patchAniCli(ORIGINAL_SEARCH)).toBe(PATCHED_SEARCH);
     });
