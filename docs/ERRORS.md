@@ -32,7 +32,7 @@ Not yt-dlp errors: `llmProviders.ts` maps the answer of a provider into `{ code,
 | `BAD_RESPONSE` | any other status, or an answer with no text, or a translation that keeps coming with the wrong number of lines | The provider answered in a way the app could not use. |
 | `CANCELLED` | the user cancelled | The translation was cancelled (not shown as an error). |
 
-Before asking, the translation can also stop for what the settings lack or the file has: `no-token`, `no-model`, `no-address` (a provider of one's own with no address), `no-source`, `unreadable`, `too-large`, `empty`, `missing` and `busy` (texts `anime.translate.error.*`). New patterns: add a row here + a test in `test/main/services/llmProviders.test.ts`.
+Before asking, the translation can also stop for what the settings lack or the file has: `no-token`, `no-model`, `no-address` (a provider of one's own with no address), `no-source`, `unreadable`, `too-large`, `empty`, `missing`, `busy` and `exists` (texts `anime.translate.error.*`; `exists` means the episode already has `.translated-<Language>.vtt`: the translation of many episodes skips it, as a `skipped` job, and the one of the player replaces it, so only a call that does not replace gets it, D-164). New patterns: add a row here + a test in `test/main/services/llmProviders.test.ts`.
 
 ## Creating a subtitle from the audio (speech to text)
 
