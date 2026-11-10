@@ -861,7 +861,7 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
 });
 }
 
-test('shows the title of the anime the source picked on its own, not the words searched, when the script lists it', { tag: '@windows' }, async () => {
+test('shows the title of the anime the source picked on its own, not the words searched, when the script lists it', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await search(page, 'loneshown');
@@ -875,7 +875,7 @@ test('shows the title of the anime the source picked on its own, not the words s
     await expect(page.getByTestId('anime-result-unconfirmed')).toHaveCount(0);
 });
 
-test('says the name could not be confirmed, with no cover, for an anime the source picked on its own and did not name', { tag: '@windows' }, async () => {
+test('says the name could not be confirmed, with no cover, for an anime the source picked on its own and did not name', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await search(page, 'loneunlisted');
@@ -891,7 +891,7 @@ test('says the name could not be confirmed, with no cover, for an anime the sour
     await expect(page.locator('.anime__detail .series__cover .cover')).toHaveText('COVER NOT FOUND');
 });
 
-test('tells two anime that have the same title apart by the id of the source, and keeps each one with its own episodes', { tag: '@windows' }, async () => {
+test('tells two anime that have the same title apart by the id of the source, and keeps each one with its own episodes', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await search(page, 'twin');
@@ -932,7 +932,7 @@ function searchMinCalls(userData: string, words: string): string[] {
         });
 }
 
-test('lists the results past the first page as the list is scrolled to its end, and opens one that is on a later page', { tag: '@windows' }, async () => {
+test('lists the results past the first page as the list is scrolled to its end, and opens one that is on a later page', async () => {
     const { page, userData } = session;
     await openAnimeTab(page);
     await search(page, 'many');
@@ -960,7 +960,7 @@ test('lists the results past the first page as the list is scrolled to its end, 
     expect(searchMinCalls(userData, '-S 45 many')).toEqual(['45 | -S 45 many']);
 });
 
-test('lists no more than the most results of a search and asks to make it more specific', { tag: '@windows' }, async () => {
+test('lists no more than the most results of a search and asks to make it more specific', async () => {
     const { page, userData } = session;
     await openAnimeTab(page);
     await search(page, 'endless');
@@ -1029,7 +1029,7 @@ test('clears the message of a search that found nothing when the name is emptied
     await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('searches with the audio that was picked', { tag: '@windows' }, async () => {
+test('searches with the audio that was picked', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await page.getByLabel('Audio').selectOption('dub');
@@ -1049,7 +1049,7 @@ test('opens an anime and lists its episodes', { tag: '@windows' }, async () => {
     await expect(page.getByText('2 RESULTS')).toBeVisible();
 });
 
-test('lists the episodes from the last one when the user chooses it, and keeps the order when the app opens again', { tag: '@windows' }, async () => {
+test('lists the episodes from the last one when the user chooses it, and keeps the order when the app opens again', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await openFirstResult(page);
@@ -1066,7 +1066,7 @@ test('lists the episodes from the last one when the user chooses it, and keeps t
     await expect(session.page.locator('.episode-chip')).toHaveText(['EP 3', 'EP 2', 'EP 1']);
 });
 
-test('announces a finished download with a toast that takes itself away after five seconds', { tag: '@windows' }, async () => {
+test('announces a finished download with a toast that takes itself away after five seconds', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await openFirstResult(page);
@@ -1387,7 +1387,7 @@ test('an episode paused when the app was closed is in the downloads again, and c
     expect(existsSync(episodeFolder)).toBe(false);
 });
 
-test('shows why a download failed and retries it', { tag: '@windows' }, async () => {
+test('shows why a download failed and retries it', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await search(page, 'fail');
@@ -1417,7 +1417,7 @@ test('shows why a download failed and retries it', { tag: '@windows' }, async ()
 });
 
 
-test('tries an episode again by itself when the connection drops, and finishes it with no failure on the screen', { tag: '@windows' }, async () => {
+test('tries an episode again by itself when the connection drops, and finishes it with no failure on the screen', async () => {
     test.slow();
     const { page, animeDir } = session;
     await openAnimeTab(page);
@@ -1438,7 +1438,7 @@ test('tries an episode again by itself when the connection drops, and finishes i
     ).toHaveLength(2);
 });
 
-test('tries again every failed download with RETRY FAILED', { tag: '@windows' }, async () => {
+test('tries again every failed download with RETRY FAILED', async () => {
     const { page } = session;
     await openAnimeTab(page);
     await search(page, 'fail');
@@ -1463,7 +1463,7 @@ test('tries again every failed download with RETRY FAILED', { tag: '@windows' },
     await expect(page.getByRole('button', { name: 'RETRY FAILED (1)' })).toBeVisible();
 });
 
-test('pauses everything at once with PAUSE ALL and goes on with everything with RESUME ALL', { tag: '@windows' }, async () => {
+test('pauses everything at once with PAUSE ALL and goes on with everything with RESUME ALL', async () => {
     test.slow();
     const { page, animeDir } = session;
     await openAnimeTab(page);
@@ -1488,7 +1488,7 @@ test('pauses everything at once with PAUSE ALL and goes on with everything with 
     }
 });
 
-test('pauses and resumes the downloads of an anime picked in the window of MANAGE, without holding the queue', { tag: '@windows' }, async () => {
+test('pauses and resumes the downloads of an anime picked in the window of MANAGE, without holding the queue', async () => {
     test.slow();
     const { page, animeDir } = session;
     await openAnimeTab(page);
@@ -1527,7 +1527,7 @@ test('pauses and resumes the downloads of an anime picked in the window of MANAG
     }
 });
 
-test('cancels the downloads of the anime picked in the window of MANAGE after asking, deleting what they downloaded', { tag: '@windows' }, async () => {
+test('cancels the downloads of the anime picked in the window of MANAGE after asking, deleting what they downloaded', async () => {
     const { page, animeDir } = session;
     await openAnimeTab(page);
     await search(page, 'slow');
@@ -1713,13 +1713,13 @@ test('removes a series with its files and its folder', { tag: '@windows' }, asyn
     expect(existsSync(animeDir)).toBe(true);
 });
 
-test.describe('library and folder in sync', { tag: '@windows' }, () => {
+test.describe('library and folder in sync', () => {
     async function openLibrary(page: Page): Promise<void> {
         await openAnimeTab(page);
         await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
     }
 
-    test('rebuilds the library from the folder when the library was lost, with the metadata next to the video', async () => {
+    test('rebuilds the library from the folder when the library was lost, with the metadata next to the video', { tag: '@windows' }, async () => {
         const { page, userData, animeDir } = session;
         await downloadFirstEpisode(page);
         const metadata = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'pullwave.json');
@@ -1759,7 +1759,7 @@ test.describe('library and folder in sync', { tag: '@windows' }, () => {
         await expect(session.page.getByTestId('anime-card')).toHaveCount(1);
     });
 
-    test('marks an episode whose file is gone, and the import fixes it when the folder was renamed', async () => {
+    test('marks an episode whose file is gone, and the import fixes it when the folder was renamed', { tag: '@windows' }, async () => {
         const { page, animeDir } = session;
         await downloadFirstEpisode(page);
         await openLibrary(page);
@@ -1812,7 +1812,7 @@ test.describe('library and folder in sync', { tag: '@windows' }, () => {
     });
 
     for (const removed of ['the video', 'the whole folder of the episode']) {
-        test(`downloads an episode again with DOWNLOAD AGAIN when ${removed} was removed from the disk`, async () => {
+        test(`downloads an episode again with DOWNLOAD AGAIN when ${removed} was removed from the disk`, { tag: removed === 'the whole folder of the episode' ? ['@windows'] : [] }, async () => {
             const { page, animeDir } = session;
             await downloadFirstEpisode(page);
             const folder = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1');
@@ -1839,7 +1839,7 @@ test.describe('library and folder in sync', { tag: '@windows' }, () => {
         });
     }
 
-    test('downloads a new episode into the folder the anime was renamed to, once the library knows about it', async () => {
+    test('downloads a new episode into the folder the anime was renamed to, once the library knows about it', { tag: '@windows' }, async () => {
         const { page, animeDir } = session;
         await downloadFirstEpisode(page);
         renameSync(join(animeDir, 'Fake Anime'), join(animeDir, 'My Renamed Folder'));
@@ -2490,7 +2490,7 @@ test.describe('series and seasons', () => {
         await expect(page.getByTestId('anime-card').getByText('1 SEASON')).toBeVisible();
     });
 
-    test('brings the series back when the library is rebuilt from the folder', { tag: '@windows' }, async () => {
+    test('brings the series back when the library is rebuilt from the folder', async () => {
         const { page, userData } = session;
         await openAnimeTab(page);
         await openFirstResult(page);
@@ -2685,8 +2685,8 @@ test('shows the name of the season on its row all the time, without the pointer 
     await expect(title).toHaveCSS('opacity', '1');
 });
 
-test.describe('only anime inside the anime folder', { tag: '@windows' }, () => {
-    test('does not import a folder that is outside it, and says where the anime have to be', async () => {
+test.describe('only anime inside the anime folder', () => {
+    test('does not import a folder that is outside it, and says where the anime have to be', { tag: '@windows' }, async () => {
         const { userData, animeDir } = session;
         const outside = join(workDir, 'outside');
         mkdirSync(join(outside, 'Bleach', 'Episode 1'), { recursive: true });
@@ -2726,7 +2726,7 @@ test.describe('only anime inside the anime folder', { tag: '@windows' }, () => {
     });
 });
 
-test.describe('migrating the folder of the anime', { tag: '@windows' }, () => {
+test.describe('migrating the folder of the anime', () => {
     async function relaunchToMigrateTo(target: string): Promise<void> {
         const { userData } = session;
         await session.app.close();
@@ -2737,7 +2737,7 @@ test.describe('migrating the folder of the anime', { tag: '@windows' }, () => {
         return (JSON.parse(readFileSync(join(session.userData, 'settings.json'), 'utf-8')) as Record<string, unknown>).animeDownloadDir;
     }
 
-    test('copies everything to the new folder, checks it, points the library and the settings to it and removes the old files', async () => {
+    test('copies everything to the new folder, checks it, points the library and the settings to it and removes the old files', { tag: '@windows' }, async () => {
         const { animeDir } = session;
         await downloadFirstEpisode(session.page);
         const target = join(workDir, 'migrated');
@@ -2787,7 +2787,7 @@ test.describe('migrating the folder of the anime', { tag: '@windows' }, () => {
         expect(existsSync(session.animeDir)).toBe(false);
     });
 
-    test('says so and changes nothing when the folder chosen is the current one', async () => {
+    test('says so and changes nothing when the folder chosen is the current one', { tag: '@windows' }, async () => {
         const { animeDir } = session;
         await downloadFirstEpisode(session.page);
         await relaunchToMigrateTo(animeDir);
@@ -2802,7 +2802,7 @@ test.describe('migrating the folder of the anime', { tag: '@windows' }, () => {
         expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'))).toBe(true);
     });
 
-    test('says so and changes nothing when the folder chosen is inside the current one', async () => {
+    test('says so and changes nothing when the folder chosen is inside the current one', { tag: '@windows' }, async () => {
         const { animeDir } = session;
         await downloadFirstEpisode(session.page);
         await relaunchToMigrateTo(join(animeDir, 'inner'));
@@ -2816,7 +2816,7 @@ test.describe('migrating the folder of the anime', { tag: '@windows' }, () => {
         expect(existsSync(join(animeDir, 'inner'))).toBe(false);
     });
 
-    test('says so and keeps both folders as they were when a file of the new folder is in the way', async () => {
+    test('says so and keeps both folders as they were when a file of the new folder is in the way', { tag: '@windows' }, async () => {
         const { animeDir } = session;
         await downloadFirstEpisode(session.page);
         const target = join(workDir, 'migrated');
@@ -2970,7 +2970,7 @@ test.describe('covers', () => {
         expect(searched.length).toBe(asks);
     });
 
-    test('keeps the covers on the disk: they are there, without asking, when the app is opened again with no network', { tag: '@windows' }, async () => {
+    test('keeps the covers on the disk: they are there, without asking, when the app is opened again with no network', async () => {
         const { page } = session;
         await openAnimeTab(page);
         await search(page, 'fake');
@@ -3043,7 +3043,7 @@ test.describe('covers', () => {
     });
 });
 
-test.describe('watching without downloading', { tag: '@windows' }, () => {
+test.describe('watching without downloading', () => {
     const REFERER = 'https://embed.example/';
     const FFMPEG = join(ROOT, 'resources', 'bin', `ffmpeg${EXE}`);
     test.skip(!existsSync(FFMPEG), 'needs the bundled ffmpeg to make a video: run `npm run fetch-binaries`');
@@ -3258,7 +3258,7 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         await expect.poll(showing).toEqual(['Spanish (- Spanish(Latin America))']);
     });
 
-    test('checks a downloaded episode for subtitles the source offers and saves only the ones it does not have', async () => {
+    test('checks a downloaded episode for subtitles the source offers and saves only the ones it does not have', { tag: '@windows' }, async () => {
         const { page, animeDir, userData } = session;
         await downloadFirstEpisode(page);
         const folder = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1');
@@ -3342,7 +3342,7 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         ).toEqual([]);
     });
 
-    test('shows the names of the subtitles clean, and keeps the names of their files as the source wrote them', async () => {
+    test('shows the names of the subtitles clean, and keeps the names of their files as the source wrote them', { tag: '@windows' }, async () => {
         const { page, animeDir, userData } = session;
         await downloadFirstEpisode(page);
         const folder = join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1');
@@ -3430,7 +3430,7 @@ test.describe('watching without downloading', { tag: '@windows' }, () => {
         await expect(toast).toBeHidden({ timeout: 8000 });
     });
 
-    test('plays the episode without downloading it, through the app', async () => {
+    test('plays the episode without downloading it, through the app', { tag: '@windows' }, async () => {
         const { page, animeDir, userData } = session;
         await watchEpisode(page, '2');
 
@@ -3761,7 +3761,7 @@ test.describe('library of the search', () => {
         await expect(page.getByRole('button', { name: 'DOWNLOAD: Fake Anime EP 2', exact: true })).toHaveCount(0);
     });
 
-    test('downloads everything that is missing from the screen of the series, telling each one that finishes', { tag: '@windows' }, async () => {
+    test('downloads everything that is missing from the screen of the series, telling each one that finishes', async () => {
         test.slow();
         const { page, animeDir } = session;
         await addToLibrary(page);
@@ -3786,7 +3786,7 @@ test.describe('library of the search', () => {
         await expect(page.getByTestId('anime-job')).toHaveCount(0);
     });
 
-    test('downloads only the episodes of one season, from the button of its row, leaving the other seasons of the series alone', { tag: '@windows' }, async () => {
+    test('downloads only the episodes of one season, from the button of its row, leaving the other seasons of the series alone', async () => {
         test.slow();
         const { page, animeDir } = session;
         await openAnimeTab(page);
@@ -3829,7 +3829,7 @@ test.describe('library of the search', () => {
         await expect(page.getByRole('button', { name: 'DOWNLOAD ALL: Fake Anime', exact: true })).toBeVisible();
     });
 
-    test('downloads again, with DOWNLOAD ALL, the episode whose download failed', { tag: '@windows' }, async () => {
+    test('downloads again, with DOWNLOAD ALL, the episode whose download failed', async () => {
         const { page } = session;
         await openAnimeTab(page);
         await search(page, 'fail');
@@ -5090,7 +5090,7 @@ test.describe('the look for new episodes', () => {
         await expect(page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true })).toBeVisible();
     });
 
-    test('downloads the new episode by itself when the setting asks for it, and the list shows it as downloaded', { tag: '@windows' }, async () => {
+    test('downloads the new episode by itself when the setting asks for it, and the list shows it as downloaded', async () => {
         const page = await relaunch({ animeAutoDownloadNew: true }, { PULLWAVE_ANIME_CHECK_MS: CHECK_EVERY_MS });
         await addFakeAnime(page);
         await waitForTheFirstReading();
@@ -5501,8 +5501,8 @@ async function relaunchWithSettings(settings: Record<string, unknown>): Promise<
     session = await launch(userData, settings);
 }
 
-test.describe('the disk space of the anime', { tag: '@windows' }, () => {
-    test('shows the disk space, what the anime folder takes and what the manga folder takes, with the numbers counting up', async () => {
+test.describe('the disk space of the anime', () => {
+    test('shows the disk space, what the anime folder takes and what the manga folder takes, with the numbers counting up', { tag: '@windows' }, async () => {
         const { animeDir } = session;
         const mangaDir = mangaFolderOf(workDir);
         mkdirSync(join(animeDir, 'Some Show'), { recursive: true });
@@ -5550,7 +5550,7 @@ test.describe('the disk space of the anime', { tag: '@windows' }, () => {
         await expect(chart.getByTestId('disk-sibling-note')).toHaveCount(0);
     });
 
-    test('warns that the folders overlap and counts the files once when the manga folder is inside the anime folder', async () => {
+    test('warns that the folders overlap and counts the files once when the manga folder is inside the anime folder', { tag: '@windows' }, async () => {
         const { animeDir } = session;
         const inside = join(animeDir, 'manga');
         mkdirSync(inside, { recursive: true });
@@ -5578,7 +5578,7 @@ test.describe('the disk space of the anime', { tag: '@windows' }, () => {
         await expectNoSiblingInRing(chart);
     });
 
-    test('warns that the manga folder is on another disk and leaves it out of the ring', async () => {
+    test('warns that the manga folder is on another disk and leaves it out of the ring', { tag: '@windows' }, async () => {
         const otherDisk = makeFolderOnAnotherDisk(workDir);
         if (otherDisk === null) {
             test.skip(true, 'needs another disk to put the manga folder on (Linux has /dev/shm)');
