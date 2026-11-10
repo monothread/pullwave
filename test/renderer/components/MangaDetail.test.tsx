@@ -37,6 +37,8 @@ function open(overrides: Partial<MangaSelection> = {}): void {
     });
 }
 
+const RECENT_EVERYWHERE = { all: 'recent', news: 'recent', complete: 'recent', ongoing: 'recent' } as const;
+
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
@@ -1463,23 +1465,34 @@ describe('MangaDetail the order of the chapters', () => {
         render(<MangaDetail />);
         await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'desc');
         expect(names()).toEqual(['#3', '#2', 'Romance Dawn']);
-        expect(useSortPrefsStore.getState().list.chapters).toBe('desc');
-        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'recent', manga: 'recent' }, list: { chapters: 'desc', episodes: 'asc' } });
+        expect(useSortPrefsStore.getState().list.chapters).toEqual({ '123:7': 'desc' });
+        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+            library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+            list: { chapters: { '123:7': 'desc' }, episodes: {} }
+        });
         await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'asc');
         expect(names()).toEqual(['Romance Dawn', '#2', '#3']);
     });
 
-    it('starts from the last chapter when that is the order kept', () => {
-        useSortPrefsStore.setState({ list: { chapters: 'desc', episodes: 'asc' } });
+    it('starts from the last chapter when that is the order kept for this manga', () => {
+        useSortPrefsStore.setState({ list: { chapters: { '123:7': 'desc' }, episodes: {} } });
         open();
         render(<MangaDetail />);
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
         expect(names()).toEqual(['#3', '#2', 'Romance Dawn']);
     });
 
+    it('starts from the first chapter when the order kept is the one of another manga, or of the same id in another source', () => {
+        useSortPrefsStore.setState({ list: { chapters: { '123:8': 'desc', '124:7': 'desc' }, episodes: { '123:7': 'desc' } } });
+        open();
+        render(<MangaDetail />);
+        expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('asc');
+        expect(names()).toEqual(['Romance Dawn', '#2', '#3']);
+    });
+
     it('gives the reader the chapters from the first to the last whatever the order of the list', async () => {
         const user = userEvent.setup();
-        useSortPrefsStore.setState({ list: { chapters: 'desc', episodes: 'asc' } });
+        useSortPrefsStore.setState({ list: { chapters: { '123:7': 'desc' }, episodes: {} } });
         open();
         render(<MangaDetail />);
         await user.click(screen.getByRole('button', { name: 'READ: #3' }));

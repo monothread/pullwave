@@ -46,6 +46,7 @@ import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources, 
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
 import { useAppStore } from './appStore';
+import { mangaListKey, useSortPrefsStore } from './sortPrefsStore';
 
 export type MangaView = 'browse' | 'search' | 'updates' | 'library' | 'history' | 'extensions' | 'settings' | 'downloads';
 // The views the downloads screen can go back to.
@@ -1402,7 +1403,14 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         removeManga: async (mangaId) => {
+            const removed = get().library.find((candidate) => {
+                return candidate.id === mangaId;
+            });
             await window.api.manga.removeManga(mangaId);
+            // The order of its chapters is not needed anymore.
+            if (removed !== undefined) {
+                useSortPrefsStore.getState().clearListOrder('chapters', mangaListKey(removed.sourceId, removed.remoteId));
+            }
             await get().refreshLibrary();
         },
 

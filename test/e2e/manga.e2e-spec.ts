@@ -3478,7 +3478,7 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await expect(mangaCard.getByRole('button')).toHaveText(['UPDATES', 'LIBRARY']);
     });
 
-    test('keeps the order of the chapters and of the library when the app opens again', async () => {
+    test('keeps the order of the chapters of each manga and of each filter of the library when the app opens again', async () => {
         session = await launch();
         await openManga(session.page);
         await installExtension(session.page);
@@ -3492,11 +3492,22 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await session.page.getByRole('combobox', { name: 'Sort by' }).selectOption('za');
         await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
         await expect(session.page.getByRole('option', { name: 'Z–A' })).toHaveCount(1);
+        // Each filter of the library has its own order: NEW was never ordered, ALL keeps Z–A.
+        const libraryOrder = session.page.getByRole('combobox', { name: 'Sort by' });
+        await session.page.getByRole('button', { name: /^NEW \(/ }).click();
+        await expect(libraryOrder).toHaveValue('recent');
+        await libraryOrder.selectOption('az');
+        await session.page.getByRole('button', { name: /^ALL \(/ }).click();
+        await expect(libraryOrder).toHaveValue('za');
 
         await session.app.close();
         session = await launch();
         await openManga(session.page);
         await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
+        await session.page.getByRole('button', { name: /^NEW \(/ }).click();
+        await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('az');
+        await session.page.getByRole('button', { name: /^ALL \(/ }).click();
         await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
         await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
         await expect(session.page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');

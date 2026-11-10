@@ -1,4 +1,4 @@
-import { NEWS_WINDOW_MS, SPOTLIGHT_LIMIT, LIBRARY_SORTS, animeLastSeen, animeNews, animeSpotlight, animeGroupComplete, filterGroups, isRecent, mangaLastSeen, mangaNews, mangaSpotlight, mixSpotlight, sortGroups, type SpotlightItem } from '@renderer/spotlight/spotlightData';
+import { NEWS_WINDOW_MS, SPOTLIGHT_LIMIT, LIBRARY_FILTERS, LIBRARY_SORTS, animeLastSeen, animeNews, animeSpotlight, animeGroupComplete, filterGroups, isRecent, mangaLastSeen, mangaNews, mangaSpotlight, mixSpotlight, sortGroups, type SpotlightItem } from '@renderer/spotlight/spotlightData';
 import { groupLibrary } from '@renderer/components/mangaText';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { makeAnimeHistory, makeReading } from '../../helpers/homeFixtures';
@@ -18,6 +18,10 @@ describe('the constants', () => {
         expect(NEWS_WINDOW_MS).toBe(7 * DAY);
         expect(SPOTLIGHT_LIMIT).toBe(8);
         expect(LIBRARY_SORTS).toEqual(['recent', 'last', 'az', 'za']);
+    });
+
+    it('has the four filters of the chips over the grid of a library, in the order of the chips', () => {
+        expect(LIBRARY_FILTERS).toEqual(['all', 'news', 'complete', 'ongoing']);
     });
 });
 

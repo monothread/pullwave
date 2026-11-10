@@ -21,6 +21,8 @@ const RESULTS: AnimeSearchResult[] = [
     { index: 2, title: 'Cyberpunk: Edgerunners 2' }
 ];
 
+const RECENT_EVERYWHERE = { all: 'recent', news: 'recent', complete: 'recent', ongoing: 'recent' } as const;
+
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, notice: null });
@@ -603,15 +605,34 @@ describe('AnimeDetail', () => {
             render(<AnimeSearch />);
             await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'desc');
             expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);
-            expect(useSortPrefsStore.getState().list).toEqual({ chapters: 'asc', episodes: 'desc' });
-            expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'recent', manga: 'recent' }, list: { chapters: 'asc', episodes: 'desc' } });
+            expect(useSortPrefsStore.getState().list).toEqual({ chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners': 'desc' } });
+            expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+                library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+                list: { chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners': 'desc' } }
+            });
             await user.click(screen.getByRole('button', { name: 'EP 3' }));
             expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'cyberpunk', index: 1, audio: 'sub', episode: '3' });
         });
 
-        it('starts from the last episode when that is the order kept', () => {
-            useSortPrefsStore.setState({ list: { chapters: 'asc', episodes: 'desc' } });
+        it('starts from the last episode when that is the order kept for this anime', () => {
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners': 'desc' } } });
             open(['1', '2', '3']);
+            render(<AnimeSearch />);
+            expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
+            expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);
+        });
+
+        it('starts from the first episode when the order kept is the one of another anime, or of this one with the other audio', () => {
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners 2': 'desc', 'dub|Cyberpunk: Edgerunners': 'desc' } } });
+            open(['1', '2', '3']);
+            render(<AnimeSearch />);
+            expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('asc');
+            expect(chips()).toEqual(['EP 1', 'EP 2', 'EP 3']);
+        });
+
+        it('follows the audio picked: the same anime has an order for each one', () => {
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'dub|Cyberpunk: Edgerunners': 'desc' } } });
+            open(['1', '2', '3'], { audio: 'dub' });
             render(<AnimeSearch />);
             expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
             expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);

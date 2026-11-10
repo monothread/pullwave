@@ -1,6 +1,6 @@
 import { findCover, flyCoverToLibrary } from '../fx/flyCover';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
-import { inListOrder, useListOrder } from '../store/sortPrefsStore';
+import { inListOrder, mangaListKey, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
@@ -196,8 +196,9 @@ export function MangaDetail() {
         return readerOpen ? {} : loadAllProgress();
     }, [readerOpen]);
 
-    // The order the list shows the chapters in (the reader always goes from the first to the last).
-    const [chapterOrder] = useListOrder('chapters');
+    // The order the list shows the chapters of this manga in (the reader always goes from the first to the last).
+    const orderKey = selection === null ? null : mangaListKey(selection.manga.sourceId, selection.manga.remoteId);
+    const [chapterOrder] = useListOrder('chapters', orderKey);
 
     useDetailBackdrop(selection?.manga.thumbnailUrl ?? null);
     if (selection === null) {
@@ -525,7 +526,7 @@ export function MangaDetail() {
                         />
                     )}
                     <div className="list-order-bar">
-                        <ListOrderSelect kind="chapters" />
+                        <ListOrderSelect kind="chapters" itemKey={mangaListKey(manga.sourceId, manga.remoteId)} />
                     </div>
                     <ul className="episode-cards manga__chapters">
                         {inListOrder(ordered, chapterOrder).map((chapter) => {

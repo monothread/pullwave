@@ -221,8 +221,8 @@ export function MangaLibrary() {
     const [search, setSearch] = useState('');
     const [managing, setManaging] = useState(false);
     const [filter, setFilter] = useState<LibraryFilter>('all');
-    // The order of the grid is kept: it is the same when the app opens again.
-    const [sort, setSort] = useLibrarySort('manga');
+    // The order of the grid is kept for each filter: it is the same when the app opens again.
+    const [sort, setSort] = useLibrarySort('manga', filter);
     // What is new is counted from the time the library opened.
     const [openedAt] = useState(() => {
         return Date.now();

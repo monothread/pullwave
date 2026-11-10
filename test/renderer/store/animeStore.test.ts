@@ -4,6 +4,7 @@ import type { AnimeCheckState, AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, 
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { useAppStore } from '@renderer/store/appStore';
+import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { effectiveAudio, INITIAL_SCHEDULE, INITIAL_SEARCH, MAX_SCHEDULE_SEARCH_NAMES, UNSUPPORTED_STATUS, useAnimeStore, type AnimeScheduleState } from '@renderer/store/animeStore';
 import { makeAnime, makeAnimeJob, makeEpisode, makeScheduleEntry, makeStatus } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -1546,6 +1547,45 @@ describe('jobs and library actions', () => {
         await useAnimeStore.getState().removeAnime(1);
         expect(mock.api.removeAnime).toHaveBeenCalledWith(1);
         expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, animeId: 2 })]);
+    });
+
+    describe('removing an anime forgets the order of its episodes', () => {
+        afterEach(() => {
+            useSortPrefsStore.setState({ library: DEFAULT_SORT_PREFS.library, list: DEFAULT_SORT_PREFS.list });
+            window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
+        });
+
+        it('forgets the order of the anime that was removed, with its audio, and keeps the others', async () => {
+            useAnimeStore.setState({
+                library: [makeAnime([], { id: 1, title: 'Naruto', audio: 'sub' }), makeAnime([], { id: 2, title: 'Naruto', audio: 'dub' }), makeAnime([], { id: 3, title: 'Bleach', audio: 'sub' })]
+            });
+            useSortPrefsStore.setState({
+                list: { chapters: { 'sub|Naruto': 'desc' }, episodes: { 'sub|Naruto': 'desc', 'dub|Naruto': 'desc', 'sub|Bleach': 'desc' } }
+            });
+            await useAnimeStore.getState().removeAnime(1);
+            expect(mock.api.removeAnime).toHaveBeenCalledWith(1);
+            expect(useSortPrefsStore.getState().list).toEqual({ chapters: { 'sub|Naruto': 'desc' }, episodes: { 'dub|Naruto': 'desc', 'sub|Bleach': 'desc' } });
+            expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+                library: DEFAULT_SORT_PREFS.library,
+                list: { chapters: { 'sub|Naruto': 'desc' }, episodes: { 'dub|Naruto': 'desc', 'sub|Bleach': 'desc' } }
+            });
+        });
+
+        it('forgets nothing when the anime is not in the library', async () => {
+            useAnimeStore.setState({ library: [makeAnime([], { id: 3, title: 'Bleach', audio: 'sub' })] });
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Bleach': 'desc' } } });
+            await useAnimeStore.getState().removeAnime(99);
+            expect(mock.api.removeAnime).toHaveBeenCalledWith(99);
+            expect(useSortPrefsStore.getState().list).toEqual({ chapters: {}, episodes: { 'sub|Bleach': 'desc' } });
+        });
+
+        it('does not forget the order when the anime could not be removed', async () => {
+            useAnimeStore.setState({ library: [makeAnime([], { id: 1, title: 'Naruto', audio: 'sub' })] });
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Naruto': 'desc' } } });
+            mock.api.removeAnime.mockRejectedValueOnce(new Error('locked'));
+            await expect(useAnimeStore.getState().removeAnime(1)).rejects.toThrow('locked');
+            expect(useSortPrefsStore.getState().list).toEqual({ chapters: {}, episodes: { 'sub|Naruto': 'desc' } });
+        });
     });
 
     describe('setWatched', () => {

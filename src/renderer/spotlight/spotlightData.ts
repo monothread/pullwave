@@ -145,6 +145,9 @@ export function mixSpotlight(anime: readonly SpotlightItem[], manga: readonly Sp
 
 // The chips over the grid of a library: every title, the ones with something new, and (anime only) the ones whose releases are over or not.
 export type LibraryFilter = 'all' | 'news' | 'complete' | 'ongoing';
+
+export const LIBRARY_FILTERS: readonly LibraryFilter[] = ['all', 'news', 'complete', 'ongoing'];
+
 // The order of the grid of a library: the titles added last, the ones watched or read last, or by name (A to Z or Z to A).
 export type LibrarySort = 'recent' | 'last' | 'az' | 'za';
 

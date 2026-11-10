@@ -10,6 +10,7 @@ import { createTranslator, type MessageKey, type MessageParams } from '@shared/i
 import { resolveAppLanguage } from '../i18n/language';
 import { downloadedEpisodeCount, groupLibrary, isRepairable, libraryEntry, libraryProblems, nextListedEpisode, type AudioReport } from '../components/animeText';
 import { useAppStore } from './appStore';
+import { animeListKey, useSortPrefsStore } from './sortPrefsStore';
 
 export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads';
 // The views the downloads screen can go back to.
@@ -929,7 +930,14 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         removeAnime: async (animeId) => {
+            const removed = get().library.find((candidate) => {
+                return candidate.id === animeId;
+            });
             await window.api.removeAnime(animeId);
+            // The order of its episodes is not needed anymore.
+            if (removed !== undefined) {
+                useSortPrefsStore.getState().clearListOrder('episodes', animeListKey(removed.title, removed.audio));
+            }
             set((state) => {
                 return {
                     jobs: state.jobs.filter((job) => {

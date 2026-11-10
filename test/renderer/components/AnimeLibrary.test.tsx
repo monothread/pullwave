@@ -22,7 +22,7 @@ beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS });
     useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, jobs: [], library: [], search: INITIAL_SEARCH, selection: null, playing: null });
-    useSortPrefsStore.setState({ library: { ...DEFAULT_SORT_PREFS.library }, list: { ...DEFAULT_SORT_PREFS.list } });
+    useSortPrefsStore.setState({ library: DEFAULT_SORT_PREFS.library, list: DEFAULT_SORT_PREFS.list });
     window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
 });
 
@@ -458,7 +458,7 @@ describe('AnimeLibrary', () => {
             expect(mock.api.openAnimeFolder).not.toHaveBeenCalled();
         });
 
-        it('lists the episodes of the season from the first, or from the last when the user chooses it, and keeps the choice', async () => {
+        it('lists the episodes of the season from the first, or from the last when the user chooses it, and keeps the choice for that anime', async () => {
             const user = userEvent.setup();
             const anime = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' }), makeEpisode({ id: 3, number: '3' })], { id: 1, title: 'Naruto' });
             useAnimeStore.setState({ library: [anime] });
@@ -477,12 +477,12 @@ describe('AnimeLibrary', () => {
             expect(episodes()).toEqual(['EP 1', 'EP 2', 'EP 3']);
             await user.selectOptions(order, 'desc');
             expect(episodes()).toEqual(['EP 3', 'EP 2', 'EP 1']);
-            expect(useSortPrefsStore.getState().list).toEqual({ chapters: 'asc', episodes: 'desc' });
+            expect(useSortPrefsStore.getState().list).toEqual({ chapters: {}, episodes: { 'sub|Naruto': 'desc' } });
         });
 
-        it('starts the episodes of the season from the last one when that is the order kept', async () => {
+        it('starts the episodes of the season from the last one when that is the order kept for that anime', async () => {
             const user = userEvent.setup();
-            useSortPrefsStore.setState({ list: { chapters: 'asc', episodes: 'desc' } });
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Naruto': 'desc' } } });
             useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' })], { id: 1, title: 'Naruto' })] });
             render(<AnimeLibrary />);
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
@@ -490,6 +490,34 @@ describe('AnimeLibrary', () => {
             expect(screen.getAllByTestId('anime-episode').map((row) => {
                 return row.textContent?.match(/EP \d+/)?.[0] ?? '';
             })).toEqual(['EP 2', 'EP 1']);
+        });
+
+        it('keeps the order of the episodes of each anime on its own: another anime starts from the first one', async () => {
+            const user = userEvent.setup();
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Naruto': 'desc' } } });
+            const episodes = [makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' })];
+            useAnimeStore.setState({
+                library: [
+                    makeAnime(episodes, { id: 1, title: 'Naruto', audio: 'sub' }),
+                    makeAnime(episodes, { id: 2, title: 'Bleach', audio: 'sub' })
+                ]
+            });
+            render(<AnimeLibrary />);
+            const shown = (): string[] => {
+                return within(screen.getByTestId('season-view')).getAllByTestId('anime-episode').map((row) => {
+                    return row.textContent?.match(/EP \d+/)?.[0] ?? '';
+                });
+            };
+            for (const [title, expected] of [
+                ['Naruto', ['EP 2', 'EP 1']],
+                ['Bleach', ['EP 1', 'EP 2']]
+            ] as const) {
+                await user.click(screen.getByRole('button', { name: `OPEN SERIES: ${title}` }));
+                await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+                expect(shown()).toEqual(expected);
+                await user.click(screen.getByRole('button', { name: 'BACK' }));
+                await user.click(screen.getByRole('button', { name: 'BACK TO LIBRARY' }));
+            }
         });
 
         it('keeps the secondary buttons and the editor of a season inside it, and the main ones on its row', async () => {
@@ -2344,6 +2372,8 @@ describe('AnimeLibrary the releases of an anime', () => {
     });
 });
 
+const RECENT_EVERYWHERE = { all: 'recent', news: 'recent', complete: 'recent', ongoing: 'recent' } as const;
+
 describe('AnimeLibrary: the highlights, the filters and the order', () => {
     const DAY = 24 * 60 * 60 * 1000;
     const SOLO = makeAnime([makeEpisode({ id: 1, number: '1', addedAt: Date.now() - DAY })], { id: 1, title: 'Solo', createdAt: 5 });
@@ -2384,8 +2414,11 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
     it('keeps the order chosen, for the next time the library opens and for the next time the app opens', async () => {
         const { unmount } = render(<AnimeLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'za');
-        expect(useSortPrefsStore.getState().library).toEqual({ anime: 'za', manga: 'recent' });
-        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'za', manga: 'recent' }, list: { chapters: 'asc', episodes: 'asc' } });
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: { ...RECENT_EVERYWHERE, all: 'za' }, manga: RECENT_EVERYWHERE });
+        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+            library: { anime: { ...RECENT_EVERYWHERE, all: 'za' }, manga: RECENT_EVERYWHERE },
+            list: { chapters: {}, episodes: {} }
+        });
         unmount();
         render(<AnimeLibrary />);
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
@@ -2393,10 +2426,33 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
     });
 
     it('starts with the order kept', () => {
-        useSortPrefsStore.setState({ library: { anime: 'az', manga: 'recent' } });
+        useSortPrefsStore.setState({ library: { anime: { ...RECENT_EVERYWHERE, all: 'az' }, manga: RECENT_EVERYWHERE } });
         render(<AnimeLibrary />);
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('az');
         expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
+    });
+
+    it('keeps the order of each filter on its own: choosing a filter shows the order it was left with', async () => {
+        render(<AnimeLibrary />);
+        const order = (): HTMLElement => {
+            return screen.getByRole('combobox', { name: 'Sort by' });
+        };
+        await userEvent.selectOptions(order(), 'za');
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (1)' }));
+        expect(order()).toHaveValue('recent');
+        await userEvent.selectOptions(order(), 'last');
+        expect(useSortPrefsStore.getState().library.anime).toEqual({ ...RECENT_EVERYWHERE, all: 'za', news: 'last' });
+        await userEvent.click(screen.getByRole('button', { name: 'ALL (3)' }));
+        expect(order()).toHaveValue('za');
+        expect(cardNames()).toEqual(['Solo', 'Saga', 'Alpha Old']);
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (1)' }));
+        expect(order()).toHaveValue('last');
+    });
+
+    it('does not change the order of the filters of the manga library', async () => {
+        render(<AnimeLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
+        expect(useSortPrefsStore.getState().library.manga).toEqual(RECENT_EVERYWHERE);
     });
 
     it('shows the titles watched last first, then the ones never watched as the ones added last', async () => {

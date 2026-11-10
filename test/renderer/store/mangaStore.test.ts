@@ -3,6 +3,7 @@ import { useFxStore } from '@renderer/fx/fxStore';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { MangaError, MangaFilter } from '@shared/manga';
 import { useAppStore } from '@renderer/store/appStore';
+import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { DONE_JOB_LINGER_MS, UPDATE_ALL_KEY, upsertMangaJob, useMangaStore } from '@renderer/store/mangaStore';
 import type { MangaSourcePreference } from '@shared/manga';
 import { makeChapter, makeChapterRecord, makeDetails, makeExtension, makeLibraryManga, makeMangaJob, makeMangaStatus, makeSource, makeSummary, makeTool } from '../../helpers/mangaFixtures';
@@ -883,6 +884,49 @@ describe('mangaStore opening a manga', () => {
         await state().searchByTerm('   ');
         expect(mock.api.manga.sourceFilters).not.toHaveBeenCalled();
         expect(state().selection).not.toBeNull();
+    });
+});
+
+describe('mangaStore removing a manga forgets the order of its chapters', () => {
+    afterEach(() => {
+        useSortPrefsStore.setState({ library: DEFAULT_SORT_PREFS.library, list: DEFAULT_SORT_PREFS.list });
+        window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
+    });
+
+    it('forgets the order of the manga that was removed, by its source and id, and keeps the others', async () => {
+        useMangaStore.setState({
+            library: [
+                makeLibraryManga([], { id: 4, sourceId: '123', remoteId: 7 }),
+                makeLibraryManga([], { id: 5, sourceId: '123', remoteId: 8 }),
+                makeLibraryManga([], { id: 6, sourceId: '124', remoteId: 7 })
+            ]
+        });
+        useSortPrefsStore.setState({
+            list: { chapters: { '123:7': 'desc', '123:8': 'desc', '124:7': 'desc' }, episodes: { '123:7': 'desc' } }
+        });
+        await state().removeManga(4);
+        expect(mock.api.manga.removeManga).toHaveBeenCalledWith(4);
+        expect(useSortPrefsStore.getState().list).toEqual({ chapters: { '123:8': 'desc', '124:7': 'desc' }, episodes: { '123:7': 'desc' } });
+        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+            library: DEFAULT_SORT_PREFS.library,
+            list: { chapters: { '123:8': 'desc', '124:7': 'desc' }, episodes: { '123:7': 'desc' } }
+        });
+    });
+
+    it('forgets nothing when the manga is not in the library', async () => {
+        useMangaStore.setState({ library: [makeLibraryManga([], { id: 5, sourceId: '123', remoteId: 8 })] });
+        useSortPrefsStore.setState({ list: { chapters: { '123:8': 'desc' }, episodes: {} } });
+        await state().removeManga(99);
+        expect(mock.api.manga.removeManga).toHaveBeenCalledWith(99);
+        expect(useSortPrefsStore.getState().list).toEqual({ chapters: { '123:8': 'desc' }, episodes: {} });
+    });
+
+    it('does not forget the order when the manga could not be removed', async () => {
+        useMangaStore.setState({ library: [makeLibraryManga([], { id: 4, sourceId: '123', remoteId: 7 })] });
+        useSortPrefsStore.setState({ list: { chapters: { '123:7': 'desc' }, episodes: {} } });
+        mock.api.manga.removeManga.mockRejectedValueOnce(new Error('locked'));
+        await expect(state().removeManga(4)).rejects.toThrow('locked');
+        expect(useSortPrefsStore.getState().list).toEqual({ chapters: { '123:7': 'desc' }, episodes: {} });
     });
 });
 

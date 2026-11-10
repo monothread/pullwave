@@ -25,6 +25,8 @@ const ONE_PIECE = makeLibraryManga(
     { id: 9 }
 );
 
+const RECENT_EVERYWHERE = { all: 'recent', news: 'recent', complete: 'recent', ongoing: 'recent' } as const;
+
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, toasts: [] });
@@ -754,8 +756,11 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
     it('keeps the order chosen, for the next time the library opens and for the next time the app opens', async () => {
         const { unmount } = render(<MangaLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
-        expect(useSortPrefsStore.getState().library).toEqual({ anime: 'recent', manga: 'az' });
-        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({ library: { anime: 'recent', manga: 'az' }, list: { chapters: 'asc', episodes: 'asc' } });
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, all: 'az' } });
+        expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+            library: { anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, all: 'az' } },
+            list: { chapters: {}, episodes: {} }
+        });
         unmount();
         render(<MangaLibrary />);
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('az');
@@ -763,10 +768,33 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
     });
 
     it('starts with the order kept', () => {
-        useSortPrefsStore.setState({ library: { anime: 'recent', manga: 'za' } });
+        useSortPrefsStore.setState({ library: { anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, all: 'za' } } });
         render(<MangaLibrary />);
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
         expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
+    });
+
+    it('keeps the order of each filter on its own: choosing a filter shows the order it was left with', async () => {
+        render(<MangaLibrary />);
+        const order = (): HTMLElement => {
+            return screen.getByRole('combobox', { name: 'Sort by' });
+        };
+        await userEvent.selectOptions(order(), 'za');
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (1)' }));
+        expect(order()).toHaveValue('recent');
+        await userEvent.selectOptions(order(), 'last');
+        expect(useSortPrefsStore.getState().library.manga).toEqual({ ...RECENT_EVERYWHERE, all: 'za', news: 'last' });
+        await userEvent.click(screen.getByRole('button', { name: 'ALL (2)' }));
+        expect(order()).toHaveValue('za');
+        expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
+        await userEvent.click(screen.getByRole('button', { name: 'NEW (1)' }));
+        expect(order()).toHaveValue('last');
+    });
+
+    it('does not change the order of the filters of the anime library', async () => {
+        render(<MangaLibrary />);
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
+        expect(useSortPrefsStore.getState().library.anime).toEqual(RECENT_EVERYWHERE);
     });
 
     it('shows the mangas read last first', async () => {
