@@ -331,6 +331,7 @@ export const ja: Messages = {
     'theme.pink-noir': 'ピンクノワール（黒にピンク）',
     'theme.cyber-gold': 'サイバーゴールド（イエロー）',
     'theme.ice-neon': 'アイスネオン（アイシーシアン）',
+    'theme.neon-tokyo-light': 'ネオン東京・ライト（ピンクとブルー・ライト）',
     'theme.tokyo-night': 'Tokyo Night',
     'theme.nord': 'Nord',
     'theme.dracula': 'Dracula',

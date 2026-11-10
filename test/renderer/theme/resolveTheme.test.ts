@@ -41,6 +41,7 @@ describe('resolveTheme', () => {
         ['pink-noir', true, 'pink-noir'],
         ['cyber-gold', false, 'cyber-gold'],
         ['ice-neon', true, 'ice-neon'],
+        ['neon-tokyo-light', false, 'neon-tokyo-light'],
         ['tokyo-night', false, 'tokyo-night'],
         ['nord', true, 'nord'],
         ['dracula', false, 'dracula'],
@@ -96,6 +97,7 @@ describe('applyTheme', () => {
         ['pink-noir', 'neon'],
         ['cyber-gold', 'neon'],
         ['ice-neon', 'neon'],
+        ['neon-tokyo-light', 'neon'],
         ['dark', 'flat'],
         ['tokyo-night', 'flat'],
         ['nord', 'flat'],
@@ -138,7 +140,7 @@ describe('remembering the theme', () => {
         expect(rememberedTheme()).toBe('light');
     });
 
-    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'sakura', 'sakura-dark'] as const)('stores %s and reads it back', (theme) => {
+    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'sakura', 'sakura-dark'] as const)('stores %s and reads it back', (theme) => {
         rememberTheme(theme);
         expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe(theme);
         expect(rememberedTheme()).toBe(theme);

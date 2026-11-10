@@ -443,7 +443,7 @@ describe('sanitizeSettings', () => {
 });
 
 describe('sanitizeSettings theme', () => {
-    it.each(['device', 'cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'])('keeps the %s theme', (theme) => {
+    it.each(['device', 'cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'])('keeps the %s theme', (theme) => {
         expect(sanitizeSettings({ theme }).theme).toBe(theme);
     });
 
@@ -457,7 +457,7 @@ describe('sanitizeSettings theme', () => {
     });
 
     it('offers the twenty-one themes, in the order of the list', () => {
-        expect(THEMES).toEqual(['device', 'cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']);
+        expect(THEMES).toEqual(['device', 'cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']);
     });
 });
 

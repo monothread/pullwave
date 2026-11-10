@@ -31,6 +31,7 @@ const THEME_STYLES: Record<string, 'neon' | 'flat'> = {
     'pink-noir': 'neon',
     'cyber-gold': 'neon',
     'ice-neon': 'neon',
+    'neon-tokyo-light': 'neon',
     dark: 'flat',
     'tokyo-night': 'flat',
     nord: 'flat',
@@ -595,6 +596,7 @@ test('every theme keeps its own colours under the layer: background, accent of t
         'pink-noir': 'rgb(5, 5, 5)',
         'cyber-gold': 'rgb(8, 6, 0)',
         'ice-neon': 'rgb(2, 17, 26)',
+        'neon-tokyo-light': 'rgb(243, 240, 251)',
         dark: 'rgb(22, 24, 29)',
         'tokyo-night': 'rgb(26, 27, 38)',
         nord: 'rgb(46, 52, 64)',
@@ -618,6 +620,6 @@ test('every theme keeps its own colours under the layer: background, accent of t
         });
         expect(look.background, theme).toBe(expected[theme]);
         expect(look.barImage, theme).toContain('linear-gradient');
-        expect(look.aurora, theme).toBe(theme === 'amoled' || theme === 'high-contrast' ? '0' : THEME_STYLES[theme] === 'neon' ? '0.8' : theme === 'light' || theme === 'sakura' ? '0.35' : '0.55');
+        expect(look.aurora, theme).toBe(theme === 'amoled' || theme === 'high-contrast' ? '0' : theme === 'light' || theme === 'sakura' || theme === 'neon-tokyo-light' ? '0.35' : THEME_STYLES[theme] === 'neon' ? '0.8' : '0.55');
     }
 });

@@ -331,6 +331,7 @@ export const zh: Messages = {
     'theme.pink-noir': '粉色黑色电影（黑底粉色）',
     'theme.cyber-gold': '赛博金（黄色）',
     'theme.ice-neon': '冰霓虹（冰青色）',
+    'theme.neon-tokyo-light': '东京霓虹·浅色（粉蓝，浅色）',
     'theme.tokyo-night': 'Tokyo Night',
     'theme.nord': 'Nord',
     'theme.dracula': 'Dracula',

@@ -185,6 +185,10 @@ describe('bp-shell.css', () => {
         expect(styleOf(shell, ":root[data-theme='amoled'] .backdrop")).toEqual({ display: 'none' });
     });
 
+    it.each(['light', 'sakura', 'neon-tokyo-light'])('makes the cover behind the screen paler in the %s theme', (theme) => {
+        expect(styleOf(shell, `:root[data-theme='${theme}'] .backdrop__image`)).toEqual({ opacity: '0.22' });
+    });
+
     it('names the page and the covers for a change of page only while it is animated', () => {
         expect(styleOf(shell, '.vt-active .app__main')).toEqual({ 'view-transition-name': 'bp-page' });
         ['.vt-cover', '.vt-active .series.detail > .detail__art .cover', '.vt-active .manga__head.detail-hero .cover', '.vt-active .detail-screen .series__cover .cover'].forEach((selector) => {

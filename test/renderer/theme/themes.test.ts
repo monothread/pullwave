@@ -14,7 +14,7 @@ const LISTED = THEMES.filter((theme) => {
     return theme !== 'device' && theme !== 'cyberpunk';
 }) as Array<Exclude<ThemeName, 'device' | 'cyberpunk'>>;
 
-const LIGHT_THEMES: readonly ThemeName[] = ['light', 'sakura'];
+const LIGHT_THEMES: readonly ThemeName[] = ['light', 'sakura', 'neon-tokyo-light'];
 const ACCENTS = ['--cyan', '--magenta', '--yellow', '--red', '--green'] as const;
 const SURFACES = ['--bg', '--panel', '--panel-2', '--input-bg'] as const;
 const MIN_CONTRAST = 4.5;
@@ -109,6 +109,76 @@ describe('Sakura Dark', () => {
     });
 });
 
+describe('Neon Tokyo Light', () => {
+    const neon = themeVariables('neon-tokyo');
+    const light = themeVariables('neon-tokyo-light');
+
+    it('is the light version of Neon Tokyo: neon style, on a pale lavender background, telling the browser it is light', () => {
+        expect(THEME_STYLES['neon-tokyo-light']).toBe('neon');
+        expect(light['color-scheme']).toBe('light');
+        expect(light['--bg']).toBe('#f3f0fb');
+        expect(light['--panel']).toBe('#ffffff');
+        expect(light['--text']).toBe('#1a1440');
+        // The surfaces are lighter than the text, which is the opposite of Neon Tokyo.
+        expect(luminance(color(light, '--bg'))).toBeGreaterThan(0.8);
+        expect(luminance(color(light, '--bg'))).toBeGreaterThan(luminance(color(light, '--text')));
+        expect(luminance(color(neon, '--bg'))).toBeLessThan(0.02);
+    });
+
+    it('keeps the pink as the main accent and the blue as the second one, both darker than in Neon Tokyo so they can be read', () => {
+        expect(light['--cyan']).toBe('#c8006a');
+        expect(light['--magenta']).toBe('#1f5fd6');
+        expect(luminance(color(light, '--cyan'))).toBeLessThan(luminance(color(neon, '--cyan')));
+        expect(luminance(color(light, '--magenta'))).toBeLessThan(luminance(color(neon, '--magenta')));
+    });
+
+    it('keeps the monospace font, the cut corners and the thin scanlines of the neon style, drawn in the dark ink of the theme', () => {
+        expect(light['--font']).toBe(neon['--font']);
+        expect(light['--font']).toBe(themeVariables('cyberpunk')['--font']);
+        expect(light['--cut']).toBe('8px');
+        expect(light['--scanlines']).toBe('repeating-linear-gradient(to bottom, rgba(26, 20, 64, 0.03) 0, rgba(26, 20, 64, 0.03) 1px, transparent 1px, transparent 3px)');
+    });
+
+    it('swaps the bright glow for a soft halo in the color of each accent', () => {
+        expect(light['--glow']).toBe('0 0 12px rgba(200, 0, 106, 0.22)');
+        expect(light['--glow-strong']).toBe('0 0 14px rgba(200, 0, 106, 0.35)');
+        expect(light['--glow-hot']).toBe('0 0 16px rgba(31, 95, 214, 0.35)');
+        expect(light['--glow-red']).toBe('0 0 12px rgba(196, 22, 63, 0.2)');
+        expect(light['--glow-yellow']).toBe('0 0 12px rgba(138, 90, 0, 0.2)');
+        expect(light['--glow-green']).toBe('0 0 12px rgba(8, 112, 72, 0.2)');
+        expect(light['--glow-inset']).toBe('inset 0 0 30px rgba(200, 0, 106, 0.04)');
+        expect(light['--text-glow']).toBe('0 0 5px rgba(200, 0, 106, 0.14)');
+        expect(light['--logo-glow']).toBe('0 0 6px rgba(200, 0, 106, 0.35), 0 0 18px rgba(200, 0, 106, 0.25)');
+    });
+
+    it('tints the panels in the color of each accent, and paints a light sky behind the screen', () => {
+        expect(light['--tint-cyan']).toBe('rgba(200, 0, 106, 0.07)');
+        expect(light['--tint-red']).toBe('rgba(196, 22, 63, 0.08)');
+        expect(light['--tint-yellow']).toBe('rgba(138, 90, 0, 0.09)');
+        expect(light['--tint-green']).toBe('rgba(8, 112, 72, 0.07)');
+        expect(light['--toast-error-text']).toBe('#7a0a26');
+        expect(light['--body-bg']).toContain('#e3d8ff');
+        expect(light['--body-bg']).toContain('#d6e6ff');
+        expect(light['--body-bg']).toContain('var(--bg)');
+    });
+
+    it('is the only neon theme on a light background', () => {
+        const lightNeon = LISTED.filter((theme) => {
+            return THEME_STYLES[theme] === 'neon' && themeVariables(theme)['color-scheme'] === 'light';
+        });
+        expect(lightNeon).toEqual(['neon-tokyo-light']);
+        expect(THEMES.indexOf('neon-tokyo-light')).toBe(THEMES.indexOf('ice-neon') + 1);
+    });
+
+    it('is not the same palette as Neon Tokyo or as the other light themes', () => {
+        ['neon-tokyo', 'light', 'sakura'].forEach((theme) => {
+            const other = themeVariables(theme as ThemeName);
+            expect(other['--bg'], theme).not.toBe(light['--bg']);
+            expect(other['--cyan'], theme).not.toBe(light['--cyan']);
+        });
+    });
+});
+
 describe('the neon variations of the cyberpunk theme', () => {
     // The two colors that paint each variation (--cyan is the main accent, --magenta the second), its background and the color of its glow.
     const VARIATIONS = [
@@ -189,7 +259,7 @@ describe('the style of each theme', () => {
         expect(variables['--body-bg']).toBe('var(--bg)');
     });
 
-    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon'] as const)('%s is neon: it has a glow and scanlines, and the monospace font of the cyberpunk theme', (theme) => {
+    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light'] as const)('%s is neon: it has a glow and scanlines, and the monospace font of the cyberpunk theme', (theme) => {
         const variables = themeVariables(theme);
         ['--glow', '--glow-strong', '--glow-hot', '--glow-red', '--glow-yellow', '--glow-green', '--glow-inset', '--text-glow', '--logo-glow', '--scanlines'].forEach((name) => {
             expect(variables[name], name).not.toBe('none');

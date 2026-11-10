@@ -206,7 +206,7 @@ describe('App theme', () => {
         Reflect.deleteProperty(window, 'matchMedia');
     });
 
-    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('applies the %s theme, with its style, from the stored settings', async (theme) => {
+    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('applies the %s theme, with its style, from the stored settings', async (theme) => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
         render(<App />);
         await openDownloader();
@@ -242,7 +242,7 @@ describe('App theme', () => {
         expect(document.documentElement.dataset.theme).toBe('dark');
     });
 
-    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('does not follow the system with the %s theme', async (theme) => {
+    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('does not follow the system with the %s theme', async (theme) => {
         mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
         render(<App />);
         await openDownloader();

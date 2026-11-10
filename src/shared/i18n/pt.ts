@@ -331,6 +331,7 @@ export const pt: Messages = {
     'theme.pink-noir': 'Noir Rosa (rosa no preto)',
     'theme.cyber-gold': 'Ouro Cyber (amarelo)',
     'theme.ice-neon': 'Neon Gelo (ciano gelado)',
+    'theme.neon-tokyo-light': 'Neon Tokyo Claro (rosa e azul, claro)',
     'theme.tokyo-night': 'Tokyo Night',
     'theme.nord': 'Nord',
     'theme.dracula': 'Dracula',

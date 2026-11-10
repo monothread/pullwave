@@ -702,6 +702,44 @@
     color-scheme: dark;
 }
 
+/* Neon Tokyo Light: the pink and the blue of Neon Tokyo, darkened to be read, on a pale lavender background. It keeps the monospace font, the cut
+   corners and the scanlines (dark and thin here); the glow is a soft colored halo, since a bright glow cannot be seen on a light background. */
+:root[data-theme='neon-tokyo-light'] {
+    --bg: #f3f0fb;
+    --panel: #ffffff;
+    --panel-2: #ece7f9;
+    --line: #a99bd8;
+    --text: #1a1440;
+    --muted: #52497f;
+    --cyan: #c8006a;
+    --magenta: #1f5fd6;
+    --yellow: #8a5a00;
+    --red: #c4163f;
+    --green: #087048;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', monospace;
+    --input-bg: #ffffff;
+    --code-bg: #ece7f9;
+    --on-accent: #ffffff;
+    --glow: 0 0 12px rgba(200, 0, 106, 0.22);
+    --glow-strong: 0 0 14px rgba(200, 0, 106, 0.35);
+    --glow-hot: 0 0 16px rgba(31, 95, 214, 0.35);
+    --glow-red: 0 0 12px rgba(196, 22, 63, 0.2);
+    --glow-yellow: 0 0 12px rgba(138, 90, 0, 0.2);
+    --glow-green: 0 0 12px rgba(8, 112, 72, 0.2);
+    --glow-inset: inset 0 0 30px rgba(200, 0, 106, 0.04);
+    --text-glow: 0 0 5px rgba(200, 0, 106, 0.14);
+    --logo-glow: 0 0 6px rgba(200, 0, 106, 0.35), 0 0 18px rgba(200, 0, 106, 0.25);
+    --tint-cyan: rgba(200, 0, 106, 0.07);
+    --tint-red: rgba(196, 22, 63, 0.08);
+    --tint-yellow: rgba(138, 90, 0, 0.09);
+    --tint-green: rgba(8, 112, 72, 0.07);
+    --toast-error-text: #7a0a26;
+    --body-bg: radial-gradient(1100px 560px at 82% -12%, #e3d8ff 0%, transparent 62%), radial-gradient(900px 500px at -8% 112%, #d6e6ff 0%, transparent 58%), radial-gradient(1200px 520px at 50% 120%, rgba(255, 46, 151, 0.12) 0%, transparent 60%), var(--bg);
+    --scanlines: repeating-linear-gradient(to bottom, rgba(26, 20, 64, 0.03) 0, rgba(26, 20, 64, 0.03) 1px, transparent 1px, transparent 3px);
+    --cut: 8px;
+    color-scheme: light;
+}
+
 :root[data-theme-style='flat'] .logo {
     letter-spacing: 2px;
 }

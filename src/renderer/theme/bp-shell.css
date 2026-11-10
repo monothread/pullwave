@@ -463,7 +463,8 @@
 }
 
 :root[data-theme='light'] .backdrop__image,
-:root[data-theme='sakura'] .backdrop__image {
+:root[data-theme='sakura'] .backdrop__image,
+:root[data-theme='neon-tokyo-light'] .backdrop__image {
     opacity: 0.22;
 }
 

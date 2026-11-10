@@ -86,6 +86,7 @@ export type ThemeName =
     | 'pink-noir'
     | 'cyber-gold'
     | 'ice-neon'
+    | 'neon-tokyo-light'
     | 'dark'
     | 'tokyo-night'
     | 'nord'

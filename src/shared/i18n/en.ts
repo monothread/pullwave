@@ -339,6 +339,7 @@ export const en = {
     'theme.pink-noir': 'Pink Noir (pink on black)',
     'theme.cyber-gold': 'Cyber Gold (yellow)',
     'theme.ice-neon': 'Ice Neon (icy cyan)',
+    'theme.neon-tokyo-light': 'Neon Tokyo Light (pink and blue, light)',
     'theme.tokyo-night': 'Tokyo Night',
     'theme.nord': 'Nord',
     'theme.dracula': 'Dracula',

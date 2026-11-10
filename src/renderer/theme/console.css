@@ -37,7 +37,8 @@
 
 /* The light themes have soft shadows and a pale aurora. */
 :root[data-theme='light'],
-:root[data-theme='sakura'] {
+:root[data-theme='sakura'],
+:root[data-theme='neon-tokyo-light'] {
     --bp-shadow: 0 10px 26px -16px rgba(31, 36, 48, 0.35);
     --bp-shadow-hover: 0 16px 34px -18px color-mix(in srgb, var(--cyan) 60%, transparent);
     --bp-aurora-opacity: 0.35;

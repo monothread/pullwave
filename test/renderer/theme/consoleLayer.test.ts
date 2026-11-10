@@ -76,7 +76,7 @@ describe('the console layer: tokens', () => {
         expect(styleOf(sheet, ":root[data-theme-style='neon']")).toEqual({ '--bp-radius': '3px', '--bp-radius-small': '2px', '--bp-aurora-opacity': '0.8' });
     });
 
-    it.each(["light", "sakura"])('gives the %s theme soft shadows and a pale aurora', (theme) => {
+    it.each(["light", "sakura", "neon-tokyo-light"])('gives the %s theme soft shadows and a pale aurora', (theme) => {
         expect(styleOf(sheet, `:root[data-theme='${theme}']`)).toEqual({
             '--bp-shadow': '0 10px 26px -16px rgba(31, 36, 48, 0.35)',
             '--bp-shadow-hover': '0 16px 34px -18px color-mix(in srgb, var(--cyan) 60%, transparent)',

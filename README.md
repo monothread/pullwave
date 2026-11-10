@@ -250,7 +250,7 @@ Use it only for content you have the right to download; see [DISCLAIMER.md](DISC
 
 ## Settings, themes and languages
 Settings are saved as you change them. The ⚙ of the top bar has the ones of the whole app:
-- **Theme:** Device (follows your system, the default) or one of twenty: the neon ones (Cyberpunk, Synthwave, Terminal in phosphor green, and seven more: Neon Tokyo, Acid Rain, Amber City, Ultraviolet, Pink Noir, Cyber Gold, Ice Neon) and the flat ones, dark (Dark, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED in pure black, High contrast, Sakura Dark) or light (Light, Sakura). In the neon themes the controls float over the video in fullscreen with a progress bar that glows in the colors of the theme.
+- **Theme:** Device (follows your system, the default) or one of twenty-one: the neon ones (Cyberpunk, Synthwave, Terminal in phosphor green, and eight more: Neon Tokyo, Acid Rain, Amber City, Ultraviolet, Pink Noir, Cyber Gold, Ice Neon and Neon Tokyo Light, the only neon one on a light background) and the flat ones, dark (Dark, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED in pure black, High contrast, Sakura Dark) or light (Light, Sakura). In the neon themes the controls float over the video in fullscreen with a progress bar that glows in the colors of the theme.
 - **Language:** Device (follows your system, the default), English, Português, Español, 中文 or 日本語. The whole app changes right away.
 - **System tray:** keep the app running in the tray when you close the window.
 - **App updates:** check for new versions on startup, or now.
