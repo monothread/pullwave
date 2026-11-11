@@ -1,9 +1,9 @@
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { findFreePort, HEALTH_QUERY, SuwayomiServer, SuwayomiServerError, type SuwayomiServerDependencies, type SuwayomiServerStatus } from '@main/services/tools/suwayomiServer';
+import { findFreePort, HEALTH_QUERY, SuwayomiServer, WEBVIEW_LEFTOVER, SuwayomiServerError, type SuwayomiServerDependencies, type SuwayomiServerStatus } from '@main/services/tools/suwayomiServer';
 import { suwayomiSpec } from '@main/services/tools/suwayomiRelease';
 import { LogHub, processLogs } from '@main/services/logHub';
 import { createFakeLogWriter } from '../../../helpers/fakeLogWriter';
@@ -73,6 +73,17 @@ function setup(overrides: Partial<SuwayomiServerDependencies> & { answers?: Arra
     return { server, dir, installDirectory, dataDirectory, launches, processes, statuses, requests, fetchImpl, killGroup };
 }
 
+// The arguments of the JVM of every start: IPv4 only, native access for the jar, the data folder and the jar.
+function expectedArgs(installDirectory: string, dataDirectory: string): string[] {
+    return [
+        '-Djava.net.preferIPv4Stack=true',
+        '--enable-native-access=ALL-UNNAMED',
+        `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`,
+        '-jar',
+        join(installDirectory, 'bin', 'Suwayomi-Server.jar')
+    ];
+}
+
 afterEach(() => {
     vi.restoreAllMocks();
     cleanTempDirs();
@@ -89,7 +100,7 @@ describe('SuwayomiServer', () => {
         expect(server.baseUrl).toBe(address);
         expect(launches).toHaveLength(1);
         expect(launches[0]?.command).toBe(join(installDirectory, 'jre', 'bin', 'java'));
-        expect(launches[0]?.args).toEqual(['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`, '-jar', join(installDirectory, 'bin', 'Suwayomi-Server.jar')]);
+        expect(launches[0]?.args).toEqual(expectedArgs(installDirectory, dataDirectory));
         expect(launches[0]?.options).toMatchObject({ cwd: dataDirectory, windowsHide: true, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
         expect(statuses).toEqual(['starting', 'running']);
         expect(requests[0]?.url).toBe(`${address}/api/graphql`);
@@ -111,7 +122,7 @@ describe('SuwayomiServer', () => {
         await withHelper.server.ensureRunning();
         await withHelper.server.stop();
         await withHelper.server.ensureRunning();
-        const expectedWithHelper = ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${withHelper.dataDirectory}`, '-jar', join(withHelper.installDirectory, 'bin', 'Suwayomi-Server.jar')];
+        const expectedWithHelper = expectedArgs(withHelper.installDirectory, withHelper.dataDirectory);
         expect(
             withHelper.launches.map((launch) => {
                 return launch.args;
@@ -119,17 +130,17 @@ describe('SuwayomiServer', () => {
         ).toEqual([expectedWithHelper, expectedWithHelper]);
         const withoutHelper = setup();
         await withoutHelper.server.ensureRunning();
-        expect(withoutHelper.launches[0]?.args).toEqual(['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${withoutHelper.dataDirectory}`, '-jar', join(withoutHelper.installDirectory, 'bin', 'Suwayomi-Server.jar')]);
+        expect(withoutHelper.launches[0]?.args).toEqual(expectedArgs(withoutHelper.installDirectory, withoutHelper.dataDirectory));
     });
 
     it('uses the Windows names and no process group on Windows', async () => {
-        const { server, launches, installDirectory } = setup({
+        const { server, launches, installDirectory, dataDirectory } = setup({
             platform: 'win32',
             environment: { SystemRoot: 'C:\\Windows', TEMP: 'C:\\Temp', SECRET: 'x', Path: 'C:\\x' }
         });
         await server.ensureRunning();
         expect(launches[0]?.command).toBe(join(installDirectory, 'jre', 'bin', 'java.exe'));
-        expect(launches[0]?.args[0]).toBe('-Djava.net.preferIPv4Stack=true');
+        expect(launches[0]?.args).toEqual(expectedArgs(installDirectory, dataDirectory));
         expect(launches[0]?.options).toMatchObject({ detached: false });
         expect(launches[0]?.options.env).toEqual({ SystemRoot: 'C:\\Windows', TEMP: 'C:\\Temp' });
     });
@@ -209,6 +220,95 @@ describe('SuwayomiServer', () => {
         const { server, dataDirectory } = setup();
         await server.ensureRunning();
         expect(existsSync(join(dataDirectory, 'server.conf'))).toBe(true);
+    });
+
+    it('removes the WebView a version before left in the data folder before it starts, and keeps the rest of the folder', async () => {
+        const { server, dataDirectory, launches } = setup();
+        const webView = join(dataDirectory, 'bin', 'kcef');
+        mkdirSync(join(webView, 'lib'), { recursive: true });
+        writeFileSync(join(webView, 'lib', 'libcef.so'), 'x');
+        mkdirSync(join(dataDirectory, 'extensions'), { recursive: true });
+        writeFileSync(join(dataDirectory, 'extensions', 'a.jar'), 'y');
+        writeFileSync(join(dataDirectory, 'bin', 'other'), 'z');
+        await server.ensureRunning();
+        expect(WEBVIEW_LEFTOVER).toEqual(['bin', 'kcef']);
+        expect(existsSync(webView)).toBe(false);
+        expect(readFileSync(join(dataDirectory, 'extensions', 'a.jar'), 'utf-8')).toBe('y');
+        expect(readFileSync(join(dataDirectory, 'bin', 'other'), 'utf-8')).toBe('z');
+        expect(launches).toHaveLength(1);
+    });
+
+    it('asks to remove the WebView at every start, before the program is started, and writes nothing when it goes well', async () => {
+        const order: string[] = [];
+        const removeDirectory = vi.fn((path: string) => {
+            order.push(`remove ${path}`);
+        });
+        const { writer, calls } = createFakeLogWriter();
+        const { server, dataDirectory, installDirectory } = setup({
+            removeDirectory,
+            openLog: () => {
+                return writer;
+            },
+            spawn: () => {
+                order.push('spawn');
+                return new FakeServerProcess() as unknown as ChildProcess;
+            }
+        });
+        await server.ensureRunning();
+        await server.stop();
+        await server.ensureRunning();
+        const webView = join(dataDirectory, 'bin', 'kcef');
+        expect(removeDirectory).toHaveBeenCalledTimes(2);
+        expect(removeDirectory).toHaveBeenNthCalledWith(1, webView);
+        expect(removeDirectory).toHaveBeenNthCalledWith(2, webView);
+        expect(order).toEqual([`remove ${webView}`, 'spawn', `remove ${webView}`, 'spawn']);
+        expect(calls.filter((call) => {
+            return call.method === 'failure';
+        })).toEqual([]);
+        expect(calls[0]).toEqual({ method: 'command', program: join(installDirectory, 'jre', 'bin', 'java'), args: expectedArgs(installDirectory, dataDirectory) });
+        await server.stop();
+    });
+
+    it('starts the server even when the WebView cannot be removed, and writes why to its log first', async () => {
+        const { writer, calls } = createFakeLogWriter();
+        const { server, dataDirectory, installDirectory, launches } = setup({
+            removeDirectory: () => {
+                throw new Error('EBUSY: resource busy or locked');
+            },
+            openLog: () => {
+                return writer;
+            }
+        });
+        await expect(server.ensureRunning()).resolves.toBe(`http://127.0.0.1:${PORT}`);
+        expect(server.status).toBe('running');
+        expect(launches).toHaveLength(1);
+        expect(calls.slice(0, 2)).toEqual([
+            { method: 'failure', message: `could not remove the WebView no longer used (${join(dataDirectory, 'bin', 'kcef')}): EBUSY: resource busy or locked` },
+            { method: 'command', program: join(installDirectory, 'jre', 'bin', 'java'), args: expectedArgs(installDirectory, dataDirectory) }
+        ]);
+        await server.stop();
+    });
+
+    it('writes what was thrown when the removal fails with something that is not an Error', async () => {
+        const { writer, calls } = createFakeLogWriter();
+        const { server, dataDirectory } = setup({
+            removeDirectory: () => {
+                throw 'locked';
+            },
+            openLog: () => {
+                return writer;
+            }
+        });
+        await server.ensureRunning();
+        expect(calls[0]).toEqual({ method: 'failure', message: `could not remove the WebView no longer used (${join(dataDirectory, 'bin', 'kcef')}): locked` });
+        await server.stop();
+    });
+
+    it('starts when there is no WebView to remove', async () => {
+        const { server, dataDirectory } = setup();
+        await server.ensureRunning();
+        expect(existsSync(join(dataDirectory, 'bin', 'kcef'))).toBe(false);
+        expect(server.status).toBe('running');
     });
 
     it('keeps trying while the server is not listening yet', async () => {
@@ -370,7 +470,7 @@ describe('SuwayomiServer log', () => {
         await server.stop();
         await server.ensureRunning();
         const java = join(installDirectory, 'jre', 'bin', 'java');
-        const args = ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`, '-jar', join(installDirectory, 'bin', 'Suwayomi-Server.jar')];
+        const args = expectedArgs(installDirectory, dataDirectory);
         expect(openLog).toHaveBeenCalledTimes(2);
         expect(writers[0]?.calls).toEqual([
             { method: 'command', program: java, args },
@@ -403,7 +503,7 @@ describe('SuwayomiServer log', () => {
             {
                 method: 'command',
                 program: join(installDirectory, 'jre', 'bin', 'java'),
-                args: ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`, '-jar', join(installDirectory, 'bin', 'Suwayomi-Server.jar')]
+                args: expectedArgs(installDirectory, dataDirectory)
             },
             { method: 'failure', message: 'could not start: spawn java ENOENT' }
         ]);
@@ -428,7 +528,7 @@ describe('SuwayomiServer log', () => {
                 return [line.stream, line.text];
             })
         ).toEqual([
-            ['command', `${join(installDirectory, 'jre', 'bin', 'java')} -Djava.net.preferIPv4Stack=true -Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory} -jar ${join(installDirectory, 'bin', 'Suwayomi-Server.jar')}`],
+            ['command', `${join(installDirectory, 'jre', 'bin', 'java')} -Djava.net.preferIPv4Stack=true --enable-native-access=ALL-UNNAMED -Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory} -jar ${join(installDirectory, 'bin', 'Suwayomi-Server.jar')}`],
             ['stdout', 'ready']
         ]);
         await server.stop();

@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import type { MangaServerStatus } from '@shared/manga';
@@ -15,6 +15,9 @@ export const POLL_INTERVAL_MS = 500;
 // After asking the server to end, how long it has to do so before it is ended by force.
 export const STOP_GRACE_MS = 5000;
 const SERVER_LOG_LINES = 40;
+// The Chromium of the WebView of Suwayomi (KCEF, about 530 MB), downloaded into the data folder before the app turned it off (D-183). Nothing uses
+// it any more, so it is removed before each start, while the server is not running (once it is gone there is nothing left to do).
+export const WEBVIEW_LEFTOVER = ['bin', 'kcef'];
 const WINDOWS_SYSTEM_VARIABLES = ['SystemRoot', 'windir', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramData', 'PATHEXT', 'COMSPEC'];
 
 export type SuwayomiServerStatus = MangaServerStatus;
@@ -41,6 +44,8 @@ export interface SuwayomiServerDependencies {
     helperUrl?: () => Promise<string | null>;
     // Where each start of the server writes its command and its output for the window of the logs (the log of Suwayomi by default).
     openLog?: () => LogWriter;
+    // Removes a folder and what is in it, doing nothing when it is not there.
+    removeDirectory?: (path: string) => void;
 }
 
 // A port nobody is using on this machine (asked of the system, then given back).
@@ -66,6 +71,10 @@ function sleep(milliseconds: number): Promise<void> {
 
 function openSuwayomiLog(): LogWriter {
     return processLogs.open('suwayomi');
+}
+
+function removeDirectory(path: string): void {
+    rmSync(path, { recursive: true, force: true });
 }
 
 // Runs Suwayomi-Server as a child of the app: on a port of its own, on this machine only, and ended with the app.
@@ -144,7 +153,7 @@ export class SuwayomiServer {
         try {
             const port = await (this.deps.findFreePort ?? findFreePort)();
             this.writeConfig(port, await this.helperAddress());
-            const child = this.launch();
+            const child = this.launch(this.removeWebViewLeftover());
             this.child = child;
             const address = `http://127.0.0.1:${port}`;
             await this.waitUntilReady(child, address);
@@ -182,13 +191,26 @@ export class SuwayomiServer {
         }
     }
 
-    private launch(): ChildProcess {
+    // Why the WebView left behind could not be removed (a file held by another program on Windows), or null. It does not stop the start.
+    private removeWebViewLeftover(): string | null {
+        const path = join(this.deps.dataDirectory, ...WEBVIEW_LEFTOVER);
+        try {
+            (this.deps.removeDirectory ?? removeDirectory)(path);
+            return null;
+        } catch (error) {
+            return `could not remove the WebView no longer used (${path}): ${error instanceof Error ? error.message : String(error)}`;
+        }
+    }
+
+    private launch(cleanupProblem: string | null): ChildProcess {
         const platform = this.deps.platform ?? process.platform;
         const java = join(this.deps.installDirectory, 'jre', 'bin', platform === 'win32' ? 'java.exe' : 'java');
         const jar = join(this.deps.installDirectory, 'bin', 'Suwayomi-Server.jar');
         // Only IPv4: the FlareSolverr (a container) solves the Cloudflare check from its IPv4 address, and the clearance is tied to the address.
         // A server that connected over IPv6 (the default of Java when the machine has it) was refused by the sites (HentaiRead).
-        const args = ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${this.deps.dataDirectory}`, '-jar', jar];
+        // Native access for the code of the jar (the zstd it embeds loads a library of its own): Java 24 and later warn at every start without it,
+        // and a later Java is to refuse it. It gives nothing the code of the server and its extensions could not already do.
+        const args = ['-Djava.net.preferIPv4Stack=true', '--enable-native-access=ALL-UNNAMED', `-Dsuwayomi.tachidesk.config.server.rootDir=${this.deps.dataDirectory}`, '-jar', jar];
         const spawn = this.deps.spawn ?? nodeSpawn;
         const child = spawn(java, args, {
             cwd: this.deps.dataDirectory,
@@ -214,7 +236,7 @@ export class SuwayomiServer {
         };
         child.stdout?.on('data', remember);
         child.stderr?.on('data', remember);
-        this.writeToLog(child, java, args);
+        this.writeToLog(child, java, args, cleanupProblem);
         child.on('exit', () => {
             if (this.child === child) {
                 this.child = null;
@@ -228,9 +250,12 @@ export class SuwayomiServer {
         return child;
     }
 
-    // The command and everything the server says go to its log, and how it ended.
-    private writeToLog(child: ChildProcess, java: string, args: string[]): void {
+    // The command and everything the server says go to its log, and how it ended; first, the WebView that could not be removed, if so.
+    private writeToLog(child: ChildProcess, java: string, args: string[], cleanupProblem: string | null): void {
         const log = (this.deps.openLog ?? openSuwayomiLog)();
+        if (cleanupProblem !== null) {
+            log.failure(cleanupProblem);
+        }
         log.command(java, args);
         const stdout = createLogFeed(log, 'stdout');
         const stderr = createLogFeed(log, 'stderr');
