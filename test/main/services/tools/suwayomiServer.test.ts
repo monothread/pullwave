@@ -149,6 +149,7 @@ describe('SuwayomiServer', () => {
                 'server.initialOpenInBrowserEnabled = false',
                 'server.systemTrayEnabled = false',
                 'server.debugLogsEnabled = false',
+                'server.kcefEnabled = false',
                 'server.flareSolverrEnabled = false',
                 ''
             ].join('\n')

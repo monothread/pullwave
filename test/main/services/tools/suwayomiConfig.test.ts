@@ -9,6 +9,7 @@ describe('managedSettings', () => {
             initialOpenInBrowserEnabled: false,
             systemTrayEnabled: false,
             debugLogsEnabled: false,
+            kcefEnabled: false,
             flareSolverrEnabled: false
         });
     });
@@ -21,6 +22,7 @@ describe('managedSettings', () => {
             initialOpenInBrowserEnabled: false,
             systemTrayEnabled: false,
             debugLogsEnabled: false,
+            kcefEnabled: false,
             flareSolverrEnabled: true,
             flareSolverrUrl: 'http://127.0.0.1:8191',
             flareSolverrAsResponseFallback: true
@@ -31,6 +33,11 @@ describe('managedSettings', () => {
         expect(managedSettings(4321, 'http://127.0.0.1:8191')).toHaveProperty('flareSolverrAsResponseFallback', true);
         expect(managedSettings(4321, null)).not.toHaveProperty('flareSolverrAsResponseFallback');
         expect(managedSettings(4321)).not.toHaveProperty('flareSolverrAsResponseFallback');
+    });
+
+    it('turns the WebView (KCEF) off, with or without a FlareSolverr', () => {
+        expect(managedSettings(4321)).toHaveProperty('kcefEnabled', false);
+        expect(managedSettings(4321, 'http://127.0.0.1:8191')).toHaveProperty('kcefEnabled', false);
     });
 
     it('leaves the address of FlareSolverr out when there is none', () => {
