@@ -203,6 +203,10 @@ if (url.includes('partialfail') || url.includes('livefail')) {
 }
 
 function runOrdinaryDownload() {
+// The address of the picture of the video, as yt-dlp prints it before the download (FAKE_YTDLP_THUMBNAIL; NA when the site has none).
+if (process.env.FAKE_YTDLP_THUMBNAIL) {
+    process.stdout.write(`CYBERTHUMB|${process.env.FAKE_YTDLP_THUMBNAIL}\n`);
+}
 progress(10);
 if (url.includes('quiet')) {
     // Stays alive without writing anything, so it never notices that its parent is gone.

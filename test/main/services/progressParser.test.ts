@@ -14,8 +14,11 @@ import {
     parsePostProcessLine,
     parseProgressLine,
     parseStreamLine,
+    parseThumbnailLine,
     STREAM_PREFIX,
-    STREAM_PRINT_TEMPLATE
+    STREAM_PRINT_TEMPLATE,
+    THUMBNAIL_PREFIX,
+    THUMBNAIL_PRINT_TEMPLATE
 } from '@main/services/progressParser';
 
 describe('progress templates', () => {
@@ -41,6 +44,37 @@ describe('progress templates', () => {
     it('exposes the template that tells where the stream can be fetched from', () => {
         expect(STREAM_PREFIX).toBe('CYBERSTREAM|');
         expect(STREAM_PRINT_TEMPLATE).toBe('before_dl:CYBERSTREAM|%(.{is_live,protocol,url,http_headers,requested_formats})j');
+    });
+
+    it('exposes the template that gives the address of the picture of the video', () => {
+        expect(THUMBNAIL_PREFIX).toBe('CYBERTHUMB|');
+        expect(THUMBNAIL_PRINT_TEMPLATE).toBe('before_dl:CYBERTHUMB|%(thumbnail)s');
+    });
+});
+
+describe('parseThumbnailLine', () => {
+    it('gives the address of the picture, without the spaces around it', () => {
+        expect(parseThumbnailLine('CYBERTHUMB|https://i.ytimg.com/vi/jNQXAC9IVRw/maxresdefault.webp')).toBe('https://i.ytimg.com/vi/jNQXAC9IVRw/maxresdefault.webp');
+        expect(parseThumbnailLine('CYBERTHUMB| https://pbs.twimg.com/media/a.jpg?name=orig \r')).toBe('https://pbs.twimg.com/media/a.jpg?name=orig');
+        expect(parseThumbnailLine('CYBERTHUMB|http://127.0.0.1:8080/p.png')).toBe('http://127.0.0.1:8080/p.png');
+    });
+
+    it('keeps an address with a | in it whole', () => {
+        expect(parseThumbnailLine('CYBERTHUMB|https://cdn.test/p.jpg?a=1|2')).toBe('https://cdn.test/p.jpg?a=1|2');
+    });
+
+    it('gives null when the site has no picture (NA), or the address is not one of the web', () => {
+        expect(parseThumbnailLine('CYBERTHUMB|NA')).toBeNull();
+        expect(parseThumbnailLine('CYBERTHUMB|')).toBeNull();
+        expect(parseThumbnailLine('CYBERTHUMB|file:///etc/passwd')).toBeNull();
+        expect(parseThumbnailLine('CYBERTHUMB|data:image/png;base64,AAAA')).toBeNull();
+        expect(parseThumbnailLine('CYBERTHUMB|javascript:alert(1)')).toBeNull();
+    });
+
+    it('gives null for any other line', () => {
+        expect(parseThumbnailLine('CYBERINFO|False|/d/a.mp4')).toBeNull();
+        expect(parseThumbnailLine('https://i.ytimg.com/vi/a/0.jpg')).toBeNull();
+        expect(parseThumbnailLine('')).toBeNull();
     });
 });
 

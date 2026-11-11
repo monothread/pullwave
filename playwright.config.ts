@@ -9,9 +9,10 @@ const WORKERS = process.env.PW_WORKERS ?? '25%';
 // Where the windows of the tests open (see e2eDisplay in src/main/index.ts): the tests that resize the window or the screen need room, so
 // they run on the primary monitor; every other test runs on the secondary one, out of the way. The monitor each project uses is its
 // `metadata.display`, which test/e2e/display.ts hands to the application.
-// Only the layout and the design audits resize the real window, up to 1920 pixels, which does not fit the secondary monitor. The tests that only set the
+// Only the layout and the design audits and the columns of the settings resize the real window, up to 1920 pixels (3440 for the settings), which
+// does not fit the secondary monitor. The tests that only set the
 // size the window already has (the buttons of each theme) do not need the primary one.
-const RESIZING_FILES = ['**/layout.e2e-spec.ts', '**/design.e2e-spec.ts'];
+const RESIZING_FILES = ['**/layout.e2e-spec.ts', '**/design.e2e-spec.ts', '**/settings-layout.e2e-spec.ts'];
 // The tests in the other files that resize are tagged with this in their title (or the title of their describe).
 const RESIZE_TAG = /@resize/;
 

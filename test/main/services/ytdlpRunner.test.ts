@@ -1,6 +1,8 @@
 import type { DownloadInfo, PostProcessEvent, ProgressInfo } from '@shared/types';
 import { createLineSplitter, defaultSpawn, EXIT_GRACE_MS, KILL_ESCALATION_MS, runYtdlp, STOP_ESCALATION_MS } from '@main/services/ytdlpRunner';
+import { LogHub, processLogs } from '@main/services/logHub';
 import { createFakeChild } from '../../helpers/fakeChild';
+import { createFakeLogWriter } from '../../helpers/fakeLogWriter';
 
 const NOW = 1_700_000_000_000;
 
@@ -119,6 +121,49 @@ describe('runYtdlp', () => {
         });
         fake.emitter.emit('close', 0);
         await expect(run.result).resolves.toEqual({ status: 'done', filePath: null });
+    });
+
+    it('gives the address of the picture of the video, and no picture when the site has none', async () => {
+        const fake = createFakeChild();
+        const onThumbnail = vi.fn();
+        const onInfo = vi.fn();
+        const run = runYtdlp({
+            binary: 'yt-dlp',
+            args: [],
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: vi.fn(),
+            onInfo,
+            onThumbnail
+        });
+        fake.stdout.write('CYBERINFO|False|/d/V [id].mp4\nCYBERTHUMB|https://i.ytimg.com/vi/id/maxresdefault.webp\nCYBERTHUMB|NA\n');
+        await new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(onThumbnail).toHaveBeenCalledTimes(1);
+        expect(onThumbnail).toHaveBeenCalledWith('https://i.ytimg.com/vi/id/maxresdefault.webp');
+        expect(onInfo).toHaveBeenCalledTimes(1);
+        fake.emitter.emit('close', 0);
+        await expect(run.result).resolves.toEqual({ status: 'done', filePath: null });
+    });
+
+    it('works without a listener of the picture', async () => {
+        const fake = createFakeChild();
+        const run = runYtdlp({
+            binary: 'yt-dlp',
+            args: [],
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: vi.fn()
+        });
+        fake.stdout.write('CYBERTHUMB|https://i.ytimg.com/vi/id/0.jpg\nCYBERFILE|/d/V.mp4\n');
+        await new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+        fake.emitter.emit('close', 0);
+        await expect(run.result).resolves.toEqual({ status: 'done', filePath: '/d/V.mp4' });
     });
 
     it('tells that yt-dlp is waiting for a scheduled live stream, once per "[wait]" line', async () => {
@@ -425,6 +470,115 @@ describe('runYtdlp', () => {
         expect(fake.kill).toHaveBeenCalledWith('SIGTERM');
         fake.emitter.emit('close', null);
         await expect(run.result).resolves.toEqual({ status: 'cancelled' });
+    });
+});
+
+describe('runYtdlp log', () => {
+    function startLogged(args: string[] = ['--newline', '--add-header', 'Cookie:sid=1', 'https://x.com/v']) {
+        const fake = createFakeChild();
+        const { writer, calls } = createFakeLogWriter();
+        const run = runYtdlp({
+            binary: '/bin/yt-dlp',
+            args,
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: vi.fn(),
+            log: writer
+        });
+        return { fake, calls, run };
+    }
+
+    function flushed(): Promise<void> {
+        return new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+    }
+
+    it('writes the command before anything else, with its arguments as they were given', () => {
+        const { calls } = startLogged();
+        expect(calls).toEqual([{ method: 'command', program: '/bin/yt-dlp', args: ['--newline', '--add-header', 'Cookie:sid=1', 'https://x.com/v'] }]);
+    });
+
+    it('writes the progress lines as progress and every other line of both outputs as lines, then the code it ended with', async () => {
+        const { fake, calls, run } = startLogged([]);
+        fake.stdout.write('[youtube] Extracting URL: https://x.com/v\nCYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|Title\n');
+        fake.stderr.write('WARNING: [youtube] Falling back\n');
+        fake.stdout.write('CYBERFILE|/d/Title [id].mp4\n');
+        await flushed();
+        fake.emitter.emit('exit', 0, null);
+        fake.emitter.emit('close', 0);
+        await run.result;
+        expect(calls).toEqual([
+            { method: 'command', program: '/bin/yt-dlp', args: [] },
+            { method: 'line', stream: 'stdout', text: '[youtube] Extracting URL: https://x.com/v' },
+            { method: 'progress', stream: 'stdout', text: 'CYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|Title' },
+            { method: 'line', stream: 'stderr', text: 'WARNING: [youtube] Falling back' },
+            { method: 'line', stream: 'stdout', text: 'CYBERFILE|/d/Title [id].mp4' },
+            { method: 'exit', code: 0, signal: null }
+        ]);
+    });
+
+    it('writes the last part of a line left without its end before the end of the run', async () => {
+        const { fake, calls, run } = startLogged([]);
+        fake.stderr.write('ERROR: Unsupported URL');
+        await flushed();
+        fake.emitter.emit('close', 1);
+        await run.result;
+        expect(calls.slice(1)).toEqual([
+            { method: 'line', stream: 'stderr', text: 'ERROR: Unsupported URL' },
+            { method: 'exit', code: 1, signal: null }
+        ]);
+    });
+
+    it('writes the signal that ended a cancelled run', async () => {
+        const { fake, calls, run } = startLogged([]);
+        run.cancel();
+        fake.emitter.emit('exit', null, 'SIGTERM');
+        fake.emitter.emit('close', null);
+        await expect(run.result).resolves.toEqual({ status: 'cancelled' });
+        expect(calls.at(-1)).toEqual({ method: 'exit', code: null, signal: 'SIGTERM' });
+    });
+
+    it('writes why yt-dlp could not be started, and no end after it', async () => {
+        const { fake, calls, run } = startLogged([]);
+        fake.emitter.emit('error', Object.assign(new Error('spawn /bin/yt-dlp ENOENT'), { code: 'ENOENT' }));
+        fake.emitter.emit('close', -2);
+        await run.result;
+        expect(calls).toEqual([
+            { method: 'command', program: '/bin/yt-dlp', args: [] },
+            { method: 'failure', message: 'could not start: spawn /bin/yt-dlp ENOENT' }
+        ]);
+    });
+
+    it('writes to the log of yt-dlp of the app by default', async () => {
+        const hub = new LogHub({
+            now: () => {
+                return NOW;
+            }
+        });
+        const open = vi.spyOn(processLogs, 'open').mockImplementation((source) => {
+            return hub.open(source);
+        });
+        const fake = createFakeChild();
+        const run = runYtdlp({
+            binary: 'yt-dlp',
+            args: ['-v'],
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: vi.fn()
+        });
+        fake.stdout.write('hello\n');
+        await flushed();
+        fake.emitter.emit('close', 0);
+        await run.result;
+        expect(open).toHaveBeenCalledWith('yt-dlp');
+        expect(hub.snapshot('yt-dlp')).toEqual([
+            { id: 1, at: NOW, stream: 'command', text: 'yt-dlp -v' },
+            { id: 2, at: NOW, stream: 'stdout', text: 'hello' },
+            { id: 3, at: NOW, stream: 'event', text: 'exited with code 0' }
+        ]);
     });
 });
 

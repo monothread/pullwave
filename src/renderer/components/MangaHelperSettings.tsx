@@ -4,16 +4,21 @@ import { useMangaStore } from '../store/mangaStore';
 import { ConfirmButton } from './ConfirmButton';
 import { toolErrorReport } from './mangaText';
 import { ErrorNotice } from './ErrorNotice';
+import { TextField } from './fields';
 
 interface MangaHelperSettingsProps {
     // Whether the user installed the helper, and whether they gave the address of a FlareSolverr of their own (the helper is not needed then).
     enabled: boolean;
     external: boolean;
+    // The address of that FlareSolverr of the user's own (empty: the app runs the helper).
+    url: string;
     onEnabledChange: (enabled: boolean) => void;
+    onUrlChange: (url: string) => void;
 }
 
-// FlareSolverr, the helper for the sites protected by Cloudflare, is installed here and not by itself: it needs Docker.
-export function MangaHelperSettings({ enabled, external, onEnabledChange }: MangaHelperSettingsProps) {
+// FlareSolverr, the helper for the sites protected by Cloudflare, is installed here and not by itself: it needs Docker. The address of a
+// FlareSolverr of the user's own, which takes its place, is set here too.
+export function MangaHelperSettings({ enabled, external, url, onEnabledChange, onUrlChange }: MangaHelperSettingsProps) {
     const t = useTranslator();
     const helper = useMangaStore((state) => {
         return state.status.helper;
@@ -91,6 +96,13 @@ export function MangaHelperSettings({ enabled, external, onEnabledChange }: Mang
                     </div>
                 </>
             )}
+            <TextField
+                label={t('settings.mangaFlaresolverrUrl')}
+                value={url}
+                placeholder={t('settings.mangaFlaresolverrUrl.placeholder')}
+                hint={t('settings.mangaFlaresolverrUrl.hint')}
+                onChange={onUrlChange}
+            />
         </fieldset>
     );
 }

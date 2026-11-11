@@ -3,6 +3,12 @@ import { join } from 'node:path';
 import { HlsUnsupportedError } from '@main/services/hlsPlaylist';
 import { DEFAULT_HLS_TUNING, partPathFor, startHlsRecording, type HlsRecorderTuning, type HlsRecordingProgress, type HlsSource } from '@main/services/hlsRecorder';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
+import { runFfmpegQuietly } from '@main/services/ffmpegExec';
+
+// The default runner of ffmpeg (which writes to the log of ffmpeg) is a stand-in here: no test runs ffmpeg.
+vi.mock('@main/services/ffmpegExec', () => {
+    return { runFfmpegQuietly: vi.fn() };
+});
 
 afterEach(() => {
     cleanTempDirs();
@@ -667,5 +673,27 @@ describe('startHlsRecording progress', () => {
         expect(DEFAULT_HLS_TUNING.concurrency).toBeGreaterThan(1);
         expect(DEFAULT_HLS_TUNING.startSegmentsBack).toBe(3);
         expect(DEFAULT_HLS_TUNING.segmentAttempts).toBe(3);
+    });
+});
+
+describe('startHlsRecording with the default runner of ffmpeg', () => {
+    it('copies the rendition into the final file with the runner that writes to the log of ffmpeg, with the exact arguments', async () => {
+        vi.mocked(runFfmpegQuietly).mockResolvedValue(true);
+        const site = new FakeSite();
+        site.add('video');
+        const filePath = join(makeTempDir(), 'Live [room].mp4');
+        const recording = startHlsRecording(
+            { sources: [VIDEO], filePath, ffmpegBinary: '/bin/ffmpeg' },
+            {
+                fetchImpl: site.fetchImpl,
+                sleep: () => {
+                    return Promise.resolve();
+                },
+                tuning: { retryDelayMs: 1, progressMs: 600_000 }
+            }
+        );
+        await expect(recording.result).resolves.toEqual({ status: 'done', filePath, lostSegments: 0 });
+        expect(runFfmpegQuietly).toHaveBeenCalledTimes(1);
+        expect(runFfmpegQuietly).toHaveBeenCalledWith('/bin/ffmpeg', ['-y', '-v', 'error', '-i', `${filePath}.part`, '-c', 'copy', filePath]);
     });
 });

@@ -3,6 +3,7 @@ import { PassThrough } from 'node:stream';
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import type { ToolState } from '@shared/tools';
 import {
+    createContainerLogFollower,
     createDockerRunner,
     defaultIsProcessAlive,
     FLARESOLVERR_CONTAINER_LABEL,
@@ -13,7 +14,42 @@ import {
     FlareSolverrDockerError,
     ownerPid
 } from '@main/services/tools/flaresolverrDocker';
+import { LogHub, processLogs } from '@main/services/logHub';
 import { fakeDocker, type FakeDockerOptions } from '../../../helpers/fakeDocker';
+import { createFakeLogWriter } from '../../../helpers/fakeLogWriter';
+
+// No test runs the real docker: a helper built without a follower of the logs of its container would start `docker logs --follow`.
+const childProcess = vi.hoisted(() => {
+    return { spawn: vi.fn() };
+});
+
+vi.mock('node:child_process', async (importOriginal) => {
+    const original = await importOriginal<typeof import('node:child_process')>();
+    return { ...original, spawn: childProcess.spawn };
+});
+
+type FakeDockerChild = EventEmitter & { stdout: PassThrough; stderr: PassThrough; kill: ReturnType<typeof vi.fn> };
+
+function makeDockerChild(): FakeDockerChild {
+    const child = new EventEmitter() as FakeDockerChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = vi.fn();
+    return child;
+}
+
+beforeEach(() => {
+    childProcess.spawn.mockReset();
+    childProcess.spawn.mockImplementation(() => {
+        return makeDockerChild();
+    });
+});
+
+function settle(): Promise<void> {
+    return new Promise((resolve) => {
+        setImmediate(resolve);
+    });
+}
 
 const ADDRESS = 'http://127.0.0.1:45900';
 
@@ -28,6 +64,7 @@ function setup(options: FakeDockerOptions = {}, fetchImpl: typeof fetch = okFetc
     const states: ToolState[] = [];
     const helper = new FlareSolverrDocker({
         docker: docker.runner,
+        followLogs: docker.follower,
         fetchImpl,
         findFreePort: () => {
             return Promise.resolve(45900);
@@ -450,6 +487,197 @@ describe('createDockerRunner', () => {
         const result = createDockerRunner(spawn)(['image', 'inspect', 'x']);
         child.emit('close', 1);
         await expect(result).resolves.toMatchObject({ code: 1 });
+    });
+
+    it('writes the command, each line of both outputs and the code to the log, once', async () => {
+        const { child, spawn } = fakeSpawn();
+        const { writer, calls } = createFakeLogWriter();
+        const openLog = vi.fn(() => {
+            return writer;
+        });
+        const result = createDockerRunner(spawn, openLog)(['pull', 'image']);
+        child.stdout.write('first\nsec');
+        child.stderr.write('warning\n');
+        child.stdout.write('ond');
+        await settle();
+        child.emit('close', 0);
+        child.emit('close', 0);
+        await result;
+        expect(openLog).toHaveBeenCalledTimes(1);
+        expect(calls).toEqual([
+            { method: 'command', program: 'docker', args: ['pull', 'image'] },
+            { method: 'line', stream: 'stdout', text: 'first' },
+            { method: 'line', stream: 'stderr', text: 'warning' },
+            { method: 'line', stream: 'stdout', text: 'second' },
+            { method: 'exit', code: 0, signal: undefined }
+        ]);
+    });
+
+    it('writes why docker could not be run to the log, and not an exit too', async () => {
+        const { child, spawn } = fakeSpawn();
+        const { writer, calls } = createFakeLogWriter();
+        const result = createDockerRunner(spawn, () => {
+            return writer;
+        })(['version']);
+        child.emit('error', new Error('spawn docker ENOENT'));
+        child.emit('close', null);
+        await result;
+        expect(calls).toEqual([
+            { method: 'command', program: 'docker', args: ['version'] },
+            { method: 'failure', message: 'could not start: spawn docker ENOENT' }
+        ]);
+    });
+
+    it('writes to the log of FlareSolverr of the app by default', async () => {
+        const { child, spawn } = fakeSpawn();
+        const hub = new LogHub();
+        const open = vi.spyOn(processLogs, 'open').mockImplementation((source) => {
+            return hub.open(source);
+        });
+        const result = createDockerRunner(spawn)(['ps']);
+        child.emit('close', 0);
+        await result;
+        expect(open).toHaveBeenCalledWith('flaresolverr');
+        expect(
+            hub.snapshot('flaresolverr').map((line) => {
+                return [line.stream, line.text];
+            })
+        ).toEqual([
+            ['command', 'docker ps'],
+            ['event', 'exited with code 0']
+        ]);
+        open.mockRestore();
+    });
+});
+
+describe('createContainerLogFollower', () => {
+    it('follows the logs of the container with docker, writing the command, the lines of both outputs and the end', async () => {
+        const child = makeDockerChild();
+        const spawn = vi.fn(() => {
+            return child as unknown as ChildProcess;
+        });
+        const { writer, calls } = createFakeLogWriter();
+        createContainerLogFollower(spawn, () => {
+            return writer;
+        })('c0ffee');
+        expect(spawn).toHaveBeenCalledWith('docker', ['logs', '--follow', 'c0ffee'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        child.stdout.write('2026-11-11 10:00:00 INFO     FlareSolverr 3.5.2\n2026-11-11 10:00:01 INFO     Serving on');
+        child.stderr.write('2026-11-11 10:00:02 ERROR    Chrome crashed\n');
+        await settle();
+        child.emit('close', 0, null);
+        expect(calls).toEqual([
+            { method: 'command', program: 'docker', args: ['logs', '--follow', 'c0ffee'] },
+            { method: 'line', stream: 'stdout', text: '2026-11-11 10:00:00 INFO     FlareSolverr 3.5.2' },
+            { method: 'line', stream: 'stderr', text: '2026-11-11 10:00:02 ERROR    Chrome crashed' },
+            { method: 'line', stream: 'stdout', text: '2026-11-11 10:00:01 INFO     Serving on' },
+            { method: 'exit', code: 0, signal: null }
+        ]);
+    });
+
+    it('stops following by ending docker, which is written as the signal that ended it', () => {
+        const child = makeDockerChild();
+        const { writer, calls } = createFakeLogWriter();
+        const stop = createContainerLogFollower(
+            () => {
+                return child as unknown as ChildProcess;
+            },
+            () => {
+                return writer;
+            }
+        )('abc');
+        stop();
+        expect(child.kill).toHaveBeenCalledTimes(1);
+        expect(child.kill).toHaveBeenCalledWith();
+        child.emit('close', null, 'SIGTERM');
+        expect(calls.at(-1)).toEqual({ method: 'exit', code: null, signal: 'SIGTERM' });
+    });
+
+    it('writes why docker could not be run', () => {
+        const child = makeDockerChild();
+        const { writer, calls } = createFakeLogWriter();
+        createContainerLogFollower(
+            () => {
+                return child as unknown as ChildProcess;
+            },
+            () => {
+                return writer;
+            }
+        )('abc');
+        child.emit('error', new Error('spawn docker ENOENT'));
+        expect(calls).toEqual([
+            { method: 'command', program: 'docker', args: ['logs', '--follow', 'abc'] },
+            { method: 'failure', message: 'could not start: spawn docker ENOENT' }
+        ]);
+    });
+
+    it('runs docker and writes to the log of FlareSolverr of the app by default', () => {
+        const hub = new LogHub({
+            now: () => {
+                return 1_700_000_000_000;
+            }
+        });
+        const open = vi.spyOn(processLogs, 'open').mockImplementation((source) => {
+            return hub.open(source);
+        });
+        const stop = createContainerLogFollower()('def');
+        expect(childProcess.spawn).toHaveBeenCalledWith('docker', ['logs', '--follow', 'def'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        expect(open).toHaveBeenCalledWith('flaresolverr');
+        expect(hub.snapshot('flaresolverr')).toEqual([{ id: 1, at: 1_700_000_000_000, stream: 'command', text: 'docker logs --follow def' }]);
+        stop();
+        const child = childProcess.spawn.mock.results[0]?.value as FakeDockerChild;
+        expect(child.kill).toHaveBeenCalledTimes(1);
+        open.mockRestore();
+    });
+});
+
+describe('FlareSolverrDocker logs of the container', () => {
+    it('follows the logs of the container once it runs, and stops following when it stops', async () => {
+        const { helper, docker } = setup({ imagePresent: true, containerId: 'abc123' });
+        await helper.prepare();
+        expect(docker.followed).toEqual([]);
+        await helper.ensureRunning();
+        expect(docker.followed).toEqual(['abc123']);
+        expect(docker.unfollowed).toEqual([]);
+        await helper.stop();
+        expect(docker.unfollowed).toEqual(['abc123']);
+        await helper.stop();
+        expect(docker.unfollowed).toEqual(['abc123']);
+    });
+
+    it('keeps following while the container starts and stops when the start fails', async () => {
+        const failing = vi.fn(() => {
+            return Promise.resolve(new Response('', { status: 503 }));
+        }) as unknown as typeof fetch;
+        const { helper, docker } = setup({ imagePresent: true, containerId: 'dead01' }, failing);
+        await helper.prepare();
+        await expect(helper.ensureRunning()).rejects.toMatchObject({ code: 'START_FAILED' });
+        expect(docker.followed).toEqual(['dead01']);
+        expect(docker.unfollowed).toEqual(['dead01']);
+    });
+
+    it('follows nothing when the container does not start', async () => {
+        const { helper, docker } = setup({ imagePresent: true, runFails: true });
+        await helper.prepare();
+        await expect(helper.ensureRunning()).rejects.toMatchObject({ code: 'START_FAILED' });
+        expect(docker.followed).toEqual([]);
+    });
+
+    it('follows with docker when no follower is given', async () => {
+        const docker = fakeDocker({ imagePresent: true, containerId: 'feed42' });
+        const helper = new FlareSolverrDocker({
+            docker: docker.runner,
+            fetchImpl: okFetch(),
+            findFreePort: () => {
+                return Promise.resolve(45900);
+            },
+            pollIntervalMs: 5
+        });
+        await helper.prepare();
+        await helper.ensureRunning();
+        expect(childProcess.spawn).toHaveBeenCalledWith('docker', ['logs', '--follow', 'feed42'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        await helper.stop();
+        const child = childProcess.spawn.mock.results[0]?.value as FakeDockerChild;
+        expect(child.kill).toHaveBeenCalledTimes(1);
     });
 });
 

@@ -106,6 +106,16 @@ describe('DownloadHero', () => {
         expect(hero.querySelector('.progress__bar')).toHaveStyle({ width: '100%' });
     });
 
+    it('has a box of a poster for its cover unless it is told the cover is wide', () => {
+        const { rerender } = render(<DownloadHero {...BASE} />);
+        expect(heroElement()).toHaveAttribute('class', 'download-hero');
+        rerender(<DownloadHero {...BASE} coverShape="poster" />);
+        expect(heroElement()).toHaveAttribute('class', 'download-hero');
+        rerender(<DownloadHero {...BASE} cover={<img data-testid="thumb" alt="" src="pullwave-thumb://job/job-1?v=1" />} coverShape="wide" />);
+        expect(heroElement()).toHaveAttribute('class', 'download-hero download-hero--wide');
+        expect(heroElement().querySelector('.download-hero__art [data-testid="thumb"]')).toHaveAttribute('src', 'pullwave-thumb://job/job-1?v=1');
+    });
+
     it('keeps a bar below zero at the start', () => {
         render(<DownloadHero {...BASE} percent={-5} />);
         expect(drawn(heroElement(), '.download-hero__percent')).toEqual(['0%']);

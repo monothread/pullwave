@@ -38,6 +38,21 @@
     border-radius: 0;
 }
 
+/* The picture of a video is wide (16:9): its box is too, and the picture fills it without being stretched. */
+.download-hero--wide {
+    grid-template-columns: 196px minmax(0, 1fr) minmax(200px, 320px);
+}
+
+.download-hero--wide .download-hero__art {
+    width: 196px;
+    aspect-ratio: 16 / 9;
+}
+
+.download-hero__thumbnail {
+    display: block;
+    object-fit: cover;
+}
+
 .download-hero__body {
     display: flex;
     flex-direction: column;
@@ -166,6 +181,14 @@
         width: 90px;
     }
 
+    .download-hero--wide {
+        grid-template-columns: 160px minmax(0, 1fr);
+    }
+
+    .download-hero--wide .download-hero__art {
+        width: 160px;
+    }
+
     .download-hero__graph {
         grid-column: 1 / -1;
         align-items: stretch;
@@ -173,7 +196,8 @@
 }
 
 @media (max-width: 520px) {
-    .download-hero {
+    .download-hero,
+    .download-hero--wide {
         grid-template-columns: minmax(0, 1fr);
         padding: 16px;
     }

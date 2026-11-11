@@ -50,7 +50,7 @@ describe('SettingsPanel layout', () => {
         ['APPEARANCE & WINDOW', 'APP UPDATES'].forEach((legend) => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
-        ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED', 'ANIME'].forEach((legend) => {
+        ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED', 'FOLDER & LIBRARY', 'NEW EPISODES', 'FOLDER & FORMAT', 'NEW CHAPTERS'].forEach((legend) => {
             expect(screen.queryByText(legend, { selector: 'legend' })).not.toBeInTheDocument();
         });
         expect(screen.getByLabelText('Theme')).toHaveValue('device');
@@ -66,7 +66,7 @@ describe('SettingsPanel layout', () => {
         ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'Status of the programs', 'ADVANCED'].forEach((legend) => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
-        ['APPEARANCE & WINDOW', 'APP UPDATES', 'ANIME'].forEach((legend) => {
+        ['APPEARANCE & WINDOW', 'APP UPDATES', 'FOLDER & LIBRARY', 'NEW EPISODES', 'FOLDER & FORMAT', 'NEW CHAPTERS'].forEach((legend) => {
             expect(screen.queryByText(legend)).not.toBeInTheDocument();
         });
         expect(screen.queryByLabelText('Theme')).not.toBeInTheDocument();
@@ -88,7 +88,9 @@ describe('SettingsPanel layout', () => {
     it('renders the section of the anime with the stored values and nothing else', () => {
         useAnimeStore.setState({ status: makeStatus() });
         render(<SettingsPanel scope="anime" />);
-        expect(screen.getByText('ANIME')).toBeInTheDocument();
+        ['FOLDER & LIBRARY', 'DOWNLOADS', 'NEW EPISODES'].forEach((legend) => {
+            expect(screen.getByText(legend, { selector: 'legend' })).toBeInTheDocument();
+        });
         ['APPEARANCE & WINDOW', 'APP UPDATES', 'OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED'].forEach((legend) => {
             expect(screen.queryByText(legend)).not.toBeInTheDocument();
         });
@@ -887,14 +889,16 @@ describe('SettingsPanel theme', () => {
 describe('SettingsPanel anime section', () => {
     it('is left out where the section does not exist', () => {
         render(<SettingsPanel scope="anime" />);
-        expect(screen.queryByText('ANIME')).not.toBeInTheDocument();
+        expect(screen.queryByText('FOLDER & LIBRARY')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
     });
 
     it.each(['global', 'downloads'] as const)('is not in the %s settings, even where it exists', (scope) => {
         useAnimeStore.setState({ status: makeStatus() });
         render(<SettingsPanel scope={scope} />);
-        expect(screen.queryByText('ANIME', { selector: 'legend' })).not.toBeInTheDocument();
+        ['FOLDER & LIBRARY', 'NEW EPISODES'].forEach((legend) => {
+            expect(screen.queryByText(legend, { selector: 'legend' })).not.toBeInTheDocument();
+        });
         expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'UPDATE ANI-CLI' })).not.toBeInTheDocument();
     });
@@ -907,7 +911,6 @@ describe('SettingsPanel anime section', () => {
         it('shows the stored values', () => {
             useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeDownloadDir: '/media/anime', animeQuality: '720p' } });
             render(<SettingsPanel scope="anime" />);
-            expect(screen.getByText('ANIME')).toBeInTheDocument();
             expect(screen.getByLabelText('Anime download folder')).toHaveValue('/media/anime');
             expect(screen.getByLabelText('Anime download folder')).toHaveAttribute('placeholder', 'Default: Downloads/Pullwave Anime');
             expect(screen.getByLabelText('Anime quality')).toHaveValue('720p');
@@ -1120,7 +1123,7 @@ describe('SettingsPanel anime section', () => {
         describe('the switch that translates the subtitles of the new episodes', () => {
             const NAME = 'Translate the subtitles of the new episodes downloaded';
             const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the translation language below when it is "WHAT ANI-CLI PICKS"), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
-            const NEEDS_SETUP = 'Save the token and the model of the provider that translates subtitles (below) to turn this on.';
+            const NEEDS_SETUP = 'Save the token and the model of the provider in SUBTITLE TRANSLATION to turn this on.';
             const READY = { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'gpt-x' } as const;
 
             it('is off and cannot be turned on while the provider has no token', async () => {
@@ -1396,12 +1399,14 @@ describe('SettingsPanel anime section', () => {
 describe('SettingsPanel manga section', () => {
     it('shows only the manga settings in the manga scope', () => {
         render(<SettingsPanel scope="manga" />);
-        expect(screen.getByText('Manga', { selector: 'legend' })).toBeInTheDocument();
+        ['FOLDER & FORMAT', 'SOURCES', 'NEW CHAPTERS'].forEach((legend) => {
+            expect(screen.getByText(legend, { selector: 'legend' })).toBeInTheDocument();
+        });
         expect(screen.getByLabelText('Manga folder')).toHaveValue('');
         expect(screen.getByLabelText('Manga folder')).toHaveAttribute('placeholder', 'Empty uses "Pullwave Manga" inside the downloads folder');
         expect(screen.getByLabelText('Format of each chapter')).toHaveValue('cbz');
         expect(screen.getByText('Applies to the chapters downloaded from now on.')).toBeInTheDocument();
-        ['APPEARANCE & WINDOW', 'OUTPUT', 'ANIME'].forEach((legend) => {
+        ['APPEARANCE & WINDOW', 'OUTPUT', 'FOLDER & LIBRARY', 'NEW EPISODES'].forEach((legend) => {
             expect(screen.queryByText(legend)).not.toBeInTheDocument();
         });
         expect(screen.queryByLabelText('Download folder')).not.toBeInTheDocument();
@@ -2022,5 +2027,101 @@ describe('SettingsPanel: the volume of the sounds', () => {
     it('is not in the settings of a section', () => {
         render(<SettingsPanel scope="downloads" />);
         expect(screen.queryByLabelText('Sound volume')).not.toBeInTheDocument();
+    });
+});
+
+// The titles of the blocks of a scope, in the order they are on the page (the order the columns are filled in).
+function blockTitles(): Array<string | null> {
+    return Array.from(document.querySelectorAll('.settings > fieldset > legend')).map((legend) => {
+        return legend.textContent;
+    });
+}
+
+describe('SettingsPanel order of the blocks', () => {
+    it('orders the video downloader blocks so the columns end close to each other, the logs last', async () => {
+        render(<SettingsPanel scope="downloads" />);
+        expect(blockTitles()).toEqual(['OUTPUT', 'PLAYLISTS & SUBTITLES', 'Status of the programs', 'QUALITY & FORMAT', 'ADVANCED', 'LIVE STREAMS', 'BROWSER COOKIES', 'DIAGNOSTICS']);
+        await flushPromises();
+    });
+
+    it('ends the settings of the whole app with the logs', async () => {
+        render(<SettingsPanel scope="global" />);
+        expect(blockTitles().at(-1)).toBe('DIAGNOSTICS');
+        await flushPromises();
+    });
+
+    it('splits the anime settings by subject, orders them so the columns end close to each other, and puts the disk space last, after the logs', async () => {
+        useAnimeStore.setState({ status: makeStatus() });
+        render(<SettingsPanel scope="anime" />);
+        expect(blockTitles()).toEqual([
+            'FOLDER & LIBRARY',
+            'SUBTITLE TRANSLATION (LANGUAGE MODEL)',
+            'SUBTITLE CREATION (SPEECH TO TEXT)',
+            'Status of the programs',
+            'DOWNLOADS',
+            'NEW EPISODES',
+            'DIAGNOSTICS',
+            'DISK SPACE'
+        ]);
+        await flushPromises();
+    });
+
+    it('puts each anime setting in the block of its subject', async () => {
+        useAnimeStore.setState({ status: makeStatus() });
+        render(<SettingsPanel scope="anime" />);
+        const block = (title: string): HTMLElement => {
+            return screen.getByText(title, { selector: 'legend' }).parentElement as HTMLElement;
+        };
+        expect(within(block('FOLDER & LIBRARY')).getByLabelText('Anime download folder')).toBeInTheDocument();
+        expect(within(block('FOLDER & LIBRARY')).getByRole('button', { name: 'MIGRATE FOLDER' })).toBeInTheDocument();
+        expect(within(block('FOLDER & LIBRARY')).getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' })).toBeInTheDocument();
+        expect(within(block('DOWNLOADS')).getByLabelText('Anime quality')).toBeInTheDocument();
+        expect(within(block('DOWNLOADS')).getByLabelText('Anime subtitles')).toBeInTheDocument();
+        expect(within(block('NEW EPISODES')).getByLabelText('Look for new episodes every 3 hours')).toBeInTheDocument();
+        expect(within(block('NEW EPISODES')).getByLabelText('Download the new episodes found')).toBeInTheDocument();
+        expect(within(block('NEW EPISODES')).getByLabelText('Translate the subtitles of the new episodes downloaded')).toBeInTheDocument();
+        expect(within(block('SUBTITLE TRANSLATION (LANGUAGE MODEL)')).getByLabelText('Provider')).toBeInTheDocument();
+        expect(within(block('SUBTITLE CREATION (SPEECH TO TEXT)')).getByLabelText('Speech-to-text service')).toBeInTheDocument();
+        await flushPromises();
+    });
+
+    it('splits the manga settings by subject, orders them so the columns end close to each other, the address of a FlareSolverr in its block, and puts the disk space last', async () => {
+        render(<SettingsPanel scope="manga" />);
+        expect(blockTitles()).toEqual(['FOLDER & FORMAT', 'NEW CHAPTERS', 'FlareSolverr (sites protected by Cloudflare)', 'SOURCES', 'Extension stores', 'Status of the programs', 'DIAGNOSTICS', 'DISK SPACE']);
+        const block = (title: string): HTMLElement => {
+            return screen.getByText(title, { selector: 'legend' }).parentElement as HTMLElement;
+        };
+        expect(within(block('FOLDER & FORMAT')).getByLabelText('Manga folder')).toBeInTheDocument();
+        expect(within(block('FOLDER & FORMAT')).getByRole('button', { name: 'MIGRATE FOLDER' })).toBeInTheDocument();
+        expect(within(block('FOLDER & FORMAT')).getByLabelText('Format of each chapter')).toBeInTheDocument();
+        expect(within(block('SOURCES')).getByLabelText('Show adult (+18) sources')).toBeInTheDocument();
+        expect(within(block('SOURCES')).getByLabelText('Language of the sources')).toBeInTheDocument();
+        expect(within(block('SOURCES')).getByLabelText('Browser for OPEN ON SITE')).toBeInTheDocument();
+        expect(within(block('NEW CHAPTERS')).getByLabelText('Look for new chapters every hour')).toBeInTheDocument();
+        expect(within(block('NEW CHAPTERS')).getByLabelText('Download the new chapters found')).toBeInTheDocument();
+        expect(within(block('FlareSolverr (sites protected by Cloudflare)')).getByLabelText('Address of your FlareSolverr')).toBeInTheDocument();
+        await flushPromises();
+    });
+
+    it('saves the address of a FlareSolverr typed in its block, 2 s after typing', async () => {
+        render(<SettingsPanel scope="manga" />);
+        type('Address of your FlareSolverr', 'http://10.0.0.2:8191');
+        expect(mock.api.saveSettings).not.toHaveBeenCalled();
+        await advance(AUTOSAVE_DELAY_MS);
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, mangaFlaresolverrUrl: 'http://10.0.0.2:8191' });
+    });
+
+    it.each<['global' | 'downloads' | 'anime' | 'manga', string]>([
+        ['global', 'LOGS — ffmpeg'],
+        ['downloads', 'LOGS — yt-dlp'],
+        ['anime', 'LOGS — ani-cli'],
+        ['manga', 'LOGS — Suwayomi · FlareSolverr']
+    ])('opens the logs of the programs of the %s settings', async (scope, heading) => {
+        useAnimeStore.setState({ status: makeStatus() });
+        render(<SettingsPanel scope={scope} />);
+        fireEvent.click(screen.getByRole('button', { name: 'VIEW LOGS' }));
+        expect(screen.getByRole('dialog', { name: heading })).toBeInTheDocument();
+        await flushPromises();
     });
 });

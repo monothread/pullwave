@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { VIDEO_THUMBNAIL_SCHEME } from '@shared/constants';
 
 // The covers of the anime come from AniList and, when it has none, from the posters of Kitsu: the window only shows the pictures of the
 // hosts its policy lets through, so both policies (the one of the page and the one the main process sets) must name them.
@@ -41,5 +42,13 @@ describe('the two content security policies', () => {
         });
         expect(remote[0]).toEqual(remote[1]);
         expect(remote[0]).toEqual(['https://*.anilist.co', 'https://media.kitsu.app']);
+    });
+});
+
+describe('the pictures of the videos being downloaded', () => {
+    it('are let through by both policies: the page names the scheme, the main process its constant', () => {
+        expect(VIDEO_THUMBNAIL_SCHEME).toBe('pullwave-thumb');
+        expect(imageSources('src/renderer/index.html')).toContain('pullwave-thumb:');
+        expect(imageSources('src/main/index.ts')).toContain('${VIDEO_THUMBNAIL_SCHEME}:');
     });
 });

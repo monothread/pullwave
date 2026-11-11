@@ -4,6 +4,9 @@ import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAX_CUT_SEGMENTS, type CutChooseResponse, type CutMedia, type CutRequest, type CutRun, type CutSegment, type CutSegmentState, type CutStartResponse } from '@shared/cut';
 import type { AudioFormat } from '@shared/types';
+import { openFfmpegLog } from './ffmpegExec';
+import type { LogWriter } from './logHub';
+import { createLogFeed, isFfmpegStatsLine } from './logFeed';
 import { buildCutArgs, freePath, mediaOf, outputFormat, parseMediaProbe, parseProgressSeconds, partFileName, safeName } from './cutArgs';
 
 export interface FfmpegOutcome {
@@ -27,12 +30,17 @@ const MAX_OUTPUT = 20_000;
 // the window needs to draw its animations.
 export const PROGRESS_INTERVAL_MS = 250;
 
-// Runs ffmpeg as a process of its own (so it never blocks the app), at a low priority, and kills it when the signal is aborted.
-export function createFfmpegRunner(binary: string): RunFfmpeg {
+// Runs ffmpeg as a process of its own (so it never blocks the app), at a low priority, and kills it when the signal is aborted. Every run
+// writes its command and what ffmpeg says to a log of its own (`openLog`; the log of ffmpeg by default).
+export function createFfmpegRunner(binary: string, openLog: () => LogWriter = openFfmpegLog): RunFfmpeg {
     return ({ args, signal, onOutput }) => {
         return new Promise((resolve) => {
+            const log = openLog();
+            log.command(binary, args);
+            const feed = createLogFeed(log, 'stderr', isFfmpegStatsLine);
             const child = spawn(binary, args, { windowsHide: true });
             let output = '';
+            let ended = false;
             if (child.pid !== undefined) {
                 try {
                     setPriority(child.pid, osConstants.priority.PRIORITY_BELOW_NORMAL);
@@ -50,14 +58,24 @@ export function createFfmpegRunner(binary: string): RunFfmpeg {
             child.stderr.on('data', (chunk: Buffer) => {
                 const text = chunk.toString('utf-8');
                 output = (output + text).slice(-MAX_OUTPUT);
+                feed.push(text);
                 onOutput?.(text);
             });
             child.on('error', (error) => {
                 signal.removeEventListener('abort', onAbort);
+                if (!ended) {
+                    ended = true;
+                    log.failure(`could not start: ${error.message}`);
+                }
                 resolve({ code: null, output: error.message });
             });
-            child.on('close', (code) => {
+            child.on('close', (code, closeSignal) => {
                 signal.removeEventListener('abort', onAbort);
+                if (!ended) {
+                    ended = true;
+                    feed.flush();
+                    log.exit(code, closeSignal);
+                }
                 resolve({ code, output });
             });
         });

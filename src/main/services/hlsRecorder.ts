@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { open, type FileHandle } from 'node:fs/promises';
 import { extname } from 'node:path';
+import { runFfmpegQuietly } from './ffmpegExec';
 import { parseHlsPlaylist, HlsUnsupportedError, type HlsPlaylist, type HlsSegment } from './hlsPlaylist';
 
 export interface HlsSource {
@@ -84,14 +84,6 @@ class HttpStatusError extends Error {
     constructor(readonly status: number) {
         super(`The server answered ${status}`);
     }
-}
-
-function defaultMux(binary: string, args: string[]): Promise<boolean> {
-    return new Promise((resolve) => {
-        execFile(binary, args, { windowsHide: true }, (error) => {
-            resolve(error === null);
-        });
-    });
 }
 
 function defaultSleep(milliseconds: number, signal: AbortSignal): Promise<void> {
@@ -373,7 +365,7 @@ export function startHlsRecording(options: HlsRecordingOptions, dependencies: Hl
     const tuning: HlsRecorderTuning = { ...DEFAULT_HLS_TUNING, ...dependencies.tuning };
     const now = dependencies.now ?? Date.now;
     const environment = { fetchImpl: dependencies.fetchImpl ?? fetch, sleep: dependencies.sleep ?? defaultSleep, now, tuning };
-    const mux = dependencies.mux ?? defaultMux;
+    const mux = dependencies.mux ?? runFfmpegQuietly;
     const hard = new AbortController();
     const soft = new AbortController();
     const tracks = options.sources.map((source, index) => {

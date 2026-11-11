@@ -432,6 +432,8 @@ body::after {
 }
 
 .panel legend { color: var(--magenta); letter-spacing: 2px; font-size: 12px; padding: 0 6px; }
+/* Every block of the settings is named the same way, in capitals, whatever the text of its title. */
+.settings > .panel > legend { text-transform: uppercase; }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-row .field { flex: 1; }
@@ -1237,6 +1239,85 @@ body::after {
 .error-details__label { margin: 4px 0 0; font-size: 12px; letter-spacing: 1px; color: var(--cyan); }
 .error-details__text { margin: 0; padding: 8px; max-height: 180px; overflow: auto; background: var(--code-bg); border: 1px solid var(--line); color: var(--muted); font-size: 12px; white-space: pre-wrap; word-break: break-word; user-select: text; }
 .modal { box-sizing: border-box; max-width: 100%; white-space: normal; }
+
+/* The window of the logs (LogsDialog): the output of the programs as a dark terminal in every theme, with fixed colors, so the colors of
+   the levels and of the ANSI codes read the same whatever theme the app has. */
+.modal--logs {
+    --log-bg: #0d1117;
+    --log-text: #c9d1d9;
+    --log-dim: #6e7681;
+    --log-red: #ff7b72;
+    --log-yellow: #e3b341;
+    --log-green: #3fb950;
+    --log-blue: #79c0ff;
+    --log-magenta: #d2a8ff;
+    --log-cyan: #56d4dd;
+    --log-orange: #ffa657;
+    --log-string: #a5d6ff;
+    width: min(1100px, 100%);
+    height: min(760px, 100%);
+    overflow: hidden;
+}
+.logs__tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.logs__tab--active { border-color: var(--cyan); color: var(--cyan); }
+.logs__toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.logs__control { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.logs__control--search { flex: 1 1 220px; }
+.logs__count { margin: 0; font-size: 12px; color: var(--muted); }
+.logs__screen { position: relative; flex: 1 1 auto; min-height: 160px; display: flex; flex-direction: column; background: var(--log-bg); border: 1px solid var(--line); }
+.logs__empty { margin: auto; padding: 24px; color: var(--log-dim); font-size: 13px; text-align: center; }
+.logs__lines {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 6px 0;
+    overflow: auto;
+    list-style: none;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'DejaVu Sans Mono', Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--log-text);
+    user-select: text;
+}
+.logs__lines:focus-visible { outline: 2px solid var(--yellow); outline-offset: -2px; }
+.logs__follow { position: absolute; right: 12px; bottom: 12px; }
+.log-line { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px; padding: 0 10px; border-left: 3px solid transparent; }
+.log-line__time { color: var(--log-dim); }
+.log-line__text { white-space: pre-wrap; word-break: break-word; }
+.log-line--error { border-left-color: var(--log-red); background: rgba(255, 123, 114, 0.08); }
+.log-line--error .log-line__text { color: var(--log-red); }
+.log-line--warning { border-left-color: var(--log-yellow); background: rgba(227, 179, 65, 0.07); }
+.log-line--warning .log-line__text { color: var(--log-yellow); }
+.log-line--debug .log-line__text { color: var(--log-dim); }
+.log-line--success .log-line__text { color: var(--log-green); }
+.log-line--command { margin-top: 6px; border-left-color: var(--log-cyan); }
+.log-line--command .log-line__text { color: var(--log-cyan); font-weight: 700; }
+.log-line--command .log-line__text::before { content: '$ '; color: var(--log-dim); }
+.log-token--level { font-weight: 700; }
+.log-token--tag { color: var(--log-magenta); }
+.log-token--url { color: var(--log-blue); text-decoration: underline; text-underline-offset: 2px; }
+.log-token--path { color: var(--log-cyan); }
+.log-token--time { color: var(--log-dim); }
+.log-token--string { color: var(--log-string); }
+.log-token--flag { color: var(--log-orange); }
+.log-token--size { color: var(--log-green); }
+.log-token--redacted { padding: 0 2px; color: var(--log-bg); background: var(--log-yellow); }
+.ansi--bold { font-weight: 700; }
+.ansi--black { color: #484f58; }
+.ansi--red { color: #ff7b72; }
+.ansi--green { color: #3fb950; }
+.ansi--yellow { color: #d29922; }
+.ansi--blue { color: #58a6ff; }
+.ansi--magenta { color: #bc8cff; }
+.ansi--cyan { color: #39c5cf; }
+.ansi--white { color: #b1bac4; }
+.ansi--bright-black { color: #6e7681; }
+.ansi--bright-red { color: #ffa198; }
+.ansi--bright-green { color: #56d364; }
+.ansi--bright-yellow { color: #e3b341; }
+.ansi--bright-blue { color: #79c0ff; }
+.ansi--bright-magenta { color: #d2a8ff; }
+.ansi--bright-cyan { color: #56d4dd; }
+.ansi--bright-white { color: #f0f6fc; }
 .generate__languages { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 10px; }
 .generate__arrow { padding-bottom: 8px; color: var(--cyan); font-size: 18px; line-height: 1; }
 .generate__plan {

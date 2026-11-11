@@ -10,6 +10,7 @@ import {
     stripAnsi
 } from './aniOutputParser';
 import { commandLine } from './errorDetails';
+import { processLogs, type LogWriter, type OutputStream } from './logHub';
 import { killProcessTree, type GroupKill } from './processTree';
 import { createLineSplitter, defaultSpawn, EXIT_GRACE_MS, KILL_ESCALATION_MS, type SpawnFn } from './ytdlpRunner';
 
@@ -40,6 +41,8 @@ export interface AniRunOptions {
     spawnFn?: SpawnFn;
     platform?: NodeJS.Platform;
     killGroup?: GroupKill;
+    // Where the command and its output are written for the window of the logs (the log of ani-cli by default).
+    log?: LogWriter;
 }
 
 export interface AniRunHandle {
@@ -52,6 +55,8 @@ export interface AniRunHandle {
 export function runAniCli(options: AniRunOptions): AniRunHandle {
     const spawnFn = options.spawnFn ?? defaultSpawn;
     const platform = options.platform ?? process.platform;
+    const log = options.log ?? processLogs.open('ani-cli');
+    log.command(options.binary, options.args);
     const child = spawnFn(options.binary, options.args, options.env);
     const menuChoices: MenuChoice[] = [];
     let output = '';
@@ -62,6 +67,16 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     let settled = false;
     let escalation: ReturnType<typeof setTimeout> | null = null;
     let exitGrace: ReturnType<typeof setTimeout> | null = null;
+    let exitSignal: NodeJS.Signals | null = null;
+
+    // The log keeps the line as it came (its colors included); the progress lines are held back so they do not fill it.
+    const writeToLog = (stream: OutputStream, line: string): void => {
+        if (parseProgressLine(stripAnsi(line))) {
+            log.progress(stream, line);
+            return;
+        }
+        log.line(stream, line);
+    };
 
     const handleLine = (line: string): void => {
         const menu = parseMenuLine(line);
@@ -96,8 +111,14 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
         }
     };
 
-    const stdoutSplitter = createLineSplitter(handleLine);
-    const stderrSplitter = createLineSplitter(handleLine);
+    const stdoutSplitter = createLineSplitter((line) => {
+        writeToLog('stdout', line);
+        handleLine(line);
+    });
+    const stderrSplitter = createLineSplitter((line) => {
+        writeToLog('stderr', line);
+        handleLine(line);
+    });
     child.stdout.setEncoding('utf-8');
     child.stderr.setEncoding('utf-8');
     child.stdout.on('data', stdoutSplitter.push);
@@ -117,18 +138,23 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
             resolve(outcome);
         };
         child.once('error', (error: NodeJS.ErrnoException) => {
+            log.failure(`could not start: ${error.message}`);
             settle({ status: 'error', error: mapAniSpawnError(error, { operation: 'Running ani-cli', command: commandLine(options.binary, options.args) }) });
         });
         const finish = (code: number | null): void => {
             stdoutSplitter.flush();
             stderrSplitter.flush();
+            if (!settled) {
+                log.exit(code, exitSignal);
+            }
             if (cancelled) {
                 settle({ status: 'cancelled' });
                 return;
             }
             settle({ status: 'done', value: { exitCode: code, output, menuChoices, destination, moreResults, downloadFailed } });
         };
-        child.once('exit', (code: number | null) => {
+        child.once('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+            exitSignal = signal;
             // The pipes may stay open if something ani-cli started is still running: end it and give the result anyway.
             exitGrace = setTimeout(() => {
                 if (settled) {

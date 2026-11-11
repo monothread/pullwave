@@ -50,6 +50,7 @@ import type {
     LibraryAnime
 } from './anime';
 import type { CutApi } from './cut';
+import type { LogsApi } from './logs';
 import type { MangaApi, MangaOutputFormat } from './manga';
 import type { ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersions } from './programs';
 import type { ProgramId, ToolState } from './tools';
@@ -259,6 +260,8 @@ export interface DownloadJob {
     saving: boolean;
     // Name of the yt-dlp post-processor (ffmpeg step after the download, such as ExtractAudio or Merger) that is running.
     postProcess: string | null;
+    // The picture of the video, served by the app from memory (VIDEO_THUMBNAIL_SCHEME); null until it was fetched, or when there is none.
+    thumbnail: string | null;
 }
 
 export interface ProgressInfo {
@@ -419,6 +422,8 @@ export interface CyberApi {
     programs: ProgramsApi;
     // The cutter of the video downloader.
     cut: CutApi;
+    // The logs of the programs the app runs, kept in memory for a quick look.
+    logs: LogsApi;
     getAppUpdateState: () => Promise<AppUpdateState>;
     checkAppUpdate: () => Promise<void>;
     downloadAppUpdate: () => Promise<void>;

@@ -28,6 +28,7 @@ import { DiskUsageChart } from './DiskUsageChart';
 import { MangaHealthSettings } from './MangaHealthSettings';
 import { MangaLanguageSetting } from './MangaLanguageSetting';
 import { ProgramsStatusBlock } from './ProgramsStatusBlock';
+import { LogsSettings } from './LogsSettings';
 import { MangaHelperSettings } from './MangaHelperSettings';
 import { MangaStoreSettings } from './MangaStoreSettings';
 import { formatResolution } from './settingsFormat';
@@ -396,6 +397,7 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
 
             {scope === 'downloads' && (
                 <>
+                    {/* The blocks go in the order that keeps the columns closest in height (two and three columns). */}
                     <fieldset className="panel">
                         <legend>{t('settings.output')}</legend>
                         <div className="field-row">
@@ -445,45 +447,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                     </fieldset>
 
                     <fieldset className="panel">
-                        <legend>{t('settings.quality')}</legend>
-                        <SelectField
-                            label={t('settings.maxResolution')}
-                            value={draft.maxResolution}
-                            options={RESOLUTIONS}
-                            formatOption={(resolution) => {
-                                return formatResolution(resolution, t);
-                            }}
-                            hint={t('settings.maxResolution.hint')}
-                            onChange={(value) => {
-                                change('maxResolution', value);
-                            }}
-                        />
-                        <SelectField
-                            label={t('settings.videoContainer')}
-                            value={draft.videoContainer}
-                            options={VIDEO_CONTAINERS}
-                            onChange={(value) => {
-                                change('videoContainer', value);
-                            }}
-                        />
-                        <ToggleField
-                            label={t('settings.audioOnly')}
-                            checked={draft.audioOnly}
-                            onChange={(value) => {
-                                change('audioOnly', value);
-                            }}
-                        />
-                        <SelectField
-                            label={t('settings.audioFormat')}
-                            value={draft.audioFormat}
-                            options={AUDIO_FORMATS}
-                            onChange={(value) => {
-                                change('audioFormat', value);
-                            }}
-                        />
-                    </fieldset>
-
-                    <fieldset className="panel">
                         <legend>{t('settings.subtitles')}</legend>
                         <ToggleField
                             label={t('settings.playlist')}
@@ -525,6 +488,92 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             checked={draft.embedSubtitles}
                             onChange={(value) => {
                                 change('embedSubtitles', value);
+                            }}
+                        />
+                    </fieldset>
+
+                    <ProgramsStatusBlock place="downloads" />
+
+                    <fieldset className="panel">
+                        <legend>{t('settings.quality')}</legend>
+                        <SelectField
+                            label={t('settings.maxResolution')}
+                            value={draft.maxResolution}
+                            options={RESOLUTIONS}
+                            formatOption={(resolution) => {
+                                return formatResolution(resolution, t);
+                            }}
+                            hint={t('settings.maxResolution.hint')}
+                            onChange={(value) => {
+                                change('maxResolution', value);
+                            }}
+                        />
+                        <SelectField
+                            label={t('settings.videoContainer')}
+                            value={draft.videoContainer}
+                            options={VIDEO_CONTAINERS}
+                            onChange={(value) => {
+                                change('videoContainer', value);
+                            }}
+                        />
+                        <ToggleField
+                            label={t('settings.audioOnly')}
+                            checked={draft.audioOnly}
+                            onChange={(value) => {
+                                change('audioOnly', value);
+                            }}
+                        />
+                        <SelectField
+                            label={t('settings.audioFormat')}
+                            value={draft.audioFormat}
+                            options={AUDIO_FORMATS}
+                            onChange={(value) => {
+                                change('audioFormat', value);
+                            }}
+                        />
+                    </fieldset>
+
+                    <fieldset className="panel">
+                        <legend>{t('settings.advanced')}</legend>
+                        <TextField
+                            label={t('settings.rateLimit')}
+                            value={draft.rateLimit}
+                            placeholder={t('settings.rateLimit.placeholder')}
+                            onChange={(value) => {
+                                edit('rateLimit', value);
+                            }}
+                        />
+                        <TextField
+                            label={t('settings.ytdlpPath')}
+                            value={draft.ytdlpPath}
+                            placeholder={t('settings.ytdlpPath.placeholder')}
+                            onChange={(value) => {
+                                edit('ytdlpPath', value);
+                            }}
+                        />
+                        <TextField
+                            label={t('settings.ffmpegPath')}
+                            value={draft.ffmpegPath}
+                            placeholder={t('settings.ffmpegPath.placeholder')}
+                            onChange={(value) => {
+                                edit('ffmpegPath', value);
+                            }}
+                        />
+                        <TextField
+                            label={t('settings.jsRuntime')}
+                            value={draft.jsRuntime}
+                            placeholder={t('settings.jsRuntime.placeholder')}
+                            hint={t('settings.jsRuntime.hint')}
+                            onChange={(value) => {
+                                edit('jsRuntime', value);
+                            }}
+                        />
+                        <TextField
+                            label={t('settings.extraArgs')}
+                            value={draft.extraArgs}
+                            hint={t('settings.extraArgs.hint')}
+                            onChange={(value) => {
+                                edit('extraArgs', value);
                             }}
                         />
                     </fieldset>
@@ -631,284 +680,264 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             />
                         )}
                     </fieldset>
+                </>
+            )}
 
-                    <ProgramsStatusBlock place="downloads" />
+            {scope === 'manga' && (
+                <>
+                    {/* The blocks go in the order that keeps the columns closest in height (two and three columns), the disk space last. */}
+                    <fieldset className="panel">
+                        <legend>{t('settings.manga.folder')}</legend>
+                        <div className="field-row">
+                            <TextField
+                                label={t('settings.mangaDir')}
+                                value={draft.mangaDirectory}
+                                placeholder={t('settings.mangaDir.placeholder')}
+                                disabled={mangaFolderLocked}
+                                onChange={(value) => {
+                                    edit('mangaDirectory', value);
+                                }}
+                            />
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                disabled={mangaFolderLocked}
+                                onClick={() => {
+                                    void handleChooseMangaDirectory();
+                                }}
+                            >
+                                {t('settings.browse')}
+                            </button>
+                        </div>
+                        {mangaFolderLocked && <span className="field__hint">{t('settings.mangaDir.locked')}</span>}
+                        <div className="field">
+                            <div className="field-row">
+                                <button
+                                    type="button"
+                                    className="btn btn--small btn--primary"
+                                    disabled={mangaMigrating}
+                                    onClick={() => {
+                                        void handleMigrateMangaFolder();
+                                    }}
+                                >
+                                    {mangaMigration === null ? t('settings.mangaMigrate') : t('settings.mangaMigrate.running', { done: mangaMigration.done, total: mangaMigration.total })}
+                                </button>
+                            </div>
+                            <span className="field__hint">{t('settings.mangaMigrate.hint')}</span>
+                        </div>
+                        <SelectField
+                            label={t('settings.mangaFormat')}
+                            value={draft.mangaFormat}
+                            options={MANGA_OUTPUT_FORMATS}
+                            formatOption={(format) => {
+                                return format === 'cbz' ? t('settings.mangaFormat.cbz') : t('settings.mangaFormat.folder');
+                            }}
+                            hint={t('settings.mangaFormat.hint')}
+                            onChange={(value) => {
+                                change('mangaFormat', value);
+                            }}
+                        />
+                    </fieldset>
 
                     <fieldset className="panel">
-                        <legend>{t('settings.advanced')}</legend>
-                        <TextField
-                            label={t('settings.rateLimit')}
-                            value={draft.rateLimit}
-                            placeholder={t('settings.rateLimit.placeholder')}
+                        <legend>{t('settings.manga.newChapters')}</legend>
+                        <ToggleField
+                            label={t('settings.mangaCheckNewChapters')}
+                            checked={draft.mangaCheckNewChapters}
+                            hint={t('settings.mangaCheckNewChapters.hint')}
                             onChange={(value) => {
-                                edit('rateLimit', value);
+                                change('mangaCheckNewChapters', value);
                             }}
                         />
-                        <TextField
-                            label={t('settings.ytdlpPath')}
-                            value={draft.ytdlpPath}
-                            placeholder={t('settings.ytdlpPath.placeholder')}
+                        <ToggleField
+                            label={t('settings.mangaAutoDownloadNew')}
+                            checked={draft.mangaAutoDownloadNew}
+                            hint={t('settings.mangaAutoDownloadNew.hint')}
                             onChange={(value) => {
-                                edit('ytdlpPath', value);
+                                change('mangaAutoDownloadNew', value);
                             }}
                         />
-                        <TextField
-                            label={t('settings.ffmpegPath')}
-                            value={draft.ffmpegPath}
-                            placeholder={t('settings.ffmpegPath.placeholder')}
+                    </fieldset>
+
+                    <MangaHelperSettings
+                        enabled={draft.mangaFlaresolverrEnabled}
+                        external={draft.mangaFlaresolverrUrl.trim().length > 0}
+                        url={draft.mangaFlaresolverrUrl}
+                        onEnabledChange={(value) => {
+                            change('mangaFlaresolverrEnabled', value);
+                        }}
+                        onUrlChange={(value) => {
+                            edit('mangaFlaresolverrUrl', value);
+                        }}
+                    />
+
+                    <fieldset className="panel">
+                        <legend>{t('settings.manga.sources')}</legend>
+                        <ToggleField
+                            label={t('settings.mangaShowAdult')}
+                            checked={draft.mangaShowAdult}
+                            hint={t('settings.mangaShowAdult.hint')}
                             onChange={(value) => {
-                                edit('ffmpegPath', value);
+                                change('mangaShowAdult', value);
                             }}
                         />
-                        <TextField
-                            label={t('settings.jsRuntime')}
-                            value={draft.jsRuntime}
-                            placeholder={t('settings.jsRuntime.placeholder')}
-                            hint={t('settings.jsRuntime.hint')}
+                        <MangaLanguageSetting
+                            value={draft.mangaLanguage}
                             onChange={(value) => {
-                                edit('jsRuntime', value);
+                                change('mangaLanguage', value);
                             }}
                         />
-                        <TextField
-                            label={t('settings.extraArgs')}
-                            value={draft.extraArgs}
-                            hint={t('settings.extraArgs.hint')}
+                        <SelectField
+                            label={t('settings.mangaSiteBrowser')}
+                            value={draft.mangaSiteBrowser}
+                            options={siteBrowserOptions(detectedBrowsers, draft.mangaSiteBrowser)}
+                            formatOption={(browser) => {
+                                return formatSiteBrowser(detectedBrowsers, browser, t);
+                            }}
+                            hint={t('settings.mangaSiteBrowser.hint')}
+                            onChange={(browser) => {
+                                change('mangaSiteBrowser', browser);
+                            }}
+                        />
+                    </fieldset>
+
+                    <MangaStoreSettings />
+
+                    <MangaHealthSettings />
+                </>
+            )}
+
+            {scope === 'anime' && animeSupported && (
+                <>
+                    {/* The blocks go in the order that keeps the columns closest in height (two and three columns), the disk space last. */}
+                    <fieldset className="panel">
+                        <legend>{t('settings.anime.library')}</legend>
+                        <div className="field-row">
+                            <TextField
+                                label={t('settings.animeDownloadDir')}
+                                value={draft.animeDownloadDir}
+                                placeholder={t('settings.animeDownloadDir.placeholder')}
+                                disabled={animeFolderLocked}
+                                onChange={(value) => {
+                                    edit('animeDownloadDir', value);
+                                }}
+                            />
+                            <button
+                                type="button"
+                                className="btn btn--small"
+                                disabled={animeFolderLocked}
+                                onClick={() => {
+                                    void handleChooseAnimeDirectory();
+                                }}
+                            >
+                                {t('settings.browse')}
+                            </button>
+                        </div>
+                        {animeFolderLocked && <span className="field__hint">{t('settings.animeDownloadDir.locked')}</span>}
+                        <div className="field">
+                            <div className="field-row">
+                                <button
+                                    type="button"
+                                    className="btn btn--small btn--primary"
+                                    disabled={migrating}
+                                    onClick={() => {
+                                        void handleMigrateAnimeFolder();
+                                    }}
+                                >
+                                    {migrating ? t('settings.animeMigrate.running', { done: migration.done, total: migration.total }) : t('settings.animeMigrate')}
+                                </button>
+                            </div>
+                            <span className="field__hint">{t('settings.animeMigrate.hint')}</span>
+                        </div>
+                        <div className="field">
+                            <div className="field-row">
+                                <button
+                                    type="button"
+                                    className="btn btn--small"
+                                    disabled={checkingAudio || migrating}
+                                    onClick={() => {
+                                        void checkAudio();
+                                    }}
+                                >
+                                    {checkingAudio ? t('settings.animeAudioCheck.running') : t('settings.animeAudioCheck')}
+                                </button>
+                            </div>
+                            <span className="field__hint">{t('settings.animeAudioCheck.hint')}</span>
+                        </div>
+                    </fieldset>
+
+                    <TranslationSettings draft={draft} change={change} edit={edit} changeMany={changeMany} />
+
+                    <ProgramsStatusBlock place="anime" />
+
+                    <fieldset className="panel">
+                        <legend>{t('settings.anime.downloads')}</legend>
+                        <SelectField
+                            label={t('settings.animeQuality')}
+                            value={draft.animeQuality}
+                            options={ANIME_QUALITIES}
+                            formatOption={(quality) => {
+                                return formatAnimeQuality(quality, t);
+                            }}
+                            hint={t('settings.animeQuality.hint')}
                             onChange={(value) => {
-                                edit('extraArgs', value);
+                                change('animeQuality', value);
+                            }}
+                        />
+                        <SelectField
+                            label={t('settings.animeSubtitles')}
+                            value={draft.animeSubtitles}
+                            options={ANIME_SUBTITLE_SETTINGS}
+                            formatOption={(setting) => {
+                                return formatAnimeSubtitles(setting, t);
+                            }}
+                            hint={t('settings.animeSubtitles.hint')}
+                            onChange={(value) => {
+                                change('animeSubtitles', value);
+                            }}
+                        />
+                    </fieldset>
+
+                    <fieldset className="panel">
+                        <legend>{t('settings.anime.newEpisodes')}</legend>
+                        <ToggleField
+                            label={t('settings.animeCheckNewEpisodes')}
+                            checked={draft.animeCheckNewEpisodes}
+                            hint={t('settings.animeCheckNewEpisodes.hint')}
+                            onChange={(value) => {
+                                change('animeCheckNewEpisodes', value);
+                            }}
+                        />
+                        <ToggleField
+                            label={t('settings.animeAutoDownloadNew')}
+                            checked={draft.animeAutoDownloadNew}
+                            hint={t('settings.animeAutoDownloadNew.hint')}
+                            onChange={(value) => {
+                                change('animeAutoDownloadNew', value);
+                            }}
+                        />
+                        <ToggleField
+                            label={t('settings.animeAutoTranslateNew')}
+                            checked={draft.animeAutoTranslateNew}
+                            disabled={translationGap !== null && !draft.animeAutoTranslateNew}
+                            hint={translationGap === null ? t('settings.animeAutoTranslateNew.hint') : t('settings.animeAutoTranslateNew.needsSetup')}
+                            onChange={(value) => {
+                                change('animeAutoTranslateNew', value);
                             }}
                         />
                     </fieldset>
                 </>
             )}
 
+            <LogsSettings scope={scope} />
+
+            {/* Last: it takes a while to measure the disk, and the blocks after it would move when it grows. */}
             {scope === 'manga' && (
-                <>
-                <fieldset className="panel">
-                    <legend>{t('settings.manga')}</legend>
-                    <div className="field-row">
-                        <TextField
-                            label={t('settings.mangaDir')}
-                            value={draft.mangaDirectory}
-                            placeholder={t('settings.mangaDir.placeholder')}
-                            disabled={mangaFolderLocked}
-                            onChange={(value) => {
-                                edit('mangaDirectory', value);
-                            }}
-                        />
-                        <button
-                            type="button"
-                            className="btn btn--small"
-                            disabled={mangaFolderLocked}
-                            onClick={() => {
-                                void handleChooseMangaDirectory();
-                            }}
-                        >
-                            {t('settings.browse')}
-                        </button>
-                    </div>
-                    {mangaFolderLocked && <span className="field__hint">{t('settings.mangaDir.locked')}</span>}
-                    <div className="field">
-                        <div className="field-row">
-                            <button
-                                type="button"
-                                className="btn btn--small btn--primary"
-                                disabled={mangaMigrating}
-                                onClick={() => {
-                                    void handleMigrateMangaFolder();
-                                }}
-                            >
-                                {mangaMigration === null ? t('settings.mangaMigrate') : t('settings.mangaMigrate.running', { done: mangaMigration.done, total: mangaMigration.total })}
-                            </button>
-                        </div>
-                        <span className="field__hint">{t('settings.mangaMigrate.hint')}</span>
-                    </div>
-                    <SelectField
-                        label={t('settings.mangaFormat')}
-                        value={draft.mangaFormat}
-                        options={MANGA_OUTPUT_FORMATS}
-                        formatOption={(format) => {
-                            return format === 'cbz' ? t('settings.mangaFormat.cbz') : t('settings.mangaFormat.folder');
-                        }}
-                        hint={t('settings.mangaFormat.hint')}
-                        onChange={(value) => {
-                            change('mangaFormat', value);
-                        }}
-                    />
-                    <TextField
-                        label={t('settings.mangaFlaresolverrUrl')}
-                        value={draft.mangaFlaresolverrUrl}
-                        placeholder={t('settings.mangaFlaresolverrUrl.placeholder')}
-                        hint={t('settings.mangaFlaresolverrUrl.hint')}
-                        onChange={(value) => {
-                            edit('mangaFlaresolverrUrl', value);
-                        }}
-                    />
-                    <ToggleField
-                        label={t('settings.mangaShowAdult')}
-                        checked={draft.mangaShowAdult}
-                        hint={t('settings.mangaShowAdult.hint')}
-                        onChange={(value) => {
-                            change('mangaShowAdult', value);
-                        }}
-                    />
-                    <MangaLanguageSetting
-                        value={draft.mangaLanguage}
-                        onChange={(value) => {
-                            change('mangaLanguage', value);
-                        }}
-                    />
-                    <ToggleField
-                        label={t('settings.mangaCheckNewChapters')}
-                        checked={draft.mangaCheckNewChapters}
-                        hint={t('settings.mangaCheckNewChapters.hint')}
-                        onChange={(value) => {
-                            change('mangaCheckNewChapters', value);
-                        }}
-                    />
-                    <ToggleField
-                        label={t('settings.mangaAutoDownloadNew')}
-                        checked={draft.mangaAutoDownloadNew}
-                        hint={t('settings.mangaAutoDownloadNew.hint')}
-                        onChange={(value) => {
-                            change('mangaAutoDownloadNew', value);
-                        }}
-                    />
-                    <SelectField
-                        label={t('settings.mangaSiteBrowser')}
-                        value={draft.mangaSiteBrowser}
-                        options={siteBrowserOptions(detectedBrowsers, draft.mangaSiteBrowser)}
-                        formatOption={(browser) => {
-                            return formatSiteBrowser(detectedBrowsers, browser, t);
-                        }}
-                        hint={t('settings.mangaSiteBrowser.hint')}
-                        onChange={(browser) => {
-                            change('mangaSiteBrowser', browser);
-                        }}
-                    />
-                </fieldset>
                 <DiskUsageChart
                     section="manga"
                     refreshKey={`${stored.mangaDirectory}|${mangaLibraryCount}|${stored.animeDownloadDir}|${library.length}`}
                     busy={mangaMigrating}
                 />
-                <MangaStoreSettings />
-                <MangaHealthSettings />
-                <MangaHelperSettings
-                    enabled={draft.mangaFlaresolverrEnabled}
-                    external={draft.mangaFlaresolverrUrl.trim().length > 0}
-                    onEnabledChange={(value) => {
-                        change('mangaFlaresolverrEnabled', value);
-                    }}
-                />
-                </>
-            )}
-
-            {scope === 'anime' && animeSupported && (
-                <fieldset className="panel">
-                    <legend>{t('settings.anime')}</legend>
-                    <div className="field-row">
-                        <TextField
-                            label={t('settings.animeDownloadDir')}
-                            value={draft.animeDownloadDir}
-                            placeholder={t('settings.animeDownloadDir.placeholder')}
-                            disabled={animeFolderLocked}
-                            onChange={(value) => {
-                                edit('animeDownloadDir', value);
-                            }}
-                        />
-                        <button
-                            type="button"
-                            className="btn btn--small"
-                            disabled={animeFolderLocked}
-                            onClick={() => {
-                                void handleChooseAnimeDirectory();
-                            }}
-                        >
-                            {t('settings.browse')}
-                        </button>
-                    </div>
-                    {animeFolderLocked && <span className="field__hint">{t('settings.animeDownloadDir.locked')}</span>}
-                    <div className="field">
-                        <div className="field-row">
-                            <button
-                                type="button"
-                                className="btn btn--small btn--primary"
-                                disabled={migrating}
-                                onClick={() => {
-                                    void handleMigrateAnimeFolder();
-                                }}
-                            >
-                                {migrating ? t('settings.animeMigrate.running', { done: migration.done, total: migration.total }) : t('settings.animeMigrate')}
-                            </button>
-                        </div>
-                        <span className="field__hint">{t('settings.animeMigrate.hint')}</span>
-                    </div>
-                    <div className="field">
-                        <div className="field-row">
-                            <button
-                                type="button"
-                                className="btn btn--small"
-                                disabled={checkingAudio || migrating}
-                                onClick={() => {
-                                    void checkAudio();
-                                }}
-                            >
-                                {checkingAudio ? t('settings.animeAudioCheck.running') : t('settings.animeAudioCheck')}
-                            </button>
-                        </div>
-                        <span className="field__hint">{t('settings.animeAudioCheck.hint')}</span>
-                    </div>
-                    <SelectField
-                        label={t('settings.animeQuality')}
-                        value={draft.animeQuality}
-                        options={ANIME_QUALITIES}
-                        formatOption={(quality) => {
-                            return formatAnimeQuality(quality, t);
-                        }}
-                        hint={t('settings.animeQuality.hint')}
-                        onChange={(value) => {
-                            change('animeQuality', value);
-                        }}
-                    />
-                    <SelectField
-                        label={t('settings.animeSubtitles')}
-                        value={draft.animeSubtitles}
-                        options={ANIME_SUBTITLE_SETTINGS}
-                        formatOption={(setting) => {
-                            return formatAnimeSubtitles(setting, t);
-                        }}
-                        hint={t('settings.animeSubtitles.hint')}
-                        onChange={(value) => {
-                            change('animeSubtitles', value);
-                        }}
-                    />
-                    <ToggleField
-                        label={t('settings.animeCheckNewEpisodes')}
-                        checked={draft.animeCheckNewEpisodes}
-                        hint={t('settings.animeCheckNewEpisodes.hint')}
-                        onChange={(value) => {
-                            change('animeCheckNewEpisodes', value);
-                        }}
-                    />
-                    <ToggleField
-                        label={t('settings.animeAutoDownloadNew')}
-                        checked={draft.animeAutoDownloadNew}
-                        hint={t('settings.animeAutoDownloadNew.hint')}
-                        onChange={(value) => {
-                            change('animeAutoDownloadNew', value);
-                        }}
-                    />
-                    <ToggleField
-                        label={t('settings.animeAutoTranslateNew')}
-                        checked={draft.animeAutoTranslateNew}
-                        disabled={translationGap !== null && !draft.animeAutoTranslateNew}
-                        hint={translationGap === null ? t('settings.animeAutoTranslateNew.hint') : t('settings.animeAutoTranslateNew.needsSetup')}
-                        onChange={(value) => {
-                            change('animeAutoTranslateNew', value);
-                        }}
-                    />
-                    <TranslationSettings draft={draft} change={change} edit={edit} changeMany={changeMany} />
-                </fieldset>
             )}
 
             {scope === 'anime' && animeSupported && (
@@ -918,8 +947,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                     busy={migrating}
                 />
             )}
-
-            {scope === 'anime' && animeSupported && <ProgramsStatusBlock place="anime" />}
         </section>
     );
 }

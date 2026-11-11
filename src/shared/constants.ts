@@ -86,6 +86,10 @@ export const IPC = {
     llmStatus: 'llm:status',
     llmTokenSet: 'llm:token-set',
     llmTokenClear: 'llm:token-clear',
+    logsSnapshot: 'logs:snapshot',
+    logsClear: 'logs:clear',
+    logsWatch: 'logs:watch',
+    logsUnwatch: 'logs:unwatch',
     animeHistoryList: 'anime:history-list',
     animeHistoryRecord: 'anime:history-record',
     animeHistoryRemove: 'anime:history-remove',
@@ -180,12 +184,16 @@ export const IPC = {
     eventAnimeAutoTranslateOff: 'event:anime-auto-translate-off',
     eventJobUpdate: 'event:job-update',
     eventCutProgress: 'event:cut-progress',
+    eventLogLines: 'event:log-lines',
     eventProgramTool: 'event:program-tool',
     eventProgramUpdate: 'event:program-update',
     eventJobRemoved: 'event:job-removed',
     eventHistoryChanged: 'event:history-changed',
     eventAppUpdateState: 'event:app-update-state'
 } as const;
+
+// The scheme the pictures of the videos being downloaded are served on, from memory: `pullwave-thumb://job/<id>?v=<n>`.
+export const VIDEO_THUMBNAIL_SCHEME = 'pullwave-thumb';
 
 export const BROWSERS: readonly BrowserName[] = ['chrome', 'firefox', 'brave', 'chromium', 'edge', 'opera', 'vivaldi'];
 export const SITE_BROWSERS: readonly SiteBrowser[] = ['default', ...BROWSERS];

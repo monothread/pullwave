@@ -1,7 +1,9 @@
 import type { AniDownloadProgress } from '@shared/anime';
 import { asDownloadResult, runAniCli, type AniRunOutcome } from '@main/services/aniCliRunner';
 import { EXIT_GRACE_MS, KILL_ESCALATION_MS } from '@main/services/ytdlpRunner';
+import { LogHub, processLogs } from '@main/services/logHub';
 import { createFakeChild } from '../../helpers/fakeChild';
+import { createFakeLogWriter } from '../../helpers/fakeLogWriter';
 
 const NOW = 1_700_000_000_000;
 const COMMAND = '/app/resources/bin/ani/busybox sh /app/resources/bin/ani/ani-cli naruto';
@@ -317,6 +319,92 @@ describe('runAniCli', () => {
     it('uses the default spawn when none is given', () => {
         const handle = runAniCli({ binary: '/nonexistent/busybox-for-test', args: [], env: ENV });
         return expect(handle.result).resolves.toMatchObject({ status: 'error', error: { code: 'BINARY_MISSING' } });
+    });
+});
+
+describe('runAniCli log', () => {
+    function startLogged() {
+        const fake = createFakeChild();
+        const { writer, calls } = createFakeLogWriter();
+        const handle = runAniCli({
+            binary: '/bin/busybox',
+            args: ['sh', '/bin/ani-cli', 'naruto'],
+            env: ENV,
+            spawnFn: () => {
+                return fake.child;
+            },
+            platform: 'linux',
+            killGroup: vi.fn(),
+            log: writer
+        });
+        return { fake, calls, handle };
+    }
+
+    it('writes the command, every line as it came (colors included) with the progress apart, and the end', async () => {
+        const { fake, calls, handle } = startLogged();
+        fake.stderr.write('PULLWAVE_MENU\tSelect anime: \t1 Naruto\n');
+        fake.stdout.write(`${ESC}[1;34mChecking dependencies...${ESC}[0m\n`);
+        fake.stdout.write('[download]  50.0% of ~ 100.00MiB at 2.00MiB/s ETA 00:25 (frag 1/2)\r');
+        fake.stderr.write('\r\n');
+        fake.stdout.write('[download] Destination: /d/Naruto/Episode 1.mp4\n');
+        fake.emitter.emit('exit', 0, null);
+        fake.emitter.emit('close', 0);
+        await handle.result;
+        expect(calls).toEqual([
+            { method: 'command', program: '/bin/busybox', args: ['sh', '/bin/ani-cli', 'naruto'] },
+            { method: 'line', stream: 'stderr', text: 'PULLWAVE_MENU\tSelect anime: \t1 Naruto' },
+            { method: 'line', stream: 'stdout', text: `${ESC}[1;34mChecking dependencies...${ESC}[0m` },
+            { method: 'progress', stream: 'stdout', text: '[download]  50.0% of ~ 100.00MiB at 2.00MiB/s ETA 00:25 (frag 1/2)' },
+            { method: 'line', stream: 'stderr', text: '' },
+            { method: 'line', stream: 'stdout', text: '[download] Destination: /d/Naruto/Episode 1.mp4' },
+            { method: 'exit', code: 0, signal: null }
+        ]);
+    });
+
+    it('writes the signal that ended a cancelled run, once', async () => {
+        const { fake, calls, handle } = startLogged();
+        handle.cancel();
+        fake.emitter.emit('exit', null, 'SIGTERM');
+        fake.emitter.emit('close', null);
+        fake.emitter.emit('close', null);
+        await expect(handle.result).resolves.toEqual({ status: 'cancelled' });
+        expect(
+            calls.filter((call) => {
+                return call.method === 'exit';
+            })
+        ).toEqual([{ method: 'exit', code: null, signal: 'SIGTERM' }]);
+    });
+
+    it('writes why ani-cli could not be started, and no end after it', async () => {
+        const { fake, calls, handle } = startLogged();
+        fake.emitter.emit('error', Object.assign(new Error('spawn /bin/busybox ENOENT'), { code: 'ENOENT' }));
+        fake.emitter.emit('close', -2);
+        await handle.result;
+        expect(calls).toEqual([
+            { method: 'command', program: '/bin/busybox', args: ['sh', '/bin/ani-cli', 'naruto'] },
+            { method: 'failure', message: 'could not start: spawn /bin/busybox ENOENT' }
+        ]);
+    });
+
+    it('writes to the log of ani-cli of the app by default', async () => {
+        const hub = new LogHub({
+            now: () => {
+                return NOW;
+            }
+        });
+        const open = vi.spyOn(processLogs, 'open').mockImplementation((source) => {
+            return hub.open(source);
+        });
+        const { fake, handle } = start();
+        fake.stdout.write('hello\n');
+        fake.emitter.emit('close', 0);
+        await handle.result;
+        expect(open).toHaveBeenCalledWith('ani-cli');
+        expect(hub.snapshot('ani-cli')).toEqual([
+            { id: 1, at: NOW, stream: 'command', text: COMMAND },
+            { id: 2, at: NOW, stream: 'stdout', text: 'hello' },
+            { id: 3, at: NOW, stream: 'event', text: 'exited with code 0' }
+        ]);
     });
 });
 

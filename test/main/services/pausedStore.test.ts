@@ -28,6 +28,11 @@ describe('readPausedDownload', () => {
         expect(read?.job).toMatchObject({ status: 'paused', speed: '', eta: '', live: false, waitingForLive: false, merging: false, saving: false, postProcess: null, filePath: null, hasPartial: false, downloadedBytes: 0, elapsedSeconds: 0, error: null, endCheck: null });
     });
 
+    it('brings a paused download back without a picture: the pictures are kept in memory only, so the one of an earlier run is gone', () => {
+        const read = readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, thumbnail: 'pullwave-thumb://job/p1?v=3' } });
+        expect(read?.job.thumbnail).toBeNull();
+    });
+
     it('keeps the percent between 0 and 100', () => {
         expect(readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, percent: 250 } })?.job.percent).toBe(100);
         expect(readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, percent: -4 } })?.job.percent).toBe(0);

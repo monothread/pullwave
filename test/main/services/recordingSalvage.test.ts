@@ -1,4 +1,10 @@
 import { salvageRecording } from '@main/services/recordingSalvage';
+import { runFfmpegQuietly } from '@main/services/ffmpegExec';
+
+// The default runner of ffmpeg (which writes to the log of ffmpeg) is a stand-in here: no test runs ffmpeg.
+vi.mock('@main/services/ffmpegExec', () => {
+    return { runFfmpegQuietly: vi.fn() };
+});
 
 const FINAL = '/dl/Live Show [abc].mp4';
 const PARTIAL = `${FINAL}.part`;
@@ -71,5 +77,18 @@ describe('salvageRecording', () => {
                 return path === PARTIAL;
             } })
         ).resolves.toBeNull();
+    });
+});
+
+describe('salvageRecording with the default runner of ffmpeg', () => {
+    it('copies the partial file with the runner that writes to the log of ffmpeg, with the exact arguments', async () => {
+        const { options, files } = setup([PARTIAL]);
+        vi.mocked(runFfmpegQuietly).mockImplementation(() => {
+            files.add(FINAL);
+            return Promise.resolve(true);
+        });
+        await expect(salvageRecording({ ...options, runFfmpeg: undefined })).resolves.toBe(FINAL);
+        expect(runFfmpegQuietly).toHaveBeenCalledTimes(1);
+        expect(runFfmpegQuietly).toHaveBeenCalledWith('/app/bin/ffmpeg', ['-y', '-v', 'error', '-i', PARTIAL, '-c', 'copy', FINAL]);
     });
 });

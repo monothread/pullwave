@@ -3,8 +3,9 @@ import type { ErrorDetails } from '@shared/errorDetails';
 import type { DownloadError, DownloadInfo, LiveStreamInfo, PostProcessEvent, ProgressInfo } from '@shared/types';
 import { commandLine } from './errorDetails';
 import { mapDownloadError, mapSpawnError } from './errorMapper';
+import { processLogs, type LogWriter } from './logHub';
 import { killProcessTree, type GroupKill, type TaskkillSpawn } from './processTree';
-import { isWaitLine, parseFileLine, parseInfoLine, parsePostProcessLine, parseProgressLine, parseStreamLine, POSTPROCESS_PREFIX } from './progressParser';
+import { isWaitLine, parseFileLine, parseInfoLine, parsePostProcessLine, parseProgressLine, parseStreamLine, parseThumbnailLine, POSTPROCESS_PREFIX } from './progressParser';
 
 // After yt-dlp exits its pipes may still be held open by a process it started (an ffmpeg left behind), which would keep
 // the download "running" forever: the result is given anyway once this time has passed.
@@ -38,6 +39,8 @@ export interface RunOptions {
     onInfo?: (info: DownloadInfo) => void;
     // Where the stream about to be downloaded can be fetched from (printed right after the info).
     onStream?: (stream: LiveStreamInfo) => void;
+    // The address of the picture of the video about to be downloaded (only when the site gives one).
+    onThumbnail?: (address: string) => void;
     // yt-dlp is waiting for a scheduled live stream to start.
     onWaiting?: () => void;
     // A post-processor (the ffmpeg steps after the download: conversion, merge, metadata...) started or finished.
@@ -47,6 +50,8 @@ export interface RunOptions {
     platform?: NodeJS.Platform;
     taskkill?: TaskkillSpawn;
     killGroup?: GroupKill;
+    // Where the command and its output are written for the window of the logs (the log of yt-dlp by default).
+    log?: LogWriter;
 }
 
 export function defaultSpawn(command: string, args: string[], env?: NodeJS.ProcessEnv): ChildProcessWithoutNullStreams {
@@ -88,7 +93,10 @@ export function runYtdlp(options: RunOptions): RunHandle {
     const child = spawnFn(options.binary, options.args, options.env);
     const platform = options.platform ?? process.platform;
     const known: Partial<ErrorDetails> = { operation: 'Running yt-dlp', command: commandLine(options.binary, options.args) };
+    const log = options.log ?? processLogs.open('yt-dlp');
+    log.command(options.binary, options.args);
     let cancelled = false;
+    let exitSignal: NodeJS.Signals | null = null;
     let stopped = false;
     let filePath: string | null = null;
     let stderr = '';
@@ -96,9 +104,11 @@ export function runYtdlp(options: RunOptions): RunHandle {
     const stdoutSplitter = createLineSplitter((line) => {
         const progress = parseProgressLine(line);
         if (progress) {
+            log.progress('stdout', line);
             options.onProgress(progress);
             return;
         }
+        log.line('stdout', line);
         const info = parseInfoLine(line);
         if (info) {
             options.onInfo?.(info);
@@ -113,6 +123,11 @@ export function runYtdlp(options: RunOptions): RunHandle {
             options.onWaiting?.();
             return;
         }
+        const thumbnail = parseThumbnailLine(line);
+        if (thumbnail !== null) {
+            options.onThumbnail?.(thumbnail);
+            return;
+        }
         const postProcess = parsePostProcessLine(line);
         if (postProcess) {
             options.onPostProcess?.(postProcess);
@@ -123,6 +138,7 @@ export function runYtdlp(options: RunOptions): RunHandle {
 
     // In quiet mode (which `--print` implies) yt-dlp writes the post-process progress lines to stderr, not stdout.
     const stderrSplitter = createLineSplitter((line) => {
+        log.line('stderr', line);
         const postProcess = parsePostProcessLine(line);
         if (postProcess) {
             options.onPostProcess?.(postProcess);
@@ -163,6 +179,7 @@ export function runYtdlp(options: RunOptions): RunHandle {
             timers.clear();
             stdoutSplitter.flush();
             stderrSplitter.flush();
+            log.exit(code, exitSignal);
             if (cancelled) {
                 resolve({ status: 'cancelled' });
                 return;
@@ -181,9 +198,11 @@ export function runYtdlp(options: RunOptions): RunHandle {
             settled = true;
             timers.forEach(clearTimeout);
             timers.clear();
+            log.failure(`could not start: ${error.message}`);
             resolve({ status: 'error', error: mapSpawnError(error, known) });
         });
-        child.once('exit', (code: number | null) => {
+        child.once('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+            exitSignal = signal;
             if (settled) {
                 return;
             }

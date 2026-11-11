@@ -1,4 +1,10 @@
 import { buildConcatList, mergeParts } from '@main/services/partsMerger';
+import { runFfmpegQuietly } from '@main/services/ffmpegExec';
+
+// The default runner of ffmpeg (which writes to the log of ffmpeg) is a stand-in here: no test runs ffmpeg.
+vi.mock('@main/services/ffmpegExec', () => {
+    return { runFfmpegQuietly: vi.fn() };
+});
 
 const PART_1 = '/dl/Live Show [abc].mp4';
 const PART_2 = '/dl/Live Show [abc] (part 2).mp4';
@@ -120,5 +126,18 @@ describe('mergeParts', () => {
         const { options, runFfmpeg } = setup([]);
         await expect(mergeParts(options)).resolves.toBeNull();
         expect(runFfmpeg).not.toHaveBeenCalled();
+    });
+});
+
+describe('mergeParts with the default runner of ffmpeg', () => {
+    it('joins the parts with the runner that writes to the log of ffmpeg, with the exact arguments', async () => {
+        const { options, files } = setup([PART_1, PART_2]);
+        vi.mocked(runFfmpegQuietly).mockImplementation(() => {
+            files.add(MERGED);
+            return Promise.resolve(true);
+        });
+        await expect(mergeParts({ ...options, runFfmpeg: undefined, paths: [PART_1, PART_2] })).resolves.toBe(PART_1);
+        expect(runFfmpegQuietly).toHaveBeenCalledTimes(1);
+        expect(runFfmpegQuietly).toHaveBeenCalledWith('/app/bin/ffmpeg', ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', LIST, '-c', 'copy', MERGED]);
     });
 });

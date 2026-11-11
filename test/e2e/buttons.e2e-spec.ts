@@ -142,17 +142,21 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-r
             expect(Math.abs(quality.width - subtitles.width)).toBeLessThanOrEqual(1);
             expect(quality.y).toBeLessThan(subtitles.y);
             expect(new Set([quality.height, subtitles.height]).size).toBe(1);
-            // The folder is above them, with BROWSE on its row and MIGRATE FOLDER on the row below.
+            // The folder is in a block of its own (FOLDER & LIBRARY), as tall as the fields, with BROWSE on its row, MIGRATE FOLDER on the row
+            // below and CHECK DOWNLOADED EPISODES under it, on the same left edge.
             const folder = await box('Anime download folder');
-            expect(folder.x).toBe(quality.x);
-            expect(folder.y).toBeLessThan(quality.y);
             expect(folder.height).toBe(quality.height);
-            const browse = await page.locator('.settings .panel', { hasText: 'Anime download folder' }).getByRole('button', { name: 'BROWSE' }).boundingBox();
+            const library = page.locator('.settings .panel', { hasText: 'Anime download folder' });
+            await expect(library.locator(':scope > legend')).toHaveText('FOLDER & LIBRARY');
+            await expect(library.getByLabel('Anime quality', { exact: true })).toHaveCount(0);
+            const browse = await library.getByRole('button', { name: 'BROWSE' }).boundingBox();
             expect(Math.abs(Math.round(browse?.y ?? -1) - folder.y)).toBeLessThanOrEqual(1);
-            const migrate = await page.getByRole('button', { name: 'MIGRATE FOLDER' }).boundingBox();
+            const migrate = await library.getByRole('button', { name: 'MIGRATE FOLDER' }).boundingBox();
             expect(Math.round(migrate?.x ?? -1)).toBe(folder.x);
             expect(Math.round(migrate?.y ?? -1)).toBeGreaterThan(folder.y + folder.height);
-            expect(Math.round(migrate?.y ?? -1)).toBeLessThan(quality.y);
+            const check = await library.getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' }).boundingBox();
+            expect(Math.round(check?.x ?? -1)).toBe(folder.x);
+            expect(Math.round(check?.y ?? -1)).toBeGreaterThan(Math.round(migrate?.y ?? -1));
         });
 
         test('the button of a history entry keeps its size however long the title is', async () => {

@@ -1263,6 +1263,7 @@ test.describe('themes', () => {
             'Pink Noir (pink on black)',
             'Cyber Gold (yellow)',
             'Ice Neon (icy cyan)',
+            'Neon Tokyo Light (pink and blue, light)',
             'Dark',
             'Tokyo Night',
             'Nord',
@@ -1633,7 +1634,7 @@ test.describe('settings layout @resize', () => {
     }
 
     // The panels of the settings of the video downloader (the ones of the whole app and of the anime section are on screens of their own).
-    const LEGENDS = ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'Status of the programs', 'ADVANCED'];
+    const LEGENDS = ['OUTPUT', 'PLAYLISTS & SUBTITLES', 'Status of the programs', 'QUALITY & FORMAT', 'ADVANCED', 'LIVE STREAMS', 'BROWSER COOKIES', 'DIAGNOSTICS'];
 
     test('the panels have all the same width and flow in two even columns, with no panel on a row of its own', async () => {
         const { page } = session;

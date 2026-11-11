@@ -14,6 +14,7 @@ interface ControlledRun {
     onInfo: (info: DownloadInfo) => void;
     onWaiting: (() => void) | undefined;
     onPostProcess: ((event: PostProcessEvent) => void) | undefined;
+    onThumbnail: ((address: string) => void) | undefined;
     resolve: (result: RunResult) => void;
     cancel: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
@@ -49,7 +50,7 @@ function setup(settings: Partial<Settings> = {}, extraDeps: Partial<QueueDepende
         fileSize: (path) => {
             return fileSizes.get(path) ?? null;
         },
-        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess): RunHandle => {
+        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail): RunHandle => {
             let resolveResult: (result: RunResult) => void = () => {
                 return undefined;
             };
@@ -62,7 +63,7 @@ function setup(settings: Partial<Settings> = {}, extraDeps: Partial<QueueDepende
             const stop = vi.fn(() => {
                 resolveResult({ status: 'done', filePath: '/dl/recorded.mp4' });
             });
-            runs.push({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, resolve: resolveResult, cancel, stop });
+            runs.push({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, resolve: resolveResult, cancel, stop });
             return { result, cancel, stop };
         },
         addHistory: (entry) => {
@@ -184,7 +185,8 @@ describe('QueueManager.add', () => {
             endCheck: null,
             merging: false,
             saving: false,
-            postProcess: null
+            postProcess: null,
+            thumbnail: null
         });
         expect(updates.map((job) => {
             return job.status;
@@ -3090,5 +3092,106 @@ describe('QueueManager closing the app with downloads going on', () => {
             queue.cancel('saved-1');
             expect(deleteFiles).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe('QueueManager thumbnails', () => {
+    function thumbnailsDouble(answer: string | null = 'pullwave-thumb://job/job-1?v=1') {
+        let resolveLoad: (value: string | null) => void = () => {
+            return undefined;
+        };
+        const load = vi.fn<(jobId: string, address: string) => Promise<string | null>>(() => {
+            return new Promise<string | null>((resolve) => {
+                resolveLoad = resolve;
+            });
+        });
+        const forget = vi.fn();
+        return {
+            thumbnails: { load, forget },
+            load,
+            forget,
+            answer: async (value: string | null = answer): Promise<void> => {
+                resolveLoad(value);
+                await Promise.resolve();
+                await Promise.resolve();
+            }
+        };
+    }
+
+    it('fetches the picture yt-dlp gives and shows it on the download once it is there', async () => {
+        const double = thumbnailsDouble();
+        const { queue, runs, updates } = setup({}, { thumbnails: double.thumbnails });
+        queue.add(URL_A);
+        runs[0]?.onThumbnail?.('https://i.ytimg.com/vi/abc/maxresdefault.jpg');
+        expect(double.load).toHaveBeenCalledTimes(1);
+        expect(double.load).toHaveBeenCalledWith('job-1', 'https://i.ytimg.com/vi/abc/maxresdefault.jpg');
+        expect(queue.list()[0]?.thumbnail).toBeNull();
+        const before = updates.length;
+        await double.answer();
+        expect(queue.list()[0]?.thumbnail).toBe('pullwave-thumb://job/job-1?v=1');
+        expect(updates).toHaveLength(before + 1);
+        expect(updates.at(-1)).toEqual({ ...queue.list()[0], thumbnail: 'pullwave-thumb://job/job-1?v=1' });
+    });
+
+    it('keeps the download without a picture when it could not be fetched', async () => {
+        const double = thumbnailsDouble();
+        const { queue, runs, updates } = setup({}, { thumbnails: double.thumbnails });
+        queue.add(URL_A);
+        runs[0]?.onThumbnail?.('https://x.test/broken.jpg');
+        const before = updates.length;
+        await double.answer(null);
+        expect(queue.list()[0]?.thumbnail).toBeNull();
+        expect(updates).toHaveLength(before);
+    });
+
+    it('leaves alone a download removed before its picture arrived, and forgets the picture of every download removed', async () => {
+        const double = thumbnailsDouble();
+        const { queue, runs, updates } = setup({}, { thumbnails: double.thumbnails });
+        queue.add(URL_A);
+        runs[0]?.onThumbnail?.('https://i.ytimg.com/vi/abc/0.jpg');
+        queue.remove('job-1');
+        expect(double.forget).toHaveBeenCalledTimes(1);
+        expect(double.forget).toHaveBeenCalledWith('job-1');
+        const before = updates.length;
+        await double.answer();
+        expect(updates).toHaveLength(before);
+        expect(queue.list()).toEqual([]);
+    });
+
+    it('forgets the pictures of the finished downloads that are cleared', () => {
+        const double = thumbnailsDouble();
+        const { queue, runs } = setup({}, { thumbnails: double.thumbnails });
+        queue.add(URL_A);
+        runs[0]?.resolve({ status: 'done', filePath: '/dl/a.mp4' });
+        return Promise.resolve().then(() => {
+            queue.clearFinished();
+            expect(double.forget).toHaveBeenCalledWith('job-1');
+        });
+    });
+
+    it('fetches nothing when it has no way to fetch pictures', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        const before = updates.length;
+        runs[0]?.onThumbnail?.('https://i.ytimg.com/vi/abc/0.jpg');
+        expect(updates).toHaveLength(before);
+        expect(queue.list()[0]?.thumbnail).toBeNull();
+    });
+
+    it('keeps the picture when the download is tried again, and takes the new one yt-dlp gives', async () => {
+        const double = thumbnailsDouble('pullwave-thumb://job/job-1?v=1');
+        const { queue, runs } = setup({}, { thumbnails: double.thumbnails });
+        queue.add(URL_A);
+        runs[0]?.onThumbnail?.('https://i.ytimg.com/vi/abc/0.jpg');
+        await double.answer();
+        runs[0]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
+        await Promise.resolve();
+        await Promise.resolve();
+        queue.retry('job-1');
+        expect(queue.list()[0]?.thumbnail).toBe('pullwave-thumb://job/job-1?v=1');
+        runs[1]?.onThumbnail?.('https://i.ytimg.com/vi/abc/1.jpg');
+        await double.answer('pullwave-thumb://job/job-1?v=2');
+        expect(double.load).toHaveBeenLastCalledWith('job-1', 'https://i.ytimg.com/vi/abc/1.jpg');
+        expect(queue.list()[0]?.thumbnail).toBe('pullwave-thumb://job/job-1?v=2');
     });
 });

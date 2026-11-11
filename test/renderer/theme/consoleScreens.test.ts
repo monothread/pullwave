@@ -379,6 +379,15 @@ describe('bp-downloads.css', () => {
         expect(mediaStyleOf(downloads, '(max-width: 520px)', '.download-hero__art')).toEqual({ display: 'none' });
     });
 
+    it('gives the picture of a video a wide box (16:9) and a wider column, filled without stretching it, also on a narrow window', () => {
+        expect(styleOf(downloads, '.download-hero--wide')).toEqual({ 'grid-template-columns': '196px minmax(0, 1fr) minmax(200px, 320px)' });
+        expect(styleOf(downloads, '.download-hero--wide .download-hero__art')).toEqual({ width: '196px', 'aspect-ratio': '16 / 9' });
+        expect(styleOf(downloads, '.download-hero__thumbnail')).toEqual({ display: 'block', 'object-fit': 'cover' });
+        expect(mediaStyleOf(downloads, '(max-width: 1000px)', '.download-hero--wide')).toEqual({ 'grid-template-columns': '160px minmax(0, 1fr)' });
+        expect(mediaStyleOf(downloads, '(max-width: 1000px)', '.download-hero--wide .download-hero__art')).toEqual({ width: '160px' });
+        expect(mediaStyleOf(downloads, '(max-width: 520px)', '.download-hero--wide')).toEqual({ 'grid-template-columns': 'minmax(0, 1fr)', padding: '16px' });
+    });
+
     it('draws the line of the graph in the colour of the theme, the same width at any size', () => {
         expect(styleOf(downloads, '.speed-graph__line')).toEqual({ stroke: 'var(--cyan)', 'stroke-width': '2', 'vector-effect': 'non-scaling-stroke', filter: 'drop-shadow(0 0 4px var(--cyan))' });
     });

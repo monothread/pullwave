@@ -5,6 +5,7 @@ export const FILE_PREFIX = 'CYBERFILE|';
 export const INFO_PREFIX = 'CYBERINFO|';
 export const POSTPROCESS_PREFIX = 'CYBERPP|';
 export const STREAM_PREFIX = 'CYBERSTREAM|';
+export const THUMBNAIL_PREFIX = 'CYBERTHUMB|';
 
 export const PROGRESS_TEMPLATE = `download:${PROGRESS_PREFIX}%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress.downloaded_bytes)s|%(progress.elapsed)s|%(info.is_live)s|%(info.title)s`;
 // Printed when each post-processor starts and finishes. Unlike its own `[Merger]`-style lines it also works in quiet mode.
@@ -14,6 +15,8 @@ export const INFO_PRINT_TEMPLATE = `before_dl:${INFO_PREFIX}%(is_live)s|%(filena
 // Printed right after it: where the stream can be fetched from, as JSON (the app records the live streams of this kind itself).
 export const STREAM_PRINT_TEMPLATE = `before_dl:${STREAM_PREFIX}%(.{is_live,protocol,url,http_headers,requested_formats})j`;
 export const FILE_PRINT_TEMPLATE = `after_move:${FILE_PREFIX}%(filepath)s`;
+// Printed right before each download starts: the address of the picture of the video (NA when the site gives none).
+export const THUMBNAIL_PRINT_TEMPLATE = `before_dl:${THUMBNAIL_PREFIX}%(thumbnail)s`;
 
 const NOT_AVAILABLE_VALUES = new Set(['NA', 'N/A', 'Unknown', 'Unknown B/s']);
 
@@ -44,6 +47,20 @@ export function parseProgressLine(line: string): ProgressInfo | null {
 function parseNumber(value: string): number | null {
     const parsed = parseFloat(value);
     return Number.isFinite(parsed) ? parsed : null;
+}
+
+// The address of the picture of the video, or null when the line is another one or the site gives no picture (only http and https).
+export function parseThumbnailLine(line: string): string | null {
+    if (!line.startsWith(THUMBNAIL_PREFIX)) {
+        return null;
+    }
+    const address = line.slice(THUMBNAIL_PREFIX.length).trim();
+    try {
+        const { protocol } = new URL(address);
+        return protocol === 'https:' || protocol === 'http:' ? address : null;
+    } catch {
+        return null;
+    }
 }
 
 export function parseInfoLine(line: string): DownloadInfo | null {

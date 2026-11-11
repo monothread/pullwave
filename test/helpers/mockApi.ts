@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AutoTranslateOffReason, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleJobs, SubtitleTranslatableResponse, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type { LlmStatus } from '@shared/llm';
+import type { LogLine, LogSource } from '@shared/logs';
 import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
 import { PROGRAM_IDS, type ProgramId, type ToolState } from '@shared/tools';
@@ -10,6 +11,7 @@ import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
 export type MockMangaApi = { [K in keyof MangaApi]: ReturnType<typeof vi.fn> };
 export type MockProgramsApi = { [K in keyof CyberApi['programs']]: ReturnType<typeof vi.fn> };
 export type MockCutApi = { [K in keyof CyberApi['cut']]: ReturnType<typeof vi.fn> };
+export type MockLogsApi = { [K in keyof CyberApi['logs']]: ReturnType<typeof vi.fn> };
 
 export function makeProgramInfo(id: ProgramId, overrides: Partial<ProgramInfo> = {}): ProgramInfo {
     return { id, state: { id, status: 'ready', version: '1.0.0', bytesDone: 0, bytesTotal: 0, percent: 100, error: null }, custom: false, directory: `/tools/${id}/1.0.0`, ...overrides };
@@ -35,8 +37,10 @@ export function makeProgramVersions(overrides: Partial<ProgramVersions> = {}): P
 }
 
 export interface MockApiHandle {
-    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi; programs: MockProgramsApi; cut: MockCutApi };
+    api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut' | 'logs'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi; programs: MockProgramsApi; cut: MockCutApi; logs: MockLogsApi };
     emitCutProgress: (run: CutRun) => void;
+    // Sends new lines of a program's log to the windows that watch it.
+    emitLogLines: (source: LogSource, lines: LogLine[]) => void;
     emitProgramTool: (state: ToolState) => void;
     emitProgramUpdate: (state: ToolState) => void;
     emitMangaTool: (state: ToolState) => void;
@@ -84,6 +88,7 @@ export function createMockApi(): MockApiHandle {
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
     const programToolListeners: Array<(state: ToolState) => void> = [];
     const cutListeners: Array<(run: CutRun) => void> = [];
+    const logListeners: Array<{ source: LogSource; listener: (lines: LogLine[]) => void }> = [];
     const programUpdateListeners: Array<(state: ToolState) => void> = [];
     const mangaToolListeners: Array<(state: ToolState) => void> = [];
     const mangaServerListeners: Array<(status: MangaServerStatus) => void> = [];
@@ -133,6 +138,24 @@ export function createMockApi(): MockApiHandle {
         }),
         clear: vi.fn(async () => {
             return undefined;
+        })
+    };
+
+    const logs: MockLogsApi = {
+        snapshot: vi.fn(async (): Promise<LogLine[]> => {
+            return [];
+        }),
+        clear: vi.fn(async () => {
+            return undefined;
+        }),
+        watch: vi.fn((source: LogSource, listener: (lines: LogLine[]) => void) => {
+            const entry = { source, listener };
+            logListeners.push(entry);
+            const unsubscribe = vi.fn(() => {
+                logListeners.splice(logListeners.indexOf(entry), 1);
+            });
+            unsubscribers.push(unsubscribe);
+            return unsubscribe;
         })
     };
 
@@ -344,6 +367,7 @@ export function createMockApi(): MockApiHandle {
         manga,
         programs,
         cut,
+        logs,
         getSettings: vi.fn(async () => {
             return DEFAULT_SETTINGS;
         }),
@@ -652,6 +676,15 @@ export function createMockApi(): MockApiHandle {
                 listener(run);
             });
         },
+        emitLogLines: (source, lines) => {
+            logListeners
+                .filter((entry) => {
+                    return entry.source === source;
+                })
+                .forEach((entry) => {
+                    entry.listener(lines);
+                });
+        },
         emitProgramTool: (state) => {
             programToolListeners.forEach((listener) => {
                 listener(state);
@@ -809,6 +842,7 @@ export function makeJob(overrides: Partial<DownloadJob> = {}): DownloadJob {
         merging: false,
         saving: false,
         postProcess: null,
+        thumbnail: null,
         ...overrides
     };
 }

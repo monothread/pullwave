@@ -200,7 +200,7 @@ describe('createMangaRuntime downloading the program', () => {
                 return undefined;
             },
             toolDependencies: { download },
-            helperDependencies: { docker: docker.runner }
+            helperDependencies: { docker: docker.runner, followLogs: docker.follower }
         });
         expect(runtime?.service.status()).toMatchObject({
             supported: true,
@@ -252,7 +252,7 @@ describe('createMangaRuntime downloading the program', () => {
                     return Promise.reject(new Error('offline'));
                 }
             },
-            helperDependencies: { docker: docker.runner }
+            helperDependencies: { docker: docker.runner, followLogs: docker.follower }
         });
         expect(runtime?.service.status().helper).toBeNull();
         runtime?.prepare();
@@ -980,6 +980,7 @@ describe('createMangaRuntime Cloudflare helper', () => {
             },
             helperDependencies: {
                 docker: docker.runner,
+                followLogs: docker.follower,
                 findFreePort: () => {
                     return Promise.resolve((flare.address() as AddressInfo).port);
                 },
@@ -1027,8 +1028,12 @@ describe('createMangaRuntime Cloudflare helper', () => {
         expect(address).toBeDefined();
         expect(address).not.toBe(`http://127.0.0.1:${port}`);
         expect(runtime.service.status().helper).toMatchObject({ id: 'flaresolverr', status: 'ready' });
+        // What the container says goes to the log of FlareSolverr while it runs, and stops being followed when it stops.
+        expect(docker.followed).toEqual(['c0ffee']);
+        expect(docker.unfollowed).toEqual([]);
         await runtime.shutdown();
         expect(docker.calls).toContainEqual(['stop', '--time', '3', 'c0ffee']);
+        expect(docker.unfollowed).toEqual(['c0ffee']);
     });
 
     describe('starting the server when the app opens', () => {
@@ -1193,7 +1198,7 @@ describe('createMangaRuntime Cloudflare helper', () => {
                 },
                 pollIntervalMs: 5
             },
-            helperDependencies: { docker: docker.runner }
+            helperDependencies: { docker: docker.runner, followLogs: docker.follower }
         })!;
         await runtime.service.install();
         await runtime.service.requireServer();
@@ -1241,7 +1246,7 @@ describe('createMangaRuntime updates and health', () => {
                     return Promise.reject(new Error('offline'));
                 }
             },
-            helperDependencies: { docker: docker.runner }
+            helperDependencies: { docker: docker.runner, followLogs: docker.follower }
         })!;
         return { runtime, dir, tools, sent, docker };
     }

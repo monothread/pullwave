@@ -3,6 +3,9 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SPEECH_PART_SECONDS } from '@shared/anime';
+import { openFfmpegLog } from './ffmpegExec';
+import type { LogWriter } from './logHub';
+import { createLogFeed, isFfmpegStatsLine } from './logFeed';
 
 export interface FfmpegResult {
     // Null when ffmpeg could not be started or was ended by a signal.
@@ -25,24 +28,40 @@ const VOICE_BAND = 'highpass=f=250,lowpass=f=3500';
 const DURATION = /Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/;
 const AUDIO_STREAM = /Stream #\d+:\d+.*: Audio:/;
 
-export function createFfmpegRunner(binary: string): FfmpegRunner {
+// Every run writes its command and what ffmpeg says to a log of its own (`openLog`; the log of ffmpeg by default).
+export function createFfmpegRunner(binary: string, openLog: () => LogWriter = openFfmpegLog): FfmpegRunner {
     return (args, signal) => {
         return new Promise((resolve) => {
+            const log = openLog();
+            log.command(binary, args);
+            const feed = createLogFeed(log, 'stderr', isFfmpegStatsLine);
             const child = spawn(binary, args, { windowsHide: true });
             let stderr = '';
+            let ended = false;
             const onAbort = (): void => {
                 child.kill();
             };
             signal?.addEventListener('abort', onAbort, { once: true });
             child.stderr.on('data', (chunk: Buffer) => {
-                stderr = (stderr + chunk.toString('utf-8')).slice(-MAX_STDERR);
+                const text = chunk.toString('utf-8');
+                stderr = (stderr + text).slice(-MAX_STDERR);
+                feed.push(text);
             });
             child.on('error', (error) => {
                 signal?.removeEventListener('abort', onAbort);
+                if (!ended) {
+                    ended = true;
+                    log.failure(`could not start: ${error.message}`);
+                }
                 resolve({ code: null, stderr: error.message });
             });
-            child.on('close', (code) => {
+            child.on('close', (code, closeSignal) => {
                 signal?.removeEventListener('abort', onAbort);
+                if (!ended) {
+                    ended = true;
+                    feed.flush();
+                    log.exit(code, closeSignal);
+                }
                 resolve({ code, stderr });
             });
         });

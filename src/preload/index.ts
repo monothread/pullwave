@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import { IPC } from '@shared/constants';
 import type { AnimeCheckState, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, AutoTranslateOffReason, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
 import type { CutRun } from '@shared/cut';
+import type { LogBatch } from '@shared/logs';
 import type { MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
@@ -261,6 +262,27 @@ const cut: CyberApi['cut'] = {
     }
 };
 
+const logs: CyberApi['logs'] = {
+    snapshot: (source) => {
+        return ipcRenderer.invoke(IPC.logsSnapshot, source);
+    },
+    clear: (source) => {
+        return ipcRenderer.invoke(IPC.logsClear, source);
+    },
+    watch: (source, listener) => {
+        void ipcRenderer.invoke(IPC.logsWatch, source);
+        const stop = subscribe<LogBatch>(IPC.eventLogLines, (batch) => {
+            if (batch.source === source) {
+                listener(batch.lines);
+            }
+        });
+        return (): void => {
+            stop();
+            void ipcRenderer.invoke(IPC.logsUnwatch, source);
+        };
+    }
+};
+
 const programs: CyberApi['programs'] = {
     status: () => {
         return ipcRenderer.invoke(IPC.programsStatus);
@@ -337,6 +359,7 @@ const api: CyberApi = {
     },
     programs,
     cut,
+    logs,
     getAppUpdateState: () => {
         return ipcRenderer.invoke(IPC.appUpdateGet);
     },

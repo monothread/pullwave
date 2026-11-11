@@ -88,3 +88,15 @@ describe('responsive.css: three columns on an ultrawide page', () => {
         expect(order.indexOf(`${ULTRA}|.settings`)).toBeGreaterThan(order.indexOf('@container main (min-width: 900px)|.settings'));
     });
 });
+
+describe('cyberpunk.css: the titles of the blocks of the settings', () => {
+    it('writes the title of every block of the settings in capitals, and keeps the style every title of a block has', () => {
+        expect(styleOf(cyberpunk, '.settings > .panel > legend')).toEqual({ 'text-transform': 'uppercase' });
+        expect(styleOf(cyberpunk, '.panel legend')).toEqual({ color: 'var(--magenta)', 'letter-spacing': '2px', 'font-size': '12px', padding: '0 6px' });
+    });
+
+    it('lets the blocks of the settings flow into columns without cutting a block in two', () => {
+        expect(styleOf(cyberpunk, '.settings')).toEqual({ 'column-count': '1', 'column-gap': '18px' });
+        expect(styleOf(cyberpunk, '.settings > .panel')).toEqual({ 'break-inside': 'avoid', margin: '0 0 18px' });
+    });
+});

@@ -2664,7 +2664,7 @@ test('shows the ani-cli the user chose as theirs in the settings, and has no chi
 test('shows the anime settings and saves them', async () => {
     const { page, userData } = session;
     await openAnimeSettings(page);
-    await expect(page.locator('.settings legend', { hasText: /^ANIME$/ })).toBeVisible();
+    await expect(page.locator('.settings legend', { hasText: /^FOLDER & LIBRARY$/ })).toBeVisible();
     await expect(page.getByLabel('Anime quality')).toHaveValue('720p');
     await page.getByLabel('Anime quality').selectOption('worst');
     await expect(page.getByLabel('Anime audio')).toHaveCount(0);
@@ -5631,7 +5631,7 @@ test.describe('the look for new episodes', () => {
         const SPANISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nES: Hello there\n\n2\n00:00:04.000 --> 00:00:06.000\nES: See you\n';
         const SWITCH = 'Translate the subtitles of the new episodes downloaded';
         const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the translation language below when it is "WHAT ANI-CLI PICKS"), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
-        const NEEDS_SETUP = 'Save the token and the model of the provider that translates subtitles (below) to turn this on.';
+        const NEEDS_SETUP = 'Save the token and the model of the provider in SUBTITLE TRANSLATION to turn this on.';
 
         interface LlmRequest {
             method: string | undefined;

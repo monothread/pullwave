@@ -19,6 +19,8 @@ export interface DownloadHeroProps {
     kind: SectionIconName;
     // The cover; null draws the picture of the section.
     cover: ReactNode;
+    // The shape of the cover: a poster (2:3, the covers of the anime and the manga) or wide (16:9, the picture of a video).
+    coverShape?: 'poster' | 'wide';
     // How many downloads wait after this one.
     waiting: number;
 }
@@ -29,13 +31,13 @@ function clampPercent(percent: number): number {
 
 // The download going on, big, at the top of the list of downloads: its cover, its bar, its speed and the graph of the last minute, and how
 // many come after it. It is for the eye only (hidden from the screen readers): everything it shows is in the card of the download.
-export function DownloadHero({ id, title, detail, percent, speed, eta, kind, cover, waiting }: DownloadHeroProps) {
+export function DownloadHero({ id, title, detail, percent, speed, eta, kind, cover, coverShape = 'poster', waiting }: DownloadHeroProps) {
     const t = useTranslator();
     const samples = useSpeedHistory(id, parseSpeed(speed));
     const peak = samples.length > 0 ? Math.max(...samples) : 0;
     const shown = clampPercent(percent);
     return (
-        <section className="download-hero" aria-hidden="true" data-testid="download-hero">
+        <section className={coverShape === 'wide' ? 'download-hero download-hero--wide' : 'download-hero'} aria-hidden="true" data-testid="download-hero">
             <div className="download-hero__art">
                 {cover ?? (
                     <span className="tile__generated">

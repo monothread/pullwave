@@ -234,6 +234,25 @@ describe('QueueList: the download going on', () => {
         expect(screen.getByRole('heading', { name: 'Running video' })).toBeInTheDocument();
     });
 
+    it('shows the picture of the video in a wide box once the app has it, and the picture of the section until then', () => {
+        useAppStore.setState({ jobs: [makeJob({ id: 'r', status: 'running', title: 'Running video' })] });
+        const { rerender } = render(<QueueList />);
+        let hero = screen.getByTestId('download-hero');
+        expect(hero).toHaveAttribute('class', 'download-hero');
+        expect(hero.querySelector('.download-hero__art img')).toBeNull();
+        expect(hero.querySelector('.download-hero__art .tile__generated svg')).toHaveClass('section-icon--downloads');
+        act(() => {
+            useAppStore.setState({ jobs: [makeJob({ id: 'r', status: 'running', title: 'Running video', thumbnail: 'pullwave-thumb://job/r?v=1' })] });
+        });
+        rerender(<QueueList />);
+        hero = screen.getByTestId('download-hero');
+        expect(hero).toHaveAttribute('class', 'download-hero download-hero--wide');
+        const picture = hero.querySelector('.download-hero__art img');
+        expect(picture).toHaveAttribute('src', 'pullwave-thumb://job/r?v=1');
+        expect(picture).toHaveAttribute('class', 'cover download-hero__thumbnail');
+        expect(picture).toHaveAttribute('alt', '');
+    });
+
     it('names a download with no title by its link', () => {
         useAppStore.setState({ jobs: [makeJob({ id: 'r', status: 'running', title: null, url: 'https://example.com/v' })] });
         render(<QueueList />);

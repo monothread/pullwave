@@ -126,6 +126,26 @@ describe('runYtdlpLiveAware a download that is not a live HLS stream', () => {
         expect(record).not.toHaveBeenCalled();
     });
 
+    it('gives the address of the picture of the video to the caller', () => {
+        const passed: RunOptions[] = [];
+        const runner = vi.fn((options: RunOptions): RunHandle => {
+            passed.push(options);
+            return {
+                result: new Promise<RunResult>(() => {
+                    return undefined;
+                }),
+                cancel: vi.fn(),
+                stop: vi.fn()
+            };
+        });
+        const onThumbnail = vi.fn();
+        runYtdlpLiveAware({ binary: '/bin/yt-dlp', args: ['--newline', 'https://x.test/v'], ffmpegBinary: '/bin/ffmpeg', onProgress: vi.fn(), onThumbnail, runner });
+        expect(passed).toHaveLength(1);
+        passed[0]?.onThumbnail?.('https://i.ytimg.com/vi/abc/0.jpg');
+        expect(onThumbnail).toHaveBeenCalledTimes(1);
+        expect(onThumbnail).toHaveBeenCalledWith('https://i.ytimg.com/vi/abc/0.jpg');
+    });
+
     it('gives the progress of yt-dlp to the caller', () => {
         const { runs, progress, start } = setup();
         start();

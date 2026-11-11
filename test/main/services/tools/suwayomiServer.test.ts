@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { findFreePort, HEALTH_QUERY, SuwayomiServer, SuwayomiServerError, type SuwayomiServerDependencies, type SuwayomiServerStatus } from '@main/services/tools/suwayomiServer';
 import { suwayomiSpec } from '@main/services/tools/suwayomiRelease';
+import { LogHub, processLogs } from '@main/services/logHub';
+import { createFakeLogWriter } from '../../../helpers/fakeLogWriter';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
 
 const SPEC = suwayomiSpec('linux', 'x64')!;
@@ -338,6 +340,97 @@ describe('SuwayomiServer', () => {
         await server.ensureRunning();
         expect(launches).toHaveLength(2);
         expect(statuses).toEqual(['starting', 'running', 'stopped', 'starting', 'running']);
+    });
+});
+
+describe('SuwayomiServer log', () => {
+    function flushed(): Promise<void> {
+        return new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+    }
+
+    it('writes the command of each start, what the server says on both outputs, and how it ended', async () => {
+        const writers = [createFakeLogWriter(), createFakeLogWriter()];
+        let opened = 0;
+        const openLog = vi.fn(() => {
+            const writer = writers[opened]?.writer;
+            opened += 1;
+            if (writer === undefined) {
+                throw new Error('Too many starts');
+            }
+            return writer;
+        });
+        const { server, installDirectory, dataDirectory, processes } = setup({ openLog });
+        await server.ensureRunning();
+        processes[0]?.stdout.write('10:00:00.000 [main] INFO  suwayomi.tachidesk.server - Running Suwayomi-Server\n10:00:01.000 [main] WARN  x - partial');
+        processes[0]?.stderr.write('Exception in thread "main" java.lang.Error: boom\n');
+        await flushed();
+        await server.stop();
+        await server.ensureRunning();
+        const java = join(installDirectory, 'jre', 'bin', 'java');
+        const args = ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`, '-jar', join(installDirectory, 'bin', 'Suwayomi-Server.jar')];
+        expect(openLog).toHaveBeenCalledTimes(2);
+        expect(writers[0]?.calls).toEqual([
+            { method: 'command', program: java, args },
+            { method: 'line', stream: 'stdout', text: '10:00:00.000 [main] INFO  suwayomi.tachidesk.server - Running Suwayomi-Server' },
+            { method: 'line', stream: 'stderr', text: 'Exception in thread "main" java.lang.Error: boom' },
+            { method: 'line', stream: 'stdout', text: '10:00:01.000 [main] WARN  x - partial' },
+            { method: 'exit', code: 0, signal: undefined }
+        ]);
+        expect(writers[1]?.calls).toEqual([{ method: 'command', program: java, args }]);
+        await server.stop();
+    });
+
+    it('writes why the program could not be started', async () => {
+        const { writer, calls } = createFakeLogWriter();
+        const { server, installDirectory, dataDirectory } = setup({
+            openLog: () => {
+                return writer;
+            },
+            spawn: () => {
+                const child = new FakeServerProcess();
+                queueMicrotask(() => {
+                    child.emit('error', new Error('spawn java ENOENT'));
+                });
+                return child as unknown as ChildProcess;
+            },
+            answers: [new Error('ECONNREFUSED')]
+        });
+        await expect(server.ensureRunning()).rejects.toThrow('spawn java ENOENT');
+        expect(calls).toEqual([
+            {
+                method: 'command',
+                program: join(installDirectory, 'jre', 'bin', 'java'),
+                args: ['-Djava.net.preferIPv4Stack=true', `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`, '-jar', join(installDirectory, 'bin', 'Suwayomi-Server.jar')]
+            },
+            { method: 'failure', message: 'could not start: spawn java ENOENT' }
+        ]);
+    });
+
+    it('writes to the log of Suwayomi of the app by default', async () => {
+        const hub = new LogHub({
+            now: () => {
+                return 7;
+            }
+        });
+        const open = vi.spyOn(processLogs, 'open').mockImplementation((source) => {
+            return hub.open(source);
+        });
+        const { server, processes, installDirectory, dataDirectory } = setup();
+        await server.ensureRunning();
+        processes[0]?.stdout.write('ready\n');
+        await flushed();
+        expect(open).toHaveBeenCalledWith('suwayomi');
+        expect(
+            hub.snapshot('suwayomi').map((line) => {
+                return [line.stream, line.text];
+            })
+        ).toEqual([
+            ['command', `${join(installDirectory, 'jre', 'bin', 'java')} -Djava.net.preferIPv4Stack=true -Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory} -jar ${join(installDirectory, 'bin', 'Suwayomi-Server.jar')}`],
+            ['stdout', 'ready']
+        ]);
+        await server.stop();
     });
 });
 

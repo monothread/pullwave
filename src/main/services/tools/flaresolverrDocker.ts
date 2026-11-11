@@ -1,6 +1,8 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import type { MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
+import { processLogs, type LogWriter } from '../logHub';
+import { createLogFeed } from '../logFeed';
 import { findFreePort } from './suwayomiServer';
 
 // FlareSolverr (MIT) runs in Docker, so nothing it needs (a browser, a virtual screen) is installed on the machine of the user. The version
@@ -33,21 +35,43 @@ export interface DockerResult {
 // Runs `docker <args>`; `onLine` gets every line of the output as it comes. Never rejects: a docker that is not there ends with code null.
 export type DockerRunner = (args: string[], onLine?: (line: string) => void) => Promise<DockerResult>;
 
-export function createDockerRunner(spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcess = nodeSpawn): DockerRunner {
+type DockerSpawn = (command: string, args: string[], options: SpawnOptions) => ChildProcess;
+
+// Follows the output of a container into the log of FlareSolverr until it ends; the function returned stops following it.
+export type ContainerLogFollower = (containerId: string) => () => void;
+
+function openFlareSolverrLog(): LogWriter {
+    return processLogs.open('flaresolverr');
+}
+
+// Every docker command the app runs, and what it answered, goes to the log of FlareSolverr (`openLog`).
+export function createDockerRunner(spawn: DockerSpawn = nodeSpawn, openLog: () => LogWriter = openFlareSolverrLog): DockerRunner {
     return (args, onLine) => {
         return new Promise<DockerResult>((resolve) => {
+            const log = openLog();
+            log.command('docker', args);
+            const feeds = { out: createLogFeed(log, 'stdout'), err: createLogFeed(log, 'stderr') };
             let stdout = '';
             let stderr = '';
             let settled = false;
-            const finish = (code: number | null): void => {
+            // `failure` is why docker could not be run at all.
+            const finish = (code: number | null, failure: string | null = null): void => {
                 if (!settled) {
                     settled = true;
+                    feeds.out.flush();
+                    feeds.err.flush();
+                    if (failure === null) {
+                        log.exit(code);
+                    } else {
+                        log.failure(failure);
+                    }
                     resolve({ code, stdout, stderr });
                 }
             };
             const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
             const read = (chunk: Buffer, into: 'out' | 'err'): void => {
                 const text = chunk.toString('utf-8');
+                feeds[into].push(text);
                 if (into === 'out') {
                     stdout += text;
                 } else {
@@ -65,13 +89,43 @@ export function createDockerRunner(spawn: (command: string, args: string[], opti
             child.stderr?.on('data', (chunk: Buffer) => {
                 read(chunk, 'err');
             });
-            child.once('error', () => {
-                finish(null);
+            child.once('error', (error) => {
+                finish(null, `could not start: ${error.message}`);
             });
             child.once('close', (code) => {
                 finish(code);
             });
         });
+    };
+}
+
+// Follows `docker logs --follow` of a container: what FlareSolverr says goes to its log while the container runs. The container is
+// started with --rm, so this is the only way to keep what it said when it fails to start (it is gone with the container).
+export function createContainerLogFollower(spawn: DockerSpawn = nodeSpawn, openLog: () => LogWriter = openFlareSolverrLog): ContainerLogFollower {
+    return (containerId) => {
+        const log = openLog();
+        const args = ['logs', '--follow', containerId];
+        log.command('docker', args);
+        const stdout = createLogFeed(log, 'stdout');
+        const stderr = createLogFeed(log, 'stderr');
+        const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        child.stdout?.on('data', (chunk: Buffer) => {
+            stdout.push(chunk.toString('utf-8'));
+        });
+        child.stderr?.on('data', (chunk: Buffer) => {
+            stderr.push(chunk.toString('utf-8'));
+        });
+        child.once('error', (error) => {
+            log.failure(`could not start: ${error.message}`);
+        });
+        child.once('close', (code, signal) => {
+            stdout.flush();
+            stderr.flush();
+            log.exit(code, signal);
+        });
+        return (): void => {
+            child.kill();
+        };
     };
 }
 
@@ -88,6 +142,8 @@ export interface FlareSolverrDockerDependencies {
     pollIntervalMs?: number;
     // Whether a process of this machine is alive (the owner of a container is told by the process id in its name).
     isProcessAlive?: (pid: number) => boolean;
+    // Follows the output of the container into the log of FlareSolverr while it runs.
+    followLogs?: ContainerLogFollower;
 }
 
 // The process id a container of the app carries in its name (`pullwave-flaresolverr-<pid>`), or null when it has none.
@@ -143,9 +199,12 @@ export class FlareSolverrDocker {
     private lastError: string | null = null;
     private problem: 'no-docker' | 'start-failed' | null = null;
     private containerId: string | null = null;
+    private readonly followLogs: ContainerLogFollower;
+    private stopFollowing: (() => void) | null = null;
 
     constructor(private readonly deps: FlareSolverrDockerDependencies = {}) {
         this.docker = deps.docker ?? createDockerRunner();
+        this.followLogs = deps.followLogs ?? createContainerLogFollower();
         this.versionTag = deps.version ?? FLARESOLVERR_VERSION;
         this.current = { ...this.current, version: this.versionTag };
     }
@@ -279,6 +338,8 @@ export class FlareSolverrDocker {
     async stop(): Promise<void> {
         const id = this.containerId;
         this.containerId = null;
+        this.stopFollowing?.();
+        this.stopFollowing = null;
         this.address = null;
         this.currentStatus = 'stopped';
         if (id !== null) {
@@ -346,6 +407,7 @@ export class FlareSolverrDocker {
                 throw new FlareSolverrDockerError('START_FAILED', lastLines(run.stderr) || 'The container of FlareSolverr did not start');
             }
             this.containerId = run.stdout.trim();
+            this.stopFollowing = this.followLogs(this.containerId);
             const address = `http://127.0.0.1:${port}`;
             await this.waitUntilReady(address);
             this.address = address;

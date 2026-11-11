@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 import type { CutRun } from '@shared/cut';
+import { LogHub, processLogs } from '@main/services/logHub';
+import { createFakeLogWriter } from '../../helpers/fakeLogWriter';
 import { createFfmpegRunner, CutService, PROGRESS_INTERVAL_MS, type CutServiceDependencies, type FfmpegOutcome, type FfmpegRun, type RunFfmpeg } from '@main/services/cutService';
 
 const VIDEO_PROBE = `  Duration: 00:02:30.00, start: 0.000000, bitrate: 1200 kb/s
@@ -512,6 +514,82 @@ describe('CutService failures and cancelling', () => {
 
 describe('createFfmpegRunner', () => {
     const NODE = process.execPath;
+    // Runs once with the runner of the cutter, which takes a run with its arguments and its signal.
+    const RUN = (run: RunFfmpeg, args: string[], signal: AbortSignal = new AbortController().signal): Promise<FfmpegOutcome> => {
+        return run({ args, signal });
+    };
+
+    it('writes the command, each line of the error output (the statistics as progress) and the code to its own log of each run', async () => {
+        const writers = [createFakeLogWriter(), createFakeLogWriter()];
+        let opened = 0;
+        const openLog = vi.fn(() => {
+            const writer = writers[opened]?.writer;
+            opened += 1;
+            if (writer === undefined) {
+                throw new Error('Too many runs');
+            }
+            return writer;
+        });
+        const args = ['-e', "process.stderr.write('Input #0\\nframe=1 fps=0\\rframe=2 fps=0\\nlast'); process.exit(2)"];
+        await RUN(createFfmpegRunner(NODE, openLog), args);
+        await RUN(createFfmpegRunner(NODE, openLog), ['-e', '']);
+        expect(openLog).toHaveBeenCalledTimes(2);
+        expect(writers[0]?.calls).toEqual([
+            { method: 'command', program: NODE, args },
+            { method: 'line', stream: 'stderr', text: 'Input #0' },
+            { method: 'progress', stream: 'stderr', text: 'frame=1 fps=0' },
+            { method: 'progress', stream: 'stderr', text: 'frame=2 fps=0' },
+            { method: 'line', stream: 'stderr', text: 'last' },
+            { method: 'exit', code: 2, signal: null }
+        ]);
+        expect(writers[1]?.calls).toEqual([
+            { method: 'command', program: NODE, args: ['-e', ''] },
+            { method: 'exit', code: 0, signal: null }
+        ]);
+    });
+
+    it('writes the signal that ended an aborted run', async () => {
+        const { writer, calls } = createFakeLogWriter();
+        const controller = new AbortController();
+        setTimeout(() => {
+            controller.abort();
+        }, 100);
+        await RUN(createFfmpegRunner(NODE, () => {
+            return writer;
+        }), ['-e', 'setInterval(() => undefined, 1000)'], controller.signal);
+        expect(calls.at(-1)).toEqual(process.platform === 'win32' ? { method: 'exit', code: 1, signal: null } : { method: 'exit', code: null, signal: 'SIGTERM' });
+    });
+
+    it('writes why a program that is not there could not be started, and no end after it', async () => {
+        const { writer, calls } = createFakeLogWriter();
+        const missing = '/nowhere/ffmpeg-not-here';
+        await RUN(createFfmpegRunner(missing, () => {
+            return writer;
+        }), ['-version']);
+        expect(calls).toEqual([
+            { method: 'command', program: missing, args: ['-version'] },
+            { method: 'failure', message: `could not start: spawn ${missing} ENOENT` }
+        ]);
+    });
+
+    it('writes to the log of ffmpeg of the app by default', async () => {
+        const hub = new LogHub({
+            now: () => {
+                return 1;
+            }
+        });
+        const open = vi.spyOn(processLogs, 'open').mockImplementation((source) => {
+            return hub.open(source);
+        });
+        await RUN(createFfmpegRunner(NODE), ['-e', "process.stderr.write('hi')"]);
+        expect(open).toHaveBeenCalledWith('ffmpeg');
+        expect(hub.snapshot('ffmpeg')).toEqual([
+            { id: 1, at: 1, stream: 'command', text: `${NODE} -e process.stderr.write('hi')` },
+            { id: 2, at: 1, stream: 'stderr', text: 'hi' },
+            { id: 3, at: 1, stream: 'event', text: 'exited with code 0' }
+        ]);
+        open.mockRestore();
+    });
 
     it('runs the program, gives what it printed on the error output as it goes and in the end, and its exit code', async () => {
         const chunks: string[] = [];

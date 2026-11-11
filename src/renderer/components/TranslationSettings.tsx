@@ -108,7 +108,7 @@ function TokenField({ slot, inputId, texts, status, onChanged }: TokenFieldProps
 
 // The language models that translate subtitles and the service of speech to text that makes them: the provider, the model, the address and
 // the token of each. The tokens are only sent to the main process, which keeps them encrypted; this screen learns whether there is one,
-// never what it is.
+// never what it is. They are two blocks of the settings, one for each.
 export function TranslationSettings({ draft, change, edit, changeMany }: TranslationSettingsProps) {
     const t = useTranslator();
     // Kept in the store: the setting of the automatic translation of the anime settings is only allowed when the token is there.
@@ -143,106 +143,111 @@ export function TranslationSettings({ draft, change, edit, changeMany }: Transla
 
     return (
         <>
-            <span className="section-label">{t('settings.translate')}</span>
-            <p className="field__hint">{t('settings.translate.hint')}</p>
-            {!status.canStore && (
-                <p className="field__warning" role="alert">
-                    {t('settings.translate.token.unavailable')}
-                </p>
-            )}
-            <SelectField
-                label={t('settings.translate.provider')}
-                value={provider}
-                options={LLM_PROVIDER_IDS}
-                formatOption={(option) => {
-                    return providerName(option, t);
-                }}
-                onChange={(value) => {
-                    change('translateProvider', value);
-                }}
-            />
-            <TextField
-                label={t('settings.translate.model')}
-                value={draft.translateModel}
-                hint={t('settings.translate.model.hint')}
-                onChange={(value) => {
-                    edit('translateModel', value);
-                }}
-            />
-            <TextField
-                label={t('settings.translate.baseUrl')}
-                value={draft.translateBaseUrl}
-                placeholder={LLM_PROVIDERS[provider].defaultBaseUrl}
-                hint={t('settings.translate.baseUrl.hint')}
-                onChange={(value) => {
-                    edit('translateBaseUrl', value);
-                }}
-            />
-            <SelectField
-                label={t('settings.translate.language')}
-                value={draft.translateLanguage}
-                options={TRANSLATION_LANGUAGES}
-                onChange={(value) => {
-                    change('translateLanguage', value);
-                }}
-            />
-            <TokenField
-                key={provider}
-                slot={provider}
-                inputId="llm-token"
-                texts={{
-                    label: t('settings.translate.token'),
-                    saved: t('settings.translate.token.saved'),
-                    none: t('settings.translate.token.none'),
-                    save: t('settings.translate.token.save'),
-                    clear: t('settings.translate.token.clear')
-                }}
-                status={status}
-                onChanged={refreshStatus}
-            />
-            <span className="section-label">{t('settings.speech')}</span>
-            <p className="field__hint">{t('settings.speech.hint')}</p>
-            <SelectField
-                label={t('settings.speech.provider')}
-                value={speech}
-                options={SPEECH_PROVIDER_IDS}
-                formatOption={(option) => {
-                    return speechProviderName(option, t);
-                }}
-                onChange={chooseSpeech}
-            />
-            <TextField
-                label={t('settings.speech.model')}
-                value={speechModelOf(speech, draft.transcribeModel)}
-                hint={t('settings.speech.model.hint')}
-                disabled={speech === 'openai'}
-                onChange={(value) => {
-                    edit('transcribeModel', value);
-                }}
-            />
-            <TextField
-                label={t('settings.speech.baseUrl')}
-                value={draft.transcribeBaseUrl}
-                placeholder={SPEECH_PROVIDERS[speech].defaultBaseUrl}
-                hint={t('settings.speech.baseUrl.hint')}
-                onChange={(value) => {
-                    edit('transcribeBaseUrl', value);
-                }}
-            />
-            <TokenField
-                key={speechTokenSlot(speech)}
-                slot={speechTokenSlot(speech)}
-                inputId="speech-token"
-                texts={{
-                    label: t('settings.speech.token'),
-                    saved: t('settings.speech.token.saved'),
-                    none: t('settings.speech.token.none'),
-                    save: t('settings.speech.token.save'),
-                    clear: t('settings.speech.token.clear')
-                }}
-                status={status}
-                onChanged={refreshStatus}
-            />
+            <fieldset className="panel">
+                <legend>{t('settings.translate')}</legend>
+                <p className="field__hint">{t('settings.translate.hint')}</p>
+                {!status.canStore && (
+                    <p className="field__warning" role="alert">
+                        {t('settings.translate.token.unavailable')}
+                    </p>
+                )}
+                <SelectField
+                    label={t('settings.translate.provider')}
+                    value={provider}
+                    options={LLM_PROVIDER_IDS}
+                    formatOption={(option) => {
+                        return providerName(option, t);
+                    }}
+                    onChange={(value) => {
+                        change('translateProvider', value);
+                    }}
+                />
+                <TextField
+                    label={t('settings.translate.model')}
+                    value={draft.translateModel}
+                    hint={t('settings.translate.model.hint')}
+                    onChange={(value) => {
+                        edit('translateModel', value);
+                    }}
+                />
+                <TextField
+                    label={t('settings.translate.baseUrl')}
+                    value={draft.translateBaseUrl}
+                    placeholder={LLM_PROVIDERS[provider].defaultBaseUrl}
+                    hint={t('settings.translate.baseUrl.hint')}
+                    onChange={(value) => {
+                        edit('translateBaseUrl', value);
+                    }}
+                />
+                <SelectField
+                    label={t('settings.translate.language')}
+                    value={draft.translateLanguage}
+                    options={TRANSLATION_LANGUAGES}
+                    onChange={(value) => {
+                        change('translateLanguage', value);
+                    }}
+                />
+                <TokenField
+                    key={provider}
+                    slot={provider}
+                    inputId="llm-token"
+                    texts={{
+                        label: t('settings.translate.token'),
+                        saved: t('settings.translate.token.saved'),
+                        none: t('settings.translate.token.none'),
+                        save: t('settings.translate.token.save'),
+                        clear: t('settings.translate.token.clear')
+                    }}
+                    status={status}
+                    onChanged={refreshStatus}
+                />
+            </fieldset>
+
+            <fieldset className="panel">
+                <legend>{t('settings.speech')}</legend>
+                <p className="field__hint">{t('settings.speech.hint')}</p>
+                <SelectField
+                    label={t('settings.speech.provider')}
+                    value={speech}
+                    options={SPEECH_PROVIDER_IDS}
+                    formatOption={(option) => {
+                        return speechProviderName(option, t);
+                    }}
+                    onChange={chooseSpeech}
+                />
+                <TextField
+                    label={t('settings.speech.model')}
+                    value={speechModelOf(speech, draft.transcribeModel)}
+                    hint={t('settings.speech.model.hint')}
+                    disabled={speech === 'openai'}
+                    onChange={(value) => {
+                        edit('transcribeModel', value);
+                    }}
+                />
+                <TextField
+                    label={t('settings.speech.baseUrl')}
+                    value={draft.transcribeBaseUrl}
+                    placeholder={SPEECH_PROVIDERS[speech].defaultBaseUrl}
+                    hint={t('settings.speech.baseUrl.hint')}
+                    onChange={(value) => {
+                        edit('transcribeBaseUrl', value);
+                    }}
+                />
+                <TokenField
+                    key={speechTokenSlot(speech)}
+                    slot={speechTokenSlot(speech)}
+                    inputId="speech-token"
+                    texts={{
+                        label: t('settings.speech.token'),
+                        saved: t('settings.speech.token.saved'),
+                        none: t('settings.speech.token.none'),
+                        save: t('settings.speech.token.save'),
+                        clear: t('settings.speech.token.clear')
+                    }}
+                    status={status}
+                    onChanged={refreshStatus}
+                />
+            </fieldset>
         </>
     );
 }

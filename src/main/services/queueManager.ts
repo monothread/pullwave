@@ -7,6 +7,7 @@ import type { RunHandle, RunResult } from './ytdlpRunner';
 import { buildYtdlpArgs, type RequestExtras } from './ytdlpArgsBuilder';
 import { translateMain } from './language';
 import { keepInside, type PausedDownload, type PausedStorage } from './pausedStore';
+import type { VideoThumbnails } from './videoThumbnails';
 
 export interface QueueDependencies {
     getSettings: () => Settings;
@@ -19,8 +20,11 @@ export interface QueueDependencies {
         onProgress: (progress: ProgressInfo) => void,
         onInfo: (info: DownloadInfo) => void,
         onWaiting?: () => void,
-        onPostProcess?: (event: PostProcessEvent) => void
+        onPostProcess?: (event: PostProcessEvent) => void,
+        onThumbnail?: (address: string) => void
     ) => RunHandle;
+    // Fetches the picture of each video and keeps it while its download is in the queue; without it the downloads have no picture.
+    thumbnails?: Pick<VideoThumbnails, 'load' | 'forget'>;
     // Size of a file on disk, or null when it does not exist (used to show how much of a live stream is recorded).
     fileSize?: (path: string) => number | null;
     // Turns the partial file of a recording that was ended by killing yt-dlp into the final file; returns its path.
@@ -301,7 +305,8 @@ export class QueueManager {
             endCheck: null,
             merging: false,
             saving: false,
-            postProcess: null
+            postProcess: null,
+            thumbnail: null
         };
         this.jobs.push(job);
         this.extras.set(job.id, options);
@@ -373,6 +378,7 @@ export class QueueManager {
         this.parts.delete(id);
         this.stopRequested.delete(id);
         this.pauseRequested.delete(id);
+        this.deps.thumbnails?.forget(id);
         this.deps.onJobRemoved(id);
         this.pump();
     }
@@ -459,6 +465,9 @@ export class QueueManager {
             },
             (event) => {
                 this.applyPostProcess(job, event);
+            },
+            (address) => {
+                this.applyThumbnail(job, address);
             }
         );
         this.handles.set(job.id, handle);
@@ -612,6 +621,21 @@ export class QueueManager {
     private resumeRecording(job: DownloadJob, part: number): void {
         this.clearEndCheck(job.id);
         this.parts.set(job.id, part);
+    }
+
+    // The picture of the video is fetched by the app; the download shows it once it is there (a download removed meanwhile is left alone).
+    private applyThumbnail(job: DownloadJob, address: string): void {
+        const thumbnails = this.deps.thumbnails;
+        if (thumbnails === undefined) {
+            return;
+        }
+        void thumbnails.load(job.id, address).then((local) => {
+            if (local === null || this.find(job.id) !== job) {
+                return;
+            }
+            job.thumbnail = local;
+            this.emit(job);
+        });
     }
 
     // A live stream has no end and no size to measure a percentage against: show how long it has been recording and

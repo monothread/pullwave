@@ -92,7 +92,9 @@ export function readPausedDownload(raw: unknown): PausedDownload | null {
             endCheck: null,
             merging: false,
             saving: false,
-            postProcess: null
+            postProcess: null,
+            // The pictures are kept in memory only: a download paused in an earlier run of the app gets its picture again when it goes on.
+            thumbnail: null
         },
         extras,
         outputPaths

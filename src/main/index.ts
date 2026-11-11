@@ -5,7 +5,7 @@ import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, ses
 import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
 import { CUT_MEDIA_SCHEME } from '@shared/cut';
-import { IPC } from '@shared/constants';
+import { IPC, VIDEO_THUMBNAIL_SCHEME } from '@shared/constants';
 import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerMangaHandlers } from './ipc/registerMangaHandlers';
@@ -18,6 +18,9 @@ import { ProgramTools } from './services/tools/programTools';
 import { createMangaRuntime } from './mangaRuntime';
 import { registerHandlers } from './ipc/registerHandlers';
 import { registerLlmHandlers } from './ipc/registerLlmHandlers';
+import { registerLogHandlers, type LogWatchers } from './ipc/registerLogHandlers';
+import { processLogs } from './services/logHub';
+import { VideoThumbnails } from './services/videoThumbnails';
 import { JsonStore } from './services/jsonStore';
 import { LlmTokenStore, type SecretCipher } from './services/llmTokenStore';
 import { createDiagnosticLog, type DiagnosticLog } from './services/diagnosticLog';
@@ -54,14 +57,16 @@ const APP_ID = 'dev.lucas.pullwave';
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
 // The covers of the manga section are served by the manga server of the app, on this machine and on a port that changes (hence the
 // wildcard); only images may come from there. The covers of the anime come from AniList and, when it has none, from the posters of Kitsu.
+// The pictures of the videos being downloaded are served by the app from memory.
 const PRODUCTION_CSP =
-    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co https://media.kitsu.app http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}:`;
+    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co https://media.kitsu.app http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}: ${VIDEO_THUMBNAIL_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}:`;
 
 // Declared once (Electron takes the list in a single call): the pages of the chapters the manga library has, the files of the cutter (on
 // every system, like the cutter), and, where the anime section exists, the video files and the streams of its player.
 protocol.registerSchemesAsPrivileged([
     { scheme: MANGA_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     { scheme: CUT_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
+    { scheme: VIDEO_THUMBNAIL_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     ...(isAnimeSupported(process.platform)
         ? [
               { scheme: ANIME_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
@@ -80,6 +85,7 @@ let requestQuit: (() => Promise<boolean>) | null = null;
 let requestRestart: (() => Promise<boolean>) | null = null;
 let quitting = false;
 let diagnosticLog: DiagnosticLog | null = null;
+let logWatchers: LogWatchers | null = null;
 let bridgeWarningShown = false;
 
 function warnAboutMissingBridge(reason: string): void {
@@ -201,6 +207,10 @@ function createWindow(options: { hidden: boolean }): BrowserWindow {
         maximizeUnlessTesting(window);
     }
     window.on('close', handleWindowClose);
+    // A page loaded again has no window of the logs open: nothing is sent to it until it asks.
+    window.webContents.on('did-finish-load', () => {
+        logWatchers?.stopAll();
+    });
     if (diagnosticLog) {
         attachWindowDiagnostics(window.webContents, diagnosticLog, { onBridgeMissing: warnAboutMissingBridge });
     }
@@ -333,7 +343,13 @@ function bootstrap(): BootstrapResult {
         }
     });
     const resolver = new BinaryResolver(programs);
+    // The pictures of the videos of the queue, kept in memory and served to the window (D-182).
+    const videoThumbnails = new VideoThumbnails();
+    protocol.handle(VIDEO_THUMBNAIL_SCHEME, (request) => {
+        return videoThumbnails.respond(request.url);
+    });
     const queue = new QueueManager({
+        thumbnails: videoThumbnails,
         getSettings: () => {
             return settingsStore.get();
         },
@@ -356,8 +372,8 @@ function bootstrap(): BootstrapResult {
         deleteFiles: (paths) => {
             removeFiles(paths);
         },
-        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess) => {
-            return runYtdlpLiveAware({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, env: resolver.spawnEnv(), ffmpegBinary: resolver.ffmpeg(settingsStore.get()).path });
+        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail) => {
+            return runYtdlpLiveAware({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, env: resolver.spawnEnv(), ffmpegBinary: resolver.ffmpeg(settingsStore.get()).path });
         },
         pausedStorage: pausedStore,
         addHistory: (entry) => {
@@ -657,6 +673,7 @@ function bootstrap(): BootstrapResult {
         cutPreview.dispose();
     });
     registerCutHandlers(ipcMain, cutter, cutPreview);
+    logWatchers = registerLogHandlers(ipcMain, { hub: processLogs, send: sendToRenderer });
     // The programs are downloaded when the app opens (nothing happens for the ones that are there already). PULLWAVE_NO_TOOLS leaves it for
     // later (used by the end-to-end tests that need none of them).
     if (process.env.PULLWAVE_NO_TOOLS !== '1') {

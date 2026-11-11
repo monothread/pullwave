@@ -4,6 +4,8 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import type { MangaServerStatus } from '@shared/manga';
 import type { ToolSpec } from '@shared/tools';
+import { processLogs, type LogWriter } from '../logHub';
+import { createLogFeed } from '../logFeed';
 import { killProcessTree } from '../processTree';
 import { applyManagedSettings, managedSettings } from './suwayomiConfig';
 
@@ -37,6 +39,8 @@ export interface SuwayomiServerDependencies {
     // The address of the FlareSolverr the server reads the sites behind Cloudflare through (it is started if needed), or null when there is
     // none. A failure to start it is not a failure to start the server: those sites just do not work.
     helperUrl?: () => Promise<string | null>;
+    // Where each start of the server writes its command and its output for the window of the logs (the log of Suwayomi by default).
+    openLog?: () => LogWriter;
 }
 
 // A port nobody is using on this machine (asked of the system, then given back).
@@ -58,6 +62,10 @@ function sleep(milliseconds: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, milliseconds);
     });
+}
+
+function openSuwayomiLog(): LogWriter {
+    return processLogs.open('suwayomi');
 }
 
 // Runs Suwayomi-Server as a child of the app: on a port of its own, on this machine only, and ended with the app.
@@ -206,6 +214,7 @@ export class SuwayomiServer {
         };
         child.stdout?.on('data', remember);
         child.stderr?.on('data', remember);
+        this.writeToLog(child, java, args);
         child.on('exit', () => {
             if (this.child === child) {
                 this.child = null;
@@ -217,6 +226,28 @@ export class SuwayomiServer {
             }
         });
         return child;
+    }
+
+    // The command and everything the server says go to its log, and how it ended.
+    private writeToLog(child: ChildProcess, java: string, args: string[]): void {
+        const log = (this.deps.openLog ?? openSuwayomiLog)();
+        log.command(java, args);
+        const stdout = createLogFeed(log, 'stdout');
+        const stderr = createLogFeed(log, 'stderr');
+        child.stdout?.on('data', (chunk: Buffer) => {
+            stdout.push(chunk.toString('utf-8'));
+        });
+        child.stderr?.on('data', (chunk: Buffer) => {
+            stderr.push(chunk.toString('utf-8'));
+        });
+        child.once('error', (error) => {
+            log.failure(`could not start: ${error.message}`);
+        });
+        child.once('exit', (code, signal) => {
+            stdout.flush();
+            stderr.flush();
+            log.exit(code, signal);
+        });
     }
 
     // Nothing of the environment of the app is passed on but what the program needs to run.

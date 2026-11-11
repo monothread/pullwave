@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process';
 import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
+import { runFfmpegQuietly } from './ffmpegExec';
 
 export type RunFfmpeg = (binary: string, args: string[]) => Promise<boolean>;
 
@@ -13,14 +13,6 @@ export interface MergePartsOptions {
     removeFile?: (path: string) => void;
     writeTextFile?: (path: string, content: string) => void;
     renameFile?: (from: string, to: string) => void;
-}
-
-function defaultRunFfmpeg(binary: string, args: string[]): Promise<boolean> {
-    return new Promise((resolve) => {
-        execFile(binary, args, { windowsHide: true }, (error) => {
-            resolve(error === null);
-        });
-    });
 }
 
 // The concat demuxer reads one `file '<path>'` line per part; a quote inside a path is written as `'\''`.
@@ -36,7 +28,7 @@ export function buildConcatList(paths: string[]): string {
 // other into the first file leaves a single recording. Returns the path of that file; null when it could not be merged,
 // in which case every part is left untouched.
 export async function mergeParts(options: MergePartsOptions): Promise<string | null> {
-    const runFfmpeg = options.runFfmpeg ?? defaultRunFfmpeg;
+    const runFfmpeg = options.runFfmpeg ?? runFfmpegQuietly;
     const fileExists = options.fileExists ?? existsSync;
     const removeFile = options.removeFile ?? unlinkSync;
     const writeTextFile = options.writeTextFile ?? writeFileSync;

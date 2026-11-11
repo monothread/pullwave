@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
-import { FILE_PRINT_TEMPLATE, INFO_PRINT_TEMPLATE, POSTPROCESS_TEMPLATE, PROGRESS_TEMPLATE, STREAM_PRINT_TEMPLATE } from '@main/services/progressParser';
+import { FILE_PRINT_TEMPLATE, INFO_PRINT_TEMPLATE, POSTPROCESS_TEMPLATE, PROGRESS_TEMPLATE, STREAM_PRINT_TEMPLATE, THUMBNAIL_PRINT_TEMPLATE } from '@main/services/progressParser';
 import { buildYtdlpArgs, escapeTitleForTemplate, splitArguments } from '@main/services/ytdlpArgsBuilder';
 
 const URL = 'https://example.com/watch?v=abc';
@@ -47,6 +47,8 @@ describe('buildYtdlpArgs', () => {
             INFO_PRINT_TEMPLATE,
             '--print',
             STREAM_PRINT_TEMPLATE,
+            '--print',
+            THUMBNAIL_PRINT_TEMPLATE,
             '-P',
             DEFAULT_DIR,
             '-o',

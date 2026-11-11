@@ -33,6 +33,28 @@ function optionsOf(label: string): Array<[string, string | null]> {
 }
 
 describe('TranslationSettings', () => {
+    it('is two blocks of the settings, the translation and the creation of subtitles, each named by its title', async () => {
+        const { container } = await renderSettings();
+        const blocks = Array.from(container.children);
+        expect(
+            blocks.map((block) => {
+                return [block.tagName, block.className, block.querySelector(':scope > legend')?.textContent];
+            })
+        ).toEqual([
+            ['FIELDSET', 'panel', 'SUBTITLE TRANSLATION (LANGUAGE MODEL)'],
+            ['FIELDSET', 'panel', 'SUBTITLE CREATION (SPEECH TO TEXT)']
+        ]);
+        const translation = screen.getByRole('group', { name: 'SUBTITLE TRANSLATION (LANGUAGE MODEL)' });
+        const speech = screen.getByRole('group', { name: 'SUBTITLE CREATION (SPEECH TO TEXT)' });
+        ['Provider', 'Model', 'Address (optional)', 'Default language'].forEach((label) => {
+            expect(within(translation).getByLabelText(label)).toBeInTheDocument();
+            expect(within(speech).queryByLabelText(label)).not.toBeInTheDocument();
+        });
+        expect(within(speech).getByLabelText('Speech-to-text service')).toBeInTheDocument();
+        expect(within(translation).queryByLabelText('Speech-to-text service')).not.toBeInTheDocument();
+        expect(container.querySelector('.section-label')).toBeNull();
+    });
+
     it('shows the stored values, what the token is for and that it is never shown again', async () => {
         await renderSettings({ translateProvider: 'gemini', translateModel: 'my-model', translateBaseUrl: 'http://x/v1', translateLanguage: 'Korean' });
         expect(screen.getByText('SUBTITLE TRANSLATION (LANGUAGE MODEL)')).toBeInTheDocument();

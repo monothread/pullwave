@@ -4,6 +4,7 @@ import { ConfirmButton } from './ConfirmButton';
 import { JobCard } from './JobCard';
 import { sortForDisplay } from './jobStatus';
 import { DownloadHero } from '../downloads/DownloadHero';
+import { VideoThumbnail } from '../downloads/VideoThumbnail';
 
 export function QueueList() {
     const t = useTranslator();
@@ -52,7 +53,18 @@ export function QueueList() {
     return (
         <section className="queue" aria-label={t('queue.aria')}>
             {running !== undefined && (
-                <DownloadHero id={running.id} title={running.title ?? running.url} detail={null} percent={running.percent} speed={running.speed} eta={running.eta} kind="downloads" cover={null} waiting={waiting} />
+                <DownloadHero
+                    id={running.id}
+                    title={running.title ?? running.url}
+                    detail={null}
+                    percent={running.percent}
+                    speed={running.speed}
+                    eta={running.eta}
+                    kind="downloads"
+                    cover={running.thumbnail === null ? null : <VideoThumbnail key={running.thumbnail} src={running.thumbnail} />}
+                    coverShape={running.thumbnail === null ? 'poster' : 'wide'}
+                    waiting={waiting}
+                />
             )}
             <div className="queue__toolbar">
                 <span className="section-label">{t('queue.label', { count: jobs.length })}</span>
