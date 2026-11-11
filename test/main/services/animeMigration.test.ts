@@ -305,9 +305,10 @@ describe('migrateAnimeFolder', () => {
 
         it('refuses when two episodes would be copied to the same file', async () => {
             const fixture = newFixture();
-            // Two anime whose titles differ only by signs a file name cannot have end up in the same folder.
-            const first = addEpisode(fixture, join(fixture.oldBase, 'one', 'Episode 1'), { title: 'Naruto?' });
-            const second = addEpisode(fixture, join(fixture.root, 'two', 'Episode 1'), { title: 'Naruto*' });
+            // Two anime whose titles become the same name of a folder end up in the same place: a name does not start with a dot, on Linux as
+            // on Windows (and both titles are names a file can have on either system).
+            const first = addEpisode(fixture, join(fixture.oldBase, 'one', 'Episode 1'), { title: 'Naruto' });
+            const second = addEpisode(fixture, join(fixture.root, 'two', 'Episode 1'), { title: '.Naruto' });
 
             expect(await migrate(fixture)).toEqual({ ok: false, reason: 'conflict' });
 
