@@ -607,7 +607,7 @@ describe('AnimeDetail', () => {
             expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);
             expect(useSortPrefsStore.getState().list).toEqual({ chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners': 'desc' } });
             expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
-                library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+                library: { anime: RECENT_EVERYWHERE, manga: {} },
                 list: { chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners': 'desc' } }
             });
             await user.click(screen.getByRole('button', { name: 'EP 3' }));

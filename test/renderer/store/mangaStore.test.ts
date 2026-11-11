@@ -1688,6 +1688,42 @@ describe('mangaStore series, groups and the move to another source', () => {
         expect(mock.api.manga.library).toHaveBeenCalledTimes(3);
     });
 
+    describe('deleting a group forgets the orders of its tab', () => {
+        const RECENT = { all: 'recent', news: 'recent', complete: 'recent', ongoing: 'recent' } as const;
+
+        afterEach(() => {
+            useSortPrefsStore.setState({ library: DEFAULT_SORT_PREFS.library, list: DEFAULT_SORT_PREFS.list });
+            window.localStorage.removeItem(SORT_PREFS_STORAGE_KEY);
+        });
+
+        it('forgets the orders of the group that was deleted and keeps the tab of all and the other groups', async () => {
+            useSortPrefsStore.setState({
+                library: { anime: RECENT, manga: { all: { ...RECENT, all: 'za' }, 'group:1': { ...RECENT, news: 'az' }, 'group:2': { ...RECENT, all: 'last' } } }
+            });
+            await state().deleteGroup(2);
+            expect(mock.api.manga.deleteGroup).toHaveBeenCalledWith(2);
+            expect(useSortPrefsStore.getState().library.manga).toEqual({ all: { ...RECENT, all: 'za' }, 'group:1': { ...RECENT, news: 'az' } });
+            expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+                library: { anime: RECENT, manga: { all: { ...RECENT, all: 'za' }, 'group:1': { ...RECENT, news: 'az' } } },
+                list: { chapters: {}, episodes: {} }
+            });
+        });
+
+        it('forgets nothing when the group had no orders of its own', async () => {
+            useSortPrefsStore.setState({ library: { anime: RECENT, manga: { all: { ...RECENT, all: 'za' } } } });
+            await state().deleteGroup(7);
+            expect(mock.api.manga.deleteGroup).toHaveBeenCalledWith(7);
+            expect(useSortPrefsStore.getState().library.manga).toEqual({ all: { ...RECENT, all: 'za' } });
+        });
+
+        it('does not forget the orders when the group could not be deleted', async () => {
+            useSortPrefsStore.setState({ library: { anime: RECENT, manga: { 'group:2': { ...RECENT, all: 'last' } } } });
+            mock.api.manga.deleteGroup.mockRejectedValueOnce(new Error('locked'));
+            await expect(state().deleteGroup(2)).rejects.toThrow('locked');
+            expect(useSortPrefsStore.getState().library.manga).toEqual({ 'group:2': { ...RECENT, all: 'last' } });
+        });
+    });
+
     it('moves a group up or down, and reads the groups again to show the new order', async () => {
         mock.api.manga.groups.mockResolvedValue([GROUPS[1]!, GROUPS[0]!]);
         await state().moveGroup(2, 'up');

@@ -8,10 +8,12 @@ import {
     SORT_PREFS_STORAGE_KEY,
     animeListKey,
     inListOrder,
+    mangaGroupKey,
     mangaListKey,
     readSortPrefs,
-    useLibrarySort,
+    useAnimeLibrarySort,
     useListOrder,
+    useMangaLibrarySort,
     useSortPrefsStore,
     type SortPrefs
 } from '@renderer/store/sortPrefsStore';
@@ -46,11 +48,19 @@ describe('the constants', () => {
         expect(DEFAULT_LIST_ORDER).toBe('asc');
     });
 
-    it('starts every filter of the libraries with the titles added last, and no title with an order of its own', () => {
+    it('starts every filter of the anime library with the titles added last, and no tab of the manga library or title with an order of its own', () => {
         expect(DEFAULT_SORT_PREFS).toEqual({
-            library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+            library: { anime: RECENT_EVERYWHERE, manga: {} },
             list: { chapters: {}, episodes: {} }
         });
+    });
+});
+
+describe('the keys of the tabs of groups', () => {
+    it('has a key for the tab of all and one for each group', () => {
+        expect(mangaGroupKey(null)).toBe('all');
+        expect(mangaGroupKey(3)).toBe('group:3');
+        expect(mangaGroupKey(12)).toBe('group:12');
     });
 });
 
@@ -76,7 +86,10 @@ describe('readSortPrefs', () => {
         const prefs: SortPrefs = {
             library: {
                 anime: { all: 'za', news: 'last', complete: 'az', ongoing: 'recent' },
-                manga: { all: 'last', news: 'az', complete: 'za', ongoing: 'last' }
+                manga: {
+                    all: { all: 'last', news: 'az', complete: 'za', ongoing: 'last' },
+                    'group:3': { all: 'za', news: 'recent', complete: 'recent', ongoing: 'az' }
+                }
             },
             list: { chapters: { 'src-1:42': 'desc' }, episodes: { 'sub|Frieren': 'desc', 'dub|Frieren': 'asc' } }
         };
@@ -84,12 +97,28 @@ describe('readSortPrefs', () => {
         expect(readSortPrefs()).toEqual(prefs);
     });
 
-    it('takes the default for each filter that is missing or unknown, and keeps the others', () => {
-        keepRaw({ library: { anime: { all: 'az', news: 'by-size', ongoing: 7 }, manga: { complete: 'za' } }, list: {} });
+    it('takes the default for each filter that is missing or unknown, in the anime and in each tab of the manga, and keeps the others', () => {
+        keepRaw({
+            library: { anime: { all: 'az', news: 'by-size', ongoing: 7 }, manga: { all: { complete: 'za' }, 'group:3': { news: 'last', all: null } } },
+            list: {}
+        });
         expect(readSortPrefs().library).toEqual({
             anime: { all: 'az', news: 'recent', complete: 'recent', ongoing: 'recent' },
-            manga: { all: 'recent', news: 'recent', complete: 'za', ongoing: 'recent' }
+            manga: {
+                all: { all: 'recent', news: 'recent', complete: 'za', ongoing: 'recent' },
+                'group:3': { all: 'recent', news: 'last', complete: 'recent', ongoing: 'recent' }
+            }
         });
+    });
+
+    it('leaves out of the manga library what is not the orders of a tab', () => {
+        keepRaw({ library: { anime: {}, manga: { all: 'za', 'group:3': 7, 'group:4': null, 'group:5': { news: 'az' } } }, list: {} });
+        expect(readSortPrefs().library.manga).toEqual({ 'group:5': { all: 'recent', news: 'az', complete: 'recent', ongoing: 'recent' } });
+    });
+
+    it('gives the defaults for the manga library of the version that kept one order for each filter, whatever the tab', () => {
+        keepRaw({ library: { anime: { all: 'za', news: 'recent', complete: 'recent', ongoing: 'recent' }, manga: { all: 'za', news: 'last', complete: 'az', ongoing: 'recent' } }, list: {} });
+        expect(readSortPrefs().library).toEqual({ anime: { all: 'za', news: 'recent', complete: 'recent', ongoing: 'recent' }, manga: {} });
     });
 
     it('leaves out the titles whose order is unknown, and keeps the others', () => {
@@ -121,19 +150,54 @@ describe('readSortPrefs', () => {
 });
 
 describe('useSortPrefsStore', () => {
-    it('changes the order of one filter of one library, keeps everything else, and saves it all', () => {
-        useSortPrefsStore.getState().setLibrarySort('manga', 'news', 'za');
-        expect(useSortPrefsStore.getState().library).toEqual({ anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, news: 'za' } });
+    it('changes the order of one filter of the anime library, keeps everything else, and saves it all', () => {
+        useSortPrefsStore.getState().setAnimeLibrarySort('news', 'za');
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: { ...RECENT_EVERYWHERE, news: 'za' }, manga: {} });
         expect(stored()).toEqual({
-            library: { anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, news: 'za' } },
+            library: { anime: { ...RECENT_EVERYWHERE, news: 'za' }, manga: {} },
             list: { chapters: {}, episodes: {} }
         });
-        useSortPrefsStore.getState().setLibrarySort('anime', 'ongoing', 'last');
-        useSortPrefsStore.getState().setLibrarySort('manga', 'all', 'az');
+        useSortPrefsStore.getState().setAnimeLibrarySort('ongoing', 'last');
         expect(stored()).toEqual({
-            library: { anime: { ...RECENT_EVERYWHERE, ongoing: 'last' }, manga: { ...RECENT_EVERYWHERE, all: 'az', news: 'za' } },
+            library: { anime: { ...RECENT_EVERYWHERE, news: 'za', ongoing: 'last' }, manga: {} },
             list: { chapters: {}, episodes: {} }
         });
+    });
+
+    it('changes the order of one filter of one tab of the manga library, keeps the other filters, tabs and lists, and saves it all', () => {
+        useSortPrefsStore.getState().setMangaLibrarySort(null, 'news', 'za');
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: RECENT_EVERYWHERE, manga: { all: { ...RECENT_EVERYWHERE, news: 'za' } } });
+        useSortPrefsStore.getState().setMangaLibrarySort(3, 'news', 'az');
+        useSortPrefsStore.getState().setMangaLibrarySort(3, 'all', 'last');
+        useSortPrefsStore.getState().setMangaLibrarySort(null, 'all', 'az');
+        expect(stored()).toEqual({
+            library: {
+                anime: RECENT_EVERYWHERE,
+                manga: { all: { ...RECENT_EVERYWHERE, all: 'az', news: 'za' }, 'group:3': { ...RECENT_EVERYWHERE, all: 'last', news: 'az' } }
+            },
+            list: { chapters: {}, episodes: {} }
+        });
+    });
+
+    it('forgets the orders of one group only, and saves it', () => {
+        useSortPrefsStore.getState().setMangaLibrarySort(null, 'all', 'za');
+        useSortPrefsStore.getState().setMangaLibrarySort(3, 'all', 'za');
+        useSortPrefsStore.getState().setMangaLibrarySort(4, 'news', 'az');
+        useSortPrefsStore.getState().clearMangaGroupSorts(3);
+        expect(useSortPrefsStore.getState().library.manga).toEqual({ all: { ...RECENT_EVERYWHERE, all: 'za' }, 'group:4': { ...RECENT_EVERYWHERE, news: 'az' } });
+        expect(stored()).toEqual({
+            library: { anime: RECENT_EVERYWHERE, manga: { all: { ...RECENT_EVERYWHERE, all: 'za' }, 'group:4': { ...RECENT_EVERYWHERE, news: 'az' } } },
+            list: { chapters: {}, episodes: {} }
+        });
+    });
+
+    it('does nothing, and saves nothing, when the group has no orders of its own to forget', () => {
+        useSortPrefsStore.getState().setMangaLibrarySort(null, 'all', 'za');
+        const setItem = vi.spyOn(Storage.prototype, 'setItem');
+        const before = useSortPrefsStore.getState().library;
+        useSortPrefsStore.getState().clearMangaGroupSorts(9);
+        expect(useSortPrefsStore.getState().library).toBe(before);
+        expect(setItem).not.toHaveBeenCalled();
     });
 
     it('changes the order of the list of one title, keeps the other titles and lists, and saves it all', () => {
@@ -143,7 +207,7 @@ describe('useSortPrefsStore', () => {
         useSortPrefsStore.getState().setListOrder('chapters', 'src-1:42', 'desc');
         useSortPrefsStore.getState().setListOrder('episodes', 'sub|Frieren', 'asc');
         expect(stored()).toEqual({
-            library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+            library: { anime: RECENT_EVERYWHERE, manga: {} },
             list: { chapters: { 'src-1:42': 'desc' }, episodes: { 'sub|Frieren': 'asc', 'sub|One Piece': 'desc' } }
         });
     });
@@ -155,7 +219,7 @@ describe('useSortPrefsStore', () => {
         useSortPrefsStore.getState().clearListOrder('episodes', 'sub|Frieren');
         expect(useSortPrefsStore.getState().list).toEqual({ chapters: { 'sub|Frieren': 'desc' }, episodes: { 'dub|Frieren': 'desc' } });
         expect(stored()).toEqual({
-            library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+            library: { anime: RECENT_EVERYWHERE, manga: {} },
             list: { chapters: { 'sub|Frieren': 'desc' }, episodes: { 'dub|Frieren': 'desc' } }
         });
     });
@@ -173,44 +237,46 @@ describe('useSortPrefsStore', () => {
             throw new Error('full');
         });
         useSortPrefsStore.getState().setListOrder('chapters', 'src-1:42', 'desc');
-        useSortPrefsStore.getState().setLibrarySort('anime', 'all', 'za');
+        useSortPrefsStore.getState().setAnimeLibrarySort('all', 'za');
+        useSortPrefsStore.getState().setMangaLibrarySort(3, 'all', 'az');
         expect(useSortPrefsStore.getState().list.chapters).toEqual({ 'src-1:42': 'desc' });
         expect(useSortPrefsStore.getState().library.anime.all).toBe('za');
+        expect(useSortPrefsStore.getState().library.manga['group:3']?.all).toBe('az');
     });
 
     it('reads what was kept when the app opens again', async () => {
         keepRaw({
-            library: { anime: { all: 'az', news: 'recent', complete: 'recent', ongoing: 'last' }, manga: { all: 'za', news: 'recent', complete: 'recent', ongoing: 'recent' } },
+            library: { anime: { all: 'az', news: 'recent', complete: 'recent', ongoing: 'last' }, manga: { 'group:3': { all: 'za', news: 'recent', complete: 'recent', ongoing: 'recent' } } },
             list: { chapters: { 'src-1:42': 'desc' }, episodes: { 'sub|Frieren': 'asc' } }
         });
         vi.resetModules();
         const reopened = await import('@renderer/store/sortPrefsStore');
         expect(reopened.useSortPrefsStore.getState()).toMatchObject({
-            library: { anime: { all: 'az', news: 'recent', complete: 'recent', ongoing: 'last' }, manga: { all: 'za', news: 'recent', complete: 'recent', ongoing: 'recent' } },
+            library: { anime: { all: 'az', news: 'recent', complete: 'recent', ongoing: 'last' }, manga: { 'group:3': { all: 'za', news: 'recent', complete: 'recent', ongoing: 'recent' } } },
             list: { chapters: { 'src-1:42': 'desc' }, episodes: { 'sub|Frieren': 'asc' } }
         });
     });
 });
 
-describe('useLibrarySort', () => {
-    it('gives the order of a filter of a library and changes only that one', () => {
+describe('useAnimeLibrarySort', () => {
+    it('gives the order of a filter of the anime library and changes only that one', () => {
         const { result } = renderHook(() => {
-            return useLibrarySort('anime', 'ongoing');
+            return useAnimeLibrarySort('ongoing');
         });
         expect(result.current[0]).toBe('recent');
         act(() => {
             result.current[1]('za');
         });
         expect(result.current[0]).toBe('za');
-        expect(useSortPrefsStore.getState().library).toEqual({ anime: { ...RECENT_EVERYWHERE, ongoing: 'za' }, manga: RECENT_EVERYWHERE });
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: { ...RECENT_EVERYWHERE, ongoing: 'za' }, manga: {} });
     });
 
     it('follows the filter: each one has the order it was left with', () => {
-        useSortPrefsStore.getState().setLibrarySort('manga', 'all', 'az');
-        useSortPrefsStore.getState().setLibrarySort('manga', 'news', 'last');
+        useSortPrefsStore.getState().setAnimeLibrarySort('all', 'az');
+        useSortPrefsStore.getState().setAnimeLibrarySort('news', 'last');
         const { result, rerender } = renderHook(
             ({ filter }: { filter: 'all' | 'news' | 'ongoing' }) => {
-                return useLibrarySort('manga', filter);
+                return useAnimeLibrarySort(filter);
             },
             { initialProps: { filter: 'all' } }
         );
@@ -219,6 +285,51 @@ describe('useLibrarySort', () => {
         expect(result.current[0]).toBe('last');
         rerender({ filter: 'ongoing' });
         expect(result.current[0]).toBe('recent');
+    });
+});
+
+describe('useMangaLibrarySort', () => {
+    it('gives the default order for a tab that has none kept, and changes only that filter of that tab', () => {
+        const { result } = renderHook(() => {
+            return useMangaLibrarySort(3, 'news');
+        });
+        expect(result.current[0]).toBe('recent');
+        act(() => {
+            result.current[1]('za');
+        });
+        expect(result.current[0]).toBe('za');
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: RECENT_EVERYWHERE, manga: { 'group:3': { ...RECENT_EVERYWHERE, news: 'za' } } });
+    });
+
+    it('follows the tab and the filter: each combination has the order it was left with', () => {
+        useSortPrefsStore.getState().setMangaLibrarySort(null, 'all', 'az');
+        useSortPrefsStore.getState().setMangaLibrarySort(null, 'news', 'last');
+        useSortPrefsStore.getState().setMangaLibrarySort(3, 'all', 'za');
+        const { result, rerender } = renderHook(
+            ({ groupId, filter }: { groupId: number | null; filter: 'all' | 'news' }) => {
+                return useMangaLibrarySort(groupId, filter);
+            },
+            { initialProps: { groupId: null as number | null, filter: 'all' as 'all' | 'news' } }
+        );
+        expect(result.current[0]).toBe('az');
+        rerender({ groupId: null, filter: 'news' });
+        expect(result.current[0]).toBe('last');
+        rerender({ groupId: 3, filter: 'all' });
+        expect(result.current[0]).toBe('za');
+        rerender({ groupId: 3, filter: 'news' });
+        expect(result.current[0]).toBe('recent');
+        rerender({ groupId: 4, filter: 'all' });
+        expect(result.current[0]).toBe('recent');
+    });
+
+    it('does not change the anime library', () => {
+        const { result } = renderHook(() => {
+            return useMangaLibrarySort(null, 'all');
+        });
+        act(() => {
+            result.current[1]('za');
+        });
+        expect(useSortPrefsStore.getState().library.anime).toEqual(RECENT_EVERYWHERE);
     });
 });
 

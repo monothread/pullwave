@@ -50,7 +50,7 @@ describe('ListOrderSelect', () => {
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
         expect(useSortPrefsStore.getState().list).toEqual({ chapters: {}, episodes: { 'sub|Frieren': 'desc' } });
         expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
-            library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+            library: { anime: RECENT_EVERYWHERE, manga: {} },
             list: { chapters: {}, episodes: { 'sub|Frieren': 'desc' } }
         });
         fireEvent.change(screen.getByRole('combobox', { name: 'Sort by' }), { target: { value: 'asc' } });

@@ -756,9 +756,9 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
     it('keeps the order chosen, for the next time the library opens and for the next time the app opens', async () => {
         const { unmount } = render(<MangaLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
-        expect(useSortPrefsStore.getState().library).toEqual({ anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, all: 'az' } });
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: RECENT_EVERYWHERE, manga: { all: { ...RECENT_EVERYWHERE, all: 'az' } } });
         expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
-            library: { anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, all: 'az' } },
+            library: { anime: RECENT_EVERYWHERE, manga: { all: { ...RECENT_EVERYWHERE, all: 'az' } } },
             list: { chapters: {}, episodes: {} }
         });
         unmount();
@@ -768,7 +768,7 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
     });
 
     it('starts with the order kept', () => {
-        useSortPrefsStore.setState({ library: { anime: RECENT_EVERYWHERE, manga: { ...RECENT_EVERYWHERE, all: 'za' } } });
+        useSortPrefsStore.setState({ library: { anime: RECENT_EVERYWHERE, manga: { all: { ...RECENT_EVERYWHERE, all: 'za' } } } });
         render(<MangaLibrary />);
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('za');
         expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
@@ -783,7 +783,7 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
         await userEvent.click(screen.getByRole('button', { name: 'NEW (1)' }));
         expect(order()).toHaveValue('recent');
         await userEvent.selectOptions(order(), 'last');
-        expect(useSortPrefsStore.getState().library.manga).toEqual({ ...RECENT_EVERYWHERE, all: 'za', news: 'last' });
+        expect(useSortPrefsStore.getState().library.manga).toEqual({ all: { ...RECENT_EVERYWHERE, all: 'za', news: 'last' } });
         await userEvent.click(screen.getByRole('button', { name: 'ALL (2)' }));
         expect(order()).toHaveValue('za');
         expect(cardTitles()).toEqual(['Solo Manga', 'Epic']);
@@ -795,6 +795,95 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
         render(<MangaLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
         expect(useSortPrefsStore.getState().library.anime).toEqual(RECENT_EVERYWHERE);
+    });
+
+    describe('in the tabs of groups', () => {
+        const LOOSE = makeLibraryManga([makeChapterRecord({ id: 11, mangaId: 11, addedAt: Date.now() - DAY })], { id: 11, remoteId: 31, title: 'Loose', createdAt: 7, groupIds: [] });
+        const ALPHA = makeLibraryManga([makeChapterRecord({ id: 12, mangaId: 12, addedAt: Date.now() - DAY })], { id: 12, remoteId: 32, title: 'Alpha', createdAt: 2, groupIds: [1] });
+        const BETA = makeLibraryManga([makeChapterRecord({ id: 13, mangaId: 13, addedAt: Date.now() - 30 * DAY })], { id: 13, remoteId: 33, title: 'Beta', createdAt: 5, groupIds: [1] });
+        const GAMMA = makeLibraryManga([makeChapterRecord({ id: 14, mangaId: 14, addedAt: Date.now() - DAY })], { id: 14, remoteId: 34, title: 'Gamma', createdAt: 1, groupIds: [2] });
+        const GROUPS = [{ id: 1, name: 'Mangas' }, { id: 2, name: 'Manhwas' }];
+
+        beforeEach(() => {
+            useMangaStore.setState({ library: [LOOSE, ALPHA, BETA, GAMMA], groups: GROUPS, libraryGroup: null });
+        });
+
+        function tab(name: string): HTMLElement {
+            return within(screen.getByRole('navigation', { name: 'Groups' })).getByRole('button', { name });
+        }
+
+        function order(): HTMLElement {
+            return screen.getByRole('combobox', { name: 'Sort by' });
+        }
+
+        it('keeps the order of each tab on its own: another tab starts from the default and the tab left shows the one it was left with', async () => {
+            render(<MangaLibrary />);
+            await userEvent.selectOptions(order(), 'za');
+            await userEvent.click(tab('Mangas'));
+            expect(order()).toHaveValue('recent');
+            expect(cardTitles()).toEqual(['Beta', 'Alpha']);
+            await userEvent.selectOptions(order(), 'az');
+            expect(cardTitles()).toEqual(['Alpha', 'Beta']);
+            await userEvent.click(tab('Manhwas'));
+            expect(order()).toHaveValue('recent');
+            await userEvent.click(tab('ALL'));
+            expect(order()).toHaveValue('za');
+            await userEvent.click(tab('Mangas'));
+            expect(order()).toHaveValue('az');
+            expect(cardTitles()).toEqual(['Alpha', 'Beta']);
+            expect(useSortPrefsStore.getState().library.manga).toEqual({
+                all: { ...RECENT_EVERYWHERE, all: 'za' },
+                'group:1': { ...RECENT_EVERYWHERE, all: 'az' }
+            });
+        });
+
+        it('keeps the order of each filter of each tab: every combination has its own', async () => {
+            render(<MangaLibrary />);
+            await userEvent.click(tab('Mangas'));
+            await userEvent.selectOptions(order(), 'az');
+            await userEvent.click(screen.getByRole('button', { name: /^NEW \(/ }));
+            expect(order()).toHaveValue('recent');
+            await userEvent.selectOptions(order(), 'last');
+            await userEvent.click(tab('Manhwas'));
+            expect(order()).toHaveValue('recent');
+            await userEvent.selectOptions(order(), 'za');
+            await userEvent.click(tab('Mangas'));
+            expect(order()).toHaveValue('last');
+            await userEvent.click(screen.getByRole('button', { name: /^ALL \(/ }));
+            expect(order()).toHaveValue('az');
+            await userEvent.click(tab('Manhwas'));
+            expect(order()).toHaveValue('recent');
+            await userEvent.click(screen.getByRole('button', { name: /^NEW \(/ }));
+            expect(order()).toHaveValue('za');
+            expect(useSortPrefsStore.getState().library.manga).toEqual({
+                'group:1': { ...RECENT_EVERYWHERE, all: 'az', news: 'last' },
+                'group:2': { ...RECENT_EVERYWHERE, news: 'za' }
+            });
+        });
+
+        it('keeps the order of the tabs for the next time the app opens', async () => {
+            const { unmount } = render(<MangaLibrary />);
+            await userEvent.click(tab('Manhwas'));
+            await userEvent.selectOptions(order(), 'last');
+            expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
+                library: { anime: RECENT_EVERYWHERE, manga: { 'group:2': { ...RECENT_EVERYWHERE, all: 'last' } } },
+                list: { chapters: {}, episodes: {} }
+            });
+            unmount();
+            useMangaStore.setState({ libraryGroup: 2 });
+            render(<MangaLibrary />);
+            expect(order()).toHaveValue('last');
+        });
+
+        it('keeps the order under the first group when the tab of all is not there, because every manga is in a group', async () => {
+            useMangaStore.setState({ library: [ALPHA, BETA, GAMMA], libraryGroup: null });
+            render(<MangaLibrary />);
+            expect(within(screen.getByRole('navigation', { name: 'Groups' })).queryByRole('button', { name: 'ALL' })).not.toBeInTheDocument();
+            await userEvent.selectOptions(order(), 'az');
+            expect(useSortPrefsStore.getState().library.manga).toEqual({ 'group:1': { ...RECENT_EVERYWHERE, all: 'az' } });
+            await userEvent.click(tab('Manhwas'));
+            expect(order()).toHaveValue('recent');
+        });
     });
 
     it('shows the mangas read last first', async () => {

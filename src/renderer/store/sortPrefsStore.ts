@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import type { AnimeAudio } from '@shared/anime';
 import { LIBRARY_FILTERS, LIBRARY_SORTS, type LibraryFilter, type LibrarySort } from '../spotlight/spotlightData';
 
-// The orders the user chose: for the grid of each library, one for each of its filters, and for the list of chapters of each manga and of
-// episodes of each anime, one for each title. They are kept in the storage of the window, so they are the same when the app opens again;
+// The orders the user chose: for the grid of the anime library, one for each of its filters; for the grid of the manga library, one for each
+// filter of each tab of groups; and for the list of chapters of each manga and of episodes of each anime, one for each title. They are kept in the storage of the window, so they are the same when the app opens again;
 // storage that is empty, broken or refuses to be read gives the defaults, and so does what was kept in the shape of an older version.
 export const SORT_PREFS_STORAGE_KEY = 'pullwave.sort';
 
@@ -11,8 +11,6 @@ export const SORT_PREFS_STORAGE_KEY = 'pullwave.sort';
 export type ListOrder = 'asc' | 'desc';
 
 export const LIST_ORDERS: readonly ListOrder[] = ['asc', 'desc'];
-
-export type LibraryKind = 'anime' | 'manga';
 
 // The lists whose order is kept: the chapters of a manga and the episodes of an anime.
 export type ListKind = 'chapters' | 'episodes';
@@ -24,8 +22,12 @@ export type LibrarySorts = Record<LibraryFilter, LibrarySort>;
 // default order.
 export type ListOrders = Record<string, ListOrder>;
 
+// The order of the grid of the manga library for each one of its tabs of groups, by the key of the tab (see `mangaGroupKey`). A tab that is
+// not here has the default order under every filter.
+export type MangaGroupSorts = Record<string, LibrarySorts>;
+
 export interface SortPrefs {
-    library: Record<LibraryKind, LibrarySorts>;
+    library: { anime: LibrarySorts; manga: MangaGroupSorts };
     list: Record<ListKind, ListOrders>;
 }
 
@@ -36,15 +38,23 @@ export const DEFAULT_LIST_ORDER: ListOrder = 'asc';
 const DEFAULT_LIBRARY_SORTS: LibrarySorts = { all: DEFAULT_LIBRARY_SORT, news: DEFAULT_LIBRARY_SORT, complete: DEFAULT_LIBRARY_SORT, ongoing: DEFAULT_LIBRARY_SORT };
 
 export const DEFAULT_SORT_PREFS: SortPrefs = {
-    library: { anime: DEFAULT_LIBRARY_SORTS, manga: DEFAULT_LIBRARY_SORTS },
+    library: { anime: DEFAULT_LIBRARY_SORTS, manga: {} },
     list: { chapters: {}, episodes: {} }
 };
 
 export interface SortPrefsState extends SortPrefs {
-    setLibrarySort: (kind: LibraryKind, filter: LibraryFilter, sort: LibrarySort) => void;
+    setAnimeLibrarySort: (filter: LibraryFilter, sort: LibrarySort) => void;
+    setMangaLibrarySort: (groupId: number | null, filter: LibraryFilter, sort: LibrarySort) => void;
+    // Forgets the orders of a group that was deleted.
+    clearMangaGroupSorts: (groupId: number) => void;
     setListOrder: (kind: ListKind, key: string, order: ListOrder) => void;
     // Forgets the order of a title that left the library.
     clearListOrder: (kind: ListKind, key: string) => void;
+}
+
+// The key of a tab of the manga library in the orders of its grid: the tab of all (the mangas that are in no group, `null`) or one group.
+export function mangaGroupKey(groupId: number | null): string {
+    return groupId === null ? 'all' : `group:${String(groupId)}`;
 }
 
 // The key of an anime in the orders of its episodes: the audio comes first because it has no separator in it, the title can have any
@@ -78,6 +88,18 @@ function readLibrarySorts(value: unknown): LibrarySorts {
     return sorts;
 }
 
+// The orders of the tabs of groups of the manga library; what is not an object of orders (what an earlier version kept, one order for each
+// filter and no tabs) is left out.
+function readMangaGroupSorts(value: unknown): MangaGroupSorts {
+    const sorts: MangaGroupSorts = {};
+    Object.entries(asRecord(value)).forEach(([key, kept]) => {
+        if (typeof kept === 'object' && kept !== null) {
+            sorts[key] = readLibrarySorts(kept);
+        }
+    });
+    return sorts;
+}
+
 // The orders of the titles of one list; the ones whose order is unknown are left out (they have the default one).
 function readListOrders(value: unknown): ListOrders {
     const orders: ListOrders = {};
@@ -99,7 +121,7 @@ export function readSortPrefs(): SortPrefs {
         const library = asRecord(raw['library']);
         const list = asRecord(raw['list']);
         return {
-            library: { anime: readLibrarySorts(library['anime']), manga: readLibrarySorts(library['manga']) },
+            library: { anime: readLibrarySorts(library['anime']), manga: readMangaGroupSorts(library['manga']) },
             list: { chapters: readListOrders(list['chapters']), episodes: readListOrders(list['episodes']) }
         };
     } catch {
@@ -124,9 +146,29 @@ export const useSortPrefsStore = create<SortPrefsState>((set, get) => {
     };
     return {
         ...readSortPrefs(),
-        setLibrarySort: (kind, filter, sort) => {
+        setAnimeLibrarySort: (filter, sort) => {
             const { library } = get();
-            save({ library: { ...library, [kind]: { ...library[kind], [filter]: sort } } });
+            save({ library: { ...library, anime: { ...library.anime, [filter]: sort } } });
+        },
+        setMangaLibrarySort: (groupId, filter, sort) => {
+            const { library } = get();
+            const key = mangaGroupKey(groupId);
+            const updated: LibrarySorts = { ...(library.manga[key] ?? DEFAULT_LIBRARY_SORTS) };
+            updated[filter] = sort;
+            save({ library: { ...library, manga: { ...library.manga, [key]: updated } } });
+        },
+        clearMangaGroupSorts: (groupId) => {
+            const { library } = get();
+            const key = mangaGroupKey(groupId);
+            if (!Object.hasOwn(library.manga, key)) {
+                return;
+            }
+            const kept = Object.fromEntries(
+                Object.entries(library.manga).filter(([candidate]) => {
+                    return candidate !== key;
+                })
+            );
+            save({ library: { ...library, manga: kept } });
         },
         setListOrder: (kind, key, order) => {
             const { list } = get();
@@ -147,18 +189,36 @@ export const useSortPrefsStore = create<SortPrefsState>((set, get) => {
     };
 });
 
-// The order of the grid of a library under one of its filters and the way to change it (the change is kept).
-export function useLibrarySort(kind: LibraryKind, filter: LibraryFilter): [LibrarySort, (sort: LibrarySort) => void] {
+// The order of the grid of the anime library under one of its filters and the way to change it (the change is kept).
+export function useAnimeLibrarySort(filter: LibraryFilter): [LibrarySort, (sort: LibrarySort) => void] {
     const sort = useSortPrefsStore((state) => {
-        return state.library[kind][filter];
+        return state.library.anime[filter];
     });
-    const setLibrarySort = useSortPrefsStore((state) => {
-        return state.setLibrarySort;
+    const setAnimeLibrarySort = useSortPrefsStore((state) => {
+        return state.setAnimeLibrarySort;
     });
     return [
         sort,
         (next) => {
-            setLibrarySort(kind, filter, next);
+            setAnimeLibrarySort(filter, next);
+        }
+    ];
+}
+
+// The order of the grid of the manga library under one of its filters, in one of its tabs of groups (`null` is the tab of all), and the way
+// to change it (the change is kept).
+export function useMangaLibrarySort(groupId: number | null, filter: LibraryFilter): [LibrarySort, (sort: LibrarySort) => void] {
+    const key = mangaGroupKey(groupId);
+    const sort = useSortPrefsStore((state) => {
+        return state.library.manga[key]?.[filter];
+    });
+    const setMangaLibrarySort = useSortPrefsStore((state) => {
+        return state.setMangaLibrarySort;
+    });
+    return [
+        sort ?? DEFAULT_LIBRARY_SORT,
+        (next) => {
+            setMangaLibrarySort(groupId, filter, next);
         }
     ];
 }

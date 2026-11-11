@@ -1348,6 +1348,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         deleteGroup: async (groupId) => {
             await window.api.manga.deleteGroup(groupId);
+            // The orders of its tab are not needed anymore.
+            useSortPrefsStore.getState().clearMangaGroupSorts(groupId);
             await get().refreshLibrary();
         },
 

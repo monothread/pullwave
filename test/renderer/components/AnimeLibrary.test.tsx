@@ -2414,9 +2414,9 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
     it('keeps the order chosen, for the next time the library opens and for the next time the app opens', async () => {
         const { unmount } = render(<AnimeLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'za');
-        expect(useSortPrefsStore.getState().library).toEqual({ anime: { ...RECENT_EVERYWHERE, all: 'za' }, manga: RECENT_EVERYWHERE });
+        expect(useSortPrefsStore.getState().library).toEqual({ anime: { ...RECENT_EVERYWHERE, all: 'za' }, manga: {} });
         expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
-            library: { anime: { ...RECENT_EVERYWHERE, all: 'za' }, manga: RECENT_EVERYWHERE },
+            library: { anime: { ...RECENT_EVERYWHERE, all: 'za' }, manga: {} },
             list: { chapters: {}, episodes: {} }
         });
         unmount();
@@ -2426,7 +2426,7 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
     });
 
     it('starts with the order kept', () => {
-        useSortPrefsStore.setState({ library: { anime: { ...RECENT_EVERYWHERE, all: 'az' }, manga: RECENT_EVERYWHERE } });
+        useSortPrefsStore.setState({ library: { anime: { ...RECENT_EVERYWHERE, all: 'az' }, manga: {} } });
         render(<AnimeLibrary />);
         expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('az');
         expect(cardNames()).toEqual(['Alpha Old', 'Saga', 'Solo']);
@@ -2452,7 +2452,7 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
     it('does not change the order of the filters of the manga library', async () => {
         render(<AnimeLibrary />);
         await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'az');
-        expect(useSortPrefsStore.getState().library.manga).toEqual(RECENT_EVERYWHERE);
+        expect(useSortPrefsStore.getState().library.manga).toEqual({});
     });
 
     it('shows the titles watched last first, then the ones never watched as the ones added last', async () => {

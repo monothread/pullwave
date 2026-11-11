@@ -1467,7 +1467,7 @@ describe('MangaDetail the order of the chapters', () => {
         expect(names()).toEqual(['#3', '#2', 'Romance Dawn']);
         expect(useSortPrefsStore.getState().list.chapters).toEqual({ '123:7': 'desc' });
         expect(JSON.parse(window.localStorage.getItem(SORT_PREFS_STORAGE_KEY) ?? 'null')).toEqual({
-            library: { anime: RECENT_EVERYWHERE, manga: RECENT_EVERYWHERE },
+            library: { anime: RECENT_EVERYWHERE, manga: {} },
             list: { chapters: { '123:7': 'desc' }, episodes: {} }
         });
         await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'asc');

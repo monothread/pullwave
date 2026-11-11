@@ -19,7 +19,7 @@ import { LibraryCard } from '../library/LibraryCard';
 import { LibraryControls } from '../library/LibraryControls';
 import { AnimeLibrarySpotlight } from '../library/LibrarySpotlights';
 import { animeGroupComplete, animeLastSeen, animeNews, filterGroups, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
-import { animeListKey, inListOrder, useLibrarySort, useListOrder } from '../store/sortPrefsStore';
+import { animeListKey, inListOrder, useAnimeLibrarySort, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
 import { WatchedMark } from './WatchedMark';
 import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
@@ -779,7 +779,7 @@ export function AnimeLibrary() {
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<LibraryFilter>('all');
     // The order of the grid is kept for each filter: it is the same when the app opens again.
-    const [sort, setSort] = useLibrarySort('anime', filter);
+    const [sort, setSort] = useAnimeLibrarySort(filter);
     // What is new is counted from the time the library opened.
     const [openedAt] = useState(() => {
         return Date.now();

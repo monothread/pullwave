@@ -3514,6 +3514,46 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await expect(session.page.getByTestId('manga-chapter').locator('.row-link')).toHaveText(['The Great Race', 'Romance Dawn']);
     });
 
+    test('keeps the order of the library for each tab of groups, even after the app is closed and opened again', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: '← BACK', exact: true }).click();
+        await session.page.getByRole('button', { name: 'MANAGE GROUPS' }).click();
+        for (const name of ['Mangas', 'Manhwas']) {
+            await session.page.getByLabel('Name of the group').fill(name);
+            await session.page.getByRole('button', { name: 'CREATE', exact: true }).click();
+        }
+        const tabs = session.page.getByRole('navigation', { name: 'Groups' });
+        const order = session.page.getByRole('combobox', { name: 'Sort by' });
+        await expect(tabs.getByRole('button')).toHaveText(['ALL', 'Mangas', 'Manhwas']);
+
+        // Each tab has its own order, and each one is the default until it is chosen.
+        await order.selectOption('za');
+        await tabs.getByRole('button', { name: 'Mangas', exact: true }).click();
+        await expect(order).toHaveValue('recent');
+        await order.selectOption('az');
+        await tabs.getByRole('button', { name: 'Manhwas', exact: true }).click();
+        await expect(order).toHaveValue('recent');
+        await tabs.getByRole('button', { name: 'ALL', exact: true }).click();
+        await expect(order).toHaveValue('za');
+        await tabs.getByRole('button', { name: 'Mangas', exact: true }).click();
+        await expect(order).toHaveValue('az');
+
+        await session.app.close();
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        const reopenedTabs = session.page.getByRole('navigation', { name: 'Groups' });
+        const reopenedOrder = session.page.getByRole('combobox', { name: 'Sort by' });
+        await expect(reopenedOrder).toHaveValue('za');
+        await reopenedTabs.getByRole('button', { name: 'Mangas', exact: true }).click();
+        await expect(reopenedOrder).toHaveValue('az');
+        await reopenedTabs.getByRole('button', { name: 'Manhwas', exact: true }).click();
+        await expect(reopenedOrder).toHaveValue('recent');
+    });
+
     test('puts the cover of the manga behind the screen again when the user comes back to its page from the settings', async () => {
         session = await launch();
         await openManga(session.page);

@@ -13,7 +13,7 @@ import { LibraryCard } from '../library/LibraryCard';
 import { LibraryControls } from '../library/LibraryControls';
 import { MangaLibrarySpotlight } from '../library/LibrarySpotlights';
 import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter } from '../spotlight/spotlightData';
-import { useLibrarySort } from '../store/sortPrefsStore';
+import { useMangaLibrarySort } from '../store/sortPrefsStore';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
@@ -221,8 +221,9 @@ export function MangaLibrary() {
     const [search, setSearch] = useState('');
     const [managing, setManaging] = useState(false);
     const [filter, setFilter] = useState<LibraryFilter>('all');
-    // The order of the grid is kept for each filter: it is the same when the app opens again.
-    const [sort, setSort] = useLibrarySort('manga', filter);
+    // The order of the grid is kept for each filter of each tab of groups: it is the same when the app opens again.
+    const currentGroup = activeGroup(library, groups, libraryGroup);
+    const [sort, setSort] = useMangaLibrarySort(currentGroup, filter);
     // What is new is counted from the time the library opened.
     const [openedAt] = useState(() => {
         return Date.now();
@@ -263,7 +264,6 @@ export function MangaLibrary() {
     }
     // The tab of all holds the mangas that are in no group; it is not there when every manga is in a group.
     const hasAllTab = inGroup(library, null).length > 0;
-    const currentGroup = activeGroup(library, groups, libraryGroup);
     const shown = inGroup(library, currentGroup).filter((manga) => {
         return matchesManga(manga, search);
     });
