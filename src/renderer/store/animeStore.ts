@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useFxStore } from '../fx/fxStore';
 import { batchNavigation } from '../navigation/navigationBatch';
-import type { AniError, AnimeAiringOverride, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime } from '@shared/anime';
+import type { AniError, AnimeAiringOverride, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime, SubtitleTranslationJob } from '@shared/anime';
 import { IDLE_CHECK_STATE } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
@@ -11,7 +11,7 @@ import { resolveAppLanguage } from '../i18n/language';
 import { downloadedEpisodeCount, groupLibrary, isRepairable, libraryEntry, libraryProblems, nextListedEpisode, type AudioReport } from '../components/animeText';
 import { useAppStore } from './appStore';
 import { animeListKey, useSortPrefsStore } from './sortPrefsStore';
-import { activitiesOf, upsertSubtitleActivity, type SubtitleActivity } from './subtitleActivity';
+import { activitiesOf, updatesOf, upsertSubtitleActivity, type SubtitleActivity } from './subtitleActivity';
 
 export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads' | 'subtitles';
 // The screens opened over the others (from the top bar), with BACK to the one that was shown: the downloads and the subtitles being worked on.
@@ -102,6 +102,9 @@ export interface AnimeState {
     jobs: AnimeJob[];
     // The subtitles being translated or made from the audio, or waiting to be (the ones that ended leave the list).
     subtitleJobs: SubtitleActivity[];
+    // The last update of the translation of each episode since the app opened, also of the ones that ended (by the id of the episode): what a
+    // season shows of its translation stays the same when its screen is left and opened again.
+    translationUpdates: Record<number, SubtitleTranslationJob>;
     // The queue is held by PAUSE ALL: what waits keeps waiting.
     queueHeld: boolean;
     library: LibraryAnime[];
@@ -138,6 +141,8 @@ export interface AnimeState {
     closeSubtitleJobs: () => void;
     // Cancels the translation, or the making, of the subtitle of an episode.
     cancelSubtitleJob: (activity: SubtitleActivity) => Promise<void>;
+    // Forgets what the translations of these episodes did before (a season starts its translation again).
+    forgetTranslationUpdates: (episodeIds: readonly number[]) => void;
     openSeries: (key: string) => void;
     closeSeries: () => void;
     openSeason: (animeId: number) => void;
@@ -341,6 +346,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         view: 'schedule',
         returnView: 'schedule',
         subtitleJobs: [],
+        translationUpdates: {},
         jobs: [],
         queueHeld: false,
         library: [],
@@ -375,11 +381,14 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 api.animeQueueHeld(),
                 api.listSubtitleJobs()
             ]);
-            set({ library, jobs, history, checkState, queueHeld, subtitleJobs: activitiesOf(subtitleJobs) });
+            set({ library, jobs, history, checkState, queueHeld, subtitleJobs: activitiesOf(subtitleJobs), translationUpdates: updatesOf(subtitleJobs.translations) });
             const unsubscribers = [
                 api.onSubtitleTranslationUpdate((job) => {
                     set((state) => {
-                        return { subtitleJobs: upsertSubtitleActivity(state.subtitleJobs, { kind: 'translation', job }) };
+                        return {
+                            subtitleJobs: upsertSubtitleActivity(state.subtitleJobs, { kind: 'translation', job }),
+                            translationUpdates: { ...state.translationUpdates, [job.episodeId]: job }
+                        };
                     });
                 }),
                 api.onSubtitleGenerationUpdate((job) => {
@@ -474,6 +483,16 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         closeSubtitleJobs: () => {
             set(overlayClosed);
+        },
+
+        forgetTranslationUpdates: (episodeIds) => {
+            set((state) => {
+                const kept = { ...state.translationUpdates };
+                episodeIds.forEach((episodeId) => {
+                    delete kept[episodeId];
+                });
+                return { translationUpdates: kept };
+            });
         },
 
         cancelSubtitleJob: async (activity) => {

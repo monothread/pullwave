@@ -499,6 +499,9 @@ const api: CyberApi = {
     estimateAnimeSubtitleTranslation: (request) => {
         return ipcRenderer.invoke(IPC.animeSubtitleTranslateEstimate, request);
     },
+    listTranslatableEpisodes: (request) => {
+        return ipcRenderer.invoke(IPC.animeSubtitleTranslatable, request);
+    },
     translateAnimeSubtitles: (request) => {
         return ipcRenderer.invoke(IPC.animeSubtitleTranslateMany, request);
     },

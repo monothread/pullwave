@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
-import { act, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { SubtitleTranslationJob } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { SeasonTranslation } from '@renderer/components/SeasonTranslation';
+import { useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
-import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
+import { makeAnime, makeEpisode, makeStatus } from '../../helpers/animeFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
+const initialAnime = useAnimeStore.getState();
+let dispose: () => void;
 
 const ANIME = makeAnime(
     [
@@ -22,9 +25,18 @@ const ANIME = makeAnime(
     { id: 10, title: 'Naruto' }
 );
 
-beforeEach(() => {
+// The updates of the translations reach the screen through the store, which listens for them from the start of the anime section.
+beforeEach(async () => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, translateLanguage: 'German' } });
+    useAnimeStore.setState({ ...initialAnime, translationUpdates: {}, subtitleJobs: [], view: 'library', returnView: 'library' });
+    mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
+    dispose = await useAnimeStore.getState().init();
+});
+
+afterEach(() => {
+    dispose();
+    useAnimeStore.setState(initialAnime, true);
 });
 
 function job(episodeId: number, status: SubtitleTranslationJob['status'], overrides: Partial<SubtitleTranslationJob> = {}): SubtitleTranslationJob {
@@ -40,15 +52,15 @@ function emit(update: SubtitleTranslationJob): void {
 async function confirmed() {
     const user = userEvent.setup();
     render(<SeasonTranslation anime={ANIME} />);
-    await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+    await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
     await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
     return user;
 }
 
 describe('SeasonTranslation', () => {
-    it('offers to translate the subtitles of the season, and does nothing until the user confirms', () => {
+    it('offers to translate the subtitles of the season, and does nothing until the user confirms', async () => {
         render(<SeasonTranslation anime={ANIME} />);
-        const button = screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' });
+        const button = await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' });
         expect(button).toHaveTextContent('TRANSLATE SUBTITLES');
         expect(mock.api.translateAnimeSubtitles).not.toHaveBeenCalled();
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -65,7 +77,7 @@ describe('SeasonTranslation', () => {
         it('asks first, saying how many episodes, into which language and that it costs the token of the user', async () => {
             const user = userEvent.setup();
             render(<SeasonTranslation anime={ANIME} />);
-            await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+            await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
             expect(screen.getByText('Translate the subtitles of up to 2 episodes into German with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'CONFIRM' })).toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'CANCEL' })).toBeInTheDocument();
@@ -76,7 +88,7 @@ describe('SeasonTranslation', () => {
         it('goes back to the button when the user gives up, asking nothing of the provider', async () => {
             const user = userEvent.setup();
             render(<SeasonTranslation anime={ANIME} />);
-            await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+            await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
             await user.click(screen.getByRole('button', { name: 'CANCEL' }));
             expect(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).toBeInTheDocument();
             expect(mock.api.translateAnimeSubtitles).not.toHaveBeenCalled();
@@ -237,10 +249,103 @@ describe('SeasonTranslation', () => {
         });
     });
 
-    it('stops listening for updates when it goes away', () => {
-        const { unmount } = render(<SeasonTranslation anime={ANIME} />);
-        expect(mock.api.onSubtitleTranslationUpdate).toHaveBeenCalledTimes(1);
-        unmount();
-        expect(mock.unsubscribers[0]).toHaveBeenCalledTimes(1);
+    describe('which episodes it offers to translate', () => {
+        it('asks the main process which downloaded episodes can be translated into the language of the settings', async () => {
+            render(<SeasonTranslation anime={ANIME} />);
+            await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' });
+            expect(mock.api.listTranslatableEpisodes).toHaveBeenCalledTimes(1);
+            expect(mock.api.listTranslatableEpisodes).toHaveBeenCalledWith({ episodeIds: [1, 2], language: 'German' });
+        });
+
+        it('shows nothing until the main process answers', () => {
+            mock.api.listTranslatableEpisodes.mockReturnValue(new Promise(() => {
+                return undefined;
+            }));
+            const { container } = render(<SeasonTranslation anime={ANIME} />);
+            expect(container).toBeEmptyDOMElement();
+        });
+
+        it('has no button to translate when every episode has the subtitle in the language already, and says so', async () => {
+            mock.api.listTranslatableEpisodes.mockResolvedValue([]);
+            render(<SeasonTranslation anime={ANIME} />);
+            expect(await screen.findByTestId('season-translation-done')).toHaveTextContent('Every downloaded episode of this season that has a subtitle already has it in German.');
+            expect(screen.queryByRole('button')).not.toBeInTheDocument();
+        });
+
+        it('counts and queues only the episodes that can be translated', async () => {
+            const user = userEvent.setup();
+            mock.api.listTranslatableEpisodes.mockResolvedValue([2]);
+            render(<SeasonTranslation anime={ANIME} />);
+            await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+            expect(screen.getByText('Translate the subtitles of up to 1 episodes into German with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeInTheDocument();
+            await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+            expect(mock.api.translateAnimeSubtitles).toHaveBeenCalledWith({ episodeIds: [2], language: 'German' });
+        });
+
+        it('asks again when a translation of the season ends, and hides the button once nothing is left', async () => {
+            await confirmed();
+            emit(job(1, 'running'));
+            expect(mock.api.listTranslatableEpisodes).toHaveBeenCalledTimes(1);
+            mock.api.listTranslatableEpisodes.mockResolvedValue([]);
+            emit(job(1, 'done'));
+            expect(await screen.findByTestId('season-translation-done')).toBeInTheDocument();
+            expect(mock.api.listTranslatableEpisodes).toHaveBeenCalledTimes(2);
+            expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
+        });
+
+        it('asks again for another language', async () => {
+            const { rerender } = render(<SeasonTranslation anime={ANIME} />);
+            await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' });
+            act(() => {
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'Korean' } });
+            });
+            rerender(<SeasonTranslation anime={ANIME} />);
+            await vi.waitFor(() => {
+                expect(mock.api.listTranslatableEpisodes).toHaveBeenLastCalledWith({ episodeIds: [1, 2], language: 'Korean' });
+            });
+        });
+
+        it('does not ask when no episode is downloaded', () => {
+            render(<SeasonTranslation anime={makeAnime([makeEpisode({ id: 3, status: 'queued', filePath: null })], { id: 11, title: 'Bleach' })} />);
+            expect(mock.api.listTranslatableEpisodes).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('the screen of the subtitles being translated', () => {
+        it('has a button to it while the season is translated, and it opens that screen', async () => {
+            const user = await confirmed();
+            emit(job(1, 'running'));
+            await user.click(screen.getByRole('button', { name: 'SEE PROGRESS' }));
+            expect(useAnimeStore.getState()).toMatchObject({ view: 'subtitles', returnView: 'library' });
+        });
+
+        it('shows the same progress at once when the screen is left and opened again, never the button to translate', async () => {
+            await confirmed();
+            emit(job(1, 'done'));
+            emit(job(2, 'running', { done: 2, total: 10 }));
+            cleanup();
+            mock.api.listTranslatableEpisodes.mockReturnValue(new Promise(() => {
+                return undefined;
+            }));
+
+            render(<SeasonTranslation anime={ANIME} />);
+
+            expect(screen.getByTestId('season-translation-progress')).toHaveTextContent('Translating subtitles: 1 of 2 episodes done.');
+            expect(screen.getByRole('button', { name: 'SEE PROGRESS' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'STOP' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
+        });
+
+        it('keeps the warnings when the screen is left and opened again after the end', async () => {
+            await confirmed();
+            emit(job(1, 'error', { reason: 'NETWORK: x' }));
+            emit(job(2, 'skipped', { reason: 'exists' }));
+            cleanup();
+
+            render(<SeasonTranslation anime={ANIME} />);
+
+            expect(await screen.findByRole('alert')).toHaveTextContent('1 episodes could not be translated. Open one to see why.');
+            expect(screen.getByTestId('season-translation-skipped')).toHaveTextContent('1 episodes already had the subtitle in German and were skipped.');
+        });
     });
 });

@@ -77,6 +77,7 @@ export const IPC = {
     animeSubtitleTranslate: 'anime:subtitle-translate',
     animeSubtitleTranslateEstimate: 'anime:subtitle-translate-estimate',
     animeSubtitleTranslateMany: 'anime:subtitle-translate-many',
+    animeSubtitleTranslatable: 'anime:subtitle-translatable',
     animeSubtitleTranslateCancel: 'anime:subtitle-translate-cancel',
     animeSubtitleGenerate: 'anime:subtitle-generate',
     animeSubtitleGenerateEstimate: 'anime:subtitle-generate-estimate',

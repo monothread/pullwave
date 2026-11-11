@@ -46,3 +46,12 @@ export function activitiesOf(jobs: SubtitleJobs): SubtitleActivity[] {
         return isActiveSubtitleJob(activity.job);
     });
 }
+
+// The translations the main process listed, by the id of their episode.
+export function updatesOf(translations: readonly SubtitleTranslationJob[]): Record<number, SubtitleTranslationJob> {
+    return Object.fromEntries(
+        translations.map((job) => {
+            return [job.episodeId, job];
+        })
+    );
+}

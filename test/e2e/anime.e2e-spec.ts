@@ -4210,7 +4210,9 @@ test.describe('translating subtitles with a language model', () => {
             ['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]'],
             ['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']
         ]);
-        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
+        // Both have the subtitle in Spanish now: nothing is left to translate.
+        await expect(page.getByTestId('season-translation-done')).toHaveText('Every downloaded episode of this season that has a subtitle already has it in Spanish.');
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toHaveCount(0);
         await expect(page.getByRole('alert')).toHaveCount(0);
     });
 
@@ -4288,44 +4290,95 @@ test.describe('translating subtitles with a language model', () => {
         expect(readFileSync(translatedFile(1), 'utf-8')).toBe(SPANISH_SUBTITLE);
     });
 
-    test('translates only the episodes of a season that do not have the subtitle in the language yet, and says how many were skipped', async () => {
+    const ALL_HAVE = 'Every downloaded episode of this season that has a subtitle already has it in Spanish.';
+
+    test('names in the player the subtitles a source names "Language - Variant", and still skips the language for the translation', async () => {
+        const { page } = session;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1]);
+        ['English - Forced', 'Portuguese - Brazilian (SDH)', 'Spanish - Latin American'].forEach((label) => {
+            writeFileSync(join(episodeFolder(1), `Fake Anime Episode 1.subtitle-${label}.vtt`), ENGLISH_SUBTITLE.replace('Hello there', label));
+        });
+        await showEpisodes(page);
+        // The episode has the subtitle in Spanish, from the source: there is nothing to translate into Spanish.
+        await expect(page.getByTestId('season-translation-done')).toHaveText(ALL_HAVE);
+
+        await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole('button', { name: 'Settings' }).click();
+        const menu = dialog.getByRole('combobox', { name: 'Subtitles' });
+        await expect(menu.locator('option')).toHaveText(['Off', 'Default', 'English', 'English · Forced', 'Portuguese (Brazil) · SDH', 'Spanish (Latin America)']);
+        await menu.selectOption({ label: 'Portuguese (Brazil) · SDH' });
+        await expect(menu).toHaveValue('subtitle-Portuguese - Brazilian (SDH)');
+        expect(received).toEqual([]);
+    });
+
+    test('translates only the episodes of a season that do not have the subtitle in the language yet, and offers nothing once all have it', async () => {
         const { page } = session;
         await saveToken(page);
         await downloadWithSubtitles(page, [1, 2]);
         writeFileSync(translatedFile(1), OLD_SPANISH_SUBTITLE);
         await showEpisodes(page);
         await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await expect(page.getByText('Translate the subtitles of up to 1 episodes into Spanish with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeVisible();
         await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
 
         await expect.poll(() => {
             return existsSync(translatedFile(2));
         }, { timeout: 20000 }).toBe(true);
-        await expect(page.getByTestId('season-translation-skipped')).toHaveText('1 episodes already had the subtitle in Spanish and were skipped.');
         expect(readFileSync(translatedFile(2), 'utf-8')).toBe(SPANISH_SUBTITLE);
         expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
         expect(received).toHaveLength(1);
         expect(received.map((request) => {
             return [request.path, request.authorization, request.body.messages[1]?.content];
         })).toEqual([['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']]);
-        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
+        await expect(page.getByTestId('season-translation-done')).toHaveText(ALL_HAVE);
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toHaveCount(0);
         await expect(page.getByRole('alert')).toHaveCount(0);
     });
 
-    test('asks the provider for nothing when every episode of a season has the subtitle in the language already', async () => {
+    test('has no button to translate a season whose episodes all have the subtitle in the language already, from the source or translated', async () => {
         const { page } = session;
         await saveToken(page);
         await downloadWithSubtitles(page, [1, 2]);
         writeFileSync(translatedFile(1), OLD_SPANISH_SUBTITLE);
-        writeFileSync(translatedFile(2), OLD_SPANISH_SUBTITLE);
+        writeFileSync(join(episodeFolder(2), 'Fake Anime Episode 2.subtitle-Spanish (- Spanish(Latin America)).vtt'), OLD_SPANISH_SUBTITLE);
+        await showEpisodes(page);
+
+        await expect(page.getByTestId('season-translation-done')).toHaveText(ALL_HAVE);
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toHaveCount(0);
+        expect(received).toEqual([]);
+        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
+        expect(existsSync(translatedFile(2))).toBe(false);
+    });
+
+    test('keeps showing the progress of a season, with a button to the screen of the subtitles, when that screen is opened and closed', async () => {
+        const { page } = session;
+        hold = true;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1, 2]);
         await showEpisodes(page);
         await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
         await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+        const progress = page.getByTestId('season-translation-progress');
+        await expect(progress).toHaveText('Translating subtitles: 0 of 2 episodes done.');
+        await expect(page.getByRole('button', { name: 'STOP', exact: true })).toBeVisible();
 
-        await expect(page.getByTestId('season-translation-skipped')).toHaveText('2 episodes already had the subtitle in Spanish and were skipped.');
-        expect(received).toEqual([]);
-        expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
-        expect(readFileSync(translatedFile(2), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
-        await expect(page.getByRole('alert')).toHaveCount(0);
+        await page.getByRole('button', { name: 'SEE PROGRESS', exact: true }).click();
+        await expect(page.getByRole('region', { name: 'TRANSLATING (2)' })).toBeVisible();
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+
+        // At once, with nothing new from the provider (it holds the answer): never the button to translate in the meantime.
+        await expect(progress).toBeVisible({ timeout: 1000 });
+        expect(await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).count()).toBe(0);
+        await expect(progress).toHaveText('Translating subtitles: 0 of 2 episodes done.');
+        await expect(page.getByRole('button', { name: 'SEE PROGRESS', exact: true })).toBeVisible();
+        expect(received).toHaveLength(1);
+
+        await page.getByRole('button', { name: 'STOP', exact: true }).click();
+        await answerConfirm(page, 'Cancel the translation?', 'STOP');
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
     });
 });
 

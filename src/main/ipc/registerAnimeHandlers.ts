@@ -100,6 +100,8 @@ export interface AnimeHandlerDependencies {
         // Translates a subtitle with the language model of the settings (queued: the answer comes when it is done), says what that takes,
         // and cancels the translation of an episode (or all of them, null).
         translate: (request: SubtitleTranslateRequest) => Promise<SubtitleTranslateResponse>;
+        // Which of these episodes can be translated into the language (see `canBeTranslated`).
+        translatable: (episodeIds: readonly number[], language: TranslationLanguage) => number[];
         estimate: (request: SubtitleEstimateRequest) => Promise<SubtitleEstimateResponse>;
         cancelTranslation: (episodeId: number | null) => void;
         // Makes the subtitle of an episode from its audio with the service of speech to text of the settings (queued: the answer comes when
@@ -391,6 +393,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     });
     ipcMain.handle(IPC.animeSubtitleTranslateMany, (): number => {
         return 0;
+    });
+    ipcMain.handle(IPC.animeSubtitleTranslatable, (): number[] => {
+        return [];
     });
     ipcMain.handle(IPC.animeSubtitleGenerate, (): SubtitleGenerateResponse => {
         return { ok: false, reason: 'missing' };
@@ -836,6 +841,15 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             return Promise.resolve({ ok: false, reason: 'missing' });
         }
         return deps.subtitles.estimate({ episodeId, trackId });
+    });
+    // Which of the episodes asked about can be translated (the screen offers to translate a season only when one can).
+    ipcMain.handle(IPC.animeSubtitleTranslatable, (_event, input): number[] => {
+        const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+        const language = asLanguage(raw.language);
+        if (language === null) {
+            return [];
+        }
+        return deps.subtitles.translatable(validIds(raw.episodeIds).slice(0, MAX_EPISODES_PER_REQUEST), language);
     });
     // Queues the subtitle of each episode; the progress and the end of each one come as updates.
     ipcMain.handle(IPC.animeSubtitleTranslateMany, (_event, input): number => {

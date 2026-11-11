@@ -93,6 +93,7 @@ const ANIME_CHANNELS = [
     IPC.animeSubtitleTranslateCancel,
     IPC.animeSubtitleTranslateEstimate,
     IPC.animeSubtitleTranslateMany,
+    IPC.animeSubtitleTranslatable,
     IPC.animeSubtitles,
     IPC.animeSubtitlesCheck,
     IPC.animeUpdates,
@@ -206,6 +207,11 @@ function setup(available = true) {
         }),
         translate: vi.fn(async (): Promise<SubtitleTranslateResponse> => {
             return { ok: false, reason: 'no-token' };
+        }),
+        translatable: vi.fn((episodeIds: readonly number[]): number[] => {
+            return episodeIds.filter((episodeId) => {
+                return episodeId !== 5;
+            });
         }),
         estimate: vi.fn(async (): Promise<SubtitleEstimateResponse> => {
             return { ok: true, cues: 3, batches: 1, approxTokens: 200 };
@@ -778,6 +784,36 @@ describe('registerAnimeHandlers', () => {
                 const { call, subtitles } = setup();
                 expect(call(IPC.animeSubtitleTranslateMany, request)).toBe(0);
                 expect(subtitles.translate).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('which episodes can be translated', () => {
+            it('answers which of the episodes can be translated into the language', () => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleTranslatable, { episodeIds: [4, 5, 6], language: 'German' })).toEqual([4, 6]);
+                expect(subtitles.translatable).toHaveBeenCalledTimes(1);
+                expect(subtitles.translatable).toHaveBeenCalledWith([4, 5, 6], 'German');
+            });
+
+            it('leaves out the ids that are not valid and the ones that repeat, and asks about no more than a request may have', () => {
+                const { call, subtitles } = setup();
+                call(IPC.animeSubtitleTranslatable, { episodeIds: [4, '5', 0, 4, -1, 1.5, 7], language: 'German' });
+                expect(subtitles.translatable).toHaveBeenLastCalledWith([4, 7], 'German');
+                const episodeIds = Array.from({ length: MAX_EPISODES_PER_REQUEST + 5 }, (_value, index) => {
+                    return index + 10;
+                });
+                call(IPC.animeSubtitleTranslatable, { episodeIds, language: 'German' });
+                expect(subtitles.translatable).toHaveBeenLastCalledWith(episodeIds.slice(0, MAX_EPISODES_PER_REQUEST), 'German');
+            });
+
+            it.each([
+                ['a language that is not offered', { episodeIds: [4], language: 'Klingon' }],
+                ['no language', { episodeIds: [4] }],
+                ['nothing', undefined]
+            ])('answers none with %s', (_name, request) => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleTranslatable, request)).toEqual([]);
+                expect(subtitles.translatable).not.toHaveBeenCalled();
             });
         });
 
@@ -2084,6 +2120,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeSubtitleTranslate, { episodeId: 1, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitleTranslateEstimate, { episodeId: 1, trackId: null })).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitleTranslateMany, { episodeIds: [1], language: 'Spanish' })).toBe(0);
+        expect(ipc.call(IPC.animeSubtitleTranslatable, { episodeIds: [1], language: 'Spanish' })).toEqual([]);
         expect(ipc.call(IPC.animeSubtitleGenerate, { episodeId: 1, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
         expect(ipc.call(IPC.animeSubtitleGenerateEstimate, 1)).toEqual({ ok: false, reason: 'missing' });
         [IPC.animeSubtitleGenerateCancel, IPC.animeSubtitleTranslateCancel, IPC.animeCancel, IPC.animeRetry, IPC.animeRedownload, IPC.animeRedownloadMany, IPC.animePause, IPC.animeResume, IPC.animeClearFinished, IPC.animePauseAll, IPC.animeResumeAll, IPC.animePauseAnimes, IPC.animeResumeAnimes, IPC.animeCancelAnimes, IPC.animeRemoveEpisode, IPC.animeRemoveAnime, IPC.animeOpenFolder, IPC.animeOpenSeriesFolder, IPC.animeDownloadMissing, IPC.animeProgress, IPC.animeStreamClose, IPC.animeHistoryRecord, IPC.animeHistoryRemove, IPC.animeHistoryClear].forEach((channel) => {

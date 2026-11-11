@@ -38,7 +38,7 @@ import { transcribeTextWithSpeechService, transcribeWithSpeechService } from './
 import { estimateSubtitleGeneration, generateEpisodeSubtitle, type SpeechAccess } from './services/subtitleGeneration';
 import { SubtitleGenerationQueue } from './services/subtitleGenerationQueue';
 import { checkSubtitles } from './services/subtitleCheck';
-import { estimateSubtitleTranslation, translateEpisodeSubtitle, type LlmAccess } from './services/subtitleTranslation';
+import { canBeTranslated, estimateSubtitleTranslation, translateEpisodeSubtitle, type LlmAccess } from './services/subtitleTranslation';
 import { createTranslatedBatches } from './services/subtitleTranslator';
 import { SubtitleTranslationQueue } from './services/subtitleTranslationQueue';
 import { defaultSubtitleFileSystem, importSubtitle, listSubtitleTracks, resolveSubtitlePath, type SubtitleFileSystem } from './services/subtitleFiles';
@@ -664,6 +664,12 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 },
                 translate: (request) => {
                     return translations.enqueue(request);
+                },
+                translatable: (episodeIds, language) => {
+                    return episodeIds.filter((episodeId) => {
+                        const filePath = downloadedFile(episodeId);
+                        return filePath !== null && canBeTranslated(filePath, language, options.subtitleFiles);
+                    });
                 },
                 estimate: (request) => {
                     const filePath = downloadedFile(request.episodeId);

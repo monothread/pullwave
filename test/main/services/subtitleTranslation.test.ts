@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { MAX_SUBTITLE_BYTES } from '@shared/anime';
 import type { LlmCompletionResult } from '@shared/llm';
 import type { SubtitleFileSystem } from '@main/services/subtitleFiles';
-import { estimateSubtitleTranslation, translateEpisodeSubtitle, type LlmAccess } from '@main/services/subtitleTranslation';
+import { canBeTranslated, estimateSubtitleTranslation, translateEpisodeSubtitle, type LlmAccess } from '@main/services/subtitleTranslation';
 import { PROMPT_TOKENS, systemPromptFor } from '@main/services/subtitleTranslator';
 
 const DIR = join('/lib', 'Naruto');
@@ -474,5 +474,36 @@ describe('translateEpisodeSubtitle', () => {
             };
             expect(await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access()}, files }, vi.fn())).toEqual({ ok: false, reason: 'unreadable' });
         });
+    });
+});
+
+describe('canBeTranslated', () => {
+    it('is true for an episode with a subtitle in another language only', () => {
+        expect(canBeTranslated(VIDEO, 'Spanish', memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, 'Naruto Episode 1.subtitle-English.vtt')]: SRT }))).toBe(true);
+    });
+
+    it('is false for an episode with no subtitle to start from', () => {
+        expect(canBeTranslated(VIDEO, 'Spanish', memory({ [VIDEO]: 'v' }))).toBe(false);
+    });
+
+    it('is false for an episode whose only subtitle is a translation into another language', () => {
+        expect(canBeTranslated(VIDEO, 'Spanish', memory({ [VIDEO]: 'v', [join(DIR, 'Naruto Episode 1.translated-German.vtt')]: VTT }))).toBe(false);
+    });
+
+    it('is false for an episode translated into the language already', () => {
+        expect(canBeTranslated(VIDEO, 'Spanish', memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [TRANSLATED_FILE]: VTT }))).toBe(false);
+    });
+
+    it.each([
+        ['the source', 'Naruto Episode 1.subtitle-Spanish (- Spanish(Latin America)).vtt'],
+        ['the source, by a code', 'Naruto Episode 1.subtitle-es-419.vtt'],
+        ['the audio', 'Naruto Episode 1.generated-Spanish.vtt'],
+        ['a file the user loaded', 'Naruto Episode 1.import-mine Spanish.vtt']
+    ])('is false for an episode with a subtitle of %s in the language', (_from, name) => {
+        expect(canBeTranslated(VIDEO, 'Spanish', memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, name)]: SRT }))).toBe(false);
+    });
+
+    it('takes both kinds of Portuguese for one', () => {
+        expect(canBeTranslated(VIDEO, 'Portuguese (Brazil)', memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, 'Naruto Episode 1.subtitle-Portuguese (- Portuguese(Brazil)).vtt')]: SRT }))).toBe(false);
     });
 });

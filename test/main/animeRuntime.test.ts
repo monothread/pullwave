@@ -283,6 +283,17 @@ describe('createAnimeRuntime', () => {
                 ]);
             });
 
+            it('answers which episodes can be translated: downloaded, with a subtitle to start from and none in the language', () => {
+                const { runtime, episode, folder } = translating({}, 'sk-1');
+                const db = runtime?.db as AnimeDb;
+                const waiting = db.ensureEpisode(episode.animeId, '2');
+                expect(runtime?.handlers.subtitles.translatable([episode.id, waiting.id, 99], 'Spanish')).toEqual([episode.id]);
+
+                writeFileSync(join(folder, 'Naruto Episode 1.subtitle-Spanish.vtt'), SOURCE);
+                expect(runtime?.handlers.subtitles.translatable([episode.id], 'Spanish')).toEqual([]);
+                expect(runtime?.handlers.subtitles.translatable([episode.id], 'German')).toEqual([episode.id]);
+            });
+
             it('lists the translation while it waits for the provider, and nothing once it ended', async () => {
                 let release: () => void = () => {
                     return undefined;

@@ -94,6 +94,15 @@ function hasOtherSubtitleIn(videoPath: string, language: TranslationLanguage, fi
     return hasSubtitleIn(tracks, language);
 }
 
+// Whether translating the episode into the language would ask the model anything: it has a subtitle to start from, and none in that language
+// (translated or not). The same rules as `translateEpisodeSubtitle` when it does not replace.
+export function canBeTranslated(videoPath: string, language: TranslationLanguage, files: SubtitleFileSystem = defaultSubtitleFileSystem): boolean {
+    if (hasTranslatedSubtitle(videoPath, language, files) || hasOtherSubtitleIn(videoPath, language, files)) {
+        return false;
+    }
+    return pickSource(listSubtitleFiles(videoPath, files), null) !== null;
+}
+
 // Translates a subtitle of an episode into a language and saves it next to the video, as a subtitle of its own. An episode that has the
 // subtitle in that language already is left as it is (`exists`), before the model is asked anything (a translation costs the user's token),
 // unless the request says to replace it: its translation into it, or any other subtitle in it (the one of the source is more reliable than a

@@ -775,6 +775,8 @@ export const es: Messages = {
     'anime.translateSeason.cancel': 'CANCELAR',
     'anime.translateSeason.progress': 'Traduciendo subtítulos: {done} de {total} episodios listos.',
     'anime.translateSeason.stop': 'PARAR',
+    'anime.translateSeason.seeProgress': 'VER PROGRESO',
+    'anime.translateSeason.allHave': 'Todos los episodios descargados de esta temporada que tienen subtítulos ya los tienen en {language}.',
     'anime.translateSeason.none': 'Esta temporada no tiene episodios descargados que traducir.',
     'anime.translateSeason.failed': '{count} episodios no se pudieron traducir. Abre uno para ver el motivo.',
     'anime.translateSeason.skipped': '{count} episodios ya tenían el subtítulo en {language} y se omitieron.',

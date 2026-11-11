@@ -188,12 +188,12 @@ Play and pause, seek (the arrow keys jump 5 seconds), volume, previous and next 
 
 ### Subtitles
 - One look for every theme: bold white lettering with a navy outline and no box behind it, like the fansubs.
-- Subtitles in the language of the app, or the one you choose in the ⚙ of the ANIME tab, when the source has it. Every language the source offers is saved with the episode and can be picked in the player.
+- Subtitles in the language of the app, or the one you choose in the ⚙ of the ANIME tab, when the source has it. Every language the source offers is saved with the episode and can be picked in the player, named in the language of the app with its region and its kind ("Português (Brasil) · SDH", "Inglês · Forçada").
 - **Watching without downloading** offers every language the source lists in the ⚙ of the player, with the one that fits the language of the app shown first.
 - **CHECK SUBTITLES** (in the window of MANAGE SUBTITLES, from the ⚙ of the player) looks again for languages the episode does not have yet and adds them.
 - Language names appear in the language of the app ("Português (Brasil)").
 - **LOAD SUBTITLE** (in the same window) adds your own `.vtt` or `.srt` file to an episode.
-- **TRANSLATE SUBTITLE** (in the player) asks a language model to translate a subtitle of the episode into another language and saves it next to the video. Translating again a subtitle the episode already has in that language replaces it. **TRANSLATE SUBTITLES** (in the episodes of a season) does it for every downloaded episode of the season, one after the other, and skips the episodes that already have the subtitle in that language. See [Translating and creating subtitles](#translating-and-creating-subtitles).
+- **TRANSLATE SUBTITLE** (in the player) asks a language model to translate a subtitle of the episode into another language and saves it next to the video. Translating again a subtitle the episode already has in that language replaces it. **TRANSLATE SUBTITLES** (in the episodes of a season) does it for every downloaded episode of the season that does not have the subtitle in that language yet, one after the other; while it goes on it shows how many are done, with **SEE PROGRESS** and STOP, and when every episode has the subtitle already the button is not offered. See [Translating and creating subtitles](#translating-and-creating-subtitles).
 - **CREATE SUBTITLE** (in the same window, when the episode has no subtitle at all) writes one from the audio.
 
 ### Translating and creating subtitles
