@@ -2180,10 +2180,11 @@ describe('AnimeLibrary translating the subtitles of a season', () => {
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'French' } });
         const user = await openSeason([DOWNLOADED]);
         await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
-        await user.click(screen.getByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
-        expect(screen.getByText('Translate the subtitles of up to 2 episodes into French with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeInTheDocument();
+        await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));
+        const dialog = screen.getByRole('dialog', { name: 'Translate the subtitles?' });
+        expect(dialog).toHaveTextContent('Translate the subtitles of 2 episodes into French with your account? Each episode is a request to the provider, and the cost is yours.');
         expect(mock.api.translateAnimeSubtitles).not.toHaveBeenCalled();
-        await user.click(screen.getByRole('button', { name: 'CONFIRM' }));
+        await user.click(within(dialog).getByRole('button', { name: 'CONFIRM' }));
         expect(mock.api.translateAnimeSubtitles).toHaveBeenCalledTimes(1);
         expect(mock.api.translateAnimeSubtitles).toHaveBeenCalledWith({ episodeIds: [1, 2], language: 'French' });
     });

@@ -141,6 +141,8 @@ export interface AnimeState {
     closeSubtitleJobs: () => void;
     // Cancels the translation, or the making, of the subtitle of an episode.
     cancelSubtitleJob: (activity: SubtitleActivity) => Promise<void>;
+    // Cancels every subtitle being translated or made, and the ones waiting.
+    cancelAllSubtitleJobs: () => Promise<void>;
     // Forgets what the translations of these episodes did before (a season starts its translation again).
     forgetTranslationUpdates: (episodeIds: readonly number[]) => void;
     openSeries: (key: string) => void;
@@ -493,6 +495,18 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 });
                 return { translationUpdates: kept };
             });
+        },
+
+        cancelAllSubtitleJobs: async () => {
+            const generations = get().subtitleJobs.filter((activity) => {
+                return activity.kind === 'generation';
+            });
+            await Promise.all([
+                window.api.cancelAnimeSubtitleTranslation(null),
+                ...generations.map((activity) => {
+                    return window.api.cancelAnimeSubtitleGeneration(activity.job.episodeId);
+                })
+            ]);
         },
 
         cancelSubtitleJob: async (activity) => {

@@ -4036,6 +4036,12 @@ test.describe('translating subtitles with a language model', () => {
         return dialog;
     }
 
+    // TRANSLATE SUBTITLES of the season, and CONFIRM in the window that asks first.
+    async function confirmSeasonTranslation(page: Page): Promise<void> {
+        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await answerConfirm(page, 'Translate the subtitles?', 'CONFIRM');
+    }
+
     async function saveToken(page: Page): Promise<void> {
         await openAnimeSettings(page);
         await expect(page.getByLabel('Provider', { exact: true })).toHaveValue('custom');
@@ -4189,15 +4195,16 @@ test.describe('translating subtitles with a language model', () => {
         await downloadWithSubtitles(page, [1, 2]);
         await showEpisodes(page);
         await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
-        await expect(page.getByText('Translate the subtitles of up to 2 episodes into Spanish with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeVisible();
+        const asking = page.getByRole('dialog', { name: 'Translate the subtitles?' });
+        await expect(asking).toContainText('Translate the subtitles of 2 episodes into Spanish with your account? Each episode is a request to the provider, and the cost is yours.');
         expect(received).toEqual([]);
 
-        await page.getByRole('button', { name: 'CANCEL', exact: true }).click();
+        await answerConfirm(page, 'Translate the subtitles?', 'CANCEL');
+        await expect(asking).toBeHidden();
         await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
         expect(received).toEqual([]);
 
-        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
-        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+        await confirmSeasonTranslation(page);
         await expect.poll(() => {
             return existsSync(translatedFile(1)) && existsSync(translatedFile(2));
         }, { timeout: 20000 }).toBe(true);
@@ -4222,8 +4229,7 @@ test.describe('translating subtitles with a language model', () => {
         await saveToken(page);
         await downloadWithSubtitles(page, [1, 2]);
         await showEpisodes(page);
-        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
-        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+        await confirmSeasonTranslation(page);
         await expect.poll(() => {
             return received.length;
         }).toBe(1);
@@ -4321,8 +4327,8 @@ test.describe('translating subtitles with a language model', () => {
         writeFileSync(translatedFile(1), OLD_SPANISH_SUBTITLE);
         await showEpisodes(page);
         await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
-        await expect(page.getByText('Translate the subtitles of up to 1 episodes into Spanish with your account? The ones that already have the subtitle in this language are skipped. Each episode translated is a request to the provider, and the cost is yours.')).toBeVisible();
-        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Translate the subtitles?' })).toContainText('Translate the subtitles of 1 episodes into Spanish with your account? Each episode is a request to the provider, and the cost is yours.');
+        await answerConfirm(page, 'Translate the subtitles?', 'CONFIRM');
 
         await expect.poll(() => {
             return existsSync(translatedFile(2));
@@ -4353,31 +4359,43 @@ test.describe('translating subtitles with a language model', () => {
         expect(existsSync(translatedFile(2))).toBe(false);
     });
 
-    test('keeps showing the progress of a season, with a button to the screen of the subtitles, when that screen is opened and closed', async () => {
+    test('has only SEE PROGRESS while a season is translated, also when that screen is opened and closed, and STOP ALL there stops everything', async () => {
         const { page } = session;
         hold = true;
         await saveToken(page);
         await downloadWithSubtitles(page, [1, 2]);
         await showEpisodes(page);
-        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
-        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
-        const progress = page.getByTestId('season-translation-progress');
-        await expect(progress).toHaveText('Translating subtitles: 0 of 2 episodes done.');
-        await expect(page.getByRole('button', { name: 'STOP', exact: true })).toBeVisible();
+        await confirmSeasonTranslation(page);
+        const seeProgress = page.getByRole('button', { name: 'SEE PROGRESS', exact: true });
+        await expect(seeProgress).toBeVisible();
+        await expect(page.getByText(/Translating subtitles/)).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'STOP', exact: true })).toHaveCount(0);
 
-        await page.getByRole('button', { name: 'SEE PROGRESS', exact: true }).click();
+        await seeProgress.click();
         await expect(page.getByRole('region', { name: 'TRANSLATING (2)' })).toBeVisible();
         await page.getByRole('button', { name: 'BACK', exact: true }).click();
 
         // At once, with nothing new from the provider (it holds the answer): never the button to translate in the meantime.
-        await expect(progress).toBeVisible({ timeout: 1000 });
+        await expect(seeProgress).toBeVisible({ timeout: 1000 });
         expect(await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).count()).toBe(0);
-        await expect(progress).toHaveText('Translating subtitles: 0 of 2 episodes done.');
-        await expect(page.getByRole('button', { name: 'SEE PROGRESS', exact: true })).toBeVisible();
         expect(received).toHaveLength(1);
 
-        await page.getByRole('button', { name: 'STOP', exact: true }).click();
-        await answerConfirm(page, 'Cancel the translation?', 'STOP');
+        await seeProgress.click();
+        await page.getByRole('button', { name: 'STOP ALL', exact: true }).click();
+        const stopAll = page.getByRole('dialog', { name: 'Stop all the subtitles?' });
+        await expect(stopAll).toContainText('Every subtitle being translated or created, and the ones waiting, is cancelled and nothing of it is saved.');
+        await answerConfirm(page, 'Stop all the subtitles?', 'BACK');
+        await expect(page.getByRole('region', { name: 'TRANSLATING (2)' })).toBeVisible();
+
+        await page.getByRole('button', { name: 'STOP ALL', exact: true }).click();
+        await answerConfirm(page, 'Stop all the subtitles?', 'STOP ALL');
+        await expect(page.getByText('// NO SUBTITLE IS BEING TRANSLATED OR CREATED.')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Downloads going on: 0' })).toBeVisible();
+        expect(received).toHaveLength(1);
+        expect(existsSync(translatedFile(1))).toBe(false);
+        expect(existsSync(translatedFile(2))).toBe(false);
+
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
         await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toBeVisible();
     });
 });

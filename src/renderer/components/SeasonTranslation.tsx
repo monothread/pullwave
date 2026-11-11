@@ -22,9 +22,9 @@ function downloadedIdsOf(anime: LibraryAnime): number[] {
 }
 
 // Translates the subtitles of the downloaded episodes of a season that do not have the subtitle in the language of the settings yet, one after
-// the other. It asks first, because every episode is a request that costs the user's token, and then follows how many are done, with a button to
-// the screen of the subtitles being translated. What it follows is kept in the store, so it is the same when the screen is left and opened again.
-// When no episode needs the translation there is no button to ask for it.
+// the other. It asks first, in a window, because every episode is a request that costs the user's token; while they are translated it has only
+// a button to the screen of the subtitles being translated. What it follows is kept in the store, so it is the same when the screen is left and
+// opened again. When no episode needs the translation there is no button to ask for it.
 export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const t = useTranslator();
     const language = useAppStore((state) => {
@@ -39,7 +39,6 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const openSubtitleJobs = useAnimeStore((state) => {
         return state.openSubtitleJobs;
     });
-    const [confirming, setConfirming] = useState(false);
     // The episodes that can be translated, as the main process says; null while it is asked.
     const [translatable, setTranslatable] = useState<number[] | null>(null);
     const episodeKey = downloadedIdsOf(anime).join(',');
@@ -84,7 +83,6 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     }, [episodeIds, language, finished.length]);
 
     async function start(ids: number[]): Promise<void> {
-        setConfirming(false);
         forgetTranslationUpdates(episodeIds);
         await window.api.translateAnimeSubtitles({ episodeIds: ids, language });
     }
@@ -94,66 +92,32 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     }
     if (active) {
         return (
-            <span className="field-row" aria-live="polite">
-                <span className="field__hint" data-testid="season-translation-progress">
-                    {t('anime.translateSeason.progress', { done: finished.length, total: all.length })}
-                </span>
-                <button type="button" className="btn btn--small btn--primary" onClick={openSubtitleJobs}>
-                    {t('anime.translateSeason.seeProgress')}
-                </button>
-                <ConfirmButton
-                    className="btn btn--small"
-                    dialog={{ title: t('confirm.translateCancel.title'), message: t('confirm.translateCancel.message'), confirmLabel: t('anime.translateSeason.stop'), cancelLabel: t('confirm.back') }}
-                    onConfirm={() => {
-                        void window.api.cancelAnimeSubtitleTranslation(null);
-                    }}
-                >
-                    {t('anime.translateSeason.stop')}
-                </ConfirmButton>
-            </span>
+            <button type="button" className="btn btn--small btn--primary" data-testid="season-translation-progress" onClick={openSubtitleJobs}>
+                {t('anime.translateSeason.seeProgress')}
+            </button>
         );
     }
     if (translatable === null) {
         return null;
     }
-    if (confirming && translatable.length > 0) {
-        return (
-            <span className="field-row">
-                <span className="field__hint">{t('anime.translateSeason.confirm', { count: translatable.length, language })}</span>
-                <button
-                    type="button"
-                    className="btn btn--small btn--primary"
-                    onClick={() => {
-                        void start(translatable);
-                    }}
-                >
-                    {t('anime.translateSeason.start')}
-                </button>
-                <button
-                    type="button"
-                    className="btn btn--small btn--ghost"
-                    onClick={() => {
-                        setConfirming(false);
-                    }}
-                >
-                    {t('anime.translateSeason.cancel')}
-                </button>
-            </span>
-        );
-    }
     return (
         <>
             {translatable.length > 0 ? (
-                <button
-                    type="button"
+                <ConfirmButton
                     className="btn btn--small"
-                    aria-label={`${t('anime.translateSeason')}: ${anime.title}`}
-                    onClick={() => {
-                        setConfirming(true);
+                    ariaLabel={`${t('anime.translateSeason')}: ${anime.title}`}
+                    dialog={{
+                        title: t('confirm.translateSeason.title'),
+                        message: t('anime.translateSeason.confirm', { count: translatable.length, language }),
+                        confirmLabel: t('anime.translateSeason.start'),
+                        cancelLabel: t('anime.translateSeason.cancel')
+                    }}
+                    onConfirm={() => {
+                        void start(translatable);
                     }}
                 >
                     {t('anime.translateSeason')}
-                </button>
+                </ConfirmButton>
             ) : (
                 <span className="field__hint" data-testid="season-translation-done">
                     {t('anime.translateSeason.allHave', { language })}

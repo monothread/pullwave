@@ -142,6 +142,33 @@ describe('AnimeSubtitleJobs', () => {
         expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent('Episode no longer in the library');
     });
 
+    it('stops every subtitle, the translations and the ones made from the audio, only after the user confirms', async () => {
+        const user = userEvent.setup();
+        useAnimeStore.setState({ subtitleJobs: [TRANSLATING, WAITING, MAKING] });
+        render(<AnimeSubtitleJobs />);
+
+        const stopAll = screen.getByRole('button', { name: 'STOP ALL' });
+        expect(stopAll).toHaveClass('btn', 'btn--small', 'btn--hot');
+        await user.click(stopAll);
+        const dialog = screen.getByRole('dialog', { name: 'Stop all the subtitles?' });
+        expect(dialog).toHaveTextContent('Every subtitle being translated or created, and the ones waiting, is cancelled and nothing of it is saved. What was already sent to the provider is still charged.');
+        await user.click(within(dialog).getByRole('button', { name: 'BACK' }));
+        expect(mock.api.cancelAnimeSubtitleTranslation).not.toHaveBeenCalled();
+        expect(mock.api.cancelAnimeSubtitleGeneration).not.toHaveBeenCalled();
+
+        await user.click(screen.getByRole('button', { name: 'STOP ALL' }));
+        await user.click(within(screen.getByRole('dialog', { name: 'Stop all the subtitles?' })).getByRole('button', { name: 'STOP ALL' }));
+        expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledTimes(1);
+        expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledWith(null);
+        expect(mock.api.cancelAnimeSubtitleGeneration).toHaveBeenCalledTimes(1);
+        expect(mock.api.cancelAnimeSubtitleGeneration).toHaveBeenCalledWith(9);
+    });
+
+    it('has no button to stop all when nothing goes on', () => {
+        render(<AnimeSubtitleJobs />);
+        expect(screen.queryByRole('button', { name: 'STOP ALL' })).not.toBeInTheDocument();
+    });
+
     it('cancels a translation only after the user confirms', async () => {
         const user = userEvent.setup();
         useAnimeStore.setState({ subtitleJobs: [TRANSLATING, MAKING] });

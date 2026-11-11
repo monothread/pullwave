@@ -140,6 +140,28 @@ describe('init and the subtitles being worked on', () => {
     });
 });
 
+describe('cancelAllSubtitleJobs', () => {
+    it('cancels every translation at once and each subtitle made from the audio', async () => {
+        useAnimeStore.setState({
+            subtitleJobs: [
+                { kind: 'translation', job: { episodeId: 4, language: 'Spanish', status: 'running', done: 0, total: 0, reason: null } },
+                { kind: 'generation', job: { episodeId: 9, language: 'Korean', status: 'running', done: 0, total: 0, reason: null } },
+                { kind: 'generation', job: { episodeId: 11, language: 'Korean', status: 'queued', done: 0, total: 0, reason: null } }
+            ]
+        });
+        await useAnimeStore.getState().cancelAllSubtitleJobs();
+        expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledTimes(1);
+        expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledWith(null);
+        expect(mock.api.cancelAnimeSubtitleGeneration.mock.calls).toEqual([[9], [11]]);
+    });
+
+    it('still asks to cancel the translations when only they go on, and no subtitle made from the audio', async () => {
+        await useAnimeStore.getState().cancelAllSubtitleJobs();
+        expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledWith(null);
+        expect(mock.api.cancelAnimeSubtitleGeneration).not.toHaveBeenCalled();
+    });
+});
+
 describe('cancelSubtitleJob', () => {
     it('cancels the translation of the episode', async () => {
         await useAnimeStore.getState().cancelSubtitleJob({ kind: 'translation', job: { episodeId: 4, language: 'Spanish', status: 'running', done: 0, total: 0, reason: null } });

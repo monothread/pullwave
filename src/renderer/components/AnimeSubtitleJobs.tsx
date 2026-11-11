@@ -55,7 +55,8 @@ function statusOf(activity: SubtitleActivity): 'queued' | 'running' {
 }
 
 // The screen of the subtitles the app is translating or making from the audio, or that wait for their turn, whoever asked for them (the player,
-// a whole season, the automatic translation of the new episodes): one card for each, with its bar and the button that cancels it.
+// a whole season, the automatic translation of the new episodes): one card for each, with its bar and the button that cancels it, and a button
+// that stops all of them.
 export function AnimeSubtitleJobs() {
     const t = useTranslator();
     const activities = useAnimeStore((state) => {
@@ -67,6 +68,9 @@ export function AnimeSubtitleJobs() {
     const cancelSubtitleJob = useAnimeStore((state) => {
         return state.cancelSubtitleJob;
     });
+    const cancelAllSubtitleJobs = useAnimeStore((state) => {
+        return state.cancelAllSubtitleJobs;
+    });
 
     if (activities.length === 0) {
         return <p className="empty">{t('anime.subtitleJobs.empty')}</p>;
@@ -75,6 +79,20 @@ export function AnimeSubtitleJobs() {
         <section className="anime__jobs queue" aria-label={t('anime.subtitleJobs.label', { count: activities.length })}>
             <div className="queue__toolbar">
                 <span className="section-label">{t('anime.subtitleJobs.label', { count: activities.length })}</span>
+                <ConfirmButton
+                    className="btn btn--small btn--hot"
+                    dialog={{
+                        title: t('confirm.subtitleJobsCancelAll.title'),
+                        message: t('confirm.subtitleJobsCancelAll.message'),
+                        confirmLabel: t('anime.subtitleJobs.cancelAll'),
+                        cancelLabel: t('confirm.back')
+                    }}
+                    onConfirm={() => {
+                        void cancelAllSubtitleJobs();
+                    }}
+                >
+                    {t('anime.subtitleJobs.cancelAll')}
+                </ConfirmButton>
             </div>
             {activities.map((activity) => {
                 const found = episodeOf(library, activity.job.episodeId);
