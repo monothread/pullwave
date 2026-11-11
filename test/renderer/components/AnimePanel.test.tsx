@@ -183,7 +183,9 @@ describe('AnimePanel', () => {
         await user.click(within(subNav()).getByRole('button', { name: 'SETTINGS' }));
         expect(within(subNav()).getByRole('button', { name: 'SETTINGS' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('region', { name: 'Settings' })).toBeInTheDocument();
-        expect(screen.getByText('ANIME')).toBeInTheDocument();
+        ['FOLDER & LIBRARY', 'DOWNLOADS', 'NEW EPISODES'].forEach((legend) => {
+            expect(screen.getByText(legend, { selector: 'legend' })).toBeInTheDocument();
+        });
         expect(screen.getByLabelText('Anime download folder')).toBeInTheDocument();
         expect(screen.getByTestId('programs-block-anime')).toBeInTheDocument();
         ['APPEARANCE & WINDOW', 'OUTPUT', 'QUALITY & FORMAT', 'ADVANCED'].forEach((legend) => {
