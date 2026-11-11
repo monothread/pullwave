@@ -1,5 +1,14 @@
 import type { AniDownloadProgress, AniRunResult } from '@shared/anime';
-import { isSearchMoreLine, mapAniError, mapAniSpawnError, parseDestinationLine, parseMenuLine, parseProgressLine, stripAnsi } from './aniOutputParser';
+import {
+    isDownloadFailedLine,
+    isSearchMoreLine,
+    mapAniError,
+    mapAniSpawnError,
+    parseDestinationLine,
+    parseMenuLine,
+    parseProgressLine,
+    stripAnsi
+} from './aniOutputParser';
 import { commandLine } from './errorDetails';
 import { killProcessTree, type GroupKill } from './processTree';
 import { createLineSplitter, defaultSpawn, EXIT_GRACE_MS, KILL_ESCALATION_MS, type SpawnFn } from './ytdlpRunner';
@@ -18,6 +27,8 @@ export interface AniRunOutcome {
     destination: string | null;
     // The search read the pages it was asked for and the source has one more (see aniSearchPages.ts); it is not part of `output`.
     moreResults: boolean;
+    // The stand-in of ffmpeg said the download of the episode failed (see pullwave-run.sh), whatever the exit code of ani-cli.
+    downloadFailed: boolean;
 }
 
 export interface AniRunOptions {
@@ -46,6 +57,7 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     let output = '';
     let destination: string | null = null;
     let moreResults = false;
+    let downloadFailed = false;
     let cancelled = false;
     let settled = false;
     let escalation: ReturnType<typeof setTimeout> | null = null;
@@ -59,6 +71,10 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
         }
         if (isSearchMoreLine(line)) {
             moreResults = true;
+            return;
+        }
+        if (isDownloadFailedLine(line)) {
+            downloadFailed = true;
             return;
         }
         const clean = stripAnsi(line);
@@ -110,7 +126,7 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
                 settle({ status: 'cancelled' });
                 return;
             }
-            settle({ status: 'done', value: { exitCode: code, output, menuChoices, destination, moreResults } });
+            settle({ status: 'done', value: { exitCode: code, output, menuChoices, destination, moreResults, downloadFailed } });
         };
         child.once('exit', (code: number | null) => {
             // The pipes may stay open if something ani-cli started is still running: end it and give the result anyway.
@@ -143,10 +159,15 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     };
 }
 
-// For a run that is expected to succeed (a download): a non-zero exit becomes the error ani-cli reported.
+// For a run that is expected to succeed (a download): a non-zero exit, or a download the stand-in of ffmpeg said failed, becomes the error
+// ani-cli or yt-dlp reported (with no words of its own, a failed download of the network: it is tried again).
 export function asDownloadResult(outcome: AniRunOutcome): AniRunResult<AniRunOutcome> {
-    if (outcome.exitCode === 0) {
+    if (outcome.exitCode === 0 && !outcome.downloadFailed) {
         return { status: 'done', value: outcome };
     }
-    return { status: 'error', error: mapAniError(outcome.output, outcome.exitCode, { operation: 'Downloading an episode with ani-cli' }) };
+    const error = mapAniError(outcome.output, outcome.exitCode, { operation: 'Downloading an episode with ani-cli' });
+    if (outcome.downloadFailed && error.code === 'UNKNOWN') {
+        return { status: 'error', error: { ...error, code: 'NETWORK', raw: outcome.output.trim().length > 0 ? error.raw : 'The download of the episode failed.' } };
+    }
+    return { status: 'error', error };
 }

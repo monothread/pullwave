@@ -49,8 +49,8 @@ describe('checkLibraryAudio', () => {
         const db = new AnimeDb(':memory:', () => {
             return 1000;
         });
-        const naruto = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
-        const bleach = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 2, audio: 'sub' });
+        const naruto = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
+        const bleach = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 2 });
         const paths = ['/lib/Naruto/1.mp4', '/lib/Naruto/2.mp4', '/lib/Bleach/1.mp4'];
         [
             [naruto.id, '1'],

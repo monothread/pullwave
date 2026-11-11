@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useFxStore } from '../fx/fxStore';
 import { batchNavigation } from '../navigation/navigationBatch';
-import type { AniError, AnimeAiringOverride, AnimeAudio, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime, SubtitleTranslationJob } from '@shared/anime';
+import type { AniError, AnimeAiringOverride, AnimeCheckState, AnimeHistoryEntry, AnimeHistoryRequest, AnimeMigrationFailure, AnimeMigrationProgress, AnimeMigrationResponse, AnimeRenameSeriesResponse, AnimeSeriesResponse, AnimeJob, AnimeProgressUpdate, AnimeRecord, AnimeScheduleEntry, AnimeSearchResult, AnimeStatus, AnimeStream, AnimeUpdateEntry, LibraryAnime, SubtitleTranslationJob } from '@shared/anime';
 import { IDLE_CHECK_STATE } from '@shared/anime';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, type SeriesChoice } from '@shared/series';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
@@ -25,14 +25,11 @@ function isOverlayView(view: AnimeView): view is AnimeOverlayView {
 
 export interface AnimeSearchState {
     query: string;
-    // The audio picked on the screen; null follows the setting.
-    audio: AnimeAudio | null;
     status: 'idle' | 'searching' | 'done' | 'error';
     results: AnimeSearchResult[];
     error: AniError | null;
     // What the results belong to: positions mean something only for the search that produced them.
     searchedQuery: string;
-    searchedAudio: AnimeAudio;
     // The source has more results after the ones listed, and they are asked for as the list is scrolled to its end.
     hasNextPage: boolean;
     // The list reached the most results the search lists, though the source has more: the screen asks to make the search more specific.
@@ -66,7 +63,6 @@ export interface AnimeScheduleState {
 export interface AnimeSelection {
     result: AnimeSearchResult;
     query: string;
-    audio: AnimeAudio;
     status: 'loading' | 'ready' | 'error';
     episodes: string[];
     error: AniError | null;
@@ -150,7 +146,6 @@ export interface AnimeState {
     openSeason: (animeId: number) => void;
     closeSeason: () => void;
     setQuery: (query: string) => void;
-    setAudio: (audio: AnimeAudio) => void;
     runSearch: () => Promise<void>;
     // Asks for the results after the ones listed, when the source has more (the list is scrolled to its end).
     loadMoreSearch: () => Promise<void>;
@@ -166,7 +161,7 @@ export interface AnimeState {
     openScheduleEntry: (entry: AnimeScheduleEntry) => Promise<void>;
     openResult: (result: AnimeSearchResult) => Promise<void>;
     // Opens an anime of the library in the search, as if it had been found there, so more episodes can be downloaded.
-    openLibraryAnime: (anime: Pick<AnimeRecord, 'title' | 'query' | 'searchIndex' | 'audio'> & Partial<Pick<AnimeRecord, 'sourceId'>>) => Promise<void>;
+    openLibraryAnime: (anime: Pick<AnimeRecord, 'title' | 'query' | 'searchIndex'> & Partial<Pick<AnimeRecord, 'sourceId'>>) => Promise<void>;
     // Opens an anime of the history: in the library, on its series, when it is there; otherwise in the search, with its episodes.
     openHistoryEntry: (entry: AnimeHistoryEntry) => Promise<void>;
     // Asks for a folder of anime and puts what is in it into the library, then says what it did.
@@ -236,12 +231,10 @@ export interface AnimeState {
 
 export const INITIAL_SEARCH: AnimeSearchState = {
     query: '',
-    audio: null,
     status: 'idle',
     results: [],
     error: null,
     searchedQuery: '',
-    searchedAudio: 'sub',
     ...NO_MORE_RESULTS
 };
 
@@ -269,11 +262,6 @@ let scheduleRequest = 0;
 let searchGeneration = 0;
 
 export const UNSUPPORTED_STATUS: AnimeStatus = { supported: false, available: false, aniCli: null };
-
-// The audio in use: the one picked on the screen or, if none, the one in the settings.
-export function effectiveAudio(search: AnimeSearchState, settingsAudio: AnimeAudio): AnimeAudio {
-    return search.audio ?? settingsAudio;
-}
 
 // The id the source gave the result, for the requests that put the anime in the library (nothing when it is not known).
 function sourceIdOf(result: AnimeSearchResult): { sourceId?: string } {
@@ -543,12 +531,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             });
         },
 
-        setAudio: (audio) => {
-            set((state) => {
-                return { search: { ...state.search, audio } };
-            });
-        },
-
         runSearch: async () => {
             searchGeneration += 1;
             const generation = searchGeneration;
@@ -557,20 +539,19 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             if (query.length === 0) {
                 return;
             }
-            const audio = effectiveAudio(search, useAppStore.getState().settings.animeAudio);
             set((state) => {
                 return { selection: null, search: { ...state.search, status: 'searching', error: null, results: [], ...NO_MORE_RESULTS } };
             });
-            const response = await window.api.searchAnime(query, audio);
+            const response = await window.api.searchAnime(query);
             set((state) => {
                 // The name was emptied, or another search was made, while this one ran: its answer is not shown.
                 if (state.search.query.trim().length === 0 || generation !== searchGeneration) {
                     return state;
                 }
                 if (response.ok) {
-                    return { search: { ...state.search, status: 'done', results: response.results, searchedQuery: query, searchedAudio: audio, hasNextPage: response.hasNextPage, limited: response.limited, loadingMore: false } };
+                    return { search: { ...state.search, status: 'done', results: response.results, searchedQuery: query, hasNextPage: response.hasNextPage, limited: response.limited, loadingMore: false } };
                 }
-                return { search: { ...state.search, status: 'error', error: response.error, searchedQuery: query, searchedAudio: audio } };
+                return { search: { ...state.search, status: 'error', error: response.error, searchedQuery: query } };
             });
         },
 
@@ -579,15 +560,15 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             if (search.status !== 'done' || !search.hasNextPage || search.loadingMore) {
                 return;
             }
-            const { searchedQuery, searchedAudio, results } = search;
+            const { searchedQuery, results } = search;
             const generation = searchGeneration;
             set((state) => {
                 return { search: { ...state.search, loadingMore: true } };
             });
-            const response = await window.api.searchAnime(searchedQuery, searchedAudio, results.length);
+            const response = await window.api.searchAnime(searchedQuery, results.length);
             // Another search was made, or the list was replaced, while this one ran: the positions of this answer are not the ones of the list now.
             const now = get().search;
-            if (generation !== searchGeneration || now.searchedQuery !== searchedQuery || now.searchedAudio !== searchedAudio || now.results.length !== results.length) {
+            if (generation !== searchGeneration || now.searchedQuery !== searchedQuery || now.results.length !== results.length) {
                 return;
             }
             set((state) => {
@@ -694,14 +675,13 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             const selection: AnimeSelection = {
                 result,
                 query: search.searchedQuery,
-                audio: search.searchedAudio,
                 status: 'loading',
                 episodes: [],
                 error: null
             };
             set({ selection });
-            recordHistory({ title: result.title, query: selection.query, index: result.index, audio: selection.audio, episode: null });
-            const response = await window.api.listAnimeEpisodes(selection.query, result.index, selection.audio);
+            recordHistory({ title: result.title, query: selection.query, index: result.index, episode: null });
+            const response = await window.api.listAnimeEpisodes(selection.query, result.index);
             set((state) => {
                 // The user may have gone back or opened another result while this one was loading.
                 if (state.selection?.result !== result) {
@@ -824,7 +804,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                         view: 'search',
                         returnView: 'search',
                         selection: null,
-                        search: { ...state.search, query: anime.query, audio: anime.audio, status: 'idle', error: null, results: [], ...NO_MORE_RESULTS }
+                        search: { ...state.search, query: anime.query, status: 'idle', error: null, results: [], ...NO_MORE_RESULTS }
                     };
                 });
                 await get().runSearch();
@@ -841,12 +821,10 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     search: {
                         ...state.search,
                         query: anime.query,
-                        audio: anime.audio,
                         status: 'done',
                         error: null,
                         results: [result],
                         searchedQuery: anime.query,
-                        searchedAudio: anime.audio,
                         ...NO_MORE_RESULTS
                     }
                 };
@@ -857,7 +835,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         openHistoryEntry: async (entry) => {
-            const saved = libraryEntry(get().library, entry.title, entry.audio);
+            const saved = libraryEntry(get().library, entry.title);
             if (saved) {
                 get().showInLibrary(saved.id);
                 return;
@@ -895,7 +873,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 query: selection.query,
                 index: selection.result.index,
                 ...sourceIdOf(selection.result),
-                audio: selection.audio,
                 episodes,
                 ...(joined ? { series: cleanSeriesName(joined.series) as string, season: joined.season, seasonName: name as string | null } : {})
             });
@@ -921,7 +898,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 query: selection.query,
                 index: selection.result.index,
                 ...sourceIdOf(selection.result),
-                audio: selection.audio,
                 episodes: selection.episodes,
                 series: joined ? (cleanSeriesName(joined.series) as string) : null,
                 season: joined ? joined.season : null,
@@ -1035,7 +1011,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             await window.api.removeAnime(animeId);
             // The order of its episodes is not needed anymore.
             if (removed !== undefined) {
-                useSortPrefsStore.getState().clearListOrder('episodes', animeListKey(removed.title, removed.audio));
+                useSortPrefsStore.getState().clearListOrder('episodes', animeListKey(removed.title));
             }
             set((state) => {
                 return {
@@ -1055,7 +1031,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return candidate.id === episodeId;
             });
             if (anime && episode) {
-                recordHistory({ title: anime.title, query: anime.query, index: anime.searchIndex, audio: anime.audio, episode: episode.number });
+                recordHistory({ title: anime.title, query: anime.query, index: anime.searchIndex, episode: episode.number });
             }
         },
 
@@ -1082,8 +1058,8 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 nextEpisode: nextListedEpisode(selection.episodes, episode)
             };
             set({ streaming: loading });
-            recordHistory({ title: selection.result.title, query: selection.query, index: selection.result.index, audio: selection.audio, episode });
-            const response = await window.api.openAnimeStream({ query: selection.query, index: selection.result.index, audio: selection.audio, episode });
+            recordHistory({ title: selection.result.title, query: selection.query, index: selection.result.index, episode });
+            const response = await window.api.openAnimeStream({ query: selection.query, index: selection.result.index, episode });
             // The user may have closed the player (or started another episode) while the video was being found.
             if (get().streaming !== loading) {
                 if (response.ok) {

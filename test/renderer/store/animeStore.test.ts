@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { useAppStore } from '@renderer/store/appStore';
 import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
-import { effectiveAudio, INITIAL_SCHEDULE, INITIAL_SEARCH, MAX_SCHEDULE_SEARCH_NAMES, UNSUPPORTED_STATUS, useAnimeStore, type AnimeScheduleState } from '@renderer/store/animeStore';
+import { INITIAL_SCHEDULE, INITIAL_SEARCH, MAX_SCHEDULE_SEARCH_NAMES, UNSUPPORTED_STATUS, useAnimeStore, type AnimeScheduleState } from '@renderer/store/animeStore';
 import { makeAnime, makeAnimeJob, makeEpisode, makeScheduleEntry, makeStatus } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -22,11 +22,11 @@ beforeEach(() => {
     useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, view: 'search', returnView: 'search', jobs: [], subtitleJobs: [], library: [], history: [], migration: null, search: INITIAL_SEARCH, schedule: INITIAL_SCHEDULE, selection: null, playing: null, streaming: null });
 });
 
-describe('effectiveAudio', () => {
-    it('uses the audio picked on the screen, or the setting when none was picked', () => {
-        expect(effectiveAudio({ ...INITIAL_SEARCH, audio: 'dub' }, 'sub')).toBe('dub');
-        expect(effectiveAudio(INITIAL_SEARCH, 'dub')).toBe('dub');
-        expect(effectiveAudio({ ...INITIAL_SEARCH, audio: 'sub' }, 'dub')).toBe('sub');
+describe('the search without an audio', () => {
+    it('starts with no audio of its own: the anime are the subtitled ones', () => {
+        expect('audio' in INITIAL_SEARCH).toBe(false);
+        expect('searchedAudio' in INITIAL_SEARCH).toBe(false);
+        expect('setAudio' in useAnimeStore.getState()).toBe(false);
     });
 });
 
@@ -41,7 +41,7 @@ describe('useAnimeStore initial state', () => {
         expect(initialAnime.queueHeld).toBe(false);
         expect(initialAnime.library).toEqual([]);
         expect(initialAnime.history).toEqual([]);
-        expect(initialAnime.search).toEqual({ query: '', audio: null, status: 'idle', results: [], error: null, searchedQuery: '', searchedAudio: 'sub', hasNextPage: false, limited: false, loadingMore: false });
+        expect(initialAnime.search).toEqual({ query: '', status: 'idle', results: [], error: null, searchedQuery: '', hasNextPage: false, limited: false, loadingMore: false });
         expect(initialAnime.selection).toBeNull();
         expect(initialAnime.playing).toBeNull();
         expect(initialAnime.streaming).toBeNull();
@@ -267,7 +267,7 @@ describe('init and the jobs that are done', () => {
 });
 
 describe('addToLibrary', () => {
-    const selection = { result: RESULT, query: 'naruto', audio: 'dub' as const, status: 'ready' as const, episodes: ['1', '2', '3'], error: null };
+    const selection = { result: RESULT, query: 'naruto', status: 'ready' as const, episodes: ['1', '2', '3'], error: null };
 
     beforeEach(() => {
         useAnimeStore.setState({ selection });
@@ -279,7 +279,7 @@ describe('addToLibrary', () => {
             Array.from({ length: count }, (_unused, index) => {
                 return makeEpisode({ id: index + 1, number: String(index + 1), status: 'idle', filePath: null, sizeBytes: null });
             }),
-            { id: 7, title: 'Naruto', audio: 'dub' }
+            { id: 7, title: 'Naruto' }
         );
     }
 
@@ -299,7 +299,6 @@ describe('addToLibrary', () => {
             title: 'Naruto',
             query: 'naruto',
             index: 2,
-            audio: 'dub',
             episodes: ['1', '2', '3'],
             series: 'Naruto Series',
             season: 2,
@@ -311,8 +310,8 @@ describe('addToLibrary', () => {
         mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: added() });
         await useAnimeStore.getState().addToLibrary(null);
         await useAnimeStore.getState().addToLibrary({ series: 'Naruto', season: 1, seasonName: '   ' });
-        expect(mock.api.addAnimeToLibrary).toHaveBeenNthCalledWith(1, { title: 'Naruto', query: 'naruto', index: 2, audio: 'dub', episodes: ['1', '2', '3'], series: null, season: null, seasonName: null });
-        expect(mock.api.addAnimeToLibrary).toHaveBeenNthCalledWith(2, { title: 'Naruto', query: 'naruto', index: 2, audio: 'dub', episodes: ['1', '2', '3'], series: 'Naruto', season: 1, seasonName: null });
+        expect(mock.api.addAnimeToLibrary).toHaveBeenNthCalledWith(1, { title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3'], series: null, season: null, seasonName: null });
+        expect(mock.api.addAnimeToLibrary).toHaveBeenNthCalledWith(2, { title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3'], series: 'Naruto', season: 1, seasonName: null });
     });
 
     it('reads the library again and says how many episodes the anime has now', async () => {
@@ -413,12 +412,11 @@ describe('renameSeries', () => {
 });
 
 describe('simple setters', () => {
-    it('sets the view, the query and the audio', () => {
+    it('sets the view and the query', () => {
         useAnimeStore.getState().setView('library');
         useAnimeStore.getState().setQuery('bleach');
-        useAnimeStore.getState().setAudio('dub');
         expect(useAnimeStore.getState().view).toBe('library');
-        expect(useAnimeStore.getState().search).toMatchObject({ query: 'bleach', audio: 'dub' });
+        expect(useAnimeStore.getState().search).toMatchObject({ query: 'bleach' });
     });
 
     it('reads the library again when it is shown, so files that are gone are noticed, and not for the search', async () => {
@@ -440,7 +438,7 @@ describe('simple setters', () => {
     });
 
     it('goes to the library, to the anime that was being looked at in the search', () => {
-        useAnimeStore.setState({ view: 'search', selection: { result: RESULT, query: 'naruto', audio: 'sub', status: 'ready', episodes: ['1'], error: null } });
+        useAnimeStore.setState({ view: 'search', selection: { result: RESULT, query: 'naruto', status: 'ready', episodes: ['1'], error: null } });
         useAnimeStore.getState().showInLibrary(7);
         expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', selection: null, libraryFocus: 7 });
     });
@@ -571,9 +569,9 @@ describe('setQuery with an empty name', () => {
     const ERROR = { code: 'NO_RESULTS' as const, raw: 'No results found!' };
 
     it('clears the results of the last search', () => {
-        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'naruto', status: 'done', results: [RESULT], searchedQuery: 'naruto', searchedAudio: 'dub' } });
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'naruto', status: 'done', results: [RESULT], searchedQuery: 'naruto' } });
         useAnimeStore.getState().setQuery('');
-        expect(useAnimeStore.getState().search).toEqual({ ...INITIAL_SEARCH, query: '', status: 'idle', results: [], error: null, searchedQuery: 'naruto', searchedAudio: 'dub' });
+        expect(useAnimeStore.getState().search).toEqual({ ...INITIAL_SEARCH, query: '', status: 'idle', results: [], error: null, searchedQuery: 'naruto' });
     });
 
     it('clears the error of the last search', () => {
@@ -586,12 +584,6 @@ describe('setQuery with an empty name', () => {
         useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'naruto', status: 'done', results: [RESULT] } });
         useAnimeStore.getState().setQuery('   ');
         expect(useAnimeStore.getState().search).toMatchObject({ query: '   ', status: 'idle', results: [] });
-    });
-
-    it('keeps the audio that was picked', () => {
-        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'naruto', audio: 'dub', status: 'done', results: [RESULT] } });
-        useAnimeStore.getState().setQuery('');
-        expect(useAnimeStore.getState().search.audio).toBe('dub');
     });
 
     it('keeps the results while the name is not empty', () => {
@@ -626,8 +618,7 @@ describe('runSearch', () => {
         expect(useAnimeStore.getState().search.status).toBe('idle');
     });
 
-    it('searches with the audio of the settings and keeps the results with what they belong to', async () => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeAudio: 'dub' } });
+    it('searches and keeps the results with what they belong to', async () => {
         mock.api.searchAnime.mockResolvedValue({ ok: true, results: [RESULT], hasNextPage: true, limited: false });
         useAnimeStore.getState().setQuery('  naruto ');
 
@@ -636,8 +627,8 @@ describe('runSearch', () => {
         await running;
 
         expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'dub');
-        expect(useAnimeStore.getState().search).toEqual({ query: '  naruto ', audio: null, status: 'done', results: [RESULT], error: null, searchedQuery: 'naruto', searchedAudio: 'dub', hasNextPage: true, limited: false, loadingMore: false });
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto');
+        expect(useAnimeStore.getState().search).toEqual({ query: '  naruto ', status: 'done', results: [RESULT], error: null, searchedQuery: 'naruto', hasNextPage: true, limited: false, loadingMore: false });
     });
 
     it('keeps whether the source has more results and whether the list reached its limit', async () => {
@@ -673,17 +664,9 @@ describe('runSearch', () => {
         expect(useAnimeStore.getState().search).toMatchObject({ status: 'done', results: [{ index: 1, title: 'Second' }], searchedQuery: 'second', hasNextPage: false });
     });
 
-    it('prefers the audio picked on the screen', async () => {
-        mock.api.searchAnime.mockResolvedValue({ ok: true, results: [] });
-        useAnimeStore.getState().setQuery('naruto');
-        useAnimeStore.getState().setAudio('dub');
-        await useAnimeStore.getState().runSearch();
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'dub');
-    });
-
     it('clears the opened anime and the previous results while it searches', async () => {
         useAnimeStore.setState({
-            selection: { result: RESULT, query: 'x', audio: 'sub', status: 'ready', episodes: ['1'], error: null },
+            selection: { result: RESULT, query: 'x', status: 'ready', episodes: ['1'], error: null },
             search: { ...INITIAL_SEARCH, query: 'naruto', results: [RESULT], status: 'done' }
         });
         mock.api.searchAnime.mockResolvedValue({ ok: true, results: [] });
@@ -698,7 +681,7 @@ describe('runSearch', () => {
         mock.api.searchAnime.mockResolvedValue({ ok: false, error });
         useAnimeStore.getState().setQuery('zzz');
         await useAnimeStore.getState().runSearch();
-        expect(useAnimeStore.getState().search).toMatchObject({ status: 'error', error, results: [], searchedQuery: 'zzz', searchedAudio: 'sub' });
+        expect(useAnimeStore.getState().search).toMatchObject({ status: 'error', error, results: [], searchedQuery: 'zzz' });
     });
 });
 
@@ -707,7 +690,7 @@ describe('loadMoreSearch', () => {
 
     function listed(overrides: Partial<ReturnType<typeof useAnimeStore.getState>['search']> = {}): void {
         useAnimeStore.setState({
-            search: { ...INITIAL_SEARCH, query: 'typed later', audio: 'dub', status: 'done', results: FIRST, searchedQuery: 'naruto', searchedAudio: 'dub', hasNextPage: true, ...overrides }
+            search: { ...INITIAL_SEARCH, query: 'typed later', status: 'done', results: FIRST, searchedQuery: 'naruto', hasNextPage: true, ...overrides }
         });
     }
 
@@ -720,15 +703,13 @@ describe('loadMoreSearch', () => {
         await loading;
 
         expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'dub', 2);
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 2);
         expect(useAnimeStore.getState().search).toEqual({
             query: 'typed later',
-            audio: 'dub',
             status: 'done',
             results: [...FIRST, { index: 3, title: 'Three' }, { index: 4, title: 'Four' }],
             error: null,
             searchedQuery: 'naruto',
-            searchedAudio: 'dub',
             hasNextPage: true,
             limited: false,
             loadingMore: false
@@ -841,17 +822,17 @@ describe('loadMoreSearch', () => {
 
 describe('openResult and closeResult', () => {
     beforeEach(() => {
-        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, results: [RESULT], status: 'done', searchedQuery: 'naruto', searchedAudio: 'dub' } });
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, results: [RESULT], status: 'done', searchedQuery: 'naruto' } });
     });
 
     it('loads the episodes of the result for the search it came from', async () => {
         mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1', '2'] });
         const opening = useAnimeStore.getState().openResult(RESULT);
-        expect(useAnimeStore.getState().selection).toEqual({ result: RESULT, query: 'naruto', audio: 'dub', status: 'loading', episodes: [], error: null });
+        expect(useAnimeStore.getState().selection).toEqual({ result: RESULT, query: 'naruto', status: 'loading', episodes: [], error: null });
         await opening;
 
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
-        expect(useAnimeStore.getState().selection).toEqual({ result: RESULT, query: 'naruto', audio: 'dub', status: 'ready', episodes: ['1', '2'], error: null });
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2);
+        expect(useAnimeStore.getState().selection).toEqual({ result: RESULT, query: 'naruto', status: 'ready', episodes: ['1', '2'], error: null });
     });
 
     it('keeps the error when the episodes cannot be loaded', async () => {
@@ -878,42 +859,40 @@ describe('openResult and closeResult', () => {
     });
 
     it('closes the opened anime', () => {
-        useAnimeStore.setState({ selection: { result: RESULT, query: 'naruto', audio: 'sub', status: 'ready', episodes: [], error: null } });
+        useAnimeStore.setState({ selection: { result: RESULT, query: 'naruto', status: 'ready', episodes: [], error: null } });
         useAnimeStore.getState().closeResult();
         expect(useAnimeStore.getState().selection).toBeNull();
     });
 });
 
 describe('openLibraryAnime', () => {
-    const ANIME = makeAnime([], { id: 7, title: 'Naruto Shippuden', query: 'naruto shippuden', searchIndex: 3, audio: 'dub' });
+    const ANIME = makeAnime([], { id: 7, title: 'Naruto Shippuden', query: 'naruto shippuden', searchIndex: 3 });
     const OPENED: AnimeSearchResult = { index: 3, title: 'Naruto Shippuden' };
 
     it('goes to the search and opens the anime as if it had been found there', async () => {
         mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1', '2', '3'] });
-        useAnimeStore.setState({ view: 'library', returnView: 'library', search: { ...INITIAL_SEARCH, query: 'bleach', audio: 'sub', status: 'error', error: { code: 'BLOCKED', raw: 'x' } } });
+        useAnimeStore.setState({ view: 'library', returnView: 'library', search: { ...INITIAL_SEARCH, query: 'bleach', status: 'error', error: { code: 'BLOCKED', raw: 'x' } } });
 
         const opening = useAnimeStore.getState().openLibraryAnime(ANIME);
         expect(useAnimeStore.getState().view).toBe('search');
         expect(useAnimeStore.getState().returnView).toBe('search');
         expect(useAnimeStore.getState().search).toEqual({
             query: 'naruto shippuden',
-            audio: 'dub',
             status: 'done',
             results: [OPENED],
             error: null,
             searchedQuery: 'naruto shippuden',
-            searchedAudio: 'dub',
             hasNextPage: false,
             limited: false,
             loadingMore: false
         });
-        expect(useAnimeStore.getState().selection).toEqual({ result: OPENED, query: 'naruto shippuden', audio: 'dub', status: 'loading', episodes: [], error: null });
+        expect(useAnimeStore.getState().selection).toEqual({ result: OPENED, query: 'naruto shippuden', status: 'loading', episodes: [], error: null });
         await opening;
 
         expect(mock.api.listAnimeEpisodes).toHaveBeenCalledTimes(1);
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto shippuden', 3, 'dub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto shippuden', 3);
         expect(mock.api.searchAnime).not.toHaveBeenCalled();
-        expect(useAnimeStore.getState().selection).toEqual({ result: OPENED, query: 'naruto shippuden', audio: 'dub', status: 'ready', episodes: ['1', '2', '3'], error: null });
+        expect(useAnimeStore.getState().selection).toEqual({ result: OPENED, query: 'naruto shippuden', status: 'ready', episodes: ['1', '2', '3'], error: null });
     });
 
     it('keeps the anime as the only result, so going back from it lists it', async () => {
@@ -936,11 +915,11 @@ describe('openLibraryAnime', () => {
 describe('openLibraryAnime for an anime that has the id of the source', () => {
     it('opens it as the result with its id, so it is told from the anime that has the same title', async () => {
         mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1'] });
-        const anime = makeAnime([], { id: 8, title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, audio: 'sub', sourceId: 'nisekoi-false-love-season-2-605' });
+        const anime = makeAnime([], { id: 8, title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, sourceId: 'nisekoi-false-love-season-2-605' });
         await useAnimeStore.getState().openLibraryAnime(anime);
         const result = { index: 2, title: 'Nisekoi: False Love (season 2)', sourceId: 'nisekoi-false-love-season-2-605' };
         expect(useAnimeStore.getState().search.results).toEqual([result]);
-        expect(useAnimeStore.getState().selection).toMatchObject({ result, query: 'nisekoi', audio: 'sub' });
+        expect(useAnimeStore.getState().selection).toMatchObject({ result, query: 'nisekoi' });
     });
 
     it('opens an anime with no id as before, without one in the result', async () => {
@@ -951,25 +930,23 @@ describe('openLibraryAnime for an anime that has the id of the source', () => {
 });
 
 describe('openLibraryAnime for an anime whose place in the search is not known', () => {
-    const FOUND = makeAnime([], { id: 8, title: 'Re_Zero', query: 'Re_Zero', searchIndex: 0, audio: 'dub' });
+    const FOUND = makeAnime([], { id: 8, title: 'Re_Zero', query: 'Re_Zero', searchIndex: 0 });
 
     it('searches it by its title instead of opening an episode list with a position that means nothing', async () => {
         mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Re:Zero' }] });
-        useAnimeStore.setState({ view: 'library', returnView: 'library', selection: { result: RESULT, query: 'x', audio: 'sub', status: 'ready', episodes: [], error: null } });
+        useAnimeStore.setState({ view: 'library', returnView: 'library', selection: { result: RESULT, query: 'x', status: 'ready', episodes: [], error: null } });
 
         await useAnimeStore.getState().openLibraryAnime(FOUND);
 
         expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('Re_Zero', 'dub');
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('Re_Zero');
         expect(mock.api.listAnimeEpisodes).not.toHaveBeenCalled();
         expect(useAnimeStore.getState()).toMatchObject({ view: 'search', returnView: 'search', selection: null });
         expect(useAnimeStore.getState().search).toMatchObject({
             query: 'Re_Zero',
-            audio: 'dub',
             status: 'done',
             results: [{ index: 1, title: 'Re:Zero' }],
-            searchedQuery: 'Re_Zero',
-            searchedAudio: 'dub'
+            searchedQuery: 'Re_Zero'
         });
     });
 
@@ -1347,7 +1324,7 @@ describe('setSeries', () => {
 });
 
 describe('downloadEpisodes with a series', () => {
-    const selection = { result: RESULT, query: 'naruto', audio: 'dub' as const, status: 'ready' as const, episodes: ['1'], error: null };
+    const selection = { result: RESULT, query: 'naruto', status: 'ready' as const, episodes: ['1'], error: null };
 
     beforeEach(() => {
         useAnimeStore.setState({ selection });
@@ -1361,7 +1338,6 @@ describe('downloadEpisodes with a series', () => {
             title: 'Naruto',
             query: 'naruto',
             index: 2,
-            audio: 'dub',
             episodes: ['1'],
             series: 'Naruto Series',
             season: 2,
@@ -1381,8 +1357,8 @@ describe('downloadEpisodes with a series', () => {
         mock.api.downloadAnime.mockResolvedValue({ ok: true, anime: makeAnime([]) });
         await useAnimeStore.getState().downloadEpisodes(['1'], null);
         await useAnimeStore.getState().downloadEpisodes(['1']);
-        expect(mock.api.downloadAnime).toHaveBeenNthCalledWith(1, { title: 'Naruto', query: 'naruto', index: 2, audio: 'dub', episodes: ['1'] });
-        expect(mock.api.downloadAnime).toHaveBeenNthCalledWith(2, { title: 'Naruto', query: 'naruto', index: 2, audio: 'dub', episodes: ['1'] });
+        expect(mock.api.downloadAnime).toHaveBeenNthCalledWith(1, { title: 'Naruto', query: 'naruto', index: 2, episodes: ['1'] });
+        expect(mock.api.downloadAnime).toHaveBeenNthCalledWith(2, { title: 'Naruto', query: 'naruto', index: 2, episodes: ['1'] });
     });
 
     it.each([
@@ -1400,7 +1376,7 @@ describe('downloadEpisodes with a series', () => {
 });
 
 describe('downloadEpisodes', () => {
-    const selection = { result: RESULT, query: 'naruto', audio: 'dub' as const, status: 'ready' as const, episodes: ['1', '2'], error: null };
+    const selection = { result: RESULT, query: 'naruto', status: 'ready' as const, episodes: ['1', '2'], error: null };
 
     it('does nothing without an opened anime or without episodes', async () => {
         await useAnimeStore.getState().downloadEpisodes(['1']);
@@ -1413,7 +1389,7 @@ describe('downloadEpisodes', () => {
         mock.api.downloadAnime.mockResolvedValue({ ok: true, anime: makeAnime([], { title: 'Naruto' }) });
         useAnimeStore.setState({ selection: { ...selection, result: { index: 2, title: 'Naruto', sourceId: 'naruto-12' } } });
         await useAnimeStore.getState().downloadEpisodes(['1']);
-        expect(mock.api.downloadAnime).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, sourceId: 'naruto-12', audio: 'dub', episodes: ['1'] });
+        expect(mock.api.downloadAnime).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, sourceId: 'naruto-12', episodes: ['1'] });
     });
 
     it('queues the episodes and says so', async () => {
@@ -1422,7 +1398,7 @@ describe('downloadEpisodes', () => {
 
         await useAnimeStore.getState().downloadEpisodes(['1', '2']);
 
-        expect(mock.api.downloadAnime).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, audio: 'dub', episodes: ['1', '2'] });
+        expect(mock.api.downloadAnime).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2'] });
         expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Queued 2 episode(s) of Naruto.' });
     });
 
@@ -1443,7 +1419,7 @@ describe('downloadEpisodes', () => {
 });
 
 describe('watching without downloading', () => {
-    const selection = { result: RESULT, query: 'naruto', audio: 'dub' as const, status: 'ready' as const, episodes: ['1', '2'], error: null };
+    const selection = { result: RESULT, query: 'naruto', status: 'ready' as const, episodes: ['1', '2'], error: null };
     const STREAM = { sessionId: 's1', url: 'pullwave-stream://p/s1/abc', subtitleUrl: null, subtitles: [] };
 
     it('does nothing without an opened anime', async () => {
@@ -1460,7 +1436,7 @@ describe('watching without downloading', () => {
         expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null, nextEpisode: null });
         await watching;
 
-        expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'naruto', index: 2, audio: 'dub', episode: '2' });
+        expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'naruto', index: 2, episode: '2' });
         expect(useAnimeStore.getState().streaming).toEqual({ title: 'Naruto', episode: '2', status: 'ready', stream: STREAM, error: null, nextEpisode: null });
     });
 
@@ -1661,7 +1637,7 @@ describe('jobs and library actions', () => {
 
         it('forgets the order of the anime that was removed, with its audio, and keeps the others', async () => {
             useAnimeStore.setState({
-                library: [makeAnime([], { id: 1, title: 'Naruto', audio: 'sub' }), makeAnime([], { id: 2, title: 'Naruto', audio: 'dub' }), makeAnime([], { id: 3, title: 'Bleach', audio: 'sub' })]
+                library: [makeAnime([], { id: 1, title: 'Naruto' }), makeAnime([], { id: 2, title: 'Naruto' }), makeAnime([], { id: 3, title: 'Bleach' })]
             });
             useSortPrefsStore.setState({
                 list: { chapters: { 'sub|Naruto': 'desc' }, episodes: { 'sub|Naruto': 'desc', 'dub|Naruto': 'desc', 'sub|Bleach': 'desc' } }
@@ -1676,7 +1652,7 @@ describe('jobs and library actions', () => {
         });
 
         it('forgets nothing when the anime is not in the library', async () => {
-            useAnimeStore.setState({ library: [makeAnime([], { id: 3, title: 'Bleach', audio: 'sub' })] });
+            useAnimeStore.setState({ library: [makeAnime([], { id: 3, title: 'Bleach' })] });
             useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Bleach': 'desc' } } });
             await useAnimeStore.getState().removeAnime(99);
             expect(mock.api.removeAnime).toHaveBeenCalledWith(99);
@@ -1684,7 +1660,7 @@ describe('jobs and library actions', () => {
         });
 
         it('does not forget the order when the anime could not be removed', async () => {
-            useAnimeStore.setState({ library: [makeAnime([], { id: 1, title: 'Naruto', audio: 'sub' })] });
+            useAnimeStore.setState({ library: [makeAnime([], { id: 1, title: 'Naruto' })] });
             useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Naruto': 'desc' } } });
             mock.api.removeAnime.mockRejectedValueOnce(new Error('locked'));
             await expect(useAnimeStore.getState().removeAnime(1)).rejects.toThrow('locked');
@@ -1733,8 +1709,8 @@ describe('jobs and library actions', () => {
 });
 
 describe('the history', () => {
-    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 10, watchedAt: null };
-    const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub', episode: '12', openedAt: 20, watchedAt: 20 };
+    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, episode: null, openedAt: 10, watchedAt: null };
+    const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, episode: '12', openedAt: 20, watchedAt: 20 };
 
     it('is loaded with the section', async () => {
         mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
@@ -1757,22 +1733,22 @@ describe('the history', () => {
         });
 
         it('records an anime that is opened from the search, with the search it came from and no episode, then reads the history', async () => {
-            useAnimeStore.setState({ search: { ...INITIAL_SEARCH, results: [RESULT], status: 'done', searchedQuery: 'naruto', searchedAudio: 'dub' } });
+            useAnimeStore.setState({ search: { ...INITIAL_SEARCH, results: [RESULT], status: 'done', searchedQuery: 'naruto' } });
             await useAnimeStore.getState().openResult(RESULT);
             await vi.waitFor(() => {
                 expect(useAnimeStore.getState().history).toEqual([ENTRY]);
             });
             expect(mock.api.recordAnimeHistory).toHaveBeenCalledTimes(1);
-            expect(mock.api.recordAnimeHistory).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, audio: 'dub', episode: null });
+            expect(mock.api.recordAnimeHistory).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, episode: null });
         });
 
         it('records the episode of the library that is played', async () => {
-            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 7, animeId: 3, number: '5' })], { id: 3, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub' })] });
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 7, animeId: 3, number: '5' })], { id: 3, title: 'Bleach', query: 'bleach', searchIndex: 4 })] });
             useAnimeStore.getState().play(3, 7);
             await vi.waitFor(() => {
                 expect(useAnimeStore.getState().history).toEqual([ENTRY]);
             });
-            expect(mock.api.recordAnimeHistory).toHaveBeenCalledWith({ title: 'Bleach', query: 'bleach', index: 4, audio: 'sub', episode: '5' });
+            expect(mock.api.recordAnimeHistory).toHaveBeenCalledWith({ title: 'Bleach', query: 'bleach', index: 4, episode: '5' });
         });
 
         it('opens the player without recording when the episode is not in the library', () => {
@@ -1789,12 +1765,12 @@ describe('the history', () => {
 
         it('records the episode that is watched without downloading it', async () => {
             mock.api.openAnimeStream.mockResolvedValue({ ok: true, stream: { sessionId: 's1', url: 'pullwave-stream://p/s1/abc', subtitleUrl: null } });
-            useAnimeStore.setState({ selection: { result: RESULT, query: 'naruto', audio: 'dub', status: 'ready', episodes: ['1', '2'], error: null } });
+            useAnimeStore.setState({ selection: { result: RESULT, query: 'naruto', status: 'ready', episodes: ['1', '2'], error: null } });
             await useAnimeStore.getState().watchEpisode('2');
             await vi.waitFor(() => {
                 expect(useAnimeStore.getState().history).toEqual([ENTRY]);
             });
-            expect(mock.api.recordAnimeHistory).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, audio: 'dub', episode: '2' });
+            expect(mock.api.recordAnimeHistory).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 2, episode: '2' });
         });
 
         it('does not record when there is no opened anime to watch', async () => {
@@ -1834,31 +1810,31 @@ describe('the history', () => {
         useAnimeStore.setState({ view: 'history' });
         await useAnimeStore.getState().openLibraryAnime(ENTRY);
 
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2);
         expect(useAnimeStore.getState()).toMatchObject({
             view: 'search',
             returnView: 'search',
-            selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', audio: 'dub', status: 'ready', episodes: ['1', '2'] }
+            selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', status: 'ready', episodes: ['1', '2'] }
         });
     });
 
     it('opens an entry whose place in the search is not known by searching its title', async () => {
         mock.api.searchAnime.mockResolvedValue({ ok: true, results: [RESULT] });
         await useAnimeStore.getState().openLibraryAnime({ ...ENTRY, searchIndex: 0 });
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'dub');
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto');
         expect(useAnimeStore.getState()).toMatchObject({ view: 'search', selection: null });
     });
 });
 
 describe('openHistoryEntry', () => {
-    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 10, watchedAt: null };
+    const ENTRY: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, episode: null, openedAt: 10, watchedAt: null };
 
     beforeEach(() => {
         mock.api.listAnimeLibrary.mockResolvedValue([]);
     });
 
     it('opens the series in the library when the anime of the entry is there (same title and audio), without searching', async () => {
-        useAnimeStore.setState({ view: 'history', library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'dub' })] });
+        useAnimeStore.setState({ view: 'history', library: [makeAnime([], { id: 7, title: 'Naruto' })] });
         await useAnimeStore.getState().openHistoryEntry(ENTRY);
 
         expect(mock.api.listAnimeEpisodes).not.toHaveBeenCalled();
@@ -1867,7 +1843,7 @@ describe('openHistoryEntry', () => {
     });
 
     it('opens the series of an anime that belongs to one, by the key of the series', async () => {
-        useAnimeStore.setState({ library: [makeAnime([], { id: 8, title: 'Naruto', audio: 'dub', series: 'Naruto Saga', season: 1 })] });
+        useAnimeStore.setState({ library: [makeAnime([], { id: 8, title: 'Naruto', series: 'Naruto Saga', season: 1 })] });
         await useAnimeStore.getState().openHistoryEntry(ENTRY);
         expect(useAnimeStore.getState()).toMatchObject({ view: 'library', libraryFocus: 8, librarySeries: 'series-naruto saga' });
     });
@@ -1877,20 +1853,20 @@ describe('openHistoryEntry', () => {
         useAnimeStore.setState({ view: 'history', library: [] });
         await useAnimeStore.getState().openHistoryEntry(ENTRY);
 
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2);
         expect(useAnimeStore.getState()).toMatchObject({
             view: 'search',
             returnView: 'search',
-            selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', audio: 'dub', status: 'ready', episodes: ['1', '2'] }
+            selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', status: 'ready', episodes: ['1', '2'] }
         });
     });
 
-    it('opens it in the search when the library has the title with another audio only', async () => {
+    it('opens it in the search when the library has another anime only', async () => {
         mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1'] });
-        useAnimeStore.setState({ library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'sub' })] });
+        useAnimeStore.setState({ library: [makeAnime([], { id: 7, title: 'Bleach' })] });
         await useAnimeStore.getState().openHistoryEntry(ENTRY);
         expect(useAnimeStore.getState()).toMatchObject({ view: 'search', librarySeries: null });
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2);
     });
 });
 
@@ -2060,7 +2036,7 @@ describe('the schedule', () => {
 
     describe('openScheduleEntry', () => {
         beforeEach(() => {
-            useAnimeStore.setState({ view: 'schedule', returnView: 'schedule', selection: { result: RESULT, query: 'old', audio: 'sub', status: 'ready', episodes: ['1'], error: null } });
+            useAnimeStore.setState({ view: 'schedule', returnView: 'schedule', selection: { result: RESULT, query: 'old', status: 'ready', episodes: ['1'], error: null } });
         });
 
         it('goes to the search and looks the anime up by its title', async () => {
@@ -2069,24 +2045,22 @@ describe('the schedule', () => {
             await useAnimeStore.getState().openScheduleEntry(FRIEREN);
 
             expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-            expect(mock.api.searchAnime).toHaveBeenCalledWith('Sousou no Frieren', 'sub');
+            expect(mock.api.searchAnime).toHaveBeenCalledWith('Sousou no Frieren');
             expect(useAnimeStore.getState()).toMatchObject({ view: 'search', returnView: 'search', selection: null });
             expect(useAnimeStore.getState().search).toMatchObject({
                 query: 'Sousou no Frieren',
                 status: 'done',
                 results: [{ index: 1, title: 'Frieren: Beyond Journey\'s End' }],
-                searchedQuery: 'Sousou no Frieren',
-                searchedAudio: 'sub'
+                searchedQuery: 'Sousou no Frieren'
             });
         });
 
-        it('searches with the audio of the settings, or the one picked on the screen', async () => {
-            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeAudio: 'dub' } });
+        it('searches the name of the schedule', async () => {
             mock.api.searchAnime.mockResolvedValue({ ok: true, results: [{ index: 1, title: 'Dandadan' }] });
 
             await useAnimeStore.getState().openScheduleEntry(DANDADAN);
 
-            expect(mock.api.searchAnime).toHaveBeenCalledWith('Dandadan', 'dub');
+            expect(mock.api.searchAnime).toHaveBeenCalledWith('Dandadan');
         });
 
         it('tries the next name when the search for the first finds nothing, and stops at the first that finds the anime', async () => {
@@ -2097,8 +2071,8 @@ describe('the schedule', () => {
             await useAnimeStore.getState().openScheduleEntry(makeScheduleEntry({ title: 'Dandadan', names: ['Dandadan', 'Dan Da Dan', 'Third name'] }));
 
             expect(mock.api.searchAnime.mock.calls).toEqual([
-                ['Dandadan', 'sub'],
-                ['Dan Da Dan', 'sub']
+                ['Dandadan'],
+                ['Dan Da Dan']
             ]);
             expect(useAnimeStore.getState().search).toMatchObject({ query: 'Dan Da Dan', status: 'done', results: [{ index: 2, title: 'Dan Da Dan' }] });
         });
@@ -2119,9 +2093,9 @@ describe('the schedule', () => {
 
             expect(MAX_SCHEDULE_SEARCH_NAMES).toBe(3);
             expect(mock.api.searchAnime.mock.calls).toEqual([
-                ['One', 'sub'],
-                ['Two', 'sub'],
-                ['Three', 'sub']
+                ['One'],
+                ['Two'],
+                ['Three']
             ]);
             expect(useAnimeStore.getState().search).toMatchObject({ query: 'Three', status: 'error', error });
         });
@@ -2131,7 +2105,7 @@ describe('the schedule', () => {
 
             await useAnimeStore.getState().openScheduleEntry(makeScheduleEntry({ title: 'Dandadan', names: [] }));
 
-            expect(mock.api.searchAnime.mock.calls).toEqual([['Dandadan', 'sub']]);
+            expect(mock.api.searchAnime.mock.calls).toEqual([['Dandadan']]);
         });
     });
 
@@ -2159,7 +2133,6 @@ describe('the schedule', () => {
             id: 1,
             animeId: 1,
             animeTitle: 'Naruto',
-            audio: 'sub',
             episodeId: 7,
             episodeNumber: '3',
             foundAt: 1_700_000_000_000,

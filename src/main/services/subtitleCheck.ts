@@ -2,7 +2,6 @@ import {
     MAX_SUBTITLE_BYTES,
     type AniError,
     type AniRunResult,
-    type AnimeAudio,
     type AnimeEpisodeRecord,
     type AnimeRecord,
     type AnimeSearchResult,
@@ -16,7 +15,7 @@ export interface SubtitleCheckDependencies {
     // The subtitles the source offers for an episode.
     resolveSubtitles: (request: AniStreamOptions) => Promise<AniRunResult<ResolvedSubtitles>>;
     // Looks for an anime by name, for the ones whose place in the search is not known.
-    search: (query: string, audio: AnimeAudio) => Promise<AniRunResult<AnimeSearchResult[]>>;
+    search: (query: string) => Promise<AniRunResult<AnimeSearchResult[]>>;
     // The quality of the settings, which ani-cli needs to pick a stream.
     quality: () => string;
     // The text at an address, asked for with the site the source expects; null when it could not be had.
@@ -34,7 +33,7 @@ async function positionOf(anime: AnimeRecord, dependencies: SubtitleCheckDepende
     if (anime.searchIndex >= 1) {
         return anime.searchIndex;
     }
-    const found = await dependencies.search(anime.query, anime.audio);
+    const found = await dependencies.search(anime.query);
     if (found.status === 'error') {
         return found.error;
     }
@@ -75,7 +74,6 @@ export async function checkSubtitles(
     const resolved = await dependencies.resolveSubtitles({
         query: anime.query,
         index: position,
-        audio: anime.audio,
         episode: episode.number,
         quality: dependencies.quality()
     });

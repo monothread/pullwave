@@ -52,8 +52,8 @@ export function AnimeHistory() {
                             }}
                             meta={
                                 <span className="history__meta">
-                                    {entry.audio.toUpperCase()}
-                                    {entry.episode !== null && ` · ${t('anime.history.episode', { episode: entry.episode })}`} · {new Date(entry.openedAt).toLocaleString(language)}
+                                    {entry.episode !== null && `${t('anime.history.episode', { episode: entry.episode })} · `}
+                                    {new Date(entry.openedAt).toLocaleString(language)}
                                 </span>
                             }
                             actions={

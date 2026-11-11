@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AnimeJob } from '@shared/anime';
 import { DEFAULT_SETTINGS, IPC } from '@shared/constants';
@@ -94,7 +94,7 @@ describe('createAnimeRuntime', () => {
         const { root, options: given } = options();
         const path = join(root, 'data', 'anime', 'anime.db');
         const previous = new AnimeDb(path);
-        const episode = previous.ensureEpisode(previous.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '1');
+        const episode = previous.ensureEpisode(previous.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '1');
         previous.close();
 
         const runtime = open(given);
@@ -105,7 +105,7 @@ describe('createAnimeRuntime', () => {
         const { root, options: given } = options();
         const path = join(root, 'data', 'anime', 'anime.db');
         const previous = new AnimeDb(path);
-        const anime = previous.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+        const anime = previous.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
         const episode = previous.ensureEpisode(anime.id, '1');
         previous.markPaused(episode.id);
         previous.close();
@@ -121,7 +121,7 @@ describe('createAnimeRuntime', () => {
     it('serves the video and the subtitles of a downloaded episode only', () => {
         const runtime = open(options().options);
         const db = runtime?.db as AnimeDb;
-        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
         const done = db.ensureEpisode(anime.id, '1');
         const waiting = db.ensureEpisode(anime.id, '2');
         db.markDone(done.id, '/lib/Naruto/Naruto Episode 1.mp4', 10);
@@ -147,7 +147,7 @@ describe('createAnimeRuntime', () => {
 
         function addEpisode(runtime: AnimeRuntime | null, video: string, number = '1') {
             const db = runtime?.db as AnimeDb;
-            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const episode = db.ensureEpisode(anime.id, number);
             db.markDone(episode.id, video, 1);
             return episode;
@@ -178,7 +178,7 @@ describe('createAnimeRuntime', () => {
             const { given } = downloaded();
             const runtime = open(given);
             const db = runtime?.db as AnimeDb;
-            const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+            const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '2');
             expect(runtime?.handlers.subtitles.list(waiting.id)).toEqual([]);
             expect(runtime?.handlers.subtitles.list(99)).toEqual([]);
         });
@@ -206,7 +206,7 @@ describe('createAnimeRuntime', () => {
             const { given } = downloaded();
             const runtime = open(given);
             const db = runtime?.db as AnimeDb;
-            const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+            const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '2');
             expect(await runtime?.handlers.subtitles.check(waiting.id)).toEqual({ ok: false, reason: 'missing' });
             expect(await runtime?.handlers.subtitles.check(99)).toEqual({ ok: false, reason: 'missing' });
         });
@@ -451,7 +451,7 @@ describe('createAnimeRuntime', () => {
                 });
                 const { runtime } = translating({}, 'sk-1', llmFetch);
                 const db = runtime?.db as AnimeDb;
-                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '2');
                 expect(await runtime?.handlers.subtitles.translate({ episodeId: waiting.id, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
                 expect(await runtime?.handlers.subtitles.translate({ episodeId: 99, trackId: null, language: 'Spanish' })).toEqual({ ok: false, reason: 'missing' });
                 expect(llmFetch).not.toHaveBeenCalled();
@@ -515,7 +515,7 @@ describe('createAnimeRuntime', () => {
             it('says an episode is missing for the estimate when it is not downloaded or does not exist', async () => {
                 const { runtime } = translating({}, 'sk-1');
                 const db = runtime?.db as AnimeDb;
-                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '2');
                 expect(await runtime?.handlers.subtitles.estimate({ episodeId: waiting.id, trackId: null })).toEqual({ ok: false, reason: 'missing' });
                 expect(await runtime?.handlers.subtitles.estimate({ episodeId: 99, trackId: null })).toEqual({ ok: false, reason: 'missing' });
             });
@@ -766,7 +766,7 @@ describe('createAnimeRuntime', () => {
             it('says an episode is missing when it is not downloaded or does not exist, without taking audio out', async () => {
                 const { runtime, ffmpeg } = generating({}, 'sk-speech');
                 const db = runtime?.db as AnimeDb;
-                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '2');
                 expect(await runtime?.handlers.subtitles.generate({ episodeId: waiting.id, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({ ok: false, reason: 'missing' });
                 expect(await runtime?.handlers.subtitles.generate({ episodeId: 99, audioLanguage: 'Japanese', language: 'Japanese' })).toEqual({ ok: false, reason: 'missing' });
                 expect(ffmpeg).not.toHaveBeenCalled();
@@ -829,7 +829,7 @@ describe('createAnimeRuntime', () => {
             it('says an episode is missing for the estimate when it is not downloaded or does not exist', async () => {
                 const { runtime, ffmpeg } = generating({}, 'sk-speech');
                 const db = runtime?.db as AnimeDb;
-                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '2');
+                const waiting = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '2');
                 expect(await runtime?.handlers.subtitles.estimateGeneration(waiting.id)).toEqual({ ok: false, reason: 'missing' });
                 expect(await runtime?.handlers.subtitles.estimateGeneration(99)).toEqual({ ok: false, reason: 'missing' });
                 expect(ffmpeg).not.toHaveBeenCalled();
@@ -1092,7 +1092,7 @@ describe('createAnimeRuntime', () => {
     it('does not serve a downloaded episode that has no file recorded', () => {
         const runtime = open(options().options);
         const db = runtime?.db as AnimeDb;
-        const episode = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).id, '1');
+        const episode = db.ensureEpisode(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).id, '1');
         db.markFailed(episode.id, 'error', null);
         expect(runtime?.media.resolve('episode', episode.id, '')).toBeNull();
     });
@@ -1171,7 +1171,7 @@ describe('createAnimeRuntime', () => {
             writeFileSync(join(folder, 'Naruto', 'Episode 2', 'Naruto Episode 2.mp4'), 'abcdef');
             writeFileSync(
                 join(folder, 'Naruto', 'Episode 2', 'pullwave.json'),
-                JSON.stringify({ version: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', number: '2', positionSeconds: 50, durationSeconds: 100, watched: true })
+                JSON.stringify({ version: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, number: '2', positionSeconds: 50, durationSeconds: 100, watched: true })
             );
             return folder;
         }
@@ -1190,25 +1190,12 @@ describe('createAnimeRuntime', () => {
             const list = runtime?.db.list() ?? [];
             expect(
                 list.map((anime) => {
-                    return [anime.title, anime.audio, anime.searchIndex];
+                    return [anime.title, anime.searchIndex, anime.episodes.length];
                 })
-            ).toEqual([
-                ['Naruto', 'dub', 2],
-                ['Naruto', 'sub', 0]
-            ]);
-            expect(list[0]?.episodes[0]).toMatchObject({ number: '2', status: 'done', sizeBytes: 6, positionSeconds: 50, watched: true });
-        });
-
-        it('uses the audio of the settings for what does not say it', async () => {
-            const { root, options: given } = options({ getSettings: () => { return { ...DEFAULT_SETTINGS, animeAudio: 'dub' }; } });
-            const folder = folderOfAnime(root);
-            const runtime = open({ ...given, chooseLibraryFolder: async () => { return folder; } });
-            await runtime?.handlers.importLibrary();
-            expect(
-                runtime?.db.list().map((anime) => {
-                    return [anime.title, anime.audio];
-                })
-            ).toEqual([['Naruto', 'dub']]);
+            ).toEqual([['Naruto', 2, 2]]);
+            expect(list[0]?.episodes.find((episode) => {
+                return episode.number === '2';
+            })).toMatchObject({ number: '2', status: 'done', sizeBytes: 6, positionSeconds: 50, watched: true });
         });
 
         it('writes the metadata of what it added, so the next time they are known exactly', async () => {
@@ -1298,7 +1285,7 @@ describe('createAnimeRuntime', () => {
             mkdirSync(folder, { recursive: true });
             const video = join(folder, 'Naruto Episode 1.mp4');
             writeFileSync(video, 'x');
-            const anime = (runtime?.db as AnimeDb).upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const anime = (runtime?.db as AnimeDb).upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const episode = (runtime?.db as AnimeDb).ensureEpisode(anime.id, '1');
             (runtime?.db as AnimeDb).markDone(episode.id, video, 1);
 
@@ -1318,7 +1305,7 @@ describe('createAnimeRuntime', () => {
             const { root, options: given } = options();
             const runtime = open({ ...given, runFfmpeg: ffmpeg });
             const db = runtime?.db as AnimeDb;
-            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const paths = names.map((name, index) => {
                 const path = join(root, `${name}.mp4`);
                 writeFileSync(path, 'video');
@@ -1523,7 +1510,7 @@ describe('createAnimeRuntime', () => {
             const video = join(folder, 'Naruto Episode 1.mp4');
             writeFileSync(video, 'abc');
             const db = runtime?.db as AnimeDb;
-            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const episode = db.ensureEpisode(anime.id, '1');
             db.markDone(episode.id, video, 3);
             return { episodeId: episode.id, video };
@@ -1725,7 +1712,7 @@ describe('createAnimeRuntime', () => {
         mkdirSync(join(root, 'resources', 'bin'), { recursive: true });
         const runtime = open(given);
 
-        runtime?.queue.enqueue({ title: 'Naruto', query: 'naruto', index: 1, audio: 'sub', episodes: ['1'] });
+        runtime?.queue.enqueue({ title: 'Naruto', query: 'naruto', index: 1, episodes: ['1'] });
         await flush();
 
         // The folder of the anime was created inside the default one.
@@ -1827,6 +1814,109 @@ describe('fetchSubtitleText', () => {
     });
 });
 
+
+// A new ani-cli is tried for real before an update uses it: here by a fake busybox (it hands everything to the shell of the system), the real
+// script of stand-ins and a fake ani-cli that answers like the source.
+describe.skipIf(process.platform === 'win32')('createAnimeRuntime the try of a new ani-cli', () => {
+    const DEBUG_OUTPUT = [
+        'All links:',
+        '1080 >https://cdn.example/1080/index.m3u8',
+        'Selected link:',
+        'https://cdn.example/1080/index.m3u8',
+        'Audio:',
+        '',
+        'Subtitles:',
+        'https://cdn.example/en.vtt',
+        'Referer:',
+        'https://site.example/',
+        'Subtitle list:',
+        '{"label":"English","src":"https://cdn.example/en.vtt"}'
+    ].join('\\n');
+
+    // The fake ani-cli: the episode asked with -e is printed by the debug player, -S alone lists the episodes, the words alone list the anime.
+    function fakeAniCli(debugOutput: string): string {
+        return [
+            '#!/bin/sh',
+            'episode=""',
+            'select=""',
+            'while [ $# -gt 0 ]; do',
+            '    case "$1" in',
+            '        -e) episode="$2"; shift ;;',
+            '        -S) select="$2"; shift ;;',
+            '    esac',
+            '    shift',
+            'done',
+            'if [ -n "$episode" ]; then',
+            `    printf '${debugOutput}\\n'`,
+            '    exit 0',
+            'fi',
+            'if [ -n "$select" ]; then',
+            '    printf "1\\n2\\n" | "$ANI_CLI_MENU" "Select episode: "',
+            '    exit 1',
+            'fi',
+            'printf "1 pwid:kaiju-no-8 Kaiju No. 8\\n2 pwid:kaiju-girl-caramelise-19901 KAIJU GIRL CARAMELISE\\n" | "$ANI_CLI_MENU" "Select anime: "',
+            'exit 1'
+        ].join('\n');
+    }
+
+    function prepare(debugOutput: string): { given: AnimeRuntimeOptions; root: string; script: string } {
+        const { root, options: given } = options({ platform: 'linux' });
+        const scriptsDir = join(root, 'resources', 'ani-scripts');
+        mkdirSync(scriptsDir, { recursive: true });
+        writeFileSync(join(scriptsDir, 'pullwave-run.sh'), readFileSync(join(process.cwd(), 'resources', 'ani-scripts', 'pullwave-run.sh'), 'utf-8'));
+        const busybox = join(root, 'busybox');
+        writeFileSync(busybox, '#!/bin/sh\nshift\nexec /bin/sh "$@"\n', { mode: 0o755 });
+        const script = join(root, 'new-ani-cli');
+        writeFileSync(script, fakeAniCli(debugOutput));
+        const programs = {
+            pathOf: (id: string) => {
+                return id === 'busybox' ? busybox : id === 'curl' ? join(root, 'curl') : null;
+            },
+            expectedPathOf: () => {
+                return null;
+            }
+        };
+        return { given: { ...given, scriptsDir, programs, resolver: new BinaryResolver(programs) }, root, script };
+    }
+
+    it('searches, lists the episodes and asks for the stream with the new script, telling each step', async () => {
+        const { given, script } = prepare(DEBUG_OUTPUT);
+        const runtime = open(given) as AnimeRuntime;
+        const steps: string[] = [];
+        await expect(
+            runtime.checkScript(script, (step) => {
+                steps.push(step);
+            })
+        ).resolves.toBeUndefined();
+        expect(steps).toEqual(['search', 'episodes', 'episode']);
+    });
+
+    it('keeps everything of the try in a folder of its own, away from the script in use', async () => {
+        const { given, root, script } = prepare(DEBUG_OUTPUT);
+        const runtime = open(given) as AnimeRuntime;
+        await runtime.checkScript(script, () => {
+            return undefined;
+        });
+        expect(existsSync(join(root, 'data', 'anime', 'update-check', 'tools', 'busybox'))).toBe(false);
+        expect(existsSync(join(root, 'data', 'anime', 'update-check', 'tools', 'sed'))).toBe(true);
+        expect(existsSync(join(root, 'data', 'anime', 'update-check', 'history'))).toBe(true);
+        expect(existsSync(join(root, 'data', 'anime', 'tools'))).toBe(false);
+        // No copy of a script is kept beside the one in use.
+        expect(readdirSync(join(root, 'data', 'anime')).filter((name) => {
+            return name.startsWith('ani-cli');
+        })).toEqual([]);
+    });
+
+    it('fails, at the step of the episode, when the new script does not give what the app needs of the stream', async () => {
+        const { given, script } = prepare(DEBUG_OUTPUT.replace('Referer:\\nhttps://site.example/\\n', ''));
+        const runtime = open(given) as AnimeRuntime;
+        await expect(
+            runtime.checkScript(script, () => {
+                return undefined;
+            })
+        ).rejects.toMatchObject({ step: 'episode', message: 'The stream of the episode came without the site it expects the request from' });
+    });
+});
 
 describe('createAnimeRuntime schedule', () => {
     let server: Server;
@@ -1972,8 +2062,8 @@ describe('createAnimeRuntime schedule', () => {
 });
 
 describe('createAnimeRuntime new episodes', () => {
-    const NARUTO = { title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' } as const;
-    const BLEACH = { title: 'Bleach', query: 'bleach', searchIndex: 2, audio: 'sub' } as const;
+    const NARUTO = { title: 'Naruto', query: 'naruto', searchIndex: 1 } as const;
+    const BLEACH = { title: 'Bleach', query: 'bleach', searchIndex: 2 } as const;
 
     it('does nothing by itself when the runtime is created', async () => {
         const { send, options: given } = options({ checkTimes: { firstMs: 1, everyMs: 1 } });

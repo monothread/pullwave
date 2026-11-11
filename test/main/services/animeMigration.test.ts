@@ -34,9 +34,9 @@ function write(path: string, content: string): void {
 }
 
 // Puts an episode in the library as downloaded, with a video (and a subtitle and metadata beside it) in the folder given.
-function addEpisode(fixture: Fixture, folder: string, options: { title?: string; number?: string; series?: string; season?: number; audio?: 'sub' | 'dub'; content?: string } = {}): { episodeId: number; video: string } {
-    const { title = 'Naruto', number = '1', audio = 'sub', content = 'video-data' } = options;
-    const anime = fixture.db.upsertAnime({ title, query: title.toLowerCase(), searchIndex: 1, audio });
+function addEpisode(fixture: Fixture, folder: string, options: { title?: string; number?: string; series?: string; season?: number; content?: string } = {}): { episodeId: number; video: string } {
+    const { title = 'Naruto', number = '1', content = 'video-data' } = options;
+    const anime = fixture.db.upsertAnime({ title, query: title.toLowerCase(), searchIndex: 1 });
     if (options.series !== undefined && options.season !== undefined) {
         fixture.db.setSeries(anime.id, options.series, options.season, null);
     }
@@ -111,7 +111,7 @@ describe('migrateAnimeFolder', () => {
             const first = addEpisode(fixture, join(fixture.oldBase, 'Naruto', 'Episode 1'));
             const second = addEpisode(fixture, join(fixture.oldBase, 'Naruto', 'Episode 2'), { number: '2' });
             const third = addEpisode(fixture, join(fixture.oldBase, 'Bleach', 'Episode 1'), { title: 'Bleach' });
-            const dubbed = addEpisode(fixture, join(fixture.oldBase, 'Naruto Dub', 'Episode 1'), { title: 'Naruto Dub', audio: 'dub' });
+            const dubbed = addEpisode(fixture, join(fixture.oldBase, 'Naruto Dub', 'Episode 1'), { title: 'Naruto Dub' });
 
             expect(await migrate(fixture)).toEqual({ ok: true, episodes: 4, files: 12 });
 
@@ -177,7 +177,7 @@ describe('migrateAnimeFolder', () => {
 
         it('leaves in place an episode that is not downloaded or whose video is gone', async () => {
             const fixture = newFixture();
-            const anime = fixture.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const anime = fixture.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const queued = fixture.db.ensureEpisode(anime.id, '1');
             const lost = fixture.db.ensureEpisode(anime.id, '2');
             fixture.db.markDone(lost.id, join(fixture.oldBase, 'Naruto', 'Episode 2', 'gone.mp4'), 5);
@@ -209,7 +209,7 @@ describe('migrateAnimeFolder', () => {
         it('keeps the files that only exist as an episode of the library once (no subtitle, no metadata)', async () => {
             const fixture = newFixture();
             const folder = join(fixture.oldBase, 'Naruto', 'Episode 1');
-            const anime = fixture.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const anime = fixture.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const video = join(folder, 'Naruto Episode 1.mp4');
             write(video, 'abc');
             const episode = fixture.db.ensureEpisode(anime.id, '1');
@@ -305,8 +305,9 @@ describe('migrateAnimeFolder', () => {
 
         it('refuses when two episodes would be copied to the same file', async () => {
             const fixture = newFixture();
-            const first = addEpisode(fixture, join(fixture.oldBase, 'one', 'Episode 1'));
-            const second = addEpisode(fixture, join(fixture.root, 'two', 'Episode 1'), { audio: 'dub' });
+            // Two anime whose titles differ only by signs a file name cannot have end up in the same folder.
+            const first = addEpisode(fixture, join(fixture.oldBase, 'one', 'Episode 1'), { title: 'Naruto?' });
+            const second = addEpisode(fixture, join(fixture.root, 'two', 'Episode 1'), { title: 'Naruto*' });
 
             expect(await migrate(fixture)).toEqual({ ok: false, reason: 'conflict' });
 
@@ -577,7 +578,7 @@ describe('migrateAnimeFolder with the paths of Windows', () => {
         const db = new AnimeDb(':memory:', () => {
             return 5;
         });
-        const anime = db.upsertAnime({ title: 'Fake Anime', query: 'fake', searchIndex: 1, audio: 'sub' });
+        const anime = db.upsertAnime({ title: 'Fake Anime', query: 'fake', searchIndex: 1 });
         db.setSeries(anime.id, 'Fake Anime', 1, null);
         const episode = db.ensureEpisode(anime.id, '1');
         // As ani-cli reports it on Windows: the folders with slashes.

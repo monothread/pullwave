@@ -21,7 +21,6 @@ const FILES_WITH_BARS: Record<string, string[]> = {
     'GenerateProgressPanel.tsx': ['progress'],
     'JobProgress.tsx': ['progress', 'progress--verify', 'progress--processing', 'progress--saving', 'progress--merging', 'progress--waiting', 'progress--live'],
     'MangaCloudflareNotice.tsx': ['progress', 'progress--cloudflare'],
-    'MangaHealthSettings.tsx': ['progress'],
     'MangaHelperNotice.tsx': ['progress'],
     'MangaHelperSettings.tsx': ['progress'],
     'MangaJobs.tsx': ['progress'],

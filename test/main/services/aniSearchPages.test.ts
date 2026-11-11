@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_SEARCH_PAGES, ORIGINAL_SEARCH, PATCHED_SEARCH, patchSearchPages, SEARCH_MIN_VARIABLE, SEARCH_MORE_MARKER } from '@main/services/aniSearchPages';
+import { MAX_SEARCH_PAGES, ORIGINAL_SEARCH, PATCHED_SEARCH, patchSearchPages, SEARCH_MIN_VARIABLE, SEARCH_MORE_MARKER, SEARCH_PAGES_NEEDS } from '@main/services/aniSearchPages';
 import { patchAniCli, patchReport } from '@main/services/aniPatches';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
@@ -47,9 +47,13 @@ describe('patchSearchPages', () => {
     });
 
     it('is part of the changes of the app, and is reported on its own', () => {
-        expect(patchReport(ORIGINAL_SEARCH)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false, searchPages: true, separateAudio: false });
+        expect(patchReport(ORIGINAL_SEARCH)).toEqual({ subtitleSelection: false, allSubtitles: false, debugReferer: false, menuIds: false, singleResult: false, searchPages: true });
         expect(patchReport('')).toMatchObject({ searchPages: false });
         expect(patchAniCli(ORIGINAL_SEARCH)).toBe(PATCHED_SEARCH);
+    });
+
+    it('says what its code reads from the script', () => {
+        expect(SEARCH_PAGES_NEEDS).toEqual(['hianime_curl', 'search_api', 'curl_exe', 'die']);
     });
 
     it('fits the script of ani-cli that comes with the app, when it is there', () => {

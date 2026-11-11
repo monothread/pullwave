@@ -49,7 +49,6 @@ describe('sanitizeSettings', () => {
             extraArgs: '--no-mtime',
             animeDownloadDir: '/media/anime',
             animeQuality: '720p',
-            animeAudio: 'dub',
             animeSubtitles: 'Portuguese',
             animeCheckNewEpisodes: false,
             animeAutoDownloadNew: true,
@@ -250,8 +249,9 @@ describe('sanitizeSettings', () => {
     });
 
     it('has the anime settings default to the best quality, subtitled, in the default folder', () => {
-        expect(DEFAULT_SETTINGS).toMatchObject({ animeDownloadDir: '', animeQuality: 'best', animeAudio: 'sub' });
-        expect(sanitizeSettings({})).toMatchObject({ animeDownloadDir: '', animeQuality: 'best', animeAudio: 'sub' });
+        expect(DEFAULT_SETTINGS).toMatchObject({ animeDownloadDir: '', animeQuality: 'best' });
+        expect(sanitizeSettings({})).toMatchObject({ animeDownloadDir: '', animeQuality: 'best' });
+        expect('animeAudio' in DEFAULT_SETTINGS).toBe(false);
     });
 
     it.each(['best', '1080p', '720p', '480p', '360p', 'worst'])('keeps the anime quality "%s"', (animeQuality) => {
@@ -262,12 +262,9 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ animeQuality }).animeQuality).toBe('best');
     });
 
-    it.each(['sub', 'dub'])('keeps the anime audio "%s"', (animeAudio) => {
-        expect(sanitizeSettings({ animeAudio }).animeAudio).toBe(animeAudio);
-    });
-
-    it.each(['both', 'SUB', '', 1, null])('falls back to "sub" for the invalid anime audio %j', (animeAudio) => {
-        expect(sanitizeSettings({ animeAudio }).animeAudio).toBe('sub');
+    it.each(['sub', 'dub', 'both'])('drops the anime audio "%s" of the settings kept before (the app only has the subtitled anime)', (animeAudio) => {
+        expect('animeAudio' in sanitizeSettings({ animeAudio })).toBe(false);
+        expect(sanitizeSettings({ animeAudio })).toEqual(sanitizeSettings({}));
     });
 
     it('follows the language of the app for the anime subtitles by default', () => {

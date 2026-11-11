@@ -8,6 +8,8 @@ export const SEARCH_MIN_VARIABLE = 'PULLWAVE_SEARCH_MIN';
 export const SEARCH_MORE_MARKER = 'PULLWAVE_SEARCH_MORE';
 // A search that matches almost everything ("a") never makes ani-cli read more pages than this.
 export const MAX_SEARCH_PAGES = 20;
+// What the code the change adds reads from the script: each has to be set by it (see aniCompatibility.ts).
+export const SEARCH_PAGES_NEEDS = ['hianime_curl', 'search_api', 'curl_exe', 'die'] as const;
 
 // The search of the script as ani-cli has it: the part the change looks for.
 export const ORIGINAL_SEARCH = `hianime_search() {

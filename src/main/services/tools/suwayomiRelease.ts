@@ -1,8 +1,10 @@
 import type { ToolSpec } from '@shared/tools';
 
 // The version of Suwayomi-Server the app runs, with the checksums its release publishes (Checksums.sha256). The app does not
-// run any other one: moving to a newer release means changing this file.
+// run any other one, and the user cannot update it from the app: moving to a newer release means changing this file (and trying it).
 export const SUWAYOMI_VERSION = 'v2.4.2366';
+// The file where an earlier version of the app kept the release the user updated to; it is removed when the manga section starts.
+export const SUWAYOMI_SELECTED_FILE = 'suwayomi-selected.json';
 // Dropped when unpacking: a browser engine for a window the app never opens (it would triple the size on the disk).
 const EXCLUDE = ['electron'];
 

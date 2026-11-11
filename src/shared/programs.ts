@@ -1,8 +1,5 @@
 import type { ProgramId, ToolState } from './tools';
 
-// The changes the app makes to ani-cli (see aniPatches.ts in the main process).
-export type AniPatchName = 'subtitleSelection' | 'allSubtitles' | 'debugReferer' | 'menuIds' | 'singleResult' | 'searchPages' | 'separateAudio';
-
 // The programs the app downloads on its first run (see tools.ts), as the screen sees them.
 
 // What each part of the app needs before it can work: the video downloader needs yt-dlp (which runs the JavaScript of the sites with deno) and
@@ -42,7 +39,7 @@ export interface ProgramsStatus {
 }
 
 // Why a look for the latest version did not give one (see LookupReason of the main process).
-export type ProgramLookupReason = 'no-release' | 'signature' | 'checksum' | 'invalid' | 'patches' | 'failed';
+export type ProgramLookupReason = 'no-release' | 'signature' | 'checksum' | 'invalid' | 'patches' | 'incompatible' | 'failed';
 
 export interface ProgramVersionInfo {
     id: ProgramId;
@@ -57,8 +54,6 @@ export interface ProgramVersionInfo {
     // Why the latest version is not known, and the words of the detail.
     error: ProgramLookupReason | null;
     errorMessage: string | null;
-    // For ani-cli: the changes of the app that do not fit the latest script (it works, without them).
-    unfit: AniPatchName[];
 }
 
 export type ProgramVersions = Record<ProgramId, ProgramVersionInfo>;

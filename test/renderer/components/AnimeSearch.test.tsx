@@ -38,22 +38,16 @@ describe('AnimeSearch form', () => {
         // Ctrl+F goes to this field.
         expect(screen.getByLabelText('Anime name')).toHaveAttribute('data-search-field', '');
         expect(screen.getByLabelText('Anime name')).toHaveAttribute('placeholder', 'Search an anime…');
-        expect(screen.getByLabelText('Audio')).toHaveValue('sub');
+        expect(screen.queryByLabelText('Audio')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeDisabled();
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
-    it('offers the audio of the settings and the two audios', () => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeAudio: 'dub' } });
+    it('offers no choice of audio: the anime are the subtitled ones', () => {
         render(<AnimeSearch />);
-        expect(screen.getByLabelText('Audio')).toHaveValue('dub');
-        expect(
-            within(screen.getByLabelText('Audio'))
-                .getAllByRole('option')
-                .map((option) => {
-                    return option.textContent;
-                })
-        ).toEqual(['SUBTITLED', 'DUBBED']);
+        expect(screen.queryByLabelText('Audio')).not.toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: 'DUBBED' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'SEARCH' })).toBeInTheDocument();
     });
 
     it('searches when the form is submitted', async () => {
@@ -62,11 +56,10 @@ describe('AnimeSearch form', () => {
         render(<AnimeSearch />);
 
         await user.type(screen.getByLabelText('Anime name'), 'cyberpunk');
-        await user.selectOptions(screen.getByLabelText('Audio'), 'dub');
         await user.click(screen.getByRole('button', { name: 'SEARCH' }));
 
         expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk', 'dub');
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk');
         expect(await screen.findByText('2 RESULTS')).toBeInTheDocument();
     });
 
@@ -91,7 +84,7 @@ describe('AnimeSearch form', () => {
         mock.api.searchAnime.mockResolvedValue({ ok: true, results: [] });
         render(<AnimeSearch />);
         await user.type(screen.getByLabelText('Anime name'), 'naruto{Enter}');
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto', 'sub');
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('naruto');
     });
 
     it('disables the button and says so while searching', async () => {
@@ -130,14 +123,14 @@ describe('AnimeSearch results', () => {
         expect(screen.getAllByRole('button', { name: /^OPEN: / })).toHaveLength(RESULTS.length);
     });
 
-    it('has a button to the library on the results that are in the library for this audio, and only on them', async () => {
+    it('has a button to the library on the results that are in the library, and only on them', async () => {
         const user = userEvent.setup();
         const showInLibrary = vi.fn();
         useAnimeStore.setState({
-            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk', searchedAudio: 'sub' },
+            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
             library: [
-                makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' }),
-                makeAnime([makeEpisode({ id: 2 })], { id: 5, title: 'Cyberpunk: Edgerunners 2', audio: 'dub' })
+                makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners' }),
+                makeAnime([makeEpisode({ id: 2 })], { id: 5, title: 'Bleach' })
             ],
             showInLibrary
         });
@@ -152,8 +145,8 @@ describe('AnimeSearch results', () => {
 
     it('tags a result with the name it is shown with in its series when it has one', () => {
         useAnimeStore.setState({
-            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk', searchedAudio: 'sub' },
-            library: [makeAnime([], { id: 1, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 1, seasonName: 'Final Cut' })]
+            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
+            library: [makeAnime([], { id: 1, title: 'Cyberpunk: Edgerunners', series: 'Cyberpunk', season: 1, seasonName: 'Final Cut' })]
         });
         render(<AnimeSearch />);
         expect(screen.getByText('Cyberpunk · Final Cut')).toHaveClass('history__meta');
@@ -161,11 +154,10 @@ describe('AnimeSearch results', () => {
 
     it('tags a result that is in the library with its series and season, and no other', () => {
         useAnimeStore.setState({
-            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk', searchedAudio: 'sub' },
+            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
             library: [
-                makeAnime([], { id: 1, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 1 }),
-                makeAnime([], { id: 2, title: 'Cyberpunk: Edgerunners 2', audio: 'dub', series: 'Cyberpunk', season: 2 }),
-                makeAnime([], { id: 3, title: 'Cyberpunk: Edgerunners', audio: 'dub' })
+                makeAnime([], { id: 1, title: 'Cyberpunk: Edgerunners', series: 'Cyberpunk', season: 1 }),
+                makeAnime([], { id: 2, title: 'Bleach', series: 'Cyberpunk', season: 2 })
             ]
         });
         render(<AnimeSearch />);
@@ -194,12 +186,12 @@ describe('AnimeSearch results', () => {
     it('opens a result and shows its episodes', async () => {
         const user = userEvent.setup();
         mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1', '2', '3'] });
-        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk', searchedAudio: 'dub' } });
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' } });
         render(<AnimeSearch />);
 
         await user.click(screen.getByRole('button', { name: 'OPEN: Cyberpunk: Edgerunners 2' }));
 
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('cyberpunk', 2, 'dub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('cyberpunk', 2);
         expect(await screen.findByText('3 EPISODES', { selector: '.section-label' })).toBeInTheDocument();
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
     });
@@ -278,7 +270,7 @@ describe('AnimeSearch the next results', () => {
 
         expect(await screen.findByText('3 RESULTS')).toBeInTheDocument();
         expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk', 'sub', 2);
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk', 2);
         expect(screen.getByRole('button', { name: 'OPEN: Cyberpunk: Edgerunners 3' })).toBeInTheDocument();
         expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
     });
@@ -298,8 +290,8 @@ describe('AnimeSearch the next results', () => {
 
         expect(await screen.findByText('4 RESULTS')).toBeInTheDocument();
         expect(mock.api.searchAnime.mock.calls).toEqual([
-            ['cyberpunk', 'sub', 2],
-            ['cyberpunk', 'sub', 3]
+            ['cyberpunk', 2],
+            ['cyberpunk', 3]
         ]);
     });
 
@@ -387,7 +379,7 @@ describe('AnimeSearch the next results', () => {
 
         expect(await screen.findByText('1 RESULTS')).toBeInTheDocument();
         expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk', 'sub');
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('cyberpunk');
         expect(screen.queryByTestId('anime-end-of-list')).not.toBeInTheDocument();
     });
 });
@@ -396,7 +388,7 @@ describe('AnimeDetail', () => {
     function open(episodes: string[], overrides: Partial<NonNullable<ReturnType<typeof useAnimeStore.getState>['selection']>> = {}): void {
         useAnimeStore.setState({
             search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
-            selection: { result: RESULTS[0] as AnimeSearchResult, query: 'cyberpunk', audio: 'sub', status: 'ready', episodes, error: null, ...overrides }
+            selection: { result: RESULTS[0] as AnimeSearchResult, query: 'cyberpunk', status: 'ready', episodes, error: null, ...overrides }
         });
     }
 
@@ -415,7 +407,7 @@ describe('AnimeDetail', () => {
         const unconfirmed: AnimeSearchResult = { index: 1, title: 'The Cold Sato-san is Only Sweet to Me', unconfirmed: true };
         useAnimeStore.setState({
             search: { ...INITIAL_SEARCH, status: 'done', results: [unconfirmed], searchedQuery: unconfirmed.title },
-            selection: { result: unconfirmed, query: unconfirmed.title, audio: 'sub', status: 'ready', episodes: ['1', '2'], error: null }
+            selection: { result: unconfirmed, query: unconfirmed.title, status: 'ready', episodes: ['1', '2'], error: null }
         });
         const { container } = render(<AnimeSearch />);
 
@@ -435,7 +427,7 @@ describe('AnimeDetail', () => {
     it('asks for the cover by the title of the library when the anime is in it, as its card does', async () => {
         mock.api.findAnimeCover.mockResolvedValue(null);
         open(['1', '2']);
-        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 7, title: 'Cyberpunk: Edgerunners', audio: 'sub', searchIndex: 1 })] });
+        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 7, title: 'Cyberpunk: Edgerunners', searchIndex: 1 })] });
         render(<AnimeSearch />);
 
         expect(await screen.findAllByText('COVER NOT FOUND')).not.toHaveLength(0);
@@ -516,7 +508,7 @@ describe('AnimeDetail', () => {
             await user.click(screen.getByRole('button', { name: 'EP 2' }));
 
             expect(mock.api.openAnimeStream).toHaveBeenCalledTimes(1);
-            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'cyberpunk', index: 1, audio: 'sub', episode: '2' });
+            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'cyberpunk', index: 1, episode: '2' });
             expect(useAnimeStore.getState().streaming).toMatchObject({ episode: '2', status: 'loading' });
             expect(mock.api.downloadAnime).not.toHaveBeenCalled();
             expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
@@ -551,7 +543,7 @@ describe('AnimeDetail', () => {
             );
             open(['1', '2']);
             useAnimeStore.setState({
-                library: [makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })]
+                library: [makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners' })]
             });
             render(<AnimeSearch />);
 
@@ -568,9 +560,9 @@ describe('AnimeDetail', () => {
             library: [
                 makeAnime(
                     [makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'error' }), makeEpisode({ id: 4, number: '4', status: 'idle', filePath: null, sizeBytes: null })],
-                    { title: 'Cyberpunk: Edgerunners', audio: 'sub' }
+                    { title: 'Cyberpunk: Edgerunners' }
                 ),
-                makeAnime([makeEpisode({ id: 3, number: '3' })], { id: 2, title: 'Cyberpunk: Edgerunners', audio: 'dub' })
+                makeAnime([makeEpisode({ id: 3, number: '3' })], { id: 2, title: 'Cyberpunk: Edgerunners' })
             ]
         });
         render(<AnimeSearch />);
@@ -611,7 +603,7 @@ describe('AnimeDetail', () => {
                 list: { chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners': 'desc' } }
             });
             await user.click(screen.getByRole('button', { name: 'EP 3' }));
-            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'cyberpunk', index: 1, audio: 'sub', episode: '3' });
+            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'cyberpunk', index: 1, episode: '3' });
         });
 
         it('starts from the last episode when that is the order kept for this anime', () => {
@@ -622,7 +614,7 @@ describe('AnimeDetail', () => {
             expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);
         });
 
-        it('starts from the first episode when the order kept is the one of another anime, or of this one with the other audio', () => {
+        it('starts from the first episode when the order kept is the one of another anime, or one kept for the dubbed one before', () => {
             useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners 2': 'desc', 'dub|Cyberpunk: Edgerunners': 'desc' } } });
             open(['1', '2', '3']);
             render(<AnimeSearch />);
@@ -630,9 +622,9 @@ describe('AnimeDetail', () => {
             expect(chips()).toEqual(['EP 1', 'EP 2', 'EP 3']);
         });
 
-        it('follows the audio picked: the same anime has an order for each one', () => {
-            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'dub|Cyberpunk: Edgerunners': 'desc' } } });
-            open(['1', '2', '3'], { audio: 'dub' });
+        it('follows the order kept for the anime before the dubbed ones were taken out', () => {
+            useSortPrefsStore.setState({ list: { chapters: {}, episodes: { 'sub|Cyberpunk: Edgerunners': 'desc' } } });
+            open(['1', '2', '3']);
             render(<AnimeSearch />);
             expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('desc');
             expect(chips()).toEqual(['EP 3', 'EP 2', 'EP 1']);
@@ -643,7 +635,7 @@ describe('AnimeDetail', () => {
         const user = userEvent.setup();
         const showInLibrary = vi.fn();
         open(['1', '2']);
-        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })], showInLibrary });
+        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 4, title: 'Cyberpunk: Edgerunners' })], showInLibrary });
         render(<AnimeSearch />);
 
         expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
@@ -655,17 +647,17 @@ describe('AnimeDetail', () => {
     it('has the button to the library even when no episode of the anime was downloaded, because it is in the library from the moment it is added', () => {
         open(['1', '2']);
         useAnimeStore.setState({
-            library: [makeAnime([makeEpisode({ id: 1, number: '1', status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })]
+            library: [makeAnime([makeEpisode({ id: 1, number: '1', status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners' })]
         });
         render(<AnimeSearch />);
         expect(screen.getByRole('button', { name: 'VIEW IN LIBRARY' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
     });
 
-    it('offers to add the anime when only the other audio of it is in the library', () => {
+    it('offers to add the anime when only another anime is in the library', () => {
         open(['1']);
         useAnimeStore.setState({
-            library: [makeAnime([makeEpisode({ id: 2 })], { id: 5, title: 'Cyberpunk: Edgerunners', audio: 'dub' })]
+            library: [makeAnime([makeEpisode({ id: 2 })], { id: 5, title: 'Cyberpunk: Edgerunners 2' })]
         });
         render(<AnimeSearch />);
         expect(screen.queryByRole('button', { name: 'VIEW IN LIBRARY' })).not.toBeInTheDocument();
@@ -675,7 +667,7 @@ describe('AnimeDetail', () => {
     it('goes to the library with that anime open when the button is used', async () => {
         const user = userEvent.setup();
         open(['1']);
-        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })] });
+        useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 4, title: 'Cyberpunk: Edgerunners' })] });
         render(<AnimeSearch />);
         await user.click(screen.getByRole('button', { name: 'VIEW IN LIBRARY' }));
         expect(useAnimeStore.getState()).toMatchObject({ view: 'library', selection: null, libraryFocus: 4 });
@@ -684,8 +676,7 @@ describe('AnimeDetail', () => {
     describe('episodes that the source has and the library does not', () => {
         const IN_LIBRARY = makeAnime([makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null })], {
             id: 4,
-            title: 'Cyberpunk: Edgerunners',
-            audio: 'sub'
+            title: 'Cyberpunk: Edgerunners'
         });
 
         it('offers one button that adds the new episodes, with how many they are, beside the one that views the anime in the library', () => {
@@ -729,7 +720,6 @@ describe('AnimeDetail', () => {
                 title: 'Cyberpunk: Edgerunners',
                 query: 'cyberpunk',
                 index: RESULTS[0]?.index,
-                audio: 'sub',
                 episodes: ['1', '2', '3'],
                 series: null,
                 season: null,
@@ -745,9 +735,9 @@ describe('AnimeDetail', () => {
             expect(screen.getByRole('button', { name: 'VIEW IN LIBRARY' })).toBeInTheDocument();
         });
 
-        it('does not offer it when the anime is not in the library, or when only the other audio of it is', () => {
+        it('does not offer it when the anime is not in the library', () => {
             open(['1', '2', '3']);
-            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 2, number: '1' })], { id: 5, title: 'Cyberpunk: Edgerunners', audio: 'dub' })] });
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 2, number: '1' })], { id: 5, title: 'Cyberpunk: Edgerunners 2' })] });
             render(<AnimeSearch />);
             expect(screen.queryByRole('button', { name: /^ADD NEW EPISODES/ })).not.toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'ADD TO LIBRARY' })).toBeEnabled();
@@ -801,7 +791,7 @@ describe('AnimeDetail', () => {
             const user = userEvent.setup();
             useAnimeStore.setState({
                 search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
-                selection: { result: { index: 3, title: 'Frieren: Beyond Journey\'s End Season 2' }, query: 'frieren', audio: 'sub', status: 'ready', episodes: ['1'], error: null }
+                selection: { result: { index: 3, title: 'Frieren: Beyond Journey\'s End Season 2' }, query: 'frieren', status: 'ready', episodes: ['1'], error: null }
             });
             render(<AnimeSearch />);
             const dialog = await openDialog(user);
@@ -827,7 +817,7 @@ describe('AnimeDetail', () => {
         it('does not offer to change the series of an anime that is in the library: it shows the one it has, as text', () => {
             open(['1']);
             useAnimeStore.setState({
-                library: [makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 5, seasonName: 'The Fifth' })]
+                library: [makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', series: 'Cyberpunk', season: 5, seasonName: 'The Fifth' })]
             });
             render(<AnimeSearch />);
             expect(screen.queryByRole('textbox', { name: 'Series' })).not.toBeInTheDocument();
@@ -838,7 +828,7 @@ describe('AnimeDetail', () => {
 
         it('shows nothing about a series for an anime in the library that is on its own', () => {
             open(['1']);
-            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })] });
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners' })] });
             render(<AnimeSearch />);
             expect(screen.queryByRole('textbox', { name: 'Series' })).not.toBeInTheDocument();
             expect(screen.queryByTestId('anime-series-info')).not.toBeInTheDocument();
@@ -924,7 +914,7 @@ describe('AnimeDetail', () => {
             const user = userEvent.setup();
             const added = makeAnime(
                 [makeEpisode({ id: 1, number: '1', status: 'idle', filePath: null, sizeBytes: null }), makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null })],
-                { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 3, seasonName: 'The Third' }
+                { id: 4, title: 'Cyberpunk: Edgerunners', series: 'Cyberpunk', season: 3, seasonName: 'The Third' }
             );
             mock.api.addAnimeToLibrary.mockResolvedValue({ ok: true, anime: added });
             mock.api.listAnimeLibrary.mockResolvedValue([added]);
@@ -946,7 +936,6 @@ describe('AnimeDetail', () => {
                 title: 'Cyberpunk: Edgerunners',
                 query: 'cyberpunk',
                 index: 1,
-                audio: 'sub',
                 episodes: ['1', '2'],
                 series: 'Cyberpunk',
                 season: 3,
@@ -974,7 +963,6 @@ describe('AnimeDetail', () => {
                 title: 'Cyberpunk: Edgerunners',
                 query: 'cyberpunk',
                 index: 1,
-                audio: 'sub',
                 episodes: ['1'],
                 series: null,
                 season: null,
@@ -986,7 +974,7 @@ describe('AnimeDetail', () => {
             const IN_SERIES = [
                 makeAnime([], { id: 1, title: 'Frieren', series: 'Frieren', season: 1 }),
                 makeAnime([], { id: 2, title: 'Frieren 2', series: 'frieren', season: 3 }),
-                makeAnime([], { id: 3, title: 'Frieren (dub)', series: 'Frieren', season: 7, audio: 'dub' })
+                makeAnime([], { id: 3, title: 'Bleach', series: 'Bleach', season: 7 })
             ];
 
             it('is not allowed: the window says so, with the next order, and the anime cannot be confirmed', async () => {
@@ -1028,7 +1016,7 @@ describe('AnimeDetail', () => {
                 expect(mock.api.addAnimeToLibrary).toHaveBeenCalledWith(expect.objectContaining({ series: 'Frieren', season: 4 }));
             });
 
-            it('only counts the orders of the same audio and of the same series', async () => {
+            it('only counts the orders of the same series', async () => {
                 const user = userEvent.setup();
                 open(['1']);
                 useAnimeStore.setState({ library: IN_SERIES });
@@ -1038,7 +1026,7 @@ describe('AnimeDetail', () => {
                 await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Frieren');
                 await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
                 await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '7');
-                // 7 is used by the dubbed one only, and this anime is subtitled.
+                // 7 is used by an anime of another series only.
                 expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
 
                 await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
@@ -1070,7 +1058,6 @@ describe('AnimeDetail', () => {
                     title: 'Cyberpunk: Edgerunners',
                     query: 'cyberpunk',
                     index: 1,
-                    audio: 'sub',
                     episodes: ['1'],
                     series: 'Frieren',
                     season: 4,
@@ -1129,7 +1116,7 @@ describe('AnimeDetail', () => {
                 const user = userEvent.setup();
                 useAnimeStore.setState({
                     search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'frieren' },
-                    selection: { result: { index: 3, title: 'Frieren: Beyond Journey\'s End Season 2' }, query: 'frieren', audio: 'sub', status: 'ready', episodes: ['1'], error: null },
+                    selection: { result: { index: 3, title: 'Frieren: Beyond Journey\'s End Season 2' }, query: 'frieren', status: 'ready', episodes: ['1'], error: null },
                     library: [
                         makeAnime([], { id: 1, title: 'Frieren: Beyond Journey\'s End', series: 'Frieren: Beyond Journey\'s End', season: 1 }),
                         makeAnime([], { id: 2, title: 'Frieren: Beyond Journey\'s End 2', series: 'Frieren: Beyond Journey\'s End', season: 2 })
@@ -1205,7 +1192,7 @@ describe('AnimeDetail', () => {
 
 describe('AnimeSearch cards with a cover', () => {
     function showResults(library: ReturnType<typeof makeAnime>[] = []): void {
-        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk', searchedAudio: 'sub' }, library });
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' }, library });
     }
 
     it('lists the results as cards of a grid, each with a cover', () => {
@@ -1225,7 +1212,7 @@ describe('AnimeSearch cards with a cover', () => {
 
     it('does not look a cover up, nor tell the name is confirmed, for a result ani-cli picked on its own', () => {
         useAnimeStore.setState({
-            search: { ...INITIAL_SEARCH, status: 'done', results: [{ index: 1, title: 'The Cold Sato-san is Only Sweet to Me', unconfirmed: true }], searchedQuery: 'The Cold Sato-san is Only Sweet to Me', searchedAudio: 'sub' }
+            search: { ...INITIAL_SEARCH, status: 'done', results: [{ index: 1, title: 'The Cold Sato-san is Only Sweet to Me', unconfirmed: true }], searchedQuery: 'The Cold Sato-san is Only Sweet to Me' }
         });
         render(<AnimeSearch />);
 
@@ -1264,7 +1251,7 @@ describe('AnimeSearch cards with a cover', () => {
     });
 
     it('puts the series and the button to the library at the bottom of the card, the series just above the button', () => {
-        showResults([makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 1 })]);
+        showResults([makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', series: 'Cyberpunk', season: 1 })]);
         render(<AnimeSearch />);
 
         const [card] = screen.getAllByRole('listitem');
@@ -1280,7 +1267,7 @@ describe('AnimeSearch cards with a cover', () => {
     });
 
     it('keeps the button alone in the footer when the anime is in the library but not in a series', () => {
-        showResults([makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub' })]);
+        showResults([makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners' })]);
         render(<AnimeSearch />);
 
         const [card] = screen.getAllByRole('listitem');
@@ -1290,7 +1277,7 @@ describe('AnimeSearch cards with a cover', () => {
     });
 
     it('keeps the series and the button when the anime is in a series, whether or not an episode of it was downloaded', () => {
-        showResults([makeAnime([makeEpisode({ id: 1, status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 1 })]);
+        showResults([makeAnime([makeEpisode({ id: 1, status: 'idle', filePath: null, sizeBytes: null })], { id: 4, title: 'Cyberpunk: Edgerunners', series: 'Cyberpunk', season: 1 })]);
         render(<AnimeSearch />);
 
         const [card] = screen.getAllByRole('listitem');
@@ -1311,7 +1298,7 @@ describe('AnimeSearch cards with a cover', () => {
     });
 
     it('gives a card in the library and one that is not the same parts: the cover and the title, then the footer only where there is something for it', () => {
-        showResults([makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', audio: 'sub', series: 'Cyberpunk', season: 1 })]);
+        showResults([makeAnime([makeEpisode({ id: 1 })], { id: 4, title: 'Cyberpunk: Edgerunners', series: 'Cyberpunk', season: 1 })]);
         render(<AnimeSearch />);
 
         const [inLibrary, other] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement];
@@ -1329,7 +1316,7 @@ describe('AnimeDetail: the cover behind the screen', () => {
         mock.api.findAnimeCover.mockResolvedValue('https://s4.anilist.co/cover/edgerunners.jpg');
         useAnimeStore.setState({
             search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
-            selection: { result: RESULTS[0] as AnimeSearchResult, query: 'cyberpunk', audio: 'sub', status: 'ready', episodes: ['1'], error: null }
+            selection: { result: RESULTS[0] as AnimeSearchResult, query: 'cyberpunk', status: 'ready', episodes: ['1'], error: null }
         });
         const { unmount, container } = render(<AnimeSearch />);
         await waitFor(() => {

@@ -1,6 +1,8 @@
 import {
     ANIME_PROMPT,
+    DOWNLOAD_FAILED_MARKER,
     EPISODE_PROMPT,
+    isDownloadFailedLine,
     isSearchMoreLine,
     MENU_PREFIX,
     mapAniError,
@@ -257,5 +259,23 @@ describe('parseDestinationLine', () => {
     it('ignores other lines', () => {
         expect(parseDestinationLine('[download] 100% of 107.36MiB in 00:00:44')).toBeNull();
         expect(parseDestinationLine('')).toBeNull();
+    });
+});
+
+describe('isDownloadFailedLine', () => {
+    it('names the line the stand-in of ffmpeg prints when a download failed', () => {
+        expect(DOWNLOAD_FAILED_MARKER).toBe('PULLWAVE_DOWNLOAD_FAILED');
+    });
+
+    it('takes the line, also with terminal codes and spaces around it', () => {
+        expect(isDownloadFailedLine('PULLWAVE_DOWNLOAD_FAILED')).toBe(true);
+        expect(isDownloadFailedLine(`${ESC}[0m  PULLWAVE_DOWNLOAD_FAILED  `)).toBe(true);
+    });
+
+    it('does not take a line that only mentions it, or any other line', () => {
+        expect(isDownloadFailedLine('the PULLWAVE_DOWNLOAD_FAILED line')).toBe(false);
+        expect(isDownloadFailedLine('PULLWAVE_DOWNLOAD_FAILED\textra')).toBe(false);
+        expect(isDownloadFailedLine('')).toBe(false);
+        expect(isDownloadFailedLine('[download] Destination: /x.mp4')).toBe(false);
     });
 });

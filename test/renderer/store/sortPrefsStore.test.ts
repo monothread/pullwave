@@ -65,10 +65,9 @@ describe('the keys of the tabs of groups', () => {
 });
 
 describe('the keys of the titles', () => {
-    it('puts the audio before the title of an anime, so a title with any character gets its own key', () => {
-        expect(animeListKey('Frieren', 'sub')).toBe('sub|Frieren');
-        expect(animeListKey('Frieren', 'dub')).toBe('dub|Frieren');
-        expect(animeListKey('A|B: the sequel', 'sub')).toBe('sub|A|B: the sequel');
+    it('starts the key of an anime with "sub|" as it did when the anime had an audio, so the orders kept then are found', () => {
+        expect(animeListKey('Frieren')).toBe('sub|Frieren');
+        expect(animeListKey('A|B: the sequel')).toBe('sub|A|B: the sequel');
     });
 
     it('joins the source and the id the source gives to a manga', () => {

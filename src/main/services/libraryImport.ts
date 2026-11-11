@@ -1,10 +1,8 @@
-import type { AnimeAudio, AnimeImportSummary } from '@shared/anime';
+import type { AnimeImportSummary } from '@shared/anime';
 import type { AnimeDb } from './animeDb';
 import type { ScanResult } from './libraryScan';
 
 export interface LibraryImportOptions {
-    // The audio of what does not say it (taken from the settings).
-    defaultAudio: AnimeAudio;
     // The size of a file, or null when it is not there.
     fileSize: (path: string) => number | null;
     // An episode was added or pointed to a new file.
@@ -17,7 +15,7 @@ export interface LibraryImportOptions {
 export function importLibrary(db: AnimeDb, scan: ScanResult, options: LibraryImportOptions): AnimeImportSummary {
     const summary: AnimeImportSummary = { added: 0, relinked: 0, skipped: 0, ignored: scan.ignored };
     scan.episodes.forEach((found) => {
-        const anime = db.importAnime({ title: found.title, query: found.query, searchIndex: found.searchIndex, audio: found.audio ?? options.defaultAudio });
+        const anime = db.importAnime({ title: found.title, query: found.query, searchIndex: found.searchIndex });
         if (found.series !== null && found.season !== null && anime.series === null) {
             // What the user set before is never replaced, and a season that is already taken leaves the anime on its own.
             db.setSeries(anime.id, found.series, found.season, found.seasonName);

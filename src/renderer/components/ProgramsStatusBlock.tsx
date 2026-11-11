@@ -1,24 +1,32 @@
 import type { MessageKey } from '@shared/i18n';
 import { PLACE_PROGRAMS, type ProgramInfo, type ProgramPlace, type ProgramVersionInfo } from '@shared/programs';
-import type { ProgramId } from '@shared/tools';
+import type { ProgramId, ToolState } from '@shared/tools';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
 import { PROGRAM_NAMES, useProgramsStore, type ProgramResult } from '../store/programsStore';
-import { displayVersion, isWorking, lookupReasonKey, programErrorReport } from './programText';
+import { displayVersion, isWorking, lookupReasonKey, programErrorReport, updateStepKey, updateStepStates, type UpdateStepState } from './programText';
 import { ErrorNotice } from './ErrorNotice';
 import { plainErrorReport } from './errorReport';
 import { ConfirmButton } from './ConfirmButton';
 
-const PATCH_KEYS: Record<string, MessageKey> = {
-    subtitleSelection: 'tools.patch.subtitleSelection',
-    allSubtitles: 'tools.patch.allSubtitles',
-    debugReferer: 'tools.patch.debugReferer',
-    menuIds: 'tools.patch.menuIds',
-    singleResult: 'tools.patch.singleResult',
-    searchPages: 'tools.patch.searchPages',
-    separateAudio: 'tools.patch.separateAudio'
-};
+const STEP_MARKS: Record<UpdateStepState, string> = { done: '✓', running: '›', failed: '✗', pending: '·' };
+
+// The steps of an update of ani-cli as it goes (see ANICLI_UPDATE_STEPS): each one with whether it is done, going on, where it stopped, or to come.
+function UpdateSteps({ state }: { state: ToolState }) {
+    const t = useTranslator();
+    return (
+        <ol className="update-steps" aria-label={t('tools.step.title')} data-testid="update-steps">
+            {updateStepStates(state).map(({ step, state: stepState }) => {
+                return (
+                    <li key={step} className={`update-steps__item update-steps__item--${stepState}`} data-step={step} data-state={stepState}>
+                        {`${STEP_MARKS[stepState]} ${t(updateStepKey(step))}`}
+                    </li>
+                );
+            })}
+        </ol>
+    );
+}
 
 const HINTS: Record<ProgramPlace, MessageKey> = {
     global: 'tools.hint.global',
@@ -55,9 +63,10 @@ interface ProgramRowProps {
     result: ProgramResult | null;
 }
 
-function resultText(result: ProgramResult, t: ReturnType<typeof useTranslator>): string {
+// The version is shown as everywhere else on the card (the commit of ani-cli by its first digits).
+function resultText(id: ProgramId, result: ProgramResult, t: ReturnType<typeof useTranslator>): string {
     if (result.ok) {
-        return result.action === 'reset' ? t('tools.result.reset') : t('tools.result.updated', { version: result.version ?? '' });
+        return result.action === 'reset' ? t('tools.result.reset') : t('tools.result.updated', { version: result.version === null ? '' : displayVersion(id, result.version) });
     }
     switch (result.reason) {
         case 'current':
@@ -143,18 +152,18 @@ function ProgramRow({ program, version, runs, customPath, info, result }: Progra
                         {t('tools.lookupFailed', { reason: t(lookupReasonKey(info.error)) })}
                     </span>
                 )}
-                {info !== null && info.unfit.length > 0 && info.updatable && (
-                    <span className="history__meta" role="alert">
-                        {t('tools.patchesPartial', {
-                            changes: info.unfit
-                                .map((change) => {
-                                    return t(PATCH_KEYS[change] ?? 'tools.patch.debugReferer');
-                                })
-                                .join(', ')
-                        })}
-                    </span>
+                {download !== undefined && program.id === 'anicli' && (
+                    <>
+                        <UpdateSteps state={download} />
+                        {/* Refused at the look at the script, nothing was downloaded: the result below says why. */}
+                        {download.status === 'error' && download.error && download.step !== 'compatibility' && (
+                            <span className="field__warning" role="alert">
+                                <ErrorNotice report={programErrorReport(t, download.error)} />
+                            </span>
+                        )}
+                    </>
                 )}
-                {download !== undefined && (
+                {download !== undefined && program.id !== 'anicli' && (
                     <>
                         <div className="progress" role="progressbar" aria-label={t('tools.updateDownloading', { percent: Math.round(download.percent) })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(download.percent)}>
                             <div className="progress__bar progress__bar--smooth" style={{ width: `${String(download.percent)}%` }} />
@@ -170,7 +179,7 @@ function ProgramRow({ program, version, runs, customPath, info, result }: Progra
                 )}
                 {result && (
                     <span className={`history__meta${result.ok ? '' : ' field__warning'}`} role={result.ok ? undefined : 'alert'}>
-                        {result.ok ? resultText(result, t) : <ErrorNotice report={plainErrorReport(resultText(result, t), result.message)} />}
+                        {result.ok ? resultText(program.id, result, t) : <ErrorNotice report={plainErrorReport(resultText(program.id, result, t), result.message)} />}
                     </span>
                 )}
             </div>

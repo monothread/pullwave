@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { ProgramId, ToolState } from '@shared/tools';
 import type { ProgramVersionInfo } from '@shared/programs';
 import { ProgramsStatusBlock } from '@renderer/components/ProgramsStatusBlock';
+import { displayVersion } from '@renderer/components/programText';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { useProgramsStore } from '@renderer/store/programsStore';
@@ -41,6 +42,9 @@ function version(id: ProgramId, overrides: Partial<ProgramVersionInfo>): void {
     const versions = useProgramsStore.getState().versions ?? makeProgramVersions();
     useProgramsStore.setState({ versions: { ...versions, [id]: { ...versions[id], ...overrides } } });
 }
+
+// The words of a program that was refused after it was looked at (the error INVALID).
+const INVALID_TEXT = 'The downloaded program does not work, so it was discarded.';
 
 function row(id: ProgramId): HTMLElement {
     return screen.getByTestId(`program-${id}`);
@@ -234,7 +238,7 @@ describe('ProgramsStatusBlock states', () => {
 
 describe('ProgramsStatusBlock updates', () => {
     it('looks for the latest versions and shows them', async () => {
-        mock.api.programs.check.mockResolvedValueOnce(makeProgramVersions({ ytdlp: { id: 'ytdlp', current: '2026.08.19', latest: '2026.09.01', updatable: true, base: '2026.08.19', chosen: false, error: null, errorMessage: null, unfit: [] } }));
+        mock.api.programs.check.mockResolvedValueOnce(makeProgramVersions({ ytdlp: { id: 'ytdlp', current: '2026.08.19', latest: '2026.09.01', updatable: true, base: '2026.08.19', chosen: false, error: null, errorMessage: null } }));
         render(<ProgramsStatusBlock place="downloads" />);
         fireEvent.click(screen.getByRole('button', { name: 'CHECK FOR NEW VERSIONS' }));
         expect(await screen.findByText('Latest: 2026.09.01')).toBeInTheDocument();
@@ -303,6 +307,7 @@ describe('ProgramsStatusBlock updates', () => {
         ['checksum', 'the checksum of the file is not published.'],
         ['invalid', 'the answer is not what the app expects.'],
         ['patches', 'the changes the app needs do not fit it.'],
+        ['incompatible', 'it changed something the app relies on.'],
         ['failed', 'check your connection and try again.']
     ] as const)('says why the latest version could not be looked for: %s', (reason, text) => {
         version('ytdlp', { latest: null, error: reason, errorMessage: 'detail of it' });
@@ -351,28 +356,87 @@ describe('ProgramsStatusBlock updates', () => {
         expect(within(row('ytdlp')).queryByText(/Could not look/)).not.toBeInTheDocument();
     });
 
-    it('warns that some changes of the app do not fit the latest ani-cli, naming them', () => {
-        version('anicli', { latest: 'abcdef0123456789abcdef0123456789abcdef01', updatable: true, unfit: ['subtitleSelection', 'allSubtitles', 'debugReferer'] });
+    it('shows every step of an update of ani-cli: the ones done, the one going on, and the ones to come', () => {
+        useProgramsStore.setState({ updates: { anicli: stateOf('anicli', { step: 'search', status: 'verifying', percent: 100 }) } });
         render(<ProgramsStatusBlock place="anime" />);
-        expect(row('anicli')).toHaveTextContent('The latest ani-cli works, but some changes of the app do not fit it (the choice of the subtitle, saving every subtitle, the address of the stream), so some subtitles may be missing.');
+        const steps = within(row('anicli')).getByRole('list', { name: 'Steps of the update' });
+        expect(
+            within(steps)
+                .getAllByRole('listitem')
+                .map((item) => {
+                    return [item.textContent, item.getAttribute('data-state'), item.className];
+                })
+        ).toEqual([
+            ['✓ Checking that the app can use it', 'done', 'update-steps__item update-steps__item--done'],
+            ['✓ Downloading', 'done', 'update-steps__item update-steps__item--done'],
+            ['✓ Checking the script', 'done', 'update-steps__item update-steps__item--done'],
+            ['› Trying a search', 'running', 'update-steps__item update-steps__item--running'],
+            ['· Trying the list of episodes', 'pending', 'update-steps__item update-steps__item--pending'],
+            ['· Trying an episode', 'pending', 'update-steps__item update-steps__item--pending']
+        ]);
+        expect(within(row('anicli')).queryByRole('alert')).not.toBeInTheDocument();
+        expect(within(row('anicli')).queryByText(/Downloading the update/)).not.toBeInTheDocument();
     });
 
-    it('names the change of the pages of the search among the ones that do not fit', () => {
-        version('anicli', { latest: 'abcdef0123456789abcdef0123456789abcdef01', updatable: true, unfit: ['menuIds', 'singleResult', 'searchPages'] });
+    it('takes the download as the step of an update of ani-cli that tells none', () => {
+        useProgramsStore.setState({ updates: { anicli: stateOf('anicli', { status: 'downloading', percent: 40 }) } });
         render(<ProgramsStatusBlock place="anime" />);
-        expect(row('anicli')).toHaveTextContent('The latest ani-cli works, but some changes of the app do not fit it (telling apart the anime that have the same name, the title of the anime the source picks on its own, the pages of the search after the first), so some subtitles may be missing.');
+        expect(
+            within(row('anicli'))
+                .getAllByRole('listitem')
+                .map((item) => {
+                    return item.getAttribute('data-state');
+                })
+        ).toEqual(['done', 'running', 'pending', 'pending', 'pending', 'pending']);
     });
 
-    it('names the change of the audio of the episodes among the ones that do not fit', () => {
-        version('anicli', { latest: 'abcdef0123456789abcdef0123456789abcdef01', updatable: true, unfit: ['separateAudio'] });
+    it('marks the step an update of ani-cli stopped at, with why, and the rest as not done', async () => {
+        const user = userEvent.setup();
+        useProgramsStore.setState({
+            updates: { anicli: stateOf('anicli', { step: 'episode', status: 'error', error: { code: 'INVALID', message: 'The stream of the episode came without the list of its subtitles' } }) }
+        });
         render(<ProgramsStatusBlock place="anime" />);
-        expect(row('anicli')).toHaveTextContent('The latest ani-cli works, but some changes of the app do not fit it (the audio of the episodes that give it as a track of its own), so some subtitles may be missing.');
+        expect(
+            within(row('anicli'))
+                .getAllByRole('listitem')
+                .map((item) => {
+                    return item.textContent;
+                })
+        ).toEqual(['✓ Checking that the app can use it', '✓ Downloading', '✓ Checking the script', '✓ Trying a search', '✓ Trying the list of episodes', '✗ Trying an episode']);
+        expect(within(row('anicli')).getByRole('alert')).toHaveTextContent(INVALID_TEXT);
+        const dialog = await openErrorDialog(user, INVALID_TEXT);
+        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('The stream of the episode came without the list of its subtitles');
+        expect(within(dialog).getByText('INVALID')).toBeInTheDocument();
     });
 
-    it('does not warn about the changes when there is nothing to update to', () => {
-        version('anicli', { updatable: false, unfit: ['allSubtitles'] });
+    it('marks an update of ani-cli refused at the look at the script, before anything was downloaded', () => {
+        useProgramsStore.setState({ updates: { anicli: stateOf('anicli', { step: 'compatibility', status: 'error', error: { code: 'INVALID', message: 'the option -S is gone' } }) } });
         render(<ProgramsStatusBlock place="anime" />);
-        expect(row('anicli')).not.toHaveTextContent('do not fit it');
+        expect(
+            within(row('anicli'))
+                .getAllByRole('listitem')
+                .map((item) => {
+                    return item.getAttribute('data-state');
+                })
+        ).toEqual(['failed', 'pending', 'pending', 'pending', 'pending', 'pending']);
+        // Nothing was downloaded: the result of the update says why, not the failure of a downloaded program.
+        expect(within(row('anicli')).queryByText(INVALID_TEXT)).not.toBeInTheDocument();
+    });
+
+    it('shows no steps when no update of ani-cli goes on, and none for the other programs', () => {
+        useProgramsStore.setState({ updates: { ytdlp: stateOf('ytdlp', { status: 'downloading', percent: 40 }) } });
+        render(<ProgramsStatusBlock place="anime" />);
+        expect(screen.queryByTestId('update-steps')).not.toBeInTheDocument();
+        render(<ProgramsStatusBlock place="downloads" />);
+        expect(screen.queryByTestId('update-steps')).not.toBeInTheDocument();
+        expect(within(row('ytdlp')).getByText('Downloading the update… 40%')).toBeInTheDocument();
+    });
+
+    it('says why the latest ani-cli was refused when it changed something the app relies on', () => {
+        version('anicli', { latest: null, error: 'incompatible', errorMessage: 'the option -S is gone' });
+        render(<ProgramsStatusBlock place="anime" />);
+        expect(within(row('anicli')).getByRole('alert')).toHaveTextContent('Could not look for the latest version: it changed something the app relies on.');
+        expect(within(row('anicli')).getByRole('alert')).toHaveAttribute('title', 'the option -S is gone');
     });
 
     it.each([
@@ -391,5 +455,18 @@ describe('ProgramsStatusBlock updates', () => {
         render(<ProgramsStatusBlock place="downloads" />);
         expect(row('ytdlp')).toHaveTextContent(text);
         expect(within(row('ytdlp')).queryByRole('alert') !== null).toBe(!result.ok);
+    });
+
+    it('says the version an update of ani-cli moved to by the first digits of its commit, as the rest of the card', () => {
+        useProgramsStore.setState({ results: { anicli: { action: 'update', ok: true, reason: null, lookup: null, version: '8527f185a12c6b5d0247a30b2217000dd65457fe', message: '' } } });
+        render(<ProgramsStatusBlock place="anime" />);
+        expect(row('anicli')).toHaveTextContent('Updated to 8527f18.');
+        expect(row('anicli')).not.toHaveTextContent('8527f185a12c');
+    });
+
+    it('says the build an update of ffmpeg moved to as a build', () => {
+        useProgramsStore.setState({ results: { ffmpeg: { action: 'update', ok: true, reason: null, lookup: null, version: 'latest-abcdef123456', message: '' } } });
+        render(<ProgramsStatusBlock place="global" />);
+        expect(row('ffmpeg')).toHaveTextContent(`Updated to ${displayVersion('ffmpeg', 'latest-abcdef123456')}.`);
     });
 });

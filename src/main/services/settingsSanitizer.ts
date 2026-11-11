@@ -13,7 +13,7 @@ import {
     THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
-import { ANIME_AUDIOS, ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, TRANSLATION_LANGUAGES } from '@shared/anime';
+import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, TRANSLATION_LANGUAGES } from '@shared/anime';
 import { LLM_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from '@shared/llm';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import type { DownloadOptions, Settings } from '@shared/types';
@@ -99,7 +99,6 @@ export function sanitizeSettings(input: unknown): Settings {
         extraArgs: pickString(raw.extraArgs, defaults.extraArgs),
         animeDownloadDir: pickString(raw.animeDownloadDir, defaults.animeDownloadDir),
         animeQuality: pickEnum(raw.animeQuality, ANIME_QUALITIES, defaults.animeQuality),
-        animeAudio: pickEnum(raw.animeAudio, ANIME_AUDIOS, defaults.animeAudio),
         animeSubtitles: pickEnum(raw.animeSubtitles, ANIME_SUBTITLE_SETTINGS, defaults.animeSubtitles),
         animeCheckNewEpisodes: pickBoolean(raw.animeCheckNewEpisodes, defaults.animeCheckNewEpisodes),
         animeAutoDownloadNew: pickBoolean(raw.animeAutoDownloadNew, defaults.animeAutoDownloadNew),

@@ -1,5 +1,10 @@
 import { PROGRAM_IDS, type ProgramId, type ToolSpec } from '@shared/tools';
 import {
+    ANICLI_BASE_COMMIT,
+    ANICLI_BASE_PROVIDER,
+    ANICLI_BASE_SHA256,
+    ANICLI_BASE_SIZE,
+    ANICLI_BASE_VERSION,
     aniCliSpec,
     denoSpec,
     executableName,
@@ -90,13 +95,13 @@ describe('the versions the app is made with', () => {
         });
     });
 
-    it('are ani-cli 5.1.4 at one commit, the same script on both systems', () => {
+    it('are ani-cli 5.1.8 at one commit, the same script on both systems', () => {
         const expected = {
             id: 'anicli',
-            version: '3ad53631ef2433b0c26e25ab011a5b149706c120',
-            url: 'https://raw.githubusercontent.com/pystardust/ani-cli/3ad53631ef2433b0c26e25ab011a5b149706c120/ani-cli',
-            sha256: '32ae0965b7abb102ab85f381411b980d1a9196f06bf2756d48fef16695b41d47',
-            sizeBytes: 29_772,
+            version: '8527f185a12c6b5d0247a30b2217000dd65457fe',
+            url: 'https://raw.githubusercontent.com/pystardust/ani-cli/8527f185a12c6b5d0247a30b2217000dd65457fe/ani-cli',
+            sha256: '24ada974b567789da4ea51f9f92ec5b975b43fc0e999543f9053bcf5a628105c',
+            sizeBytes: 31_360,
             format: 'raw',
             stripComponents: 0,
             exclude: [],
@@ -105,6 +110,14 @@ describe('the versions the app is made with', () => {
         };
         expect(pinnedSpec('anicli', 'linux', 'x64')).toEqual(expected);
         expect(pinnedSpec('anicli', 'win32', 'x64')).toEqual(expected);
+    });
+
+    it('say what the script of ani-cli is: its commit, checksum, size, the version it says and the site it reads', () => {
+        expect(ANICLI_BASE_COMMIT).toBe('8527f185a12c6b5d0247a30b2217000dd65457fe');
+        expect(ANICLI_BASE_SHA256).toBe('24ada974b567789da4ea51f9f92ec5b975b43fc0e999543f9053bcf5a628105c');
+        expect(ANICLI_BASE_SIZE).toBe(31_360);
+        expect(ANICLI_BASE_VERSION).toBe('5.1.8');
+        expect(ANICLI_BASE_PROVIDER).toBe('hianime.at');
     });
 
     it('are busybox 1.35.0 on Linux and busybox-w32 on Windows, one file each', () => {

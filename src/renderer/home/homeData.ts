@@ -75,7 +75,7 @@ export function continueWatching(library: readonly LibraryAnime[], history: read
         if (items.length >= limit) {
             break;
         }
-        const anime = entry.episode === null ? null : libraryEntry(library, entry.title, entry.audio);
+        const anime = entry.episode === null ? null : libraryEntry(library, entry.title);
         const item = anime === null ? null : episodeToContinue(library, anime, entry);
         if (item !== null && !seen.has(item.animeId)) {
             seen.add(item.animeId);

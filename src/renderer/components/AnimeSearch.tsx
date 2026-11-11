@@ -1,19 +1,12 @@
-import { ANIME_AUDIOS, type AnimeAudio } from '@shared/anime';
-import type { Translator } from '@shared/i18n';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { useTranslator } from '../i18n/useTranslator';
-import { useAppStore } from '../store/appStore';
-import { effectiveAudio, useAnimeStore } from '../store/animeStore';
+import { useAnimeStore } from '../store/animeStore';
 import { animeErrorReport, libraryEntry, seasonLabel } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { AnimeDetail } from './AnimeDetail';
-import { SelectField, TextField } from './fields';
+import { TextField } from './fields';
 import { RowLink } from './RowLink';
 import { ErrorNotice } from './ErrorNotice';
-
-function audioLabel(audio: AnimeAudio, t: Translator): string {
-    return audio === 'dub' ? t('anime.audio.dub') : t('anime.audio.sub');
-}
 
 export function AnimeSearch() {
     const t = useTranslator();
@@ -25,9 +18,6 @@ export function AnimeSearch() {
     });
     const setQuery = useAnimeStore((state) => {
         return state.setQuery;
-    });
-    const setAudio = useAnimeStore((state) => {
-        return state.setAudio;
     });
     const runSearch = useAnimeStore((state) => {
         return state.runSearch;
@@ -43,9 +33,6 @@ export function AnimeSearch() {
     });
     const showInLibrary = useAnimeStore((state) => {
         return state.showInLibrary;
-    });
-    const settingsAudio = useAppStore((state) => {
-        return state.settings.animeAudio;
     });
     // The next results come when the end of the list is reached.
     const endOfList = useInfiniteScroll(
@@ -71,15 +58,6 @@ export function AnimeSearch() {
                 }}
             >
                 <TextField search label={t('anime.search.label')} value={search.query} placeholder={t('anime.search.placeholder')} onChange={setQuery} />
-                <SelectField
-                    label={t('anime.audio.label')}
-                    value={effectiveAudio(search, settingsAudio)}
-                    options={ANIME_AUDIOS}
-                    formatOption={(audio) => {
-                        return audioLabel(audio, t);
-                    }}
-                    onChange={setAudio}
-                />
                 <button type="submit" className="btn btn--primary" disabled={searching || search.query.trim().length === 0}>
                     {searching ? t('anime.search.searching') : t('anime.search.button')}
                 </button>
@@ -96,7 +74,7 @@ export function AnimeSearch() {
                     <ul className="cover-grid">
                         {search.results.map((result) => {
                             // An anime is in the library from the moment it is added, whether or not an episode of it was downloaded.
-                            const saved = libraryEntry(library, result.title, search.searchedAudio);
+                            const saved = libraryEntry(library, result.title);
                             const joined = saved;
                             const inSeries = joined?.series != null && joined.season !== null;
                             return (

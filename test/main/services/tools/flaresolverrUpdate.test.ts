@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clearSelectedFlareSolverr, FLARESOLVERR_LATEST_URL, fetchLatestFlareSolverr, readSelectedFlareSolverr, writeSelectedFlareSolverr } from '@main/services/tools/flaresolverrUpdate';
-import { UpdateLookupError } from '@main/services/tools/suwayomiUpdate';
+import { UpdateLookupError } from '@main/services/tools/releaseLookup';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
 
 afterEach(() => {

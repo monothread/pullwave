@@ -169,10 +169,9 @@ describe('nextDownloadedEpisode', () => {
             expect(nextDownloadedEpisode([alone, seasonThree], alone, alone.episodes[0] as AnimeEpisodeRecord)).toBeNull();
         });
 
-        it('ignores seasons of another series or another audio', () => {
+        it('ignores seasons of another series', () => {
             const other = makeAnime([makeEpisode({ id: 6 })], { id: 13, series: 'Naruto', season: 2 });
-            const dub = makeAnime([makeEpisode({ id: 7 })], { id: 14, series: 'Frieren', season: 2, audio: 'dub' });
-            expect(nextDownloadedEpisode([seasonOne, other, dub], seasonOne, seasonOne.episodes[1] as AnimeEpisodeRecord)).toBeNull();
+            expect(nextDownloadedEpisode([seasonOne, other], seasonOne, seasonOne.episodes[1] as AnimeEpisodeRecord)).toBeNull();
         });
     });
 });
@@ -220,20 +219,19 @@ describe('downloadedCount', () => {
 });
 
 describe('downloadedAnime', () => {
-    const SUB = makeAnime([makeEpisode({ id: 1 })], { id: 1, title: 'Naruto', audio: 'sub' });
-    const DUB = makeAnime([makeEpisode({ id: 2, status: 'error' })], { id: 2, title: 'Naruto', audio: 'dub' });
-    const EMPTY = makeAnime([], { id: 3, title: 'Bleach', audio: 'sub' });
+    const NARUTO = makeAnime([makeEpisode({ id: 1 })], { id: 1, title: 'Naruto' });
+    const FAILED = makeAnime([makeEpisode({ id: 2, status: 'error' })], { id: 2, title: 'Bleach' });
+    const EMPTY = makeAnime([], { id: 3, title: 'Frieren' });
 
-    it('finds the anime with that title and audio when it has a downloaded episode', () => {
-        expect(downloadedAnime([SUB, DUB, EMPTY], 'Naruto', 'sub')).toBe(SUB);
+    it('finds the anime with that title when it has a downloaded episode', () => {
+        expect(downloadedAnime([NARUTO, FAILED, EMPTY], 'Naruto')).toBe(NARUTO);
     });
 
-    it('gives null when it has nothing downloaded, is in another audio or is not there', () => {
-        expect(downloadedAnime([SUB, DUB, EMPTY], 'Naruto', 'dub')).toBeNull();
-        expect(downloadedAnime([SUB, DUB, EMPTY], 'Bleach', 'sub')).toBeNull();
-        expect(downloadedAnime([SUB], 'Naruto', 'dub')).toBeNull();
-        expect(downloadedAnime([SUB], 'One Piece', 'sub')).toBeNull();
-        expect(downloadedAnime([], 'Naruto', 'sub')).toBeNull();
+    it('gives null when it has nothing downloaded or is not there', () => {
+        expect(downloadedAnime([NARUTO, FAILED, EMPTY], 'Bleach')).toBeNull();
+        expect(downloadedAnime([NARUTO, FAILED, EMPTY], 'Frieren')).toBeNull();
+        expect(downloadedAnime([NARUTO], 'One Piece')).toBeNull();
+        expect(downloadedAnime([], 'Naruto')).toBeNull();
     });
 });
 
@@ -306,13 +304,13 @@ describe('groupLibrary', () => {
         ]);
     });
 
-    it('puts the sub and the dub of one season side by side', () => {
+    it('puts two anime of the same season side by side, the first added first', () => {
         const library = [
-            makeAnime([], { id: 1, title: 'Bleach', audio: 'sub', series: 'Bleach', season: 1 }),
-            makeAnime([], { id: 2, title: 'Bleach', audio: 'dub', series: 'Bleach', season: 1 }),
-            makeAnime([], { id: 3, title: 'Bleach 2', audio: 'sub', series: 'Bleach', season: 2 })
+            makeAnime([], { id: 2, title: 'Bleach (TV)', series: 'Bleach', season: 1 }),
+            makeAnime([], { id: 1, title: 'Bleach', series: 'Bleach', season: 1 }),
+            makeAnime([], { id: 3, title: 'Bleach 2', series: 'Bleach', season: 2 })
         ];
-        expect(groupLibrary(library)[0]?.entries.map((entry) => { return entry.id; })).toEqual([2, 1, 3]);
+        expect(groupLibrary(library)[0]?.entries.map((entry) => { return entry.id; })).toEqual([1, 2, 3]);
     });
 
     it('does not join an anime that has a series but no season, or a season but no series', () => {
@@ -387,12 +385,13 @@ describe('seasonLabel', () => {
 });
 
 describe('libraryEntry', () => {
-    it('finds the anime of the library with that title and audio, downloaded or not', () => {
-        const sub = makeAnime([], { id: 1, title: 'Naruto', audio: 'sub' });
-        const dub = makeAnime([], { id: 2, title: 'Naruto', audio: 'dub' });
-        expect(libraryEntry([sub, dub], 'Naruto', 'dub')).toBe(dub);
-        expect(libraryEntry([sub], 'Naruto', 'dub')).toBeNull();
-        expect(libraryEntry([sub], 'Bleach', 'sub')).toBeNull();
+    it('finds the anime of the library with that title, downloaded or not', () => {
+        const naruto = makeAnime([], { id: 1, title: 'Naruto' });
+        const bleach = makeAnime([makeEpisode({ id: 9 })], { id: 2, title: 'Bleach' });
+        expect(libraryEntry([naruto, bleach], 'Naruto')).toBe(naruto);
+        expect(libraryEntry([naruto, bleach], 'Bleach')).toBe(bleach);
+        expect(libraryEntry([naruto], 'naruto')).toBeNull();
+        expect(libraryEntry([], 'Naruto')).toBeNull();
     });
 });
 

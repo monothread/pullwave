@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { patchAniCli } from '@main/services/aniPatches';
 import {
     AniCliLocator,
     ANI_CLI_COMMAND,
@@ -259,11 +261,11 @@ describe('AniCliLocator.env player', () => {
     const locator = newLinuxLocator(LOCATIONS, makeFs().fs);
 
     it('plays nothing by default', () => {
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [] }, {}).ANI_CLI_PLAYER).toBe('pullwave_noplayer');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: [] }, {}).ANI_CLI_PLAYER).toBe('pullwave_noplayer');
     });
 
     it('can ask ani-cli to print the address instead', () => {
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [], player: 'debug' }, {}).ANI_CLI_PLAYER).toBe('debug');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: [], player: 'debug' }, {}).ANI_CLI_PLAYER).toBe('debug');
     });
 });
 
@@ -271,12 +273,12 @@ describe('AniCliLocator.env search', () => {
     const locator = newLinuxLocator(LOCATIONS, makeFs().fs);
 
     it('tells ani-cli how many results to read at least, as text', () => {
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [], searchMin: 45 }, {}).PULLWAVE_SEARCH_MIN).toBe('45');
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [], searchMin: 1 }, {}).PULLWAVE_SEARCH_MIN).toBe('1');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: [], searchMin: 45 }, {}).PULLWAVE_SEARCH_MIN).toBe('45');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: [], searchMin: 1 }, {}).PULLWAVE_SEARCH_MIN).toBe('1');
     });
 
     it('leaves the variable out when no number of results is asked for, so only the first page is read', () => {
-        const env = locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [] }, { PULLWAVE_SEARCH_MIN: '99' });
+        const env = locator.env({ downloadDir: '.', subtitleLabels: [] }, { PULLWAVE_SEARCH_MIN: '99' });
         expect(env).not.toHaveProperty('PULLWAVE_SEARCH_MIN');
     });
 });
@@ -285,12 +287,12 @@ describe('AniCliLocator.env subtitles', () => {
     const locator = newLinuxLocator(LOCATIONS, makeFs().fs);
 
     it('joins the languages with a bar, in order', () => {
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: ['Spanish'] }, {}).PULLWAVE_SUB_LABELS).toBe('Spanish');
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: ['Spanish', 'English'] }, {}).PULLWAVE_SUB_LABELS).toBe('Spanish|English');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: ['Spanish'] }, {}).PULLWAVE_SUB_LABELS).toBe('Spanish');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: ['Spanish', 'English'] }, {}).PULLWAVE_SUB_LABELS).toBe('Spanish|English');
     });
 
     it('leaves the variable empty when ani-cli should choose', () => {
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [] }, {}).PULLWAVE_SUB_LABELS).toBe('');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: [] }, {}).PULLWAVE_SUB_LABELS).toBe('');
     });
 });
 
@@ -302,14 +304,19 @@ describe('AniCliLocator.withPatches', () => {
         '}'
     ].join('\n');
     const installed = { path: SCRIPT, source: 'installed' as const };
+    const checksumOf = (text: string): string => {
+        return createHash('sha256').update(text).digest('hex').slice(0, 16);
+    };
+    const PATCHED = patchAniCli(ORIGINAL) as string;
+    const PATCHED_PATH = `/data/anime/ani-cli.${checksumOf(PATCHED)}.patched`;
 
-    it('saves a patched copy next to the tools and uses it', () => {
+    it('saves a patched copy next to the tools, named by what it holds, and uses it', () => {
         const { fs, writes, directories } = makeFs([], {}, { [installed.path]: ORIGINAL });
         const result = newLinuxLocator(LOCATIONS, fs).withPatches(installed);
 
-        expect(result).toEqual({ path: '/data/anime/ani-cli.patched', source: 'installed' });
+        expect(result).toEqual({ path: PATCHED_PATH, source: 'installed' });
         expect(writes).toHaveLength(1);
-        expect(writes[0]?.[0]).toBe('/data/anime/ani-cli.patched');
+        expect(writes[0]).toEqual([PATCHED_PATH, PATCHED]);
         expect(writes[0]?.[1]).toContain('sub_link="$(pullwave_pick_subtitle "$_json")"');
         expect(directories).toEqual(['/data/anime']);
     });
@@ -340,7 +347,7 @@ describe('AniCliLocator.withPatches', () => {
     });
 
     it('also patches the debug output of the script', () => {
-        const debug = 'x\n        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;';
+        const debug = 'x\n        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nAudio:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$audio_link" "$sub_link" ;;';
         const { fs, writes } = makeFs([], {}, { [installed.path]: debug });
         newLinuxLocator(LOCATIONS, fs).withPatches(installed);
         expect(writes[0]?.[1]).toContain('Referer:');
@@ -354,10 +361,40 @@ describe('AniCliLocator.withPatches', () => {
         expect(first.writes).toHaveLength(1);
     });
 
-    it('writes the copy again when it is out of date', () => {
-        const { fs, writes } = makeFs([], {}, { [installed.path]: ORIGINAL, '/data/anime/ani-cli.patched': 'old copy' });
+    it('writes the copy again when the file of its name does not hold it', () => {
+        const { fs, writes } = makeFs([], {}, { [installed.path]: ORIGINAL, [PATCHED_PATH]: 'damaged copy' });
         newLinuxLocator(LOCATIONS, fs).withPatches(installed);
-        expect(writes).toHaveLength(1);
+        expect(writes).toEqual([[PATCHED_PATH, PATCHED]]);
+    });
+
+    it('never writes over the copy a run started with: a new script goes to a file of its own, and the old one goes once the new one is used', () => {
+        const NEWER = `${ORIGINAL}\n# a newer ani-cli`;
+        const newerPath = `/data/anime/ani-cli.${checksumOf(patchAniCli(NEWER) as string)}.patched`;
+        const { fs, writes, removed, texts } = makeFs([PATCHED_PATH], {}, { [installed.path]: ORIGINAL });
+        const locator = newLinuxLocator(LOCATIONS, fs);
+        expect(locator.withPatches(installed).path).toBe(PATCHED_PATH);
+        texts.set(installed.path, NEWER);
+        expect(locator.withPatches(installed).path).toBe(newerPath);
+        expect(newerPath).not.toBe(PATCHED_PATH);
+        expect(writes.map(([path]) => {
+            return path;
+        })).toEqual([PATCHED_PATH, newerPath]);
+        expect(texts.get(PATCHED_PATH)).toBe(PATCHED);
+        expect(removed).toEqual([PATCHED_PATH]);
+    });
+
+    it('removes the copy earlier versions of the app kept under one name', () => {
+        const { fs, removed } = makeFs(['/data/anime/ani-cli.patched'], {}, { [installed.path]: ORIGINAL });
+        newLinuxLocator(LOCATIONS, fs).withPatches(installed);
+        expect(removed).toEqual(['/data/anime/ani-cli.patched']);
+    });
+
+    it('goes on when an old copy cannot be removed (in use on Windows)', () => {
+        const { fs } = makeFs(['/data/anime/ani-cli.patched'], {}, { [installed.path]: ORIGINAL });
+        fs.remove = () => {
+            throw Object.assign(new Error('busy'), { code: 'EBUSY' });
+        };
+        expect(newLinuxLocator(LOCATIONS, fs).withPatches(installed)).toEqual({ path: PATCHED_PATH, source: 'installed' });
     });
 
     it('never changes a script the user chose', () => {
@@ -387,7 +424,7 @@ describe('AniCliLocator.withPatches', () => {
 
         const result = locator.withPatches({ path: script, source: 'installed' });
 
-        expect(result.path).toBe(join(root, 'data', 'ani-cli.patched'));
+        expect(result.path).toBe(join(root, 'data', `ani-cli.${checksumOf(PATCHED)}.patched`));
         expect(readFileSync(result.path, 'utf-8')).toContain('pullwave_pick_subtitle() {');
         expect(locator.withPatches({ path: join(root, 'missing'), source: 'installed' }).path).toBe(join(root, 'missing'));
     });
@@ -432,14 +469,15 @@ describe('AniCliLocator.env', () => {
     const locator = newLinuxLocator(LOCATIONS, makeFs().fs);
 
     it('builds an isolated environment', () => {
-        expect(locator.env({ audio: 'dub', downloadDir: '/home/me/Anime', subtitleLabels: ['Portuguese', 'English'] }, { PATH: '/usr/bin', HOME: '/home/me', LANG: 'pt_BR.UTF-8', SECRET: 'x' })).toEqual({
+        expect(locator.env({ downloadDir: '/home/me/Anime', subtitleLabels: ['Portuguese', 'English'] }, { PATH: '/usr/bin', HOME: '/home/me', LANG: 'pt_BR.UTF-8', SECRET: 'x' })).toEqual({
             PATH: '/data/anime/tools',
             ANI_CLI_MENU: ANI_MENU_COMMAND,
             ANI_CLI_PLAYER: ANI_PLAYER_COMMAND,
             ANI_CLI_LOG: '0',
-            ANI_CLI_MODE: 'dub',
+            ANI_CLI_MODE: 'sub',
             ANI_CLI_HIST_DIR: '/data/anime/history',
             ANI_CLI_DOWNLOAD_DIR: '/home/me/Anime',
+            ANI_CLI_TMP_DIR: '/home/me/Anime',
             PULLWAVE_SUB_LABELS: 'Portuguese|English',
             HOME: '/home/me',
             LANG: 'pt_BR.UTF-8'
@@ -447,7 +485,7 @@ describe('AniCliLocator.env', () => {
     });
 
     it('passes on only the variables ani-cli and yt-dlp need', () => {
-        const env = locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [] }, { HOME: '/h', LC_ALL: 'C', TMPDIR: '/t', PATH: '/usr/bin', DISPLAY: ':0' });
+        const env = locator.env({ downloadDir: '.', subtitleLabels: [] }, { HOME: '/h', LC_ALL: 'C', TMPDIR: '/t', PATH: '/usr/bin', DISPLAY: ':0' });
         expect(env.HOME).toBe('/h');
         expect(env.LC_ALL).toBe('C');
         expect(env.TMPDIR).toBe('/t');
@@ -457,7 +495,7 @@ describe('AniCliLocator.env', () => {
     });
 
     it('sets the audio mode', () => {
-        expect(locator.env({ audio: 'sub', downloadDir: '.', subtitleLabels: [] }, {}).ANI_CLI_MODE).toBe('sub');
+        expect(locator.env({ downloadDir: '.', subtitleLabels: [] }, {}).ANI_CLI_MODE).toBe('sub');
     });
 
     it('puts the folders of the tools on Path on Windows, once each, and passes the variables Windows programs need', () => {
@@ -477,12 +515,17 @@ describe('AniCliLocator.env', () => {
             deno: 'C:\\t\\ytdlp\\deno.exe',
             ffprobe: null
         };
-        const env = windows.env({ audio: 'sub', downloadDir: 'C:\\Anime', subtitleLabels: [], tools }, { SystemRoot: 'C:\\Windows', Path: 'C:\\leak', SECRET: 'x' });
+        const env = windows.env({ downloadDir: 'C:\\Anime', subtitleLabels: [], tools }, { SystemRoot: 'C:\\Windows', Path: 'C:\\leak', SECRET: 'x' });
         expect(env.Path).toBe('C:\\t\\ytdlp;C:\\t\\ffmpeg\\bin;C:\\t\\busybox;C:\\t\\curl\\bin');
         expect(env.PATH).toBeUndefined();
         expect(env.SystemRoot).toBe('C:\\Windows');
         expect(env.SECRET).toBeUndefined();
         expect(env.ANI_CLI_DOWNLOAD_DIR).toBe('C:/Anime');
+        expect(env.ANI_CLI_TMP_DIR).toBe('C:/Anime');
+    });
+
+    it('keeps the pieces yt-dlp downloads beside the file, in the folder of the downloads', () => {
+        expect(locator.env({ downloadDir: '/home/me/Anime/One Piece', subtitleLabels: [] }, {}).ANI_CLI_TMP_DIR).toBe('/home/me/Anime/One Piece');
     });
 });
 

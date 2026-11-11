@@ -83,10 +83,7 @@ const MANGA_CHANNELS = [
     IPC.mangaStoreRemove,
     IPC.mangaStores,
     IPC.mangaToolsCheck,
-    IPC.mangaServerUpdate,
-    IPC.mangaServerReset,
     IPC.mangaHelperUpdate,
-    IPC.mangaRestart,
     IPC.mangaHealth,
     IPC.mangaRestartPrograms,
     IPC.mangaUpdates,
@@ -223,17 +220,12 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const updates = {
         check: vi.fn(() => {
-            return Promise.resolve({ suwayomi: { current: 'v1', latest: 'v2', error: null, updatable: true, chosen: false, bundled: 'v1', restartNeeded: false }, flaresolverr: null });
+            return Promise.resolve({ flaresolverr: { current: 'v3.5.2', latest: 'v3.6.0', error: null, updatable: true } });
         }),
-        updateServer: vi.fn(() => {
-            return Promise.resolve({ ok: true as const, version: 'v2' });
-        }),
-        resetServer: vi.fn(),
         updateHelper: vi.fn(() => {
             return Promise.resolve({ ok: false as const, reason: 'not-installed' as const, message: null });
         })
     };
-    const restarts = { count: 0 };
     const coverRequests: string[] = [];
     const checks: Array<number | null> = [];
     const presented: Array<string | null> = [];
@@ -266,9 +258,6 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         checkState: () => {
             return options.checkState ?? { running: false, origin: null, done: 0, total: 0, current: null };
         },
-        restartApp: () => {
-            restarts.count += 1;
-        },
         queue,
         db,
         reader,
@@ -294,7 +283,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const ipc = makeIpc();
     registerMangaHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, queue, service, reader, repair, downloads, removedFiles, opened, sites, libraryChanges, updates, restarts, covers, coverRequests, checks, presented };
+    return { ...ipc, db, queue, service, reader, repair, downloads, removedFiles, opened, sites, libraryChanges, updates, covers, coverRequests, checks, presented };
 }
 
 afterEach(() => {
@@ -318,11 +307,8 @@ describe('registerMangaHandlers', () => {
         });
         expect(ipc.call(IPC.mangaExtensionsUpdateAll)).toEqual(unsupported);
         expect(ipc.call(IPC.mangaOpenSite)).toBeUndefined();
-        expect(ipc.call(IPC.mangaToolsCheck)).toEqual({ suwayomi: { current: '', latest: null, error: null, updatable: false, chosen: false, bundled: '', restartNeeded: false }, flaresolverr: null });
-        expect(ipc.call(IPC.mangaServerUpdate)).toEqual({ ok: false, reason: 'unsupported', message: null });
+        expect(ipc.call(IPC.mangaToolsCheck)).toEqual({ flaresolverr: null });
         expect(ipc.call(IPC.mangaHelperUpdate)).toEqual({ ok: false, reason: 'unsupported', message: null });
-        expect(ipc.call(IPC.mangaServerReset)).toBeUndefined();
-        expect(ipc.call(IPC.mangaRestart)).toBeUndefined();
         expect(ipc.call(IPC.mangaHealth)).toEqual({ server: { state: 'not-installed', version: null, message: null, external: false }, helper: null });
         expect(ipc.call(IPC.mangaRestartPrograms)).toEqual({ server: { state: 'not-installed', version: null, message: null, external: false }, helper: null });
         expect(ipc.call(IPC.mangaUpdates)).toEqual([]);
@@ -736,27 +722,25 @@ describe('the site and the folder of the mangas', () => {
         expect(sites).toEqual(['https://dex.example/manga/one-piece', 'http://dex.example/a']);
     });
 
-    it('looks for the latest versions of the server and of the helper', async () => {
+    it('looks for the latest version of the helper (the server is not updated from the app)', async () => {
         const { call, updates } = setup();
-        await expect(call(IPC.mangaToolsCheck)).resolves.toEqual({ suwayomi: { current: 'v1', latest: 'v2', error: null, updatable: true, chosen: false, bundled: 'v1', restartNeeded: false }, flaresolverr: null });
+        await expect(call(IPC.mangaToolsCheck)).resolves.toEqual({ flaresolverr: { current: 'v3.5.2', latest: 'v3.6.0', error: null, updatable: true } });
         expect(updates.check).toHaveBeenCalledTimes(1);
         expect(updates.check).toHaveBeenCalledWith();
     });
 
-    it('updates the server, goes back to the version the app ships with, and updates the helper', async () => {
+    it('updates the helper', async () => {
         const { call, updates } = setup();
-        await expect(call(IPC.mangaServerUpdate)).resolves.toEqual({ ok: true, version: 'v2' });
-        expect(updates.updateServer).toHaveBeenCalledTimes(1);
-        expect(call(IPC.mangaServerReset)).toBeUndefined();
-        expect(updates.resetServer).toHaveBeenCalledTimes(1);
         await expect(call(IPC.mangaHelperUpdate)).resolves.toEqual({ ok: false, reason: 'not-installed', message: null });
         expect(updates.updateHelper).toHaveBeenCalledTimes(1);
+        expect(updates.updateHelper).toHaveBeenCalledWith();
     });
 
-    it('restarts the app when the screen asks for it', () => {
-        const { call, restarts } = setup();
-        expect(call(IPC.mangaRestart)).toBeUndefined();
-        expect(restarts.count).toBe(1);
+    it('has no channel that updates the server, goes back from an update or restarts the app for it', () => {
+        expect(Object.values(IPC)).not.toContain('manga:server-update');
+        expect(Object.values(IPC)).not.toContain('manga:server-reset');
+        expect(Object.values(IPC)).not.toContain('manga:restart');
+        expect(Object.values(IPC)).not.toContain('event:manga-server-update');
     });
 
     it('restarts the server and the helper through the service and answers with how they are doing', async () => {

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { AnimeDb } from '@main/services/animeDb';
 import {
     METADATA_FILE_NAME,
+    METADATA_AUDIO,
     METADATA_VERSION,
     metadataOf,
     metadataPathFor,
@@ -25,7 +26,7 @@ const METADATA: EpisodeMetadata = {
     title: 'Re:Zero',
     query: 're zero',
     searchIndex: 3,
-    audio: 'dub',
+    audio: 'sub',
     number: '12.5',
     positionSeconds: 600.5,
     durationSeconds: 1440,
@@ -40,28 +41,35 @@ describe('constants and paths', () => {
     it('names the file and puts it in the folder of the video', () => {
         expect(METADATA_FILE_NAME).toBe('pullwave.json');
         expect(METADATA_VERSION).toBe(1);
+        // Still written, so the versions of the app that refused a file without it can import the library.
+        expect(METADATA_AUDIO).toBe('sub');
         expect(metadataPathFor(join('/lib', 'Naruto', 'Episode 1', 'Naruto Episode 1.mp4'))).toBe(join('/lib', 'Naruto', 'Episode 1', 'pullwave.json'));
     });
 });
 
 describe('metadataOf', () => {
     it('takes what identifies the anime and where the viewer stopped', () => {
-        const anime = makeAnime([], { id: 4, title: 'Re:Zero', query: 're zero', searchIndex: 3, audio: 'dub' });
+        const anime = makeAnime([], { id: 4, title: 'Re:Zero', query: 're zero', searchIndex: 3 });
         const episode = makeEpisode({ number: '12.5', positionSeconds: 600.5, durationSeconds: 1440, watched: true });
         expect(metadataOf(anime, episode)).toEqual(METADATA);
     });
 });
 
 describe('parseEpisodeMetadata', () => {
+    it('reads a file whatever audio it says, or none (the app only has the subtitled anime now)', () => {
+        expect(parseEpisodeMetadata(valid({ audio: 'dub' }))).toEqual(METADATA);
+        expect(parseEpisodeMetadata(valid({ audio: 'raw' }))).toEqual(METADATA);
+        expect(parseEpisodeMetadata(valid({ audio: undefined }))).toEqual(METADATA);
+    });
+
     it('reads a valid file', () => {
         expect(parseEpisodeMetadata(valid())).toEqual(METADATA);
-        expect(parseEpisodeMetadata(valid({ searchIndex: 0, positionSeconds: 0, durationSeconds: 0, watched: false, audio: 'sub' }))).toEqual({
+        expect(parseEpisodeMetadata(valid({ searchIndex: 0, positionSeconds: 0, durationSeconds: 0, watched: false }))).toEqual({
             ...METADATA,
             searchIndex: 0,
             positionSeconds: 0,
             durationSeconds: 0,
-            watched: false,
-            audio: 'sub'
+            watched: false
         });
     });
 
@@ -88,7 +96,6 @@ describe('parseEpisodeMetadata', () => {
         ['a position that is not an integer', { searchIndex: 1.5 }],
         ['a negative position', { searchIndex: -1 }],
         ['a position that is text', { searchIndex: '2' }],
-        ['an unknown audio', { audio: 'raw' }],
         ['an episode that is not a number', { number: 'one' }],
         ['an episode with a path in it', { number: '../1' }],
         ['an episode that is a number', { number: 1 }],
@@ -180,7 +187,7 @@ describe('refreshEpisodeMetadata', () => {
     function setup(videoOf: (folder: string) => string, overrides: { status?: 'done' | 'error' } = {}) {
         const root = makeTempDir();
         const db = new AnimeDb(':memory:');
-        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
         const episode = db.ensureEpisode(anime.id, '1');
         const video = videoOf(root);
         if (overrides.status === 'error') {
@@ -245,7 +252,7 @@ describe('refreshEpisodeMetadata', () => {
     it('works on the folders of the system it is told', () => {
         const write = vi.fn();
         const db = new AnimeDb(':memory:');
-        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
         const episode = db.ensureEpisode(anime.id, '1');
         db.markDone(episode.id, 'D:\\Anime\\Naruto\\Episode 1\\Naruto Episode 1.mp4', 10);
         refreshEpisodeMetadata(db, episode.id, { write }, 'win32');

@@ -36,9 +36,9 @@ const LIBRARY = [
             makeEpisode({ id: 5, number: '5', status: 'cancelled', sizeBytes: null, filePath: null }),
             makeEpisode({ id: 6, number: '6', status: 'queued', sizeBytes: null, filePath: null })
         ],
-        { id: 10, title: 'Naruto', audio: 'sub' }
+        { id: 10, title: 'Naruto' }
     ),
-    makeAnime([], { id: 11, title: 'Naruto', audio: 'dub' })
+    makeAnime([], { id: 11, title: 'Naruto' })
 ];
 
 describe('AnimeLibrary', () => {
@@ -498,8 +498,8 @@ describe('AnimeLibrary', () => {
             const episodes = [makeEpisode({ id: 1, number: '1' }), makeEpisode({ id: 2, number: '2' })];
             useAnimeStore.setState({
                 library: [
-                    makeAnime(episodes, { id: 1, title: 'Naruto', audio: 'sub' }),
-                    makeAnime(episodes, { id: 2, title: 'Bleach', audio: 'sub' })
+                    makeAnime(episodes, { id: 1, title: 'Naruto' }),
+                    makeAnime(episodes, { id: 2, title: 'Bleach' })
                 ]
             });
             render(<AnimeLibrary />);
@@ -956,8 +956,8 @@ describe('AnimeLibrary', () => {
 
     describe('searching the library', () => {
         const MANY = [
-            makeAnime([makeEpisode({ id: 1 })], { id: 1, title: 'Naruto', audio: 'sub' }),
-            makeAnime([makeEpisode({ id: 2 })], { id: 2, title: 'Naruto', audio: 'dub' }),
+            makeAnime([makeEpisode({ id: 1 })], { id: 1, title: 'Naruto' }),
+            makeAnime([makeEpisode({ id: 2 })], { id: 2, title: 'Naruto' }),
             makeAnime([makeEpisode({ id: 3 })], { id: 3, title: 'Pokémon' }),
             makeAnime([makeEpisode({ id: 4 })], { id: 4, title: 'Cyberpunk: Edgerunners' })
         ];
@@ -1048,7 +1048,7 @@ describe('AnimeLibrary', () => {
         expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
 
         await user.click(within(subbed as HTMLElement).getByRole('button', { name: 'OPEN SERIES: Naruto' }));
-        expect(screen.getByText('SUBTITLED')).toBeInTheDocument();
+        expect(screen.queryByText('SUBTITLED')).not.toBeInTheDocument();
         expect(screen.getByText('3/6 DOWNLOADED')).toBeInTheDocument();
     });
 
@@ -1076,7 +1076,7 @@ describe('AnimeLibrary', () => {
         await user.click(screen.getByRole('button', { name: 'GO TO SOURCE: Naruto' }));
 
         expect(useAnimeStore.getState().view).toBe('search');
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 1, 'sub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 1);
         expect(useAnimeStore.getState().selection).toMatchObject({ result: { index: 1, title: 'Naruto' }, status: 'ready', episodes: ['1', '2'] });
     });
 
@@ -1164,7 +1164,7 @@ describe('AnimeLibrary', () => {
             const user = userEvent.setup();
             open();
             const episode = makeEpisode({ id: 1, number: '1', sizeBytes: 2 * 1024 ** 2, watched: true });
-            mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([episode], { id: 10, title: 'Naruto', audio: 'sub' })]);
+            mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([episode], { id: 10, title: 'Naruto' })]);
             render(<AnimeLibrary />);
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
             await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
@@ -1418,23 +1418,22 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
         });
 
-        it('puts the audio on the line of the chip of the season, at its right, and not with the progress', async () => {
+        it('puts the chip of the season alone on its line, with no audio, and the progress at the bottom', async () => {
             const user = userEvent.setup();
-            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1 })], { id: 10, title: 'Naruto', audio: 'dub' })] });
+            useAnimeStore.setState({ library: [makeAnime([makeEpisode({ id: 1 })], { id: 10, title: 'Naruto' })] });
             render(<AnimeLibrary />);
             await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
             const season = screen.getByTestId('anime-season');
             const top = season.querySelector('.season-card__top') as HTMLElement;
             expect(Array.from(top.children).map((child) => {
                 return child.textContent;
-            })).toEqual(['SEASON 1', 'DUBBED']);
+            })).toEqual(['SEASON 1']);
             expect(top.firstElementChild).toHaveClass('season__chip');
-            expect(top.lastElementChild).toHaveClass('badge');
-            expect(season.querySelector('.cover-card__footer')).not.toContainElement(top.lastElementChild as HTMLElement);
+            expect(top.querySelector('.badge')).toBeNull();
             expect(within(season.querySelector('.cover-card__footer') as HTMLElement).getByText('1/1 DOWNLOADED')).toBeInTheDocument();
         });
 
-        it('shows on the screen of a season its name, the series it is of, its season, its progress and its audio, with the buttons of the season', async () => {
+        it('shows on the screen of a season its name, the series it is of, its season and its progress, with the buttons of the season', async () => {
             const user = userEvent.setup();
             useAnimeStore.setState({
                 library: [
@@ -1450,7 +1449,7 @@ describe('AnimeLibrary', () => {
             expect(within(view).getByRole('heading', { level: 3, name: 'Frieren Season 2' })).toBeInTheDocument();
             expect(within(view).getByText('Frieren')).toHaveClass('section-label');
             expect(view.querySelector('.season__chip')).toHaveTextContent('SEASON 2');
-            expect(within(view).getByText('SUBTITLED')).toHaveClass('badge');
+            expect(within(view).queryByText(/SUBTITLED|DUBBED/)).not.toBeInTheDocument();
             expect(within(view).getByText('1/2 DOWNLOADED')).toBeInTheDocument();
             expect(within(view).getByRole('button', { name: 'GO TO SOURCE: Frieren Season 2' })).toBeInTheDocument();
             expect(within(view).getByRole('button', { name: 'EDIT SEASON: Frieren Season 2' })).toBeInTheDocument();
@@ -1520,7 +1519,7 @@ describe('AnimeLibrary paused episodes', () => {
                 makeEpisode({ id: 2, number: '2', status: 'downloading', sizeBytes: null, filePath: null }),
                 makeEpisode({ id: 3, number: '3', status: 'done' })
             ],
-            { id: 10, title: 'Naruto', audio: 'sub' }
+            { id: 10, title: 'Naruto' }
         )
     ];
 
@@ -2103,7 +2102,7 @@ describe('AnimeLibrary episodes that are not downloaded', () => {
             makeEpisode({ id: 2, number: '2', status: 'idle', filePath: null, sizeBytes: null }),
             makeEpisode({ id: 3, number: '3', status: 'idle', filePath: null, sizeBytes: null })
         ],
-        { id: 10, title: 'Naruto', audio: 'sub' }
+        { id: 10, title: 'Naruto' }
     );
 
     async function openSeries() {
@@ -2215,7 +2214,7 @@ describe('AnimeLibrary episodes that the check for new episodes put in the libra
         return makeEpisode({ id, number, status: 'idle', filePath: null, sizeBytes: null, addedAt });
     }
 
-    const NARUTO = makeAnime([idle(1, '1', null), idle(2, '2', NOON - 1000)], { id: 10, title: 'Naruto', audio: 'sub' });
+    const NARUTO = makeAnime([idle(1, '1', null), idle(2, '2', NOON - 1000)], { id: 10, title: 'Naruto' });
 
     it('says on the card of the anime that one episode is new, today', () => {
         useAnimeStore.setState({ library: [NARUTO] });
@@ -2227,7 +2226,7 @@ describe('AnimeLibrary episodes that the check for new episodes put in the libra
     });
 
     it('says how many are new when there are several', () => {
-        const frieren = makeAnime([idle(1, '1', NOON - 1000), idle(2, '2', NOON - 2000), idle(3, '3', null)], { id: 11, title: 'Frieren', audio: 'sub' });
+        const frieren = makeAnime([idle(1, '1', NOON - 1000), idle(2, '2', NOON - 2000), idle(3, '3', null)], { id: 11, title: 'Frieren' });
         useAnimeStore.setState({ library: [frieren] });
         render(<AnimeLibrary />);
 
@@ -2250,7 +2249,7 @@ describe('AnimeLibrary episodes that the check for new episodes put in the libra
     });
 
     it('says nothing when the episodes came with the library or arrived before today', () => {
-        const old = makeAnime([idle(1, '1', null), idle(2, '2', NOON - DAY), idle(3, '3', NOON - 5 * DAY)], { id: 12, title: 'Bleach', audio: 'sub' });
+        const old = makeAnime([idle(1, '1', null), idle(2, '2', NOON - DAY), idle(3, '3', NOON - 5 * DAY)], { id: 12, title: 'Bleach' });
         useAnimeStore.setState({ library: [old] });
         render(<AnimeLibrary />);
 
@@ -2278,7 +2277,7 @@ describe('AnimeLibrary the releases of an anime', () => {
     const UNKNOWN = { status: null, override: null, complete: false } as const;
 
     function season(airing: { status: 'finished' | 'ongoing' | null; override: 'complete' | 'ongoing' | null; complete: boolean }) {
-        return makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 10, title: 'Naruto', audio: 'sub', series: 'Naruto', season: 1, airing });
+        return makeAnime([makeEpisode({ id: 1, number: '1' })], { id: 10, title: 'Naruto', series: 'Naruto', season: 1, airing });
     }
 
     async function openSeason(airing: Parameters<typeof season>[0]) {

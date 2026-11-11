@@ -2,8 +2,6 @@
 import type { LlmError, SpeechTranslatesTo } from './llm';
 import type { ErrorDetails } from './errorDetails';
 
-export type AnimeAudio = 'sub' | 'dub';
-
 export interface AnimeSearchResult {
     // Position in the result list of that exact search: ani-cli selects an entry by it (`-S <index>`).
     index: number;
@@ -44,7 +42,6 @@ export type AniRunResult<T> = { status: 'done'; value: T } | { status: 'error'; 
 
 export const ANIME_QUALITIES = ['best', '1080p', '720p', '480p', '360p', 'worst'] as const;
 export type AnimeQuality = (typeof ANIME_QUALITIES)[number];
-export const ANIME_AUDIOS: readonly AnimeAudio[] = ['sub', 'dub'];
 export const DEFAULT_ANIME_QUALITY_SETTING: AnimeQuality = 'best';
 
 // Which subtitles to take: the language of the app, what ani-cli picks by itself, or one language (the name the source
@@ -85,7 +82,6 @@ export interface AnimeRecord {
     searchIndex: number;
     // The id the source gives it, when it was known as it was added (null for the ones added before, which are told by their title).
     sourceId: string | null;
-    audio: AnimeAudio;
     createdAt: number;
     // The seasons of one anime are separate entries in the source: the user joins them with a series name and a season number
     // (both set or both null).
@@ -120,14 +116,13 @@ export interface AnimeEpisodeRecord {
 }
 
 // An anime the viewer opened or watched, kept apart from the library: it covers what was only searched or streamed too. The same
-// title and audio is one entry, moved to the top each time it is opened.
+// title is one entry, moved to the top each time it is opened.
 export interface AnimeHistoryEntry {
     id: number;
     title: string;
     // What was searched and the position of the anime in that search: they are how ani-cli finds it again.
     query: string;
     searchIndex: number;
-    audio: AnimeAudio;
     // The last episode watched; null when it was only opened.
     episode: string | null;
     // When the anime was last opened or watched.
@@ -140,7 +135,6 @@ export interface AnimeHistoryRequest {
     title: string;
     query: string;
     index: number;
-    audio: AnimeAudio;
     episode: string | null;
 }
 
@@ -199,7 +193,6 @@ export interface AnimeDownloadRequest {
     index: number;
     // The id the source gives the anime, when it is known.
     sourceId?: string | null;
-    audio: AnimeAudio;
     episodes: string[];
     // The series and season the anime is saved under; null leaves it as it is.
     series?: string | null;
@@ -248,7 +241,6 @@ export interface AnimeAddRequest {
     query: string;
     index: number;
     sourceId?: string | null;
-    audio: AnimeAudio;
     // Every episode the source lists for it.
     episodes: string[];
     // The series and season it goes under; the name it is shown with in the series (null: none).
@@ -284,7 +276,6 @@ export interface AnimeUpdateEntry {
     id: number;
     animeId: number;
     animeTitle: string;
-    audio: AnimeAudio;
     episodeId: number;
     episodeNumber: string;
     // In milliseconds.
@@ -639,7 +630,6 @@ export const ANIME_STREAM_SCHEME = 'pullwave-stream';
 export interface AnimeStreamRequest {
     query: string;
     index: number;
-    audio: AnimeAudio;
     episode: string;
 }
 

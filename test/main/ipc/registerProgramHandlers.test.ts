@@ -10,7 +10,7 @@ type Handler = (event: unknown, ...args: unknown[]) => unknown;
 
 const READY: ToolState = { id: 'deno', status: 'ready', version: '2.4.0', bytesDone: 0, bytesTotal: 0, percent: 100, error: null };
 const STATUS: ProgramsStatus = { supported: true, programs: [{ id: 'deno', state: READY, custom: false, directory: '/t/deno/2.4.0' }] };
-const VERSIONS: ProgramVersions = makeProgramVersions({ deno: { id: 'deno', current: '2.4.0', latest: '2.5.0', updatable: true, base: '2.4.0', chosen: false, error: null, errorMessage: null, unfit: [] } });
+const VERSIONS: ProgramVersions = makeProgramVersions({ deno: { id: 'deno', current: '2.4.0', latest: '2.5.0', updatable: true, base: '2.4.0', chosen: false, error: null, errorMessage: null } });
 const UPDATED: ProgramUpdateResult = { ok: true, version: '2.5.0' };
 const RESET: ProgramResetResult = { ok: true };
 const INVALID_STATE: ToolState = { id: 'ytdlp', status: 'error', version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: { code: 'INVALID', message: 'The program is not one the app knows' } };

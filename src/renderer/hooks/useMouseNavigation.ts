@@ -42,7 +42,7 @@ export interface NavigationSnapshot {
 }
 
 export function snapshotKey(snapshot: NavigationSnapshot): string {
-    const selection = snapshot.selection === null ? '' : `${snapshot.selection.result.index}:${snapshot.selection.audio}`;
+    const selection = snapshot.selection === null ? '' : String(snapshot.selection.result.index);
     const { manga } = snapshot;
     const mangaKey = [manga.view, manga.previousView, manga.sourceId ?? '', manga.mode, manga.settingsOpen, manga.selection?.manga.remoteId ?? '', manga.selectionFrom, manga.librarySeries ?? '', manga.libraryGroup ?? ''].join(':');
     return [snapshot.tab, snapshot.downloadsView, snapshot.view, snapshot.returnView, selection, snapshot.libraryFocus ?? '', snapshot.librarySeries ?? '', snapshot.librarySeason ?? '', mangaKey].join('|');

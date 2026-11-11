@@ -6,7 +6,7 @@ import { resolveLanguage } from '@shared/i18n';
 import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, translationSetupGap, type LlmTokenSlot } from '@shared/llm';
 import type { Settings } from '@shared/types';
 import type { AnimeHandlerDependencies } from './ipc/registerAnimeHandlers';
-import { AniCliLocator, type AniPrograms } from './services/aniCliLocator';
+import { AniCliLocator, type AniPrograms, type AniTools } from './services/aniCliLocator';
 import { AniCliService } from './services/aniCliService';
 import { subtitleLabels } from './services/aniSubtitles';
 import { AnimeDb } from './services/animeDb';
@@ -21,7 +21,8 @@ import { JsonStore } from './services/jsonStore';
 import { animeBaseDirectory, isInsideDirectory, removeDirectories, removeEmptyDirectories } from './services/animeFiles';
 import { migrateAnimeFolder, type MigrationFileSystem } from './services/animeMigration';
 import { executableName, type BinaryResolver } from './services/binaryResolver';
-import type { ProgramTools } from './services/tools/programTools';
+import type { AniCliCheck, ProgramTools } from './services/tools/programTools';
+import { probeAniCli } from './services/aniUpdateProbe';
 import type { MediaSource } from './services/mediaProtocol';
 import { createStreamHandler, STREAM_USER_AGENT, StreamSessions } from './services/streamProxy';
 import { removeFiles } from './services/partialFiles';
@@ -120,6 +121,8 @@ export interface AnimeRuntime {
     stopBackgroundChecks: () => void;
     // The settings were saved or a token changed: the automatic translation of the new episodes is turned off when it cannot work.
     enforceAutoTranslateSetup: () => void;
+    // Tries a new script of ani-cli for real before an update makes it the one in use (see aniUpdateProbe.ts).
+    checkScript: AniCliCheck;
 }
 
 function fileSize(path: string): number | null {
@@ -183,23 +186,44 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
     const customScriptPath = options.customScriptPath ?? ((): string => {
         return '';
     });
-    const service = new AniCliService({
-        locator,
-        customScriptPath,
-        subtitleLabels: () => {
-            const settings = options.getSettings();
-            return subtitleLabels(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale));
-        },
-        tools: () => {
-            const settings = options.getSettings();
-            return {
-                ytdlp: options.resolver.ytdlp(settings),
-                ffmpeg: options.resolver.ffmpeg(settings),
-                deno: options.programs.pathOf('deno'),
-                ffprobe: options.programs.pathOf('ffmpeg', `bin/${executableName('ffprobe', options.platform)}`)
-            };
-        }
-    });
+    const aniSubtitleLabels = (): string[] => {
+        const settings = options.getSettings();
+        return subtitleLabels(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale));
+    };
+    const aniTools = (): AniTools => {
+        const settings = options.getSettings();
+        return {
+            ytdlp: options.resolver.ytdlp(settings),
+            ffmpeg: options.resolver.ffmpeg(settings),
+            deno: options.programs.pathOf('deno'),
+            ffprobe: options.programs.pathOf('ffmpeg', `bin/${executableName('ffprobe', options.platform)}`)
+        };
+    };
+    const service = new AniCliService({ locator, customScriptPath, subtitleLabels: aniSubtitleLabels, tools: aniTools });
+    // A new ani-cli is tried on its own (its own patched copy, links and history, in a folder apart) so nothing of the one in use is touched
+    // while the update is checked.
+    const checkScript: AniCliCheck = (scriptPath, onStep) => {
+        const probeLocator = new AniCliLocator(
+            { scriptsDir: options.scriptsDir, dataDir: join(animeDir, 'update-check') },
+            {
+                ...installed,
+                anicli: () => {
+                    return scriptPath;
+                }
+            },
+            undefined,
+            options.platform
+        );
+        const probeService = new AniCliService({
+            locator: probeLocator,
+            customScriptPath: () => {
+                return '';
+            },
+            subtitleLabels: aniSubtitleLabels,
+            tools: aniTools
+        });
+        return probeAniCli(probeService, onStep);
+    };
     const queue = new AnimeDownloadQueue({
         db,
         sourceProvider: () => {
@@ -443,11 +467,11 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 lastCheck.write({ lastCheckAt: time });
             }
         },
-        search: (query, audio, atLeast) => {
-            return service.search(query, audio, atLeast);
+        search: (query, atLeast) => {
+            return service.search(query, atLeast);
         },
-        episodes: (query, index, audio) => {
-            return service.episodes(query, index, audio);
+        episodes: (query, index) => {
+            return service.episodes(query, index);
         },
         isEnabled: () => {
             return options.getSettings().animeCheckNewEpisodes;
@@ -521,6 +545,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         enforceAutoTranslateSetup: () => {
             autoTranslation.enforceSetup();
         },
+        checkScript,
         handlers: {
             service,
             covers,
@@ -604,7 +629,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                     return { ok: false, reason: 'outside', folder: startAt };
                 }
                 const summary = importLibrary(db, scanLibraryFolder(chosen, options.scanFiles), {
-                    defaultAudio: settings.animeAudio,
                     fileSize,
                     onEpisodeSaved: (episodeId) => {
                         refreshEpisodeMetadata(db, episodeId, options.subtitleFiles ?? defaultSubtitleFileSystem, options.platform);
@@ -711,8 +735,8 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                         resolveSubtitles: (request) => {
                             return service.resolveSubtitles(request);
                         },
-                        search: (query, audio) => {
-                            return service.search(query, audio);
+                        search: (query) => {
+                            return service.search(query);
                         },
                         quality: () => {
                             return options.getSettings().animeQuality;

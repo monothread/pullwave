@@ -83,9 +83,9 @@ if (!TARGET) {
 const ANI_DIR = join(BIN_DIR, 'ani');
 const ANI_MARKER = join(ANI_DIR, '.sources');
 const ANI_CLI_SOURCE = {
-    // A commit of the master branch (version 5.1.4): the latest tagged release is much older.
-    url: 'https://raw.githubusercontent.com/pystardust/ani-cli/3ad53631ef2433b0c26e25ab011a5b149706c120/ani-cli',
-    sha256: '32ae0965b7abb102ab85f381411b980d1a9196f06bf2756d48fef16695b41d47'
+    // A commit of the master branch (version 5.1.8, the one the app pins in programSpecs.ts): the latest tagged release is much older.
+    url: 'https://raw.githubusercontent.com/pystardust/ani-cli/8527f185a12c6b5d0247a30b2217000dd65457fe/ani-cli',
+    sha256: '24ada974b567789da4ea51f9f92ec5b975b43fc0e999543f9053bcf5a628105c'
 };
 const BUSYBOX_W32_BASE = 'https://frippery.org/files/busybox';
 const ANI_TOOLS = {

@@ -1,4 +1,4 @@
-import type { AniError, AniErrorCode, AnimeAudio, AnimeAudioCheckSummary, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
+import type { AniError, AniErrorCode, AnimeAudioCheckSummary, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries, MAX_SEASON } from '@shared/series';
 import { codedErrorReport, type ErrorReport } from './errorReport';
@@ -69,7 +69,7 @@ function downloadedEpisodes(anime: LibraryAnime): AnimeEpisodeRecord[] {
     });
 }
 
-// The seasons of the series of the anime (the same audio too), in the order of the series.
+// The seasons of the series of the anime, in the order of the series.
 function seasonsOfSeries(library: readonly LibraryAnime[], anime: LibraryAnime): LibraryAnime[] {
     if (anime.series === null || anime.season === null) {
         return [anime];
@@ -77,7 +77,7 @@ function seasonsOfSeries(library: readonly LibraryAnime[], anime: LibraryAnime):
     const series = anime.series;
     return library
         .filter((candidate) => {
-            return candidate.season !== null && candidate.audio === anime.audio && candidate.series !== null && foldSeries(candidate.series) === foldSeries(series);
+            return candidate.season !== null && candidate.series !== null && foldSeries(candidate.series) === foldSeries(series);
         })
         .sort((first, second) => {
             return (first.season ?? 0) - (second.season ?? 0) || first.id - second.id;
@@ -249,7 +249,7 @@ export function groupLibrary(library: readonly LibraryAnime[]): LibraryGroup[] {
     });
     groups.forEach((group) => {
         group.entries.sort((first, second) => {
-            return (first.season ?? 0) - (second.season ?? 0) || first.audio.localeCompare(second.audio);
+            return (first.season ?? 0) - (second.season ?? 0) || first.id - second.id;
         });
     });
     return groups.sort((first, second) => {
@@ -262,19 +262,19 @@ export function compareNames(first: string, second: string): number {
     return first.localeCompare(second, undefined, { sensitivity: 'base', numeric: true });
 }
 
-// The anime of the library that has this title and audio, downloaded or not.
-export function libraryEntry(library: readonly LibraryAnime[], title: string, audio: AnimeAudio): LibraryAnime | null {
+// The anime of the library that has this title, downloaded or not.
+export function libraryEntry(library: readonly LibraryAnime[], title: string): LibraryAnime | null {
     return (
         library.find((candidate) => {
-            return candidate.title === title && candidate.audio === audio;
+            return candidate.title === title;
         }) ?? null
     );
 }
 
-// The anime of the library that has this title and audio, when at least one of its episodes is downloaded.
-export function downloadedAnime(library: readonly LibraryAnime[], title: string, audio: AnimeAudio): LibraryAnime | null {
+// The anime of the library that has this title, when at least one of its episodes is downloaded.
+export function downloadedAnime(library: readonly LibraryAnime[], title: string): LibraryAnime | null {
     const found = library.find((candidate) => {
-        return candidate.title === title && candidate.audio === audio;
+        return candidate.title === title;
     });
     return found && downloadedCount(found) > 0 ? found : null;
 }

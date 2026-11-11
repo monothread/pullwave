@@ -18,8 +18,16 @@ export interface ToolError {
     details?: ErrorDetails;
 }
 
+// The steps of an update of ani-cli, in order, shown while it goes on: the script is looked at before it is downloaded (the changes of the app
+// fit it and it keeps what the app relies on), downloaded, checked by the shell, and then tried for real (a search, the list of the episodes
+// and the stream of an episode) before it takes the place of the one in use.
+export const ANICLI_UPDATE_STEPS = ['compatibility', 'download', 'syntax', 'search', 'episodes', 'episode'] as const;
+export type AniCliUpdateStep = (typeof ANICLI_UPDATE_STEPS)[number];
+
 export interface ToolState {
     id: ToolId;
+    // The step an update of ani-cli is at (none for the other programs, or for what is not an update).
+    step?: AniCliUpdateStep;
     status: ToolStatus;
     // The version installed (or being installed).
     version: string | null;

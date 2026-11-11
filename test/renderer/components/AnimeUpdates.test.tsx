@@ -23,7 +23,6 @@ function entry(overrides: Partial<AnimeUpdateEntry> = {}): AnimeUpdateEntry {
         id: 1,
         animeId: 1,
         animeTitle: 'Naruto',
-        audio: 'sub',
         episodeId: 7,
         episodeNumber: '3',
         foundAt: NOON - HOUR,

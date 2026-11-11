@@ -7,7 +7,7 @@ import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 
 const DIR = join('/lib', 'Naruto');
 const VIDEO = join(DIR, 'Naruto Episode 1.mp4');
-const anime = makeAnime([], { id: 3, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub' });
+const anime = makeAnime([], { id: 3, title: 'Naruto', query: 'naruto', searchIndex: 2 });
 const episode = makeEpisode({ id: 7, animeId: 3, number: '1', filePath: VIDEO });
 const REFERER = 'https://embed.example/';
 const VTT = 'WEBVTT\n\n00:00.000 --> 00:01.000\nhello\n';
@@ -95,7 +95,7 @@ describe('checkSubtitles', () => {
         const { dependencies, resolveSubtitles } = setup({}, offered());
         await checkSubtitles(anime, episode, dependencies);
         expect(resolveSubtitles).toHaveBeenCalledTimes(1);
-        expect(resolveSubtitles).toHaveBeenCalledWith({ query: 'naruto', index: 2, audio: 'dub', episode: '1', quality: '720p' });
+        expect(resolveSubtitles).toHaveBeenCalledWith({ query: 'naruto', index: 2, episode: '1', quality: '720p' });
     });
 
     it('saves next to the video the subtitles the source offers that the episode does not have, and says which', async () => {
@@ -238,8 +238,8 @@ describe('checkSubtitles', () => {
             const { dependencies, search, resolveSubtitles } = setup({}, offered());
             await checkSubtitles(unknown, episode, dependencies);
             expect(search).toHaveBeenCalledTimes(1);
-            expect(search).toHaveBeenCalledWith('naruto', 'dub');
-            expect(resolveSubtitles).toHaveBeenCalledWith({ query: 'naruto', index: 5, audio: 'dub', episode: '1', quality: '720p' });
+            expect(search).toHaveBeenCalledWith('naruto');
+            expect(resolveSubtitles).toHaveBeenCalledWith({ query: 'naruto', index: 5, episode: '1', quality: '720p' });
         });
 
         it('does not search when the position is kept', async () => {

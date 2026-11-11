@@ -6,7 +6,7 @@ function makeLibrary() {
     const db = new AnimeDb(':memory:', () => {
         return 1000;
     });
-    const anime = db.upsertAnime({ title: 'Kaiju', query: 'kaiju', searchIndex: 1, audio: 'sub' });
+    const anime = db.upsertAnime({ title: 'Kaiju', query: 'kaiju', searchIndex: 1 });
     const paths = ['/lib/Kaiju/1.mp4', '/lib/Kaiju/2.mp4', '/lib/Kaiju/3.mp4'];
     paths.forEach((path, index) => {
         db.markDone(db.ensureEpisode(anime.id, String(index + 1)).id, path, 100);

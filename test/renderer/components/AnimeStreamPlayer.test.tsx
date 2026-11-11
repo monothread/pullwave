@@ -454,7 +454,7 @@ describe('AnimeStreamPlayer', () => {
         // The source lists episodes 3 and 4: the one playing is the 3rd.
         function withNextEpisode(overrides: Partial<NonNullable<ReturnType<typeof useAnimeStore.getState>['streaming']>> = {}): void {
             useAnimeStore.setState({
-                selection: { result: { index: 2, title: 'The Apothecary Diaries' }, query: 'apothecary', audio: 'sub', status: 'ready', episodes: ['2', '3', '4'], error: null }
+                selection: { result: { index: 2, title: 'The Apothecary Diaries' }, query: 'apothecary', status: 'ready', episodes: ['2', '3', '4'], error: null }
             });
             stream({ nextEpisode: '4', ...overrides });
         }
@@ -520,7 +520,7 @@ describe('AnimeStreamPlayer', () => {
                 });
 
                 expect(mock.api.openAnimeStream).toHaveBeenCalledTimes(1);
-                expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'apothecary', index: 2, audio: 'sub', episode: '4' });
+                expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'apothecary', index: 2, episode: '4' });
                 expect(screen.getByRole('dialog', { name: 'The Apothecary Diaries · EP 4' })).toBeInTheDocument();
                 expect(mock.api.closeAnimeStream).toHaveBeenCalledWith('s1');
                 expect(hls.state.instances[1]?.source).toBe('pullwave-stream://p/s2/xyz');
@@ -539,7 +539,7 @@ describe('AnimeStreamPlayer', () => {
 
             await user.click(screen.getByRole('button', { name: 'PLAY NOW' }));
 
-            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'apothecary', index: 2, audio: 'sub', episode: '4' });
+            expect(mock.api.openAnimeStream).toHaveBeenCalledWith({ query: 'apothecary', index: 2, episode: '4' });
             expect(await screen.findByRole('dialog', { name: 'The Apothecary Diaries · EP 4' })).toBeInTheDocument();
             expect(useAnimeStore.getState().streaming).toEqual({
                 title: 'The Apothecary Diaries',

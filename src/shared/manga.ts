@@ -402,14 +402,9 @@ export interface ToolVersionInfo {
     updatable: boolean;
 }
 
+// The latest versions of the programs of the manga section that the app can move to: only the helper for Cloudflare (the server stays at the
+// version the app ships with).
 export interface MangaToolVersions {
-    suwayomi: ToolVersionInfo & {
-        // The version the app runs was chosen by an update (not the one the app ships with), and the version it ships with.
-        chosen: boolean;
-        bundled: string;
-        // An update was downloaded: it runs after the app restarts.
-        restartNeeded: boolean;
-    };
     // null where the helper is not in use (not installed, or the user runs one of their own).
     flaresolverr: ToolVersionInfo | null;
 }
@@ -600,19 +595,12 @@ export interface MangaApi {
     migrateSource: (request: MangaSourceMigrationRequest) => Promise<MangaSourceMigrationResponse>;
     // Looks for the latest version of the server and of the helper.
     checkToolUpdates: () => Promise<MangaToolVersions>;
-    // Downloads the latest server; it runs from the next time the app opens.
-    updateServer: () => Promise<MangaToolUpdateResult>;
-    // Goes back to the server the app ships with (from the next time the app opens).
-    resetServerVersion: () => Promise<void>;
     // Pulls the latest image of the helper and uses it.
     updateHelper: () => Promise<MangaToolUpdateResult>;
-    // Closes the app and opens it again (asking first when there are downloads going on).
-    restartApp: () => Promise<void>;
     // How the server and the helper are doing. `start` also starts them when they are stopped.
     health: (start: boolean) => Promise<MangaHealth>;
     // Stops the server and the helper and starts them again, to get out of a hang; gives how they are doing then.
     restartPrograms: () => Promise<MangaHealth>;
-    onServerUpdate: (listener: (state: ToolState) => void) => () => void;
     onMigrationProgress: (listener: (progress: MangaMigrationProgress) => void) => () => void;
     // The hourly check added chapters to the library.
     onNewChapters: (listener: (news: MangaNewChapters) => void) => () => void;

@@ -91,13 +91,12 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-r
             expect(await height(page.locator('.settings select').first())).toBe(39);
         });
 
-        test('the search of an anime lines up: field, audio and button are the same height as the tabs', async () => {
+        test('the search of an anime lines up: field and button are the same height as the tabs', async () => {
             test.skip(!HAS_ANI_TOOLS, 'the anime section needs `npm run fetch-binaries`');
             await page.getByRole('button', { name: 'ANIME', exact: true }).click();
             await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SEARCH', exact: true }).click();
             const heights = [
                 await height(page.getByLabel('Anime name')),
-                await height(page.getByLabel('Audio')),
                 await height(page.locator('form .btn')),
                 await height(page.getByRole('navigation', { name: 'Anime' }).getByRole('button').first())
             ];
@@ -136,15 +135,13 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-r
                 return { x: Math.round(found?.x ?? -1), y: Math.round(found?.y ?? -1), width: Math.round(found?.width ?? -1), height: Math.round(found?.height ?? -1) };
             };
             const quality = await box('Anime quality');
-            const audio = await box('Anime audio');
             const subtitles = await box('Anime subtitles');
             // One under the other, on the same left edge and with the same width.
-            expect(new Set([quality.x, audio.x, subtitles.x]).size).toBe(1);
+            expect(new Set([quality.x, subtitles.x]).size).toBe(1);
             // The page beside the rail of the menu has a width with a fraction of a pixel: the fields may round one pixel apart.
-            expect(Math.max(quality.width, audio.width, subtitles.width) - Math.min(quality.width, audio.width, subtitles.width)).toBeLessThanOrEqual(1);
-            expect(quality.y).toBeLessThan(audio.y);
-            expect(audio.y).toBeLessThan(subtitles.y);
-            expect(new Set([quality.height, audio.height, subtitles.height]).size).toBe(1);
+            expect(Math.abs(quality.width - subtitles.width)).toBeLessThanOrEqual(1);
+            expect(quality.y).toBeLessThan(subtitles.y);
+            expect(new Set([quality.height, subtitles.height]).size).toBe(1);
             // The folder is above them, with BROWSE on its row and MIGRATE FOLDER on the row below.
             const folder = await box('Anime download folder');
             expect(folder.x).toBe(quality.x);

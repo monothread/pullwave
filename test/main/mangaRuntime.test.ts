@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS, IPC } from '@shared/constants';
 import type { LibraryManga, MangaCloudflareActivity, MangaJob } from '@shared/manga';
 import type { Settings } from '@shared/types';
 import type { ToolState } from '@shared/tools';
-import { createMangaRuntime, type MangaRuntimeOptions } from '@main/mangaRuntime';
+import { createMangaRuntime, forgetSelectedServer, type MangaRuntimeOptions } from '@main/mangaRuntime';
 import { MangaDb } from '@main/services/manga/mangaDb';
 import { CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS } from '@main/services/manga/mangaUpdateChecker';
 import { FLARESOLVERR_IMAGE, FLARESOLVERR_VERSION } from '@main/services/tools/flaresolverrDocker';
@@ -1221,7 +1221,6 @@ describe('createMangaRuntime updates and health', () => {
             writeFileSync(join(tools, 'flaresolverr-selected.json'), JSON.stringify(selected.flaresolverr));
         }
         const sent: Sent[] = [];
-        const restarts = { count: 0 };
         const docker = fakeDocker({ imagePresent: true });
         const runtime = createMangaRuntime({
             platform: 'linux',
@@ -1237,9 +1236,6 @@ describe('createMangaRuntime updates and health', () => {
             openFolder: () => {
                 return undefined;
             },
-            restartApp: () => {
-                restarts.count += 1;
-            },
             toolDependencies: {
                 download: () => {
                     return Promise.reject(new Error('offline'));
@@ -1247,7 +1243,7 @@ describe('createMangaRuntime updates and health', () => {
             },
             helperDependencies: { docker: docker.runner }
         })!;
-        return { runtime, dir, tools, sent, restarts, docker };
+        return { runtime, dir, tools, sent, docker };
     }
 
     it('runs the program the app ships with when no update was chosen', () => {
@@ -1255,14 +1251,15 @@ describe('createMangaRuntime updates and health', () => {
         expect(runtime.service.status().tool).toMatchObject({ id: 'suwayomi', version: suwayomiSpec('linux', 'x64')!.version });
     });
 
-    it('runs the release the user updated to, from the next time the app opens', () => {
-        const { runtime } = fromDisk({ suwayomi: { version: 'v9.0.0', sha256: HASH, sizeBytes: 1000 } });
-        expect(runtime.service.status().tool).toMatchObject({ id: 'suwayomi', version: 'v9.0.0' });
+    it('runs the program the app ships with even when an earlier version of the app kept an update of the server, and forgets that update', () => {
+        const { runtime, tools } = fromDisk({ suwayomi: { version: 'v9.0.0', sha256: HASH, sizeBytes: 1000 } });
+        expect(runtime.service.status().tool).toMatchObject({ id: 'suwayomi', version: suwayomiSpec('linux', 'x64')!.version });
+        expect(existsSync(join(tools, 'suwayomi-selected.json'))).toBe(false);
     });
 
-    it('runs the program the app ships with when what was kept is not valid', () => {
-        const { runtime } = fromDisk({ suwayomi: { version: '../../x', sha256: 'zz', sizeBytes: -1 } });
-        expect(runtime.service.status().tool).toMatchObject({ version: suwayomiSpec('linux', 'x64')!.version });
+    it('leaves the version the user chose of the helper where it is', () => {
+        const { tools } = fromDisk({ suwayomi: { version: 'v9.0.0', sha256: HASH, sizeBytes: 1000 }, flaresolverr: { version: 'v9.9.9' } });
+        expect(JSON.parse(readFileSync(join(tools, 'flaresolverr-selected.json'), 'utf-8'))).toEqual({ version: 'v9.9.9' });
     });
 
     it('runs the image of the helper the user updated to', () => {
@@ -1275,18 +1272,12 @@ describe('createMangaRuntime updates and health', () => {
         expect(runtime.service.status().helper).toMatchObject({ version: FLARESOLVERR_VERSION });
     });
 
-    it('gives the handlers the updates and a way to restart the app', () => {
-        const { runtime, restarts } = fromDisk();
+    it('gives the handlers the updates of the helper, and no update of the server', () => {
+        const { runtime } = fromDisk();
         expect(runtime.handlers.updates).toBe(runtime.updates);
-        runtime.handlers.restartApp();
-        expect(restarts.count).toBe(1);
-    });
-
-    it('does not fail when the app is not given a way to restart', () => {
-        const { runtime } = setup();
-        expect(() => {
-            runtime!.handlers.restartApp();
-        }).not.toThrow();
+        expect('updateServer' in runtime.updates).toBe(false);
+        expect('resetServer' in runtime.updates).toBe(false);
+        expect('restartApp' in runtime.handlers).toBe(false);
     });
 
     it('asks for no helper to update where the user runs a server of their own', async () => {
@@ -1351,5 +1342,67 @@ describe('createMangaRuntime icons of the sources', () => {
     it('says there is no icon for a key that is not kept', async () => {
         const { runtime } = setup();
         expect((await runtime!.pageHandler(new Request(`pullwave-manga://icon/${'0'.repeat(24)}`))).status).toBe(404);
+    });
+});
+
+describe('forgetSelectedServer', () => {
+    it('removes the release of the server an earlier version of the app kept, and the half-written copy of it', () => {
+        const tools = makeTempDir();
+        writeFileSync(join(tools, 'suwayomi-selected.json'), '{"version":"v9.0.0"}');
+        writeFileSync(join(tools, 'suwayomi-selected.json.part'), '{"vers');
+        writeFileSync(join(tools, 'flaresolverr-selected.json'), '{"version":"v3.6.0"}');
+        forgetSelectedServer(tools);
+        expect(readdirSync(tools)).toEqual(['flaresolverr-selected.json']);
+    });
+
+    it('does nothing when there is nothing to remove, or no folder at all', () => {
+        const tools = makeTempDir();
+        expect(() => {
+            forgetSelectedServer(tools);
+            forgetSelectedServer(join(tools, 'missing'));
+        }).not.toThrow();
+        expect(readdirSync(tools)).toEqual([]);
+    });
+
+    it('goes on when a file cannot be removed (no permission, in use on Windows), and still tries the other one', () => {
+        const tried: string[] = [];
+        expect(() => {
+            forgetSelectedServer('/data/manga/tools', (path) => {
+                tried.push(path);
+                throw Object.assign(new Error(`EACCES: permission denied, unlink '${path}'`), { code: 'EACCES' });
+            });
+        }).not.toThrow();
+        expect(tried).toEqual([join('/data/manga/tools', 'suwayomi-selected.json'), join('/data/manga/tools', 'suwayomi-selected.json.part')]);
+    });
+
+    it('goes on when a folder has the name of the file', () => {
+        const tools = makeTempDir();
+        mkdirSync(join(tools, 'suwayomi-selected.json'));
+        expect(() => {
+            forgetSelectedServer(tools);
+        }).not.toThrow();
+        expect(existsSync(join(tools, 'suwayomi-selected.json'))).toBe(true);
+    });
+
+    it('lets the manga section start when the file cannot be removed', () => {
+        const dir = makeTempDir();
+        mkdirSync(join(dir, 'manga', 'tools', 'suwayomi-selected.json'), { recursive: true });
+        const runtime = createMangaRuntime({
+            platform: 'linux',
+            arch: 'x64',
+            dataDir: dir,
+            defaultDownloadDir: dir,
+            getSettings: () => {
+                return DEFAULT_SETTINGS;
+            },
+            send: () => {
+                return undefined;
+            },
+            openFolder: () => {
+                return undefined;
+            }
+        });
+        expect(runtime).not.toBeNull();
+        runtime?.db.close();
     });
 });

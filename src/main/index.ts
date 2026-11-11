@@ -326,6 +326,10 @@ function bootstrap(): BootstrapResult {
         },
         onUpdateState: (state) => {
             sendToRenderer(IPC.eventProgramUpdate, state);
+        },
+        // An update of ani-cli is tried for real by the anime section before it is used (none where the section does not exist).
+        checkAniCli: () => {
+            return anime?.checkScript ?? null;
         }
     });
     const resolver = new BinaryResolver(programs);
@@ -447,9 +451,6 @@ function bootstrap(): BootstrapResult {
             void shell.openPath(path);
         },
         // PULLWAVE_MANGA_OPEN_LOG is a file the addresses are written to instead of being opened (used by the end-to-end tests).
-        restartApp: () => {
-            void requestRestart?.();
-        },
         openSite: (url, browser) => {
             if (process.env.PULLWAVE_MANGA_OPEN_LOG) {
                 appendFileSync(process.env.PULLWAVE_MANGA_OPEN_LOG, `${browser} ${url}\n`);

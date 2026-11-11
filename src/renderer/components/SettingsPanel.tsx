@@ -10,7 +10,7 @@ import {
     VIDEO_CONTAINERS
 } from '@shared/constants';
 import { useEffect, useRef } from 'react';
-import { ANIME_AUDIOS, ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, type AnimeAudio, type AnimeQuality, type AnimeSubtitleSetting } from '@shared/anime';
+import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, type AnimeQuality, type AnimeSubtitleSetting } from '@shared/anime';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import { chosenBrowserWarning, findChosenBrowser, NO_BROWSER_CHOSEN } from '@shared/browserChoice';
 import { LANGUAGE_NAMES, type Translator } from '@shared/i18n';
@@ -88,10 +88,6 @@ function formatAnimeSubtitles(setting: AnimeSubtitleSetting, t: Translator): str
         return t('anime.subtitles.auto');
     }
     return setting === 'default' ? t('anime.subtitles.default') : setting;
-}
-
-function formatAnimeAudio(audio: AnimeAudio, t: Translator): string {
-    return audio === 'dub' ? t('anime.audio.dub') : t('anime.audio.sub');
 }
 
 function findBrowserByDir(browsers: readonly DetectedBrowser[], dataDir: string): DetectedBrowser | undefined {
@@ -872,18 +868,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         hint={t('settings.animeQuality.hint')}
                         onChange={(value) => {
                             change('animeQuality', value);
-                        }}
-                    />
-                    <SelectField
-                        label={t('settings.animeAudio')}
-                        value={draft.animeAudio}
-                        options={ANIME_AUDIOS}
-                        formatOption={(audio) => {
-                            return formatAnimeAudio(audio, t);
-                        }}
-                        hint={t('settings.animeAudio.hint')}
-                        onChange={(value) => {
-                            change('animeAudio', value);
                         }}
                     />
                     <SelectField

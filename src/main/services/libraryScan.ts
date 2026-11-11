@@ -1,6 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import type { AnimeAudio } from '@shared/anime';
 import { readEpisodeMetadata } from './episodeMetadata';
 
 export const VIDEO_EXTENSIONS: readonly string[] = ['.mp4', '.mkv', '.webm', '.m4v'];
@@ -44,8 +43,6 @@ export interface ScannedEpisode {
     videoPath: string;
     title: string;
     number: string;
-    // Null when nothing says which audio it is.
-    audio: AnimeAudio | null;
     query: string;
     // 0 when it is not known.
     searchIndex: number;
@@ -104,7 +101,6 @@ function scanOne(videoPath: string, files: ScanFileSystem): ScannedEpisode | nul
             videoPath,
             title: metadata.title,
             number: metadata.number,
-            audio: metadata.audio,
             query: metadata.query,
             searchIndex: metadata.searchIndex,
             progress: { positionSeconds: metadata.positionSeconds, durationSeconds: metadata.durationSeconds, watched: metadata.watched },
@@ -115,7 +111,7 @@ function scanOne(videoPath: string, files: ScanFileSystem): ScannedEpisode | nul
     }
     const names = episodeFromNames(videoPath);
     const joined = seriesFromFolders(videoPath);
-    return names ? { videoPath, ...names, audio: null, query: names.title, searchIndex: 0, progress: null, series: joined?.series ?? null, season: joined?.season ?? null, seasonName: null } : null;
+    return names ? { videoPath, ...names, query: names.title, searchIndex: 0, progress: null, series: joined?.series ?? null, season: joined?.season ?? null, seasonName: null } : null;
 }
 
 // The episodes in a folder and the folders inside it, in a steady order.

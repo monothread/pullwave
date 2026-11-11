@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 
 import { join } from 'node:path';
 import { ANIME_SUBTITLE_LANGUAGES, ANIME_SUBTITLE_SETTINGS } from '@shared/anime';
 import { executableName } from '@main/services/binaryResolver';
-import { patchAllSubtitles, patchSubtitleSelection, SAVE_SUBTITLES_FUNCTION, SUBTITLE_LABELS_VARIABLE, SUBTITLE_PICK_FUNCTION, subtitleLabels } from '@main/services/aniSubtitles';
+import { ALL_SUBTITLES_NEEDS, patchAllSubtitles, patchSubtitleSelection, SAVE_SUBTITLES_FUNCTION, SUBTITLE_LABELS_VARIABLE, SUBTITLE_PICK_FUNCTION, SUBTITLE_SELECTION_NEEDS, subtitleLabels } from '@main/services/aniSubtitles';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
 const ROOT = join(__dirname, '../../..');
@@ -158,23 +158,29 @@ describe('patchAllSubtitles', () => {
         '',
         'download() {',
         '    _name="n"',
-        '    command -v "yt-dlp" >/dev/null && yt-dlp --referer "$refr" "$1" -o "$download_dir/$_name.mp4" $3 && return 0',
+        '    [ -n "$sub_link" ] && $curl_exe -sL -A "$agent" -e "$refr" --max-time 10 $cipher_flag "$sub_link" -o "$download_dir/$_name.vtt"',
+        '    [ -z "$audio_link" ] && command -v "yt-dlp" >/dev/null && yt-dlp --referer "$refr" "$1" -o "$_name.mp4" $3 && return 0',
         '}'
     ].join('\n');
 
-    it('keeps the list of subtitles, saves them all before the video and defines the function before its use', () => {
+    it('keeps the list of subtitles, saves them all right after the one ani-cli picked and defines the function before its use', () => {
         const patched = patchAllSubtitles(original) as string;
         expect(patched).toContain(`    pullwave_all_subs="$(printf "%s" "$_json" | sed 's|.*"subtitles":\\[||; s|}\\].*||; s|},{|}\\n{|g')"\n    # quality variants`);
-        expect(patched).toContain('    pullwave_save_subtitles "$download_dir/$_name"\n    command -v "yt-dlp"');
+        expect(patched).toContain('-o "$download_dir/$_name.vtt"\n    pullwave_save_subtitles "$download_dir/$_name"\n    [ -z "$audio_link" ] && command -v "yt-dlp"');
         expect(patched.indexOf('pullwave_save_subtitles() {')).toBeLessThan(patched.indexOf('hianime_m3u8() {'));
         expect(patched).toContain(SAVE_SUBTITLES_FUNCTION);
         expect(patched.startsWith('something before\n')).toBe(true);
         expect(patched.endsWith('&& return 0\n}')).toBe(true);
     });
 
+    it('says what its code reads from the script', () => {
+        expect(ALL_SUBTITLES_NEEDS).toEqual(['_json', 'curl_exe', 'agent', 'refr', 'cipher_flag', 'download_dir', '_name']);
+        expect(SUBTITLE_SELECTION_NEEDS).toEqual(['_json', 'sub_link']);
+    });
+
     it('gives null when a place it changes is not the one it knows', () => {
         expect(patchAllSubtitles(original.replace('# quality variants are relative to the master playlist', '# other'))).toBeNull();
-        expect(patchAllSubtitles(original.replace('command -v "yt-dlp"', 'command -v "other"'))).toBeNull();
+        expect(patchAllSubtitles(original.replace('-o "$download_dir/$_name.vtt"', '-o "$download_dir/$_name.srt"'))).toBeNull();
         expect(patchAllSubtitles(original.replace('hianime_m3u8() {', 'other_name() {'))).toBeNull();
         expect(patchAllSubtitles('nothing here')).toBeNull();
     });

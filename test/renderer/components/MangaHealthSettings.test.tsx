@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import type { MangaHealth, MangaToolUpdateResult, MangaToolVersions } from '@shared/manga';
 import { MangaHealthSettings } from '@renderer/components/MangaHealthSettings';
 import { useMangaStore } from '@renderer/store/mangaStore';
-import { makeTool } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { openErrorDialog } from '../../helpers/errorDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
@@ -172,14 +171,36 @@ describe('MangaHealthSettings', () => {
         expect(screen.getByRole('button', { name: 'RESTART PROGRAMS' })).toBeDisabled();
     });
 
-    it('has no section of its own for the updates, only the button that looks for them', () => {
+    it('has no section of its own for the updates, only the button that looks for them, when the app runs the helper', async () => {
+        answerWith(health());
+        render(<MangaHealthSettings />);
+        expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
+        expect(await screen.findByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
+        expect(screen.queryByRole('button', { name: /^UPDATE TO/ })).not.toBeInTheDocument();
+        expect(screen.getByText(/^Updating takes the latest release of FlareSolverr/)).toBeInTheDocument();
+    });
+
+    it.each([
+        ['the helper is not in use', health({ helper: null })],
+        ['the user runs a helper of their own', health({ helper: { state: 'healthy', version: '3.5.2', message: null, external: true } })]
+    ])('offers no look for updates, nor says how they are made, when %s: there is nothing the app can update', async (_name, answer) => {
+        answerWith(answer);
+        render(<MangaHealthSettings />);
+        expect(await screen.findByTestId('manga-health-helper')).toBeInTheDocument();
+        await screen.findByRole('button', { name: 'CHECK NOW' });
+        await vi.waitFor(() => {
+            expect(mock.api.manga.health).toHaveBeenCalledTimes(1);
+        });
+        expect(screen.queryByRole('button', { name: 'CHECK FOR UPDATES' })).not.toBeInTheDocument();
+        expect(screen.queryByText(/^Updating takes the latest release of FlareSolverr/)).not.toBeInTheDocument();
+    });
+
+    it('offers no look for updates while it does not know how the helper is', () => {
         mock.api.manga.health.mockReturnValue(new Promise(() => {
             return undefined;
         }));
         render(<MangaHealthSettings />);
-        expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
-        expect(screen.queryByRole('button', { name: /^UPDATE TO/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'CHECK FOR UPDATES' })).not.toBeInTheDocument();
     });
 
     it('explains when it looks and what CHECK NOW does', () => {
@@ -191,15 +212,16 @@ describe('MangaHealthSettings', () => {
     });
 });
 
-function versions(overrides: { suwayomi?: Partial<MangaToolVersions['suwayomi']>; flaresolverr?: MangaToolVersions['flaresolverr'] } = {}): MangaToolVersions {
-    return {
-        suwayomi: { current: 'v1.0.0', latest: 'v2.0.0', error: null, updatable: true, chosen: false, bundled: 'v1.0.0', restartNeeded: false, ...overrides.suwayomi },
-        flaresolverr: overrides.flaresolverr === undefined ? { current: 'v3.5.2', latest: 'v3.6.0', error: null, updatable: true } : overrides.flaresolverr
-    };
+function versions(flaresolverr: MangaToolVersions['flaresolverr'] = { current: 'v3.5.2', latest: 'v3.6.0', error: null, updatable: true }): MangaToolVersions {
+    return { flaresolverr };
 }
 
+// The helper is the one the app runs (the look for updates is offered), unless the test says otherwise.
 function show(toolVersions: MangaToolVersions | null, extra: Partial<typeof initialManga> = {}): void {
-    useMangaStore.setState({ ...initialManga, toolVersions, ...extra });
+    mock.api.manga.health.mockReturnValue(new Promise(() => {
+        return undefined;
+    }));
+    useMangaStore.setState({ ...initialManga, toolVersions, health: health(), ...extra });
 }
 
 const server = () => {
@@ -216,6 +238,7 @@ describe('MangaHealthSettings updates of the programs', () => {
         render(<MangaHealthSettings />);
         await user.click(screen.getByRole('button', { name: 'CHECK FOR UPDATES' }));
         expect(mock.api.manga.checkToolUpdates).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.checkToolUpdates).toHaveBeenCalledWith();
     });
 
     it('disables the check while it is looking', () => {
@@ -224,108 +247,83 @@ describe('MangaHealthSettings updates of the programs', () => {
         expect(screen.getByRole('button', { name: 'LOOKING…' })).toBeDisabled();
     });
 
-    it('shows the latest version and offers to update both', () => {
+    it('shows the latest version of the helper and offers to update it', () => {
         show(versions());
         render(<MangaHealthSettings />);
-        expect(within(server()).getByText('Latest: v2.0.0')).toBeInTheDocument();
-        expect(within(server()).getByRole('button', { name: 'UPDATE TO v2.0.0' })).toBeEnabled();
         expect(within(helper()).getByText('Latest: v3.6.0')).toBeInTheDocument();
         expect(within(helper()).getByRole('button', { name: 'UPDATE TO v3.6.0' })).toBeEnabled();
-        expect(within(server()).queryByRole('button', { name: 'RESTART NOW' })).not.toBeInTheDocument();
-        expect(within(server()).queryByRole('button', { name: 'USE THE ONE OF THE APP' })).not.toBeInTheDocument();
+    });
+
+    it('never offers to update the server, go back from an update of it, or restart the app for it', () => {
+        show(versions());
+        render(<MangaHealthSettings />);
+        expect(within(server()).queryByRole('button')).not.toBeInTheDocument();
+        expect(within(server()).queryByText(/^Latest:/)).not.toBeInTheDocument();
+        expect(within(server()).queryByRole('progressbar')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'RESTART NOW' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'USE THE ONE OF THE APP' })).not.toBeInTheDocument();
+    });
+
+    it('says the server moves with the updates of the app', () => {
+        show(null);
+        render(<MangaHealthSettings />);
+        expect(
+            screen.getByText(
+                'Updating takes the latest release of FlareSolverr (from GitHub) and switches to it at once. The manga server stays at the version the app ships with: it moves with the updates of the app.'
+            )
+        ).toBeInTheDocument();
     });
 
     it('offers no update when the latest is the one in use', () => {
-        show(versions({ suwayomi: { latest: 'v1.0.0', updatable: false }, flaresolverr: { current: 'v3.6.0', latest: 'v3.6.0', error: null, updatable: false } }));
+        show(versions({ current: 'v3.6.0', latest: 'v3.6.0', error: null, updatable: false }));
         render(<MangaHealthSettings />);
         expect(screen.queryByRole('button', { name: /^UPDATE TO/ })).not.toBeInTheDocument();
+        expect(within(helper()).getByText('Latest: v3.6.0')).toBeInTheDocument();
     });
 
-    it('updates the server and the helper with their buttons', async () => {
+    it('updates the helper with its button', async () => {
         const user = userEvent.setup();
         mock.api.manga.checkToolUpdates.mockResolvedValue(versions());
         show(versions());
         render(<MangaHealthSettings />);
-        await user.click(within(server()).getByRole('button', { name: 'UPDATE TO v2.0.0' }));
-        expect(mock.api.manga.updateServer).toHaveBeenCalledTimes(1);
         await user.click(within(helper()).getByRole('button', { name: 'UPDATE TO v3.6.0' }));
         expect(mock.api.manga.updateHelper).toHaveBeenCalledTimes(1);
-    });
-
-    it('disables the button and shows the progress of the download while the server updates', () => {
-        show(versions(), { updating: { server: true, helper: false }, serverUpdate: makeTool({ status: 'downloading', percent: 42 }) });
-        render(<MangaHealthSettings />);
-        expect(within(server()).getByRole('button', { name: 'UPDATING…' })).toBeDisabled();
-        expect(within(server()).getByRole('progressbar', { name: 'Downloading the server' })).toHaveAttribute('aria-valuenow', '42');
-        expect(within(helper()).getByRole('button', { name: 'UPDATE TO v3.6.0' })).toBeEnabled();
-    });
-
-    it('shows no progress when the download ended or the server is not updating', () => {
-        show(versions(), { updating: { server: true, helper: false }, serverUpdate: makeTool({ status: 'ready', percent: 100 }) });
-        const { unmount } = render(<MangaHealthSettings />);
-        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-        unmount();
-        show(versions(), { updating: { server: false, helper: false }, serverUpdate: makeTool({ status: 'downloading', percent: 10 }) });
-        render(<MangaHealthSettings />);
-        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        expect(mock.api.manga.updateHelper).toHaveBeenCalledWith();
     });
 
     it('disables the button of the helper while it updates', () => {
-        show(versions(), { updating: { server: false, helper: true } });
+        show(versions(), { updating: { helper: true } });
         render(<MangaHealthSettings />);
         expect(within(helper()).getByRole('button', { name: 'UPDATING…' })).toBeDisabled();
-        expect(within(server()).getByRole('button', { name: 'UPDATE TO v2.0.0' })).toBeEnabled();
-    });
-
-    it('tells to restart when a newer server was downloaded, and restarts the app on click', async () => {
-        const user = userEvent.setup();
-        show(versions({ suwayomi: { restartNeeded: true, updatable: false } }));
-        render(<MangaHealthSettings />);
-        expect(within(server()).getByText('Downloaded. Restart the app to use it.')).toBeInTheDocument();
-        await user.click(within(server()).getByRole('button', { name: 'RESTART NOW' }));
-        expect(mock.api.manga.restartApp).toHaveBeenCalledTimes(1);
-    });
-
-    it('offers to go back to the version of the app when the one in use was updated', async () => {
-        const user = userEvent.setup();
-        show(versions({ suwayomi: { current: 'v2.0.0', chosen: true, updatable: false } }));
-        render(<MangaHealthSettings />);
-        const reset = within(server()).getByRole('button', { name: 'USE THE ONE OF THE APP' });
-        expect(reset).toHaveAttribute('title', 'Goes back to v1.0.0, the one the app ships with, from the next time it opens.');
-        await user.click(reset);
-        expect(mock.api.manga.resetServerVersion).not.toHaveBeenCalled();
-        expect(within(confirmDialog('Use the server of the app?')).getByText('The manga server goes back to the version the app ships with, from the next time it opens.')).toBeInTheDocument();
-        await answerDialog(user, 'Use the server of the app?', 'USE THE ONE OF THE APP');
-        expect(mock.api.manga.resetServerVersion).toHaveBeenCalledTimes(1);
     });
 
     it('offers no update of the helper when the app runs none', () => {
-        show(versions({ flaresolverr: null }));
+        show(versions(null));
         render(<MangaHealthSettings />);
         expect(within(helper()).queryByRole('button')).not.toBeInTheDocument();
         expect(within(helper()).queryByText(/^Latest:/)).not.toBeInTheDocument();
     });
 
     it('says why the latest version could not be found', () => {
-        show(versions({ suwayomi: { latest: null, error: 'offline', updatable: false }, flaresolverr: { current: 'v3.5.2', latest: null, error: 'timeout', updatable: false } }));
+        show(versions({ current: 'v3.5.2', latest: null, error: 'timeout', updatable: false }));
         render(<MangaHealthSettings />);
-        expect(within(server()).getByRole('alert')).toHaveTextContent('Could not look for the latest version: offline');
         expect(within(helper()).getByRole('alert')).toHaveTextContent('Could not look for the latest version: timeout');
         expect(screen.queryByText(/^Latest:/)).not.toBeInTheDocument();
     });
 
     it.each<[MangaToolUpdateResult, string]>([
-        [{ ok: true, version: 'v2.0.0' }, 'Updated to v2.0.0.'],
+        [{ ok: true, version: 'v3.6.0' }, 'Updated to v3.6.0.'],
         [{ ok: false, reason: 'current', message: null }, 'Already on the latest version.'],
         [{ ok: false, reason: 'busy', message: null }, 'Another update is going on.'],
         [{ ok: false, reason: 'not-installed', message: null }, 'FlareSolverr is not installed.'],
         [{ ok: false, reason: 'unsupported', message: null }, 'There is no program for this system in the latest release.'],
-        [{ ok: false, reason: 'failed', message: 'hash' }, 'The update failed. Nothing changed.']
-    ])('says how the update of the server went: %j', async (result, text) => {
+        [{ ok: false, reason: 'failed', message: 'manifest unknown' }, 'The update failed. Nothing changed.']
+    ])('says how the update of the helper went: %j', async (result, text) => {
         const user = userEvent.setup();
-        show(versions(), { updateResults: { server: result, helper: null } });
+        show(versions(), { updateResults: { helper: result } });
         render(<MangaHealthSettings />);
-        const line = within(server()).getByText(text);
+        const line = within(helper()).getByText(text);
+        expect(within(server()).queryByText(text)).not.toBeInTheDocument();
         if (result.ok) {
             expect(line).not.toHaveAttribute('role');
             expect(line).not.toHaveAttribute('title');
@@ -336,22 +334,11 @@ describe('MangaHealthSettings updates of the programs', () => {
         expect(alert).not.toHaveAttribute('title');
         if (result.message === null) {
             expect(line).toBe(alert);
-            expect(within(server()).queryByRole('button', { name: text })).not.toBeInTheDocument();
+            expect(within(helper()).queryByRole('button', { name: text })).not.toBeInTheDocument();
             return;
         }
         expect(line).toHaveAttribute('title', 'Click to see the technical error');
         const dialog = await openErrorDialog(user, text);
         expect(within(dialog).getByTestId('error-message')).toHaveTextContent(result.message);
-    });
-
-    it('says how the update of the helper went, apart from the server', async () => {
-        const user = userEvent.setup();
-        show(versions(), { updateResults: { server: null, helper: { ok: false, reason: 'failed', message: 'manifest unknown' } } });
-        render(<MangaHealthSettings />);
-        const line = within(helper()).getByRole('button', { name: 'The update failed. Nothing changed.' });
-        expect(line.closest('[role="alert"]')).toHaveClass('field__warning');
-        expect(within(server()).queryByText('The update failed. Nothing changed.')).not.toBeInTheDocument();
-        const dialog = await openErrorDialog(user, 'The update failed. Nothing changed.');
-        expect(within(dialog).getByTestId('error-message')).toHaveTextContent('manifest unknown');
     });
 });

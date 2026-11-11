@@ -8,15 +8,13 @@ import {
     latestFfmpeg,
     latestYtdlp,
     LookupError,
-    looksLikeAniCli,
     MAX_SIZES,
     singleChecksum,
-    unfitPatches,
     YTDLP_RELEASE_API,
     type LatestDependencies
 } from '@main/services/tools/programLatest';
 import { FFMPEG_RELEASE_API } from '@main/services/tools/programSpecs';
-import { ALL_SUBTITLES_PART, aniCliScript, aniCliScriptWithout, DEBUG_PART, MENU_PART, SEARCH_PART, SELECTION_PART, SEPARATE_AUDIO_PART, SINGLE_RESULT_PART } from '../../../helpers/aniCliScripts';
+import { aniCliScript, aniCliScriptWithout, DEBUG_PART, FFMPEG_LINE, MENU_PART, PROVIDER_LINE, SEARCH_PART, SELECTION_PART } from '../../../helpers/aniCliScripts';
 
 const SHA = 'cd'.repeat(32);
 const OTHER_SHA = 'ef'.repeat(32);
@@ -345,34 +343,6 @@ describe('latestFfmpeg', () => {
     });
 });
 
-describe('the scripts of ani-cli', () => {
-    it('look like ani-cli when they start as a shell script and say their version', () => {
-        expect(looksLikeAniCli(aniCliScript('5.2.0'))).toBe(true);
-    });
-
-    it('do not when they are something else, have no version, or are too big', () => {
-        expect(looksLikeAniCli('<html>')).toBe(false);
-        expect(looksLikeAniCli('#!/bin/sh\necho hi')).toBe(false);
-        expect(looksLikeAniCli(`#!/bin/bash\nversion_number="5.2.0"`)).toBe(false);
-        expect(looksLikeAniCli(aniCliScript('5.2.0', 'x'.repeat(MAX_SIZES.anicli)))).toBe(false);
-    });
-
-    it('say which changes of the app do not fit them', () => {
-        expect(unfitPatches(aniCliScript('5.2.0'))).toEqual([]);
-        // The change that saves every subtitle builds on the one that chooses them, so without that one neither fits.
-        expect(unfitPatches(aniCliScriptWithout('5.2.0', SELECTION_PART))).toEqual(['subtitleSelection', 'allSubtitles']);
-        expect(unfitPatches(aniCliScriptWithout('5.2.0', ALL_SUBTITLES_PART, DEBUG_PART)).sort()).toEqual(['allSubtitles', 'debugReferer']);
-        // The ids of the source in the lists only tell apart the anime that have the same name.
-        expect(unfitPatches(aniCliScriptWithout('5.2.0', MENU_PART))).toEqual(['menuIds']);
-        // The lone result shown in the menu only tells which anime the source picked on its own.
-        expect(unfitPatches(aniCliScriptWithout('5.2.0', SINGLE_RESULT_PART))).toEqual(['singleResult']);
-        expect(unfitPatches(aniCliScriptWithout('5.2.0', SEARCH_PART))).toEqual(['searchPages']);
-        // The audio that comes as a track of its own is only missed for the series that give it so.
-        expect(unfitPatches(aniCliScriptWithout('5.2.0', SEPARATE_AUDIO_PART))).toEqual(['separateAudio']);
-        expect(unfitPatches(aniCliScriptWithout('5.2.0', MENU_PART, SINGLE_RESULT_PART)).sort()).toEqual(['menuIds', 'singleResult']);
-    });
-});
-
 describe('latestAniCli', () => {
     const COMMIT = 'a'.repeat(40);
     const RAW = `https://raw.githubusercontent.com/pystardust/ani-cli/${COMMIT}/ani-cli`;
@@ -397,10 +367,14 @@ describe('latestAniCli', () => {
                 executables: ['ani-cli'],
                 entry: 'ani-cli'
             },
-            version: '5.2.0',
-            unfit: []
+            version: '5.2.0'
         });
+        expect(calls.texts).toEqual([ANICLI_COMMIT_API]);
         expect(calls.buffers).toEqual([[RAW, 500_000]]);
+    });
+
+    it('takes a script of the same version the app is made with', async () => {
+        await expect(latestAniCli(deps(table(aniCliScript('5.1.8'))).deps)).resolves.toMatchObject({ version: '5.1.8' });
     });
 
     it('hashes the bytes that came, not the text they were turned into', async () => {
@@ -410,38 +384,71 @@ describe('latestAniCli', () => {
         expect(result.spec.sizeBytes).toBe(bytes.length);
     });
 
-    it('tells that the ids of the source do not fit, and still gives the script', async () => {
-        const result = await latestAniCli(deps(table(aniCliScriptWithout('5.2.0', MENU_PART))).deps);
-        expect(result.unfit).toEqual(['menuIds']);
-        expect(result.version).toBe('5.2.0');
+    it('refuses a script any change of the app does not fit, naming the changes', async () => {
+        const error = await failure(latestAniCli(deps(table(aniCliScriptWithout('5.2.0', MENU_PART, SEARCH_PART))).deps));
+        expect(error.reason).toBe('patches');
+        expect(error.problems).toEqual([
+            { kind: 'patch', patch: 'menuIds' },
+            { kind: 'patch', patch: 'searchPages' }
+        ]);
+        expect(error.message).toBe('This ani-cli cannot be used by the app: the change "menuIds" does not fit; the change "searchPages" does not fit');
     });
 
-    it('tells that the lone result in the menu does not fit, and still gives the script', async () => {
-        const result = await latestAniCli(deps(table(aniCliScriptWithout('5.2.0', SINGLE_RESULT_PART))).deps);
-        expect(result.unfit).toEqual(['singleResult']);
-        expect(result.version).toBe('5.2.0');
-    });
-
-    it('tells that the pages of the search do not fit, and still gives the script', async () => {
-        const result = await latestAniCli(deps(table(aniCliScriptWithout('5.2.0', SEARCH_PART))).deps);
-        expect(result.unfit).toEqual(['searchPages']);
-        expect(result.version).toBe('5.2.0');
-    });
-
-    it('tells the changes that do not fit but are not essential, and still gives the script', async () => {
-        const result = await latestAniCli(deps(table(aniCliScriptWithout('5.2.0', SELECTION_PART))).deps);
-        expect(result.unfit).toEqual(['subtitleSelection', 'allSubtitles']);
-        expect(result.version).toBe('5.2.0');
-    });
-
-    it('refuses a script the essential change of the app does not fit, with the name of the change', async () => {
+    it('refuses a script the change of the address of the stream does not fit, which is the one the app cannot play without', async () => {
         const error = await failure(latestAniCli(deps(table(aniCliScriptWithout('5.2.0', DEBUG_PART))).deps));
         expect(error.reason).toBe('patches');
-        expect(error.patches).toEqual(['debugReferer']);
+        expect(error.problems).toEqual([{ kind: 'patch', patch: 'debugReferer' }]);
+    });
+
+    it('refuses a script that no longer sets what a change reads, though the change fits', async () => {
+        const error = await failure(latestAniCli(deps(table(aniCliScriptWithout('5.2.0', '        cipher_flag="--ciphers x"'))).deps));
+        expect(error.reason).toBe('patches');
+        expect(error.problems).toEqual([{ kind: 'needs', patch: 'allSubtitles', name: 'cipher_flag' }]);
+        expect(error.message).toBe('This ani-cli cannot be used by the app: the change "allSubtitles" reads "cipher_flag", which the script no longer sets');
+    });
+
+    it('refuses a script that changed what the app hands it or reads from it, naming everything that changed', async () => {
+        const error = await failure(latestAniCli(deps(table(aniCliScriptWithout('5.2.0', 'tmp_dir="${ANI_CLI_TMP_DIR:-.}"', FFMPEG_LINE, SELECTION_PART))).deps));
+        expect(error.reason).toBe('incompatible');
+        expect(error.problems).toEqual([
+            { kind: 'patch', patch: 'subtitleSelection' },
+            { kind: 'patch', patch: 'allSubtitles' },
+            { kind: 'needs', patch: 'debugReferer', name: 'sub_link' },
+            { kind: 'variable', name: 'ANI_CLI_TMP_DIR' },
+            { kind: 'download', name: 'ffmpeg download' }
+        ]);
+        expect(error.message).toBe(
+            'This ani-cli cannot be used by the app: the change "subtitleSelection" does not fit; the change "allSubtitles" does not fit; the change "debugReferer" reads "sub_link", which the script no longer sets; the script no longer reads ANI_CLI_TMP_DIR; the ffmpeg download is not the one the app expects'
+        );
+    });
+
+    it('refuses a script older than the one the app is made with', async () => {
+        const error = await failure(latestAniCli(deps(table(aniCliScript('5.1.4'))).deps));
+        expect(error.reason).toBe('incompatible');
+        expect(error.problems).toEqual([{ kind: 'older', version: '5.1.4', base: '5.1.8' }]);
+    });
+
+    it('refuses a script that reads another site, whose ids are not the ones of the library', async () => {
+        const error = await failure(latestAniCli(deps(table(aniCliScript('5.2.0').replace(PROVIDER_LINE, 'base_api="https://other.example"'))).deps));
+        expect(error.reason).toBe('incompatible');
+        expect(error.problems).toEqual([{ kind: 'provider', provider: 'other.example', base: 'hianime.at' }]);
+    });
+
+    it('refuses a script whose function of the stream changed, with every change that rests on it', async () => {
+        const error = await failure(latestAniCli(deps(table(aniCliScriptWithout('5.2.0', SELECTION_PART))).deps));
+        expect(error.reason).toBe('patches');
+        expect(error.problems).toEqual([
+            { kind: 'patch', patch: 'subtitleSelection' },
+            { kind: 'patch', patch: 'allSubtitles' },
+            { kind: 'needs', patch: 'debugReferer', name: 'sub_link' }
+        ]);
     });
 
     it('refuses a file that is not ani-cli', async () => {
-        expect((await failure(latestAniCli(deps(table('<html>not found</html>')).deps))).reason).toBe('invalid');
+        const error = await failure(latestAniCli(deps(table('<html>not found</html>')).deps));
+        expect(error.reason).toBe('invalid');
+        expect(error.message).toBe('The file is not ani-cli');
+        expect(error.problems).toEqual([{ kind: 'not-ani-cli' }]);
     });
 
     it.each([['not json'], [JSON.stringify({})], [JSON.stringify({ sha: 'master' })], [JSON.stringify({ sha: 'A'.repeat(40) })], [JSON.stringify({ sha: 5 })]])('refuses the answer %s for the commit', async (answer) => {

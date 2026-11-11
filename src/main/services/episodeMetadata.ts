@@ -1,5 +1,5 @@
 import { cleanSeasonName, cleanSeriesName, isValidSeason } from '@shared/series';
-import { ANIME_AUDIOS, type AnimeAudio, type AnimeEpisodeRecord, type AnimeRecord } from '@shared/anime';
+import type { AnimeEpisodeRecord, AnimeRecord } from '@shared/anime';
 import { isValidEpisode } from './aniArgsBuilder';
 import { episodeFolderOf, METADATA_FILE_NAME, metadataPathFor } from './animeFiles';
 import type { AnimeDb } from './animeDb';
@@ -8,6 +8,9 @@ import type { AnimeDb } from './animeDb';
 // library is lost (a new computer, a reinstall) the folder can be scanned and every episode comes back as it was.
 export { METADATA_FILE_NAME, metadataPathFor };
 export const METADATA_VERSION = 1;
+// The audio of the episode: always the subtitled one (the app has no dubbed anime any more). It is still written, so the versions of the app
+// that read it (they refused a file without it) can import the library; it is not needed to read a file.
+export const METADATA_AUDIO = 'sub';
 
 export interface EpisodeMetadata {
     version: typeof METADATA_VERSION;
@@ -15,7 +18,7 @@ export interface EpisodeMetadata {
     query: string;
     // The position of the anime in its search; 0 when it is not known.
     searchIndex: number;
-    audio: AnimeAudio;
+    audio: typeof METADATA_AUDIO;
     number: string;
     positionSeconds: number;
     durationSeconds: number;
@@ -43,7 +46,7 @@ export function metadataOf(anime: AnimeRecord, episode: AnimeEpisodeRecord): Epi
         title: anime.title,
         query: anime.query,
         searchIndex: anime.searchIndex,
-        audio: anime.audio,
+        audio: METADATA_AUDIO,
         number: episode.number,
         positionSeconds: episode.positionSeconds,
         durationSeconds: episode.durationSeconds,
@@ -66,10 +69,7 @@ export function parseEpisodeMetadata(content: string): EpisodeMetadata | null {
     if (typeof raw !== 'object' || raw === null) {
         return null;
     }
-    const { version, title, query, searchIndex, audio, number, positionSeconds, durationSeconds, watched, series, season, seasonName } = raw as Record<string, unknown>;
-    const knownAudio = ANIME_AUDIOS.find((candidate) => {
-        return candidate === audio;
-    });
+    const { version, title, query, searchIndex, number, positionSeconds, durationSeconds, watched, series, season, seasonName } = raw as Record<string, unknown>;
     if (
         version !== METADATA_VERSION ||
         typeof title !== 'string' ||
@@ -78,7 +78,6 @@ export function parseEpisodeMetadata(content: string): EpisodeMetadata | null {
         typeof searchIndex !== 'number' ||
         !Number.isInteger(searchIndex) ||
         searchIndex < 0 ||
-        knownAudio === undefined ||
         typeof number !== 'string' ||
         !isValidEpisode(number) ||
         !isNonNegative(positionSeconds) ||
@@ -91,7 +90,7 @@ export function parseEpisodeMetadata(content: string): EpisodeMetadata | null {
     const cleanedSeries = typeof series === 'string' ? cleanSeriesName(series) : null;
     const cleanedName = typeof seasonName === 'string' ? cleanSeasonName(seasonName) : null;
     const joined = cleanedSeries !== null && isValidSeason(season) ? { series: cleanedSeries, season, ...(cleanedName ? { seasonName: cleanedName } : {}) } : {};
-    return { version, title, query, searchIndex, audio: knownAudio, number, positionSeconds, durationSeconds, watched, ...joined };
+    return { version, title, query, searchIndex, audio: METADATA_AUDIO, number, positionSeconds, durationSeconds, watched, ...joined };
 }
 
 export function readEpisodeMetadata(videoPath: string, files: Pick<MetadataFiles, 'read'>): EpisodeMetadata | null {

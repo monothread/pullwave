@@ -1,27 +1,35 @@
 import { execFileSync } from 'node:child_process';
-import { buildStreamArgs, parseStreamOutput, parseSubtitleList, patchDebugReferer } from '@main/services/aniStream';
+import { buildStreamArgs, DEBUG_REFERER_NEEDS, parseStreamOutput, parseSubtitleList, patchDebugReferer } from '@main/services/aniStream';
 
 const ORIGINAL = [
     'case "$player_function" in',
-    '        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;',
+    '        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nAudio:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$audio_link" "$sub_link" ;;',
     '        android_mpv) android_mpv ;;',
     'esac'
 ].join('\n');
+const PATCHED_BRANCH = [
+    '        debug)',
+    '            [ -n "$audio_link" ] && video_link="$_m3u8_master"',
+    '            printf "All links:\\n%s\\nSelected link:\\n%s\\nAudio:\\n%s\\nSubtitles:\\n%s\\nReferer:\\n%s\\nSubtitle list:\\n%s\\n" "$links" "$video_link" "$audio_link" "$sub_link" "$refr" "${pullwave_all_subs:-}"',
+    '            ;;'
+].join('\n');
 
 describe('patchDebugReferer', () => {
-    it('adds the referer to what the debug player prints', () => {
-        const patched = patchDebugReferer(ORIGINAL) as string;
-        expect(patched).toContain(
-            'debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\nReferer:\\n%s\\nSubtitle list:\\n%s\\n" "$links" "${pullwave_audio_master:-$video_link}" "$sub_link" "$refr" "${pullwave_all_subs:-}" ;;'
-        );
-        expect(patched).not.toContain('Subtitles:\\n%s\\n" "$links"');
-        expect(patched.startsWith('case "$player_function" in\n')).toBe(true);
-        expect(patched.endsWith('        android_mpv) android_mpv ;;\nesac')).toBe(true);
+    it('adds the referer and the list of the subtitles to what the debug player prints, and the master when the audio is a track of its own', () => {
+        expect(patchDebugReferer(ORIGINAL)).toBe(['case "$player_function" in', PATCHED_BRANCH, '        android_mpv) android_mpv ;;', 'esac'].join('\n'));
     });
 
     it('gives null for a script it does not know', () => {
         expect(patchDebugReferer('nothing here')).toBeNull();
         expect(patchDebugReferer(ORIGINAL.replace('Subtitles', 'Subs'))).toBeNull();
+    });
+
+    it('gives null for the debug output of ani-cli before it printed the audio track (5.1.4)', () => {
+        expect(patchDebugReferer('        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$sub_link" ;;')).toBeNull();
+    });
+
+    it('says what its code reads from the script', () => {
+        expect(DEBUG_REFERER_NEEDS).toEqual(['links', 'video_link', 'audio_link', 'sub_link', 'refr', '_m3u8_master']);
     });
 });
 
@@ -119,36 +127,41 @@ describe('patchDebugReferer and the subtitles of the source', () => {
     });
 });
 
-describe('patchDebugReferer and the audio of the source', () => {
+describe.skipIf(process.platform === 'win32')('patchDebugReferer and the audio of the source', () => {
     const VARIANT = 'https://hls.example.top/v/abc/1080/index.m3u8';
     const MASTER = 'https://hls.example.top/v/abc/master.m3u8';
+    const AUDIO = 'https://hls.example.top/v/abc/aud/a0/index.m3u8';
 
-    // Runs the debug line the patch writes, the way the script runs it, and reads what the app would read.
-    const printedWith = (assignment: string): ReturnType<typeof parseStreamOutput> => {
+    // Runs the debug branch the patch writes, the way the script runs it, and gives what it printed.
+    const printedWith = (audioLink: string): string => {
         const patched = patchDebugReferer(ORIGINAL) as string;
-        const line = patched.split('\n').find((candidate) => {
-            return candidate.includes('debug)');
-        }) as string;
-        const statement = line.trim().replace(/^debug\) /, '').replace(/ ;;$/, '');
-        const script = [assignment, 'links="1080 >' + VARIANT + '"', `video_link="${VARIANT}"`, 'sub_link=""', 'refr="https://embed.example/"', statement].join('\n');
-        return parseStreamOutput(execFileSync('sh', ['-c', script], { encoding: 'utf-8' }));
+        const script = [
+            'player_function=debug',
+            `links="1080 >${VARIANT}"`,
+            `video_link="${VARIANT}"`,
+            `audio_link="${audioLink}"`,
+            `_m3u8_master="${MASTER}"`,
+            'sub_link=""',
+            'refr="https://embed.example/"',
+            patched
+        ].join('\n');
+        return execFileSync('sh', ['-c', script], { encoding: 'utf-8' });
     };
 
-    it('hands the player the master when the audio patch kept it, so the audio tracks come with the picture', () => {
-        expect(printedWith(`pullwave_audio_master="${MASTER}"`)).toEqual({ url: MASTER, subtitleUrl: null, referer: 'https://embed.example/', subtitles: [] });
+    it('hands the player the master when the audio is a track of its own, so the audio comes with the picture', () => {
+        expect(parseStreamOutput(printedWith(AUDIO))).toEqual({ url: MASTER, subtitleUrl: null, referer: 'https://embed.example/', subtitles: [] });
     });
 
-    it('hands the player the selected link when the master has no separate audio', () => {
-        expect(printedWith('pullwave_audio_master=""')?.url).toBe(VARIANT);
+    it('still prints the audio track where ani-cli prints it', () => {
+        expect(printedWith(AUDIO)).toBe(`All links:\n1080 >${VARIANT}\nSelected link:\n${MASTER}\nAudio:\n${AUDIO}\nSubtitles:\n\nReferer:\nhttps://embed.example/\nSubtitle list:\n\n`);
     });
 
-    it('hands the player the selected link when the script has no audio patch and does not set the variable', () => {
-        expect(printedWith(':')?.url).toBe(VARIANT);
+    it('hands the player the selected link when the audio comes with the picture', () => {
+        expect(parseStreamOutput(printedWith(''))).toEqual({ url: VARIANT, subtitleUrl: null, referer: 'https://embed.example/', subtitles: [] });
     });
 
     it('keeps the variant in the list of all links, which is what the quality choice reads', () => {
-        const patched = patchDebugReferer(ORIGINAL) as string;
-        expect(patched).toContain('"$links" "${pullwave_audio_master:-$video_link}"');
+        expect(printedWith(AUDIO)).toContain(`All links:\n1080 >${VARIANT}\n`);
     });
 });
 

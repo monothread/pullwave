@@ -134,7 +134,7 @@ describe('AnimePanel', () => {
 
     it('has a history, then the downloads button and the gear of the settings at the right end, and shows the history in place of the search', async () => {
         const user = userEvent.setup();
-        useAnimeStore.setState({ history: [{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: '3', openedAt: 1700000000000, watchedAt: 1700000000000 }] });
+        useAnimeStore.setState({ history: [{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, episode: '3', openedAt: 1700000000000, watchedAt: 1700000000000 }] });
         render(<AnimePanel />);
         expect(
             within(subNav())
@@ -162,7 +162,7 @@ describe('AnimePanel', () => {
         const user = userEvent.setup();
         const installed = installMockApi();
         installed.api.listAnimeUpdates.mockResolvedValue([
-            { id: 1, animeId: 1, animeTitle: 'Naruto', audio: 'sub', episodeId: 7, episodeNumber: '3', foundAt: 1_700_000_000_000, origin: 'auto', status: 'idle' }
+            { id: 1, animeId: 1, animeTitle: 'Naruto', episodeId: 7, episodeNumber: '3', foundAt: 1_700_000_000_000, origin: 'auto', status: 'idle' }
         ]);
         render(<AnimePanel />);
 

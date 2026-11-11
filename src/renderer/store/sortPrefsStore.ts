@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import type { AnimeAudio } from '@shared/anime';
 import { LIBRARY_FILTERS, LIBRARY_SORTS, type LibraryFilter, type LibrarySort } from '../spotlight/spotlightData';
 
 // The orders the user chose: for the grid of the anime library, one for each of its filters; for the grid of the manga library, one for each
@@ -57,10 +56,10 @@ export function mangaGroupKey(groupId: number | null): string {
     return groupId === null ? 'all' : `group:${String(groupId)}`;
 }
 
-// The key of an anime in the orders of its episodes: the audio comes first because it has no separator in it, the title can have any
-// character. It is the same on the screen of the library and on the one of the search, so the order is the same on both.
-export function animeListKey(title: string, audio: AnimeAudio): string {
-    return `${audio}|${title}`;
+// The key of an anime in the orders of its episodes. It is the same on the screen of the library and on the one of the search, so the order
+// is the same on both. It starts with "sub|" as it did when the anime had an audio (sub or dub), so the orders kept then are still found.
+export function animeListKey(title: string): string {
+    return `sub|${title}`;
 }
 
 // The key of a manga in the orders of its chapters: the source and the id the source gives it.

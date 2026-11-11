@@ -35,12 +35,12 @@ export function AnimeDetail() {
     // The anime in the library, when it is there already. Its series cannot change from here: what it suggests (its title) is only for the
     // one that is not in the library yet, and is saved with it.
     const entry = library.find((candidate) => {
-        return candidate.title === selection?.result.title && candidate.audio === selection.audio;
+        return candidate.title === selection?.result.title;
     });
     const suggested = suggestSeries(selection?.result.title ?? '');
     const [adding, setAdding] = useState(false);
     // The order the grid shows the episodes of this anime in (the same one the library shows).
-    const orderKey = selection === null ? null : animeListKey(selection.result.title, selection.audio);
+    const orderKey = selection === null ? null : animeListKey(selection.result.title);
     const [episodeOrder] = useListOrder('episodes', orderKey);
 
     // The episodes the source has that the library does not know yet (an anime that is still airing gets new ones after it was added).
@@ -135,7 +135,7 @@ export function AnimeDetail() {
                     usedOrders={(name) => {
                         return library
                             .filter((candidate) => {
-                                return candidate.audio === selection.audio && candidate.series !== null && sameSeries(candidate.series, name);
+                                return candidate.series !== null && sameSeries(candidate.series, name);
                             })
                             .flatMap((candidate) => {
                                 return candidate.season === null ? [] : [candidate.season];
@@ -157,7 +157,7 @@ export function AnimeDetail() {
                 <>
                     <div className="queue__toolbar">
                         <span className="section-label">{t('anime.episodes.label', { count: selection.episodes.length })}</span>
-                        <ListOrderSelect kind="episodes" itemKey={animeListKey(selection.result.title, selection.audio)} />
+                        <ListOrderSelect kind="episodes" itemKey={animeListKey(selection.result.title)} />
                     </div>
                     <p className="field__hint">{t('anime.episodes.hint')}</p>
                     <div className="episode-grid" role="group" aria-label={t('anime.episodes.label', { count: selection.episodes.length })}>

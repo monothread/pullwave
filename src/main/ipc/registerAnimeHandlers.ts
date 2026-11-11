@@ -1,11 +1,9 @@
 import {
     ANIME_AIRING_OVERRIDES,
-    ANIME_AUDIOS,
     DEFAULT_TRANSLATION_LANGUAGE,
     IDLE_CHECK_STATE,
     MAX_SEARCH_RESULTS,
     type AniError,
-    type AnimeAudio,
     type AnimeCheckResponse,
     type AnimeCheckState,
     type AnimeEpisodeRecord,
@@ -122,12 +120,6 @@ function asText(value: unknown): string {
     return typeof value === 'string' ? value : '';
 }
 
-function asAudio(value: unknown): AnimeAudio | null {
-    return ANIME_AUDIOS.find((audio) => {
-        return audio === value;
-    }) ?? null;
-}
-
 // How many results of the search the screen already lists: none when it is not said, otherwise a whole number up to the most the search lists.
 function asLoadedCount(value: unknown): number | null {
     if (value === undefined) {
@@ -187,14 +179,10 @@ export function parseDownloadRequest(input: unknown): AnimeDownloadRequest | str
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const title = asText(raw.title).trim().slice(0, MAX_TEXT_LENGTH);
     const query = validQuery(raw.query);
-    const audio = asAudio(raw.audio);
     const index = raw.index;
     const episodes = Array.isArray(raw.episodes) ? raw.episodes : [];
     if (title.length === 0 || query === null) {
         return 'The anime name is missing.';
-    }
-    if (audio === null) {
-        return 'The audio must be sub or dub.';
     }
     if (typeof index !== 'number' || !isValidIndex(index)) {
         return 'The position of the anime in the search is invalid.';
@@ -208,7 +196,7 @@ export function parseDownloadRequest(input: unknown): AnimeDownloadRequest | str
         return 'The series, the order or the name is invalid.';
     }
     const sourceId = asSourceId(raw.sourceId);
-    return { title, query, index, audio, episodes: numbers, ...(sourceId === null ? {} : { sourceId }), ...(joined ?? {}) };
+    return { title, query, index, episodes: numbers, ...(sourceId === null ? {} : { sourceId }), ...(joined ?? {}) };
 }
 
 // The series and the season that came with a request: none, both valid, or "invalid" (one without the other, a name that cannot be
@@ -236,17 +224,16 @@ export function parseHistoryRequest(input: unknown): AnimeHistoryRequest | null 
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const title = asText(raw.title).trim().slice(0, MAX_TEXT_LENGTH);
     const query = validQuery(raw.query);
-    const audio = asAudio(raw.audio);
     const { index } = raw;
     const episode = raw.episode === null || raw.episode === undefined ? null : asText(raw.episode);
     // The position 0 is an anime whose place in the search is not known: it is searched by its title when it is opened again.
-    if (title.length === 0 || query === null || audio === null || typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+    if (title.length === 0 || query === null || typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
         return null;
     }
     if (episode !== null && !isValidEpisode(episode)) {
         return null;
     }
-    return { title, query, index, audio, episode };
+    return { title, query, index, episode };
 }
 
 // Checks the stretch of time the screen asks the schedule of: two moments in seconds, the second after the first and not too far from it.
@@ -426,27 +413,25 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     ipcMain.handle(IPC.animeStatus, (): AnimeStatus => {
         return { supported: true, available: service.isAvailable(), aniCli: service.info() };
     });
-    ipcMain.handle(IPC.animeSearch, async (_event, query, audio, loaded) => {
+    ipcMain.handle(IPC.animeSearch, async (_event, query, loaded) => {
         const cleaned = validQuery(query);
-        const chosen = asAudio(audio);
         const already = asLoadedCount(loaded);
-        if (cleaned === null || chosen === null || already === null) {
-            return invalid('The search is empty, the audio is invalid or the number of results already listed is.');
+        if (cleaned === null || already === null) {
+            return invalid('The search is empty or the number of results already listed is invalid.');
         }
         // The search asks for the results after the ones the screen already has: ani-cli reads pages until it has one more.
-        const result = await service.searchListing(cleaned, chosen, already + 1);
+        const result = await service.searchListing(cleaned, already + 1);
         if (result.status === 'done') {
             return { ok: true, ...result.value };
         }
         return { ok: false, error: result.status === 'error' ? result.error : { code: 'UNKNOWN', raw: 'The search was cancelled.' } };
     });
-    ipcMain.handle(IPC.animeEpisodes, async (_event, query, index, audio) => {
+    ipcMain.handle(IPC.animeEpisodes, async (_event, query, index) => {
         const cleaned = validQuery(query);
-        const chosen = asAudio(audio);
-        if (cleaned === null || chosen === null || typeof index !== 'number' || !isValidIndex(index)) {
-            return invalid('The search, the position or the audio is invalid.');
+        if (cleaned === null || typeof index !== 'number' || !isValidIndex(index)) {
+            return invalid('The search or the position is invalid.');
         }
-        const result = await service.episodes(cleaned, index, chosen);
+        const result = await service.episodes(cleaned, index);
         if (result.status === 'done') {
             return { ok: true, episodes: result.value };
         }
@@ -502,7 +487,7 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         if (typeof request === 'string') {
             return { ok: false, message: request };
         }
-        if (request.series && request.season && db.seasonTaken(request.series, request.season, request.audio, db.findAnime(request.title, request.audio)?.id ?? 0)) {
+        if (request.series && request.season && db.seasonTaken(request.series, request.season, db.findAnime(request.title)?.id ?? 0)) {
             return { ok: false, message: `Order ${request.season} of "${request.series}" is already used by another anime.` };
         }
         const anime = queue.enqueue(request);
@@ -521,7 +506,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             query: request.query,
             index: request.index,
             ...(request.sourceId === undefined ? {} : { sourceId: request.sourceId }),
-            audio: request.audio,
             episodes: request.episodes,
             series: request.series ?? null,
             season: request.season ?? null,
@@ -729,7 +713,7 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             return { ok: false, reason: 'invalid' };
         }
         if (!db.setSeries(id, current.series, season, name)) {
-            return { ok: false, reason: 'season-taken', suggested: db.firstFreeSeason(current.series, current.audio, [id]) };
+            return { ok: false, reason: 'season-taken', suggested: db.firstFreeSeason(current.series, [id]) };
         }
         refreshMetadataOf(id);
         deps.onLibraryChanged();
@@ -778,13 +762,12 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     ipcMain.handle(IPC.animeStreamOpen, async (_event, input): Promise<AnimeStreamResponse> => {
         const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
         const query = validQuery(raw.query);
-        const audio = asAudio(raw.audio);
         const episode = asText(raw.episode);
         const { index } = raw;
-        if (query === null || audio === null || typeof index !== 'number' || !isValidIndex(index) || !isValidEpisode(episode)) {
-            return invalid('The search, the position, the audio or the episode is invalid.');
+        if (query === null || typeof index !== 'number' || !isValidIndex(index) || !isValidEpisode(episode)) {
+            return invalid('The search, the position or the episode is invalid.');
         }
-        const result = await service.resolveStream({ query, index, audio, episode, quality: deps.streamQuality() });
+        const result = await service.resolveStream({ query, index, episode, quality: deps.streamQuality() });
         if (result.status === 'done') {
             return { ok: true, stream: deps.streams.create(result.value) };
         }

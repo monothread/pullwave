@@ -9,7 +9,7 @@ export function makeAnimeHistory(overrides: Partial<AnimeHistoryEntry> = {}): An
 }
 
 export function makeAnimeUpdate(overrides: Partial<AnimeUpdateEntry> = {}): AnimeUpdateEntry {
-    return { id: 1, animeId: 1, animeTitle: 'Naruto', audio: 'sub', episodeId: 10, episodeNumber: '5', foundAt: 2000, origin: 'auto', status: 'idle', ...overrides };
+    return { id: 1, animeId: 1, animeTitle: 'Naruto', episodeId: 10, episodeNumber: '5', foundAt: 2000, origin: 'auto', status: 'idle', ...overrides };
 }
 
 export function makeReading(overrides: Partial<ReadingEntry> = {}): ReadingEntry {

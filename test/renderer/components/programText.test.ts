@@ -1,6 +1,6 @@
-import { PROGRAM_IDS, type ToolState } from '@shared/tools';
+import { ANICLI_UPDATE_STEPS, PROGRAM_IDS, type ToolState } from '@shared/tools';
 import { createTranslator } from '@shared/i18n';
-import { displayVersion, isWorking, lookupReasonKey, programErrorKey, programErrorReport, programProgressKey } from '@renderer/components/programText';
+import { displayVersion, isWorking, lookupReasonKey, programErrorKey, programErrorReport, programProgressKey, updateStepKey, updateStepStates } from '@renderer/components/programText';
 
 function stateWith(status: ToolState['status']): ToolState {
     return { id: 'ytdlp', status, version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: null };
@@ -28,9 +28,73 @@ describe('lookupReasonKey', () => {
         ['checksum', 'tools.lookup.checksum'],
         ['invalid', 'tools.lookup.invalid'],
         ['patches', 'tools.lookup.patches'],
+        ['incompatible', 'tools.lookup.incompatible'],
         ['failed', 'tools.lookup.failed']
     ] as const)('names the text of %s', (reason, key) => {
         expect(lookupReasonKey(reason)).toBe(key);
+    });
+});
+
+describe('updateStepKey', () => {
+    it.each([
+        ['compatibility', 'tools.step.compatibility'],
+        ['download', 'tools.step.download'],
+        ['syntax', 'tools.step.syntax'],
+        ['search', 'tools.step.search'],
+        ['episodes', 'tools.step.episodes'],
+        ['episode', 'tools.step.episode']
+    ] as const)('names the text of %s', (step, key) => {
+        expect(updateStepKey(step)).toBe(key);
+    });
+
+    it('has a text for every step, in every language', () => {
+        (['en', 'pt', 'es', 'ja', 'zh'] as const).forEach((language) => {
+            const t = createTranslator(language);
+            ANICLI_UPDATE_STEPS.forEach((step) => {
+                expect(t(updateStepKey(step))).not.toBe(updateStepKey(step));
+            });
+            expect(t('tools.step.title')).not.toBe('tools.step.title');
+            expect(t('tools.lookup.incompatible')).not.toBe('tools.lookup.incompatible');
+        });
+    });
+});
+
+describe('updateStepStates', () => {
+    function update(overrides: Partial<ToolState>): ToolState {
+        return { id: 'anicli', status: 'verifying', version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: null, ...overrides };
+    }
+
+    it('lists the steps in order: the ones before the current one done, it going on, the ones after it to come', () => {
+        expect(updateStepStates(update({ step: 'syntax' }))).toEqual([
+            { step: 'compatibility', state: 'done' },
+            { step: 'download', state: 'done' },
+            { step: 'syntax', state: 'running' },
+            { step: 'search', state: 'pending' },
+            { step: 'episodes', state: 'pending' },
+            { step: 'episode', state: 'pending' }
+        ]);
+    });
+
+    it('marks the step it stopped at when the update failed', () => {
+        expect(updateStepStates(update({ step: 'episodes', status: 'error' }))).toEqual([
+            { step: 'compatibility', state: 'done' },
+            { step: 'download', state: 'done' },
+            { step: 'syntax', state: 'done' },
+            { step: 'search', state: 'done' },
+            { step: 'episodes', state: 'failed' },
+            { step: 'episode', state: 'pending' }
+        ]);
+    });
+
+    it('takes a state without a step for the download', () => {
+        expect(updateStepStates(update({ status: 'downloading' })).map(({ state }) => {
+            return state;
+        })).toEqual(['done', 'running', 'pending', 'pending', 'pending', 'pending']);
+    });
+
+    it('has the first step going on when the update starts, and the last one going on (not done) when it is ready to be used', () => {
+        expect(updateStepStates(update({ step: 'compatibility' }))[0]).toEqual({ step: 'compatibility', state: 'running' });
+        expect(updateStepStates(update({ step: 'episode', status: 'ready' })).at(-1)).toEqual({ step: 'episode', state: 'running' });
     });
 });
 

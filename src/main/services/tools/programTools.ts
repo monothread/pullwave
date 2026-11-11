@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PROGRAM_IDS, type ProgramId, type ToolError, type ToolSpec, type ToolState } from '@shared/tools';
-import type { AniPatchName, ProgramInfo, ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersionInfo, ProgramVersions } from '@shared/programs';
+import { PROGRAM_IDS, type AniCliUpdateStep, type ProgramId, type ToolError, type ToolSpec, type ToolState } from '@shared/tools';
+import type { ProgramInfo, ProgramResetResult, ProgramsStatus, ProgramUpdateResult, ProgramVersionInfo, ProgramVersions } from '@shared/programs';
 import type { extractArchive } from './archiveExtract';
+import { patchAniCli } from '../aniPatches';
 import { describeError } from '../errorDetails';
 import {
     defaultLatestDependencies,
@@ -41,6 +42,12 @@ const RUN_TIMEOUT_MS = 20_000;
 
 export type RunProgram = (file: string, args: string[]) => Promise<{ ok: boolean; output: string }>;
 
+// Tries a new script of ani-cli for real (see aniUpdateProbe.ts), telling each step as it starts; throws when the script does not work.
+export type AniCliCheck = (scriptPath: string, onStep: (step: AniCliUpdateStep) => void) => Promise<void>;
+
+// Where the script of ani-cli is written with the changes of the app, beside the one unpacked, for the shell to check it (removed after).
+export const PATCHED_CHECK_FILE = 'ani-cli.patched-check';
+
 export function defaultRunProgram(file: string, args: string[]): Promise<{ ok: boolean; output: string }> {
     return new Promise((resolve) => {
         execFile(file, args, { timeout: RUN_TIMEOUT_MS }, (error, stdout, stderr) => {
@@ -64,6 +71,8 @@ export interface ProgramToolsDependencies {
     extract?: typeof extractArchive;
     latest?: LatestDependencies;
     run?: RunProgram;
+    // What tries a new ani-cli before an update makes it the one in use; without it the update only checks the script itself.
+    checkAniCli?: () => AniCliCheck | null;
 }
 
 // What is written about the version that was chosen: enough to build its spec again.
@@ -109,6 +118,8 @@ export class ProgramTools {
     // Why a program that has no version to install yet (ffmpeg, before its first look for the latest) could not be installed.
     private readonly failures = new Map<ProgramId, ToolError>();
     private readonly updating = new Set<ProgramId>();
+    // The step each update of ani-cli is at, added to what its download tells (see ANICLI_UPDATE_STEPS).
+    private readonly updateSteps = new Map<ProgramId, AniCliUpdateStep>();
     private readonly platform: NodeJS.Platform;
     private readonly arch: string;
 
@@ -117,7 +128,12 @@ export class ProgramTools {
         this.arch = deps.arch ?? process.arch;
         const common = { rootDirectory: deps.rootDirectory, download: deps.download, extract: deps.extract };
         this.installer = new ToolInstaller({ ...common, onState: deps.onState });
-        this.updater = new ToolInstaller({ ...common, onState: deps.onUpdateState });
+        this.updater = new ToolInstaller({
+            ...common,
+            onState: (state) => {
+                this.publishUpdate(state);
+            }
+        });
     }
 
     // The system the programs are made for, or null.
@@ -256,17 +272,14 @@ export class ProgramTools {
 
     // ----- installing -----
 
-    // What looks at a program once it is unpacked, before it is put in its place: it has to run (a script has to be one the shell accepts).
-    private verifierFor(spec: ToolSpec): InstallVerifier {
+    // What looks at a program once it is unpacked, before it is put in its place: it has to run (a script has to be one the shell accepts, as it
+    // is and with the changes of the app; on an update it is also tried for real).
+    private verifierFor(spec: ToolSpec, forUpdate = false): InstallVerifier {
         const run = this.deps.run ?? defaultRunProgram;
         return async (directory) => {
             const file = join(directory, spec.entry);
             if (spec.id === 'anicli') {
-                // The shell is the one that is installed; without it there is nothing to check with (the script was looked at already).
-                const shell = this.pathOf('busybox');
-                if (shell !== null && !(await run(shell, ['sh', '-n', file])).ok) {
-                    throw new Error('The shell does not accept the script of ani-cli');
-                }
+                await this.verifyAniCli(directory, file, run, forUpdate);
                 return;
             }
             const args: Record<Exclude<ProgramId, 'anicli'>, string[]> = { ytdlp: ['--version'], deno: ['--version'], ffmpeg: ['-version'], busybox: ['true'], curl: ['--version'] };
@@ -275,6 +288,63 @@ export class ProgramTools {
                 throw new Error(`The program does not run: ${result.output}`);
             }
         };
+    }
+
+    private async verifyAniCli(directory: string, file: string, run: RunProgram, forUpdate: boolean): Promise<void> {
+        if (forUpdate) {
+            this.setUpdateStep('anicli', 'syntax');
+        }
+        // The shell is the one that is installed; without it there is nothing to check with (the script was looked at already).
+        const shell = this.pathOf('busybox');
+        if (shell !== null) {
+            if (!(await run(shell, ['sh', '-n', file])).ok) {
+                throw new Error('The shell does not accept the script of ani-cli');
+            }
+            await this.checkPatchedSyntax(directory, file, shell, run);
+        }
+        const check = forUpdate ? (this.deps.checkAniCli?.() ?? null) : null;
+        if (check !== null) {
+            await check(file, (step) => {
+                this.setUpdateStep('anicli', step);
+            });
+        }
+    }
+
+    // The script as the app runs it (with its changes) has to be one the shell accepts too.
+    private async checkPatchedSyntax(directory: string, file: string, shell: string, run: RunProgram): Promise<void> {
+        const patched = patchAniCli(readFileSync(file, 'utf-8'));
+        if (patched === null) {
+            return;
+        }
+        const patchedFile = join(directory, PATCHED_CHECK_FILE);
+        writeFileSync(patchedFile, patched, 'utf-8');
+        try {
+            if (!(await run(shell, ['sh', '-n', patchedFile])).ok) {
+                throw new Error('The shell does not accept the script of ani-cli with the changes of the app');
+            }
+        } finally {
+            rmSync(patchedFile, { force: true });
+        }
+    }
+
+    // ----- the steps of an update of ani-cli -----
+
+    // What the download of an update tells, with the step it is at.
+    private publishUpdate(state: ToolState): void {
+        const step = this.isProgram(state.id) ? this.updateSteps.get(state.id) : undefined;
+        this.deps.onUpdateState?.(step === undefined ? state : { ...state, step });
+    }
+
+    private isProgram(id: ToolState['id']): id is ProgramId {
+        return (PROGRAM_IDS as readonly string[]).includes(id);
+    }
+
+    // Moves the update to the step, and tells it (it is checking: what it downloaded is there already, or nothing is downloaded yet).
+    private setUpdateStep(id: ProgramId, step: AniCliUpdateStep, version: string | null = null): void {
+        this.updateSteps.set(id, step);
+        if (step !== 'download') {
+            this.publishUpdate({ id, status: 'verifying', version, bytesDone: 0, bytesTotal: 0, percent: step === 'compatibility' ? 0 : 100, error: null });
+        }
     }
 
     // The version of ffmpeg to install the first time: the latest one (there is no other: the builds are rolling).
@@ -356,20 +426,18 @@ export class ProgramTools {
 
     // ----- the latest version -----
 
-    private async lookup(id: ProgramId): Promise<{ spec: ToolSpec; unfit: AniPatchName[] }> {
+    private async lookup(id: ProgramId): Promise<{ spec: ToolSpec }> {
         const system = this.system as ProgramPlatform;
         const deps = this.deps.latest ?? defaultLatestDependencies;
         switch (id) {
             case 'ytdlp':
-                return { spec: await latestYtdlp(system, deps), unfit: [] };
+                return { spec: await latestYtdlp(system, deps) };
             case 'deno':
-                return { spec: await latestDeno(system, deps), unfit: [] };
+                return { spec: await latestDeno(system, deps) };
             case 'ffmpeg':
-                return { spec: await latestFfmpeg(system, deps), unfit: [] };
-            case 'anicli': {
-                const found = await latestAniCli(deps);
-                return { spec: found.spec, unfit: found.unfit };
-            }
+                return { spec: await latestFfmpeg(system, deps) };
+            case 'anicli':
+                return { spec: (await latestAniCli(deps)).spec };
             default:
                 throw new LookupError('no-release', 'This program has no newer version');
         }
@@ -386,8 +454,7 @@ export class ProgramTools {
             base: base?.version ?? null,
             chosen: base !== null && chosen !== null && chosen.version !== base.version,
             error: null,
-            errorMessage: null,
-            unfit: []
+            errorMessage: null
         };
         if (this.system === null || !UPDATABLE.includes(id) || this.custom(id)) {
             return info;
@@ -396,7 +463,6 @@ export class ProgramTools {
             const found = await this.lookup(id);
             info.latest = found.spec.version;
             info.updatable = found.spec.version !== info.current;
-            info.unfit = found.unfit;
         } catch (error) {
             info.error = error instanceof LookupError ? error.reason : 'failed';
             info.errorMessage = messageOf(error);
@@ -431,20 +497,33 @@ export class ProgramTools {
             return { ok: false, reason: 'busy', message: 'An update of this program is going on' };
         }
         this.updating.add(id);
+        const stepped = id === 'anicli';
         try {
+            if (stepped) {
+                this.setUpdateStep(id, 'compatibility');
+            }
             let found;
             try {
                 found = await this.lookup(id);
             } catch (error) {
+                if (stepped) {
+                    this.failUpdateStep(id, messageOf(error));
+                }
                 return error instanceof LookupError
                     ? { ok: false, reason: 'lookup', message: error.message, lookup: error.reason }
                     : { ok: false, reason: 'failed', message: messageOf(error) };
             }
             const current = this.chosenSpec(id);
             if (current !== null && current.version === found.spec.version && this.installer.isReady(current)) {
+                if (stepped) {
+                    this.publishUpdate({ ...this.installer.stateOf(current), id });
+                }
                 return { ok: false, reason: 'current', message: current.version };
             }
-            const state = await this.updater.install(found.spec, undefined, true, this.verifierFor(found.spec));
+            if (stepped) {
+                this.setUpdateStep(id, 'download');
+            }
+            const state = await this.updater.install(found.spec, undefined, true, this.verifierFor(found.spec, true));
             if (state.status !== 'ready') {
                 return { ok: false, reason: 'failed', message: state.error?.message ?? 'The update could not be installed' };
             }
@@ -457,7 +536,13 @@ export class ProgramTools {
             return { ok: false, reason: 'failed', message: messageOf(error) };
         } finally {
             this.updating.delete(id);
+            this.updateSteps.delete(id);
         }
+    }
+
+    // Tells that the update stopped at the step it was at (before anything was downloaded: the download tells its own failures).
+    private failUpdateStep(id: ProgramId, message: string): void {
+        this.publishUpdate({ id, status: 'error', version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: { code: 'INVALID', message } });
     }
 
     // Goes back to the version the app was made with: what the update chose is forgotten (and that version is installed if it is not there).

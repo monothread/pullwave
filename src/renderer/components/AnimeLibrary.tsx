@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AnimeAiringOverride, AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
@@ -317,10 +317,6 @@ function SourceButton({ anime, t }: { anime: LibraryAnime; t: Translator }) {
     );
 }
 
-function audioBadge(anime: LibraryAnime, t: Translator): ReactNode {
-    return <span className="badge">{anime.audio === 'dub' ? t('anime.audio.dub') : t('anime.audio.sub')}</span>;
-}
-
 function seasonProgress(anime: LibraryAnime, t: Translator): string {
     return t('anime.library.progress', { done: downloadedCount(anime), total: anime.episodes.length });
 }
@@ -350,7 +346,6 @@ function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; 
                     <span className="season__chip" title={seasonLabel(anime, t)}>
                         {seasonLabel(anime, t)}
                     </span>
-                    {audioBadge(anime, t)}
                 </div>
                 <h4 className="season__title">
                     <RowLink label={`${t('anime.library.show')}: ${anime.title}`} title={anime.title} onClick={onOpen}>
@@ -419,7 +414,7 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
     });
     const [editing, setEditing] = useState(false);
     // The order the list shows the episodes of this anime in.
-    const orderKey = animeListKey(anime.title, anime.audio);
+    const orderKey = animeListKey(anime.title);
     const [episodeOrder] = useListOrder('episodes', orderKey);
     useDetailBackdrop(useAnimeCoverUrl(anime.title));
 
@@ -459,7 +454,6 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
                             {seasonLabel(anime, t)}
                         </span>
                         <span className="season__meta">{seasonProgress(anime, t)}</span>
-                        {audioBadge(anime, t)}
                         <DownloadSeasonButton anime={anime} t={t} />
                         <SourceButton anime={anime} t={t} />
                     </span>

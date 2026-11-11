@@ -67,7 +67,8 @@ describe('runAniCli', () => {
                     { prompt: 'Select anime:', choice: '2 Naruto Shippuden' }
                 ],
                 destination: null,
-                moreResults: false
+                moreResults: false,
+                downloadFailed: false
             }
         });
     });
@@ -86,7 +87,8 @@ describe('runAniCli', () => {
                 output: 'Invalid anime selection\n',
                 menuChoices: [{ prompt: 'Select anime:', choice: '1 Naruto' }],
                 destination: null,
-                moreResults: true
+                moreResults: true,
+                downloadFailed: false
             }
         });
     });
@@ -131,9 +133,40 @@ describe('runAniCli', () => {
                 output: '[download] Destination: /home/me/Anime/Naruto Episode 1.mp4\n',
                 menuChoices: [],
                 destination: '/home/me/Anime/Naruto Episode 1.mp4',
-                moreResults: false
+                moreResults: false,
+                downloadFailed: false
             }
         });
+    });
+
+    it('tells that the stand-in of ffmpeg said the download failed, and keeps the line out of the output', async () => {
+        const { fake, handle, destinations } = start();
+        fake.stdout.write('[download] Destination: /home/me/Anime/Reborn Episode 5.mp4.video.mp4\n');
+        fake.stderr.write('ERROR: fragment 3 not found, unable to continue\n');
+        fake.stderr.write('PULLWAVE_DOWNLOAD_FAILED\n');
+        fake.emitter.emit('close', 0);
+
+        expect(await handle.result).toEqual({
+            status: 'done',
+            value: {
+                exitCode: 0,
+                output: '[download] Destination: /home/me/Anime/Reborn Episode 5.mp4.video.mp4\nERROR: fragment 3 not found, unable to continue\n',
+                menuChoices: [],
+                destination: '/home/me/Anime/Reborn Episode 5.mp4.video.mp4',
+                moreResults: false,
+                downloadFailed: true
+            }
+        });
+        expect(destinations).toEqual(['/home/me/Anime/Reborn Episode 5.mp4.video.mp4']);
+    });
+
+    it('does not take a line that only mentions the failure for one', async () => {
+        const { fake, handle } = start();
+        fake.stderr.write('the PULLWAVE_DOWNLOAD_FAILED line\n');
+        fake.emitter.emit('close', 0);
+
+        const result = await handle.result;
+        expect(result.status === 'done' && result.value.downloadFailed).toBe(false);
     });
 
     it('joins a line that arrives in pieces and flushes the last one without a line break', async () => {
@@ -154,7 +187,7 @@ describe('runAniCli', () => {
         fake.emitter.emit('close', 0);
         expect(await handle.result).toEqual({
             status: 'done',
-            value: { exitCode: 0, output: '[download] Destination: /a.mp4\n', menuChoices: [], destination: '/a.mp4', moreResults: false }
+            value: { exitCode: 0, output: '[download] Destination: /a.mp4\n', menuChoices: [], destination: '/a.mp4', moreResults: false, downloadFailed: false }
         });
     });
 
@@ -257,7 +290,7 @@ describe('runAniCli', () => {
             expect(stderrDestroy).toHaveBeenCalledTimes(1);
             expect(await handle.result).toEqual({
                 status: 'done',
-                value: { exitCode: 0, output: 'links fetched\n', menuChoices: [], destination: null, moreResults: false }
+                value: { exitCode: 0, output: 'links fetched\n', menuChoices: [], destination: null, moreResults: false, downloadFailed: false }
             });
         });
 
@@ -288,7 +321,7 @@ describe('runAniCli', () => {
 });
 
 describe('asDownloadResult', () => {
-    const outcome: AniRunOutcome = { exitCode: 0, output: 'ok\n', menuChoices: [], destination: '/a.mp4', moreResults: false };
+    const outcome: AniRunOutcome = { exitCode: 0, output: 'ok\n', menuChoices: [], destination: '/a.mp4', moreResults: false, downloadFailed: false };
 
     it('keeps a clean exit as done', () => {
         expect(asDownloadResult(outcome)).toEqual({ status: 'done', value: outcome });
@@ -299,6 +332,28 @@ describe('asDownloadResult', () => {
             status: 'error',
             error: { code: 'NO_SOURCES', raw: 'No sources found for sub!', details: { occurredAt: NOW, exitCode: 1, operation: 'Downloading an episode with ani-cli' } }
         });
+    });
+
+    it('turns a download the stand-in of ffmpeg said failed into an error, though ani-cli ended well, with what yt-dlp said', () => {
+        expect(asDownloadResult({ ...outcome, downloadFailed: true, output: 'ERROR: unable to download video data: HTTP Error 503: Service Unavailable\n' })).toEqual({
+            status: 'error',
+            error: { code: 'NETWORK', raw: 'ERROR: unable to download video data: HTTP Error 503: Service Unavailable', details: { occurredAt: NOW, exitCode: 0, operation: 'Downloading an episode with ani-cli' } }
+        });
+    });
+
+    it('makes a failed download that says nothing the network had, so it is tried again', () => {
+        expect(asDownloadResult({ ...outcome, downloadFailed: true, output: 'ERROR: fragment 3 not found, unable to continue\n' })).toEqual({
+            status: 'error',
+            error: { code: 'NETWORK', raw: 'ERROR: fragment 3 not found, unable to continue', details: { occurredAt: NOW, exitCode: 0, operation: 'Downloading an episode with ani-cli' } }
+        });
+        expect(asDownloadResult({ ...outcome, downloadFailed: true, output: '' })).toEqual({
+            status: 'error',
+            error: { code: 'NETWORK', raw: 'The download of the episode failed.', details: { occurredAt: NOW, exitCode: 0, operation: 'Downloading an episode with ani-cli' } }
+        });
+    });
+
+    it('keeps the error ani-cli reported when the download failed and ani-cli said why', () => {
+        expect(asDownloadResult({ ...outcome, exitCode: 1, downloadFailed: true, output: 'No sources found for sub!\n' })).toMatchObject({ status: 'error', error: { code: 'NO_SOURCES' } });
     });
 
     it('treats a missing exit code as a failure', () => {

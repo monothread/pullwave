@@ -16,7 +16,7 @@ function download(finishedAt: number, status: HistoryEntry['status'] = 'done'): 
 }
 
 function watched(openedAt: number, episode: string | null = '1'): AnimeHistoryEntry {
-    return { id: openedAt, title: 'Anime', query: 'anime', searchIndex: 0, audio: 'sub', episode, openedAt, watchedAt: episode === null ? null : openedAt };
+    return { id: openedAt, title: 'Anime', query: 'anime', searchIndex: 0, episode, openedAt, watchedAt: episode === null ? null : openedAt };
 }
 
 function read(readAt: number): ReadingEntry {

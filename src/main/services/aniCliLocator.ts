@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
-import type { AniCliInfo, AnimeAudio } from '@shared/anime';
+import type { AniCliInfo } from '@shared/anime';
 import { patchAniCli } from './aniPatches';
 import { providerOf } from './aniProvider';
 import { parseAniCliVersion } from './aniVersion';
@@ -14,6 +15,11 @@ export const ANI_CLI_COMMAND = 'ani-cli';
 export const ANI_MENU_COMMAND = 'pullwave_menu';
 export const ANI_PLAYER_COMMAND = 'pullwave_noplayer';
 export const ANI_RUNNER_SCRIPT = 'pullwave-run.sh';
+// The script with the changes of the app is "ani-cli.<checksum>.patched" (see AniCliLocator.patchedScriptPath); earlier versions of the app
+// kept it as "ani-cli.patched", which is removed.
+export const PATCHED_SCRIPT_PREFIX = 'ani-cli.';
+export const PATCHED_SCRIPT_SUFFIX = '.patched';
+export const LEGACY_PATCHED_SCRIPT = 'ani-cli.patched';
 // What Windows programs need from the system to work: without these curl cannot reach the network and yt-dlp cannot find
 // its cache. Nothing else of the environment of the app is passed on.
 export const WINDOWS_SYSTEM_VARIABLES = [
@@ -87,8 +93,10 @@ export interface AniToolsFs {
     writeText: (path: string, content: string) => void;
 }
 
+// The app only has the subtitled anime (the dubbed ones were taken out): ani-cli is always run in this mode.
+export const ANI_MODE = 'sub';
+
 export interface AniEnvOptions {
-    audio: AnimeAudio;
     downloadDir: string;
     // The languages of the subtitles to try, in order (see aniSubtitles.ts).
     subtitleLabels: readonly string[];
@@ -252,9 +260,16 @@ export class AniCliLocator {
         return this.scriptProvider;
     }
 
-    get patchedScriptPath(): string {
-        return this.path.join(this.locations.dataDir, 'ani-cli.patched');
+    // Where the script with the changes of the app is kept: a file for each content (named by its checksum), never written over. busybox reads a
+    // script as it runs it, so an ani-cli that runs (a download) goes on reading the file it started with even after an update of ani-cli has
+    // made another one.
+    patchedScriptPath(patched: string): string {
+        return this.path.join(this.locations.dataDir, `${PATCHED_SCRIPT_PREFIX}${createHash('sha256').update(patched).digest('hex').slice(0, 16)}${PATCHED_SCRIPT_SUFFIX}`);
     }
+
+    // The patched script used before, when it was another one: it goes once a newer one is in use (best effort: on Windows a script that runs
+    // cannot be deleted, and is tried again the next time).
+    private previousPatched: string | null = null;
 
     // The script with Pullwave's changes (see aniPatches.ts), saved next to the tools. A script the user chose is never
     // changed, and one this cannot patch is used as it is.
@@ -268,11 +283,27 @@ export class AniCliLocator {
         if (patched === null) {
             return script;
         }
-        if (this.fs.readText(this.patchedScriptPath) !== patched) {
+        const path = this.patchedScriptPath(patched);
+        if (this.fs.readText(path) !== patched) {
             this.fs.mkdir(this.locations.dataDir);
-            this.fs.writeText(this.patchedScriptPath, patched);
+            this.fs.writeText(path, patched);
         }
-        return { path: this.patchedScriptPath, source: script.source };
+        this.forgetPrevious(path);
+        return { path, source: script.source };
+    }
+
+    private forgetPrevious(current: string): void {
+        const stale = [this.previousPatched, this.path.join(this.locations.dataDir, LEGACY_PATCHED_SCRIPT)].filter((candidate): candidate is string => {
+            return candidate !== null && candidate !== current && this.fs.exists(candidate);
+        });
+        stale.forEach((candidate) => {
+            try {
+                this.fs.remove(candidate);
+            } catch {
+                // Still in use: it goes the next time.
+            }
+        });
+        this.previousPatched = current;
     }
 
     // busybox runs the script that wraps ani-cli (and so ani-cli itself), so the shell of the system is not involved.
@@ -300,9 +331,12 @@ export class AniCliLocator {
             ANI_CLI_MENU: ANI_MENU_COMMAND,
             ANI_CLI_PLAYER: options.player ?? ANI_PLAYER_COMMAND,
             ANI_CLI_LOG: '0',
-            ANI_CLI_MODE: options.audio,
+            ANI_CLI_MODE: ANI_MODE,
             ANI_CLI_HIST_DIR: this.forScript(this.historyDir),
             ANI_CLI_DOWNLOAD_DIR: this.forScript(options.downloadDir),
+            // yt-dlp keeps the pieces of the download beside the file (as it did before ani-cli had this): the file it reports
+            // ("Destination") is then the file of the episode, not a temporary one that is moved away at the end.
+            ANI_CLI_TMP_DIR: this.forScript(options.downloadDir),
             [SUBTITLE_LABELS_VARIABLE]: options.subtitleLabels.join('|')
         };
         if (options.searchMin !== undefined) {

@@ -94,7 +94,7 @@ describe('SettingsPanel layout', () => {
         });
         expect(screen.getByLabelText('Anime download folder')).toHaveValue('');
         expect(screen.getByLabelText('Anime quality')).toHaveValue('best');
-        expect(screen.getByLabelText('Anime audio')).toHaveValue('sub');
+        expect(screen.queryByLabelText('Anime audio')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Download folder')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Theme')).not.toBeInTheDocument();
     });
@@ -905,13 +905,13 @@ describe('SettingsPanel anime section', () => {
         });
 
         it('shows the stored values', () => {
-            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeDownloadDir: '/media/anime', animeQuality: '720p', animeAudio: 'dub' } });
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeDownloadDir: '/media/anime', animeQuality: '720p' } });
             render(<SettingsPanel scope="anime" />);
             expect(screen.getByText('ANIME')).toBeInTheDocument();
             expect(screen.getByLabelText('Anime download folder')).toHaveValue('/media/anime');
             expect(screen.getByLabelText('Anime download folder')).toHaveAttribute('placeholder', 'Default: Downloads/Pullwave Anime');
             expect(screen.getByLabelText('Anime quality')).toHaveValue('720p');
-            expect(screen.getByLabelText('Anime audio')).toHaveValue('dub');
+            expect(screen.queryByLabelText('Anime audio')).not.toBeInTheDocument();
             expect(screen.getByLabelText('Anime subtitles')).toHaveValue('auto');
         });
 
@@ -1057,7 +1057,7 @@ describe('SettingsPanel anime section', () => {
             });
         });
 
-        it('lists the qualities and the audios with readable labels', () => {
+        it('lists the qualities and the subtitles with readable labels, and no audio', () => {
             render(<SettingsPanel scope="anime" />);
             const options = (label: string): Array<string | null> => {
                 return Array.from(screen.getByLabelText(label).querySelectorAll('option')).map((option) => {
@@ -1065,16 +1065,15 @@ describe('SettingsPanel anime section', () => {
                 });
             };
             expect(options('Anime quality')).toEqual(['BEST', '1080p', '720p', '480p', '360p', 'WORST (SMALLEST)']);
-            expect(options('Anime audio')).toEqual(['SUBTITLED', 'DUBBED']);
+            expect(screen.queryByLabelText('Anime audio')).not.toBeInTheDocument();
             expect(options('Anime subtitles')).toEqual(['FOLLOW THE APP LANGUAGE', 'WHAT ANI-CLI PICKS', 'English', 'Portuguese', 'Spanish', 'French', 'German', 'Italian', 'Russian']);
         });
 
-        it('saves the quality and the audio at once', async () => {
+        it('saves the quality at once', async () => {
             render(<SettingsPanel scope="anime" />);
             fireEvent.change(screen.getByLabelText('Anime quality'), { target: { value: '480p' } });
-            fireEvent.change(screen.getByLabelText('Anime audio'), { target: { value: 'dub' } });
             await flushPromises();
-            expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, animeQuality: '480p', animeAudio: 'dub' });
+            expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, animeQuality: '480p' });
         });
 
         it('saves the language of the subtitles at once', async () => {
@@ -1417,7 +1416,8 @@ describe('SettingsPanel manga section', () => {
         expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
         await flushPromises();
         expect(screen.getByRole('button', { name: 'CHECK NOW' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeInTheDocument();
+        // The app runs no helper here (the answer of the mock): there is nothing to look for an update of.
+        expect(screen.queryByRole('button', { name: 'CHECK FOR UPDATES' })).not.toBeInTheDocument();
         expect(mock.api.manga.health).toHaveBeenCalledWith(false);
     });
 

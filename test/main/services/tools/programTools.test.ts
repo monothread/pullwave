@@ -4,9 +4,10 @@ import { PROGRAM_IDS, type ProgramId, type ToolSpec, type ToolState } from '@sha
 import type { extractArchive } from '@main/services/tools/archiveExtract';
 import { LookupError, type LatestDependencies } from '@main/services/tools/programLatest';
 import { ffmpegSpec, pinnedSpec, ytdlpSpec, denoSpec, aniCliSpec } from '@main/services/tools/programSpecs';
-import { PREPARE_CONCURRENCY, ProgramTools, SELECTED_SUFFIX, type RunProgram } from '@main/services/tools/programTools';
+import { PATCHED_CHECK_FILE, PREPARE_CONCURRENCY, ProgramTools, SELECTED_SUFFIX, type AniCliCheck, type RunProgram } from '@main/services/tools/programTools';
 import { ToolDownloadError, type DownloadOptions, type DownloadResult } from '@main/services/tools/toolDownload';
-import { ALL_SUBTITLES_PART, aniCliScript, DEBUG_PART, SELECTION_PART } from '../../../helpers/aniCliScripts';
+import { patchAniCli } from '@main/services/aniPatches';
+import { aniCliScript } from '../../../helpers/aniCliScripts';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
 
 const LINUX_FFMPEG_ASSET = 'ffmpeg-n9.0-latest-linux64-gpl-shared-9.0.tar.xz';
@@ -31,9 +32,13 @@ interface Setup {
     custom: Record<string, string>;
     latest: { value: Partial<Record<ProgramId, ToolSpec | Error>> };
     gate: { value: Promise<void> | null };
+    // What the download of an address gives, instead of a text that names it.
+    contents: Map<string, string>;
+    // What tries a new ani-cli for real (none: the update only checks the script itself).
+    check: { value: AniCliCheck | null };
 }
 
-function setup(options: { platform?: NodeJS.Platform; arch?: string; downloadLatency?: boolean } = {}): Setup {
+function setup(options: { platform?: NodeJS.Platform; arch?: string } = {}): Setup {
     const platform = options.platform ?? 'linux';
     const arch = options.arch ?? 'x64';
     const root = makeTempDir();
@@ -45,6 +50,8 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string; downloadLat
     const custom: Record<string, string> = {};
     const latest: { value: Partial<Record<ProgramId, ToolSpec | Error>> } = { value: {} };
     const gate: { value: Promise<void> | null } = { value: null };
+    const contents = new Map<string, string>();
+    const check: { value: AniCliCheck | null } = { value: null };
     const specs = new Map<string, ToolSpec>();
     PROGRAM_IDS.forEach((id) => {
         (['linux', 'win32'] as const).forEach((system) => {
@@ -63,7 +70,7 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string; downloadLat
             throw new ToolDownloadError('The connection was lost');
         }
         mkdirSync(dirname(downloadOptions.destination), { recursive: true });
-        writeFileSync(downloadOptions.destination, `file of ${downloadOptions.url}`);
+        writeFileSync(downloadOptions.destination, contents.get(downloadOptions.url) ?? `file of ${downloadOptions.url}`);
         downloadOptions.onProgress?.({ bytesDone: 50, bytesTotal: 100 });
         return { sha256: corrupt.has(downloadOptions.url) ? 'e'.repeat(64) : (specs.get(downloadOptions.url)?.sha256 ?? 'f'.repeat(64)), bytes: 100 };
     };
@@ -103,10 +110,13 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string; downloadLat
         download,
         extract,
         latest: lookups,
-        run
+        run,
+        checkAniCli: () => {
+            return check.value;
+        }
     });
     // The lookups of the latest version are replaced by what the test says.
-    const instance = tools as unknown as { lookup: (id: ProgramId) => Promise<{ spec: ToolSpec; unfit: never[] }>; firstSpec?: unknown };
+    const instance = tools as unknown as { lookup: (id: ProgramId) => Promise<{ spec: ToolSpec }>; firstSpec?: unknown };
     instance.lookup = (id) => {
         const found = latest.value[id];
         if (found === undefined) {
@@ -117,7 +127,7 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string; downloadLat
         }
         // What the publisher lists, the network can give.
         specs.set(found.url, found);
-        return Promise.resolve({ spec: found, unfit: [] });
+        return Promise.resolve({ spec: found });
     };
     return {
         tools,
@@ -131,6 +141,8 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string; downloadLat
         custom,
         latest,
         gate,
+        contents,
+        check,
         register: (spec) => {
             specs.set(spec.url, spec);
         }
@@ -301,13 +313,37 @@ describe('ProgramTools installing', () => {
 });
 
 describe('ProgramTools the check of ani-cli', () => {
+    const PINNED_COMMIT = '8527f185a12c6b5d0247a30b2217000dd65457fe';
+
     it('looks at the script with the shell that is installed', async () => {
         const { tools, root, run } = setup();
         await tools.install('busybox');
         run.mockClear();
         await tools.install('anicli');
         expect(run).toHaveBeenCalledTimes(1);
-        expect(run).toHaveBeenCalledWith(tools.pathOf('busybox'), ['sh', '-n', join(root, 'anicli', 'staging-3ad53631ef2433b0c26e25ab011a5b149706c120', 'ani-cli')]);
+        expect(run).toHaveBeenCalledWith(tools.pathOf('busybox'), ['sh', '-n', join(root, 'anicli', `staging-${PINNED_COMMIT}`, 'ani-cli')]);
+    });
+
+    it('also looks at the script with the changes of the app, and leaves no copy of it behind', async () => {
+        const context = setup();
+        const pinned = pinnedSpec('anicli', 'linux', 'x64') as ToolSpec;
+        context.contents.set(pinned.url, aniCliScript('5.1.8'));
+        await context.tools.install('busybox');
+        context.run.mockClear();
+        const checked: string[] = [];
+        context.run.mockImplementation(async (_file, args) => {
+            checked.push(readFileSync(args[2] as string, 'utf-8'));
+            return { ok: true, output: '' };
+        });
+        const staging = join(context.root, 'anicli', `staging-${PINNED_COMMIT}`);
+        expect(await context.tools.install('anicli')).toMatchObject({ status: 'ready' });
+        expect(context.run.mock.calls).toEqual([
+            [context.tools.pathOf('busybox'), ['sh', '-n', join(staging, 'ani-cli')]],
+            [context.tools.pathOf('busybox'), ['sh', '-n', join(staging, PATCHED_CHECK_FILE)]]
+        ]);
+        expect(checked).toEqual([aniCliScript('5.1.8'), patchAniCli(aniCliScript('5.1.8'))]);
+        expect(existsSync(join(context.root, 'anicli', PINNED_COMMIT, PATCHED_CHECK_FILE))).toBe(false);
+        expect(readdirSync(join(context.root, 'anicli', PINNED_COMMIT)).sort()).toEqual(['.pullwave-tool.json', 'ani-cli'].sort());
     });
 
     it('does not install a script the shell does not accept', async () => {
@@ -318,11 +354,224 @@ describe('ProgramTools the check of ani-cli', () => {
         expect(state).toMatchObject({ status: 'error', error: { code: 'INVALID', message: 'The shell does not accept the script of ani-cli' } });
     });
 
+    it('does not install a script the shell no longer accepts once the app changed it, and removes the changed copy', async () => {
+        const context = setup();
+        const pinned = pinnedSpec('anicli', 'linux', 'x64') as ToolSpec;
+        context.contents.set(pinned.url, aniCliScript('5.1.8'));
+        await context.tools.install('busybox');
+        context.run.mockImplementation(async (_file, args) => {
+            return { ok: !(args[2] as string).endsWith(PATCHED_CHECK_FILE), output: 'syntax error' };
+        });
+        expect(await context.tools.install('anicli')).toMatchObject({
+            status: 'error',
+            error: { code: 'INVALID', message: 'The shell does not accept the script of ani-cli with the changes of the app' }
+        });
+        expect(existsSync(join(context.root, 'anicli', `staging-${PINNED_COMMIT}`))).toBe(false);
+    });
+
     it('installs the script without that check when the shell is not installed yet', async () => {
         const { tools, run } = setup();
         const state = await tools.install('anicli');
         expect(state.status).toBe('ready');
         expect(run).not.toHaveBeenCalled();
+    });
+
+    it('does not try the script for real when it is installed, only when it is an update', async () => {
+        const context = setup();
+        const check = vi.fn<AniCliCheck>(async () => {
+            return undefined;
+        });
+        context.check.value = check;
+        await context.tools.install('busybox');
+        await context.tools.install('anicli');
+        expect(check).not.toHaveBeenCalled();
+        expect(context.updates).toEqual([]);
+    });
+});
+
+describe('ProgramTools updating ani-cli', () => {
+    const PINNED_COMMIT = '8527f185a12c6b5d0247a30b2217000dd65457fe';
+
+    function updatable(context: Setup): ToolSpec {
+        const spec = aniCliSpec(COMMIT, SHA_A, 32_000);
+        context.register(spec);
+        context.contents.set(spec.url, aniCliScript('5.2.0'));
+        context.latest.value.anicli = spec;
+        return spec;
+    }
+
+    function steps(context: Setup): Array<[string | undefined, string]> {
+        return context.updates.map((state) => {
+            return [state.step, state.status];
+        });
+    }
+
+    async function installed(): Promise<Setup> {
+        const context = setup();
+        await context.tools.install('busybox');
+        await context.tools.install('anicli');
+        context.run.mockClear();
+        context.states.length = 0;
+        return context;
+    }
+
+    it('tells each step as it goes: the look at the script, its download, the shell, and the tries for real, then that it is ready', async () => {
+        const context = await installed();
+        const spec = updatable(context);
+        const tried: string[] = [];
+        context.check.value = async (scriptPath, onStep) => {
+            tried.push(scriptPath);
+            onStep('search');
+            onStep('episodes');
+            onStep('episode');
+            return Promise.resolve();
+        };
+        expect(await context.tools.update('anicli')).toEqual({ ok: true, version: COMMIT });
+        expect(steps(context)).toEqual([
+            ['compatibility', 'verifying'],
+            ['download', 'downloading'],
+            ['download', 'downloading'],
+            ['download', 'verifying'],
+            ['download', 'extracting'],
+            ['syntax', 'verifying'],
+            ['search', 'verifying'],
+            ['episodes', 'verifying'],
+            ['episode', 'verifying'],
+            ['episode', 'ready']
+        ]);
+        expect(context.updates[0]).toEqual({ id: 'anicli', step: 'compatibility', status: 'verifying', version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: null });
+        expect(context.updates[5]).toEqual({ id: 'anicli', step: 'syntax', status: 'verifying', version: null, bytesDone: 0, bytesTotal: 0, percent: 100, error: null });
+        expect(tried).toEqual([join(context.root, 'anicli', `staging-${COMMIT}`, 'ani-cli')]);
+        expect(context.tools.readSelected('anicli')).toEqual({ version: COMMIT, sha256: spec.sha256, sizeBytes: spec.sizeBytes });
+        expect(context.tools.pathOf('anicli')).toBe(join(context.root, 'anicli', COMMIT, 'ani-cli'));
+    });
+
+    it('checks the new script with the shell, as it is and with the changes of the app, before it tries it', async () => {
+        const context = await installed();
+        updatable(context);
+        const order: string[] = [];
+        context.run.mockImplementation(async (_file, args) => {
+            order.push(`shell ${String(args[2]).endsWith(PATCHED_CHECK_FILE) ? 'patched' : 'script'}`);
+            return { ok: true, output: '' };
+        });
+        context.check.value = async () => {
+            order.push('tried');
+            return Promise.resolve();
+        };
+        expect((await context.tools.update('anicli')).ok).toBe(true);
+        expect(order).toEqual(['shell script', 'shell patched', 'tried']);
+    });
+
+    it('keeps the script in use, and tells the step it stopped at, when the try for real fails', async () => {
+        const context = await installed();
+        updatable(context);
+        context.check.value = async (_scriptPath, onStep) => {
+            onStep('search');
+            onStep('episodes');
+            return Promise.reject(new Error('The list of the episodes of KAIJU GIRL CARAMELISE has no episode 1 (0 episodes)'));
+        };
+        const result = await context.tools.update('anicli');
+        expect(result).toEqual({ ok: false, reason: 'failed', message: 'The list of the episodes of KAIJU GIRL CARAMELISE has no episode 1 (0 episodes)' });
+        expect(context.updates.at(-1)).toMatchObject({
+            id: 'anicli',
+            step: 'episodes',
+            status: 'error',
+            error: { code: 'INVALID', message: 'The list of the episodes of KAIJU GIRL CARAMELISE has no episode 1 (0 episodes)' }
+        });
+        expect(context.tools.readSelected('anicli')).toBeNull();
+        expect(context.tools.pathOf('anicli')).toBe(join(context.root, 'anicli', PINNED_COMMIT, 'ani-cli'));
+        expect(readdirSync(join(context.root, 'anicli'))).toEqual([PINNED_COMMIT]);
+    });
+
+    it('keeps the script in use, and tells it stopped at the shell, when the shell does not accept the new one', async () => {
+        const context = await installed();
+        updatable(context);
+        const check = vi.fn<AniCliCheck>();
+        context.check.value = check;
+        context.run.mockResolvedValue({ ok: false, output: 'syntax error' });
+        expect(await context.tools.update('anicli')).toEqual({ ok: false, reason: 'failed', message: 'The shell does not accept the script of ani-cli' });
+        expect(context.updates.at(-1)).toMatchObject({ step: 'syntax', status: 'error' });
+        expect(check).not.toHaveBeenCalled();
+        expect(context.tools.readSelected('anicli')).toBeNull();
+    });
+
+    it('tells it stopped at the look at the script, before downloading anything, when the app cannot use it', async () => {
+        const context = await installed();
+        context.latest.value.anicli = new LookupError('incompatible', 'This ani-cli cannot be used by the app: the option -S is gone');
+        expect(await context.tools.update('anicli')).toEqual({ ok: false, reason: 'lookup', message: 'This ani-cli cannot be used by the app: the option -S is gone', lookup: 'incompatible' });
+        expect(context.updates).toEqual([
+            { id: 'anicli', step: 'compatibility', status: 'verifying', version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: null },
+            {
+                id: 'anicli',
+                step: 'compatibility',
+                status: 'error',
+                version: null,
+                bytesDone: 0,
+                bytesTotal: 0,
+                percent: 0,
+                error: { code: 'INVALID', message: 'This ani-cli cannot be used by the app: the option -S is gone' }
+            }
+        ]);
+        expect(context.downloads.map((download) => {
+            return download.url;
+        })).not.toContain(aniCliSpec(COMMIT, SHA_A, 32_000).url);
+    });
+
+    it('tells it stopped at the look at the script when the network fails there', async () => {
+        const context = await installed();
+        context.latest.value.anicli = new Error('offline');
+        expect(await context.tools.update('anicli')).toEqual({ ok: false, reason: 'failed', message: 'offline' });
+        expect(context.updates.at(-1)).toMatchObject({ step: 'compatibility', status: 'error', error: { code: 'INVALID', message: 'offline' } });
+    });
+
+    it('tells it stopped at the download when the download fails', async () => {
+        const context = await installed();
+        const spec = updatable(context);
+        context.failing.add(spec.url);
+        expect(await context.tools.update('anicli')).toEqual({ ok: false, reason: 'failed', message: 'The connection was lost' });
+        expect(context.updates.at(-1)).toMatchObject({ step: 'download', status: 'error', error: { code: 'DOWNLOAD_FAILED' } });
+    });
+
+    it('ends the steps as ready when the latest is the one in use', async () => {
+        const context = await installed();
+        context.latest.value.anicli = pinnedSpec('anicli', 'linux', 'x64') as ToolSpec;
+        expect(await context.tools.update('anicli')).toEqual({ ok: false, reason: 'current', message: PINNED_COMMIT });
+        expect(steps(context)).toEqual([
+            ['compatibility', 'verifying'],
+            ['compatibility', 'ready']
+        ]);
+    });
+
+    it('updates with the checks of the script alone where nothing tries it for real', async () => {
+        const context = await installed();
+        updatable(context);
+        expect(await context.tools.update('anicli')).toEqual({ ok: true, version: COMMIT });
+        expect(steps(context).map(([step]) => {
+            return step;
+        })).not.toContain('search');
+    });
+
+    it('starts the next update from the first step', async () => {
+        const context = await installed();
+        context.latest.value.anicli = new Error('offline');
+        await context.tools.update('anicli');
+        context.updates.length = 0;
+        updatable(context);
+        await context.tools.update('anicli');
+        expect(context.updates[0]).toMatchObject({ step: 'compatibility', status: 'verifying' });
+    });
+
+    it('gives no step to the updates of the other programs', async () => {
+        const context = setup();
+        await context.tools.install('ytdlp');
+        const spec = ytdlpSpec('2026.09.01', SHA_A, 41_000_000, 'linux');
+        context.register(spec);
+        context.latest.value.ytdlp = spec;
+        await context.tools.update('ytdlp');
+        expect(context.updates.length).toBeGreaterThan(0);
+        context.updates.forEach((state) => {
+            expect(state.step).toBeUndefined();
+        });
     });
 });
 
@@ -601,15 +850,15 @@ describe('ProgramTools the latest versions', () => {
         context.latest.value.ffmpeg = ffmpegLatest();
         context.latest.value.anicli = aniCliSpec(COMMIT, SHA_A, 30_000);
         const versions = await context.tools.check();
-        expect(versions['ytdlp']).toEqual({ id: 'ytdlp', current: '2026.08.19', latest: '2026.09.01', updatable: true, base: '2026.08.19', chosen: false, error: null, errorMessage: null, unfit: [] });
+        expect(versions['ytdlp']).toEqual({ id: 'ytdlp', current: '2026.08.19', latest: '2026.09.01', updatable: true, base: '2026.08.19', chosen: false, error: null, errorMessage: null });
         expect(versions['deno']).toMatchObject({ current: 'v2.9.7', latest: 'v2.9.7', updatable: false });
-        expect(versions['ffmpeg']).toEqual({ id: 'ffmpeg', current: null, latest: `latest-${SHA_A.slice(0, 12)}`, updatable: true, base: null, chosen: false, error: null, errorMessage: null, unfit: [] });
-        expect(versions['anicli']).toMatchObject({ current: '3ad53631ef2433b0c26e25ab011a5b149706c120', latest: COMMIT, updatable: true });
+        expect(versions['ffmpeg']).toEqual({ id: 'ffmpeg', current: null, latest: `latest-${SHA_A.slice(0, 12)}`, updatable: true, base: null, chosen: false, error: null, errorMessage: null });
+        expect(versions['anicli']).toMatchObject({ current: '8527f185a12c6b5d0247a30b2217000dd65457fe', latest: COMMIT, updatable: true });
     });
 
     it('does not look for a newer busybox or curl: they stay at their version', async () => {
         const versions = await setup().tools.check();
-        expect(versions['busybox']).toEqual({ id: 'busybox', current: '1.35.0', latest: null, updatable: false, base: '1.35.0', chosen: false, error: null, errorMessage: null, unfit: [] });
+        expect(versions['busybox']).toEqual({ id: 'busybox', current: '1.35.0', latest: null, updatable: false, base: '1.35.0', chosen: false, error: null, errorMessage: null });
         expect(versions['curl']).toMatchObject({ current: '8.22.0', latest: null, updatable: false, error: null });
     });
 
@@ -850,11 +1099,5 @@ describe('ProgramTools the root folder', () => {
     it('is the one it was given', () => {
         const context = setup();
         expect(context.tools.rootDirectory).toBe(context.root);
-    });
-
-    it('has the script of ani-cli that passes the syntax check with a real script text', () => {
-        expect(aniCliScript('5.1.4')).toContain(SELECTION_PART);
-        expect(aniCliScript('5.1.4')).toContain(ALL_SUBTITLES_PART);
-        expect(aniCliScript('5.1.4')).toContain(DEBUG_PART);
     });
 });

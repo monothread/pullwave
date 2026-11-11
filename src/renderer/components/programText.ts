@@ -1,6 +1,6 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import type { ProgramLookupReason } from '@shared/programs';
-import type { ProgramId, ToolError, ToolErrorCode, ToolState, ToolStatus } from '@shared/tools';
+import { ANICLI_UPDATE_STEPS, type AniCliUpdateStep, type ProgramId, type ToolError, type ToolErrorCode, type ToolState, type ToolStatus } from '@shared/tools';
 import { codedErrorReport, type ErrorReport } from './errorReport';
 
 const ERROR_KEYS: Record<ToolErrorCode, MessageKey> = {
@@ -20,8 +20,39 @@ const LOOKUP_KEYS: Record<ProgramLookupReason, MessageKey> = {
     checksum: 'tools.lookup.checksum',
     invalid: 'tools.lookup.invalid',
     patches: 'tools.lookup.patches',
+    incompatible: 'tools.lookup.incompatible',
     failed: 'tools.lookup.failed'
 };
+
+const UPDATE_STEP_KEYS: Record<AniCliUpdateStep, MessageKey> = {
+    compatibility: 'tools.step.compatibility',
+    download: 'tools.step.download',
+    syntax: 'tools.step.syntax',
+    search: 'tools.step.search',
+    episodes: 'tools.step.episodes',
+    episode: 'tools.step.episode'
+};
+
+export function updateStepKey(step: AniCliUpdateStep): MessageKey {
+    return UPDATE_STEP_KEYS[step];
+}
+
+export type UpdateStepState = 'done' | 'running' | 'failed' | 'pending';
+
+// How each step of an update of ani-cli stands, from what the update tells: the steps before the one it is at are done, that one is going on
+// (or is where it stopped), and the ones after it are still to come. A state without a step is the download.
+export function updateStepStates(state: ToolState): Array<{ step: AniCliUpdateStep; state: UpdateStepState }> {
+    const current = ANICLI_UPDATE_STEPS.indexOf(state.step ?? 'download');
+    return ANICLI_UPDATE_STEPS.map((step, position) => {
+        if (position < current) {
+            return { step, state: 'done' };
+        }
+        if (position > current) {
+            return { step, state: 'pending' };
+        }
+        return { step, state: state.status === 'error' ? 'failed' : 'running' };
+    });
+}
 
 const PROGRESS_KEYS: Record<Exclude<ToolStatus, 'ready' | 'error'>, MessageKey> = {
     missing: 'tools.status.missing',

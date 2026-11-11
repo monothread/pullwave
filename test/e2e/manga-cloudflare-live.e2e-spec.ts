@@ -81,3 +81,34 @@ test('reads a site that is behind Cloudflare through the helper, and says that a
     await expect(page.getByRole('alert')).toHaveCount(0);
     expect(await page.locator('.cover-card').count()).toBeGreaterThan(0);
 });
+
+test('offers to look for an update of the helper the app runs, and never an update of the server', async () => {
+    await page.getByRole('button', { name: 'MANGA', exact: true }).click();
+    const nav = page.getByRole('navigation', { name: 'Manga' });
+    await expect(nav).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('region', { name: 'Helper for sites protected by Cloudflare' })).toHaveCount(0, { timeout: 20000 });
+
+    await nav.getByRole('button', { name: 'SETTINGS', exact: true }).click();
+    const status = page.getByRole('group', { name: 'Status of the programs' });
+    const server = status.getByTestId('manga-health-server');
+    const helper = status.getByTestId('manga-health-helper');
+    // The app runs the helper (it is installed and on): its update can be looked for, and the words say how it is made.
+    await expect(status.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled({ timeout: 30000 });
+    await expect(status).toContainText('Updating takes the latest release of FlareSolverr (from GitHub) and switches to it at once.');
+    await expect(status).toContainText('The manga server stays at the version the app ships with: it moves with the updates of the app.');
+
+    await status.getByRole('button', { name: 'CHECK FOR UPDATES' }).click();
+    // The latest release of FlareSolverr is asked of GitHub: the row of the helper says it (or why it could not be had), the server says nothing.
+    await expect(helper).toContainText(/Latest: v\d+\.\d+\.\d+|Could not look for the latest version/, { timeout: 30000 });
+    await expect(status.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
+    await expect(server.getByRole('button')).toHaveCount(0);
+    await expect(server).not.toContainText('Latest:');
+    await expect(status.getByRole('button', { name: /RESTART NOW|USE THE ONE OF THE APP/ })).toHaveCount(0);
+    // An update to the latest is offered only when it is another version than the one that runs; nothing is updated here.
+    const latest = /Latest: (v\d+\.\d+\.\d+)/.exec(await helper.innerText())?.[1] ?? null;
+    if (latest !== null && latest !== 'v3.5.2') {
+        await expect(helper.getByRole('button', { name: `UPDATE TO ${latest}` })).toBeEnabled();
+    } else {
+        await expect(helper.getByRole('button', { name: /^UPDATE TO/ })).toHaveCount(0);
+    }
+});

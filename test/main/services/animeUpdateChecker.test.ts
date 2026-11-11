@@ -1,4 +1,4 @@
-import type { AniError, AniRunResult, AnimeAudio, AnimeCheckState, AnimeNewEpisodes, AnimeSearchResult } from '@shared/anime';
+import type { AniError, AniRunResult, AnimeCheckState, AnimeNewEpisodes, AnimeSearchResult } from '@shared/anime';
 import { IDLE_CHECK_STATE, MAX_AUTO_DOWNLOAD_EPISODES } from '@shared/anime';
 import { AnimeDb } from '@main/services/animeDb';
 import {
@@ -40,7 +40,7 @@ interface Setup {
     onNewEpisodes: ReturnType<typeof vi.fn<(news: AnimeNewEpisodes) => void>>;
     onLibraryChanged: ReturnType<typeof vi.fn<() => void>>;
     flags: { enabled: boolean; autoDownload: boolean };
-    addAnime: (title: string, query: string, searchIndex: number, audio?: AnimeAudio) => number;
+    addAnime: (title: string, query: string, searchIndex: number) => number;
 }
 
 function setup(overrides: Partial<AnimeUpdateCheckerDependencies> = {}): Setup {
@@ -87,8 +87,8 @@ function setup(overrides: Partial<AnimeUpdateCheckerDependencies> = {}): Setup {
         onNewEpisodes,
         onLibraryChanged,
         flags,
-        addAnime: (title, query, searchIndex, audio = 'sub') => {
-            return db.upsertAnime({ title, query, searchIndex, audio }).id;
+        addAnime: (title, query, searchIndex) => {
+            return db.upsertAnime({ title, query, searchIndex }).id;
         }
     };
 }
@@ -133,30 +133,30 @@ describe('AnimeUpdateChecker.checkNow', () => {
 
         it('asks for the search up to the place the anime was saved at, so one that is past the first page of the source is found', async () => {
             const context = setup();
-            context.addAnime('Naruto', 'naruto', 45, 'sub');
+            context.addAnime('Naruto', 'naruto', 45);
             context.results.naruto = [{ index: 44, title: 'Naruto Movie' }, { index: 45, title: 'Naruto' }];
             context.lists['naruto:45'] = ['1'];
 
             await context.checker.checkNow('auto');
 
             expect(context.search).toHaveBeenCalledTimes(1);
-            expect(context.search).toHaveBeenCalledWith('naruto', 'sub', 45);
+            expect(context.search).toHaveBeenCalledWith('naruto', 45);
             expect(context.episodes).toHaveBeenCalledTimes(1);
-            expect(context.episodes).toHaveBeenCalledWith('naruto', 45, 'sub');
+            expect(context.episodes).toHaveBeenCalledWith('naruto', 45);
         });
 
-        it('asks ani-cli for the search and the audio of the anime, and for the episodes of the place it has in the results', async () => {
+        it('asks ani-cli for the search of the anime, and for the episodes of the place it has in the results', async () => {
             const context = setup();
-            context.addAnime('Naruto', 'naruto', 2, 'dub');
+            context.addAnime('Naruto', 'naruto', 2);
             context.results.naruto = [{ index: 1, title: 'Naruto Shippuden' }, { index: 2, title: 'Naruto (220 episodes)' }];
             context.lists['naruto:2'] = ['1'];
 
             await context.checker.checkNow('auto');
 
             expect(context.search).toHaveBeenCalledTimes(1);
-            expect(context.search).toHaveBeenCalledWith('naruto', 'dub', 2);
+            expect(context.search).toHaveBeenCalledWith('naruto', 2);
             expect(context.episodes).toHaveBeenCalledTimes(1);
-            expect(context.episodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+            expect(context.episodes).toHaveBeenCalledWith('naruto', 2);
         });
 
         it('leaves the episodes the library already has as they are', async () => {
@@ -439,7 +439,7 @@ describe('AnimeUpdateChecker.checkNow', () => {
 
             await context.checker.checkNow('auto');
 
-            expect(context.episodes).toHaveBeenCalledWith('naruto', 3, 'sub');
+            expect(context.episodes).toHaveBeenCalledWith('naruto', 3);
             expect(context.db.getAnime(id)?.searchIndex).toBe(3);
         });
 
@@ -452,7 +452,7 @@ describe('AnimeUpdateChecker.checkNow', () => {
             const response = await context.checker.checkNow('auto');
 
             expect(response).toMatchObject({ count: 1, titles: ['Naruto'] });
-            expect(context.episodes).toHaveBeenCalledWith('naruto', 3, 'sub');
+            expect(context.episodes).toHaveBeenCalledWith('naruto', 3);
             expect(context.db.getAnime(id)?.searchIndex).toBe(3);
         });
 
@@ -476,7 +476,7 @@ describe('AnimeUpdateChecker.checkNow', () => {
 
             await context.checker.checkNow('auto');
 
-            expect(context.episodes).toHaveBeenCalledWith('dandadan', 1, 'sub');
+            expect(context.episodes).toHaveBeenCalledWith('dandadan', 1);
             expect(context.db.getAnime(id)?.searchIndex).toBe(1);
         });
 
@@ -500,8 +500,8 @@ describe('AnimeUpdateChecker.checkNow', () => {
 
         it('tells the seasons that have the same title by the id of the source, and follows each one to its place', async () => {
             const context = setup();
-            const first = context.db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1, audio: 'sub', sourceId: 'nisekoi-false-love-603' }).id;
-            const second = context.db.upsertAnime({ title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, audio: 'sub', sourceId: 'nisekoi-false-love-season-2-605' }).id;
+            const first = context.db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1, sourceId: 'nisekoi-false-love-603' }).id;
+            const second = context.db.upsertAnime({ title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, sourceId: 'nisekoi-false-love-season-2-605' }).id;
             context.db.registerEpisodesBaseline(first, ['1']);
             context.db.registerEpisodesBaseline(second, ['1']);
             // A new anime was listed first: both moved down by one, and the two of them still have the same title.
@@ -516,8 +516,8 @@ describe('AnimeUpdateChecker.checkNow', () => {
             const response = await context.checker.checkNow('auto');
 
             expect(response).toMatchObject({ failed: 0, skipped: 0 });
-            expect(context.episodes).toHaveBeenCalledWith('nisekoi', 2, 'sub');
-            expect(context.episodes).toHaveBeenCalledWith('nisekoi', 3, 'sub');
+            expect(context.episodes).toHaveBeenCalledWith('nisekoi', 2);
+            expect(context.episodes).toHaveBeenCalledWith('nisekoi', 3);
             expect(context.db.getAnime(first)?.searchIndex).toBe(2);
             expect(context.db.getAnime(second)?.searchIndex).toBe(3);
             expect(context.db.getLibraryAnime(first)?.episodes).toHaveLength(2);
@@ -734,7 +734,7 @@ describe('AnimeUpdateChecker.checkAnime', () => {
 
         expect(response).toEqual({ ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 0 });
         expect(context.search).toHaveBeenCalledTimes(1);
-        expect(context.search).toHaveBeenCalledWith('naruto', 'sub', 1);
+        expect(context.search).toHaveBeenCalledWith('naruto', 1);
         expect(context.db.updates()[0]).toMatchObject({ episodeNumber: '2', origin: 'manual' });
         expect(context.download).toHaveBeenCalledWith(id, ['2']);
         expect(context.onNewEpisodes).toHaveBeenCalledWith({ count: 1, titles: ['Naruto'], notDownloaded: [] });
@@ -1494,7 +1494,7 @@ describe('AnimeUpdateChecker the anime whose releases are over', () => {
 
         expect(response).toEqual({ ok: true, count: 1, titles: ['Naruto'], notDownloaded: [], failed: 0, skipped: 0 });
         expect(context.search).toHaveBeenCalledTimes(1);
-        expect(context.search).toHaveBeenCalledWith('naruto', 'sub', 1);
+        expect(context.search).toHaveBeenCalledWith('naruto', 1);
         expect(context.db.getEpisodeByNumber(ended, '2')).toBeNull();
     });
 
@@ -1547,7 +1547,7 @@ describe('AnimeUpdateChecker the anime whose releases are over', () => {
         await context.checker.checkNow('manual');
 
         expect(context.search).toHaveBeenCalledTimes(1);
-        expect(context.search).toHaveBeenCalledWith('naruto', 'sub', 1);
+        expect(context.search).toHaveBeenCalledWith('naruto', 1);
     });
 
     it('still asks about an anime that ended when the user asks about that one only', async () => {

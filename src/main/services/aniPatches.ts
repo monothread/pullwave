@@ -1,9 +1,8 @@
-import { patchAllSubtitles, patchSubtitleSelection } from './aniSubtitles';
-import { patchSeparateAudio } from './aniAudio';
+import { ALL_SUBTITLES_NEEDS, patchAllSubtitles, patchSubtitleSelection, SUBTITLE_SELECTION_NEEDS } from './aniSubtitles';
 import { patchMenuIds } from './aniMenuIds';
-import { patchSearchPages } from './aniSearchPages';
+import { patchSearchPages, SEARCH_PAGES_NEEDS } from './aniSearchPages';
 import { patchSingleResult } from './aniSingleResult';
-import { patchDebugReferer } from './aniStream';
+import { DEBUG_REFERER_NEEDS, patchDebugReferer } from './aniStream';
 
 // Which of the changes Pullwave makes to ani-cli fit a script (see patchAniCli).
 export interface PatchReport {
@@ -13,37 +12,48 @@ export interface PatchReport {
     menuIds: boolean;
     singleResult: boolean;
     searchPages: boolean;
-    separateAudio: boolean;
 }
 
 export type PatchName = keyof PatchReport;
 
-// The change without which the app cannot find the stream of an episode: the referer the host of the stream wants. The others only give
-// more subtitles (their language, and all of them), tell apart the anime that have the same title (the id in the lists), show the anime the source
-// picked on its own, read the pages of the search after the first and download the audio when the source gives it as a track of its own, so a
-// script they do not fit is still worth using.
-export const REQUIRED_PATCHES: readonly PatchName[] = ['debugReferer'];
+interface PatchDefinition {
+    apply: (source: string) => string | null;
+    // The variables and functions the code the change adds reads from the script (beyond the text it looks for, which has to be there for
+    // it to fit at all): a script that no longer sets one of them would take the change and fail when it runs.
+    needs: readonly string[];
+}
+
+// Every change, in the order they are made: the choice of subtitles, saving all of them, the referer in the debug output, the id and the lone
+// result in the lists, the pages of the search. Each one is made on its own (none depends on another having fit).
+export const PATCHES: Readonly<Record<PatchName, PatchDefinition>> = {
+    subtitleSelection: { apply: patchSubtitleSelection, needs: SUBTITLE_SELECTION_NEEDS },
+    allSubtitles: { apply: patchAllSubtitles, needs: ALL_SUBTITLES_NEEDS },
+    debugReferer: { apply: patchDebugReferer, needs: DEBUG_REFERER_NEEDS },
+    menuIds: { apply: patchMenuIds, needs: ['menu'] },
+    singleResult: { apply: patchSingleResult, needs: ['nth'] },
+    searchPages: { apply: patchSearchPages, needs: SEARCH_PAGES_NEEDS }
+};
+
+export const PATCH_NAMES = Object.keys(PATCHES) as PatchName[];
 
 export function patchReport(source: string): PatchReport {
     return {
-        subtitleSelection: patchSubtitleSelection(source) !== null,
-        allSubtitles: patchAllSubtitles(source) !== null,
-        debugReferer: patchDebugReferer(source) !== null,
-        menuIds: patchMenuIds(source) !== null,
-        singleResult: patchSingleResult(source) !== null,
-        searchPages: patchSearchPages(source) !== null,
-        separateAudio: patchSeparateAudio(source) !== null
+        subtitleSelection: PATCHES.subtitleSelection.apply(source) !== null,
+        allSubtitles: PATCHES.allSubtitles.apply(source) !== null,
+        debugReferer: PATCHES.debugReferer.apply(source) !== null,
+        menuIds: PATCHES.menuIds.apply(source) !== null,
+        singleResult: PATCHES.singleResult.apply(source) !== null,
+        searchPages: PATCHES.searchPages.apply(source) !== null
     };
 }
 
-// Everything Pullwave changes in the script it runs: the choice of subtitles, saving all of them, the referer in the debug output, the id and the lone result in the lists, the pages of the search, the audio
-// tracks of the master. The audio is last: it goes in front of the command that downloads, after the lines that save the subtitles. Each change
-// is made on its own, so a version of ani-cli that only fits one of them still gets that one. Null when none fits.
+// Everything Pullwave changes in the script it runs. Each change is made on its own, so a script that only fits some of them (one the user
+// chose) still gets those; the script the app installs fits them all (an update that does not is refused, see aniCompatibility.ts). Null
+// when none fits.
 export function patchAniCli(source: string): string | null {
-    const patches = [patchSubtitleSelection, patchAllSubtitles, patchDebugReferer, patchMenuIds, patchSingleResult, patchSearchPages, patchSeparateAudio];
     let result = source;
-    patches.forEach((patch) => {
-        result = patch(result) ?? result;
+    PATCH_NAMES.forEach((name) => {
+        result = PATCHES[name].apply(result) ?? result;
     });
     return result === source ? null : result;
 }

@@ -4,7 +4,7 @@ import type { AnimeHistoryRequest, AnimeScheduleEntry } from '@shared/anime';
 import { AnimeDb, INTERRUPTED_MESSAGE, MAX_HISTORY_ENTRIES, MAX_UPDATES_KEPT, type NewAnime } from '@main/services/animeDb';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
-const NARUTO: NewAnime = { title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' };
+const NARUTO: NewAnime = { title: 'Naruto', query: 'naruto', searchIndex: 1 };
 const NOW = 1_700_000_000_000;
 
 function makeDb(): AnimeDb {
@@ -40,7 +40,6 @@ describe('AnimeDb schema', () => {
                 query: 'naruto',
                 searchIndex: 1,
                 sourceId: null,
-                audio: 'sub',
                 createdAt: NOW,
                 series: null,
                 season: null,
@@ -121,15 +120,15 @@ describe('AnimeDb schema', () => {
 });
 
 describe('AnimeDb with the id of the source', () => {
-    const SEASON_1: NewAnime = { title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1, audio: 'sub', sourceId: 'nisekoi-false-love-603' };
-    const SEASON_2: NewAnime = { title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, audio: 'sub', sourceId: 'nisekoi-false-love-season-2-605' };
+    const SEASON_1: NewAnime = { title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1, sourceId: 'nisekoi-false-love-603' };
+    const SEASON_2: NewAnime = { title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, sourceId: 'nisekoi-false-love-season-2-605' };
 
     it('keeps the id of the anime, and null for the ones that have none', () => {
         const db = makeDb();
         expect(db.upsertAnime(SEASON_1).sourceId).toBe('nisekoi-false-love-603');
-        expect(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' }).sourceId).toBeNull();
-        expect(db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 1, audio: 'sub', sourceId: null }).sourceId).toBeNull();
-        expect(db.upsertAnime({ title: 'One Piece', query: 'one piece', searchIndex: 1, audio: 'sub', sourceId: '' }).sourceId).toBeNull();
+        expect(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 }).sourceId).toBeNull();
+        expect(db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 1, sourceId: null }).sourceId).toBeNull();
+        expect(db.upsertAnime({ title: 'One Piece', query: 'one piece', searchIndex: 1, sourceId: '' }).sourceId).toBeNull();
     });
 
     it('keeps two anime with the same title apart when their ids are not the same, each with its episodes', () => {
@@ -159,17 +158,17 @@ describe('AnimeDb with the id of the source', () => {
         expect(db.list()).toHaveLength(1);
     });
 
-    it('does not mix the audio: the dubbed version of an id is another anime', () => {
+    it('finds the anime of an id again when it is added a second time', () => {
         const db = makeDb();
-        const sub = db.upsertAnime(SEASON_1);
-        const dub = db.upsertAnime({ ...SEASON_1, audio: 'dub' });
-        expect(dub.id).not.toBe(sub.id);
-        expect(dub.title).toBe('Nisekoi: False Love');
+        const first = db.upsertAnime(SEASON_1);
+        const again = db.upsertAnime({ ...SEASON_1, searchIndex: 7 });
+        expect(again).toEqual({ ...first, searchIndex: 7 });
+        expect(db.list()).toHaveLength(1);
     });
 
     it('gives the id to an anime that was added before the ids were known, with its title and at the place it has now', () => {
         const db = makeDb();
-        const legacy = db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1, audio: 'sub' });
+        const legacy = db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1 });
         db.registerEpisodes(legacy.id, ['1', '2']);
         const adopted = db.upsertAnime({ ...SEASON_1, query: 'nisekoi false love' });
         expect(adopted).toEqual({ ...legacy, sourceId: 'nisekoi-false-love-603', query: 'nisekoi false love' });
@@ -179,8 +178,8 @@ describe('AnimeDb with the id of the source', () => {
 
     it('does not take an anime that was added before for the one with an id when it was at another place: the title is made different', () => {
         const db = makeDb();
-        const legacy = db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1, audio: 'sub' });
-        const second = db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 2, audio: 'sub', sourceId: 'nisekoi-false-love-season-2-605' });
+        const legacy = db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 1 });
+        const second = db.upsertAnime({ title: 'Nisekoi: False Love', query: 'nisekoi', searchIndex: 2, sourceId: 'nisekoi-false-love-season-2-605' });
         expect(second.id).not.toBe(legacy.id);
         expect(second.title).toBe('Nisekoi: False Love (season 2)');
         expect(db.getAnime(legacy.id)?.sourceId).toBeNull();
@@ -188,38 +187,37 @@ describe('AnimeDb with the id of the source', () => {
 
     it('makes the title different with the number of the id when the id says nothing more than the title', () => {
         const db = makeDb();
-        db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 1, audio: 'sub', sourceId: 'same-name-10' });
-        expect(db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 2, audio: 'sub', sourceId: 'same-name-11' }).title).toBe('Same Name (11)');
+        db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 1, sourceId: 'same-name-10' });
+        expect(db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 2, sourceId: 'same-name-11' }).title).toBe('Same Name (11)');
     });
 
     it('makes the title different once more when what the id says is taken too', () => {
         const db = makeDb();
-        db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 1, audio: 'sub', sourceId: 'same-name-10' });
-        db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 2, audio: 'sub', sourceId: 'same-name-ova-11' });
-        expect(db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 3, audio: 'sub', sourceId: 'same-name-ova-12' }).title).toBe('Same Name (ova) (12)');
+        db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 1, sourceId: 'same-name-10' });
+        db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 2, sourceId: 'same-name-ova-11' });
+        expect(db.upsertAnime({ title: 'Same Name', query: 'same', searchIndex: 3, sourceId: 'same-name-ova-12' }).title).toBe('Same Name (ova) (12)');
     });
 
     it('goes on finding the anime by the id when it is listed at another place', () => {
         const db = makeDb();
         const season = db.upsertAnime(SEASON_2);
         db.updateSearchIndex(season.id, 9);
-        expect(db.findAnime('whatever', 'sub', 'nisekoi-false-love-season-2-605')?.id).toBe(season.id);
+        expect(db.findAnime('whatever', 'nisekoi-false-love-season-2-605')?.id).toBe(season.id);
         expect(db.upsertAnime({ ...SEASON_2, searchIndex: 4 }).id).toBe(season.id);
     });
 
     it('is found by the id, and by the title when the id is not known', () => {
         const db = makeDb();
         const season = db.upsertAnime(SEASON_2);
-        expect(db.findAnime(SEASON_2.title, 'sub')).toEqual(season);
-        expect(db.findAnime('another title', 'sub', 'nisekoi-false-love-season-2-605')).toEqual(season);
-        expect(db.findAnime('another title', 'dub', 'nisekoi-false-love-season-2-605')).toBeNull();
-        expect(db.findAnime('another title', 'sub', 'unknown-1')).toBeNull();
+        expect(db.findAnime(SEASON_2.title)).toEqual(season);
+        expect(db.findAnime('another title', 'nisekoi-false-love-season-2-605')).toEqual(season);
+        expect(db.findAnime('another title', 'unknown-1')).toBeNull();
         // With an id, the title finds only an anime that has no id: another anime with the same title and another id is not it.
-        expect(db.findAnime(SEASON_2.title, 'sub', 'nisekoi-false-love-603')).toBeNull();
-        const legacy = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
-        expect(db.findAnime('Naruto', 'sub', 'naruto-12')).toEqual(legacy);
-        expect(db.findAnime(SEASON_2.title, 'sub', null)).toEqual(season);
-        expect(db.findAnime(SEASON_2.title, 'sub', '')).toEqual(season);
+        expect(db.findAnime(SEASON_2.title, 'nisekoi-false-love-603')).toBeNull();
+        const legacy = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
+        expect(db.findAnime('Naruto', 'naruto-12')).toEqual(legacy);
+        expect(db.findAnime(SEASON_2.title, null)).toEqual(season);
+        expect(db.findAnime(SEASON_2.title, '')).toEqual(season);
     });
 
     describe('when ani-cli moves to another site', () => {
@@ -277,17 +275,17 @@ describe('AnimeDb with the id of the source', () => {
         it('finds the anime for a request of the new site by its title, and for one of the same site only by its id', () => {
             const db = makeDb();
             const old = db.upsertAnime(HIANIME);
-            expect(db.findAnime('Naruto', 'sub', 'ReooPAxPMsHM4KPMY', 'allanime.day')?.id).toBe(old.id);
-            expect(db.findAnime('Naruto', 'sub', 'naruto-season-2-13', 'hianime.at')).toBeNull();
-            expect(db.findAnime('Naruto', 'sub', 'naruto-12', 'hianime.at')?.id).toBe(old.id);
-            expect(db.findAnime('Naruto', 'sub', 'ReooPAxPMsHM4KPMY', null)).toBeNull();
+            expect(db.findAnime('Naruto', 'ReooPAxPMsHM4KPMY', 'allanime.day')?.id).toBe(old.id);
+            expect(db.findAnime('Naruto', 'naruto-season-2-13', 'hianime.at')).toBeNull();
+            expect(db.findAnime('Naruto', 'naruto-12', 'hianime.at')?.id).toBe(old.id);
+            expect(db.findAnime('Naruto', 'ReooPAxPMsHM4KPMY', null)).toBeNull();
         });
     });
 
     it('is not lost by a title that is searched again without the id: the title still finds the record', () => {
         const db = makeDb();
         const season = db.upsertAnime(SEASON_2);
-        const again = db.upsertAnime({ title: SEASON_2.title, query: 'nisekoi', searchIndex: 5, audio: 'sub' });
+        const again = db.upsertAnime({ title: SEASON_2.title, query: 'nisekoi', searchIndex: 5 });
         expect(again.id).toBe(season.id);
         expect(again.sourceId).toBe('nisekoi-false-love-season-2-605');
         expect(again.searchIndex).toBe(5);
@@ -296,23 +294,28 @@ describe('AnimeDb with the id of the source', () => {
 
 describe('AnimeDb.upsertAnime', () => {
     it('creates an anime', () => {
-        expect(makeDb().upsertAnime(NARUTO)).toEqual({ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, sourceId: null, audio: 'sub', createdAt: NOW, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false } });
+        expect(makeDb().upsertAnime(NARUTO)).toEqual({ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, sourceId: null, createdAt: NOW, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false } });
     });
 
     it('treats the same title and audio as the same anime and refreshes its search data', () => {
         const db = makeDb();
         const first = db.upsertAnime(NARUTO);
         const second = db.upsertAnime({ ...NARUTO, query: 'naruto shippuden', searchIndex: 3 });
-        expect(second).toEqual({ id: first.id, title: 'Naruto', query: 'naruto shippuden', searchIndex: 3, sourceId: null, audio: 'sub', createdAt: NOW, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false } });
+        expect(second).toEqual({ id: first.id, title: 'Naruto', query: 'naruto shippuden', searchIndex: 3, sourceId: null, createdAt: NOW, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false } });
         expect(db.list()).toHaveLength(1);
     });
 
-    it('keeps the dubbed version apart', () => {
-        const db = makeDb();
-        const sub = db.upsertAnime(NARUTO);
-        const dub = db.upsertAnime({ ...NARUTO, audio: 'dub' });
-        expect(dub.id).not.toBe(sub.id);
-        expect(dub.audio).toBe('dub');
+    it('keeps one anime for a title, always stored as the subtitled one', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        const db = new AnimeDb(path);
+        const first = db.upsertAnime(NARUTO);
+        const again = db.upsertAnime({ ...NARUTO, searchIndex: 3 });
+        expect(again.id).toBe(first.id);
+        expect(again.searchIndex).toBe(3);
+        db.close();
+        const raw = new DatabaseSync(path);
+        expect(raw.prepare('SELECT title, audio FROM anime').all()).toEqual([{ title: 'Naruto', audio: 'sub' }]);
+        raw.close();
     });
 });
 
@@ -604,7 +607,7 @@ describe('AnimeDb.pausedEpisodes', () => {
     it('lists the paused episodes anime by anime, in the order they were put in the library, and none of the others', () => {
         const db = makeDb();
         const naruto = db.upsertAnime(NARUTO);
-        const bleach = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 2, audio: 'dub' });
+        const bleach = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 2 });
         const bleachPaused = db.ensureEpisode(bleach.id, '4');
         const second = db.ensureEpisode(naruto.id, '2');
         const first = db.ensureEpisode(naruto.id, '1');
@@ -686,24 +689,24 @@ describe('AnimeDb removal', () => {
 describe('AnimeDb importing what was found on the disk', () => {
     it('adds an anime, and keeps it as it is when it is already there', () => {
         const db = makeDb();
-        const added = db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
-        expect(added).toEqual({ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, sourceId: null, audio: 'sub', createdAt: NOW, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false } });
-        expect(db.importAnime({ title: 'Naruto', query: 'other', searchIndex: 9, audio: 'sub' })).toEqual(added);
+        const added = db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
+        expect(added).toEqual({ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, sourceId: null, createdAt: NOW, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false } });
+        expect(db.importAnime({ title: 'Naruto', query: 'other', searchIndex: 9 })).toEqual(added);
         expect(db.list()).toHaveLength(1);
     });
 
     it('fills in the search data that was not known', () => {
         const db = makeDb();
-        db.importAnime({ title: 'Naruto', query: 'Naruto', searchIndex: 0, audio: 'sub' });
-        expect(db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 4, audio: 'sub' })).toMatchObject({ query: 'naruto', searchIndex: 4 });
-        expect(db.importAnime({ title: 'Naruto', query: 'again', searchIndex: 7, audio: 'sub' })).toMatchObject({ query: 'naruto', searchIndex: 4 });
+        db.importAnime({ title: 'Naruto', query: 'Naruto', searchIndex: 0 });
+        expect(db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 4 })).toMatchObject({ query: 'naruto', searchIndex: 4 });
+        expect(db.importAnime({ title: 'Naruto', query: 'again', searchIndex: 7 })).toMatchObject({ query: 'naruto', searchIndex: 4 });
     });
 
-    it('does not mix the audios of a title', () => {
+    it('keeps one anime for a title imported twice', () => {
         const db = makeDb();
-        db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
-        db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'dub' });
-        expect(db.list()).toHaveLength(2);
+        const first = db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
+        expect(db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 })).toEqual(first);
+        expect(db.list()).toHaveLength(1);
     });
 
     it('finds an episode by its number', () => {
@@ -793,7 +796,7 @@ describe('AnimeDb series and seasons', () => {
             return NOW;
         });
         expect(db.schemaVersion).toBe(13);
-        expect(db.list()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, sourceId: null, audio: 'sub', createdAt: 5, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false }, episodes: [] }]);
+        expect(db.list()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, sourceId: null, createdAt: 5, series: null, season: null, seasonName: null, airing: { status: null, override: null, complete: false }, episodes: [] }]);
         db.close();
     });
 
@@ -823,7 +826,7 @@ describe('AnimeDb series and seasons', () => {
         const first = db.upsertAnime(NARUTO);
         const second = db.upsertAnime({ ...NARUTO, title: 'Naruto 2', searchIndex: 2 });
         db.setSeries(first.id, 'Pokémon', 1);
-        expect(db.seasonTaken('pokemon', 1, 'sub', second.id)).toBe(true);
+        expect(db.seasonTaken('pokemon', 1, second.id)).toBe(true);
         expect(db.setSeries(second.id, 'POKEMON', 1)).toBe(false);
         expect(db.getAnime(second.id)).toMatchObject({ series: null, season: null });
         expect(db.setSeries(second.id, 'POKEMON', 2)).toBe(true);
@@ -832,25 +835,25 @@ describe('AnimeDb series and seasons', () => {
     it('allows the same season in another series, another audio, or the anime itself', () => {
         const db = makeDb();
         const sub = db.upsertAnime(NARUTO);
-        const dub = db.upsertAnime({ ...NARUTO, audio: 'dub' });
+        const dub = db.upsertAnime({ ...NARUTO });
         const other = db.upsertAnime({ ...NARUTO, title: 'Other', searchIndex: 3 });
         db.setSeries(sub.id, 'Series', 1);
         expect(db.setSeries(dub.id, 'Series', 1)).toBe(true);
         expect(db.setSeries(other.id, 'Another series', 1)).toBe(true);
         expect(db.setSeries(sub.id, 'Series', 1)).toBe(true);
-        expect(db.seasonTaken('Series', 1, 'sub', sub.id)).toBe(false);
+        expect(db.seasonTaken('Series', 1, sub.id)).toBe(false);
     });
 
     it('does nothing for an anime that is not there', () => {
         expect(makeDb().setSeries(99, 'Series', 1)).toBe(false);
     });
 
-    it('finds an anime by its title and audio', () => {
+    it('finds an anime by its title', () => {
         const db = makeDb();
         const anime = db.upsertAnime(NARUTO);
-        expect(db.findAnime('Naruto', 'sub')).toEqual(anime);
-        expect(db.findAnime('Naruto', 'dub')).toBeNull();
-        expect(db.findAnime('Bleach', 'sub')).toBeNull();
+        expect(db.findAnime('Naruto')).toEqual(anime);
+        expect(db.findAnime('naruto')).toBeNull();
+        expect(db.findAnime('Bleach')).toBeNull();
     });
 
     it('does not replace a series when an anime is imported', () => {
@@ -940,8 +943,8 @@ describe('AnimeDb series and seasons', () => {
 });
 
 describe('AnimeDb history', () => {
-    const NARUTO_OPENED: AnimeHistoryRequest = { title: 'Naruto', query: 'naruto', index: 1, audio: 'sub', episode: null };
-    const BLEACH_WATCHED: AnimeHistoryRequest = { title: 'Bleach', query: 'bleach', index: 4, audio: 'dub', episode: '12' };
+    const NARUTO_OPENED: AnimeHistoryRequest = { title: 'Naruto', query: 'naruto', index: 1, episode: null };
+    const BLEACH_WATCHED: AnimeHistoryRequest = { title: 'Bleach', query: 'bleach', index: 4, episode: '12' };
 
     function makeClockedDb(): AnimeDb {
         let tick = NOW;
@@ -958,13 +961,13 @@ describe('AnimeDb history', () => {
     it('keeps an anime that was only opened, with no episode', () => {
         const db = makeClockedDb();
         db.recordHistory(NARUTO_OPENED);
-        expect(db.listHistory()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub', episode: null, openedAt: NOW + 1000, watchedAt: null }]);
+        expect(db.listHistory()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, episode: null, openedAt: NOW + 1000, watchedAt: null }]);
     });
 
     it('keeps an anime that was watched, with its episode, and does not need it to be in the library', () => {
         const db = makeClockedDb();
         db.recordHistory(BLEACH_WATCHED);
-        expect(db.listHistory()).toEqual([{ id: 1, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'dub', episode: '12', openedAt: NOW + 1000, watchedAt: NOW + 1000 }]);
+        expect(db.listHistory()).toEqual([{ id: 1, title: 'Bleach', query: 'bleach', searchIndex: 4, episode: '12', openedAt: NOW + 1000, watchedAt: NOW + 1000 }]);
         expect(db.list()).toEqual([]);
     });
 
@@ -986,8 +989,8 @@ describe('AnimeDb history', () => {
         db.recordHistory({ ...NARUTO_OPENED, query: 'naruto shippuden', index: 3 });
 
         expect(db.listHistory()).toEqual([
-            { id: 1, title: 'Naruto', query: 'naruto shippuden', searchIndex: 3, audio: 'sub', episode: null, openedAt: NOW + 3000, watchedAt: null },
-            { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'dub', episode: '12', openedAt: NOW + 2000, watchedAt: NOW + 2000 }
+            { id: 1, title: 'Naruto', query: 'naruto shippuden', searchIndex: 3, episode: null, openedAt: NOW + 3000, watchedAt: null },
+            { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, episode: '12', openedAt: NOW + 2000, watchedAt: NOW + 2000 }
         ]);
     });
 
@@ -1023,16 +1026,17 @@ describe('AnimeDb history', () => {
             db.recordHistory({ ...BLEACH_WATCHED, episode: null });
             db.recordHistory({ ...BLEACH_WATCHED, episode: null });
 
-            expect(db.listHistory()).toEqual([{ id: 1, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'dub', episode: '12', openedAt: NOW + 3000, watchedAt: NOW + 1000 }]);
+            expect(db.listHistory()).toEqual([{ id: 1, title: 'Bleach', query: 'bleach', searchIndex: 4, episode: '12', openedAt: NOW + 3000, watchedAt: NOW + 1000 }]);
         });
 
-        it('is kept for each audio on its own', () => {
+        it('keeps when the episode was watched when the anime is only opened again afterwards', () => {
             const db = makeClockedDb();
             db.recordHistory({ ...NARUTO_OPENED, episode: '1' });
-            db.recordHistory({ ...NARUTO_OPENED, audio: 'dub' });
+            db.recordHistory({ ...NARUTO_OPENED });
             const entries = db.listHistory();
-            expect(entries.find((entry) => { return entry.audio === 'sub'; })?.watchedAt).toBe(NOW + 1000);
-            expect(entries.find((entry) => { return entry.audio === 'dub'; })?.watchedAt).toBeNull();
+            expect(entries).toHaveLength(1);
+            expect(entries[0]?.watchedAt).toBe(NOW + 1000);
+            expect(entries[0]?.episode).toBe('1');
         });
 
         it('is gone with the entry when the history is cleared or the entry removed', () => {
@@ -1046,15 +1050,15 @@ describe('AnimeDb history', () => {
         });
     });
 
-    it('tells the same title apart by audio', () => {
+    it('keeps one entry for a title, however often it is opened', () => {
         const db = makeClockedDb();
         db.recordHistory(NARUTO_OPENED);
-        db.recordHistory({ ...NARUTO_OPENED, audio: 'dub' });
+        db.recordHistory({ ...NARUTO_OPENED });
         expect(
             db.listHistory().map((entry) => {
-                return `${entry.title}:${entry.audio}`;
+                return entry.title;
             })
-        ).toEqual(['Naruto:dub', 'Naruto:sub']);
+        ).toEqual(['Naruto']);
     });
 
     it('keeps the 50 most recent anime and drops the oldest', () => {
@@ -1297,13 +1301,14 @@ describe('AnimeDb upgrade of the last release', () => {
 
         expect(
             db.list().map((anime) => {
-                return [anime.title, anime.audio, anime.series, anime.season, anime.seasonName, anime.episodes.length];
+                return [anime.title, anime.series, anime.season, anime.seasonName, anime.episodes.length];
             })
         ).toEqual([
-            ['Bleach', 'sub', null, null, null, 1],
-            ['Frieren: Beyond Journey\'s End', 'sub', 'Frieren', 1, null, 2],
-            ['Frieren: Beyond Journey\'s End Season 2', 'dub', 'Frieren', 2, 'The Second Season', 1],
-            ['Naruto', 'sub', null, null, null, 2]
+            ['Bleach', null, null, null, 1],
+            ['Frieren: Beyond Journey\'s End', 'Frieren', 1, null, 2],
+            // A dubbed anime of a library kept before (the app no longer has them) is still listed, with its episodes.
+            ['Frieren: Beyond Journey\'s End Season 2', 'Frieren', 2, 'The Second Season', 1],
+            ['Naruto', null, null, null, 2]
         ]);
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: '/lib/Naruto/Episode 1/Naruto Episode 1.mp4', sizeBytes: 123456, positionSeconds: 600.5, durationSeconds: 1400, watched: true });
         expect(db.getEpisode(4)).toMatchObject({ status: 'error', error: { code: 'NETWORK', raw: 'curl: (6) Could not resolve host' } });
@@ -1349,7 +1354,7 @@ describe('AnimeDb upgrade of the last release', () => {
 
         expect(arrived).toEqual(['3']);
         expect(db.updates()).toEqual([
-            { id: 1, animeId: 1, animeTitle: 'Naruto', audio: 'sub', episodeId: db.getEpisodeByNumber(1, '3')?.id, episodeNumber: '3', foundAt: NOW, origin: 'auto', status: 'idle' }
+            { id: 1, animeId: 1, animeTitle: 'Naruto', episodeId: db.getEpisodeByNumber(1, '3')?.id, episodeNumber: '3', foundAt: NOW, origin: 'auto', status: 'idle' }
         ]);
         expect(db.getCover('naruto')).toEqual({ url: 'https://s4.anilist.co/naruto.jpg', checkedAt: NOW });
         expect(db.findScheduleCache(1_700_000_000, 1_700_086_400, NOW - 1)).toEqual([]);
@@ -1550,7 +1555,6 @@ describe('AnimeDb migrations 7 and 8 on a database of the last release', () => {
                 query: 'naruto',
                 searchIndex: 1,
                 sourceId: null,
-                audio: 'sub',
                 createdAt: 1700000000000,
                 series: null,
                 season: null,
@@ -1744,8 +1748,8 @@ describe('AnimeDb.registerNewEpisodes', () => {
         db.registerNewEpisodes(anime.id, ['1', '2', '3'], 'manual');
 
         expect(db.updates()).toEqual([
-            { id: 2, animeId: anime.id, animeTitle: 'Naruto', audio: 'sub', episodeId: db.getEpisodeByNumber(anime.id, '3')?.id, episodeNumber: '3', foundAt: NOW + 1000, origin: 'manual', status: 'idle' },
-            { id: 1, animeId: anime.id, animeTitle: 'Naruto', audio: 'sub', episodeId: db.getEpisodeByNumber(anime.id, '2')?.id, episodeNumber: '2', foundAt: NOW, origin: 'auto', status: 'idle' }
+            { id: 2, animeId: anime.id, animeTitle: 'Naruto', episodeId: db.getEpisodeByNumber(anime.id, '3')?.id, episodeNumber: '3', foundAt: NOW + 1000, origin: 'manual', status: 'idle' },
+            { id: 1, animeId: anime.id, animeTitle: 'Naruto', episodeId: db.getEpisodeByNumber(anime.id, '2')?.id, episodeNumber: '2', foundAt: NOW, origin: 'auto', status: 'idle' }
         ]);
     });
 
@@ -1802,11 +1806,11 @@ describe('AnimeDb.updates', () => {
 
     it('tells the audio of the anime', () => {
         const db = makeDb();
-        const anime = db.upsertAnime({ ...NARUTO, audio: 'dub' });
+        const anime = db.upsertAnime({ ...NARUTO });
         db.registerEpisodesBaseline(anime.id, []);
         db.registerNewEpisodes(anime.id, ['1'], 'auto');
 
-        expect(db.updates()[0]).toMatchObject({ animeTitle: 'Naruto', audio: 'dub' });
+        expect(db.updates()[0]).toMatchObject({ animeTitle: 'Naruto' });
     });
 
     it('lists the most recent first, and no more than the limit', () => {
@@ -2249,42 +2253,42 @@ describe('AnimeDb seasons of a series', () => {
         const db = makeDb();
         const first = db.upsertAnime({ ...NARUTO, title: 'Frieren', searchIndex: 1 });
         const second = db.upsertAnime({ ...NARUTO, title: 'Frieren 2', searchIndex: 2 });
-        const dub = db.upsertAnime({ ...NARUTO, title: 'Frieren', audio: 'dub', searchIndex: 1 });
+        const third = db.upsertAnime({ ...NARUTO, title: 'Frieren 3', searchIndex: 4 });
         const other = db.upsertAnime({ ...NARUTO, title: 'Other', searchIndex: 3 });
         db.setSeries(first.id, 'Frieren', 1);
         db.setSeries(second.id, 'Frieren', 3);
-        db.setSeries(dub.id, 'Frieren', 7);
+        db.setSeries(third.id, 'Frieren', 7);
         db.setSeries(other.id, 'Another series', 9);
-        return { db, first, second, dub, other };
+        return { db, first, second, third, other };
     }
 
-    it('lists the seasons a series has for an audio, whatever the case or the accents of its name', () => {
+    it('lists the seasons a series has, whatever the case or the accents of its name', () => {
         const { db } = withSeasons();
-        expect(db.seasonsOfSeries('FRIEREN', 'sub').sort()).toEqual([1, 3]);
-        expect(db.seasonsOfSeries('frieren', 'dub')).toEqual([7]);
-        expect(db.seasonsOfSeries('Another series', 'sub')).toEqual([9]);
-        expect(db.seasonsOfSeries('Unknown', 'sub')).toEqual([]);
+        expect(db.seasonsOfSeries('FRIEREN').sort()).toEqual([1, 3, 7]);
+        expect(db.seasonsOfSeries('frieren').sort()).toEqual([1, 3, 7]);
+        expect(db.seasonsOfSeries('Another series')).toEqual([9]);
+        expect(db.seasonsOfSeries('Unknown')).toEqual([]);
     });
 
     it('leaves out the anime that are asked to be left out', () => {
         const { db, first, second } = withSeasons();
-        expect(db.seasonsOfSeries('Frieren', 'sub', [first.id])).toEqual([3]);
-        expect(db.seasonsOfSeries('Frieren', 'sub', [first.id, second.id])).toEqual([]);
+        expect(db.seasonsOfSeries('Frieren', [first.id]).sort()).toEqual([3, 7]);
+        expect(db.seasonsOfSeries('Frieren', [first.id, second.id])).toEqual([7]);
     });
 
     it('does not count an anime that has no series or no season', () => {
         const db = makeDb();
         db.upsertAnime(NARUTO);
-        expect(db.seasonsOfSeries('Naruto', 'sub')).toEqual([]);
+        expect(db.seasonsOfSeries('Naruto')).toEqual([]);
     });
 
     it('gives the last season plus one as the first free one, and 1 for a series with none', () => {
-        const { db, first, second } = withSeasons();
-        expect(db.firstFreeSeason('Frieren', 'sub')).toBe(4);
-        expect(db.firstFreeSeason('Frieren', 'dub')).toBe(8);
-        expect(db.firstFreeSeason('Frieren', 'sub', [second.id])).toBe(2);
-        expect(db.firstFreeSeason('Frieren', 'sub', [first.id, second.id])).toBe(1);
-        expect(db.firstFreeSeason('New series', 'sub')).toBe(1);
+        const { db, first, second, third } = withSeasons();
+        expect(db.firstFreeSeason('Frieren')).toBe(8);
+        expect(db.firstFreeSeason('Frieren', [third.id])).toBe(4);
+        expect(db.firstFreeSeason('Frieren', [second.id, third.id])).toBe(2);
+        expect(db.firstFreeSeason('Frieren', [first.id, second.id, third.id])).toBe(1);
+        expect(db.firstFreeSeason('New series')).toBe(1);
     });
 });
 
@@ -2329,7 +2333,7 @@ describe('AnimeDb.renameSeries', () => {
         db.setSeries(one.id, 'Frieren', 5);
         db.setSeries(two.id, 'Frieren', 6);
         expect(db.renameSeries([one.id, two.id], 'JOURNEYS')).toEqual({ ok: true });
-        expect(db.seasonsOfSeries('Journeys', 'sub').sort()).toEqual([1, 5, 6]);
+        expect(db.seasonsOfSeries('Journeys').sort()).toEqual([1, 5, 6]);
         expect(db.getAnime(one.id)?.series).toBe('Journeys');
         expect(db.getAnime(two.id)?.series).toBe('Journeys');
     });
@@ -2348,19 +2352,12 @@ describe('AnimeDb.renameSeries', () => {
         expect(db.renameSeries([one.id, two.id], 'Journeys')).toEqual({ ok: false, anime: 'Frieren', season: 1, suggested: 5 });
     });
 
-    it('does not count the audio of the other: the same season in another audio does not clash', () => {
-        const { db, one, two } = twoSeries();
-        const dub = db.upsertAnime({ ...NARUTO, title: 'Pokemon', audio: 'dub', searchIndex: 4 });
-        db.setSeries(dub.id, 'Dubbed', 1);
-        expect(db.renameSeries([one.id, two.id], 'Dubbed')).toEqual({ ok: true });
-    });
-
     it('does not clash with itself: the name written in another case or with other accents is a rename', () => {
         const { db, one, two } = twoSeries();
         expect(db.renameSeries([one.id, two.id], 'FRIEREN')).toEqual({ ok: true });
         expect(db.getAnime(one.id)?.series).toBe('FRIEREN');
         expect(db.getAnime(two.id)?.series).toBe('FRIEREN');
-        expect(db.seasonsOfSeries('frieren', 'sub').sort()).toEqual([1, 2]);
+        expect(db.seasonsOfSeries('frieren').sort()).toEqual([1, 2]);
     });
 
     it('renames the series of an anime that is not in the list only when it is the one of the others', () => {
@@ -2542,7 +2539,6 @@ describe('AnimeDb migration 9 on a database of the last release', () => {
                 query: 'naruto',
                 searchIndex: 1,
                 sourceId: null,
-                audio: 'sub',
                 createdAt: 1700000000000,
                 series: null,
                 season: null,
@@ -2592,8 +2588,8 @@ describe('AnimeDb migration 12: when an episode was last watched', () => {
         const first = new AnimeDb(path, () => {
             return NOW;
         });
-        first.recordHistory({ title: 'Naruto', query: 'naruto', index: 1, audio: 'sub', episode: null });
-        first.recordHistory({ title: 'Bleach', query: 'bleach', index: 4, audio: 'dub', episode: '12' });
+        first.recordHistory({ title: 'Naruto', query: 'naruto', index: 1, episode: null });
+        first.recordHistory({ title: 'Bleach', query: 'bleach', index: 4, episode: '12' });
         first.close();
         const raw = new DatabaseSync(path);
         raw.exec('ALTER TABLE episode DROP COLUMN no_audio; ALTER TABLE anime_history DROP COLUMN watched_at; PRAGMA user_version = 11;');
@@ -2619,8 +2615,8 @@ describe('AnimeDb migration 12: when an episode was last watched', () => {
         expect(columnsOf(path)).toEqual(['id', 'title', 'query', 'search_index', 'audio', 'episode', 'opened_at', 'watched_at']);
         // The entry with an episode is not backfilled: the moment it was last watched is not known.
         expect(db.listHistory()).toEqual([
-            { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'dub', episode: '12', openedAt: NOW, watchedAt: null },
-            { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub', episode: null, openedAt: NOW, watchedAt: null }
+            { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, episode: '12', openedAt: NOW, watchedAt: null },
+            { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, episode: null, openedAt: NOW, watchedAt: null }
         ]);
         db.close();
     });
@@ -2632,10 +2628,10 @@ describe('AnimeDb migration 12: when an episode was last watched', () => {
             return NOW + 5000;
         });
 
-        db.recordHistory({ title: 'Bleach', query: 'bleach', index: 4, audio: 'dub', episode: null });
+        db.recordHistory({ title: 'Bleach', query: 'bleach', index: 4, episode: null });
         expect(db.listHistory().find((entry) => { return entry.title === 'Bleach'; })).toMatchObject({ openedAt: NOW + 5000, watchedAt: null });
 
-        db.recordHistory({ title: 'Naruto', query: 'naruto', index: 1, audio: 'sub', episode: '2' });
+        db.recordHistory({ title: 'Naruto', query: 'naruto', index: 1, episode: '2' });
         expect(db.listHistory().find((entry) => { return entry.title === 'Naruto'; })).toMatchObject({ episode: '2', openedAt: NOW + 5000, watchedAt: NOW + 5000 });
         db.close();
     });
@@ -2853,5 +2849,139 @@ describe('AnimeDb migration 13: audio of an episode', () => {
             })
         ).toEqual([2]);
         second.close();
+    });
+});
+
+// A library kept by an earlier version of the app can still have dubbed anime ('dub' in the column of the audio, which stays): each is the
+// same anime as any other of its title or its id, the subtitled one first when there are both.
+describe('AnimeDb with a dubbed anime kept by an earlier version of the app', () => {
+    function withLegacy(rows: Array<{ title: string; audio: 'sub' | 'dub'; sourceId?: string; searchIndex?: number }>, history: Array<{ title: string; audio: 'sub' | 'dub'; episode: string | null }> = []) {
+        const path = join(makeTempDir(), 'anime.db');
+        new AnimeDb(path).close();
+        const raw = new DatabaseSync(path);
+        rows.forEach((row) => {
+            raw.prepare('INSERT INTO anime (title, query, search_index, audio, created_at, source_id, source_provider) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+                row.title,
+                row.title.toLowerCase(),
+                row.searchIndex ?? 1,
+                row.audio,
+                1,
+                row.sourceId ?? null,
+                row.sourceId === undefined ? null : 'hianime.at'
+            );
+        });
+        history.forEach((entry, position) => {
+            raw.prepare('INSERT INTO anime_history (title, query, search_index, audio, episode, opened_at, watched_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(entry.title, entry.title.toLowerCase(), 1, entry.audio, entry.episode, position + 1, position + 1);
+        });
+        raw.close();
+        return { path, db: new AnimeDb(path, () => {
+            return NOW;
+        }) };
+    }
+
+    function audios(path: string): Array<Record<string, unknown>> {
+        const raw = new DatabaseSync(path);
+        const rows = raw.prepare('SELECT id, title, audio FROM anime ORDER BY id').all();
+        raw.close();
+        return rows;
+    }
+
+    it('adds the episodes of a title to the dubbed anime that has it, instead of a second anime of the same title', () => {
+        const { db, path } = withLegacy([{ title: 'Naruto', audio: 'dub' }]);
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 4 });
+        expect(anime).toMatchObject({ id: 1, title: 'Naruto', searchIndex: 4 });
+        expect(audios(path)).toEqual([{ id: 1, title: 'Naruto', audio: 'dub' }]);
+        db.close();
+    });
+
+    it('finds the dubbed anime by its id, and gives a new anime of the same title another one only for another id', () => {
+        const { db, path } = withLegacy([{ title: 'Naruto', audio: 'dub', sourceId: 'naruto-12' }]);
+        expect(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, sourceId: 'naruto-12', sourceProvider: 'hianime.at' })).toMatchObject({ id: 1, searchIndex: 2 });
+        expect(db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 3, sourceId: 'naruto-99', sourceProvider: 'hianime.at' })).toMatchObject({ id: 2, title: 'Naruto (99)' });
+        expect(audios(path)).toEqual([
+            { id: 1, title: 'Naruto', audio: 'dub' },
+            { id: 2, title: 'Naruto (99)', audio: 'sub' }
+        ]);
+        db.close();
+    });
+
+    it('finds the dubbed anime by its title, and the subtitled one first when the title has both', () => {
+        const only = withLegacy([{ title: 'Naruto', audio: 'dub' }]);
+        expect(only.db.findAnime('Naruto')).toMatchObject({ id: 1 });
+        expect(only.db.findAnime('Naruto', 'naruto-1')).toMatchObject({ id: 1 });
+        only.db.close();
+        const both = withLegacy([{ title: 'Naruto', audio: 'dub' }, { title: 'Naruto', audio: 'sub' }]);
+        expect(both.db.findAnime('Naruto')).toMatchObject({ id: 2 });
+        expect(both.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 5 })).toMatchObject({ id: 2, searchIndex: 5 });
+        both.db.close();
+    });
+
+    it('lists the subtitled anime of a title before the dubbed one, which is how the screen finds an anime by its title', () => {
+        const { db } = withLegacy([{ title: 'Naruto', audio: 'dub' }, { title: 'Bleach', audio: 'sub' }, { title: 'Naruto', audio: 'sub' }]);
+        expect(db.list().map((anime) => {
+            return anime.id;
+        })).toEqual([2, 3, 1]);
+        db.close();
+    });
+
+    it('imports a title into the dubbed anime that has it', () => {
+        const { db, path } = withLegacy([{ title: 'Naruto', audio: 'dub', searchIndex: 0 }]);
+        expect(db.importAnime({ title: 'Naruto', query: 'naruto', searchIndex: 6 })).toMatchObject({ id: 1, searchIndex: 6 });
+        expect(db.importAnime({ title: 'Naruto', query: 'other', searchIndex: 7 })).toMatchObject({ id: 1, query: 'naruto', searchIndex: 6 });
+        expect(audios(path)).toHaveLength(1);
+        db.close();
+    });
+
+    it('counts the season a dubbed anime has in a series as taken', () => {
+        const { db } = withLegacy([{ title: 'Frieren', audio: 'dub' }, { title: 'Frieren 2', audio: 'sub' }]);
+        expect(db.setSeries(1, 'Frieren', 1)).toBe(true);
+        expect(db.seasonTaken('Frieren', 1, 2)).toBe(true);
+        expect(db.setSeries(2, 'Frieren', 1)).toBe(false);
+        expect(db.seasonsOfSeries('frieren')).toEqual([1]);
+        expect(db.firstFreeSeason('Frieren')).toBe(2);
+        db.close();
+    });
+
+    it('moves the entry of the history of a dubbed anime to the top, and keeps one entry for the title', () => {
+        const { db } = withLegacy([], [{ title: 'Naruto', audio: 'dub', episode: '3' }]);
+        db.recordHistory({ title: 'Naruto', query: 'naruto', index: 2, episode: '4' });
+        expect(db.listHistory()).toEqual([{ id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, episode: '4', openedAt: NOW, watchedAt: NOW }]);
+        db.close();
+    });
+
+    it('joins into one the entries a title had in both audios, keeping the subtitled one', () => {
+        const { db } = withLegacy([], [{ title: 'Naruto', audio: 'dub', episode: '3' }, { title: 'Naruto', audio: 'sub', episode: '1' }, { title: 'Bleach', audio: 'dub', episode: null }]);
+        db.recordHistory({ title: 'Naruto', query: 'naruto', index: 2, episode: null });
+        expect(db.listHistory().map((entry) => {
+            return [entry.id, entry.title, entry.episode];
+        })).toEqual([
+            [2, 'Naruto', '1'],
+            [3, 'Bleach', null]
+        ]);
+        db.close();
+    });
+
+    it('does not give back to be deleted a file another anime still points at', () => {
+        const { db } = withLegacy([{ title: 'Naruto', audio: 'dub' }, { title: 'Naruto', audio: 'sub' }]);
+        const legacy = db.ensureEpisode(1, '1');
+        const twin = db.ensureEpisode(2, '1');
+        const own = db.ensureEpisode(2, '2');
+        db.markDone(legacy.id, '/lib/Naruto/Episode 1/Naruto Episode 1.mp4', 10);
+        db.markDone(twin.id, '/lib/Naruto/Episode 1/Naruto Episode 1.mp4', 10);
+        db.markDone(own.id, '/lib/Naruto/Episode 2/Naruto Episode 2.mp4', 10);
+        expect(db.removeAnime(2)).toEqual(['/lib/Naruto/Episode 2/Naruto Episode 2.mp4']);
+        expect(db.removeAnime(1)).toEqual(['/lib/Naruto/Episode 1/Naruto Episode 1.mp4']);
+        db.close();
+    });
+
+    it('does not give back the file of an episode another episode still points at', () => {
+        const { db } = withLegacy([{ title: 'Naruto', audio: 'dub' }, { title: 'Naruto', audio: 'sub' }]);
+        const legacy = db.ensureEpisode(1, '1');
+        const twin = db.ensureEpisode(2, '1');
+        db.markDone(legacy.id, '/lib/Naruto Episode 1.mp4', 10);
+        db.markDone(twin.id, '/lib/Naruto Episode 1.mp4', 10);
+        expect(db.removeEpisode(twin.id)).toBeNull();
+        expect(db.removeEpisode(legacy.id)).toBe('/lib/Naruto Episode 1.mp4');
+        db.close();
     });
 });

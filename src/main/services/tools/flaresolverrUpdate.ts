@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { getText, isVersionTag, UpdateLookupError } from './suwayomiUpdate';
+import { getText, isVersionTag, UpdateLookupError } from './releaseLookup';
 
 // Looking for a newer FlareSolverr (the latest release of its project, which is also the tag of its image) and remembering which one
 // the app runs. The image is checked by Docker itself when it is pulled.

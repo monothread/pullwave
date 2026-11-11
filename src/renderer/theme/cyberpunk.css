@@ -565,6 +565,12 @@ body::after {
 .history__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history__meta { color: var(--muted); font-size: 12px; }
 
+/* The steps of an update of ani-cli: the ones done, the one going on, the one it stopped at, and the ones still to come. */
+.update-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 12px; }
+.update-steps__item--done { color: var(--green); }
+.update-steps__item--running { color: var(--magenta); }
+.update-steps__item--failed { color: var(--red); }
+
 /* The notices are one over the other in the corner: the first at the bottom, each new one on top of those. */
 .toasts {
     position: fixed;
@@ -1464,10 +1470,9 @@ body::after {
 .season-grid { margin-top: 10px; align-items: stretch; }
 .season-card { margin-top: 0; padding: 8px; border-top: 0; border: 1px solid var(--line); background: var(--panel); }
 .season-card .season__cover { width: 100%; }
-/* The chip with the season is at the left and the audio (subtitled or dubbed) at the right, in the same line. */
+/* The chip with the season, in a line of its own above the title. */
 .season-card__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .season-card .season__chip { flex: none; min-width: 0; }
-.season-card__top .badge { flex: none; margin-left: auto; }
 /* The title always takes the room of two lines, so what is under it starts at the same height in every card of the row. */
 .season-card .season__title { flex: none; min-height: 2.6em; font-size: 15px; line-height: 1.3; color: var(--text); white-space: normal; }
 .season-card .cover-card__footer { gap: 8px; }

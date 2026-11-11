@@ -14,8 +14,8 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 let mock: MockApiHandle;
 
-const OPENED: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'dub', episode: null, openedAt: 1700000000000, watchedAt: null };
-const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, audio: 'sub', episode: '12', openedAt: 1700000001000, watchedAt: 1700000001000 };
+const OPENED: AnimeHistoryEntry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 2, episode: null, openedAt: 1700000000000, watchedAt: null };
+const WATCHED: AnimeHistoryEntry = { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, episode: '12', openedAt: 1700000001000, watchedAt: 1700000001000 };
 
 beforeEach(() => {
     mock = installMockApi();
@@ -40,10 +40,12 @@ describe('AnimeHistory', () => {
         const items = screen.getAllByRole('listitem');
         expect(items).toHaveLength(2);
         expect(within(items[0] as HTMLElement).getByRole('button', { name: 'OPEN: Bleach' })).toHaveAttribute('title', 'Bleach');
-        expect(within(items[0] as HTMLElement).getByText(/^SUB · EP 12 · /)).toBeInTheDocument();
+        expect(within(items[0] as HTMLElement).getByText(/^EP 12 · /)).toBeInTheDocument();
+        // The anime are the subtitled ones: the card says no audio.
+        expect(within(items[0] as HTMLElement).queryByText(/SUB|DUB/)).not.toBeInTheDocument();
         expect(within(items[0] as HTMLElement).getByText(new RegExp(new Date(WATCHED.openedAt).toLocaleString('en').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument();
         expect(within(items[1] as HTMLElement).getByText('Naruto')).toBeInTheDocument();
-        expect(within(items[1] as HTMLElement).getByText(/^DUB · /)).toBeInTheDocument();
+        expect(within(items[1] as HTMLElement).getByText(new RegExp(`^${new Date(OPENED.openedAt).toLocaleString('en').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))).toBeInTheDocument();
         expect(within(items[1] as HTMLElement).queryByText(/EP /)).not.toBeInTheDocument();
     });
 
@@ -54,17 +56,17 @@ describe('AnimeHistory', () => {
         render(<AnimeHistory />);
 
         await user.click(screen.getByRole('button', { name: 'OPEN: Naruto' }));
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2);
         expect(useAnimeStore.getState()).toMatchObject({
             view: 'search',
-            selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', audio: 'dub', status: 'ready', episodes: ['1', '2'] }
+            selection: { result: { index: 2, title: 'Naruto' }, query: 'naruto', status: 'ready', episodes: ['1', '2'] }
         });
     });
 
     it('opens an entry that is in the library on its series, and not in the search', async () => {
         const user = userEvent.setup();
-        mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([], { id: 7, title: 'Naruto', audio: 'dub' })]);
-        useAnimeStore.setState({ history: [WATCHED, OPENED], library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'dub' })] });
+        mock.api.listAnimeLibrary.mockResolvedValue([makeAnime([], { id: 7, title: 'Naruto' })]);
+        useAnimeStore.setState({ history: [WATCHED, OPENED], library: [makeAnime([], { id: 7, title: 'Naruto' })] });
         render(<AnimeHistory />);
 
         await user.click(screen.getByRole('button', { name: 'OPEN: Naruto' }));
@@ -72,14 +74,14 @@ describe('AnimeHistory', () => {
         expect(useAnimeStore.getState()).toMatchObject({ view: 'library', returnView: 'library', selection: null, libraryFocus: 7, librarySeries: 'anime-7' });
     });
 
-    it('opens an entry that is in the library with another audio in the search', async () => {
+    it('opens an entry that is not in the library in the search, when the library has other anime', async () => {
         const user = userEvent.setup();
         mock.api.listAnimeEpisodes.mockResolvedValue({ ok: true, episodes: ['1'] });
-        useAnimeStore.setState({ history: [OPENED], library: [makeAnime([], { id: 7, title: 'Naruto', audio: 'sub' })] });
+        useAnimeStore.setState({ history: [OPENED], library: [makeAnime([], { id: 7, title: 'Bleach' })] });
         render(<AnimeHistory />);
 
         await user.click(screen.getByRole('button', { name: 'OPEN: Naruto' }));
-        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2, 'dub');
+        expect(mock.api.listAnimeEpisodes).toHaveBeenCalledWith('naruto', 2);
         expect(useAnimeStore.getState()).toMatchObject({ view: 'search', librarySeries: null });
     });
 
@@ -168,7 +170,7 @@ describe('AnimeHistory cards with a cover', () => {
         expect(head.children).toHaveLength(2);
         expect(head.firstElementChild).toHaveClass('series__title');
         expect(head.lastElementChild).toHaveClass('history__meta');
-        expect(head.lastElementChild).toHaveTextContent(/^SUB · EP 12 · /);
+        expect(head.lastElementChild).toHaveTextContent(/^EP 12 · /);
         expect(footer.children).toHaveLength(1);
         expect(footer.firstElementChild).toHaveClass('job__actions', 'library__footer');
         expect(footer.querySelector('.job__badges')).toBeNull();

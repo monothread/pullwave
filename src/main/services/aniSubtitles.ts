@@ -63,8 +63,13 @@ export function patchSubtitleSelection(source: string): string | null {
 // offer them all. Each one is "<video name>.subtitle-<language>.vtt" (see subtitleFiles.ts).
 const LIST_ANCHOR = '    # quality variants are relative to the master playlist';
 const KEEP_LIST_LINE = `    pullwave_all_subs="$(printf "%s" "$_json" | sed 's|.*"subtitles":\\[||; s|}\\].*||; s|},{|}\\n{|g')"`;
-const SAVE_ANCHOR = '    command -v "yt-dlp" >/dev/null && yt-dlp --referer "$refr" "$1"';
+// The line of the download that saves the subtitle ani-cli picked: every other one is saved right after it.
+const SAVE_ANCHOR = '    [ -n "$sub_link" ] && $curl_exe -sL -A "$agent" -e "$refr" --max-time 10 $cipher_flag "$sub_link" -o "$download_dir/$_name.vtt"\n';
 const SAVE_CALL = '    pullwave_save_subtitles "$download_dir/$_name"\n';
+
+// What the code the changes add reads from the script: each has to be set by it (see aniCompatibility.ts).
+export const SUBTITLE_SELECTION_NEEDS = ['_json', 'sub_link'] as const;
+export const ALL_SUBTITLES_NEEDS = ['_json', 'curl_exe', 'agent', 'refr', 'cipher_flag', 'download_dir', '_name'] as const;
 export const SAVE_SUBTITLES_FUNCTION = `# Added by Pullwave: saves every subtitle the source offered for the episode ($1 = path of the video without its extension).
 pullwave_save_subtitles() {
     printf "%s\\n" "$pullwave_all_subs" | while IFS= read -r _line; do
@@ -87,7 +92,7 @@ export function patchAllSubtitles(source: string): string | null {
             return `\n${KEEP_LIST_LINE}\n${LIST_ANCHOR}`;
         })
         .replace(SAVE_ANCHOR, () => {
-            return `${SAVE_CALL}${SAVE_ANCHOR}`;
+            return `${SAVE_ANCHOR}${SAVE_CALL}`;
         })
         .replace(`\n${FUNCTION_ANCHOR}`, () => {
             return `\n${SAVE_SUBTITLES_FUNCTION}${FUNCTION_ANCHOR}`;

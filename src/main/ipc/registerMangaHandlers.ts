@@ -21,7 +21,7 @@ export interface MangaHandlerDependencies {
     };
     queue: MangaDownloadQueue;
     // Looks for newer versions of the server and of the helper, and moves to them.
-    updates: Pick<MangaToolUpdates, 'check' | 'updateServer' | 'resetServer' | 'updateHelper'>;
+    updates: Pick<MangaToolUpdates, 'check' | 'updateHelper'>;
     // Looks for new chapters, in one manga of the library or in all of them (null).
     checkNewChapters: (mangaId: number | null) => Promise<MangaCheckResponse>;
     // Whether a check of all the mangas is going on and how far it is.
@@ -30,8 +30,6 @@ export interface MangaHandlerDependencies {
     icons: Pick<MangaIcons, 'present'>;
     // The covers of the library that are kept in the data folder.
     covers: Pick<MangaCovers, 'urlOf' | 'refresh' | 'backfill' | 'remove' | 'needsServer' | 'pending'>;
-    // Closes the app and opens it again.
-    restartApp: () => void;
     db: MangaDb;
     reader: Pick<MangaReader, 'pages'>;
     // Downloads again the pages an incomplete chapter lacks.
@@ -115,17 +113,10 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
         return { ok: false, reason: 'invalid' };
     });
     ipcMain.handle(IPC.mangaToolsCheck, (): MangaToolVersions => {
-        return { suwayomi: { current: '', latest: null, error: null, updatable: false, chosen: false, bundled: '', restartNeeded: false }, flaresolverr: null };
+        return { flaresolverr: null };
     });
-    [IPC.mangaServerUpdate, IPC.mangaHelperUpdate].forEach((channel) => {
-        ipcMain.handle(channel, (): MangaToolUpdateResult => {
-            return { ok: false, reason: 'unsupported', message: null };
-        });
-    });
-    [IPC.mangaServerReset, IPC.mangaRestart].forEach((channel) => {
-        ipcMain.handle(channel, () => {
-            return undefined;
-        });
+    ipcMain.handle(IPC.mangaHelperUpdate, (): MangaToolUpdateResult => {
+        return { ok: false, reason: 'unsupported', message: null };
     });
     [IPC.mangaHealth, IPC.mangaRestartPrograms].forEach((channel) => {
         ipcMain.handle(channel, (): MangaHealth => {
@@ -539,18 +530,9 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     ipcMain.handle(IPC.mangaToolsCheck, () => {
         return deps.updates.check();
     });
-    ipcMain.handle(IPC.mangaServerUpdate, () => {
-        return deps.updates.updateServer();
-    });
-    ipcMain.handle(IPC.mangaServerReset, () => {
-        deps.updates.resetServer();
-    });
     ipcMain.handle(IPC.mangaHelperUpdate, async () => {
         const result = await deps.updates.updateHelper();
         return result;
-    });
-    ipcMain.handle(IPC.mangaRestart, () => {
-        deps.restartApp();
     });
     ipcMain.handle(IPC.mangaHealth, (_event, start) => {
         return service.health(start === true);

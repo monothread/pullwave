@@ -188,26 +188,14 @@ const manga: CyberApi['manga'] = {
     checkToolUpdates: () => {
         return ipcRenderer.invoke(IPC.mangaToolsCheck);
     },
-    updateServer: () => {
-        return ipcRenderer.invoke(IPC.mangaServerUpdate);
-    },
-    resetServerVersion: () => {
-        return ipcRenderer.invoke(IPC.mangaServerReset);
-    },
     updateHelper: () => {
         return ipcRenderer.invoke(IPC.mangaHelperUpdate);
-    },
-    restartApp: () => {
-        return ipcRenderer.invoke(IPC.mangaRestart);
     },
     health: (start) => {
         return ipcRenderer.invoke(IPC.mangaHealth, start);
     },
     restartPrograms: () => {
         return ipcRenderer.invoke(IPC.mangaRestartPrograms);
-    },
-    onServerUpdate: (listener) => {
-        return subscribe<ToolState>(IPC.eventMangaServerUpdate, listener);
     },
     onMigrationProgress: (listener) => {
         return subscribe<MangaMigrationProgress>(IPC.eventMangaMigration, listener);
@@ -379,11 +367,11 @@ const api: CyberApi = {
     getAnimeStatus: () => {
         return ipcRenderer.invoke(IPC.animeStatus);
     },
-    searchAnime: (query, audio, loaded) => {
-        return ipcRenderer.invoke(IPC.animeSearch, query, audio, loaded);
+    searchAnime: (query, loaded) => {
+        return ipcRenderer.invoke(IPC.animeSearch, query, loaded);
     },
-    listAnimeEpisodes: (query, index, audio) => {
-        return ipcRenderer.invoke(IPC.animeEpisodes, query, index, audio);
+    listAnimeEpisodes: (query, index) => {
+        return ipcRenderer.invoke(IPC.animeEpisodes, query, index);
     },
     downloadAnime: (request) => {
         return ipcRenderer.invoke(IPC.animeDownload, request);

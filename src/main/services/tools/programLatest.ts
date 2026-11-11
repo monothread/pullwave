@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { ProgramId, ToolSpec } from '@shared/tools';
-import { patchReport, REQUIRED_PATCHES, type PatchName } from '../aniPatches';
+import { compatibilityProblems, describeProblem, MAX_SCRIPT_BYTES, type CompatibilityProblem } from '../aniCompatibility';
 import { parseAniCliVersion } from '../aniVersion';
 import { verifyYtdlpSums } from '../ytdlpSignature';
 import {
     aniCliSpec,
+    ANICLI_BASE_PROVIDER,
+    ANICLI_BASE_VERSION,
     ANICLI_RAW_URL,
     ANICLI_VERSION,
     denoSpec,
@@ -38,7 +40,7 @@ export const MAX_SIZES: Record<ProgramId, number> = {
     ytdlp: 100_000_000,
     deno: 150_000_000,
     ffmpeg: 400_000_000,
-    anicli: 500_000,
+    anicli: MAX_SCRIPT_BYTES,
     busybox: 20_000_000,
     curl: 40_000_000
 };
@@ -48,14 +50,14 @@ export const TEXT_TIMEOUT_MS = 30_000;
 const USER_AGENT = 'pullwave';
 
 // Why a look for the latest version did not give one. The reason is what the screen turns into words; the message is for the details.
-export type LookupReason = 'no-release' | 'signature' | 'checksum' | 'invalid' | 'patches' | 'failed';
+export type LookupReason = 'no-release' | 'signature' | 'checksum' | 'invalid' | 'patches' | 'incompatible' | 'failed';
 
 export class LookupError extends Error {
     constructor(
         readonly reason: LookupReason,
         message: string,
-        // The changes of the app that do not fit ani-cli (for the reason `patches`).
-        readonly patches: readonly PatchName[] = []
+        // What keeps ani-cli from being used (for the reasons `patches` and `incompatible`).
+        readonly problems: readonly CompatibilityProblem[] = []
     ) {
         super(message);
     }
@@ -248,28 +250,16 @@ export async function latestFfmpeg(platform: ProgramPlatform, deps: LatestDepend
     return spec;
 }
 
-export function looksLikeAniCli(script: string): boolean {
-    return script.startsWith('#!/bin/sh') && Buffer.byteLength(script) <= MAX_SIZES.anicli && parseAniCliVersion(script) !== null;
-}
-
-export function unfitPatches(script: string): PatchName[] {
-    const report = patchReport(script);
-    return (Object.keys(report) as PatchName[]).filter((name) => {
-        return !report[name];
-    });
-}
-
 export interface LatestAniCli {
     spec: ToolSpec;
-    // The version the script says it is (5.1.4).
+    // The version the script says it is (5.1.8).
     version: string;
-    // The changes of the app that do not fit the script and are not essential: the script works, without them.
-    unfit: PatchName[];
 }
 
 // ani-cli: the script at the head of the master branch, asked for by its commit so the address is a fixed one. It is not worth anything unless
-// it looks like ani-cli and the changes of the app that the app cannot do without still fit it. The script has no checksum published, so the
-// one of the file as it came is the one the install checks (the file of a commit does not change).
+// it looks like ani-cli and keeps everything the app relies on (see aniCompatibility.ts): every change of the app fits it, and nothing the app
+// hands it or reads from it is gone. The script has no checksum published, so the one of the file as it came is the one the install checks
+// (the file of a commit does not change).
 export async function latestAniCli(deps: LatestDependencies = defaultLatestDependencies): Promise<LatestAniCli> {
     let commit: unknown;
     try {
@@ -285,16 +275,18 @@ export async function latestAniCli(deps: LatestDependencies = defaultLatestDepen
     }
     const bytes = await deps.fetchBuffer(`${ANICLI_RAW_URL}/${commit}/ani-cli`, MAX_SIZES.anicli);
     const script = bytes.toString('utf-8');
-    if (!looksLikeAniCli(script)) {
-        throw new LookupError('invalid', 'The file is not ani-cli');
+    const problems = compatibilityProblems(script, { version: ANICLI_BASE_VERSION, provider: ANICLI_BASE_PROVIDER });
+    if (problems.some((problem) => {
+        return problem.kind === 'not-ani-cli';
+    })) {
+        throw new LookupError('invalid', 'The file is not ani-cli', problems);
     }
-    const unfit = unfitPatches(script);
-    const required = unfit.filter((name) => {
-        return REQUIRED_PATCHES.includes(name);
-    });
-    if (required.length > 0) {
-        throw new LookupError('patches', `The changes of the app do not fit this ani-cli: ${required.join(', ')}`, required);
+    if (problems.length > 0) {
+        const onlyPatches = problems.every((problem) => {
+            return problem.kind === 'patch' || problem.kind === 'needs';
+        });
+        throw new LookupError(onlyPatches ? 'patches' : 'incompatible', `This ani-cli cannot be used by the app: ${problems.map(describeProblem).join('; ')}`, problems);
     }
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    return { spec: aniCliSpec(commit, sha256, bytes.length), version: parseAniCliVersion(script) ?? '', unfit };
+    return { spec: aniCliSpec(commit, sha256, bytes.length), version: parseAniCliVersion(script) ?? '' };
 }

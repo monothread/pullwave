@@ -18,7 +18,7 @@ const initialManga = useMangaStore.getState();
 const initialCut = useCutStore.getInitialState();
 const PREVIEW: CutPreviewState = { rowId: 1, number: 1, segment: { start: 10, end: 20 }, status: 'ready', url: 'pullwave-cut://media/1', start: 10, end: 20, converted: false, error: null };
 const RESULT: AnimeSearchResult = { index: 2, title: 'Naruto' };
-const SELECTION: AnimeSelection = { result: RESULT, query: 'naruto', audio: 'sub', status: 'ready', episodes: ['1', '2'], error: null };
+const SELECTION: AnimeSelection = { result: RESULT, query: 'naruto', status: 'ready', episodes: ['1', '2'], error: null };
 
 let mock: MockApiHandle;
 
@@ -83,7 +83,7 @@ describe('snapshotKey', () => {
 
     it('joins the parts that make a page', () => {
         expect(snapshotKey(base)).toBe('anime|queue|library|library|||||browse:browse::popular:false::browse::');
-        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren', librarySeason: 12 })).toBe('anime|queue|library|library|2:sub|7|series-frieren|12|browse:browse::popular:false::browse::');
+        expect(snapshotKey({ ...base, selection: SELECTION, libraryFocus: 7, librarySeries: 'series-frieren', librarySeason: 12 })).toBe('anime|queue|library|library|2|7|series-frieren|12|browse:browse::popular:false::browse::');
     });
 
     it('differs between the screens of the manga section, the sources, the modes, the settings of a source and the mangas open', () => {
@@ -120,10 +120,10 @@ describe('snapshotKey', () => {
         expect(snapshotKey({ ...base, selection: { ...SELECTION, status: 'loading', episodes: [] } })).toBe(snapshotKey({ ...base, selection: SELECTION }));
     });
 
-    it('differs between anime and between audios', () => {
+    it('differs between anime, and is the same for the same anime', () => {
         const key = snapshotKey({ ...base, selection: SELECTION });
         expect(snapshotKey({ ...base, selection: { ...SELECTION, result: { index: 3, title: 'Bleach' } } })).not.toBe(key);
-        expect(snapshotKey({ ...base, selection: { ...SELECTION, audio: 'dub' } })).not.toBe(key);
+        expect(snapshotKey({ ...base, selection: { ...SELECTION } })).toBe(key);
     });
 });
 

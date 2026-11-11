@@ -84,6 +84,13 @@ export const ANICLI_RAW_URL = 'https://raw.githubusercontent.com/pystardust/ani-
 // A commit of the master branch.
 export const ANICLI_VERSION = /^[0-9a-f]{40}$/;
 
+// The script the app is made with: an update is never older than it (see aniCompatibility.ts), and it reads the same site.
+export const ANICLI_BASE_COMMIT = '8527f185a12c6b5d0247a30b2217000dd65457fe';
+export const ANICLI_BASE_SHA256 = '24ada974b567789da4ea51f9f92ec5b975b43fc0e999543f9053bcf5a628105c';
+export const ANICLI_BASE_SIZE = 31_360;
+export const ANICLI_BASE_VERSION = '5.1.8';
+export const ANICLI_BASE_PROVIDER = 'hianime.at';
+
 export function aniCliSpec(commit: string, sha256: string, sizeBytes: number): ToolSpec {
     return { id: 'anicli', version: commit, url: `${ANICLI_RAW_URL}/${commit}/ani-cli`, sha256, sizeBytes, ...RAW, executables: ['ani-cli'], entry: 'ani-cli' };
 }
@@ -105,9 +112,9 @@ const PINNED: Record<Exclude<ProgramId, 'ffmpeg'>, Record<ProgramPlatform, ToolS
         win32: denoSpec('v2.9.7', 'a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238', 42_630_221, 'win32')
     },
     anicli: {
-        // Version 5.1.4: the latest tagged release is much older.
-        linux: aniCliSpec('3ad53631ef2433b0c26e25ab011a5b149706c120', '32ae0965b7abb102ab85f381411b980d1a9196f06bf2756d48fef16695b41d47', 29_772),
-        win32: aniCliSpec('3ad53631ef2433b0c26e25ab011a5b149706c120', '32ae0965b7abb102ab85f381411b980d1a9196f06bf2756d48fef16695b41d47', 29_772)
+        // Version 5.1.8 (ANICLI_BASE_VERSION): the latest tagged release is much older.
+        linux: aniCliSpec(ANICLI_BASE_COMMIT, ANICLI_BASE_SHA256, ANICLI_BASE_SIZE),
+        win32: aniCliSpec(ANICLI_BASE_COMMIT, ANICLI_BASE_SHA256, ANICLI_BASE_SIZE)
     },
     busybox: {
         // busybox.net publishes no checksums, so the hash of the file is pinned here.

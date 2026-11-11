@@ -45,7 +45,6 @@ import type {
     AnimeStreamRequest,
     AnimeStreamResponse,
     AnimeUpdateEntry,
-    AnimeAudio,
     AnimeQuality,
     AnimeSubtitleSetting,
     LibraryAnime
@@ -163,7 +162,6 @@ export interface Settings {
     // Anime section (Linux and Windows).
     animeDownloadDir: string;
     animeQuality: AnimeQuality;
-    animeAudio: AnimeAudio;
     animeSubtitles: AnimeSubtitleSetting;
     // Whether, once an hour, the anime of the library are checked for new episodes (which are added to the library, not downloaded).
     animeCheckNewEpisodes: boolean;
@@ -433,8 +431,8 @@ export interface CyberApi {
     getDiskUsage: (section: DiskSection) => Promise<DiskUsage | null>;
     getAnimeStatus: () => Promise<AnimeStatus>;
     // `loaded` is how many results the screen already lists: the answer is the whole list up to one more result, at least, with whether the source has more.
-    searchAnime: (query: string, audio: AnimeAudio, loaded?: number) => Promise<AnimeSearchResponse>;
-    listAnimeEpisodes: (query: string, index: number, audio: AnimeAudio) => Promise<AnimeEpisodesResponse>;
+    searchAnime: (query: string, loaded?: number) => Promise<AnimeSearchResponse>;
+    listAnimeEpisodes: (query: string, index: number) => Promise<AnimeEpisodesResponse>;
     downloadAnime: (request: AnimeDownloadRequest) => Promise<AnimeDownloadResponse>;
     listAnimeLibrary: () => Promise<LibraryAnime[]>;
     listAnimeHistory: () => Promise<AnimeHistoryEntry[]>;

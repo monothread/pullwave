@@ -213,7 +213,7 @@ describe('AnimeSchedule', () => {
 
         await user.click(screen.getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' }));
 
-        expect(mock.api.searchAnime).toHaveBeenCalledWith('Sousou no Frieren', 'sub');
+        expect(mock.api.searchAnime).toHaveBeenCalledWith('Sousou no Frieren');
         await vi.waitFor(() => {
             expect(useAnimeStore.getState().search.status).toBe('done');
         });
@@ -305,7 +305,7 @@ describe('AnimeSchedule', () => {
             await user.click(screen.getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' }));
 
             expect(mock.api.searchAnime).toHaveBeenCalledTimes(1);
-            expect(mock.api.searchAnime).toHaveBeenCalledWith('Sousou no Frieren', 'sub');
+            expect(mock.api.searchAnime).toHaveBeenCalledWith('Sousou no Frieren');
             expect(useAnimeStore.getState().view).toBe('search');
         });
 
@@ -318,8 +318,8 @@ describe('AnimeSchedule', () => {
             await user.click(screen.getByRole('button', { name: 'OPEN: Sousou no Frieren, EP 12' }));
 
             expect(mock.api.searchAnime).toHaveBeenCalledTimes(2);
-            expect(mock.api.searchAnime).toHaveBeenNthCalledWith(1, 'Sousou no Frieren', 'sub');
-            expect(mock.api.searchAnime).toHaveBeenNthCalledWith(2, 'Frieren: Beyond Journey\'s End', 'sub');
+            expect(mock.api.searchAnime).toHaveBeenNthCalledWith(1, 'Sousou no Frieren');
+            expect(mock.api.searchAnime).toHaveBeenNthCalledWith(2, 'Frieren: Beyond Journey\'s End');
         });
 
         it('keeps the cards of the search clickable when the schedule is narrowed', async () => {

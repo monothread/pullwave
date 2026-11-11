@@ -17,7 +17,7 @@ interface Download {
 }
 
 const DOWNLOADS = '/home/me/Downloads';
-const REQUEST: AnimeDownloadRequest = { title: 'Naruto', query: 'naruto', index: 2, audio: 'sub', episodes: ['1', '2', '3'] };
+const REQUEST: AnimeDownloadRequest = { title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3'] };
 
 function setup(
     settings: Partial<Settings> = {},
@@ -112,7 +112,7 @@ describe('AnimeDownloadQueue.enqueue', () => {
         const { queue, db, updates, state } = setup({ maxConcurrent: 2 });
         const anime = queue.enqueue(REQUEST);
 
-        expect(anime).toMatchObject({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
+        expect(anime).toMatchObject({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
         expect(
             anime?.episodes.map((episode) => {
                 return [episode.number, episode.status];
@@ -147,7 +147,6 @@ describe('AnimeDownloadQueue.enqueue', () => {
             index: 2,
             episode: '1',
             quality: 'best',
-            audio: 'sub',
             downloadDir: join(DOWNLOADS, DEFAULT_ANIME_FOLDER, 'Naruto', 'Episode 1')
         });
         expect(downloads[1]?.options.episode).toBe('2');
@@ -165,8 +164,8 @@ describe('AnimeDownloadQueue.enqueue', () => {
 
     it('uses the folder, the quality and the audio chosen', () => {
         const { queue, downloads } = setup({ animeDownloadDir: '/media/anime', animeQuality: '720p' });
-        queue.enqueue({ ...REQUEST, audio: 'dub', episodes: ['1'] });
-        expect(downloads[0]?.options).toMatchObject({ quality: '720p', audio: 'dub', downloadDir: join('/media/anime', 'Naruto', 'Episode 1') });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        expect(downloads[0]?.options).toMatchObject({ quality: '720p', downloadDir: join('/media/anime', 'Naruto', 'Episode 1') });
     });
 
     it('names the folder after the anime without forbidden characters', () => {
@@ -470,14 +469,14 @@ describe('AnimeDownloadQueue.retry', () => {
 
     it('also works for an episode left unfinished by an earlier run of the app', () => {
         const { queue, downloads, db } = setup();
-        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'dub' });
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
         const episode = db.ensureEpisode(anime.id, '7');
         db.failInterrupted();
 
         queue.retry(episode.id);
 
         expect(downloads).toHaveLength(1);
-        expect(downloads[0]?.options).toMatchObject({ query: 'naruto', index: 1, episode: '7', audio: 'dub' });
+        expect(downloads[0]?.options).toMatchObject({ query: 'naruto', index: 1, episode: '7' });
     });
 
     it('does nothing for an episode that is downloaded, already active or does not exist', async () => {
@@ -519,7 +518,6 @@ describe('AnimeDownloadQueue.redownload', () => {
             index: 2,
             episode: '1',
             quality: DEFAULT_SETTINGS.animeQuality,
-            audio: 'sub',
             downloadDir: downloads[0]?.options.downloadDir
         });
         expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, error: null });
@@ -893,7 +891,7 @@ describe('AnimeDownloadQueue.redownload of an episode whose video has no audio',
         expect(removeFile).toHaveBeenCalledWith(FILE);
         expect(removeDirectory).not.toHaveBeenCalled();
         expect(downloads).toHaveLength(2);
-        expect(downloads[1]?.options).toMatchObject({ query: 'naruto', index: 2, episode: '1', audio: 'sub' });
+        expect(downloads[1]?.options).toMatchObject({ query: 'naruto', index: 2, episode: '1' });
         expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, noAudio: false });
         expect(state.libraryChanges).toBe(libraryChanges + 2);
     });
@@ -1129,7 +1127,7 @@ describe('AnimeDownloadQueue folders and metadata', () => {
 
     function withDownloaded(videoPath: string, directories: string[]) {
         const context = setup({}, {}, { directories });
-        const anime = context.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
+        const anime = context.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
         context.db.markDone(context.db.ensureEpisode(anime.id, '1').id, videoPath, 10);
         return { ...context, anime };
     }
@@ -1180,7 +1178,7 @@ describe('AnimeDownloadQueue folders and metadata', () => {
 });
 
 describe('AnimeDownloadQueue series', () => {
-    const SERIES_REQUEST: AnimeDownloadRequest = { title: 'Frieren Season 2', query: 'frieren', index: 2, audio: 'sub', episodes: ['1', '2'], series: 'Frieren', season: 2 };
+    const SERIES_REQUEST: AnimeDownloadRequest = { title: 'Frieren Season 2', query: 'frieren', index: 2, episodes: ['1', '2'], series: 'Frieren', season: 2 };
 
     it('saves the series and the season with the anime', () => {
         const { queue, db } = setup();
@@ -1243,7 +1241,7 @@ describe('AnimeDownloadQueue series', () => {
 
     it('keeps downloading into the folder an anime already has, even after it was joined to a series', () => {
         const { queue, downloads, db } = setup({}, {}, { directories: [join('/media', 'My Naruto')] });
-        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
         db.markDone(db.ensureEpisode(anime.id, '1').id, join('/media', 'My Naruto', 'Episode 1', 'Naruto Episode 1.mp4'), 10);
         queue.enqueue({ ...REQUEST, series: 'Naruto Series', season: 1, episodes: ['2'] });
         expect(downloads[0]?.options.downloadDir).toBe(join('/media', 'My Naruto', 'Episode 2'));
@@ -1378,7 +1376,7 @@ describe('AnimeDownloadQueue pause and resume', () => {
             queue.resume(1);
 
             expect(downloads).toHaveLength(3);
-            expect(downloads[2]?.options).toMatchObject({ query: 'naruto', index: 2, episode: '1', audio: 'sub' });
+            expect(downloads[2]?.options).toMatchObject({ query: 'naruto', index: 2, episode: '1' });
             expect(queue.list().find((job) => {
                 return job.episodeId === 1;
             })?.status).toBe('running');
@@ -1423,7 +1421,7 @@ describe('AnimeDownloadQueue pause and resume', () => {
 
         it('also works for an episode that was paused in an earlier run of the app', () => {
             const { queue, downloads, db } = setup();
-            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'dub' });
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const episode = db.ensureEpisode(anime.id, '7');
             db.markPaused(episode.id);
             db.failInterrupted();
@@ -1432,12 +1430,12 @@ describe('AnimeDownloadQueue pause and resume', () => {
             queue.resume(episode.id);
 
             expect(downloads).toHaveLength(1);
-            expect(downloads[0]?.options).toMatchObject({ query: 'naruto', index: 1, episode: '7', audio: 'dub' });
+            expect(downloads[0]?.options).toMatchObject({ query: 'naruto', index: 1, episode: '7' });
         });
 
         it.each(['downloading', 'queued', 'done', 'error', 'cancelled'] as const)('does nothing for an episode that is %s', (status) => {
             const { queue, downloads, db } = setup();
-            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
             const episode = db.ensureEpisode(anime.id, '1');
             if (status === 'downloading') {
                 db.markDownloading(episode.id);
@@ -1534,8 +1532,8 @@ describe('AnimeDownloadQueue pause and resume', () => {
 describe('AnimeDownloadQueue the episodes paused when the app last closed', () => {
     function libraryWithPaused() {
         const result = setup({ maxConcurrent: 1 });
-        const naruto = result.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' });
-        const bleach = result.db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 3, audio: 'dub' });
+        const naruto = result.db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
+        const bleach = result.db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 3 });
         const paused = [result.db.ensureEpisode(naruto.id, '2'), result.db.ensureEpisode(bleach.id, '5')];
         paused.forEach((episode) => {
             result.db.markPaused(episode.id);
@@ -1889,14 +1887,14 @@ describe('AnimeDownloadQueue with the id of the source', () => {
 
 describe('AnimeDownloadQueue.addToLibrary', () => {
     function addition(overrides: Partial<AnimeAddRequest> = {}): AnimeAddRequest {
-        return { title: 'Naruto', query: 'naruto', index: 2, audio: 'sub', episodes: ['1', '2', '3'], series: null, season: null, seasonName: null, ...overrides };
+        return { title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3'], series: null, season: null, seasonName: null, ...overrides };
     }
 
     it('puts the anime in the library with every episode idle, and downloads nothing', () => {
         const { queue, db, downloads, updates, state } = setup();
         const response = queue.addToLibrary(addition());
 
-        expect(response).toMatchObject({ ok: true, anime: { title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub', series: null, season: null } });
+        expect(response).toMatchObject({ ok: true, anime: { title: 'Naruto', query: 'naruto', searchIndex: 2, series: null, season: null } });
         expect(
             db.getLibraryAnime(1)?.episodes.map((episode) => {
                 return [episode.number, episode.status];
@@ -1936,14 +1934,14 @@ describe('AnimeDownloadQueue.addToLibrary', () => {
         const response = queue.addToLibrary(addition({ title: 'Frieren 2', series: 'FRIEREN', season: 1 }));
 
         expect(response).toEqual({ ok: false, reason: 'season-taken', suggested: 4 });
-        expect(db.findAnime('Frieren 2', 'sub')).toBeNull();
+        expect(db.findAnime('Frieren 2')).toBeNull();
         expect(state.libraryChanges).toBe(changes);
     });
 
     it('allows the same season for the other audio of the series', () => {
         const { queue } = setup();
         queue.addToLibrary(addition({ title: 'Frieren', series: 'Frieren', season: 1 }));
-        expect(queue.addToLibrary(addition({ title: 'Frieren', audio: 'dub', series: 'Frieren', season: 1 })).ok).toBe(true);
+        expect(queue.addToLibrary(addition({ title: 'Frieren', series: 'Frieren', season: 1 })).ok).toBe(true);
     });
 
     it('keeps the series an anime has when it is added again with another one', () => {
@@ -1989,23 +1987,20 @@ describe('AnimeDownloadQueue.addToLibrary', () => {
         expect(db.getAnime(1)?.searchIndex).toBe(3);
     });
 
-    it('keeps the dubbed anime apart', () => {
+    it('keeps one anime for a title added twice', () => {
         const { queue, db } = setup();
         queue.addToLibrary(addition());
-        queue.addToLibrary(addition({ audio: 'dub' }));
+        queue.addToLibrary(addition());
         expect(db.list().map((anime) => {
-            return [anime.title, anime.audio];
-        })).toEqual([
-            ['Naruto', 'dub'],
-            ['Naruto', 'sub']
-        ]);
+            return anime.title;
+        })).toEqual(['Naruto']);
     });
 });
 
 describe('AnimeDownloadQueue.downloadMissing', () => {
     function library(settings: Partial<Settings> = {}, files: Record<string, number> = {}) {
         const context = setup(settings, files);
-        context.queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, audio: 'sub', episodes: ['1', '2', '3', '4'], series: null, season: null, seasonName: null });
+        context.queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3', '4'], series: null, season: null, seasonName: null });
         return context;
     }
 
@@ -2079,8 +2074,8 @@ describe('AnimeDownloadQueue.downloadMissing', () => {
 
     it('does the episodes of every anime of the list, and only of the list', () => {
         const { queue, state } = library({ maxConcurrent: 0 });
-        queue.addToLibrary({ title: 'Bleach', query: 'bleach', index: 3, audio: 'sub', episodes: ['1', '2'], series: null, season: null, seasonName: null });
-        queue.addToLibrary({ title: 'Other', query: 'other', index: 4, audio: 'sub', episodes: ['1'], series: null, season: null, seasonName: null });
+        queue.addToLibrary({ title: 'Bleach', query: 'bleach', index: 3, episodes: ['1', '2'], series: null, season: null, seasonName: null });
+        queue.addToLibrary({ title: 'Other', query: 'other', index: 4, episodes: ['1'], series: null, season: null, seasonName: null });
         const changes = state.libraryChanges;
 
         queue.downloadMissing([1, 3]);
@@ -2108,7 +2103,7 @@ describe('AnimeDownloadQueue.downloadMissing', () => {
 
     it('does nothing for an empty list, and for an anime whose episodes are all downloaded', async () => {
         const { queue, downloads } = setup({ maxConcurrent: 1 }, { '/a/Naruto Episode 1.mp4': 10 });
-        queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, audio: 'sub', episodes: ['1'], series: null, season: null, seasonName: null });
+        queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, episodes: ['1'], series: null, season: null, seasonName: null });
         queue.downloadMissing([]);
         expect(queue.list()).toEqual([]);
         queue.downloadMissing([1]);
@@ -2132,7 +2127,7 @@ describe('AnimeDownloadQueue.downloadMissing', () => {
 describe('AnimeDownloadQueue.downloadEpisodes', () => {
     function library(settings: Partial<Settings> = {}, files: Record<string, number> = {}) {
         const context = setup(settings, files);
-        context.queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, audio: 'sub', episodes: ['1', '2', '3', '4'], series: null, season: null, seasonName: null });
+        context.queue.addToLibrary({ title: 'Naruto', query: 'naruto', index: 2, episodes: ['1', '2', '3', '4'], series: null, season: null, seasonName: null });
         return context;
     }
 
@@ -2178,7 +2173,7 @@ describe('AnimeDownloadQueue.downloadEpisodes', () => {
 
         queue.downloadEpisodes(1, ['4']);
 
-        expect(downloads[0]?.options).toMatchObject({ query: 'naruto', index: 2, audio: 'sub', episode: '4' });
+        expect(downloads[0]?.options).toMatchObject({ query: 'naruto', index: 2, episode: '4' });
     });
 
     it('leaves the library episodes that were not given as they are', () => {
@@ -2404,7 +2399,7 @@ describe('AnimeDownloadQueue pause all and resume all', () => {
         const { queue, downloads } = setup({ maxConcurrent: 2 });
         queue.pauseAll();
         queue.enqueue({ ...REQUEST, episodes: ['1'] });
-        queue.enqueue({ title: 'Bleach', query: 'bleach', index: 1, audio: 'sub', episodes: ['5'] });
+        queue.enqueue({ title: 'Bleach', query: 'bleach', index: 1, episodes: ['5'] });
         expect(downloads).toEqual([]);
         expect(queue.list().map((job) => {
             return job.status;

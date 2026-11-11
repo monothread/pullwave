@@ -197,7 +197,7 @@ export function sortGroups<T extends { createdAt: number }, G extends SortableGr
 export function animeLastSeen(entries: readonly LibraryAnime[], history: readonly AnimeHistoryEntry[]): number {
     return history.reduce((latest, entry) => {
         const ofGroup = entries.some((anime) => {
-            return anime.title === entry.title && anime.audio === entry.audio;
+            return anime.title === entry.title;
         });
         return ofGroup ? Math.max(latest, entry.watchedAt ?? 0) : latest;
     }, 0);

@@ -111,6 +111,14 @@ export function parseProgressLine(line: string): AniDownloadProgress | null {
     };
 }
 
+// What the stand-in of ffmpeg prints when the download of an episode whose audio is a track of its own failed (see pullwave-run.sh): ani-cli
+// ends well whatever its download did, so this line is what tells the app the download did not work.
+export const DOWNLOAD_FAILED_MARKER = 'PULLWAVE_DOWNLOAD_FAILED';
+
+export function isDownloadFailedLine(line: string): boolean {
+    return stripAnsi(line).trim() === DOWNLOAD_FAILED_MARKER;
+}
+
 export function parseDestinationLine(line: string): string | null {
     const match = DESTINATION_PATTERN.exec(stripAnsi(line).trim());
     return match?.[1] ?? null;

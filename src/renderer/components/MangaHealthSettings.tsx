@@ -43,10 +43,9 @@ interface HealthRowProps {
     info: ToolVersionInfo | null;
     result: MangaToolUpdateResult | null;
     children?: React.ReactNode;
-    extra?: React.ReactNode;
 }
 
-function HealthRow({ name, health, unused, testId, info, result, children, extra }: HealthRowProps) {
+function HealthRow({ name, health, unused, testId, info, result, children }: HealthRowProps) {
     const t = useTranslator();
     return (
         <li className="history__item" data-testid={testId}>
@@ -70,7 +69,6 @@ function HealthRow({ name, health, unused, testId, info, result, children, extra
                         {t('manga.updates.lookupFailed', { message: info.error })}
                     </span>
                 )}
-                {extra}
                 {result && (
                     <span className={`history__meta${result.ok ? '' : ' field__warning'}`} role={result.ok ? undefined : 'alert'}>
                         {result.ok ? t(resultKey(result), { version: result.version }) : <ErrorNotice report={plainErrorReport(t(resultKey(result), { version: '' }), result.message ?? '')} />}
@@ -85,9 +83,10 @@ function HealthRow({ name, health, unused, testId, info, result, children, extra
     );
 }
 
-// Whether the server and the helper for Cloudflare are up, and the buttons that move them to the latest release of their projects. It looks
-// when the settings open (without starting anything that is stopped); CHECK NOW starts what is stopped and asks it, and CHECK FOR UPDATES
-// looks for the latest versions, which is what makes the update buttons appear.
+// Whether the server and the helper for Cloudflare are up, and the button that moves the helper to the latest release of its project (the
+// server stays at the version the app ships with). It looks when the settings open (without starting anything that is stopped); CHECK NOW
+// starts what is stopped and asks it, and CHECK FOR UPDATES (only when the app runs the helper) looks for the latest one, which is what makes
+// its update button appear.
 export function MangaHealthSettings() {
     const t = useTranslator();
     const health = useMangaStore((state) => {
@@ -111,23 +110,11 @@ export function MangaHealthSettings() {
     const updating = useMangaStore((state) => {
         return state.updating;
     });
-    const download = useMangaStore((state) => {
-        return state.serverUpdate;
-    });
     const checkToolUpdates = useMangaStore((state) => {
         return state.checkToolUpdates;
     });
-    const updateServer = useMangaStore((state) => {
-        return state.updateServer;
-    });
-    const resetServerVersion = useMangaStore((state) => {
-        return state.resetServerVersion;
-    });
     const updateHelper = useMangaStore((state) => {
         return state.updateHelper;
-    });
-    const restartApp = useMangaStore((state) => {
-        return state.restartApp;
     });
     const restarting = useMangaStore((state) => {
         return state.programsRestarting;
@@ -135,9 +122,10 @@ export function MangaHealthSettings() {
     const restartPrograms = useMangaStore((state) => {
         return state.restartPrograms;
     });
-    const server = versions?.suwayomi ?? null;
     const helper = versions?.flaresolverr ?? null;
-    const downloading = updating.server && download !== null && download.status !== 'ready' && download.status !== 'error';
+    // Only the helper the app runs can be updated from here (the server stays at the version of the app, and a FlareSolverr of the user's own
+    // is theirs): without one there is nothing to look for.
+    const updatable = health !== null && health.helper !== null && !health.helper.external;
 
     useEffect(() => {
         void checkHealth(false);
@@ -147,60 +135,7 @@ export function MangaHealthSettings() {
         <fieldset className="panel" aria-label={t('manga.health.title')}>
             <legend>{t('manga.health.title')}</legend>
             <ul className="history__list">
-                <HealthRow
-                    name="Suwayomi-Server"
-                    health={health?.server ?? null}
-                    unused={t('manga.health.checking')}
-                    testId="manga-health-server"
-                    info={server}
-                    result={results.server}
-                    extra={
-                        <>
-                            {server?.restartNeeded && <span className="field__warning">{t('manga.updates.restartNeeded')}</span>}
-                            {downloading && (
-                                <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(download.percent)} aria-label={t('manga.updates.downloading')}>
-                                    <div className="progress__bar" style={{ width: `${String(download.percent)}%` }} />
-                                </div>
-                            )}
-                        </>
-                    }
-                >
-                    {server?.updatable && (
-                        <button
-                            type="button"
-                            className="btn btn--small btn--primary"
-                            disabled={updating.server}
-                            onClick={() => {
-                                void updateServer();
-                            }}
-                        >
-                            {updating.server ? t('manga.updates.working') : t('manga.updates.update', { version: server.latest ?? '' })}
-                        </button>
-                    )}
-                    {server?.restartNeeded && (
-                        <button
-                            type="button"
-                            className="btn btn--small btn--hot"
-                            onClick={() => {
-                                void restartApp();
-                            }}
-                        >
-                            {t('manga.updates.restart')}
-                        </button>
-                    )}
-                    {server?.chosen && (
-                        <ConfirmButton
-                            className="btn btn--small"
-                            title={t('manga.updates.resetHint', { version: server.bundled })}
-                            dialog={{ title: t('confirm.serverReset.title'), message: t('confirm.serverReset.message'), confirmLabel: t('manga.updates.reset'), cancelLabel: t('confirm.back') }}
-                            onConfirm={() => {
-                                void resetServerVersion();
-                            }}
-                        >
-                            {t('manga.updates.reset')}
-                        </ConfirmButton>
-                    )}
-                </HealthRow>
+                <HealthRow name="Suwayomi-Server" health={health?.server ?? null} unused={t('manga.health.checking')} testId="manga-health-server" info={null} result={null} />
                 <HealthRow
                     name="FlareSolverr"
                     health={health?.helper ?? null}
@@ -234,16 +169,18 @@ export function MangaHealthSettings() {
                 >
                     {checking ? t('manga.health.working') : t('manga.health.check')}
                 </button>
-                <button
-                    type="button"
-                    className="btn btn--small"
-                    disabled={toolsChecking}
-                    onClick={() => {
-                        void checkToolUpdates();
-                    }}
-                >
-                    {toolsChecking ? t('manga.updates.checking') : t('manga.updates.check')}
-                </button>
+                {updatable && (
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        disabled={toolsChecking}
+                        onClick={() => {
+                            void checkToolUpdates();
+                        }}
+                    >
+                        {toolsChecking ? t('manga.updates.checking') : t('manga.updates.check')}
+                    </button>
+                )}
                 <ConfirmButton
                     className="btn btn--small btn--hot"
                     disabled={restarting || health?.server.state === 'not-installed'}
@@ -256,7 +193,7 @@ export function MangaHealthSettings() {
                 </ConfirmButton>
             </div>
             <p className="field__hint">{t('manga.health.hint')}</p>
-            <p className="field__hint">{t('manga.updates.hint')}</p>
+            {updatable && <p className="field__hint">{t('manga.updates.hint')}</p>}
         </fieldset>
     );
 }

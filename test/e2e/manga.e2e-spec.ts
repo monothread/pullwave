@@ -501,7 +501,7 @@ test.describe('manga section', () => {
         expect(fake.graphqlRequests('removeExtensionStore')[0]?.variables).toEqual({ indexUrl: STORE_URL });
     });
 
-    test('says in the settings how the server is doing, and has the button that looks for updates', async () => {
+    test('says in the settings how the server is doing, and offers no update when the app runs no helper', async () => {
         session = await launch();
         await openManga(session.page);
         await goTo(session.page, 'SETTINGS');
@@ -519,8 +519,13 @@ test.describe('manga section', () => {
         await expect(status.getByRole('button', { name: 'CHECK NOW' })).toBeEnabled();
         expect(fake.graphqlRequests('aboutServer').length).toBe(before + 1);
         await expect(session.page.getByRole('group', { name: 'Updates of the programs' })).toHaveCount(0);
-        await expect(status.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
-        await expect(status.getByRole('button', { name: /^UPDATE TO/ })).toHaveCount(0);
+        // The server is not updated from the app, and here the app runs no helper (the user runs their own): there is nothing to look for an
+        // update of, so neither the button nor the words about the updates are there.
+        await expect(status.getByRole('button', { name: 'CHECK FOR UPDATES' })).toHaveCount(0);
+        await expect(status).not.toContainText('Updating takes the latest release of FlareSolverr');
+        await expect(server.getByRole('button')).toHaveCount(0);
+        await expect(server).not.toContainText('Latest:');
+        await expect(status.getByRole('button', { name: /^UPDATE TO|RESTART NOW|USE THE ONE OF THE APP/ })).toHaveCount(0);
     });
 
     test('restarts the programs from their status after asking, and shows how they are doing afterwards', async () => {

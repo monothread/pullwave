@@ -7,7 +7,6 @@ function found(overrides: Partial<ScannedEpisode> = {}): ScannedEpisode {
         videoPath: '/lib/Naruto/Episode 1/Naruto Episode 1.mp4',
         title: 'Naruto',
         number: '1',
-        audio: null,
         query: 'Naruto',
         searchIndex: 0,
         progress: null,
@@ -24,7 +23,6 @@ function setup(sizes: Record<string, number> = {}) {
     });
     const saved: number[] = [];
     const options = {
-        defaultAudio: 'sub' as const,
         fileSize: (path: string) => {
             return sizes[path] ?? null;
         },
@@ -49,7 +47,7 @@ describe('importLibrary', () => {
 
         expect(summary).toEqual({ added: 2, relinked: 0, skipped: 0, ignored: 3 });
         const [anime] = db.list();
-        expect(anime).toMatchObject({ title: 'Naruto', query: 'Naruto', searchIndex: 0, audio: 'sub' });
+        expect(anime).toMatchObject({ title: 'Naruto', query: 'Naruto', searchIndex: 0 });
         expect(anime?.episodes).toEqual([
             {
                 id: 1,
@@ -87,32 +85,25 @@ describe('importLibrary', () => {
         expect(saved).toEqual([1, 2]);
     });
 
-    it('uses the audio it was told, or the one of the settings when nothing says it', () => {
+    it('adds an anime for each title it found', () => {
         const { db, options } = setup();
-        importLibrary(db, { episodes: [found({ audio: 'dub' }), found({ title: 'Bleach', videoPath: '/lib/Bleach/Bleach Episode 1.mp4' })], ignored: 0 }, options);
+        importLibrary(db, { episodes: [found(), found({ title: 'Bleach', videoPath: '/lib/Bleach/Bleach Episode 1.mp4' })], ignored: 0 }, options);
         expect(
             db.list().map((anime) => {
-                return [anime.title, anime.audio];
+                return anime.title;
             })
-        ).toEqual([
-            ['Bleach', 'sub'],
-            ['Naruto', 'dub']
-        ]);
-        const dubbed = setup().options;
-        const { db: other } = setup();
-        importLibrary(other, { episodes: [found()], ignored: 0 }, { ...dubbed, defaultAudio: 'dub' });
-        expect(other.list()[0]?.audio).toBe('dub');
+        ).toEqual(['Bleach', 'Naruto']);
     });
 
     it('brings back the position and the watched mark the metadata remembered, with the search data', () => {
         const { db, options } = setup();
         importLibrary(
             db,
-            { episodes: [found({ audio: 'dub', query: 'naruto', searchIndex: 4, progress: { positionSeconds: 700, durationSeconds: 1400, watched: true } })], ignored: 0 },
+            { episodes: [found({ query: 'naruto', searchIndex: 4, progress: { positionSeconds: 700, durationSeconds: 1400, watched: true } })], ignored: 0 },
             options
         );
         const [anime] = db.list();
-        expect(anime).toMatchObject({ query: 'naruto', searchIndex: 4, audio: 'dub' });
+        expect(anime).toMatchObject({ query: 'naruto', searchIndex: 4 });
         expect(anime?.episodes[0]).toMatchObject({ positionSeconds: 700, durationSeconds: 1400, watched: true });
     });
 
@@ -153,7 +144,7 @@ describe('importLibrary', () => {
 
     it('adds an episode that was in the library but not downloaded', () => {
         const { db, options } = setup({ '/lib/Naruto/Episode 1/Naruto Episode 1.mp4': 10 });
-        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
+        const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
         db.markFailed(db.ensureEpisode(anime.id, '1').id, 'error', { code: 'UNKNOWN', raw: 'x' });
 
         const summary = importLibrary(db, { episodes: [found()], ignored: 0 }, options);
@@ -164,7 +155,7 @@ describe('importLibrary', () => {
 
     it('never replaces the search data of an anime with data that is not known, and fills it in when it is learnt', () => {
         const { db, options } = setup();
-        db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2, audio: 'sub' });
+        db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 2 });
         importLibrary(db, { episodes: [found({ query: 'Naruto Found', searchIndex: 0 })], ignored: 0 }, options);
         expect(db.getAnime(1)).toMatchObject({ query: 'naruto', searchIndex: 2 });
 
@@ -174,10 +165,13 @@ describe('importLibrary', () => {
         expect(unknown.db.getAnime(1)).toMatchObject({ query: 'naruto', searchIndex: 6 });
     });
 
-    it('keeps the same title in another audio as another anime', () => {
+    it('puts two folders of the same title in one anime', () => {
         const { db, options } = setup();
-        importLibrary(db, { episodes: [found({ audio: 'sub' }), found({ audio: 'dub', videoPath: '/lib/dub/Naruto Episode 1.mp4' })], ignored: 0 }, options);
-        expect(db.list()).toHaveLength(2);
+        importLibrary(db, { episodes: [found(), found({ videoPath: '/lib/copy/Naruto Episode 2.mp4', number: '2' })], ignored: 0 }, options);
+        expect(db.list()).toHaveLength(1);
+        expect(db.list()[0]?.episodes.map((episode) => {
+            return episode.number;
+        }).sort()).toEqual(['1', '2']);
     });
 
     it('says what is missing for a file whose size is not known', () => {
@@ -230,6 +224,6 @@ describe('importLibrary', () => {
     it('does nothing for an empty scan, and works without being told when episodes are saved', () => {
         const { db, options } = setup();
         expect(importLibrary(db, { episodes: [], ignored: 0 }, options)).toEqual({ added: 0, relinked: 0, skipped: 0, ignored: 0 });
-        expect(importLibrary(db, { episodes: [found()], ignored: 1 }, { defaultAudio: 'sub', fileSize: options.fileSize })).toEqual({ added: 1, relinked: 0, skipped: 0, ignored: 1 });
+        expect(importLibrary(db, { episodes: [found()], ignored: 1 }, { fileSize: options.fileSize })).toEqual({ added: 1, relinked: 0, skipped: 0, ignored: 1 });
     });
 });

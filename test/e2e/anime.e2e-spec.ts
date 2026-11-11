@@ -174,7 +174,8 @@ test('adds the anime tab and opens its search', async () => {
     await openAnimeTab(page);
     await expect(page.getByRole('button', { name: 'ANIME', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByLabel('Anime name')).toBeVisible();
-    await expect(page.getByLabel('Audio')).toHaveValue('sub');
+    // The anime are the subtitled ones: there is no choice of audio.
+    await expect(page.getByLabel('Audio')).toHaveCount(0);
 });
 
 test('opens on the schedule, the first tab, with the updates and the search after it', async () => {
@@ -550,8 +551,9 @@ test('keeps the anime that was opened in the history, opens it again from there 
     await subNav.getByRole('button', { name: 'HISTORY', exact: true }).click();
     const history = page.getByRole('region', { name: 'Anime history' });
     await expect(history.getByText('HISTORY [1]')).toBeVisible();
-    await expect(history.locator('.history__title')).toHaveText(['Fake Anime']);
-    await expect(history.locator('.history__meta')).toContainText('SUB');
+    // The history shows the anime as cards of the library: the title is the one of the card.
+    await expect(history.locator('.series__title')).toHaveText(['Fake Anime']);
+    await expect(history.locator('.history__meta')).not.toContainText('SUB');
 
     await history.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
     await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
@@ -633,7 +635,7 @@ test('the history of the anime survives closing the app and can be cleared', asy
     await openAnimeTab(reopened);
     const subNav = reopened.getByRole('navigation', { name: 'Anime' });
     await subNav.getByRole('button', { name: 'HISTORY', exact: true }).click();
-    await expect(reopened.locator('.history__title')).toHaveText(['Fake Anime']);
+    await expect(reopened.getByRole('region', { name: 'Anime history' }).locator('.series__title')).toHaveText(['Fake Anime']);
 
     await reopened.getByRole('button', { name: 'CLEAR HISTORY', exact: true }).click();
     await answerConfirm(reopened, 'Clear the history?', 'CLEAR HISTORY');
@@ -1029,13 +1031,13 @@ test('clears the message of a search that found nothing when the name is emptied
     await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('searches with the audio that was picked', async () => {
+test('searches the subtitled anime, with no choice of audio', async () => {
     const { page } = session;
     await openAnimeTab(page);
-    await page.getByLabel('Audio').selectOption('dub');
+    await expect(page.getByLabel('Audio')).toHaveCount(0);
     await search(page, 'fake');
     await expect(page.getByText('2 RESULTS')).toBeVisible();
-    expect(calls()).toEqual(['dub | fake']);
+    expect(calls()).toEqual(['sub | fake']);
 });
 
 test('opens an anime and lists its episodes', { tag: '@windows' }, async () => {
@@ -2665,11 +2667,11 @@ test('shows the anime settings and saves them', async () => {
     await expect(page.locator('.settings legend', { hasText: /^ANIME$/ })).toBeVisible();
     await expect(page.getByLabel('Anime quality')).toHaveValue('720p');
     await page.getByLabel('Anime quality').selectOption('worst');
-    await page.getByLabel('Anime audio').selectOption('dub');
+    await expect(page.getByLabel('Anime audio')).toHaveCount(0);
     await expect.poll(() => {
         const saved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf-8')) as Record<string, unknown>;
-        return [saved.animeQuality, saved.animeAudio];
-    }).toEqual(['worst', 'dub']);
+        return [saved.animeQuality, 'animeAudio' in saved];
+    }).toEqual(['worst', false]);
 });
 
 test('shows the name of the season on its row all the time, without the pointer on it', async () => {
@@ -3525,7 +3527,7 @@ test.describe('watching without downloading', () => {
         await openAnimeTab(page);
         await openFirstResult(page);
         const opened = await page.evaluate(() => {
-            return window.api.openAnimeStream({ query: 'fake', index: 1, audio: 'sub', episode: '1' });
+            return window.api.openAnimeStream({ query: 'fake', index: 1, episode: '1' });
         });
         expect(opened.ok).toBe(true);
         if (!opened.ok) {

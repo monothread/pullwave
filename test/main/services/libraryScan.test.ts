@@ -36,7 +36,6 @@ const META = (overrides: Record<string, unknown> = {}): string => {
         title: 'Re:Zero',
         query: 're zero',
         searchIndex: 3,
-        audio: 'dub',
         number: '2',
         positionSeconds: 100,
         durationSeconds: 1400,
@@ -62,8 +61,8 @@ describe('scanLibraryFolder', () => {
         expect(scanLibraryFolder('/lib', files)).toEqual({
             ignored: 0,
             episodes: [
-                { videoPath: '/lib/Naruto/Episode 1/Naruto Episode 1.mp4', title: 'Naruto', number: '1', audio: null, query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null },
-                { videoPath: '/lib/Naruto/Episode 2/Naruto Episode 2.mkv', title: 'Naruto', number: '2', audio: null, query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
+                { videoPath: '/lib/Naruto/Episode 1/Naruto Episode 1.mp4', title: 'Naruto', number: '1', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null },
+                { videoPath: '/lib/Naruto/Episode 2/Naruto Episode 2.mkv', title: 'Naruto', number: '2', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
             ]
         });
     });
@@ -89,7 +88,6 @@ describe('scanLibraryFolder', () => {
                     videoPath: '/lib/Whatever/Renamed/video.mp4',
                     title: 'Re:Zero',
                     number: '2',
-                    audio: 'dub',
                     query: 're zero',
                     searchIndex: 3,
                     progress: { positionSeconds: 100, durationSeconds: 1400, watched: true },
@@ -149,9 +147,9 @@ describe('scanLibraryFolder', () => {
     });
 
     it('falls back to the names when the metadata is not valid', () => {
-        const files = tree({ '/lib/Naruto/Episode 4/Naruto Episode 4.mp4': '', '/lib/Naruto/Episode 4/pullwave.json': META({ audio: 'raw' }) });
+        const files = tree({ '/lib/Naruto/Episode 4/Naruto Episode 4.mp4': '', '/lib/Naruto/Episode 4/pullwave.json': META({ number: 'four' }) });
         expect(scanLibraryFolder('/lib', files).episodes).toEqual([
-            { videoPath: '/lib/Naruto/Episode 4/Naruto Episode 4.mp4', title: 'Naruto', number: '4', audio: null, query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
+            { videoPath: '/lib/Naruto/Episode 4/Naruto Episode 4.mp4', title: 'Naruto', number: '4', query: 'Naruto', searchIndex: 0, progress: null, series: null, season: null, seasonName: null }
         ]);
     });
 
@@ -246,7 +244,6 @@ describe('scanLibraryFolder', () => {
                 videoPath: join(folder, 'Naruto Episode 1.mp4'),
                 title: 'Re:Zero',
                 number: '2',
-                audio: 'dub',
                 query: 're zero',
                 searchIndex: 3,
                 progress: { positionSeconds: 100, durationSeconds: 1400, watched: true },

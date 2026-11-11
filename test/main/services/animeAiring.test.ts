@@ -79,7 +79,7 @@ function setup(answers: Array<(request: Request) => Response | Promise<Response>
 }
 
 function addAnime(db: AnimeDb, title: string): number {
-    return db.upsertAnime({ title, query: title.toLowerCase(), searchIndex: 1, audio: 'sub' }).id;
+    return db.upsertAnime({ title, query: title.toLowerCase(), searchIndex: 1 }).id;
 }
 
 describe('statusOf', () => {

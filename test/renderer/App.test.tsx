@@ -574,7 +574,8 @@ describe('App manga section', () => {
         await screen.findByRole('button', { name: 'MANGA' });
         const before = mock.unsubscribers.length;
         unmount();
-        expect(before).toBe(16);
+        // Every event of the app and of the manga section, now without the download of a newer manga server (it is not updated from the app).
+        expect(before).toBe(15);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

@@ -45,8 +45,8 @@ describe('continueWatching', () => {
         expect(continueWatching([missing], [makeAnimeHistory({ episode: '1' })])).toEqual([{ animeId: 1, episodeId: 12, title: 'Naruto', episode: '2', progress: 0 }]);
     });
 
-    it('leaves out what was only opened, what is not in the library, an episode the library does not have and another audio', () => {
-        const history = [makeAnimeHistory({ episode: null }), makeAnimeHistory({ title: 'Bleach' }), makeAnimeHistory({ episode: '99' }), makeAnimeHistory({ audio: 'dub' })];
+    it('leaves out what was only opened, what is not in the library and an episode the library does not have', () => {
+        const history = [makeAnimeHistory({ episode: null }), makeAnimeHistory({ title: 'Bleach' }), makeAnimeHistory({ episode: '99' })];
         expect(continueWatching([naruto], history)).toEqual([]);
     });
 

@@ -3,7 +3,6 @@ import {
     MAX_AUTO_DOWNLOAD_EPISODES,
     type AniRunResult,
     type AnimeArrivalOrigin,
-    type AnimeAudio,
     type AnimeCheckResponse,
     type AnimeCheckState,
     type AnimeNewEpisodes,
@@ -27,8 +26,8 @@ export interface AnimeUpdateCheckerDependencies {
     db: Pick<AnimeDb, 'list' | 'getLibraryAnime' | 'hasEpisodesBaseline' | 'registerEpisodesBaseline' | 'registerNewEpisodes' | 'updateSearchIndex'>;
     // What the source lists now: the results of a search, and the episodes of one of them.
     // `atLeast` is the position the anime was saved at: the list has to reach it for the anime to be found past the first page.
-    search: (query: string, audio: AnimeAudio, atLeast?: number) => Promise<AniRunResult<AnimeSearchResult[]>>;
-    episodes: (query: string, index: number, audio: AnimeAudio) => Promise<AniRunResult<string[]>>;
+    search: (query: string, atLeast?: number) => Promise<AniRunResult<AnimeSearchResult[]>>;
+    episodes: (query: string, index: number) => Promise<AniRunResult<string[]>>;
     // Whether the hourly check is turned on (read at every check).
     isEnabled: () => boolean;
     // Whether the episodes that are found are downloaded too (read at every check), and the way to queue them.
@@ -259,7 +258,7 @@ export class AnimeUpdateChecker {
     // Asks the source about one anime; what is new is put in the library (and downloaded, when the user wants that). The first reading of
     // the episodes of an anime only registers them: they are not new, and so they are not announced nor downloaded.
     private async check(anime: LibraryAnime, origin: AnimeArrivalOrigin, news: AnimeNewEpisodes): Promise<Outcome> {
-        const searched = answerOf(await this.deps.search(anime.query, anime.audio, anime.searchIndex));
+        const searched = answerOf(await this.deps.search(anime.query, anime.searchIndex));
         if (!searched.ok) {
             return searched.outcome;
         }
@@ -270,7 +269,7 @@ export class AnimeUpdateChecker {
         if (index !== anime.searchIndex) {
             this.deps.db.updateSearchIndex(anime.id, index);
         }
-        const listed = answerOf(await this.deps.episodes(anime.query, index, anime.audio));
+        const listed = answerOf(await this.deps.episodes(anime.query, index));
         if (!listed.ok) {
             return listed.outcome;
         }
