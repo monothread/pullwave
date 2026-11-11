@@ -210,6 +210,21 @@ describe('LogHub.open', () => {
         ]);
     });
 
+    it('writes that the app stopped the program as an event, after the progress held back', () => {
+        const time = clock();
+        const hub = new LogHub({ now: time.now, progressIntervalMs: 1000 });
+        const log = hub.open('flaresolverr');
+        log.progress('stdout', 'a');
+        time.advance(100);
+        log.progress('stdout', 'b');
+        log.stopped();
+        expect(hub.snapshot('flaresolverr')).toEqual([
+            { id: 1, at: T0, stream: 'stdout', text: 'a' },
+            { id: 2, at: T0 + 100, stream: 'stdout', text: 'b' },
+            { id: 3, at: T0 + 100, stream: 'event', text: 'stopped by the app' }
+        ]);
+    });
+
     it('writes a failure as an event, with its secrets hidden', () => {
         const hub = new LogHub({ now: clock().now });
         hub.open('flaresolverr').failure('could not start: spawn docker ENOENT token=1 Authorization: x');

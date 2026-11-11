@@ -1,4 +1,4 @@
-import { exitEventText, LOG_LINE_LIMIT, type LogLine, type LogSource, type LogStream } from '@shared/logs';
+import { exitEventText, LOG_LINE_LIMIT, STOPPED_BY_APP_EVENT, type LogLine, type LogSource, type LogStream } from '@shared/logs';
 import { commandLine } from './errorDetails';
 import { redactArgs, redactText } from './logRedaction';
 
@@ -24,6 +24,8 @@ export interface LogWriter {
     exit: (code: number | null, signal?: NodeJS.Signals | null) => void;
     // The program could not be started, or the app gave up on it.
     failure: (message: string) => void;
+    // The app ended the program on purpose: written instead of how it ended.
+    stopped: () => void;
 }
 
 export type LogListener = (source: LogSource, line: LogLine) => void;
@@ -129,6 +131,10 @@ export class LogHub {
             failure: (message): void => {
                 releaseHeld();
                 this.write(source, 'event', message);
+            },
+            stopped: (): void => {
+                releaseHeld();
+                this.write(source, 'event', STOPPED_BY_APP_EVENT);
             }
         };
     }

@@ -6,7 +6,8 @@ export type LogCall =
     | { method: 'line'; stream: OutputStream; text: string }
     | { method: 'progress'; stream: OutputStream; text: string }
     | { method: 'exit'; code: number | null; signal: NodeJS.Signals | null | undefined }
-    | { method: 'failure'; message: string };
+    | { method: 'failure'; message: string }
+    | { method: 'stopped' };
 
 export interface FakeLogWriter {
     writer: LogWriter;
@@ -31,6 +32,9 @@ export function createFakeLogWriter(): FakeLogWriter {
         },
         failure: (message) => {
             calls.push({ method: 'failure', message });
+        },
+        stopped: () => {
+            calls.push({ method: 'stopped' });
         }
     };
     return { writer, calls };

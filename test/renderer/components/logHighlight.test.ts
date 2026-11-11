@@ -164,6 +164,11 @@ describe('logLevelOf', () => {
         expect(logLevelOf({ stream: 'event', text: 'could not start: spawn x ENOENT' })).toBe('error');
     });
 
+    it('tells a program the app stopped on purpose as info, not as a failure', () => {
+        expect(logLevelOf({ stream: 'event', text: 'stopped by the app' })).toBe('info');
+        expect(logLevelOf({ stream: 'stdout', text: 'stopped by the app' })).toBe('plain');
+    });
+
     it('tells an error by its words, in the forms the programs write them', () => {
         [
             'ERROR: [youtube] abc: Video unavailable',

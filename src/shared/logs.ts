@@ -37,6 +37,10 @@ export interface LogsApi {
 // How the line that tells how a program ended begins when a signal ended it.
 export const SIGNAL_EVENT_PREFIX = 'ended by signal';
 
+// The line written to a log when the app ended a program on purpose (following the output of a container that was stopped), instead of the
+// code it ended with: the code says nothing then (143 from the SIGTERM of the app) and would read as a failure.
+export const STOPPED_BY_APP_EVENT = 'stopped by the app';
+
 // The line written to a log when a program ends: the signal that ended it, or its exit code.
 export function exitEventText(code: number | null, signal: string | null): string {
     if (signal !== null) {

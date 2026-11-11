@@ -1,4 +1,4 @@
-import { exitEventText, SIGNAL_EVENT_PREFIX, type LogLine } from '@shared/logs';
+import { exitEventText, SIGNAL_EVENT_PREFIX, STOPPED_BY_APP_EVENT, type LogLine } from '@shared/logs';
 
 // How serious a line is, for its color and for the filter of the window.
 export type LogLevel = 'error' | 'warning' | 'info' | 'debug' | 'success' | 'command' | 'plain';
@@ -153,6 +153,9 @@ export function logLevelOf(line: Pick<LogLine, 'stream' | 'text'>): LogLevel {
     if (line.stream === 'event') {
         if (line.text === exitEventText(0, null)) {
             return 'success';
+        }
+        if (line.text === STOPPED_BY_APP_EVENT) {
+            return 'info';
         }
         return line.text.startsWith(SIGNAL_EVENT_PREFIX) ? 'warning' : 'error';
     }

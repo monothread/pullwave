@@ -1032,7 +1032,7 @@ describe('createMangaRuntime Cloudflare helper', () => {
         expect(docker.followed).toEqual(['c0ffee']);
         expect(docker.unfollowed).toEqual([]);
         await runtime.shutdown();
-        expect(docker.calls).toContainEqual(['stop', '--time', '3', 'c0ffee']);
+        expect(docker.calls).toContainEqual(['stop', '-t', '3', 'c0ffee']);
         expect(docker.unfollowed).toEqual(['c0ffee']);
     });
 

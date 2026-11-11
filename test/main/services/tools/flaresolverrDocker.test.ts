@@ -327,7 +327,7 @@ describe('FlareSolverrDocker container', () => {
         await helper.prepare();
         await helper.ensureRunning();
         await helper.stop();
-        expect(docker.calls.at(-1)).toEqual(['stop', '--time', '3', 'abc123']);
+        expect(docker.calls.at(-1)).toEqual(['stop', '-t', '3', 'abc123']);
         expect(helper.status).toBe('stopped');
         expect(helper.baseUrl).toBeNull();
         await helper.stop();
@@ -344,7 +344,7 @@ describe('FlareSolverrDocker container', () => {
         await helper.ensureRunning();
         await helper.remove();
         expect(docker.calls.slice(-2)).toEqual([
-            ['stop', '--time', '3', 'abc123'],
+            ['stop', '-t', '3', 'abc123'],
             ['rmi', FLARESOLVERR_IMAGE]
         ]);
         expect(helper.status).toBe('stopped');
@@ -432,7 +432,7 @@ describe('FlareSolverrDocker container', () => {
         expect(helper.status).toBe('error');
         expect(helper.error).toBe('FlareSolverr did not become ready in time\nFlareSolverr log line');
         expect(docker.calls).toContainEqual(['logs', '--tail', '20', 'dead01']);
-        expect(docker.calls.at(-1)).toEqual(['stop', '--time', '3', 'dead01']);
+        expect(docker.calls.at(-1)).toEqual(['stop', '-t', '3', 'dead01']);
         expect(helper.failure).toEqual({ code: 'start-failed', message: 'FlareSolverr did not become ready in time\nFlareSolverr log line' });
     });
 
@@ -574,7 +574,31 @@ describe('createContainerLogFollower', () => {
         ]);
     });
 
-    it('stops following by ending docker, which is written as the signal that ended it', () => {
+    it('stops following by ending docker, written as stopped by the app instead of the code docker answers the signal with', async () => {
+        const child = makeDockerChild();
+        const { writer, calls } = createFakeLogWriter();
+        const stop = createContainerLogFollower(
+            () => {
+                return child as unknown as ChildProcess;
+            },
+            () => {
+                return writer;
+            }
+        )('abc');
+        child.stdout.write('2026-11-11 21:31:47 INFO     172.17.0.1 GET http://127.0.0.1:37005/ 200 OK');
+        await settle();
+        stop();
+        expect(child.kill).toHaveBeenCalledTimes(1);
+        expect(child.kill).toHaveBeenCalledWith();
+        child.emit('close', 143, null);
+        expect(calls).toEqual([
+            { method: 'command', program: 'docker', args: ['logs', '--follow', 'abc'] },
+            { method: 'line', stream: 'stdout', text: '2026-11-11 21:31:47 INFO     172.17.0.1 GET http://127.0.0.1:37005/ 200 OK' },
+            { method: 'stopped' }
+        ]);
+    });
+
+    it('writes as stopped by the app also when docker ends by the signal itself', () => {
         const child = makeDockerChild();
         const { writer, calls } = createFakeLogWriter();
         const stop = createContainerLogFollower(
@@ -586,10 +610,27 @@ describe('createContainerLogFollower', () => {
             }
         )('abc');
         stop();
-        expect(child.kill).toHaveBeenCalledTimes(1);
-        expect(child.kill).toHaveBeenCalledWith();
         child.emit('close', null, 'SIGTERM');
-        expect(calls.at(-1)).toEqual({ method: 'exit', code: null, signal: 'SIGTERM' });
+        expect(calls).toEqual([{ method: 'command', program: 'docker', args: ['logs', '--follow', 'abc'] }, { method: 'stopped' }]);
+    });
+
+    it('writes how docker ended when it ended without being stopped by the app', () => {
+        const child = makeDockerChild();
+        const { writer, calls } = createFakeLogWriter();
+        createContainerLogFollower(
+            () => {
+                return child as unknown as ChildProcess;
+            },
+            () => {
+                return writer;
+            }
+        )('abc');
+        child.emit('close', 143, null);
+        expect(child.kill).not.toHaveBeenCalled();
+        expect(calls).toEqual([
+            { method: 'command', program: 'docker', args: ['logs', '--follow', 'abc'] },
+            { method: 'exit', code: 143, signal: null }
+        ]);
     });
 
     it('writes why docker could not be run', () => {
@@ -626,6 +667,11 @@ describe('createContainerLogFollower', () => {
         stop();
         const child = childProcess.spawn.mock.results[0]?.value as FakeDockerChild;
         expect(child.kill).toHaveBeenCalledTimes(1);
+        child.emit('close', 143, null);
+        expect(hub.snapshot('flaresolverr')).toEqual([
+            { id: 1, at: 1_700_000_000_000, stream: 'command', text: 'docker logs --follow def' },
+            { id: 2, at: 1_700_000_000_000, stream: 'event', text: 'stopped by the app' }
+        ]);
         open.mockRestore();
     });
 });
@@ -715,7 +761,7 @@ describe('FlareSolverrDocker another version', () => {
         expect(helper.version).toBe('v3.9.9');
         expect(helper.status).toBe('stopped');
         expect(helper.baseUrl).toBeNull();
-        expect(docker.calls).toContainEqual(['stop', '--time', '3', 'abc123']);
+        expect(docker.calls).toContainEqual(['stop', '-t', '3', 'abc123']);
         expect(docker.calls.at(-1)).toEqual(['rmi', FLARESOLVERR_IMAGE]);
         await helper.ensureRunning();
         expect(docker.calls.filter((call) => {return call[0] === 'run'}).at(-1)?.at(-1)).toBe(`${FLARESOLVERR_IMAGE_NAME}:v3.9.9`);

@@ -1,4 +1,4 @@
-import { exitEventText, isLogSource, LOG_LINE_LIMIT, LOG_SOURCES, SIGNAL_EVENT_PREFIX } from '@shared/logs';
+import { exitEventText, isLogSource, LOG_LINE_LIMIT, LOG_SOURCES, SIGNAL_EVENT_PREFIX, STOPPED_BY_APP_EVENT } from '@shared/logs';
 
 describe('LOG_SOURCES', () => {
     it('lists the five programs whose output is kept', () => {
@@ -27,6 +27,13 @@ describe('isLogSource', () => {
         expect(isLogSource(undefined)).toBe(false);
         expect(isLogSource(1)).toBe(false);
         expect(isLogSource({ source: 'yt-dlp' })).toBe(false);
+    });
+});
+
+describe('STOPPED_BY_APP_EVENT', () => {
+    it('says the app stopped the program, in words no exit line uses', () => {
+        expect(STOPPED_BY_APP_EVENT).toBe('stopped by the app');
+        expect(STOPPED_BY_APP_EVENT.startsWith(SIGNAL_EVENT_PREFIX)).toBe(false);
     });
 });
 

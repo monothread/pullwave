@@ -109,6 +109,7 @@ export function createContainerLogFollower(spawn: DockerSpawn = nodeSpawn, openL
         const stdout = createLogFeed(log, 'stdout');
         const stderr = createLogFeed(log, 'stderr');
         const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        let stoppedByApp = false;
         child.stdout?.on('data', (chunk: Buffer) => {
             stdout.push(chunk.toString('utf-8'));
         });
@@ -121,9 +122,15 @@ export function createContainerLogFollower(spawn: DockerSpawn = nodeSpawn, openL
         child.once('close', (code, signal) => {
             stdout.flush();
             stderr.flush();
-            log.exit(code, signal);
+            // Ended by the app (the container stopped): docker answers the SIGTERM with 143, which is not a failure.
+            if (stoppedByApp) {
+                log.stopped();
+            } else {
+                log.exit(code, signal);
+            }
         });
         return (): void => {
+            stoppedByApp = true;
             child.kill();
         };
     };
@@ -344,7 +351,8 @@ export class FlareSolverrDocker {
         this.currentStatus = 'stopped';
         if (id !== null) {
             // The container was started with --rm: it goes away when it stops.
-            await this.docker(['stop', '--time', String(FLARESOLVERR_STOP_SECONDS), id]);
+            // -t and not --time (deprecated since Docker 25, with a warning) nor --timeout (unknown before Docker 25).
+            await this.docker(['stop', '-t', String(FLARESOLVERR_STOP_SECONDS), id]);
         }
     }
 
