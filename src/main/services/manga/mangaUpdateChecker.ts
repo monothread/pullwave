@@ -1,4 +1,4 @@
-import { IDLE_MANGA_CHECK_STATE, type ArrivalOrigin, type LibraryManga, type MangaChapter, type MangaCheckResponse, type MangaCheckState, type MangaDetails, type MangaNewChapters } from '@shared/manga';
+import { IDLE_MANGA_CHECK_STATE, type ArrivalOrigin, type LibraryManga, type MangaChapter, type MangaCheckResponse, type MangaCheckState, type MangaDetails, type MangaNewChapters, type MangaStatus } from '@shared/manga';
 import type { MangaDb } from './mangaDb';
 
 // How often the mangas of the library are asked about, and how long after the app opens the first check is made (so opening the app is
@@ -25,6 +25,14 @@ export interface MangaUpdateCheckerDependencies {
     // The times, when they are not the usual ones (used by the end-to-end tests).
     firstDelayMs?: number;
     intervalMs?: number;
+}
+
+// The statuses that say the source will publish no more chapters of a manga.
+const OVER_STATUSES: ReadonlySet<MangaStatus> = new Set<MangaStatus>(['completed', 'cancelled']);
+
+// Whether the source says the manga is over (complete or cancelled). The check every hour does not ask about it; the user still can.
+export function isMangaOver(manga: Pick<LibraryManga, 'status'>): boolean {
+    return OVER_STATUSES.has(manga.status);
 }
 
 // The chapters the source has that the library does not.
@@ -86,8 +94,9 @@ export class MangaUpdateChecker {
         }
     }
 
-    // Checks every manga of the library, one after the other (a site is not asked for several things at once). A check that is going
-    // on is not started again. A manga that cannot be reached is left for the next time. The hourly check only runs when it is turned on;
+    // Checks every manga of the library, one after the other (a site is not asked for several things at once); the check every hour
+    // leaves out the mangas that are over. A check that is going on is not started again. A manga that cannot be reached is left for the
+    // next time. The hourly check only runs when it is turned on;
     // the one the user asks for runs whatever that setting says.
     checkNow(origin: ArrivalOrigin = 'auto'): Promise<MangaCheckResponse> {
         this.running ??= this.run(origin).finally(() => {
@@ -138,7 +147,10 @@ export class MangaUpdateChecker {
             return { ok: true, count: 0, titles: [], failed: 0, skipped: 0 };
         }
         const installed = this.deps.installedSourceIds === undefined ? null : await this.installedSources();
-        const library = this.deps.db.list();
+        // A manga that is over has no new chapters to find: the check every hour leaves it out, the one the user asks for does not.
+        const library = this.deps.db.list().filter((manga) => {
+            return origin === 'manual' || !isMangaOver(manga);
+        });
         // The mangas that are asked about: the ones of a source whose extension is not installed are left out.
         const asked = library.filter((manga) => {
             return installed === null || installed.has(manga.sourceId);

@@ -1,6 +1,6 @@
-import { IDLE_MANGA_CHECK_STATE, type MangaChapter, type MangaCheckState, type MangaDetails, type MangaNewChapters } from '@shared/manga';
+import { IDLE_MANGA_CHECK_STATE, type MangaChapter, type MangaCheckState, type MangaDetails, type MangaNewChapters, type MangaStatus } from '@shared/manga';
 import { MangaDb } from '@main/services/manga/mangaDb';
-import { CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS, MangaUpdateChecker, newChaptersOf } from '@main/services/manga/mangaUpdateChecker';
+import { CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS, MangaUpdateChecker, isMangaOver, newChaptersOf } from '@main/services/manga/mangaUpdateChecker';
 
 function chapter(remoteId: number, overrides: Partial<MangaChapter> = {}): MangaChapter {
     return { remoteId, name: `Chapter ${remoteId}`, number: remoteId, dateUploaded: null, scanlator: null, sourceOrder: remoteId, ...overrides };
@@ -485,6 +485,265 @@ describe('MangaUpdateChecker one manga', () => {
         context.enabled.value = false;
         context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
         await expect(context.checker.checkManga(one)).resolves.toMatchObject({ ok: true, count: 1 });
+    });
+});
+
+describe('isMangaOver', () => {
+    it('is true for a manga the source says is completed or cancelled', () => {
+        expect(isMangaOver({ status: 'completed' })).toBe(true);
+        expect(isMangaOver({ status: 'cancelled' })).toBe(true);
+    });
+
+    it('is false for a manga that is ongoing, on hiatus or whose status is not known', () => {
+        expect(isMangaOver({ status: 'ongoing' })).toBe(false);
+        expect(isMangaOver({ status: 'hiatus' })).toBe(false);
+        expect(isMangaOver({ status: 'unknown' })).toBe(false);
+    });
+});
+
+describe('MangaUpdateChecker the mangas that are over', () => {
+    function markStatus(context: Setup, mangaId: number, status: MangaStatus): void {
+        context.db.saveDetails(mangaId, { url: null, author: null, artist: null, description: null, genres: [], status });
+    }
+
+    // One manga of each status, each with a new chapter at the source.
+    function oneOfEachStatus(context: Setup): Record<MangaStatus, number> {
+        const ids: Record<MangaStatus, number> = {
+            ongoing: addManga(context, 1, 'Ongoing Manga', [1]),
+            completed: addManga(context, 2, 'Completed Manga', [1]),
+            hiatus: addManga(context, 3, 'Hiatus Manga', [1]),
+            cancelled: addManga(context, 4, 'Cancelled Manga', [1]),
+            unknown: addManga(context, 5, 'Unknown Manga', [1])
+        };
+        (Object.entries(ids) as [MangaStatus, number][]).forEach(([status, mangaId]) => {
+            markStatus(context, mangaId, status);
+        });
+        [1, 2, 3, 4, 5].forEach((remoteId) => {
+            context.answers.set(remoteId, { details: details(remoteId), chapters: [chapter(1), chapter(2)] });
+        });
+        return ids;
+    }
+
+    it('leaves the completed and the cancelled ones out of the check every hour, and asks about all the others', async () => {
+        const context = setup();
+        const ids = oneOfEachStatus(context);
+
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 3, titles: ['Hiatus Manga', 'Ongoing Manga', 'Unknown Manga'], failed: 0, skipped: 0 });
+
+        expect(context.fetched).toEqual([3, 1, 5]);
+        expect(context.db.chaptersOf(ids.completed)).toHaveLength(1);
+        expect(context.db.chaptersOf(ids.cancelled)).toHaveLength(1);
+        expect(context.db.chaptersOf(ids.ongoing)).toHaveLength(2);
+        expect(context.db.chaptersOf(ids.hiatus)).toHaveLength(2);
+        expect(context.db.chaptersOf(ids.unknown)).toHaveLength(2);
+        expect(context.news).toEqual([{ count: 3, titles: ['Hiatus Manga', 'Ongoing Manga', 'Unknown Manga'] }]);
+        expect(context.db.updates().map((entry) => {
+            return [entry.mangaTitle, entry.origin];
+        })).toEqual([
+            ['Unknown Manga', 'auto'],
+            ['Ongoing Manga', 'auto'],
+            ['Hiatus Manga', 'auto']
+        ]);
+    });
+
+    it('does not count them in the progress of the check every hour, nor name them', async () => {
+        const context = setup();
+        oneOfEachStatus(context);
+
+        await context.checker.checkNow('auto');
+
+        expect(context.progress).toEqual([
+            { running: true, origin: 'auto', done: 0, total: 3, current: 'Hiatus Manga' },
+            { running: true, origin: 'auto', done: 1, total: 3, current: 'Ongoing Manga' },
+            { running: true, origin: 'auto', done: 2, total: 3, current: 'Unknown Manga' },
+            { running: false, origin: null, done: 0, total: 0, current: null }
+        ]);
+    });
+
+    it('keeps them in the library untouched, with what the source said about them before', async () => {
+        const context = setup();
+        const ids = oneOfEachStatus(context);
+
+        await context.checker.checkNow('auto');
+
+        expect(context.db.getManga(ids.completed)).toMatchObject({ title: 'Completed Manga', status: 'completed', url: null, genres: [] });
+        expect(context.db.getManga(ids.cancelled)).toMatchObject({ title: 'Cancelled Manga', status: 'cancelled', url: null, genres: [] });
+    });
+
+    it('tells nothing when every manga of the library is over', async () => {
+        const context = setup();
+        markStatus(context, addManga(context, 7, 'One Piece', [1]), 'completed');
+        markStatus(context, addManga(context, 8, 'Bleach', [1]), 'cancelled');
+        context.answers.set(7, { details: details(7), chapters: [chapter(1), chapter(2)] });
+        context.answers.set(8, { details: details(8), chapters: [chapter(1), chapter(2)] });
+
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
+
+        expect(context.fetched).toEqual([]);
+        expect(context.progress).toEqual([]);
+        expect(context.news).toEqual([]);
+        expect(context.changes.count).toBe(0);
+    });
+
+    it('asks about them in the check of all the mangas the user asks for, and writes what it finds as manual', async () => {
+        const context = setup();
+        const ids = oneOfEachStatus(context);
+
+        await expect(context.checker.checkNow('manual')).resolves.toEqual({
+            ok: true,
+            count: 5,
+            titles: ['Cancelled Manga', 'Completed Manga', 'Hiatus Manga', 'Ongoing Manga', 'Unknown Manga'],
+            failed: 0,
+            skipped: 0
+        });
+
+        expect(context.fetched).toEqual([4, 2, 3, 1, 5]);
+        expect(context.db.chaptersOf(ids.completed)).toHaveLength(2);
+        expect(context.db.chaptersOf(ids.cancelled)).toHaveLength(2);
+        expect(context.progress[0]).toEqual({ running: true, origin: 'manual', done: 0, total: 5, current: 'Cancelled Manga' });
+        expect(context.db.updates().filter((entry) => {
+            return entry.mangaTitle === 'Completed Manga' || entry.mangaTitle === 'Cancelled Manga';
+        }).map((entry) => {
+            return [entry.mangaTitle, entry.chapterRemoteId, entry.origin];
+        })).toEqual([
+            ['Completed Manga', 2, 'manual'],
+            ['Cancelled Manga', 2, 'manual']
+        ]);
+    });
+
+    it('asks about one of them when the user asks from its page, whether the check every hour is on or off', async () => {
+        const context = setup();
+        const completed = addManga(context, 7, 'One Piece', [1]);
+        const cancelled = addManga(context, 8, 'Bleach', [1]);
+        markStatus(context, completed, 'completed');
+        markStatus(context, cancelled, 'cancelled');
+        context.answers.set(7, { details: details(7, { status: 'completed' }), chapters: [chapter(1), chapter(2)] });
+        context.answers.set(8, { details: details(8, { status: 'cancelled' }), chapters: [chapter(1), chapter(2)] });
+
+        await expect(context.checker.checkManga(completed)).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
+        context.enabled.value = false;
+        await expect(context.checker.checkManga(cancelled)).resolves.toEqual({ ok: true, count: 1, titles: ['Bleach'], failed: 0, skipped: 0 });
+
+        expect(context.fetched).toEqual([7, 8]);
+        expect(context.db.chaptersOf(completed)).toHaveLength(2);
+        expect(context.db.chaptersOf(cancelled)).toHaveLength(2);
+    });
+
+    it('asks again in the check every hour about a manga that the check of the user found to be going on again', async () => {
+        const context = setup();
+        const id = addManga(context, 7, 'One Piece', [1]);
+        markStatus(context, id, 'completed');
+        context.answers.set(7, { details: details(7, { status: 'ongoing' }), chapters: [chapter(1)] });
+
+        await context.checker.checkNow('auto');
+        expect(context.fetched).toEqual([]);
+
+        await context.checker.checkManga(id);
+        expect(context.db.getManga(id)).toMatchObject({ status: 'ongoing' });
+
+        context.answers.set(7, { details: details(7, { status: 'ongoing' }), chapters: [chapter(1), chapter(2)] });
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
+        expect(context.fetched).toEqual([7, 7]);
+    });
+
+    it('keeps the status the source gives in the check of all the mangas the user asks for, even with no new chapter', async () => {
+        const context = setup();
+        const completed = addManga(context, 7, 'One Piece', [1]);
+        const cancelled = addManga(context, 8, 'Bleach', [1]);
+        const ongoing = addManga(context, 9, 'Naruto', [1]);
+        markStatus(context, completed, 'completed');
+        markStatus(context, cancelled, 'cancelled');
+        context.answers.set(7, { details: details(7, { status: 'ongoing' }), chapters: [chapter(1)] });
+        context.answers.set(8, { details: details(8, { status: 'hiatus' }), chapters: [chapter(1)] });
+        context.answers.set(9, { details: details(9, { status: 'cancelled' }), chapters: [chapter(1)] });
+
+        await expect(context.checker.checkNow('manual')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
+
+        expect(context.db.getManga(completed)).toMatchObject({ status: 'ongoing' });
+        expect(context.db.getManga(cancelled)).toMatchObject({ status: 'hiatus' });
+        expect(context.db.getManga(ongoing)).toMatchObject({ status: 'cancelled' });
+
+        // The next check every hour follows what was kept: the two that go on again are asked about, the one that ended is not.
+        await context.checker.checkNow('auto');
+        expect(context.fetched).toEqual([8, 9, 7, 8, 7]);
+    });
+
+    it('keeps the status the source gives when the user asks from the page of a manga that is over, even with no new chapter', async () => {
+        const context = setup();
+        const id = addManga(context, 7, 'One Piece', [1]);
+        markStatus(context, id, 'cancelled');
+        context.answers.set(7, { details: details(7, { status: 'ongoing' }), chapters: [chapter(1)] });
+
+        await expect(context.checker.checkManga(id)).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
+
+        expect(context.db.getManga(id)).toMatchObject({ status: 'ongoing' });
+    });
+
+    it('leaves out of the check every hour a manga the check itself found to be over', async () => {
+        const context = setup();
+        addManga(context, 7, 'One Piece', [1]);
+        context.answers.set(7, { details: details(7, { status: 'completed' }), chapters: [chapter(1), chapter(2)] });
+
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 1, titles: ['One Piece'], failed: 0, skipped: 0 });
+        context.answers.set(7, { details: details(7, { status: 'completed' }), chapters: [chapter(1), chapter(2), chapter(3)] });
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 0 });
+
+        expect(context.fetched).toEqual([7]);
+    });
+
+    it('does not count them with the mangas whose extension is not installed', async () => {
+        const context = setup();
+        markStatus(context, addManga(context, 7, 'One Piece', [1], 'dex'), 'completed');
+        addManga(context, 8, 'Bleach', [1], 'gone');
+        addManga(context, 9, 'Naruto', [1], 'dex');
+        context.answers.set(9, { details: details(9), chapters: [chapter(1)] });
+        context.installed.value = new Set(['dex']);
+
+        await expect(context.checker.checkNow('auto')).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 0, skipped: 1 });
+
+        expect(context.fetched).toEqual([9]);
+    });
+
+    it('does not queue the new chapters of a manga that is over in the check every hour', async () => {
+        const downloads: [number, number[]][] = [];
+        const db = new MangaDb(':memory:', () => {
+            return 1;
+        });
+        const checker = new MangaUpdateChecker({
+            db,
+            fetchManga: (remoteId) => {
+                return Promise.resolve({ details: details(remoteId), chapters: [chapter(1), chapter(2)] });
+            },
+            isEnabled: () => {
+                return true;
+            },
+            autoDownload: () => {
+                return true;
+            },
+            download: (mangaId, chapterRemoteIds) => {
+                downloads.push([mangaId, chapterRemoteIds]);
+            },
+            onNewChapters: () => {
+                return undefined;
+            },
+            onLibraryChanged: () => {
+                return undefined;
+            }
+        });
+        const over = db.upsertManga({ remoteId: 7, sourceId: 's', title: 'One Piece', thumbnailUrl: null });
+        db.registerChapters(over.id, [chapter(1)]);
+        db.saveDetails(over.id, { url: null, author: null, artist: null, description: null, genres: [], status: 'completed' });
+        const going = db.upsertManga({ remoteId: 8, sourceId: 's', title: 'Bleach', thumbnailUrl: null });
+        db.registerChapters(going.id, [chapter(1)]);
+
+        await checker.checkNow('auto');
+        expect(downloads).toEqual([[going.id, [2]]]);
+
+        await checker.checkNow('manual');
+        expect(downloads).toEqual([
+            [going.id, [2]],
+            [over.id, [2]]
+        ]);
     });
 });
 

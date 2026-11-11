@@ -56,6 +56,8 @@ class FakeSuwayomi {
     otherChapters = [1, 2, 3];
     // Chapters the source has published after the first two (their numbers on the server).
     laterChapters: number[] = [];
+    // What the source says of the releases of the mangas of the first source (ONGOING, COMPLETED, CANCELLED...).
+    mangaStatus = 'ONGOING';
     // Chapters (by their number on the server) the source stops listing.
     unlistedChapters = new Set<number>();
     extensionLib = '1.4';
@@ -198,7 +200,7 @@ class FakeSuwayomi {
             }
             return {
                 fetchMangaAndChapters: {
-                    manga: { ...this.manga(id, id === 7 ? 'One Piece' : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
+                    manga: { ...this.manga(id, id === 7 ? 'One Piece' : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: this.mangaStatus },
                     chapters: [
                         { id: 101, name: 'Romance Dawn', chapterNumber: 1, uploadDate: '1700000000000', scanlator: 'Group A', sourceOrder: 1 },
                         { id: 102, name: 'The Great Race', chapterNumber: 2, uploadDate: '1700100000000', scanlator: null, sourceOrder: 2 },
@@ -1603,6 +1605,88 @@ test.describe('manga section', () => {
         expect(fake.graphqlRequests('fetchMangaAndChapters')).toHaveLength(before);
         await goTo(session.page, 'LIBRARY');
         await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
+    });
+
+    for (const status of ['COMPLETED', 'CANCELLED']) {
+        test(`does not look by itself for new chapters of a manga the source says is ${status.toLowerCase()}`, async () => {
+            fake.mangaStatus = status;
+            session = await launch({}, { PULLWAVE_MANGA_CHECK_MS: '700' });
+            await openManga(session.page);
+            await installExtension(session.page);
+            await openOnePiece(session.page);
+            await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+            fake.laterChapters = [103];
+            const before = fake.graphqlRequests('fetchMangaAndChapters').length;
+            await session.page.waitForTimeout(3000);
+            expect(fake.graphqlRequests('fetchMangaAndChapters')).toHaveLength(before);
+            await goTo(session.page, 'LIBRARY');
+            await expect(session.page.getByText('0 of 2 downloaded')).toBeVisible();
+            await goTo(session.page, 'UPDATES');
+            await expect(session.page.getByText('No new chapters yet.')).toBeVisible();
+        });
+    }
+
+    test('stops looking by itself for new chapters of a manga once the source says it ended', async () => {
+        session = await launch({}, { PULLWAVE_MANGA_CHECK_MS: '1500' });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+
+        // The check that finds the last chapters also learns that the manga is complete, and keeps it.
+        fake.mangaStatus = 'COMPLETED';
+        fake.laterChapters = [103];
+        await expect(session.page.locator('.toast').filter({ hasText: '1 new chapter(s) added to the library: One Piece' }).first()).toBeVisible({ timeout: 20000 });
+        await goTo(session.page, 'LIBRARY');
+        await expect(session.page.getByText('0 of 3 downloaded')).toBeVisible();
+
+        // From then on the check every hour leaves it out.
+        fake.laterChapters = [103, 104];
+        const before = fake.graphqlRequests('fetchMangaAndChapters').length;
+        await session.page.waitForTimeout(4000);
+        expect(fake.graphqlRequests('fetchMangaAndChapters')).toHaveLength(before);
+        await expect(session.page.getByText('0 of 3 downloaded')).toBeVisible();
+    });
+
+    test('looks for new chapters of a complete manga when the user asks from UPDATES, and follows the status the source gives then', async () => {
+        fake.mangaStatus = 'COMPLETED';
+        session = await launch({}, { PULLWAVE_MANGA_CHECK_MS: '1500' });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePiece(session.page);
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        fake.laterChapters = [103, 104];
+
+        await goTo(session.page, 'UPDATES');
+        const before = fake.graphqlRequests('fetchMangaAndChapters').length;
+        await session.page.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: '2 new chapter(s) added to the library: One Piece' }).first()).toBeVisible();
+        expect(fake.graphqlRequests('fetchMangaAndChapters')).toHaveLength(before + 1);
+        await expect(session.page.getByTestId('manga-update')).toHaveCount(2);
+        await expect(session.page.getByTestId('manga-update').first().getByText('MANUAL')).toBeVisible();
+
+        // The source says it goes on again: the check of the user keeps that, and the check every hour asks about it again.
+        fake.mangaStatus = 'ONGOING';
+        await session.page.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'No new chapters.' }).first()).toBeVisible();
+        fake.laterChapters = [103, 104, 105];
+        await expect(session.page.getByTestId('manga-update')).toHaveCount(3, { timeout: 20000 });
+        await expect(session.page.getByTestId('manga-update').first().getByText('AUTOMATIC')).toBeVisible();
+    });
+
+    test('looks for new chapters of a cancelled manga from its own page', async () => {
+        fake.mangaStatus = 'CANCELLED';
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await expect(session.page.getByText('Cancelled', { exact: true })).toBeVisible();
+        fake.laterChapters = [103];
+        await session.page.getByRole('button', { name: 'LOOK FOR NEW CHAPTERS' }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: '1 new chapter(s) added to the library: One Piece' }).first()).toBeVisible();
+        await goTo(session.page, 'UPDATES');
+        await expect(session.page.getByTestId('manga-update')).toHaveCount(1);
+        await expect(session.page.getByTestId('manga-update').first().getByText('MANUAL')).toBeVisible();
     });
 
     test('has no way to hide a group: the tab of a group stays with all its mangas', async () => {
