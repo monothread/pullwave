@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
+import type { LlmStatus } from '@shared/llm';
 import { useFxStore } from '../fx/fxStore';
 import { resolveAppLanguage } from '../i18n/language';
 import type {
@@ -33,6 +34,8 @@ export interface ToastItem {
 }
 
 export const INITIAL_APP_UPDATE: AppUpdateState = { status: 'idle', currentVersion: '', version: null, percent: 0, message: null };
+// What is known of the tokens of the language models before the main process is asked.
+export const INITIAL_LLM_STATUS: LlmStatus = { canStore: true, providers: [] };
 
 export interface AppState {
     tab: Tab;
@@ -49,6 +52,8 @@ export interface AppState {
     appUpdate: AppUpdateState;
     traySupport: TraySupport | null;
     browsers: DetectedBrowser[] | null;
+    // Which slots (providers) have a token, and whether the system can keep one.
+    llmStatus: LlmStatus;
     setTab: (tab: Tab) => void;
     setDownloadsView: (view: DownloadsView) => void;
     // Shows a notice (it takes the place of the one on the screen); null takes it away.
@@ -69,6 +74,9 @@ export interface AppState {
     refreshHistory: () => Promise<void>;
     clearHistory: () => Promise<void>;
     saveSettings: (settings: Settings) => Promise<Settings>;
+    // Reads the settings again (the main process changed them by itself).
+    refreshSettings: () => Promise<void>;
+    refreshLlmStatus: () => Promise<void>;
     refreshBinaries: () => Promise<void>;
     chooseDirectory: () => Promise<string | null>;
     checkAppUpdate: () => Promise<void>;
@@ -120,6 +128,7 @@ export const useAppStore = create<AppState>((set, get) => {
         appUpdate: INITIAL_APP_UPDATE,
         traySupport: null,
         browsers: null,
+        llmStatus: INITIAL_LLM_STATUS,
 
         setTab: (tab) => {
             set({ tab });
@@ -261,6 +270,14 @@ export const useAppStore = create<AppState>((set, get) => {
                 await get().refreshBinaries();
             }
             return saved;
+        },
+
+        refreshSettings: async () => {
+            set({ settings: await window.api.getSettings() });
+        },
+
+        refreshLlmStatus: async () => {
+            set({ llmStatus: await window.api.getLlmStatus() });
         },
 
         refreshBinaries: async () => {

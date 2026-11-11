@@ -25,6 +25,11 @@ const PHASE_STEPS: Record<SubtitleGenerationPhase, GenerateStepId> = {
     saving: 'save'
 };
 
+// The step a phase of the job belongs to.
+export function stepOfPhase(phase: SubtitleGenerationPhase): GenerateStepId {
+    return PHASE_STEPS[phase];
+}
+
 export function stepsOf(plan: SubtitleGeneratePlan): readonly GenerateStepId[] {
     return STEPS[plan];
 }

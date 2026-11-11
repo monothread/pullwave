@@ -16,7 +16,7 @@ import type { SpeechTask } from './speechProviders';
 import { cutTimesOf, findSpeech, loudnessOf, pcmSeconds, piecesOf, type SpeechPiece } from './speechSegmenter';
 import { defaultSubtitleFileSystem, generatedSubtitlePath, listSubtitleFiles, type SubtitleFileSystem } from './subtitleFiles';
 import type { LlmAccess } from './subtitleTranslation';
-import { defaultSleep, MAX_RATE_LIMIT_WAITS, translateTexts, waitSecondsOf } from './subtitleTranslator';
+import { defaultSleep, MAX_RATE_LIMIT_WAITS, translateTexts, waitSecondsOf, type TranslatedBatches } from './subtitleTranslator';
 import { formatVttTime, parseVtt, serializeVtt, shiftCues, type VttCue } from './vttCues';
 
 // The pieces cut at the pauses go in this many streams at once, each one taking the pieces of its stretch of the audio in order, so each piece
@@ -56,6 +56,8 @@ export interface SubtitleGenerationDependencies {
     audio?: AudioFiles;
     files?: SubtitleFileSystem;
     sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
+    // Where the batches already translated are kept, to go on after a translation that failed (see subtitleTranslator).
+    batches?: TranslatedBatches;
 }
 
 // The subtitle that is wanted: the language that is spoken, the one of the subtitle, and the name of the series (null when not known), which
@@ -277,7 +279,8 @@ async function translateCues(
             },
             sleep: dependencies.sleep,
             signal,
-            onProgress: report
+            onProgress: report,
+            batches: dependencies.batches
         },
         { title: request.title }
     );

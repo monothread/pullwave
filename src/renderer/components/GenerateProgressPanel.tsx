@@ -21,7 +21,7 @@ interface PanelProps {
     approxBytes: number;
 }
 
-function stepLabel(id: GenerateStepId, plan: SubtitleGeneratePlan, language: TranslationLanguage, t: Translator): string {
+export function stepLabel(id: GenerateStepId, plan: SubtitleGeneratePlan, language: TranslationLanguage, t: Translator): string {
     switch (id) {
         case 'extract':
             return t('anime.generate.step.extract');

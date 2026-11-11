@@ -416,6 +416,9 @@ function bootstrap(): BootstrapResult {
         saveAnimeDirectory: (directory) => {
             settingsStore.save({ ...settingsStore.get(), animeDownloadDir: directory });
         },
+        disableAutoTranslate: () => {
+            settingsStore.save({ ...settingsStore.get(), animeAutoTranslateNew: false });
+        },
         openFolder: (path) => {
             void shell.openPath(path);
         },
@@ -660,7 +663,13 @@ function bootstrap(): BootstrapResult {
     }
     // The program that runs the manga extensions is downloaded when the app opens (nothing happens when it is there already).
     manga?.prepare();
-    registerLlmHandlers(ipcMain, { tokens: llmTokens });
+    registerLlmHandlers(ipcMain, {
+        tokens: llmTokens,
+        // Without the token the automatic translation of the new episodes cannot work: it is turned off.
+        onChanged: () => {
+            anime?.enforceAutoTranslateSetup();
+        }
+    });
     // The look for new episodes of the anime of the library starts a while after the app opens (unless it was made in the last 3 hours) and goes on every 3 hours.
     anime?.startBackgroundChecks();
     registerHandlers({
@@ -682,6 +691,8 @@ function bootstrap(): BootstrapResult {
             });
             // A new address of the user's own FlareSolverr is used by the manga server that is running already.
             void manga?.service.applyHelper();
+            // The automatic translation of the new episodes is turned off when the settings no longer have what it needs.
+            anime?.enforceAutoTranslateSetup();
         },
         animeFolderLocked: () => {
             return anime !== null && anime.db.list().length > 0;

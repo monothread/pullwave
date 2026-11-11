@@ -2,7 +2,7 @@
 import { useFxStore } from '@renderer/fx/fxStore';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { HistoryEntry } from '@shared/types';
-import { INITIAL_APP_UPDATE, upsertJob, useAppStore } from '@renderer/store/appStore';
+import { INITIAL_APP_UPDATE, INITIAL_LLM_STATUS, upsertJob, useAppStore } from '@renderer/store/appStore';
 import { APP_UPDATE_IDLE, installMockApi, makeJob, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -10,7 +10,7 @@ const initial = useAppStore.getState();
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], appUpdate: INITIAL_APP_UPDATE, traySupport: null, tab: 'home', downloadsView: 'queue' });
+    useAppStore.setState({ ...initial, jobs: [], history: [], settings: DEFAULT_SETTINGS, settingsLoaded: false, binaries: null, notice: null, toasts: [], appUpdate: INITIAL_APP_UPDATE, traySupport: null, tab: 'home', downloadsView: 'queue', llmStatus: INITIAL_LLM_STATUS });
 });
 
 const HISTORY_ENTRY: HistoryEntry = { id: 'h1', url: 'https://x.com', title: 'T', filePath: '/d/T.mp4', status: 'done', errorTitle: null, finishedAt: 5 };
@@ -34,6 +34,8 @@ describe('useAppStore basics', () => {
         expect(initial.binaries).toBeNull();
         expect(initial.settingsLoaded).toBe(false);
         expect(initial.notice).toBeNull();
+        expect(initial.llmStatus).toEqual({ canStore: true, providers: [] });
+        expect(INITIAL_LLM_STATUS).toEqual({ canStore: true, providers: [] });
     });
 
     it('sets the screen of the video downloader, without changing the section shown', () => {
@@ -435,6 +437,24 @@ describe('useAppStore settings and binaries', () => {
         await useAppStore.getState().saveSettings({ ...DEFAULT_SETTINGS, ytdlpPath: '/opt/yt-dlp' });
         await useAppStore.getState().saveSettings({ ...DEFAULT_SETTINGS, ytdlpPath: '/opt/yt-dlp', audioOnly: true });
         expect(mock.api.checkBinaries).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads the settings again from the main process', async () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeAutoTranslateNew: true } });
+        mock.api.getSettings.mockResolvedValueOnce({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: false });
+        await useAppStore.getState().refreshSettings();
+        expect(mock.api.getSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.getSettings).toHaveBeenCalledWith();
+        expect(useAppStore.getState().settings).toEqual({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: false });
+        expect(mock.api.saveSettings).not.toHaveBeenCalled();
+    });
+
+    it('reads which providers have a token', async () => {
+        mock.api.getLlmStatus.mockResolvedValueOnce({ canStore: false, providers: ['openai', 'speech-gemini'] });
+        await useAppStore.getState().refreshLlmStatus();
+        expect(mock.api.getLlmStatus).toHaveBeenCalledTimes(1);
+        expect(mock.api.getLlmStatus).toHaveBeenCalledWith();
+        expect(useAppStore.getState().llmStatus).toEqual({ canStore: false, providers: ['openai', 'speech-gemini'] });
     });
 
     it('opens the directory chooser', async () => {

@@ -1,10 +1,14 @@
 import type { LlmCompletionResult } from '@shared/llm';
 import {
+    createTranslatedBatches,
     DEFAULT_RATE_LIMIT_WAIT_SECONDS,
     estimateTranslation,
+    HALVES_FROM_CUES,
     MAX_ATTEMPTS,
     MAX_BATCH_CHARACTERS,
     MAX_BATCH_CUES,
+    MAX_KEPT_BATCHES,
+    PROMPT_TOKENS,
     MAX_RATE_LIMIT_WAIT_SECONDS,
     MAX_RATE_LIMIT_WAITS,
     parseAnswer,
@@ -29,9 +33,10 @@ function bracketing(): TranslatorDependencies['complete'] {
 
 describe('systemPromptFor', () => {
     const BASE_PROMPT = [
-        'You are a professional subtitle translator.',
+        'You are a professional translator of anime subtitles.',
         'The user sends a JSON array of strings, the lines of a subtitle in order. Translate each string into Spanish.',
-        'Keep the meaning, the tone and the register of spoken dialogue, and keep names consistent.',
+        'Keep the meaning, the tone and the register of spoken dialogue.',
+        'Keep the names of people, places, groups and techniques as they are, written the same way in every line, and keep Japanese honorifics such as -san, -kun, -chan, -sama, -senpai and -sensei attached to the names; do not translate or drop them.',
         'Keep the line breaks (\\n) and any markup tags such as <i>...</i> where they are.',
         'Do not merge, split, add or drop strings, and do not explain anything.',
         'Answer with only a JSON array of strings with exactly as many entries as you received, in the same order, with no code fences.'
@@ -40,6 +45,13 @@ describe('systemPromptFor', () => {
         'They come from automatic speech recognition and can have mistakes: words heard wrongly (often homophones or near homophones), wrong kanji for names, or a sentence cut between two lines.',
         'Use the context of the nearby lines and of the series to understand what was really said, and translate that.'
     ];
+
+    it('says the lines are of an anime, and keeps the names and the honorifics', () => {
+        const prompt = systemPromptFor('Portuguese (Brazil)');
+        expect(prompt).toContain('translator of anime subtitles');
+        expect(prompt).toContain('Keep the names of people, places, groups and techniques as they are');
+        expect(prompt).toContain('-san, -kun, -chan, -sama, -senpai and -sensei');
+    });
 
     it('names the language to translate into and asks for a list of the same size', () => {
         const prompt = systemPromptFor('Spanish');
@@ -72,19 +84,53 @@ describe('splitIntoBatches', () => {
         expect(splitIntoBatches(['a', 'b', 'c'])).toEqual([['a', 'b', 'c']]);
     });
 
-    it('starts another batch after the most cues a batch takes', () => {
-        const texts = Array.from({ length: MAX_BATCH_CUES + 1 }, (_value, index) => {
+    function lines(count: number): string[] {
+        return Array.from({ length: count }, (_value, index) => {
             return `t${index}`;
         });
-        const batches = splitIntoBatches(texts);
-        expect(batches).toHaveLength(2);
-        expect(batches[0]).toEqual(texts.slice(0, MAX_BATCH_CUES));
-        expect(batches[1]).toEqual([`t${MAX_BATCH_CUES}`]);
+    }
+
+    it('has the limits of the halves and of a batch', () => {
+        expect([HALVES_FROM_CUES, MAX_BATCH_CUES, MAX_BATCH_CHARACTERS]).toEqual([60, 250, 9000]);
     });
 
-    it('starts another batch when the next text would pass the most characters a batch takes', () => {
+    it('keeps a subtitle shorter than the halves in one batch', () => {
+        const texts = lines(HALVES_FROM_CUES - 1);
+        expect(splitIntoBatches(texts)).toEqual([texts]);
+    });
+
+    it('cuts an episode in two halves of the same size', () => {
+        const texts = lines(300);
+        expect(splitIntoBatches(texts)).toEqual([texts.slice(0, 150), texts.slice(150)]);
+    });
+
+    it('gives the first half the line left over when they do not divide evenly', () => {
+        const texts = lines(HALVES_FROM_CUES + 1);
+        expect(splitIntoBatches(texts)).toEqual([texts.slice(0, 31), texts.slice(31)]);
+    });
+
+    it('cuts a subtitle in more parts of the same size when a half would pass the most lines a batch takes', () => {
+        const texts = lines(MAX_BATCH_CUES * 2 + 1);
+        const batches = splitIntoBatches(texts);
+        expect(batches.map((batch) => {
+            return batch.length;
+        })).toEqual([167, 167, 167]);
+        expect(batches.flat()).toEqual(texts);
+    });
+
+    it('cuts a subtitle in more parts when the halves would pass the most characters a batch takes', () => {
+        const texts = Array.from({ length: 100 }, () => {
+            return 'x'.repeat(200);
+        });
+        expect(splitIntoBatches(texts).map((batch) => {
+            return batch.length;
+        })).toEqual([34, 33, 33]);
+    });
+
+    it('cuts again a part whose lines are long enough to pass the most characters', () => {
         const long = 'x'.repeat(MAX_BATCH_CHARACTERS - 1);
-        expect(splitIntoBatches([long, 'ab', 'cd'])).toEqual([[long], ['ab', 'cd']]);
+        // Two parts by the characters: [long, 'ab'] passes the limit and is cut again.
+        expect(splitIntoBatches([long, 'ab', 'cd'])).toEqual([[long], ['ab'], ['cd']]);
     });
 
     it('gives a text that is longer than a batch a batch of its own', () => {
@@ -101,19 +147,23 @@ describe('splitIntoBatches', () => {
 });
 
 describe('estimateTranslation', () => {
+    it('counts the instructions by their length', () => {
+        expect(PROMPT_TOKENS).toBe(Math.ceil(systemPromptFor('Portuguese (Brazil)').length / 4));
+    });
+
     it('counts the requests and about the tokens of what goes and what comes back, plus the instructions', () => {
-        expect(estimateTranslation(['abcd', 'efgh'])).toEqual({ batches: 1, approxTokens: 2 * 2 + 150 });
+        expect(estimateTranslation(['abcd', 'efgh'])).toEqual({ batches: 1, approxTokens: 2 * 2 + PROMPT_TOKENS });
     });
 
     it('rounds the tokens of the text up', () => {
-        expect(estimateTranslation(['abcde'])).toEqual({ batches: 1, approxTokens: 2 * 2 + 150 });
+        expect(estimateTranslation(['abcde'])).toEqual({ batches: 1, approxTokens: 2 * 2 + PROMPT_TOKENS });
     });
 
-    it('adds the instructions again for every request', () => {
-        const texts = Array.from({ length: MAX_BATCH_CUES + 1 }, () => {
+    it('adds the instructions again for every request: twice for an episode in two halves', () => {
+        const texts = Array.from({ length: HALVES_FROM_CUES }, () => {
             return 'abcd';
         });
-        expect(estimateTranslation(texts)).toEqual({ batches: 2, approxTokens: (MAX_BATCH_CUES + 1) * 2 + 2 * 150 });
+        expect(estimateTranslation(texts)).toEqual({ batches: 2, approxTokens: HALVES_FROM_CUES * 2 + 2 * PROMPT_TOKENS });
     });
 
     it('is nothing for no text', () => {
@@ -193,13 +243,13 @@ describe('translateTexts', () => {
 
     it('tells how far it is, counting the empty texts as done', async () => {
         const onProgress = vi.fn();
-        const texts = ['', ...Array.from({ length: MAX_BATCH_CUES + 1 }, (_value, index) => {
+        const texts = ['', ...Array.from({ length: 80 }, (_value, index) => {
             return `t${index}`;
         })];
         await translateTexts(texts, 'Italian', { complete: bracketing(), onProgress });
         expect(onProgress.mock.calls).toEqual([
             [0, texts.length],
-            [MAX_BATCH_CUES + 1, texts.length],
+            [41, texts.length],
             [texts.length, texts.length]
         ]);
     });
@@ -208,13 +258,13 @@ describe('translateTexts', () => {
         it('asks again for the same batch and takes the right answer', async () => {
             const complete = vi.fn<TranslatorDependencies['complete']>()
                 .mockResolvedValueOnce(answer(['only one']))
-                .mockResolvedValueOnce({ ok: true, text: 'not a list' })
                 .mockResolvedValueOnce(answer(['A', 'B']));
             expect(await translateTexts(['a', 'b'], 'Spanish', { complete })).toEqual({ ok: true, texts: ['A', 'B'] });
-            expect(complete).toHaveBeenCalledTimes(3);
+            expect(MAX_ATTEMPTS).toBe(2);
+            expect(complete).toHaveBeenCalledTimes(2);
             expect(complete.mock.calls.map((call) => {
                 return call[1];
-            })).toEqual(['["a","b"]', '["a","b"]', '["a","b"]']);
+            })).toEqual(['["a","b"]', '["a","b"]']);
         });
 
         it('cuts the batch in two when it keeps coming wrong, and asks for each half', async () => {
@@ -342,9 +392,9 @@ describe('translateTexts', () => {
             const complete = vi.fn<TranslatorDependencies['complete']>()
                 .mockResolvedValueOnce(answer([]))
                 .mockResolvedValueOnce({ ok: false, error: { code: 'RATE_LIMITED', raw: 'slow', retryAfterSeconds: 1 } })
-                .mockResolvedValueOnce(answer([]))
                 .mockResolvedValueOnce(answer(['A']));
             expect(await translateTexts(['a'], 'Spanish', { complete, sleep })).toEqual({ ok: true, texts: ['A'] });
+            expect(complete).toHaveBeenCalledTimes(3);
         });
 
         it('waits for real, and ends the wait early when the signal is aborted', async () => {
@@ -406,5 +456,100 @@ describe('translateTexts', () => {
             });
             expect(complete).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe('createTranslatedBatches', () => {
+    it('keeps a batch, gives it back and forgets it when asked', () => {
+        const batches = createTranslatedBatches();
+        expect(batches.get('a')).toBeUndefined();
+        batches.set('a', ['A']);
+        expect(batches.get('a')).toEqual(['A']);
+        batches.delete('a');
+        expect(batches.get('a')).toBeUndefined();
+    });
+
+    it('forgets the oldest batch past its limit, counting a batch kept again as new', () => {
+        const batches = createTranslatedBatches(2);
+        batches.set('a', ['A']);
+        batches.set('b', ['B']);
+        batches.set('a', ['A2']);
+        batches.set('c', ['C']);
+        expect(batches.get('b')).toBeUndefined();
+        expect(batches.get('a')).toEqual(['A2']);
+        expect(batches.get('c')).toEqual(['C']);
+    });
+
+    it('keeps a hundred batches by default', () => {
+        expect(MAX_KEPT_BATCHES).toBe(100);
+        const batches = createTranslatedBatches();
+        Array.from({ length: MAX_KEPT_BATCHES + 1 }, (_value, index) => {
+            batches.set(`k${index}`, [`${index}`]);
+            return index;
+        });
+        expect(batches.get('k0')).toBeUndefined();
+        expect(batches.get('k1')).toEqual(['1']);
+        expect(batches.get(`k${MAX_KEPT_BATCHES}`)).toEqual([`${MAX_KEPT_BATCHES}`]);
+    });
+});
+
+describe('translateTexts going on after a failure', () => {
+    const EPISODE = Array.from({ length: 80 }, (_value, index) => {
+        return `line ${index}`;
+    });
+
+    it('does not ask again for the half that was translated when the other one failed, and asks anew once the translation was whole', async () => {
+        const batches = createTranslatedBatches();
+        const failing = vi.fn(async (_system: string, user: string): Promise<LlmCompletionResult> => {
+            const texts = JSON.parse(user) as string[];
+            if (texts[0] === 'line 40') {
+                return { ok: false, error: { code: 'QUOTA_EXCEEDED', raw: 'no credit' } };
+            }
+            return answer(texts.map((text) => {
+                return text.toUpperCase();
+            }));
+        });
+        expect(await translateTexts(EPISODE, 'Spanish', { complete: failing, batches })).toEqual({ ok: false, error: { code: 'QUOTA_EXCEEDED', raw: 'no credit' } });
+        expect(failing).toHaveBeenCalledTimes(2);
+
+        const working = bracketing();
+        const result = await translateTexts(EPISODE, 'Spanish', { complete: working, batches });
+        expect(result).toEqual({
+            ok: true,
+            texts: EPISODE.map((text, index) => {
+                return index < 40 ? text.toUpperCase() : `[${text}]`;
+            })
+        });
+        expect(working).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(working).mock.calls[0]?.[1]).toBe(JSON.stringify(EPISODE.slice(40)));
+
+        const again = bracketing();
+        await translateTexts(EPISODE, 'Spanish', { complete: again, batches });
+        expect(again).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not take a batch kept for another language', async () => {
+        const batches = createTranslatedBatches();
+        const failing = vi.fn(async (_system: string, user: string): Promise<LlmCompletionResult> => {
+            const texts = JSON.parse(user) as string[];
+            return texts[0] === 'line 40' ? { ok: false, error: { code: 'NETWORK', raw: 'down' } } : answer(texts);
+        });
+        await translateTexts(EPISODE, 'Spanish', { complete: failing, batches });
+
+        const german = bracketing();
+        await translateTexts(EPISODE, 'German', { complete: german, batches });
+        expect(german).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps nothing between translations when it is given nowhere to keep the batches', async () => {
+        const failing = vi.fn(async (_system: string, user: string): Promise<LlmCompletionResult> => {
+            const texts = JSON.parse(user) as string[];
+            return texts[0] === 'line 40' ? { ok: false, error: { code: 'NETWORK', raw: 'down' } } : answer(texts);
+        });
+        await translateTexts(EPISODE, 'Spanish', { complete: failing });
+
+        const working = bracketing();
+        await translateTexts(EPISODE, 'Spanish', { complete: working });
+        expect(working).toHaveBeenCalledTimes(2);
     });
 });

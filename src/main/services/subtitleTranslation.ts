@@ -8,7 +8,8 @@ import {
 } from '@shared/anime';
 import type { LlmCompletionResult } from '@shared/llm';
 import { defaultSubtitleFileSystem, hasTranslatedSubtitle, listSubtitleFiles, toWebVtt, translatedSubtitlePath, type SubtitleFile, type SubtitleFileSystem } from './subtitleFiles';
-import { estimateTranslation, translateTexts } from './subtitleTranslator';
+import { hasSubtitleIn } from './subtitleLanguage';
+import { estimateTranslation, translateTexts, type TranslatedBatches } from './subtitleTranslator';
 import { parseVtt, serializeVtt, type ParsedVtt } from './vttCues';
 
 const ENGLISH = /english/i;
@@ -20,6 +21,8 @@ export interface SubtitleTranslationDependencies {
     llm: () => LlmAccess;
     files?: SubtitleFileSystem;
     sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
+    // Where the batches already translated are kept, to go on after a translation that failed (see subtitleTranslator).
+    batches?: TranslatedBatches;
 }
 
 type SourceFailure = Extract<SubtitleTranslateResponse, { ok: false; reason: string }>['reason'];
@@ -82,9 +85,19 @@ export function estimateSubtitleTranslation(videoPath: string, request: Pick<Sub
 
 export type TranslationProgress = (done: number, total: number) => void;
 
+// Whether any subtitle of the episode that is not a translation (one of the source, the one ani-cli picked, an imported one or one made from
+// the audio) is in the language, by its label (see `labelIsInLanguage`).
+function hasOtherSubtitleIn(videoPath: string, language: TranslationLanguage, files: SubtitleFileSystem): boolean {
+    const tracks = listSubtitleFiles(videoPath, files).map((file) => {
+        return file.track;
+    });
+    return hasSubtitleIn(tracks, language);
+}
+
 // Translates a subtitle of an episode into a language and saves it next to the video, as a subtitle of its own. An episode that has the
 // subtitle in that language already is left as it is (`exists`), before the model is asked anything (a translation costs the user's token),
-// unless the request says to replace it.
+// unless the request says to replace it: its translation into it, or any other subtitle in it (the one of the source is more reliable than a
+// translation, D-171).
 export async function translateEpisodeSubtitle(
     videoPath: string,
     request: Pick<SubtitleTranslateRequest, 'trackId' | 'replace'> & { language: TranslationLanguage },
@@ -100,6 +113,9 @@ export async function translateEpisodeSubtitle(
     if (!access.ok) {
         return { ok: false, reason: access.reason };
     }
+    if (request.replace !== true && hasOtherSubtitleIn(videoPath, request.language, files)) {
+        return { ok: false, reason: 'exists' };
+    }
     const source = readSource(videoPath, request.trackId, files);
     if (!source.ok) {
         return { ok: false, reason: source.reason };
@@ -109,6 +125,7 @@ export async function translateEpisodeSubtitle(
             return access.ask(system, user, signal);
         },
         sleep: dependencies.sleep,
+        batches: dependencies.batches,
         signal,
         onProgress
     });

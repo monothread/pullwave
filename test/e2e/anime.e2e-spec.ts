@@ -4090,7 +4090,7 @@ test.describe('translating subtitles with a language model', () => {
         await expect(translate.getByLabel('Translate into')).toHaveValue('Spanish');
         await expect(translate.getByLabel('Translate from')).toHaveValue('auto');
         // Nothing is asked of the provider before the user confirms.
-        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await expect(translate.getByText('2 lines, 1 requests, about 200 tokens of your account.')).toBeVisible();
         expect(received).toEqual([]);
 
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
@@ -4132,7 +4132,7 @@ test.describe('translating subtitles with a language model', () => {
         const dialog = await openPlayer(page);
         await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
-        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await expect(translate.getByText('2 lines, 1 requests, about 200 tokens of your account.')).toBeVisible();
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
         await expect(translate.getByRole('alert')).toHaveText('There is no token for this provider. Add one in the anime settings.');
         await expect(translate.getByRole('button', { name: 'TRANSLATE', exact: true })).toBeEnabled();
@@ -4148,7 +4148,7 @@ test.describe('translating subtitles with a language model', () => {
         const dialog = await openPlayer(page);
         await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
-        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await expect(translate.getByText('2 lines, 1 requests, about 200 tokens of your account.')).toBeVisible();
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
         await expect(translate.getByRole('alert')).toHaveText('The translation failed. The provider did not accept the token. Check it in the anime settings.');
         expect(received).toHaveLength(1);
@@ -4166,7 +4166,7 @@ test.describe('translating subtitles with a language model', () => {
         const dialog = await openPlayer(page);
         await (await openSubtitleManager(dialog)).getByRole('button', { name: 'TRANSLATE SUBTITLE' }).click();
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
-        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await expect(translate.getByText('2 lines, 1 requests, about 200 tokens of your account.')).toBeVisible();
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
         await expect(translate.getByText('Translated 0 of 2 lines…')).toBeVisible();
         await expect(translate.getByRole('button', { name: 'CLOSE' })).toBeDisabled();
@@ -4214,6 +4214,55 @@ test.describe('translating subtitles with a language model', () => {
         await expect(page.getByRole('alert')).toHaveCount(0);
     });
 
+    test('lists the subtitles being translated in the arrow of the top bar, opens their screen with a bar for each, and cancels them there', async () => {
+        const { page } = session;
+        hold = true;
+        await saveToken(page);
+        await downloadWithSubtitles(page, [1, 2]);
+        await showEpisodes(page);
+        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'CONFIRM', exact: true }).click();
+        await expect.poll(() => {
+            return received.length;
+        }).toBe(1);
+
+        const arrow = page.getByRole('button', { name: 'Downloads going on: 2' });
+        await expect(arrow).toBeVisible();
+        await arrow.click();
+        await expect(page.getByRole('button', { name: 'TRANSLATING: 2 going on' })).toHaveText('TRANSLATING2');
+        await page.getByRole('button', { name: 'TRANSLATING: 2 going on' }).click();
+
+        const screenOfSubtitles = page.getByRole('region', { name: 'TRANSLATING (2)' });
+        await expect(screenOfSubtitles).toBeVisible();
+        const cards = screenOfSubtitles.getByTestId('anime-subtitle-job');
+        await expect(cards).toHaveCount(2);
+        await expect(cards.nth(0).getByRole('heading', { level: 3 })).toHaveText('Fake Anime · EP 1');
+        await expect(cards.nth(0).locator('.badge')).toHaveText(['TRANSLATION', 'IN PROGRESS']);
+        const bar = cards.nth(0).getByRole('progressbar', { name: 'Progress of the subtitle of Fake Anime · EP 1' });
+        await expect(bar).toHaveAttribute('aria-valuemin', '0');
+        await expect(bar).toHaveAttribute('aria-valuemax', '100');
+        await expect(bar).toHaveAttribute('aria-valuenow', '0');
+        await expect(cards.nth(0).locator('.job__meta')).toHaveText('0.0%Into Spanish');
+        await expect(cards.nth(1).getByRole('heading', { level: 3 })).toHaveText('Fake Anime · EP 2');
+        await expect(cards.nth(1).locator('.badge')).toHaveText(['TRANSLATION', 'WAITING']);
+
+        await page.getByRole('button', { name: 'Cancel the subtitle of Fake Anime · EP 2' }).click();
+        await answerConfirm(page, 'Cancel this subtitle?', 'CANCEL');
+        await expect(page.getByRole('region', { name: 'TRANSLATING (1)' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Downloads going on: 1' })).toBeVisible();
+
+        await page.getByRole('button', { name: 'Cancel the subtitle of Fake Anime · EP 1' }).click();
+        await answerConfirm(page, 'Cancel this subtitle?', 'CANCEL');
+        await expect(page.getByText('// NO SUBTITLE IS BEING TRANSLATED OR CREATED.')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Downloads going on: 0' })).toBeVisible();
+        expect(received).toHaveLength(1);
+        expect(existsSync(translatedFile(1))).toBe(false);
+        expect(existsSync(translatedFile(2))).toBe(false);
+
+        await page.getByRole('button', { name: 'BACK', exact: true }).click();
+        await expect(page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'LIBRARY', exact: true })).toHaveAttribute('aria-current', 'page');
+    });
+
     const OLD_SPANISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nHola de antes\n';
 
     test('translates again in the player an episode that has the subtitle in the language already, and replaces it', async () => {
@@ -4226,7 +4275,7 @@ test.describe('translating subtitles with a language model', () => {
         const translate = page.getByRole('dialog', { name: 'Translate a subtitle' });
         await expect(translate.getByLabel('Translate into')).toHaveValue('Spanish');
         await expect(translate.getByTestId('translate-replace-note')).toHaveText('This episode already has the subtitle in this language. Translating again replaces it.');
-        await expect(translate.getByText('2 lines, 1 requests, about 160 tokens of your account.')).toBeVisible();
+        await expect(translate.getByText('2 lines, 1 requests, about 200 tokens of your account.')).toBeVisible();
         expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
         await translate.getByRole('button', { name: 'TRANSLATE', exact: true }).click();
 
@@ -5487,6 +5536,296 @@ test.describe('the look for new episodes', () => {
         await expect(page.getByText('AVAILABLE', { exact: true })).toHaveCount(0);
         await expect(page.getByText('NOT AVAILABLE', { exact: true })).toHaveCount(0);
         await expect(page.getByText('CHECKING…', { exact: true })).toHaveCount(0);
+    });
+
+    test.describe('translating the subtitles of the new episodes downloaded', () => {
+        const TOKEN = 'sk-e2e-auto';
+        const ENGLISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nHello there\n\n2\n00:00:04.000 --> 00:00:06.000\nSee you\n';
+        const SPANISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nES: Hello there\n\n2\n00:00:04.000 --> 00:00:06.000\nES: See you\n';
+        const SWITCH = 'Translate the subtitles of the new episodes downloaded';
+        const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the translation language below when it is "WHAT ANI-CLI PICKS"), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
+        const NEEDS_SETUP = 'Save the token and the model of the provider that translates subtitles (below) to turn this on.';
+
+        interface LlmRequest {
+            method: string | undefined;
+            path: string;
+            authorization: string | undefined;
+            contentType: string | undefined;
+            body: { model: string; messages: Array<{ role: string; content: string }> };
+        }
+
+        // The provider the app is asked to use: it speaks the protocol of OpenAI and "translates" by putting ES: before each line, or answers with the
+        // status the test asks for.
+        let server: Server;
+        let baseUrl: string;
+        let received: LlmRequest[];
+        let answerWith: number;
+
+        test.beforeAll(async () => {
+            received = [];
+            server = createServer((request, response) => {
+                const chunks: Buffer[] = [];
+                request.on('data', (chunk: Buffer) => {
+                    chunks.push(chunk);
+                });
+                request.on('end', () => {
+                    const body = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as LlmRequest['body'];
+                    received.push({ method: request.method, path: request.url ?? '', authorization: request.headers.authorization, contentType: request.headers['content-type'], body });
+                    if (answerWith !== 200) {
+                        response.writeHead(answerWith, { 'Content-Type': 'text/plain' }).end('the provider says no');
+                        return;
+                    }
+                    const texts = JSON.parse(body.messages[1]?.content ?? '[]') as string[];
+                    const translated = texts.map((text) => {
+                        return `ES: ${text}`;
+                    });
+                    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(translated) } }] }));
+                });
+            });
+            await new Promise<void>((resolveListening) => {
+                server.listen(0, '127.0.0.1', resolveListening);
+            });
+            baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+        });
+
+        test.afterAll(async () => {
+            server.closeAllConnections();
+            await new Promise<void>((resolveClosed) => {
+                server.close(() => {
+                    resolveClosed();
+                });
+            });
+        });
+
+        test.beforeEach(() => {
+            received.length = 0;
+            answerWith = 200;
+        });
+
+        function providerSettings(): Record<string, unknown> {
+            return { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, translateLanguage: 'Korean', animeCheckNewEpisodes: false, animeAutoDownloadNew: true };
+        }
+
+        // Opens the app with the provider of the translation set up; with the token kept already (the plain way, which PULLWAVE_FAKE_SECRETS allows)
+        // unless the test saves it itself.
+        async function relaunchWithProvider(settings: Record<string, unknown>, withToken = true): Promise<Page> {
+            await session.app.close();
+            const userData = join(workDir, 'user-data');
+            mkdirSync(userData, { recursive: true });
+            writeFileSync(join(userData, 'llm-tokens.json'), JSON.stringify(withToken ? { custom: Buffer.from(TOKEN, 'utf-8').toString('base64') } : {}));
+            session = await launch(userData, { ...providerSettings(), ...settings }, { PULLWAVE_FAKE_SECRETS: '1' });
+            return session.page;
+        }
+
+        // The source gives the episodes it downloads an English subtitle with two lines.
+        function sourceHasEnglishSubtitles(): void {
+            mkdirSync(historyFolder(), { recursive: true });
+            writeFileSync(join(historyFolder(), 'download-subtitle'), ENGLISH_SUBTITLE);
+        }
+
+        function episodeFile(name: string): string {
+            return join(session.animeDir, 'Fake Anime', 'Season 1', 'Episode 4', `Fake Anime Episode 4.${name}`);
+        }
+
+        // Adds the anime, reads its episodes with the button, gives the source a fourth one and looks again: it is found and downloaded.
+        async function findAndDownloadTheFourthEpisode(page: Page): Promise<void> {
+            await addFakeAnime(page);
+            await openUpdates(page);
+            await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+            await expect(page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true })).toBeEnabled();
+            sourceGetsAFourthEpisode();
+            await page.getByRole('button', { name: 'LOOK FOR NEW EPISODES', exact: true }).click();
+            await waitForDownloaded(page);
+            expect(
+                calls().filter((line) => {
+                    return line.includes('-d ');
+                })
+            ).toEqual(['sub | -d -S 1 -e 4 -q 720p fake']);
+        }
+
+        test('is off by default, and nothing is translated then', async () => {
+            const page = await relaunchWithProvider({});
+            sourceHasEnglishSubtitles();
+
+            await findAndDownloadTheFourthEpisode(page);
+            await page.waitForTimeout(1500);
+
+            expect(received).toEqual([]);
+            expect(existsSync(episodeFile('translated-Spanish.vtt'))).toBe(false);
+            expect(readFileSync(episodeFile('subtitle-English.vtt'), 'utf-8')).toBe(ENGLISH_SUBTITLE);
+            await openAnimeSettings(page);
+            await expect(page.getByRole('switch', { name: SWITCH })).not.toBeChecked();
+            await expect(page.getByRole('switch', { name: SWITCH })).toBeEnabled();
+        });
+
+        test('cannot be turned on until the token is saved, saves it at once, and turns itself off when the token is removed', async () => {
+            const page = await relaunchWithProvider({}, false);
+            await openAnimeSettings(page);
+            const toggle = page.getByRole('switch', { name: SWITCH });
+            await expect(toggle).not.toBeChecked();
+            await expect(toggle).toBeDisabled();
+            await expect(page.getByText(NEEDS_SETUP)).toBeVisible();
+            await expect(page.getByText(HINT)).toHaveCount(0);
+
+            await page.getByLabel('Token (API key)', { exact: true }).fill(TOKEN);
+            await page.getByRole('button', { name: 'SAVE TOKEN' }).click();
+            await expect(page.getByText('A token is saved for this provider.')).toBeVisible();
+            await expect(toggle).toBeEnabled();
+            await expect(page.getByText(HINT)).toBeVisible();
+            await expect(page.getByText(NEEDS_SETUP)).toHaveCount(0);
+
+            await toggle.click();
+            await expect(toggle).toBeChecked();
+            await expect.poll(() => {
+                return savedSettings().animeAutoTranslateNew;
+            }).toBe(true);
+
+            await page.getByRole('button', { name: 'REMOVE TOKEN' }).click();
+            await answerConfirm(page, 'Remove the token?', 'REMOVE TOKEN');
+
+            await expect(page.locator('.toast').filter({ hasText: 'The automatic translation of the new episodes was turned off: the token or the model of the translation provider is missing.' })).toBeVisible();
+            await expect.poll(() => {
+                return savedSettings().animeAutoTranslateNew;
+            }).toBe(false);
+            await expect(toggle).not.toBeChecked();
+            await expect(toggle).toBeDisabled();
+            await expect(page.getByText(NEEDS_SETUP)).toBeVisible();
+            expect(received).toEqual([]);
+        });
+
+        test('cannot be turned on while the settings have no model', async () => {
+            const page = await relaunchWithProvider({ translateModel: '' });
+            await openAnimeSettings(page);
+
+            await expect(page.getByText('A token is saved for this provider.')).toBeVisible();
+            await expect(page.getByRole('switch', { name: SWITCH })).toBeDisabled();
+            await expect(page.getByText(NEEDS_SETUP)).toBeVisible();
+        });
+
+        test('translates the English subtitle of the new episode the look downloaded into the language of the anime subtitles, with the provider of the settings', async () => {
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'Spanish' });
+            sourceHasEnglishSubtitles();
+
+            await findAndDownloadTheFourthEpisode(page);
+
+            await expect.poll(() => {
+                return existsSync(episodeFile('translated-Spanish.vtt'));
+            }, { timeout: 15000 }).toBe(true);
+            expect(readFileSync(episodeFile('translated-Spanish.vtt'), 'utf-8')).toBe(SPANISH_SUBTITLE);
+            expect(received).toHaveLength(1);
+            expect(received[0]).toMatchObject({
+                method: 'POST',
+                path: '/v1/chat/completions',
+                authorization: `Bearer ${TOKEN}`,
+                contentType: 'application/json',
+                body: { model: 'fake-model' }
+            });
+            expect(received[0]?.body.messages).toHaveLength(2);
+            expect(received[0]?.body.messages[0]?.role).toBe('system');
+            expect(received[0]?.body.messages[0]?.content).toContain('Spanish');
+            expect(received[0]?.body.messages[1]).toEqual({ role: 'user', content: JSON.stringify(['Hello there', 'See you']) });
+            expect(savedSettings().animeAutoTranslateNew).toBe(true);
+        });
+
+        test('uses the language of the translation of the settings when the anime subtitles are what ani-cli picks', async () => {
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'default' });
+            sourceHasEnglishSubtitles();
+
+            await findAndDownloadTheFourthEpisode(page);
+
+            await expect.poll(() => {
+                return existsSync(episodeFile('translated-Korean.vtt'));
+            }, { timeout: 15000 }).toBe(true);
+            expect(received).toHaveLength(1);
+            expect(received[0]?.body.messages[0]?.content).toContain('Korean');
+        });
+
+        test('leaves the episode that has a subtitle in that language already', async () => {
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'English' });
+            sourceHasEnglishSubtitles();
+
+            await findAndDownloadTheFourthEpisode(page);
+            await page.waitForTimeout(1500);
+
+            expect(received).toEqual([]);
+            expect(existsSync(episodeFile('translated-English.vtt'))).toBe(false);
+            expect(savedSettings().animeAutoTranslateNew).toBe(true);
+        });
+
+        test('leaves the episode whose subtitle of the source names the language in that language, as the file name writes it, and asks the provider nothing', async () => {
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'Spanish' });
+            sourceHasEnglishSubtitles();
+            writeFileSync(join(historyFolder(), 'download-subtitle-label'), 'Español');
+
+            await findAndDownloadTheFourthEpisode(page);
+            await page.waitForTimeout(1500);
+
+            // The ñ is one or two "_" in the file name, as the shell writes it byte by byte.
+            expect(readdirSync(join(session.animeDir, 'Fake Anime', 'Season 1', 'Episode 4')).filter((name) => {
+                return /^Fake Anime Episode 4\.subtitle-Espa_+ol\.vtt$/.test(name);
+            })).toHaveLength(1);
+            expect(received).toEqual([]);
+            expect(existsSync(episodeFile('translated-Spanish.vtt'))).toBe(false);
+            expect(savedSettings().animeAutoTranslateNew).toBe(true);
+        });
+
+        test('leaves the episode that has no subtitle to start from', async () => {
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'Spanish' });
+
+            await findAndDownloadTheFourthEpisode(page);
+            await page.waitForTimeout(1500);
+
+            expect(received).toEqual([]);
+            expect(existsSync(episodeFile('translated-Spanish.vtt'))).toBe(false);
+            expect(existsSync(episodeFile('generated-Spanish.vtt'))).toBe(false);
+            expect(savedSettings().animeAutoTranslateNew).toBe(true);
+        });
+
+        test('does not translate an episode the user downloaded', async () => {
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'Spanish' });
+            sourceHasEnglishSubtitles();
+            await openAnimeTab(page);
+            await openFirstResult(page);
+
+            await downloadFromLibrary(page, [1]);
+            await waitForDownloaded(page);
+            await page.waitForTimeout(1500);
+
+            expect(received).toEqual([]);
+            expect(existsSync(join(session.animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.translated-Spanish.vtt'))).toBe(false);
+        });
+
+        test('turns itself off and says so when the provider has no credit left', async () => {
+            answerWith = 402;
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'Spanish' });
+            sourceHasEnglishSubtitles();
+
+            await findAndDownloadTheFourthEpisode(page);
+
+            await expect(page.locator('.toast').filter({ hasText: 'The automatic translation of the new episodes was turned off: the translation provider has no credit left.' })).toBeVisible({ timeout: 15000 });
+            await expect.poll(() => {
+                return savedSettings().animeAutoTranslateNew;
+            }).toBe(false);
+            expect(received).toHaveLength(1);
+            expect(received[0]).toMatchObject({ method: 'POST', path: '/v1/chat/completions', authorization: `Bearer ${TOKEN}` });
+            expect(existsSync(episodeFile('translated-Spanish.vtt'))).toBe(false);
+            await openAnimeSettings(page);
+            await expect(page.getByRole('switch', { name: SWITCH })).not.toBeChecked();
+            await expect(page.getByRole('switch', { name: SWITCH })).toBeEnabled();
+        });
+
+        test('turns itself off when the provider does not accept the token', async () => {
+            answerWith = 401;
+            const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'Spanish' });
+            sourceHasEnglishSubtitles();
+
+            await findAndDownloadTheFourthEpisode(page);
+
+            await expect(page.locator('.toast').filter({ hasText: 'The automatic translation of the new episodes was turned off: the translation provider did not accept the token.' })).toBeVisible({ timeout: 15000 });
+            await expect.poll(() => {
+                return savedSettings().animeAutoTranslateNew;
+            }).toBe(false);
+        });
     });
 });
 

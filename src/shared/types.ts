@@ -15,6 +15,8 @@ import type {
     AnimeJob,
     AnimeMigrationProgress,
     AnimeNewEpisodes,
+    AutoTranslateOffReason,
+    SubtitleJobs,
     AnimeMigrationResponse,
     AnimeProgressUpdate,
     AnimeScheduleRequest,
@@ -166,6 +168,9 @@ export interface Settings {
     animeCheckNewEpisodes: boolean;
     // Whether the new episodes found by the check are downloaded too (off: they are only added to the library).
     animeAutoDownloadNew: boolean;
+    // Whether the new episodes that the check downloaded have their subtitle translated in the background, into the language of the anime
+    // subtitles (`animeSubtitles`), when they have a subtitle but none in that language. Turned off by itself when the provider refuses.
+    animeAutoTranslateNew: boolean;
     // Manga section (Linux and Windows): where the mangas are kept (empty is a folder inside the downloads folder) and whether a
     // chapter is made a CBZ file or a folder of images.
     mangaDirectory: string;
@@ -494,6 +499,8 @@ export interface CyberApi {
     // How long the audio is and in how many requests it goes, to ask the user before spending their token.
     estimateAnimeSubtitleGeneration: (episodeId: number) => Promise<SubtitleGenerateEstimateResponse>;
     cancelAnimeSubtitleGeneration: (episodeId: number) => Promise<void>;
+    // The subtitles of the whole app that wait to be translated or made, or are being worked on (for the screen that shows them).
+    listSubtitleJobs: () => Promise<SubtitleJobs>;
     getLlmStatus: () => Promise<LlmStatus>;
     // Keeps the token of a provider (or of a service of speech to text, see `LlmTokenSlot`), encrypted; false when it was not kept.
     setLlmToken: (slot: LlmTokenSlot, token: string) => Promise<boolean>;
@@ -523,6 +530,8 @@ export interface CyberApi {
     onAnimeCoverUpdate: (listener: (update: AnimeCoverUpdate) => void) => () => void;
     // The check for new episodes added some to the library.
     onAnimeNewEpisodes: (listener: (news: AnimeNewEpisodes) => void) => () => void;
+    // The automatic translation of the new episodes was turned off by itself, and why.
+    onAnimeAutoTranslateOff: (listener: (reason: AutoTranslateOffReason) => void) => () => void;
     // The check for new episodes began, moved on by one anime or ended.
     onAnimeCheckState: (listener: (state: AnimeCheckState) => void) => () => void;
     onJobUpdate: (listener: (job: DownloadJob) => void) => () => void;

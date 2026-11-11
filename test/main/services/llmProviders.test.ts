@@ -91,7 +91,8 @@ describe('completeWithLlm: the requests', () => {
         expect(calls[0]?.init.headers).toEqual({ 'Content-Type': 'application/json', 'x-goog-api-key': 'sk-secret' });
         expect(bodyOf(calls[0] as Call)).toEqual({
             systemInstruction: { parts: [{ text: 'You translate.' }] },
-            contents: [{ role: 'user', parts: [{ text: 'Hello' }] }]
+            contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
+            generationConfig: { responseMimeType: 'application/json' }
         });
     });
 });

@@ -4,6 +4,7 @@ import { useAnimeStore, type AnimeBrowseView } from '../store/animeStore';
 import { activeJobCount } from './animeText';
 import { AnimeHistory } from './AnimeHistory';
 import { AnimeJobs } from './AnimeJobs';
+import { AnimeSubtitleJobs } from './AnimeSubtitleJobs';
 import { AnimeLibrary } from './AnimeLibrary';
 import { AnimePlayer } from './AnimePlayer';
 import { AnimeSchedule } from './AnimeSchedule';
@@ -44,10 +45,27 @@ export function AnimePanel() {
     const closeDownloads = useAnimeStore((state) => {
         return state.closeDownloads;
     });
+    const closeSubtitleJobs = useAnimeStore((state) => {
+        return state.closeSubtitleJobs;
+    });
     const active = useAnimeStore((state) => {
         return activeJobCount(state.jobs);
     });
 
+    if (view === 'subtitles') {
+        return (
+            <section className="anime" aria-label={t('anime.aria')}>
+                <div className="queue__toolbar">
+                    <button type="button" className="btn btn--small btn--ghost" onClick={closeSubtitleJobs}>
+                        {t('anime.back')}
+                    </button>
+                </div>
+                <AnimeSubtitleJobs />
+                <AnimePlayer />
+                <AnimeStreamPlayer />
+            </section>
+        );
+    }
     if (view === 'downloads') {
         return (
             <section className="anime" aria-label={t('anime.aria')}>

@@ -5,7 +5,7 @@ import { MAX_TOKEN_LENGTH, registerLlmHandlers } from '@main/ipc/registerLlmHand
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
 
-function setup(canStore = true, providers: LlmTokenSlot[] = []) {
+function setup(canStore = true, providers: LlmTokenSlot[] = [], withListener = true) {
     const handlers = new Map<string, Handler>();
     const ipcMain: IpcMainLike = {
         handle: (channel, listener) => {
@@ -24,7 +24,8 @@ function setup(canStore = true, providers: LlmTokenSlot[] = []) {
         }),
         clear: vi.fn()
     };
-    registerLlmHandlers(ipcMain, { tokens });
+    const onChanged = vi.fn();
+    registerLlmHandlers(ipcMain, withListener ? { tokens, onChanged } : { tokens });
     const call = (channel: string, ...args: unknown[]): unknown => {
         const handler = handlers.get(channel);
         if (!handler) {
@@ -32,7 +33,7 @@ function setup(canStore = true, providers: LlmTokenSlot[] = []) {
         }
         return handler({}, ...args);
     };
-    return { call, tokens, channels: [...handlers.keys()].sort() };
+    return { call, tokens, onChanged, channels: [...handlers.keys()].sort() };
 }
 
 describe('registerLlmHandlers', () => {
@@ -61,10 +62,24 @@ describe('registerLlmHandlers', () => {
             expect(tokens.set).toHaveBeenCalledWith(provider, 'sk-secret');
         });
 
-        it('says it was not kept when the store did not keep it', () => {
-            const { call, tokens } = setup();
+        it('tells that a token changed once it is kept', () => {
+            const { call, onChanged } = setup();
+            call(IPC.llmTokenSet, 'openai', 'sk-secret');
+            expect(onChanged).toHaveBeenCalledTimes(1);
+            expect(onChanged).toHaveBeenCalledWith();
+        });
+
+        it('keeps the token when nobody listens for the changes', () => {
+            const { call, tokens } = setup(true, [], false);
+            expect(call(IPC.llmTokenSet, 'openai', 'sk-secret')).toBe(true);
+            expect(tokens.set).toHaveBeenCalledWith('openai', 'sk-secret');
+        });
+
+        it('says it was not kept when the store did not keep it, and tells no change', () => {
+            const { call, tokens, onChanged } = setup();
             tokens.set.mockReturnValueOnce(false);
             expect(call(IPC.llmTokenSet, 'openai', 'sk-secret')).toBe(false);
+            expect(onChanged).not.toHaveBeenCalled();
         });
 
         it('takes a token of the longest size', () => {
@@ -83,9 +98,10 @@ describe('registerLlmHandlers', () => {
             ['no token', 'openai', undefined],
             ['a token that is too long', 'openai', 'k'.repeat(MAX_TOKEN_LENGTH + 1)]
         ])('keeps nothing and says so for %s', (_name, provider, token) => {
-            const { call, tokens } = setup();
+            const { call, tokens, onChanged } = setup();
             expect(call(IPC.llmTokenSet, provider, token)).toBe(false);
             expect(tokens.set).not.toHaveBeenCalled();
+            expect(onChanged).not.toHaveBeenCalled();
         });
     });
 
@@ -97,10 +113,24 @@ describe('registerLlmHandlers', () => {
             expect(tokens.clear).toHaveBeenCalledWith(provider);
         });
 
+        it('tells that a token changed once it is removed', () => {
+            const { call, onChanged } = setup();
+            call(IPC.llmTokenClear, 'openai');
+            expect(onChanged).toHaveBeenCalledTimes(1);
+            expect(onChanged).toHaveBeenCalledWith();
+        });
+
+        it('removes the token when nobody listens for the changes', () => {
+            const { call, tokens } = setup(true, [], false);
+            call(IPC.llmTokenClear, 'openai');
+            expect(tokens.clear).toHaveBeenCalledWith('openai');
+        });
+
         it.each([['mistral'], ['speech-anthropic'], [undefined], [4], [null]])('removes nothing for the provider %s', (provider) => {
-            const { call, tokens } = setup();
+            const { call, tokens, onChanged } = setup();
             expect(call(IPC.llmTokenClear, provider)).toBeUndefined();
             expect(tokens.clear).not.toHaveBeenCalled();
+            expect(onChanged).not.toHaveBeenCalled();
         });
     });
 });

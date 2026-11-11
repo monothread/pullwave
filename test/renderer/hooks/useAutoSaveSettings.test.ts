@@ -57,6 +57,37 @@ describe('useAutoSaveSettings', () => {
         });
     });
 
+    describe('sync (no save)', () => {
+        it('puts what the main process saved in the draft without saving it again', async () => {
+            const save = makeSave();
+            const { result } = renderHook(() => {
+                return useAutoSaveSettings({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: true }, save);
+            });
+            act(() => {
+                result.current.sync({ animeAutoTranslateNew: false });
+            });
+            expect(result.current.draft).toEqual({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: false });
+            expect(result.current.status).toBe('idle');
+            await advance(AUTOSAVE_DELAY_MS * 2);
+            expect(save).not.toHaveBeenCalled();
+        });
+
+        it('is kept in what the next change saves', async () => {
+            const save = makeSave();
+            const { result } = renderHook(() => {
+                return useAutoSaveSettings({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: true }, save);
+            });
+            act(() => {
+                result.current.sync({ animeAutoTranslateNew: false });
+            });
+            await act(async () => {
+                result.current.change('animeAutoDownloadNew', true);
+            });
+            expect(save).toHaveBeenCalledTimes(1);
+            expect(save).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: false, animeAutoDownloadNew: true });
+        });
+    });
+
     describe('change (immediate)', () => {
         it('updates the draft and saves right away with the full settings', async () => {
             const save = makeSave();

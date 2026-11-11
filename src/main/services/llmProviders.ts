@@ -66,7 +66,9 @@ function geminiRequest(request: LlmRequest, base: string): PreparedRequest {
         headers: { 'x-goog-api-key': request.token },
         body: {
             systemInstruction: { parts: [{ text: request.system }] },
-            contents: [{ role: 'user', parts: [{ text: request.user }] }]
+            contents: [{ role: 'user', parts: [{ text: request.user }] }],
+            // The answer is always a JSON array: asked as JSON, it comes without code fences or text around it.
+            generationConfig: { responseMimeType: 'application/json' }
         }
     };
 }

@@ -498,6 +498,10 @@ export interface SubtitleTranslationJob {
     reason: string | null;
 }
 
+// Why the automatic translation of the new episodes was turned off by itself: the provider has no more credit, did not accept the token or
+// does not have the model, or the settings lack the token, the model or the address of the provider.
+export type AutoTranslateOffReason = 'quota' | 'token' | 'model' | 'setup';
+
 // The languages the audio of an episode can be in, to make its subtitle (the name is also the label of the new track, and the code is
 // what the service of speech to text is told).
 export const TRANSCRIPTION_LANGUAGES = [
@@ -615,6 +619,12 @@ export interface SubtitleGenerationJob {
     plan?: SubtitleGeneratePlan;
     sentBytes?: number;
     totalBytes?: number;
+}
+
+// The subtitles that are waiting to be translated or made, or are being worked on now (the ones that ended are not listed).
+export interface SubtitleJobs {
+    translations: SubtitleTranslationJob[];
+    generations: SubtitleGenerationJob[];
 }
 
 export const ANIME_STREAM_SCHEME = 'pullwave-stream';

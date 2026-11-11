@@ -53,6 +53,7 @@ describe('sanitizeSettings', () => {
             animeSubtitles: 'Portuguese',
             animeCheckNewEpisodes: false,
             animeAutoDownloadNew: true,
+            animeAutoTranslateNew: true,
             mangaDirectory: '/media/manga',
             mangaFormat: 'folder',
             mangaFlaresolverrUrl: 'http://192.168.0.5:8191',
@@ -128,6 +129,19 @@ describe('sanitizeSettings', () => {
 
     it.each(['yes', 1, null, []])('falls back to not downloading the new episodes for the invalid value %j', (animeAutoDownloadNew) => {
         expect(sanitizeSettings({ animeAutoDownloadNew }).animeAutoDownloadNew).toBe(false);
+    });
+
+    it('does not translate the subtitles of the new episodes by default', () => {
+        expect(DEFAULT_SETTINGS.animeAutoTranslateNew).toBe(false);
+        expect(sanitizeSettings({}).animeAutoTranslateNew).toBe(false);
+    });
+
+    it.each([true, false])('keeps the choice of translating the subtitles of the new episodes (%j)', (animeAutoTranslateNew) => {
+        expect(sanitizeSettings({ animeAutoTranslateNew }).animeAutoTranslateNew).toBe(animeAutoTranslateNew);
+    });
+
+    it.each(['yes', 1, null, [], {}])('falls back to not translating the subtitles of the new episodes for the invalid value %j', (animeAutoTranslateNew) => {
+        expect(sanitizeSettings({ animeAutoTranslateNew }).animeAutoTranslateNew).toBe(false);
     });
 
     it('drops the limit of manga downloads saved by an older version (it is fixed now), touching nothing else', () => {

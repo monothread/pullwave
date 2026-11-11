@@ -11,6 +11,8 @@ export interface AutoSaveSettings {
     change: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
     edit: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
     changeMany: (patch: Partial<Settings>) => void;
+    // Puts in the draft what the main process saved by itself, without saving it again.
+    sync: (patch: Partial<Settings>) => void;
 }
 
 export function useAutoSaveSettings(stored: Settings, save: (settings: Settings) => Promise<Settings>): AutoSaveSettings {
@@ -91,5 +93,5 @@ export function useAutoSaveSettings(stored: Settings, save: (settings: Settings)
         };
     }, [flush]);
 
-    return { draft, status, change, edit, changeMany };
+    return { draft, status, change, edit, changeMany, sync: applyMany };
 }

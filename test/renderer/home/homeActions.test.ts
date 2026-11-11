@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { openActiveDownload, openAnime, openManga, pasteLink, showCut, showQueue } from '@renderer/home/homeActions';
+import { openActiveDownload, openAnime, openManga, openSubtitleJobs, pasteLink, showCut, showQueue } from '@renderer/home/homeActions';
 import { onNavigationBatchEnd } from '@renderer/navigation/navigationBatch';
 import { useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
@@ -10,7 +10,7 @@ const initialAnime = useAnimeStore.getState();
 const initialManga = useMangaStore.getState();
 
 const app = { setTab: vi.fn(), setDownloadsView: vi.fn() };
-const anime = { setView: vi.fn(), openDownloads: vi.fn() };
+const anime = { setView: vi.fn(), openDownloads: vi.fn(), openSubtitleJobs: vi.fn() };
 const manga = { setView: vi.fn(), openDownloads: vi.fn() };
 
 beforeEach(() => {
@@ -36,6 +36,17 @@ describe('showQueue', () => {
     });
 });
 
+describe('openSubtitleJobs', () => {
+    it('opens the anime section on the screen of the subtitles being translated or made', () => {
+        openSubtitleJobs();
+        expect(app.setTab.mock.calls).toEqual([['anime']]);
+        expect(anime.openSubtitleJobs).toHaveBeenCalledTimes(1);
+        expect(anime.openSubtitleJobs).toHaveBeenCalledWith();
+        expect(anime.openDownloads).not.toHaveBeenCalled();
+        expect(anime.setView).not.toHaveBeenCalled();
+    });
+});
+
 describe('showCut', () => {
     it('opens the cutter of the video downloader', () => {
         showCut();
@@ -56,7 +67,8 @@ describe('the changes of page of the home screen', () => {
         }],
         ['openActiveDownload', () => {
             openActiveDownload('anime');
-        }]
+        }],
+        ['openSubtitleJobs', openSubtitleJobs]
     ])('%s is one page for the buttons of the mouse: its steps end in one batch', (_name, action) => {
         const ended = vi.fn();
         const stop = onNavigationBatchEnd(ended);

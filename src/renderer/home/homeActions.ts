@@ -50,6 +50,14 @@ export function openManga(view: Extract<MangaBrowseView, 'library' | 'updates' |
     });
 }
 
+// The screen of the subtitles being translated or made, in the anime section.
+export function openSubtitleJobs(): void {
+    batchNavigation(() => {
+        useAppStore.getState().setTab('anime');
+        useAnimeStore.getState().openSubtitleJobs();
+    });
+}
+
 // The downloads of a section.
 export function openActiveDownload(kind: ActiveDownloadKind): void {
     if (kind === 'video') {

@@ -295,6 +295,38 @@ describe('AnimePanel', () => {
         });
     });
 
+    describe('the subtitles being translated or made', () => {
+        it('shows their screen in place of the tabs, and BACK returns to the screen it was opened from', async () => {
+            const user = userEvent.setup();
+            useAnimeStore.setState({
+                library: [makeAnime([makeEpisode({ id: 4, animeId: 3, number: '7' })], { id: 3, title: 'Naruto' })],
+                subtitleJobs: [{ kind: 'translation', job: { episodeId: 4, language: 'Spanish', status: 'running', done: 1, total: 4, reason: null } }],
+                view: 'library',
+                returnView: 'library'
+            });
+            render(<AnimePanel />);
+            act(() => {
+                useAnimeStore.getState().openSubtitleJobs();
+            });
+
+            expect(screen.getByRole('region', { name: 'TRANSLATING (1)' })).toBeInTheDocument();
+            expect(screen.getByTestId('anime-subtitle-job')).toHaveTextContent('Naruto · EP 7');
+            expect(screen.queryByRole('navigation', { name: 'Anime' })).not.toBeInTheDocument();
+            expect(screen.queryByTestId('anime-job')).not.toBeInTheDocument();
+
+            await user.click(screen.getByRole('button', { name: 'BACK' }));
+            expect(useAnimeStore.getState().view).toBe('library');
+            expect(within(subNav()).getByRole('button', { name: 'LIBRARY' })).toHaveAttribute('aria-current', 'page');
+            expect(screen.queryByTestId('anime-subtitle-job')).not.toBeInTheDocument();
+        });
+
+        it('says when nothing is being translated or made', () => {
+            useAnimeStore.setState({ view: 'subtitles', returnView: 'search' });
+            render(<AnimePanel />);
+            expect(screen.getByText('// NO SUBTITLE IS BEING TRANSLATED OR CREATED.')).toBeInTheDocument();
+        });
+    });
+
     it('opens the player of a stream over the section, on the search and on the downloads screen', async () => {
         const user = userEvent.setup();
         useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null, nextEpisode: null } });

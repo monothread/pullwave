@@ -12,7 +12,7 @@ import type { AudioFiles, FfmpegRunner } from '@main/services/audioExtractor';
 import type { LlmFetch } from '@main/services/llmProviders';
 import { cleanTempDirs, makeTempDir } from '../helpers/tempDir';
 import { pcmOf, silence, tone } from '../helpers/speechPcm';
-import { systemPromptFor } from '@main/services/subtitleTranslator';
+import { PROMPT_TOKENS, systemPromptFor } from '@main/services/subtitleTranslator';
 
 // The library keeps its file open (and Windows will not delete an open file): close what a test opened before cleaning up.
 const opened: AnimeRuntime[] = [];
@@ -283,6 +283,34 @@ describe('createAnimeRuntime', () => {
                 ]);
             });
 
+            it('lists the translation while it waits for the provider, and nothing once it ended', async () => {
+                let release: () => void = () => {
+                    return undefined;
+                };
+                const llmFetch = vi.fn((): Promise<Response> => {
+                    return new Promise((resolve) => {
+                        release = () => {
+                            resolve(openAiAnswer());
+                        };
+                    });
+                });
+                const { runtime, episode } = translating({}, 'sk-1', llmFetch);
+                expect(runtime?.handlers.subtitles.jobs()).toEqual({ translations: [], generations: [] });
+
+                const answer = runtime?.handlers.subtitles.translate({ episodeId: episode.id, trackId: null, language: 'Spanish' });
+                await vi.waitFor(() => {
+                    expect(llmFetch).toHaveBeenCalledTimes(1);
+                });
+
+                expect(runtime?.handlers.subtitles.jobs()).toEqual({
+                    translations: [{ episodeId: episode.id, language: 'Spanish', status: 'running', done: 0, total: 1, reason: null }],
+                    generations: []
+                });
+                release();
+                await answer;
+                expect(runtime?.handlers.subtitles.jobs()).toEqual({ translations: [], generations: [] });
+            });
+
             describe('when the episode has the subtitle in that language already', () => {
                 const OLD = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola de antes\n';
 
@@ -448,7 +476,7 @@ describe('createAnimeRuntime', () => {
                     return openAiAnswer();
                 });
                 const { runtime, episode } = translating({}, 'sk-1', llmFetch);
-                expect(await runtime?.handlers.subtitles.estimate({ episodeId: episode.id, trackId: null })).toEqual({ ok: true, cues: 1, batches: 1, approxTokens: 2 * 1 + 150 });
+                expect(await runtime?.handlers.subtitles.estimate({ episodeId: episode.id, trackId: null })).toEqual({ ok: true, cues: 1, batches: 1, approxTokens: 2 * 1 + PROMPT_TOKENS });
                 expect(llmFetch).not.toHaveBeenCalled();
             });
 
@@ -2287,5 +2315,86 @@ describe('createAnimeRuntime covers', () => {
         await expect(runtime.handlers.covers.find('Naruto')).rejects.toThrow('AniList could not be reached:');
 
         expect(runtime.db.getCover('naruto')).toBeNull();
+    });
+});
+
+describe('createAnimeRuntime automatic translation of the new episodes', () => {
+    function withSettings(settings: Partial<typeof DEFAULT_SETTINGS>, token: string | null) {
+        const disableAutoTranslate = vi.fn();
+        const getLlmToken = vi.fn(() => {
+            return token;
+        });
+        const { send, options: given } = options({
+            getSettings: () => {
+                return { ...DEFAULT_SETTINGS, ...settings };
+            },
+            getLlmToken,
+            disableAutoTranslate
+        });
+        const runtime = open(given) as AnimeRuntime;
+        return { runtime, send, disableAutoTranslate, getLlmToken };
+    }
+
+    it('turns it off and tells the screen when it is on and the provider has no token', () => {
+        const { runtime, send, disableAutoTranslate, getLlmToken } = withSettings({ animeAutoTranslateNew: true, translateProvider: 'anthropic', translateModel: 'claude-x' }, null);
+
+        runtime.enforceAutoTranslateSetup();
+
+        expect(getLlmToken).toHaveBeenCalledWith('anthropic');
+        expect(disableAutoTranslate).toHaveBeenCalledTimes(1);
+        expect(disableAutoTranslate).toHaveBeenCalledWith();
+        expect(send.mock.calls).toEqual([[IPC.eventAnimeAutoTranslateOff, 'setup']]);
+    });
+
+    it('turns it off when the settings have no model', () => {
+        const { runtime, send, disableAutoTranslate } = withSettings({ animeAutoTranslateNew: true, translateModel: '' }, 'sk-1');
+
+        runtime.enforceAutoTranslateSetup();
+
+        expect(disableAutoTranslate).toHaveBeenCalledTimes(1);
+        expect(send.mock.calls).toEqual([[IPC.eventAnimeAutoTranslateOff, 'setup']]);
+    });
+
+    it('turns it off for a provider of the user that has no address', () => {
+        const { runtime, send } = withSettings({ animeAutoTranslateNew: true, translateProvider: 'custom', translateModel: 'local-x', translateBaseUrl: '' }, 'sk-1');
+
+        runtime.enforceAutoTranslateSetup();
+
+        expect(send.mock.calls).toEqual([[IPC.eventAnimeAutoTranslateOff, 'setup']]);
+    });
+
+    it('leaves it on when the provider has its token and its model', () => {
+        const { runtime, send, disableAutoTranslate } = withSettings({ animeAutoTranslateNew: true, translateModel: 'gpt-x' }, 'sk-1');
+
+        runtime.enforceAutoTranslateSetup();
+
+        expect(disableAutoTranslate).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it('does nothing while it is off', () => {
+        const { runtime, send, disableAutoTranslate } = withSettings({ animeAutoTranslateNew: false }, null);
+
+        runtime.enforceAutoTranslateSetup();
+
+        expect(disableAutoTranslate).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it('still tells the screen when there is no way to save the setting', () => {
+        const getLlmToken = vi.fn(() => {
+            return null;
+        });
+        const { send, options: given } = options({
+            getSettings: () => {
+                return { ...DEFAULT_SETTINGS, animeAutoTranslateNew: true, translateModel: 'gpt-x' };
+            },
+            getLlmToken
+        });
+        const runtime = open(given) as AnimeRuntime;
+
+        runtime.enforceAutoTranslateSetup();
+
+        expect(send.mock.calls).toEqual([[IPC.eventAnimeAutoTranslateOff, 'setup']]);
     });
 });

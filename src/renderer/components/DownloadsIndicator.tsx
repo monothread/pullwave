@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { openActiveDownload } from '../home/homeActions';
+import { openActiveDownload, openSubtitleJobs } from '../home/homeActions';
 import { activeDownloads, type ActiveDownloadKind } from '../home/homeData';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
@@ -18,6 +18,23 @@ export function countByKind(kinds: readonly ActiveDownloadKind[]): Record<Active
     return counts;
 }
 
+interface IndicatorRowProps {
+    section: string;
+    count: number;
+    onOpen: () => void;
+}
+
+// A line of the list of the arrow: the name of what it leads to and how many are going on there.
+function IndicatorRow({ section, count, onOpen }: IndicatorRowProps) {
+    const t = useTranslator();
+    return (
+        <button type="button" className="downloads-indicator__row" aria-label={t('downloads.indicator.row', { section, count })} onClick={onOpen}>
+            <span className="downloads-indicator__section">{section}</span>
+            <span className="downloads-indicator__number">{count}</span>
+        </button>
+    );
+}
+
 // The arrow of the top bar with how many downloads are going on in the whole app; it opens a list with one line per section, which leads
 // to the downloads of that section.
 export function DownloadsIndicator() {
@@ -33,6 +50,10 @@ export function DownloadsIndicator() {
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
+    // The subtitles being translated or made: they have a line of their own, and count with the downloads.
+    const subtitleJobs = useAnimeStore((state) => {
+        return state.subtitleJobs.length;
+    });
     const mangaJobs = useShownJobs();
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
@@ -44,7 +65,7 @@ export function DownloadsIndicator() {
             })
         );
     }, [videoJobs, animeJobs, mangaJobs]);
-    const total = counts.video + counts.anime + counts.manga;
+    const total = counts.video + counts.anime + counts.manga + subtitleJobs;
     const kinds = KINDS.filter((kind) => {
         return (kind !== 'anime' || animeSupported) && (kind !== 'manga' || mangaSupported);
     });
@@ -96,23 +117,28 @@ export function DownloadsIndicator() {
                 <div className="downloads-indicator__panel">
                     {total === 0 && <p className="downloads-indicator__empty">{t('downloads.indicator.empty')}</p>}
                     {kinds.map((kind) => {
-                        const section = t(`downloads.indicator.${kind}`);
                         return (
-                            <button
+                            <IndicatorRow
                                 key={kind}
-                                type="button"
-                                className="downloads-indicator__row"
-                                aria-label={t('downloads.indicator.row', { section, count: counts[kind] })}
-                                onClick={() => {
+                                section={t(`downloads.indicator.${kind}`)}
+                                count={counts[kind]}
+                                onOpen={() => {
                                     setOpen(false);
                                     openActiveDownload(kind);
                                 }}
-                            >
-                                <span className="downloads-indicator__section">{section}</span>
-                                <span className="downloads-indicator__number">{counts[kind]}</span>
-                            </button>
+                            />
                         );
                     })}
+                    {animeSupported && (
+                        <IndicatorRow
+                            section={t('downloads.indicator.subtitles')}
+                            count={subtitleJobs}
+                            onOpen={() => {
+                                setOpen(false);
+                                openSubtitleJobs();
+                            }}
+                        />
+                    )}
                 </div>
             )}
         </div>

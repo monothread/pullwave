@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { IPC } from '@shared/constants';
-import type { AnimeCheckState, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeCheckState, AnimeCoverUpdate, AnimeJob, AnimeMigrationProgress, AnimeNewEpisodes, AutoTranslateOffReason, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
 import type { CutRun } from '@shared/cut';
 import type { MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ToolState } from '@shared/tools';
@@ -514,6 +514,9 @@ const api: CyberApi = {
     cancelAnimeSubtitleGeneration: (episodeId) => {
         return ipcRenderer.invoke(IPC.animeSubtitleGenerateCancel, episodeId);
     },
+    listSubtitleJobs: () => {
+        return ipcRenderer.invoke(IPC.animeSubtitleJobs);
+    },
     getLlmStatus: () => {
         return ipcRenderer.invoke(IPC.llmStatus);
     },
@@ -575,6 +578,9 @@ const api: CyberApi = {
     },
     onAnimeNewEpisodes: (listener) => {
         return subscribe<AnimeNewEpisodes>(IPC.eventAnimeNewEpisodes, listener);
+    },
+    onAnimeAutoTranslateOff: (listener) => {
+        return subscribe<AutoTranslateOffReason>(IPC.eventAnimeAutoTranslateOff, listener);
     },
     onAnimeCheckState: (listener) => {
         return subscribe<AnimeCheckState>(IPC.eventAnimeCheckState, listener);

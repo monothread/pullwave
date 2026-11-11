@@ -1,5 +1,16 @@
 import type { SubtitleGeneratePlan, SubtitleGenerationPhase } from '@shared/anime';
-import { overallPercent, stepsOf, stepStatesOf } from '@renderer/components/generateProgress';
+import { overallPercent, stepOfPhase, stepsOf, stepStatesOf } from '@renderer/components/generateProgress';
+
+describe('stepOfPhase', () => {
+    it.each([
+        ['extracting', 'extract'],
+        ['sending', 'send'],
+        ['translating', 'translate'],
+        ['saving', 'save']
+    ] as const)('puts the phase %s in the step %s', (phase, step) => {
+        expect(stepOfPhase(phase)).toBe(step);
+    });
+});
 
 describe('stepsOf', () => {
     it.each(['transcribe', 'direct'] as const)('has no step of translating the text when the plan is %s', (plan) => {

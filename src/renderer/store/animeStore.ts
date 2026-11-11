@@ -11,10 +11,17 @@ import { resolveAppLanguage } from '../i18n/language';
 import { downloadedEpisodeCount, groupLibrary, isRepairable, libraryEntry, libraryProblems, nextListedEpisode, type AudioReport } from '../components/animeText';
 import { useAppStore } from './appStore';
 import { animeListKey, useSortPrefsStore } from './sortPrefsStore';
+import { activitiesOf, upsertSubtitleActivity, type SubtitleActivity } from './subtitleActivity';
 
-export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads';
-// The views the downloads screen can go back to.
-export type AnimeBrowseView = Exclude<AnimeView, 'downloads'>;
+export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads' | 'subtitles';
+// The screens opened over the others (from the top bar), with BACK to the one that was shown: the downloads and the subtitles being worked on.
+export type AnimeOverlayView = Extract<AnimeView, 'downloads' | 'subtitles'>;
+// The views the screens opened over the others can go back to.
+export type AnimeBrowseView = Exclude<AnimeView, AnimeOverlayView>;
+
+function isOverlayView(view: AnimeView): view is AnimeOverlayView {
+    return view === 'downloads' || view === 'subtitles';
+}
 
 export interface AnimeSearchState {
     query: string;
@@ -90,9 +97,11 @@ export interface AnimeState {
     checkingAudio: boolean;
     audioReport: AudioReport | null;
     view: AnimeView;
-    // Where BACK goes from the downloads screen.
+    // Where BACK goes from the downloads screen and from the one of the subtitles.
     returnView: AnimeBrowseView;
     jobs: AnimeJob[];
+    // The subtitles being translated or made from the audio, or waiting to be (the ones that ended leave the list).
+    subtitleJobs: SubtitleActivity[];
     // The queue is held by PAUSE ALL: what waits keeps waiting.
     queueHeld: boolean;
     library: LibraryAnime[];
@@ -124,6 +133,11 @@ export interface AnimeState {
     setView: (view: AnimeBrowseView) => void;
     openDownloads: () => void;
     closeDownloads: () => void;
+    // The screen of the subtitles being translated or made, and BACK from it.
+    openSubtitleJobs: () => void;
+    closeSubtitleJobs: () => void;
+    // Cancels the translation, or the making, of the subtitle of an episode.
+    cancelSubtitleJob: (activity: SubtitleActivity) => Promise<void>;
     openSeries: (key: string) => void;
     closeSeries: () => void;
     openSeason: (animeId: number) => void;
@@ -259,6 +273,19 @@ function sourceIdOf(result: AnimeSearchResult): { sourceId?: string } {
     return result.sourceId === undefined ? {} : { sourceId: result.sourceId };
 }
 
+// A screen opened over the others: BACK goes to the screen that was shown, or, when another screen over the others was shown, to the one that
+// screen went back to.
+function overlayOpened(state: Pick<AnimeState, 'view' | 'returnView'>, view: AnimeOverlayView): Pick<AnimeState, 'view' | 'returnView'> {
+    if (state.view === view) {
+        return state;
+    }
+    return { view, returnView: isOverlayView(state.view) ? state.returnView : state.view };
+}
+
+function overlayClosed(state: Pick<AnimeState, 'returnView'>): Pick<AnimeState, 'view'> {
+    return { view: state.returnView };
+}
+
 function translateNow(key: MessageKey, params?: MessageParams): string {
     return createTranslator(resolveAppLanguage(useAppStore.getState().settings.language))(key, params);
 }
@@ -313,6 +340,7 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         audioReport: null,
         view: 'schedule',
         returnView: 'schedule',
+        subtitleJobs: [],
         jobs: [],
         queueHeld: false,
         library: [],
@@ -339,9 +367,26 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     return undefined;
                 };
             }
-            const [library, jobs, history, checkState, queueHeld] = await Promise.all([api.listAnimeLibrary(), api.listAnimeJobs(), api.listAnimeHistory(), api.getAnimeCheckState(), api.animeQueueHeld()]);
-            set({ library, jobs, history, checkState, queueHeld });
+            const [library, jobs, history, checkState, queueHeld, subtitleJobs] = await Promise.all([
+                api.listAnimeLibrary(),
+                api.listAnimeJobs(),
+                api.listAnimeHistory(),
+                api.getAnimeCheckState(),
+                api.animeQueueHeld(),
+                api.listSubtitleJobs()
+            ]);
+            set({ library, jobs, history, checkState, queueHeld, subtitleJobs: activitiesOf(subtitleJobs) });
             const unsubscribers = [
+                api.onSubtitleTranslationUpdate((job) => {
+                    set((state) => {
+                        return { subtitleJobs: upsertSubtitleActivity(state.subtitleJobs, { kind: 'translation', job }) };
+                    });
+                }),
+                api.onSubtitleGenerationUpdate((job) => {
+                    set((state) => {
+                        return { subtitleJobs: upsertSubtitleActivity(state.subtitleJobs, { kind: 'generation', job }) };
+                    });
+                }),
                 api.onAnimeJobUpdate((job) => {
                     if (job.status === 'done') {
                         // A download that is complete says so for a few seconds and leaves the screen of the downloads: it is in the library.
@@ -380,6 +425,11 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 api.onAnimeCheckState((checkState) => {
                     set({ checkState });
                 }),
+                api.onAnimeAutoTranslateOff((reason) => {
+                    // The main process saved the setting off: the screen reads the settings again so the switch shows it.
+                    void useAppStore.getState().refreshSettings();
+                    useAppStore.getState().pushToast(translateNow(`anime.notice.autoTranslateOff.${reason}`));
+                }),
                 api.onAnimeNewEpisodes((news) => {
                     useAppStore.getState().pushToast(translateNow('anime.notice.newEpisodes', { count: news.count, titles: news.titles.join(', ') }));
                     if (news.notDownloaded.length > 0) {
@@ -408,14 +458,30 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         openDownloads: () => {
             set((state) => {
-                return state.view === 'downloads' ? state : { view: 'downloads', returnView: state.view };
+                return overlayOpened(state, 'downloads');
             });
         },
 
         closeDownloads: () => {
+            set(overlayClosed);
+        },
+
+        openSubtitleJobs: () => {
             set((state) => {
-                return { view: state.returnView };
+                return overlayOpened(state, 'subtitles');
             });
+        },
+
+        closeSubtitleJobs: () => {
+            set(overlayClosed);
+        },
+
+        cancelSubtitleJob: async (activity) => {
+            if (activity.kind === 'translation') {
+                await window.api.cancelAnimeSubtitleTranslation(activity.job.episodeId);
+                return;
+            }
+            await window.api.cancelAnimeSubtitleGeneration(activity.job.episodeId);
         },
 
         openSeries: (key) => {

@@ -1118,6 +1118,110 @@ describe('SettingsPanel anime section', () => {
             expect(screen.getByRole('switch', { name: 'Download the new episodes found' })).toBeChecked();
         });
 
+        describe('the switch that translates the subtitles of the new episodes', () => {
+            const NAME = 'Translate the subtitles of the new episodes downloaded';
+            const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the translation language below when it is "WHAT ANI-CLI PICKS"), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
+            const NEEDS_SETUP = 'Save the token and the model of the provider that translates subtitles (below) to turn this on.';
+            const READY = { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'gpt-x' } as const;
+
+            it('is off and cannot be turned on while the provider has no token', async () => {
+                useAppStore.setState({ settings: READY });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                const toggle = screen.getByRole('switch', { name: NAME });
+                expect(toggle).not.toBeChecked();
+                expect(toggle).toBeDisabled();
+                expect(screen.getByText(NEEDS_SETUP)).toBeInTheDocument();
+                expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+                expect(mock.api.saveSettings).not.toHaveBeenCalled();
+            });
+
+            it('cannot be turned on while the settings have no model, even with the token', async () => {
+                mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: ['openai'] });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByRole('switch', { name: NAME })).toBeDisabled();
+                expect(screen.getByText(NEEDS_SETUP)).toBeInTheDocument();
+            });
+
+            it('cannot be turned on when only another provider has the token', async () => {
+                mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: ['anthropic', 'speech-openai'] });
+                useAppStore.setState({ settings: READY });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByRole('switch', { name: NAME })).toBeDisabled();
+            });
+
+            it('cannot be turned on for a provider of the user that has no address', async () => {
+                mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: ['custom'] });
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateProvider: 'custom', translateModel: 'local-x', translateBaseUrl: '' } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByRole('switch', { name: NAME })).toBeDisabled();
+            });
+
+            it('can be turned on once the provider has its token and its model, shows its hint and saves right away', async () => {
+                mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: ['openai'] });
+                useAppStore.setState({ settings: READY });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                const toggle = screen.getByRole('switch', { name: NAME });
+                expect(toggle).toBeEnabled();
+                expect(toggle).not.toBeChecked();
+                expect(screen.getByText(HINT)).toBeInTheDocument();
+                expect(screen.queryByText(NEEDS_SETUP)).not.toBeInTheDocument();
+                fireEvent.click(toggle);
+                await flushPromises();
+                expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+                expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...READY, animeAutoTranslateNew: true });
+            });
+
+            it('shows the stored choice and can still be turned off when the token is gone', async () => {
+                useAppStore.setState({ settings: { ...READY, animeAutoTranslateNew: true } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                const toggle = screen.getByRole('switch', { name: NAME });
+                expect(toggle).toBeChecked();
+                expect(toggle).toBeEnabled();
+                expect(screen.getByText(NEEDS_SETUP)).toBeInTheDocument();
+                fireEvent.click(toggle);
+                await flushPromises();
+                expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...READY, animeAutoTranslateNew: false });
+            });
+
+            it('follows the main process turning it off, without saving it again', async () => {
+                mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: ['openai'] });
+                useAppStore.setState({ settings: { ...READY, animeAutoTranslateNew: true } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                expect(screen.getByRole('switch', { name: NAME })).toBeChecked();
+                act(() => {
+                    useAppStore.setState({ settings: { ...READY, animeAutoTranslateNew: false } });
+                });
+                await flushPromises();
+                expect(screen.getByRole('switch', { name: NAME })).not.toBeChecked();
+                await advance(AUTOSAVE_DELAY_MS * 2);
+                expect(mock.api.saveSettings).not.toHaveBeenCalled();
+            });
+
+            it('is not turned off by the settings being read again while it stays on', async () => {
+                mock.api.getLlmStatus.mockResolvedValue({ canStore: true, providers: ['openai'] });
+                useAppStore.setState({ settings: { ...READY, animeAutoTranslateNew: true } });
+                render(<SettingsPanel scope="anime" />);
+                await flushPromises();
+                act(() => {
+                    useAppStore.setState({ settings: { ...READY, animeAutoTranslateNew: true, animeQuality: '720p' } });
+                });
+                await flushPromises();
+                expect(screen.getByRole('switch', { name: NAME })).toBeChecked();
+            });
+
+            it('is not in the manga settings', () => {
+                render(<SettingsPanel scope="manga" />);
+                expect(screen.queryByRole('switch', { name: NAME })).not.toBeInTheDocument();
+            });
+        });
+
         it('has neither switch in the manga settings', () => {
             render(<SettingsPanel scope="manga" />);
             expect(screen.queryByRole('switch', { name: 'Look for new episodes every 3 hours' })).not.toBeInTheDocument();

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useFxStore } from '@renderer/fx/fxStore';
-import type { AnimeCheckState, AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, AnimeSearchResult, AnimeUpdateEntry } from '@shared/anime';
+import type { AnimeCheckState, AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, AnimeSearchResult, AnimeUpdateEntry, SubtitleGenerationJob, SubtitleTranslationJob } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { useAppStore } from '@renderer/store/appStore';
@@ -19,7 +19,7 @@ const SUPPORTED = makeStatus();
 beforeEach(() => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: DEFAULT_SETTINGS, notice: null });
-    useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, view: 'search', returnView: 'search', jobs: [], library: [], history: [], migration: null, search: INITIAL_SEARCH, schedule: INITIAL_SCHEDULE, selection: null, playing: null, streaming: null });
+    useAnimeStore.setState({ ...initialAnime, status: UNSUPPORTED_STATUS, view: 'search', returnView: 'search', jobs: [], subtitleJobs: [], library: [], history: [], migration: null, search: INITIAL_SEARCH, schedule: INITIAL_SCHEDULE, selection: null, playing: null, streaming: null });
 });
 
 describe('effectiveAudio', () => {
@@ -33,6 +33,7 @@ describe('effectiveAudio', () => {
 describe('useAnimeStore initial state', () => {
     it('starts unsupported and empty', () => {
         expect(initialAnime.status).toEqual({ supported: false, available: false, aniCli: null });
+        expect(initialAnime.subtitleJobs).toEqual([]);
         expect(initialAnime.view).toBe('schedule');
         expect(initialAnime.returnView).toBe('schedule');
         expect(initialAnime.schedule).toEqual({ status: 'idle', entries: [], error: null, view: 'day', timeZone: machineTimeZone(), limits: [] });
@@ -88,10 +89,70 @@ describe('init', () => {
         });
 
         dispose();
-        expect(mock.unsubscribers).toHaveLength(7);
+        expect(mock.unsubscribers).toHaveLength(10);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe('init and the subtitles being worked on', () => {
+    const RUNNING: SubtitleTranslationJob = { episodeId: 4, language: 'Spanish', status: 'running', done: 2, total: 10, reason: null };
+    const MAKING: SubtitleGenerationJob = { episodeId: 9, language: 'Korean', status: 'queued', done: 0, total: 0, reason: null };
+
+    it('reads the subtitles that go on in the main process', async () => {
+        mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
+        mock.api.listSubtitleJobs.mockResolvedValue({ translations: [RUNNING], generations: [MAKING] });
+
+        await useAnimeStore.getState().init();
+
+        expect(mock.api.listSubtitleJobs).toHaveBeenCalledTimes(1);
+        expect(mock.api.listSubtitleJobs).toHaveBeenCalledWith();
+        expect(useAnimeStore.getState().subtitleJobs).toEqual([
+            { kind: 'translation', job: RUNNING },
+            { kind: 'generation', job: MAKING }
+        ]);
+    });
+
+    it('does not ask for them where the section does not exist', async () => {
+        await useAnimeStore.getState().init();
+        expect(mock.api.listSubtitleJobs).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState().subtitleJobs).toEqual([]);
+    });
+
+    it('follows each translation and each subtitle made from the audio until they end', async () => {
+        mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
+        const dispose = await useAnimeStore.getState().init();
+
+        mock.emitSubtitleTranslation({ ...RUNNING, status: 'queued', done: 0, total: 0 });
+        mock.emitSubtitleGeneration(MAKING);
+        mock.emitSubtitleTranslation(RUNNING);
+        expect(useAnimeStore.getState().subtitleJobs).toEqual([
+            { kind: 'translation', job: RUNNING },
+            { kind: 'generation', job: MAKING }
+        ]);
+
+        mock.emitSubtitleTranslation({ ...RUNNING, status: 'done', done: 10 });
+        expect(useAnimeStore.getState().subtitleJobs).toEqual([{ kind: 'generation', job: MAKING }]);
+        mock.emitSubtitleGeneration({ ...MAKING, status: 'error', reason: 'no-audio' });
+        expect(useAnimeStore.getState().subtitleJobs).toEqual([]);
+        dispose();
+    });
+});
+
+describe('cancelSubtitleJob', () => {
+    it('cancels the translation of the episode', async () => {
+        await useAnimeStore.getState().cancelSubtitleJob({ kind: 'translation', job: { episodeId: 4, language: 'Spanish', status: 'running', done: 0, total: 0, reason: null } });
+        expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledTimes(1);
+        expect(mock.api.cancelAnimeSubtitleTranslation).toHaveBeenCalledWith(4);
+        expect(mock.api.cancelAnimeSubtitleGeneration).not.toHaveBeenCalled();
+    });
+
+    it('cancels the making of the subtitle of the episode', async () => {
+        await useAnimeStore.getState().cancelSubtitleJob({ kind: 'generation', job: { episodeId: 9, language: 'Korean', status: 'queued', done: 0, total: 0, reason: null } });
+        expect(mock.api.cancelAnimeSubtitleGeneration).toHaveBeenCalledTimes(1);
+        expect(mock.api.cancelAnimeSubtitleGeneration).toHaveBeenCalledWith(9);
+        expect(mock.api.cancelAnimeSubtitleTranslation).not.toHaveBeenCalled();
     });
 });
 
@@ -451,6 +512,27 @@ describe('simple setters', () => {
         useAnimeStore.getState().setView('library');
         useAnimeStore.getState().openDownloads();
         useAnimeStore.getState().openDownloads();
+        useAnimeStore.getState().closeDownloads();
+        expect(useAnimeStore.getState().view).toBe('library');
+    });
+
+    it('remembers the view the screen of the subtitles goes back to', () => {
+        useAnimeStore.getState().setView('updates');
+        useAnimeStore.getState().openSubtitleJobs();
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'subtitles', returnView: 'updates' });
+        useAnimeStore.getState().openSubtitleJobs();
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'subtitles', returnView: 'updates' });
+        useAnimeStore.getState().closeSubtitleJobs();
+        expect(useAnimeStore.getState().view).toBe('updates');
+    });
+
+    it('goes back to the screen shown before when the downloads and the subtitles are opened one after the other', () => {
+        useAnimeStore.getState().setView('library');
+        useAnimeStore.getState().openDownloads();
+        useAnimeStore.getState().openSubtitleJobs();
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'subtitles', returnView: 'library' });
+        useAnimeStore.getState().openDownloads();
+        expect(useAnimeStore.getState()).toMatchObject({ view: 'downloads', returnView: 'library' });
         useAnimeStore.getState().closeDownloads();
         expect(useAnimeStore.getState().view).toBe('library');
     });
@@ -2283,6 +2365,28 @@ describe('the schedule', () => {
                     '30 new episode(s) added to the library: One Piece',
                     'Too many new episodes at once to download them by themselves: One Piece. They are in the library.'
                 ]);
+                dispose();
+            });
+
+            it.each([
+                ['quota', 'The automatic translation of the new episodes was turned off: the translation provider has no credit left.'],
+                ['token', 'The automatic translation of the new episodes was turned off: the translation provider did not accept the token.'],
+                ['model', 'The automatic translation of the new episodes was turned off: the translation provider does not have the model.'],
+                ['setup', 'The automatic translation of the new episodes was turned off: the token or the model of the translation provider is missing.']
+            ] as const)('reads the settings again and says why the automatic translation was turned off (%s)', async (reason, message) => {
+                const dispose = await useAnimeStore.getState().init();
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeAutoTranslateNew: true } });
+                mock.api.getSettings.mockClear();
+                mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: false });
+
+                mock.emitAnimeAutoTranslateOff(reason);
+
+                expect(toasts()).toEqual([message]);
+                expect(mock.api.getSettings).toHaveBeenCalledTimes(1);
+                expect(mock.api.getSettings).toHaveBeenCalledWith();
+                await vi.waitFor(() => {
+                    expect(useAppStore.getState().settings).toEqual({ ...DEFAULT_SETTINGS, animeAutoTranslateNew: false });
+                });
                 dispose();
             });
 

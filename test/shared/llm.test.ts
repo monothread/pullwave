@@ -1,4 +1,4 @@
-import { isLlmProviderId, isLlmTokenSlot, LLM_PROVIDER_IDS, LLM_PROVIDERS, LLM_TOKEN_SLOTS, OPENAI_SPEECH_MODEL, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo } from '@shared/llm';
+import { isLlmProviderId, isLlmTokenSlot, LLM_PROVIDER_IDS, LLM_PROVIDERS, LLM_TOKEN_SLOTS, OPENAI_SPEECH_MODEL, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, translationSetupGap } from '@shared/llm';
 
 describe('LLM_PROVIDER_IDS', () => {
     it('lists the providers the app knows, in the order the settings show them', () => {
@@ -94,5 +94,32 @@ describe('LLM_TOKEN_SLOTS', () => {
 
     it('does not take a speech slot for a provider of the language models', () => {
         expect(isLlmProviderId('speech-openai')).toBe(false);
+    });
+});
+
+describe('translationSetupGap', () => {
+    it.each(LLM_PROVIDER_IDS)('finds nothing missing for %s with the token, the model and an address', (provider) => {
+        expect(translationSetupGap({ provider, model: 'model-1', baseUrl: 'https://llm.example/v1' }, true)).toBeNull();
+    });
+
+    it.each(['openai', 'anthropic', 'gemini', 'deepseek', 'glm', 'kimi'] as const)('needs no address of the user for %s, which has its own', (provider) => {
+        expect(translationSetupGap({ provider, model: 'model-1', baseUrl: '' }, true)).toBeNull();
+    });
+
+    it('says the address is missing for a provider of the user that has none', () => {
+        expect(translationSetupGap({ provider: 'custom', model: 'model-1', baseUrl: '' }, true)).toBe('no-address');
+    });
+
+    it('says the model is missing when the settings have none', () => {
+        expect(translationSetupGap({ provider: 'openai', model: '', baseUrl: '' }, true)).toBe('no-model');
+    });
+
+    it('says the token is missing before anything else', () => {
+        expect(translationSetupGap({ provider: 'custom', model: '', baseUrl: '' }, false)).toBe('no-token');
+        expect(translationSetupGap({ provider: 'openai', model: 'model-1', baseUrl: '' }, false)).toBe('no-token');
+    });
+
+    it('says the model is missing before the address', () => {
+        expect(translationSetupGap({ provider: 'custom', model: '', baseUrl: '' }, true)).toBe('no-model');
     });
 });

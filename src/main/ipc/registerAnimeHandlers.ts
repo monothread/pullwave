@@ -29,6 +29,7 @@ import {
     type SubtitleGenerateEstimateResponse,
     type SubtitleGenerateRequest,
     type SubtitleGenerateResponse,
+    type SubtitleJobs,
     TRANSCRIPTION_LANGUAGES,
     type TranscriptionLanguage,
     type SubtitleEstimateResponse,
@@ -106,6 +107,8 @@ export interface AnimeHandlerDependencies {
         generate: (request: SubtitleGenerateRequest) => Promise<SubtitleGenerateResponse>;
         estimateGeneration: (episodeId: number) => Promise<SubtitleGenerateEstimateResponse>;
         cancelGeneration: (episodeId: number) => void;
+        // The translations and the subtitles made from the audio that wait or are going on.
+        jobs: () => SubtitleJobs;
     };
 }
 
@@ -346,6 +349,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     });
     ipcMain.handle(IPC.animeJobs, () => {
         return [];
+    });
+    ipcMain.handle(IPC.animeSubtitleJobs, (): SubtitleJobs => {
+        return { translations: [], generations: [] };
     });
     ipcMain.handle(IPC.animeHistoryList, (): AnimeHistoryEntry[] => {
         return [];
@@ -880,6 +886,9 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         if (id !== null) {
             deps.subtitles.cancelGeneration(id);
         }
+    });
+    ipcMain.handle(IPC.animeSubtitleJobs, (): SubtitleJobs => {
+        return deps.subtitles.jobs();
     });
     ipcMain.handle(IPC.animeProgress, (_event, input): void => {
         const update = parseProgress(input);

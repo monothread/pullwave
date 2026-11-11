@@ -485,7 +485,7 @@ describe('App anime section', () => {
         const { unmount } = render(<App />);
         await screen.findByRole('button', { name: 'ANIME' });
         unmount();
-        expect(mock.unsubscribers).toHaveLength(13);
+        expect(mock.unsubscribers).toHaveLength(16);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

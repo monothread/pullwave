@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { TranslationSettings } from '@renderer/components/TranslationSettings';
+import { INITIAL_LLM_STATUS, useAppStore } from '@renderer/store/appStore';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -11,6 +12,7 @@ let mock: MockApiHandle;
 
 beforeEach(() => {
     mock = installMockApi();
+    useAppStore.setState({ llmStatus: INITIAL_LLM_STATUS });
 });
 
 async function renderSettings(overrides: Partial<Settings> = {}) {
@@ -196,7 +198,7 @@ describe('TranslationSettings', () => {
         });
     });
 
-    it('does not set the state of a screen that is gone when the status arrives late', async () => {
+    it('keeps in the store the status that arrives after the screen is gone, so the other settings see it', async () => {
         let answer: (value: { canStore: boolean; providers: [] }) => void = () => {
             return undefined;
         };
@@ -206,7 +208,9 @@ describe('TranslationSettings', () => {
         const { unmount } = await renderSettings();
         unmount();
         answer({ canStore: false, providers: [] });
-        await Promise.resolve();
+        await vi.waitFor(() => {
+            expect(useAppStore.getState().llmStatus).toEqual({ canStore: false, providers: [] });
+        });
         expect(mock.api.getLlmStatus).toHaveBeenCalledTimes(1);
     });
 

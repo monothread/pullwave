@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAnimeSupported, type AnimeScheduleRequest, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
+import { isAnimeSupported, type AnimeScheduleRequest, type AutoTranslateOffReason, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { resolveLanguage } from '@shared/i18n';
-import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, type LlmTokenSlot } from '@shared/llm';
+import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, translationSetupGap, type LlmTokenSlot } from '@shared/llm';
 import type { Settings } from '@shared/types';
 import type { AnimeHandlerDependencies } from './ipc/registerAnimeHandlers';
 import { AniCliLocator, type AniPrograms } from './services/aniCliLocator';
@@ -16,6 +16,7 @@ import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
 import { AnimeAiringService } from './services/animeAiring';
 import { AnimeUpdateChecker } from './services/animeUpdateChecker';
+import { AutoSubtitleTranslator, autoTranslateTarget } from './services/autoSubtitles';
 import { JsonStore } from './services/jsonStore';
 import { animeBaseDirectory, isInsideDirectory, removeDirectories, removeEmptyDirectories } from './services/animeFiles';
 import { migrateAnimeFolder, type MigrationFileSystem } from './services/animeMigration';
@@ -38,6 +39,7 @@ import { estimateSubtitleGeneration, generateEpisodeSubtitle, type SpeechAccess 
 import { SubtitleGenerationQueue } from './services/subtitleGenerationQueue';
 import { checkSubtitles } from './services/subtitleCheck';
 import { estimateSubtitleTranslation, translateEpisodeSubtitle, type LlmAccess } from './services/subtitleTranslation';
+import { createTranslatedBatches } from './services/subtitleTranslator';
 import { SubtitleTranslationQueue } from './services/subtitleTranslationQueue';
 import { defaultSubtitleFileSystem, importSubtitle, listSubtitleTracks, resolveSubtitlePath, type SubtitleFileSystem } from './services/subtitleFiles';
 
@@ -74,6 +76,8 @@ export interface AnimeRuntimeOptions {
     chooseMigrationFolder?: (startAt: string) => Promise<string | null>;
     // Saves the folder the anime are in now in the settings (once a migration has moved them).
     saveAnimeDirectory?: (directory: string) => void;
+    // Saves the automatic translation of the new episodes off in the settings (once the provider refused or the settings lack what it needs).
+    disableAutoTranslate?: () => void;
     // How the files are copied and removed by a migration (the tests replace it).
     migrationFiles?: MigrationFileSystem;
     // Opens a folder in the file manager of the system (the tests replace it).
@@ -114,6 +118,8 @@ export interface AnimeRuntime {
     // Starts the automatic look for new episodes of the anime of the library (it is not started by creating the runtime), and ends it.
     startBackgroundChecks: () => void;
     stopBackgroundChecks: () => void;
+    // The settings were saved or a token changed: the automatic translation of the new episodes is turned off when it cannot work.
+    enforceAutoTranslateSetup: () => void;
 }
 
 function fileSize(path: string): number | null {
@@ -220,6 +226,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         },
         onEpisodeDownloaded: (episodeId) => {
             refreshEpisodeMetadata(db, episodeId, options.subtitleFiles ?? defaultSubtitleFileSystem, options.platform);
+            void autoTranslation.episodeDownloaded(episodeId);
         },
         hasAudio: (path) => {
             return videoHasAudio(path, runFfmpeg);
@@ -278,16 +285,48 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             }
         };
     };
+    // The batches already translated, shared by the translations and the subtitles made from the audio: one that failed half way goes on
+    // from where it stopped when it is asked for again.
+    const translatedBatches = createTranslatedBatches();
     const translations = new SubtitleTranslationQueue({
         run: (request, onProgress, signal): Promise<SubtitleTranslateResponse> => {
             const filePath = downloadedFile(request.episodeId);
             if (filePath === null) {
                 return Promise.resolve({ ok: false, reason: 'missing' });
             }
-            return translateEpisodeSubtitle(filePath, request, { llm: llmAccess, files: options.subtitleFiles, sleep: options.translationSleep }, onProgress, signal);
+            return translateEpisodeSubtitle(filePath, request, { llm: llmAccess, files: options.subtitleFiles, sleep: options.translationSleep, batches: translatedBatches }, onProgress, signal);
         },
         onJobUpdate: (job) => {
             options.send(IPC.eventSubtitleTranslation, job);
+        }
+    });
+    // The subtitles of the new episodes the check downloads are translated into the language of the anime subtitles, when the user wants that.
+    const autoTranslation = new AutoSubtitleTranslator({
+        isEnabled: () => {
+            return options.getSettings().animeAutoTranslateNew;
+        },
+        setupGap: () => {
+            const settings = options.getSettings();
+            const hasToken = (options.getLlmToken?.(settings.translateProvider) ?? null) !== null;
+            return translationSetupGap({ provider: settings.translateProvider, model: settings.translateModel, baseUrl: settings.translateBaseUrl }, hasToken);
+        },
+        target: () => {
+            const settings = options.getSettings();
+            return autoTranslateTarget(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale), settings.translateLanguage);
+        },
+        tracks: (episodeId) => {
+            const filePath = downloadedFile(episodeId);
+            return filePath === null ? null : listSubtitleTracks(filePath, options.subtitleFiles);
+        },
+        translate: (request) => {
+            return translations.enqueue(request);
+        },
+        cancel: (episodeId) => {
+            translations.cancel(episodeId);
+        },
+        turnOff: (reason: AutoTranslateOffReason) => {
+            options.disableAutoTranslate?.();
+            options.send(IPC.eventAnimeAutoTranslateOff, reason);
         }
     });
     // What the service of speech to text of the settings is asked with; what the settings lack when it cannot be.
@@ -358,7 +397,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             if (filePath === null) {
                 return Promise.resolve({ ok: false, reason: 'missing' });
             }
-            return generateEpisodeSubtitle(filePath, { ...request, title: seriesTitleOf(request.episodeId) }, { speech: speechAccess, translation: llmAccess, ffmpeg: runFfmpeg, audio: options.audioFiles, files: options.subtitleFiles, sleep: options.translationSleep }, onProgress, signal);
+            return generateEpisodeSubtitle(filePath, { ...request, title: seriesTitleOf(request.episodeId) }, { speech: speechAccess, translation: llmAccess, ffmpeg: runFfmpeg, audio: options.audioFiles, files: options.subtitleFiles, sleep: options.translationSleep, batches: translatedBatches }, onProgress, signal);
         },
         onJobUpdate: (job) => {
             options.send(IPC.eventSubtitleGeneration, job);
@@ -415,6 +454,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         },
         download: (animeId, episodes) => {
             if (!migrating) {
+                autoTranslation.expect(episodes.map((number) => {
+                    return db.ensureEpisode(animeId, number).id;
+                }));
                 queue.downloadEpisodes(animeId, episodes);
             }
         },
@@ -472,6 +514,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         },
         stopBackgroundChecks: () => {
             checker.stop();
+        },
+        enforceAutoTranslateSetup: () => {
+            autoTranslation.enforceSetup();
         },
         handlers: {
             service,
@@ -613,6 +658,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 },
                 cancelGeneration: (episodeId) => {
                     generations.cancel(episodeId);
+                },
+                jobs: () => {
+                    return { translations: translations.list(), generations: generations.list() };
                 },
                 translate: (request) => {
                     return translations.enqueue(request);

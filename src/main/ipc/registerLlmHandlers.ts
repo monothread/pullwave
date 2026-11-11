@@ -8,6 +8,8 @@ export const MAX_TOKEN_LENGTH = 2000;
 
 export interface LlmHandlerDependencies {
     tokens: Pick<LlmTokenStore, 'canStore' | 'providers' | 'set' | 'clear'>;
+    // A token was saved or taken out.
+    onChanged?: () => void;
 }
 
 // The tokens of the language models. The window can put one in, take it out and ask whether there is one, but never reads it back.
@@ -19,11 +21,16 @@ export function registerLlmHandlers(ipcMain: IpcMainLike, deps: LlmHandlerDepend
         if (!isLlmTokenSlot(slot) || typeof token !== 'string' || token.length > MAX_TOKEN_LENGTH) {
             return false;
         }
-        return deps.tokens.set(slot, token);
+        const saved = deps.tokens.set(slot, token);
+        if (saved) {
+            deps.onChanged?.();
+        }
+        return saved;
     });
     ipcMain.handle(IPC.llmTokenClear, (_event, slot): void => {
         if (isLlmTokenSlot(slot)) {
             deps.tokens.clear(slot);
+            deps.onChanged?.();
         }
     });
 }

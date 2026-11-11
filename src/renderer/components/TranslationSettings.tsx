@@ -4,6 +4,7 @@ import { LLM_PROVIDER_IDS, LLM_PROVIDERS, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS,
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
+import { useAppStore } from '../store/appStore';
 import { ConfirmButton } from './ConfirmButton';
 import { SelectField, TextField } from './fields';
 import { providerName, speechProviderName } from './translateText';
@@ -110,7 +111,13 @@ function TokenField({ slot, inputId, texts, status, onChanged }: TokenFieldProps
 // never what it is.
 export function TranslationSettings({ draft, change, edit, changeMany }: TranslationSettingsProps) {
     const t = useTranslator();
-    const [status, setStatus] = useState<LlmStatus>({ canStore: true, providers: [] });
+    // Kept in the store: the setting of the automatic translation of the anime settings is only allowed when the token is there.
+    const status = useAppStore((state) => {
+        return state.llmStatus;
+    });
+    const refreshLlmStatus = useAppStore((state) => {
+        return state.refreshLlmStatus;
+    });
     const provider = draft.translateProvider;
     const speech = draft.transcribeProvider;
 
@@ -127,20 +134,12 @@ export function TranslationSettings({ draft, change, edit, changeMany }: Transla
     }
 
     async function refreshStatus(): Promise<void> {
-        setStatus(await window.api.getLlmStatus());
+        await refreshLlmStatus();
     }
 
     useEffect(() => {
-        let current = true;
-        void window.api.getLlmStatus().then((found) => {
-            if (current) {
-                setStatus(found);
-            }
-        });
-        return () => {
-            current = false;
-        };
-    }, []);
+        void refreshLlmStatus();
+    }, [refreshLlmStatus]);
 
     return (
         <>

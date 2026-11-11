@@ -3,7 +3,7 @@ import { MAX_SUBTITLE_BYTES } from '@shared/anime';
 import type { LlmCompletionResult } from '@shared/llm';
 import type { SubtitleFileSystem } from '@main/services/subtitleFiles';
 import { estimateSubtitleTranslation, translateEpisodeSubtitle, type LlmAccess } from '@main/services/subtitleTranslation';
-import { systemPromptFor } from '@main/services/subtitleTranslator';
+import { PROMPT_TOKENS, systemPromptFor } from '@main/services/subtitleTranslator';
 
 const DIR = join('/lib', 'Naruto');
 const VIDEO = join(DIR, 'Naruto Episode 1.mp4');
@@ -71,7 +71,7 @@ function access(ask: Extract<LlmAccess, { ok: true }>['ask'] = bracketing()): Ll
 describe('estimateSubtitleTranslation', () => {
     it('counts the cues, the requests and about the tokens of the subtitle that ani-cli picked', () => {
         const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT });
-        expect(estimateSubtitleTranslation(VIDEO, { trackId: null }, files)).toEqual({ ok: true, cues: 2, batches: 1, approxTokens: Math.ceil(('Hello'.length + 'Bye\nnow'.length) / 4) * 2 + 150 });
+        expect(estimateSubtitleTranslation(VIDEO, { trackId: null }, files)).toEqual({ ok: true, cues: 2, batches: 1, approxTokens: Math.ceil(('Hello'.length + 'Bye\nnow'.length) / 4) * 2 + PROMPT_TOKENS });
     });
 
     it('reads a SubRip subtitle too', () => {
@@ -269,13 +269,44 @@ describe('translateEpisodeSubtitle', () => {
             expect(files.read(TRANSLATED_FILE)).toBe(OLD);
         });
 
-        it('does not take a subtitle of that language that is not a translation (the one of the source) for the translation', async () => {
+        it.each([
+            ['the source', 'Naruto Episode 1.subtitle-Spanish.vtt'],
+            ['the source, named in the language itself as the file name writes it', 'Naruto Episode 1.subtitle-Espa_ol.vtt'],
+            ['the source, named by a code', 'Naruto Episode 1.subtitle-es-419.vtt'],
+            ['the audio', 'Naruto Episode 1.generated-Spanish.vtt'],
+            ['a file the user loaded', 'Naruto Episode 1.import-fansub Spanish.vtt']
+        ])('asks nothing when a subtitle of %s is in that language already (it is more reliable than a translation)', async (_from, name) => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, name)]: SRT });
+            const ask = bracketing();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access(ask)}, files }, vi.fn());
+            expect(result).toEqual({ ok: false, reason: 'exists' });
+            expect(ask).not.toHaveBeenCalled();
+            expect(files.written).toEqual({});
+        });
+
+        it('asks nothing for Brazilian Portuguese when the source has the subtitle in Portuguese', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, 'Naruto Episode 1.subtitle-Portuguese - Brazilian Portuguese.vtt')]: SRT });
+            const ask = bracketing();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Portuguese (Brazil)', replace: false }, { llm: () => {return access(ask)}, files }, vi.fn());
+            expect(result).toEqual({ ok: false, reason: 'exists' });
+            expect(ask).not.toHaveBeenCalled();
+        });
+
+        it('translates from a subtitle of that language that is not a translation when the request says to replace', async () => {
             const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, 'Naruto Episode 1.subtitle-Spanish.vtt')]: SRT });
             const ask = bracketing();
-            const result = await translateEpisodeSubtitle(VIDEO, { trackId: 'subtitle-Spanish', language: 'Spanish' }, { llm: () => {return access(ask)}, files }, vi.fn());
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: 'subtitle-Spanish', language: 'Spanish', replace: true }, { llm: () => {return access(ask)}, files }, vi.fn());
             expect(result).toMatchObject({ ok: true, translated: { id: 'translated-Spanish' } });
             expect(ask).toHaveBeenCalledTimes(1);
             expect(files.written[TRANSLATED_FILE]).toContain('[Hello]');
+        });
+
+        it('translates when the subtitles of the episode are in other languages only', async () => {
+            const files = memory({ [VIDEO]: 'v', [DEFAULT_FILE]: VTT, [join(DIR, 'Naruto Episode 1.subtitle-English.vtt')]: SRT, [join(DIR, 'Naruto Episode 1.subtitle-Portuguese.vtt')]: SRT });
+            const ask = bracketing();
+            const result = await translateEpisodeSubtitle(VIDEO, { trackId: null, language: 'Spanish' }, { llm: () => {return access(ask)}, files }, vi.fn());
+            expect(result).toMatchObject({ ok: true, translated: { id: 'translated-Spanish' } });
+            expect(ask).toHaveBeenCalledTimes(1);
         });
 
         it('says it exists when the request says not to replace, as when it says nothing', async () => {

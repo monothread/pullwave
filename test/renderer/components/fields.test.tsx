@@ -121,6 +121,22 @@ describe('ToggleField', () => {
         expect(screen.getByText('explain')).toBeInTheDocument();
     });
 
+    it('is enabled by default', () => {
+        render(<ToggleField label="Enable" checked={false} onChange={vi.fn()} />);
+        expect(screen.getByLabelText('Enable')).toBeEnabled();
+    });
+
+    it('cannot be changed while disabled', async () => {
+        const onChange = vi.fn();
+        render(<ToggleField label="Enable" checked={false} hint="explain" disabled onChange={onChange} />);
+        const checkbox = screen.getByLabelText('Enable');
+        expect(checkbox).toBeDisabled();
+        await userEvent.setup().click(checkbox);
+        expect(onChange).not.toHaveBeenCalled();
+        expect(checkbox).not.toBeChecked();
+        expect(screen.getByText('explain')).toBeInTheDocument();
+    });
+
     it('is a switch', () => {
         render(<ToggleField label="Enable" checked={false} onChange={vi.fn()} />);
         const toggle = screen.getByRole('switch', { name: 'Enable' });

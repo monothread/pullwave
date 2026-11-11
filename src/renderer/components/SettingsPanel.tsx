@@ -9,11 +9,12 @@ import {
     THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ANIME_AUDIOS, ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, type AnimeAudio, type AnimeQuality, type AnimeSubtitleSetting } from '@shared/anime';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import { chosenBrowserWarning, findChosenBrowser, NO_BROWSER_CHOSEN } from '@shared/browserChoice';
 import { LANGUAGE_NAMES, type Translator } from '@shared/i18n';
+import { translationSetupGap } from '@shared/llm';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
 import type { DetectedBrowser, LanguageSetting, SiteBrowser, ThemeName } from '@shared/types';
 import { useAutoSaveSettings, type SaveStatus } from '../hooks/useAutoSaveSettings';
@@ -214,7 +215,17 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const migrateMangaFolder = useMangaStore((state) => {
         return state.migrateFolder;
     });
-    const { draft, status, change, edit, changeMany } = useAutoSaveSettings(stored, saveSettings);
+    const llmStatus = useAppStore((state) => {
+        return state.llmStatus;
+    });
+    const { draft, status, change, edit, changeMany, sync } = useAutoSaveSettings(stored, saveSettings);
+    // The automatic translation of the new episodes can only be turned on when the provider of the translation has its token and its model.
+    const translationGap = translationSetupGap(
+        { provider: draft.translateProvider, model: draft.translateModel, baseUrl: draft.translateBaseUrl },
+        llmStatus.providers.includes(draft.translateProvider)
+    );
+    const storedAutoTranslate = stored.animeAutoTranslateNew;
+    const previousAutoTranslate = useRef(storedAutoTranslate);
     const detectedBrowsers = browsers ?? [];
     const chosenBrowser = findChosenBrowser(detectedBrowsers, draft);
     const browserWarning = chosenBrowserWarning(browsers, draft, t);
@@ -224,6 +235,14 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const browserOptions = chosenBrowser ? detectedDirs : [NO_BROWSER_CHOSEN, ...detectedDirs];
     const unboundedAutoSubtitles = hasUnboundedAutoSubtitles(draft);
     const trayWarning = draft.closeToTray && traySupport !== null && !traySupport.available ? traySupport.reason : null;
+
+    // The main process turns the automatic translation off by itself (the provider refused): the switch follows it.
+    useEffect(() => {
+        if (previousAutoTranslate.current && !storedAutoTranslate) {
+            sync({ animeAutoTranslateNew: false });
+        }
+        previousAutoTranslate.current = storedAutoTranslate;
+    }, [storedAutoTranslate, sync]);
 
     // The browsers are for the cookies of the video downloader and for the pages of the mangas; the tray is a setting of the whole app.
     useEffect(() => {
@@ -893,6 +912,15 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                         hint={t('settings.animeAutoDownloadNew.hint')}
                         onChange={(value) => {
                             change('animeAutoDownloadNew', value);
+                        }}
+                    />
+                    <ToggleField
+                        label={t('settings.animeAutoTranslateNew')}
+                        checked={draft.animeAutoTranslateNew}
+                        disabled={translationGap !== null && !draft.animeAutoTranslateNew}
+                        hint={translationGap === null ? t('settings.animeAutoTranslateNew.hint') : t('settings.animeAutoTranslateNew.needsSetup')}
+                        onChange={(value) => {
+                            change('animeAutoTranslateNew', value);
                         }}
                     />
                     <TranslationSettings draft={draft} change={change} edit={edit} changeMany={changeMany} />

@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AutoTranslateOffReason, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleJobs, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
@@ -59,6 +59,7 @@ export interface MockApiHandle {
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
     emitAnimeCover: (update: AnimeCoverUpdate) => void;
     emitAnimeNewEpisodes: (news: AnimeNewEpisodes) => void;
+    emitAnimeAutoTranslateOff: (reason: AutoTranslateOffReason) => void;
     emitAnimeCheckState: (state: AnimeCheckState) => void;
     emitSubtitleTranslation: (job: SubtitleTranslationJob) => void;
     emitSubtitleGeneration: (job: SubtitleGenerationJob) => void;
@@ -78,6 +79,7 @@ export function createMockApi(): MockApiHandle {
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
     const animeCoverListeners: Array<(update: AnimeCoverUpdate) => void> = [];
     const animeNewEpisodesListeners: Array<(news: AnimeNewEpisodes) => void> = [];
+    const animeAutoTranslateOffListeners: Array<(reason: AutoTranslateOffReason) => void> = [];
     const animeCheckStateListeners: Array<(state: AnimeCheckState) => void> = [];
     const subtitleTranslationListeners: Array<(job: SubtitleTranslationJob) => void> = [];
     const subtitleGenerationListeners: Array<(job: SubtitleGenerationJob) => void> = [];
@@ -565,6 +567,9 @@ export function createMockApi(): MockApiHandle {
         cancelAnimeSubtitleGeneration: vi.fn(async () => {
             return undefined;
         }),
+        listSubtitleJobs: vi.fn(async (): Promise<SubtitleJobs> => {
+            return { translations: [], generations: [] };
+        }),
         getLlmStatus: vi.fn(async (): Promise<LlmStatus> => {
             return { canStore: true, providers: [] };
         }),
@@ -603,6 +608,9 @@ export function createMockApi(): MockApiHandle {
         }),
         onAnimeNewEpisodes: vi.fn((listener: (news: AnimeNewEpisodes) => void) => {
             return subscribe(animeNewEpisodesListeners, listener);
+        }),
+        onAnimeAutoTranslateOff: vi.fn((listener: (reason: AutoTranslateOffReason) => void) => {
+            return subscribe(animeAutoTranslateOffListeners, listener);
         }),
         onAnimeCheckState: vi.fn((listener: (state: AnimeCheckState) => void) => {
             return subscribe(animeCheckStateListeners, listener);
@@ -743,6 +751,11 @@ export function createMockApi(): MockApiHandle {
         emitSubtitleTranslation: (job) => {
             subtitleTranslationListeners.forEach((listener) => {
                 listener(job);
+            });
+        },
+        emitAnimeAutoTranslateOff: (reason) => {
+            animeAutoTranslateOffListeners.forEach((listener) => {
+                listener(reason);
             });
         },
         emitAnimeNewEpisodes: (news) => {

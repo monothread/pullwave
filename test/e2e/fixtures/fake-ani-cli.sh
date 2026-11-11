@@ -10,7 +10,9 @@ version_number="0.0.0-fake"
 #   episodes:  -S <n> <words>                lists episodes 1 to 3, or 1 to 4 once a test wrote more-episodes in the history folder (words with "single": the one episode is picked silently)
 #   stream:    -S <n> -e <ep> -q <q> ...     (with the debug player) prints the address of the episode, the subtitle and the list of subtitles
 #   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists,
-#                                            "flaky": a connection error the first time each episode is asked for, and the video the next time)
+#                                            "flaky": a connection error the first time each episode is asked for, and the video the next time;
+#                                            when a test wrote download-subtitle in the history folder, its text is also saved as a subtitle of the source,
+#                                            English unless download-subtitle-label holds another label, written in the file name as the patch writes it)
 # Every call is appended to $ANI_CLI_HIST_DIR/calls.log as "<mode> | <arguments>", and the subtitle languages it was
 # asked to try to subtitle-labels.log.
 mkdir -p "$ANI_CLI_HIST_DIR"
@@ -78,6 +80,11 @@ if [ "$download" = 1 ]; then
     fi
     rm -f "$file.part"
     printf 'WEBVTT\n' > "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.vtt"
+    if [ -f "$ANI_CLI_HIST_DIR/download-subtitle" ]; then
+        label="English"
+        [ -f "$ANI_CLI_HIST_DIR/download-subtitle-label" ] && label="$(cat "$ANI_CLI_HIST_DIR/download-subtitle-label" | sed 's|[^A-Za-z0-9 ._()-]|_|g')"
+        cp "$ANI_CLI_HIST_DIR/download-subtitle" "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.subtitle-$label.vtt"
+    fi
     exit 0
 fi
 

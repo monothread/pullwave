@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_SEARCH_RESULTS, type AniRunResult, type AnimeAudioCheckResponse, type AnimeRepairResponse, type AnimeCheckResponse, type AnimeCheckState, type AnimeImportResponse, type AnimeMigrationResponse, type AnimeScheduleResponse, type AnimeSearchListing, type AnimeSubtitleCheckResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack, type LibraryAnime, type SubtitleEstimateResponse, type SubtitleGenerateEstimateResponse, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
+import { MAX_SEARCH_RESULTS, type AniRunResult, type AnimeAudioCheckResponse, type AnimeRepairResponse, type AnimeCheckResponse, type AnimeCheckState, type AnimeImportResponse, type AnimeMigrationResponse, type AnimeScheduleResponse, type AnimeSearchListing, type AnimeSubtitleCheckResponse, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack, type LibraryAnime, type SubtitleEstimateResponse, type SubtitleGenerateEstimateResponse, type SubtitleGenerateResponse, type SubtitleJobs, type SubtitleTranslateResponse } from '@shared/anime';
 import type { ResolvedStream } from '@main/services/aniStream';
 import { IPC } from '@shared/constants';
 import { MAX_EPISODES_PER_REQUEST, MAX_SCHEDULE_SPAN_SECONDS, MAX_TEXT_LENGTH, parseDownloadRequest, parseHistoryRequest, parseProgress, parseScheduleRequest, registerAnimeHandlers, type AnimeHandlerDependencies } from '@main/ipc/registerAnimeHandlers';
@@ -34,6 +34,11 @@ function makeIpc(): { ipcMain: IpcMainLike; call: (channel: string, ...args: unk
         }
     };
 }
+
+const SUBTITLE_JOBS: SubtitleJobs = {
+    translations: [{ episodeId: 4, language: 'Spanish', status: 'running', done: 3, total: 10, reason: null }],
+    generations: [{ episodeId: 7, language: 'Korean', status: 'queued', done: 0, total: 0, reason: null }]
+};
 
 const ANIME_CHANNELS = [
     IPC.animeAddToLibrary,
@@ -81,6 +86,7 @@ const ANIME_CHANNELS = [
     IPC.animeStreamOpen,
     IPC.animeSubtitleGenerate,
     IPC.animeSubtitleGenerateCancel,
+    IPC.animeSubtitleJobs,
     IPC.animeSubtitleGenerateEstimate,
     IPC.animeSubtitleImport,
     IPC.animeSubtitleTranslate,
@@ -211,7 +217,10 @@ function setup(available = true) {
         estimateGeneration: vi.fn(async (): Promise<SubtitleGenerateEstimateResponse> => {
             return { ok: true, seconds: 1440, parts: 3, approxBytes: 5_760_000 };
         }),
-        cancelGeneration: vi.fn()
+        cancelGeneration: vi.fn(),
+        jobs: vi.fn((): SubtitleJobs => {
+            return SUBTITLE_JOBS;
+        })
     };
     const deps = {
         service: { isAvailable: vi.fn(() => { return available; }), info: vi.fn(() => { return aniCliInfo; }), searchListing: search, episodes, resolveStream },
@@ -859,6 +868,21 @@ describe('registerAnimeHandlers', () => {
                 const { call, subtitles } = setup();
                 call(IPC.animeSubtitleGenerateCancel, episodeId);
                 expect(subtitles.cancelGeneration).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('the subtitles being worked on', () => {
+            it('lists the translations and the subtitles made from the audio that wait or go on', () => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleJobs)).toEqual(SUBTITLE_JOBS);
+                expect(subtitles.jobs).toHaveBeenCalledTimes(1);
+                expect(subtitles.jobs).toHaveBeenCalledWith();
+            });
+
+            it('ignores what the window sends with the request', () => {
+                const { call, subtitles } = setup();
+                expect(call(IPC.animeSubtitleJobs, 'anything', 4)).toEqual(SUBTITLE_JOBS);
+                expect(subtitles.jobs).toHaveBeenCalledWith();
             });
         });
 
@@ -2030,6 +2054,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         const unsupported = { code: 'UNKNOWN', raw: 'The anime section is only available on Linux.' };
 
         expect(ipc.channels()).toEqual(ANIME_CHANNELS);
+        expect(ipc.call(IPC.animeSubtitleJobs)).toEqual({ translations: [], generations: [] });
         expect(ipc.call(IPC.animeStatus)).toEqual({ supported: false, available: false, aniCli: null });
         expect(ipc.call(IPC.animeSearch, 'naruto', 'sub')).toEqual({ ok: false, error: unsupported });
         expect(ipc.call(IPC.animeEpisodes, 'naruto', 1, 'sub')).toEqual({ ok: false, error: unsupported });

@@ -92,7 +92,31 @@ export interface LlmError {
     retryAfterSeconds?: number;
 }
 
-export type LlmCompletionResult = { ok: true; text: string } | { ok: false; error: LlmError };
+// The language model that translates subtitles, as the settings choose it.
+export interface TranslationSetup {
+    provider: LlmProviderId;
+    model: string;
+    baseUrl: string;
+}
+
+// What the settings lack for the subtitles to be translated: the token of the provider, the model, or (for a provider that has no address of
+// its own) the address. Null when nothing is missing.
+export type TranslationSetupGap = 'no-token' | 'no-model' | 'no-address';
+
+export function translationSetupGap(setup: TranslationSetup, hasToken: boolean): TranslationSetupGap | null {
+    if (!hasToken) {
+        return 'no-token';
+    }
+    if (setup.model.length === 0) {
+        return 'no-model';
+    }
+    if (setup.baseUrl.length === 0 &&LLM_PROVIDERS[setup.provider].defaultBaseUrl.length === 0) {
+        return 'no-address';
+    }
+    return null;
+}
+
+export type LlmCompletionResult ={ ok: true; text: string } | { ok: false; error: LlmError };
 
 // What the window may know about the tokens: which slots (providers) have one, and whether the system can keep one at all.
 export interface LlmStatus {

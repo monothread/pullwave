@@ -147,13 +147,14 @@ interface ToggleFieldProps {
     label: string;
     checked: boolean;
     hint?: string;
+    disabled?: boolean;
     onChange: (checked: boolean) => void;
 }
 
-export function ToggleField({ label, checked, hint, onChange }: ToggleFieldProps) {
+export function ToggleField({ label, checked, hint, disabled = false, onChange }: ToggleFieldProps) {
     return (
         <label className="field field--toggle">
-            <SwitchInput label={label} checked={checked} onChange={onChange} />
+            <SwitchInput label={label} checked={checked} disabled={disabled} onChange={onChange} />
             {hint && <span className="field__hint">{hint}</span>}
         </label>
     );
