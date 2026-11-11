@@ -485,6 +485,13 @@ export interface SubtitleTranslateManyRequest {
     language: TranslationLanguage;
 }
 
+// The language the subtitles are wanted in (the one of the anime subtitles of the settings, see `autoTranslateTarget`) and which of the
+// episodes asked about can be translated into it.
+export interface SubtitleTranslatableResponse {
+    language: TranslationLanguage;
+    episodeIds: number[];
+}
+
 // `skipped`: there was nothing to do (the episode has the subtitle in that language already).
 export type SubtitleTranslationStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled' | 'skipped';
 

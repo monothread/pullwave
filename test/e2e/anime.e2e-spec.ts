@@ -4000,7 +4000,7 @@ test.describe('translating subtitles with a language model', () => {
         // The keyring of the machine is not used: the tokens are kept the plain way, which only this variable allows.
         const { userData } = session;
         await session.app.close();
-        session = await launch(userData, { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, translateLanguage: 'Spanish' }, { PULLWAVE_FAKE_SECRETS: '1' });
+        session = await launch(userData, { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, translateLanguage: 'Spanish', animeSubtitles: 'Spanish' }, { PULLWAVE_FAKE_SECRETS: '1' });
     });
 
     function episodeFolder(episode: number): string {
@@ -4034,6 +4034,13 @@ test.describe('translating subtitles with a language model', () => {
         const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
         await expect(dialog).toBeVisible();
         return dialog;
+    }
+
+    // A season with nothing to translate shows nothing: no button and no sentence (once the main process answered, which the wait covers).
+    async function expectNothingToTranslate(page: Page): Promise<void> {
+        await page.waitForTimeout(1000);
+        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toHaveCount(0);
+        await expect(page.getByText(/already has it in/)).toHaveCount(0);
     }
 
     // TRANSLATE SUBTITLES of the season, and CONFIRM in the window that asks first.
@@ -4218,8 +4225,7 @@ test.describe('translating subtitles with a language model', () => {
             ['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']
         ]);
         // Both have the subtitle in Spanish now: nothing is left to translate.
-        await expect(page.getByTestId('season-translation-done')).toHaveText('Every downloaded episode of this season that has a subtitle already has it in Spanish.');
-        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toHaveCount(0);
+        await expectNothingToTranslate(page);
         await expect(page.getByRole('alert')).toHaveCount(0);
     });
 
@@ -4296,8 +4302,6 @@ test.describe('translating subtitles with a language model', () => {
         expect(readFileSync(translatedFile(1), 'utf-8')).toBe(SPANISH_SUBTITLE);
     });
 
-    const ALL_HAVE = 'Every downloaded episode of this season that has a subtitle already has it in Spanish.';
-
     test('names in the player the subtitles a source names "Language - Variant", and still skips the language for the translation', async () => {
         const { page } = session;
         await saveToken(page);
@@ -4307,7 +4311,7 @@ test.describe('translating subtitles with a language model', () => {
         });
         await showEpisodes(page);
         // The episode has the subtitle in Spanish, from the source: there is nothing to translate into Spanish.
-        await expect(page.getByTestId('season-translation-done')).toHaveText(ALL_HAVE);
+        await expectNothingToTranslate(page);
 
         await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
         const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
@@ -4339,12 +4343,11 @@ test.describe('translating subtitles with a language model', () => {
         expect(received.map((request) => {
             return [request.path, request.authorization, request.body.messages[1]?.content];
         })).toEqual([['/v1/chat/completions', `Bearer ${TOKEN}`, '["Hello there","See you"]']]);
-        await expect(page.getByTestId('season-translation-done')).toHaveText(ALL_HAVE);
-        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toHaveCount(0);
+        await expectNothingToTranslate(page);
         await expect(page.getByRole('alert')).toHaveCount(0);
     });
 
-    test('has no button to translate a season whose episodes all have the subtitle in the language already, from the source or translated', async () => {
+    test('shows nothing for a season whose episodes all have the subtitle in the language of the anime subtitles, and offers it again once that language changes', async () => {
         const { page } = session;
         await saveToken(page);
         await downloadWithSubtitles(page, [1, 2]);
@@ -4352,11 +4355,22 @@ test.describe('translating subtitles with a language model', () => {
         writeFileSync(join(episodeFolder(2), 'Fake Anime Episode 2.subtitle-Spanish (- Spanish(Latin America)).vtt'), OLD_SPANISH_SUBTITLE);
         await showEpisodes(page);
 
-        await expect(page.getByTestId('season-translation-done')).toHaveText(ALL_HAVE);
-        await expect(page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' })).toHaveCount(0);
+        await expectNothingToTranslate(page);
         expect(received).toEqual([]);
         expect(readFileSync(translatedFile(1), 'utf-8')).toBe(OLD_SPANISH_SUBTITLE);
         expect(existsSync(translatedFile(2))).toBe(false);
+
+        // The anime subtitles are now German, which no episode has: the season offers to translate both into it.
+        await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SETTINGS', exact: true }).click();
+        await page.getByLabel('Anime subtitles', { exact: true }).selectOption('German');
+        await expect.poll(() => {
+            return (JSON.parse(readFileSync(join(session.userData, 'settings.json'), 'utf-8')) as { animeSubtitles: string }).animeSubtitles;
+        }).toBe('German');
+        await showEpisodes(page);
+        await page.getByRole('button', { name: 'TRANSLATE SUBTITLES: Fake Anime' }).click();
+        await expect(page.getByRole('dialog', { name: 'Translate the subtitles?' })).toContainText('Translate the subtitles of 2 episodes into German with your account?');
+        await answerConfirm(page, 'Translate the subtitles?', 'CANCEL');
+        expect(received).toEqual([]);
     });
 
     test('has only SEE PROGRESS while a season is translated, also when that screen is opened and closed, and STOP ALL there stops everything', async () => {

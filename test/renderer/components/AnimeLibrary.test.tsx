@@ -2176,8 +2176,8 @@ describe('AnimeLibrary translating the subtitles of a season', () => {
         expect(screen.queryByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' })).not.toBeInTheDocument();
     });
 
-    it('asks first, and then queues the downloaded episodes of that season in the language of the settings', async () => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'French' } });
+    it('asks first, and then queues the downloaded episodes of that season in the language the main process says', async () => {
+        mock.api.listTranslatableEpisodes.mockResolvedValue({ language: 'French', episodeIds: [1, 2] });
         const user = await openSeason([DOWNLOADED]);
         await user.click(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' }));
         await user.click(await screen.findByRole('button', { name: 'TRANSLATE SUBTITLES: Naruto' }));

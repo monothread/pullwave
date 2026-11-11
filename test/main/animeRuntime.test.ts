@@ -283,15 +283,36 @@ describe('createAnimeRuntime', () => {
                 ]);
             });
 
-            it('answers which episodes can be translated: downloaded, with a subtitle to start from and none in the language', () => {
-                const { runtime, episode, folder } = translating({}, 'sk-1');
+            it('answers the language of the anime subtitles and which episodes can be translated into it: downloaded, with a subtitle to start from and none in it', () => {
+                const { runtime, episode, folder } = translating({ animeSubtitles: 'Spanish' }, 'sk-1');
                 const db = runtime?.db as AnimeDb;
                 const waiting = db.ensureEpisode(episode.animeId, '2');
-                expect(runtime?.handlers.subtitles.translatable([episode.id, waiting.id, 99], 'Spanish')).toEqual([episode.id]);
+                expect(runtime?.handlers.subtitles.translatable([episode.id, waiting.id, 99])).toEqual({ language: 'Spanish', episodeIds: [episode.id] });
 
                 writeFileSync(join(folder, 'Naruto Episode 1.subtitle-Spanish.vtt'), SOURCE);
-                expect(runtime?.handlers.subtitles.translatable([episode.id], 'Spanish')).toEqual([]);
-                expect(runtime?.handlers.subtitles.translatable([episode.id], 'German')).toEqual([episode.id]);
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Spanish', episodeIds: [] });
+            });
+
+            it('follows the anime subtitles of the settings when they change, and the language of the app or of the translation when they say so', () => {
+                const settings = { ...DEFAULT_SETTINGS, translateModel: 'model-1', animeSubtitles: 'Spanish' as const };
+                const downloadedFiles = downloaded({ 'Naruto Episode 1.vtt': SOURCE, 'Naruto Episode 1.subtitle-Spanish.vtt': SOURCE });
+                const runtime = open({
+                    ...downloadedFiles.given,
+                    getSettings: () => {
+                        return settings;
+                    }
+                });
+                const episode = addEpisode(runtime, downloadedFiles.video);
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Spanish', episodeIds: [] });
+
+                Object.assign(settings, { animeSubtitles: 'German' });
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'German', episodeIds: [episode.id] });
+
+                Object.assign(settings, { animeSubtitles: 'auto', language: 'pt' });
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Portuguese', episodeIds: [episode.id] });
+
+                Object.assign(settings, { animeSubtitles: 'default', translateLanguage: 'Korean' });
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Korean', episodeIds: [episode.id] });
             });
 
             it('lists the translation while it waits for the provider, and nothing once it ended', async () => {

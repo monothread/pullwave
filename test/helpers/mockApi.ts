@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AutoTranslateOffReason, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleJobs, SubtitleTranslateManyRequest, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
+import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, AnimeCheckResponse, AnimeCheckState, AnimeNewEpisodes, AutoTranslateOffReason, AnimeUpdateEntry, AnimeRenameSeriesResponse, AnimeCoverUpdate, AnimeHistoryEntry, AnimeImportResponse, AnimeSubtitleCheckResponse, AnimeMigrationProgress, AnimeMigrationResponse, AnimeSeriesResponse, AnimeJob, AnimeScheduleResponse, AnimeSubtitleImportResponse, AnimeSubtitleTrack, LibraryAnime, SubtitleEstimateResponse, SubtitleGenerateEstimateResponse, SubtitleGenerateResponse, SubtitleGenerationJob, SubtitleJobs, SubtitleTranslatableResponse, SubtitleTranslateResponse, SubtitleTranslationJob } from '@shared/anime';
 import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type { LlmStatus } from '@shared/llm';
 import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
@@ -555,9 +555,9 @@ export function createMockApi(): MockApiHandle {
         translateAnimeSubtitles: vi.fn(async (): Promise<number> => {
             return 0;
         }),
-        // Every episode asked about can be translated, unless a test says otherwise.
-        listTranslatableEpisodes: vi.fn(async (request: SubtitleTranslateManyRequest): Promise<number[]> => {
-            return [...request.episodeIds];
+        // Every episode asked about can be translated into German, unless a test says otherwise.
+        listTranslatableEpisodes: vi.fn(async (episodeIds: number[]): Promise<SubtitleTranslatableResponse> => {
+            return { language: 'German', episodeIds: [...episodeIds] };
         }),
         cancelAnimeSubtitleTranslation: vi.fn(async () => {
             return undefined;

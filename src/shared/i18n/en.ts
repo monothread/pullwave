@@ -790,7 +790,6 @@ export const en = {
     'anime.translateSeason.start': 'CONFIRM',
     'anime.translateSeason.cancel': 'CANCEL',
     'anime.translateSeason.seeProgress': 'SEE PROGRESS',
-    'anime.translateSeason.allHave': 'Every downloaded episode of this season that has a subtitle already has it in {language}.',
     'anime.translateSeason.none': 'This season has no downloaded episode to translate.',
     'anime.translateSeason.failed': '{count} episodes could not be translated. Open one to see why.',
     'anime.translateSeason.skipped': '{count} episodes already had the subtitle in {language} and were skipped.',

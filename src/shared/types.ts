@@ -17,6 +17,7 @@ import type {
     AnimeNewEpisodes,
     AutoTranslateOffReason,
     SubtitleJobs,
+    SubtitleTranslatableResponse,
     AnimeMigrationResponse,
     AnimeProgressUpdate,
     AnimeScheduleRequest,
@@ -492,8 +493,9 @@ export interface CyberApi {
     // Queues the translation of the subtitle of each of these episodes; gives how many were queued (the progress comes in
     // `onSubtitleTranslationUpdate`).
     translateAnimeSubtitles: (request: SubtitleTranslateManyRequest) => Promise<number>;
-    // Which of these episodes can be translated into the language: downloaded, with a subtitle to start from and none in that language yet.
-    listTranslatableEpisodes: (request: SubtitleTranslateManyRequest) => Promise<number[]>;
+    // The language the subtitles are wanted in (the one of the anime subtitles of the settings), and which of these episodes can be translated
+    // into it: downloaded, with a subtitle to start from and none in that language yet.
+    listTranslatableEpisodes: (episodeIds: number[]) => Promise<SubtitleTranslatableResponse>;
     // Cancels the translation of an episode, or all of them (null).
     cancelAnimeSubtitleTranslation: (episodeId: number | null) => Promise<void>;
     // Makes the subtitle of an episode from its audio with the service of speech to text of the settings and saves it next to the video.

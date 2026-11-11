@@ -769,7 +769,6 @@ export const ja: Messages = {
     'anime.translateSeason.start': '確認',
     'anime.translateSeason.cancel': 'キャンセル',
     'anime.translateSeason.seeProgress': '進行状況を見る',
-    'anime.translateSeason.allHave': 'このシーズンのダウンロード済みで字幕のあるエピソードは、すべて{language}の字幕があります。',
     'anime.translateSeason.none': 'このシーズンには翻訳できるダウンロード済みのエピソードがありません。',
     'anime.translateSeason.failed': '{count} 話を翻訳できませんでした。1 話を開いて理由を確認してください。',
     'anime.translateSeason.skipped': '{count} 話はすでに{language}の字幕があったため、スキップしました。',

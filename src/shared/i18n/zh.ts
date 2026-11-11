@@ -768,7 +768,6 @@ export const zh: Messages = {
     'anime.translateSeason.start': '确认',
     'anime.translateSeason.cancel': '取消',
     'anime.translateSeason.seeProgress': '查看进度',
-    'anime.translateSeason.allHave': '本季已下载且有字幕的剧集都已有{language}字幕。',
     'anime.translateSeason.none': '这一季没有已下载的集可翻译。',
     'anime.translateSeason.failed': '有 {count} 集无法翻译。打开其中一集查看原因。',
     'anime.translateSeason.skipped': '有 {count} 集已有{language}字幕，已跳过。',

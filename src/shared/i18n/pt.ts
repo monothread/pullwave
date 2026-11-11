@@ -774,7 +774,6 @@ export const pt: Messages = {
     'anime.translateSeason.start': 'CONFIRMAR',
     'anime.translateSeason.cancel': 'CANCELAR',
     'anime.translateSeason.seeProgress': 'VER PROGRESSO',
-    'anime.translateSeason.allHave': 'Todos os episódios baixados desta temporada que têm legenda já a têm em {language}.',
     'anime.translateSeason.none': 'Esta temporada não tem episódio baixado para traduzir.',
     'anime.translateSeason.failed': '{count} episódios não puderam ser traduzidos. Abra um para ver o motivo.',
     'anime.translateSeason.skipped': '{count} episódios já tinham a legenda em {language} e foram pulados.',

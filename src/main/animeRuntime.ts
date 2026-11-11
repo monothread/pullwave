@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAnimeSupported, type AnimeScheduleRequest, type AutoTranslateOffReason, type SubtitleGenerateResponse, type SubtitleTranslateResponse } from '@shared/anime';
+import { isAnimeSupported, type AnimeScheduleRequest, type AutoTranslateOffReason, type SubtitleGenerateResponse, type SubtitleTranslateResponse, type TranslationLanguage } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { resolveLanguage } from '@shared/i18n';
 import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, translationSetupGap, type LlmTokenSlot } from '@shared/llm';
@@ -300,6 +300,12 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             options.send(IPC.eventSubtitleTranslation, job);
         }
     });
+    // The language the subtitles are wanted in: the one of the anime subtitles of the settings (the automatic translation of the new episodes and
+    // the translation of a season go into it).
+    const translationTarget = (): TranslationLanguage => {
+        const settings = options.getSettings();
+        return autoTranslateTarget(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale), settings.translateLanguage);
+    };
     // The subtitles of the new episodes the check downloads are translated into the language of the anime subtitles, when the user wants that.
     const autoTranslation = new AutoSubtitleTranslator({
         isEnabled: () => {
@@ -310,10 +316,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             const hasToken = (options.getLlmToken?.(settings.translateProvider) ?? null) !== null;
             return translationSetupGap({ provider: settings.translateProvider, model: settings.translateModel, baseUrl: settings.translateBaseUrl }, hasToken);
         },
-        target: () => {
-            const settings = options.getSettings();
-            return autoTranslateTarget(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale), settings.translateLanguage);
-        },
+        target: translationTarget,
         tracks: (episodeId) => {
             const filePath = downloadedFile(episodeId);
             return filePath === null ? null : listSubtitleTracks(filePath, options.subtitleFiles);
@@ -665,11 +668,15 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 translate: (request) => {
                     return translations.enqueue(request);
                 },
-                translatable: (episodeIds, language) => {
-                    return episodeIds.filter((episodeId) => {
-                        const filePath = downloadedFile(episodeId);
-                        return filePath !== null && canBeTranslated(filePath, language, options.subtitleFiles);
-                    });
+                translatable: (episodeIds) => {
+                    const language = translationTarget();
+                    return {
+                        language,
+                        episodeIds: episodeIds.filter((episodeId) => {
+                            const filePath = downloadedFile(episodeId);
+                            return filePath !== null && canBeTranslated(filePath, language, options.subtitleFiles);
+                        })
+                    };
                 },
                 estimate: (request) => {
                     const filePath = downloadedFile(request.episodeId);
