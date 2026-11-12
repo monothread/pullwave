@@ -3,10 +3,15 @@ import type { LibraryManga, MangaChapterRecord, MangaDownloadRequest, MangaError
 import type { ChapterDownloadHandle, ChapterDownloadOptions, ChapterDownloadResult } from './mangaChapterDownloader';
 import type { MangaDb } from './mangaDb';
 import { chapterOutputPath, chapterWorkDirectory, DEFAULT_MANGA_FOLDER, formatOfPath, mangaDirectory, numberedPath, uniquePath } from './mangaFiles';
+import { PageTransferRate } from './mangaTransferRate';
 import { join } from 'node:path';
 
 // Progress comes after every page; the screen only needs to hear about a visible change.
 const MIN_PERCENT_STEP = 0.5;
+// The speed and the time left go to the screen at most once a second (the graph of the speed takes one reading a second). They are also
+// looked at again once a second while no page arrives, so a page that takes long (a check of Cloudflare, a server that does not answer)
+// makes the speed go down and the time left go up, instead of leaving on the screen what the last page gave.
+export const RATE_REPORT_INTERVAL_MS = 1000;
 // How many times a chapter is tried before it is left as an error to retry by hand.
 export const MAX_TRIES = 3;
 // How long closing the app waits for the downloads to end before it deletes what they left behind.
@@ -48,6 +53,8 @@ export interface MangaQueueDependencies {
     limits?: MangaDownloadLimits;
     // The system the files are on (decides the rules of file names); this one by default.
     platform?: NodeJS.Platform;
+    // The clock the speed is measured with; Date.now by default.
+    now?: () => number;
 }
 
 function isActive(job: MangaJob): boolean {
@@ -67,6 +74,10 @@ export class MangaDownloadQueue {
     // The source of each run, kept until the run ends (also for a chapter forgotten while it ran, whose job is gone).
     private readonly runSources = new Map<number, string>();
     private readonly lastReported = new Map<number, number>();
+    // The speed of each run, when it was last sent to the screen, and the timer that looks at it again while no page arrives.
+    private readonly rates = new Map<number, PageTransferRate>();
+    private readonly lastRateReported = new Map<number, number>();
+    private readonly rateTimers = new Map<number, ReturnType<typeof setInterval>>();
     private readonly tries = new Map<number, number>();
     // Where each chapter that is running or paused is being made: the same place again when it goes on.
     private readonly outputPaths = new Map<number, string>();
@@ -320,6 +331,7 @@ export class MangaDownloadQueue {
             }
             this.jobs.delete(chapterId);
             this.lastReported.delete(chapterId);
+            this.forgetRate(chapterId);
             this.tries.delete(chapterId);
         });
         this.pump();
@@ -399,6 +411,8 @@ export class MangaDownloadQueue {
             pagesDone: 0,
             pageCount: 0,
             percent: 0,
+            bytesPerSecond: null,
+            etaSeconds: null,
             error: null,
             missingPages: 0
         };
@@ -414,9 +428,50 @@ export class MangaDownloadQueue {
         this.deps.onJobUpdate({ ...job });
     }
 
+    // A chapter that stops running stops having a speed.
     private update(job: MangaJob, changes: Partial<MangaJob>): void {
-        Object.assign(job, changes);
+        const stopsRunning = changes.status !== undefined && changes.status !== 'running';
+        if (stopsRunning) {
+            this.forgetRate(job.chapterId);
+        }
+        Object.assign(job, stopsRunning ? { ...changes, bytesPerSecond: null, etaSeconds: null } : changes);
         this.deps.onJobUpdate({ ...job });
+    }
+
+    private now(): number {
+        return (this.deps.now ?? Date.now)();
+    }
+
+    private forgetRate(chapterId: number): void {
+        this.rates.delete(chapterId);
+        this.lastRateReported.delete(chapterId);
+        const timer = this.rateTimers.get(chapterId);
+        if (timer !== undefined) {
+            clearInterval(timer);
+            this.rateTimers.delete(chapterId);
+        }
+    }
+
+    // The speed is measured from the moment the pages are known: asking the server for the list of the pages (which can take long on a site
+    // behind Cloudflare) is not the time of a page.
+    private startRate(job: MangaJob): void {
+        this.forgetRate(job.chapterId);
+        this.rates.set(job.chapterId, new PageTransferRate(this.now()));
+        const timer = setInterval(() => {
+            this.reportRate(job);
+        }, RATE_REPORT_INTERVAL_MS);
+        // The timer does not keep the app open by itself.
+        timer.unref?.();
+        this.rateTimers.set(job.chapterId, timer);
+    }
+
+    // The speed of a run looked at again with no new page: sent only when it changed.
+    private reportRate(job: MangaJob): void {
+        const changes = this.rateChanges(job, job.pageCount - job.pagesDone);
+        const changed = changes.bytesPerSecond !== undefined && (changes.bytesPerSecond !== job.bytesPerSecond || changes.etaSeconds !== job.etaSeconds);
+        if (changed) {
+            this.update(job, changes);
+        }
     }
 
     private setHeld(held: boolean): void {
@@ -552,6 +607,10 @@ export class MangaDownloadQueue {
             onPageCount: (pageCount) => {
                 db.setPageCount(chapter.id, pageCount);
                 this.update(job, { pageCount });
+                this.startRate(job);
+            },
+            onPageFetched: (bytes) => {
+                this.rates.get(chapter.id)?.add(this.now(), bytes);
             },
             onProgress: (pagesDone, pageCount) => {
                 this.reportProgress(job, pagesDone, pageCount);
@@ -592,14 +651,33 @@ export class MangaDownloadQueue {
         return true;
     }
 
+    // The pages and the speed go to the screen together, each only when it has something new to show.
     private reportProgress(job: MangaJob, pagesDone: number, pageCount: number): void {
+        const changes = { ...this.pageChanges(job, pagesDone, pageCount), ...this.rateChanges(job, pageCount - pagesDone) };
+        if (Object.keys(changes).length > 0) {
+            this.update(job, changes);
+        }
+    }
+
+    private pageChanges(job: MangaJob, pagesDone: number, pageCount: number): Partial<MangaJob> {
         const percent = pageCount > 0 ? (pagesDone / pageCount) * 100 : 0;
         const last = this.lastReported.get(job.chapterId) ?? 0;
         if (percent < 100 && Math.abs(percent - last) < MIN_PERCENT_STEP) {
-            return;
+            return {};
         }
         this.lastReported.set(job.chapterId, percent);
-        this.update(job, { pagesDone, pageCount, percent });
+        return { pagesDone, pageCount, percent };
+    }
+
+    private rateChanges(job: MangaJob, pagesLeft: number): Partial<MangaJob> {
+        const rate = this.rates.get(job.chapterId);
+        const at = this.now();
+        const last = this.lastRateReported.get(job.chapterId);
+        if (rate === undefined || (last !== undefined && at - last < RATE_REPORT_INTERVAL_MS)) {
+            return {};
+        }
+        this.lastRateReported.set(job.chapterId, at);
+        return rate.measure(at, pagesLeft);
     }
 
     // A failure that may pass is tried again (the pages already downloaded are kept); one that will not, or a chapter that has used

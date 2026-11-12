@@ -2,6 +2,7 @@ import { findCover, flyCoverToLibrary } from '../fx/flyCover';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 import { inListOrder, mangaListKey, useListOrder } from '../store/sortPrefsStore';
 import { ListOrderSelect } from './ListOrderSelect';
+import { IncrementalItems } from './IncrementalItems';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { useEffect, useMemo, useState } from 'react';
@@ -529,7 +530,7 @@ export function MangaDetail() {
                         <ListOrderSelect kind="chapters" itemKey={mangaListKey(manga.sourceId, manga.remoteId)} />
                     </div>
                     <ul className="episode-cards manga__chapters">
-                        {inListOrder(ordered, chapterOrder).map((chapter) => {
+                        <IncrementalItems items={inListOrder(ordered, chapterOrder)} listKey={`manga-chapters:${mangaListKey(manga.sourceId, manga.remoteId)}`} end="li" renderItem={(chapter) => {
                             const state = chapterState(saved, chapter.remoteId);
                             const label = chapterLabel(chapter.name, chapter.number);
                             const read = isRead(chapter.remoteId);
@@ -648,7 +649,7 @@ export function MangaDetail() {
                                     </span>
                                 </li>
                             );
-                        })}
+                        }} />
                     </ul>
                 </>
             )}

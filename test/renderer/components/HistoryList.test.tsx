@@ -6,6 +6,7 @@ import { HistoryList } from '@renderer/components/HistoryList';
 import { useAppStore } from '@renderer/store/appStore';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initial = useAppStore.getState();
@@ -72,5 +73,45 @@ describe('HistoryList', () => {
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         expect(mock.api.clearHistory).not.toHaveBeenCalled();
         expect(useAppStore.getState().history).toEqual([DONE]);
+    });
+});
+
+describe('HistoryList with a long history', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+        useAppStore.setState({
+            history: Array.from({ length: 70 }, (_unused, index) => {
+                return { ...DONE, id: `h-${String(index + 1)}`, title: `Video ${String(index + 1)}` };
+            })
+        });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function titles(): Array<string | null> {
+        return Array.from(document.querySelectorAll('.history__title')).map((title) => {
+            return title.textContent;
+        });
+    }
+
+    function videos(count: number): string[] {
+        return Array.from({ length: count }, (_unused, index) => {
+            return `Video ${String(index + 1)}`;
+        });
+    }
+
+    it('draws the first 60 entries, counts all of them, and draws the others when the end of the list comes into view', () => {
+        render(<HistoryList />);
+        expect(titles()).toEqual(videos(60));
+        expect(screen.getByText('HISTORY [70]')).toBeInTheDocument();
+        const end = screen.getByTestId('list-more');
+        expect(end.tagName).toBe('LI');
+        seeEnd(observers);
+        expect(titles()).toEqual(videos(70));
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

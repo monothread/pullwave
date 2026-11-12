@@ -9,6 +9,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
@@ -338,4 +339,44 @@ describe('AnimeUpdates while a check is going on', () => {
         expect(await screen.findByTestId('anime-update')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'CLEAR LIST' })).toBeEnabled();
     });
+});
+
+describe('AnimeUpdates with a long list', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // 35 episodes found today and 35 yesterday, the newest first.
+    const LONG = Array.from({ length: 70 }, (_unused, index) => {
+        return entry({ id: index + 1, episodeId: index + 1, episodeNumber: String(index + 1), foundAt: NOON - (index < 35 ? HOUR : 24 * HOUR) - index * 1000 });
+    });
+
+    function perDay(): number[] {
+        return screen.getAllByTestId('anime-update-day').map((day) => {
+            return within(day).getAllByTestId('anime-update').length;
+        });
+    }
+
+    it('draws the first 60 episodes split by day, and the others when the end of the list comes into view', async () => {
+        mock.api.listAnimeUpdates.mockResolvedValue(LONG);
+        render(<AnimeUpdates />);
+        await waitForDays(2);
+        expect(perDay()).toEqual([35, 25]);
+        expect(screen.getByTestId('list-more')).toBeInTheDocument();
+        seeEnd(observers);
+        expect(perDay()).toEqual([35, 35]);
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
+    });
+
+    async function waitForDays(count: number): Promise<void> {
+        await vi.waitFor(() => {
+            expect(screen.getAllByTestId('anime-update-day')).toHaveLength(count);
+        });
+    }
 });

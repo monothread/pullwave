@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { useFxStore } from '../fx/fxStore';
 import { batchNavigation } from '../navigation/navigationBatch';
 import { hasChapterFile, IDLE_MANGA_CHECK_STATE } from '@shared/manga';
-import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
+import type { MessageKey, MessageParams } from '@shared/i18n/core';
+import { createTranslator } from '../i18n/catalogs';
 import type {
     ExtensionAction,
     LibraryManga,

@@ -1,8 +1,8 @@
-import type { MangaChapter, MangaDetails, MangaDownloadRequest, MangaJob, MangaOutputFormat } from '@shared/manga';
+import type { MangaChapter, MangaDetails, MangaDownloadRequest, MangaError, MangaJob, MangaOutputFormat } from '@shared/manga';
 import type { ChapterDownloadHandle, ChapterDownloadOptions, ChapterRunResult, ChapterDownloadResult } from '@main/services/manga/mangaChapterDownloader';
 import { MangaDb } from '@main/services/manga/mangaDb';
 import { chapterWorkDirectory } from '@main/services/manga/mangaFiles';
-import { MANGA_DOWNLOAD_LIMITS, MAX_TRIES, MangaDownloadQueue, type MangaDownloadLimits, type MangaQueueSettings } from '@main/services/manga/mangaDownloadQueue';
+import { MANGA_DOWNLOAD_LIMITS, MAX_TRIES, MangaDownloadQueue, RATE_REPORT_INTERVAL_MS, type MangaDownloadLimits, type MangaQueueSettings } from '@main/services/manga/mangaDownloadQueue';
 
 type Result = ChapterRunResult<ChapterDownloadResult>;
 
@@ -50,6 +50,8 @@ function setup(
     const ensured: string[] = [];
     const state = { settings: { mangaDirectory: '', mangaFormat: 'cbz' as MangaOutputFormat, ...settings }, libraryChanges: 0, existing: [...(system.existing ?? [])] };
     const heldChanges: boolean[] = [];
+    // The clock the speed is measured with; the tests move it by hand.
+    const clock = { now: 0 };
     const queue = new MangaDownloadQueue({
         db,
         download: (options): ChapterDownloadHandle => {
@@ -93,10 +95,13 @@ function setup(
         onHeldChange: (held) => {
             heldChanges.push(held);
         },
+        now: () => {
+            return clock.now;
+        },
         // Two sources, one chapter each, unless the test says otherwise (null: the fixed limits of the app).
         ...(system.limits === null ? {} : { limits: system.limits ?? { sources: 2, perSource: 1 } })
     });
-    return { db, queue, downloads, updates, removed, ensured, state, counted, heldChanges };
+    return { db, queue, downloads, updates, removed, ensured, state, counted, heldChanges, clock };
 }
 
 // A library with One Piece and its chapters as the app left them (the queue of the app that opens again starts from it).
@@ -372,6 +377,277 @@ describe('MangaDownloadQueue progress and results', () => {
             expect(downloads).toHaveLength(1);
             expect(queue.list()).toEqual([]);
         });
+    });
+});
+
+describe('MangaDownloadQueue the speed and the time left', () => {
+    // The job of the only chapter of these tests, as the screen gets it, with what changes from one test to the other.
+    function runningJob(changes: Partial<MangaJob>): MangaJob {
+        return {
+            chapterId: 1,
+            mangaId: 1,
+            mangaTitle: 'One Piece',
+            chapterName: 'Chapter 1',
+            sourceId: 'src-a',
+            status: 'running',
+            pagesDone: 0,
+            pageCount: 10,
+            percent: 0,
+            bytesPerSecond: null,
+            etaSeconds: null,
+            error: null,
+            missingPages: 0,
+            ...changes
+        };
+    }
+
+    // One chapter of ten pages, started when the clock says `startedAt`.
+    function started(startedAt = 0) {
+        const context = setup();
+        context.clock.now = startedAt;
+        context.queue.enqueue(request([chapter(1)]));
+        context.downloads[0]?.options.onPageCount(10);
+        return context;
+    }
+
+    it('gives a job that waits no speed and no time left', () => {
+        const { queue, updates } = setup({}, { limits: { sources: 1, perSource: 1 } });
+        queue.enqueue(request([chapter(1), chapter(2)]));
+        expect(updates.find((job) => {
+            return job.status === 'queued' && job.chapterName === 'Chapter 2';
+        })).toEqual(runningJob({ chapterId: 2, chapterName: 'Chapter 2', status: 'queued', pageCount: 0 }));
+    });
+
+    it('measures the speed from the start of the run and the time left from the time each page took', () => {
+        const { downloads, updates, clock } = started();
+        clock.now = 500;
+        downloads[0]?.options.onPageFetched(1000);
+        downloads[0]?.options.onProgress(1, 10);
+        // 1000 bytes in half a second; nine pages left at half a second each.
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 2000, etaSeconds: 4.5 }));
+    });
+
+    it('tells the speed at most once a second, while the pages still go to the screen', () => {
+        const { downloads, updates, clock } = started();
+        clock.now = 500;
+        downloads[0]?.options.onPageFetched(1000);
+        downloads[0]?.options.onProgress(1, 10);
+        clock.now = 900;
+        downloads[0]?.options.onPageFetched(1000);
+        downloads[0]?.options.onProgress(2, 10);
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 2, percent: 20, bytesPerSecond: 2000, etaSeconds: 4.5 }));
+        clock.now = 1500;
+        downloads[0]?.options.onPageFetched(4000);
+        downloads[0]?.options.onProgress(3, 10);
+        // 6000 bytes in a second and a half; seven pages left at half a second each.
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 3, percent: 30, bytesPerSecond: 4000, etaSeconds: 3.5 }));
+    });
+
+    it('sends nothing when neither the pages nor the speed have anything new to show', () => {
+        const context = setup();
+        context.queue.enqueue(request([chapter(1)]));
+        context.downloads[0]?.options.onPageCount(400);
+        context.clock.now = 100;
+        context.downloads[0]?.options.onPageFetched(500);
+        context.downloads[0]?.options.onProgress(1, 400);
+        const before = context.updates.length;
+        context.clock.now = 200;
+        context.downloads[0]?.options.onPageFetched(500);
+        context.downloads[0]?.options.onProgress(1, 400);
+        expect(context.updates).toHaveLength(before);
+    });
+
+    it('only counts the pages of the last ten seconds', () => {
+        const { downloads, updates, clock } = started();
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(10_000);
+        downloads[0]?.options.onProgress(1, 10);
+        clock.now = 12_000;
+        downloads[0]?.options.onPageFetched(500);
+        downloads[0]?.options.onProgress(2, 10);
+        // The page of the first second is out of the window (2 s to 12 s): 500 bytes in ten seconds, one page in ten seconds.
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 2, percent: 20, bytesPerSecond: 50, etaSeconds: 80 }));
+    });
+
+    it('counts the time of a page that failed but not its bytes', () => {
+        const { downloads, updates, clock } = started();
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(0);
+        downloads[0]?.options.onProgress(1, 10);
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 0, etaSeconds: 9 }));
+    });
+
+    it('tells no speed while only the pages already on the disk go by', () => {
+        const { downloads, updates, clock } = started();
+        clock.now = 2000;
+        downloads[0]?.options.onProgress(5, 10);
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 5, percent: 50, bytesPerSecond: null, etaSeconds: null }));
+    });
+
+    it('does not take the pages that were on the disk into the time left', () => {
+        const { downloads, updates, clock } = started();
+        downloads[0]?.options.onProgress(5, 10);
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(2000);
+        downloads[0]?.options.onProgress(6, 10);
+        // One page downloaded in a second: four left, a second each (the five skipped pages took no time).
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 6, percent: 60, bytesPerSecond: 2000, etaSeconds: 4 }));
+    });
+
+    it('drops the speed when the chapter is paused, and measures again from the new start when it goes on', async () => {
+        const { queue, downloads, updates, clock, db } = started();
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(8000);
+        downloads[0]?.options.onProgress(1, 10);
+        queue.pause(db.chaptersOf(1)[0]!.id);
+        downloads[0]?.finish({ status: 'cancelled' });
+        await flush();
+        expect(updates.at(-1)).toEqual(runningJob({ status: 'paused', pagesDone: 1, percent: 10 }));
+        clock.now = 60_000;
+        queue.resume(db.chaptersOf(1)[0]!.id);
+        expect(updates.at(-1)).toEqual(runningJob({ pageCount: 0 }));
+        downloads[1]?.options.onPageCount(10);
+        clock.now = 62_000;
+        downloads[1]?.options.onPageFetched(1000);
+        downloads[1]?.options.onProgress(2, 10);
+        // Only the page of the new run, in the two seconds since it started.
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 2, percent: 20, bytesPerSecond: 500, etaSeconds: 16 }));
+    });
+
+    it('drops the speed when the chapter is cancelled', async () => {
+        const { queue, downloads, updates, clock, db } = started();
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(8000);
+        downloads[0]?.options.onProgress(1, 10);
+        queue.cancel(db.chaptersOf(1)[0]!.id);
+        downloads[0]?.finish({ status: 'cancelled' });
+        await flush();
+        expect(updates.at(-1)).toEqual(runningJob({ status: 'cancelled', pagesDone: 1, percent: 10 }));
+    });
+
+    it('drops the speed when the chapter waits to be tried again and when it is left as an error', async () => {
+        const { downloads, updates, clock } = started();
+        const failure: MangaError = { code: 'REQUEST_FAILED', message: 'site down' };
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(8000);
+        downloads[0]?.options.onProgress(1, 10);
+        downloads[0]?.finish({ status: 'error', error: failure });
+        await flush();
+        expect(updates.find((job) => {
+            return job.status === 'queued' && job.pagesDone === 1;
+        })).toEqual(runningJob({ status: 'queued', pagesDone: 1, percent: 10 }));
+        for (let attempt = 2; attempt <= MAX_TRIES; attempt += 1) {
+            downloads[attempt - 1]?.options.onPageFetched(8000);
+            downloads[attempt - 1]?.options.onProgress(2, 10);
+            downloads[attempt - 1]?.finish({ status: 'error', error: failure });
+            await flush();
+        }
+        expect(updates.at(-1)).toEqual(runningJob({ status: 'error', pagesDone: 2, percent: 20, error: failure }));
+    });
+
+    it('drops the speed when the chapter is done', async () => {
+        const { downloads, updates, clock } = started();
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(8000);
+        downloads[0]?.options.onProgress(1, 10);
+        downloads[0]?.finish(DONE('/m/Chapter 1.cbz'));
+        await flush();
+        expect(updates.at(-1)).toEqual(runningJob({ status: 'done', pagesDone: 20, pageCount: 20, percent: 100 }));
+    });
+
+    it('ignores the pages of a chapter that was forgotten while it ran', () => {
+        const { queue, downloads, updates, clock, db } = started();
+        queue.forget([db.chaptersOf(1)[0]!.id]);
+        clock.now = 1000;
+        downloads[0]?.options.onPageFetched(8000);
+        expect(queue.list()).toEqual([]);
+        expect(updates.at(-1)).toEqual(runningJob({}));
+    });
+
+    describe('while no page arrives', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        // A second goes by on the clock of the speed and on the timers.
+        function tick(clock: { now: number }, to: number): void {
+            clock.now = to;
+            vi.advanceTimersByTime(RATE_REPORT_INTERVAL_MS);
+        }
+
+        it('looks at the speed again once a second', () => {
+            expect(RATE_REPORT_INTERVAL_MS).toBe(1000);
+        });
+
+        it('lowers the speed and raises the time left each second a page takes, and knows nothing once no page is in the window', () => {
+            const { downloads, updates, clock } = started();
+            clock.now = 500;
+            downloads[0]?.options.onPageFetched(1000);
+            downloads[0]?.options.onProgress(1, 10);
+            expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 2000, etaSeconds: 4.5 }));
+            // The next page does not come: the one page and its 1000 bytes are spread over more and more time.
+            tick(clock, 2000);
+            expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 500, etaSeconds: 18 }));
+            tick(clock, 4000);
+            expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 250, etaSeconds: 36 }));
+            // Ten seconds after it, the page leaves the window.
+            tick(clock, 11_000);
+            expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: null, etaSeconds: null }));
+        });
+
+        it('sends nothing when the speed looked at again did not change', () => {
+            const { updates, clock } = started();
+            tick(clock, 1000);
+            const before = updates.length;
+            tick(clock, 2000);
+            tick(clock, 3000);
+            expect(updates).toHaveLength(before);
+            expect(updates.at(-1)).toEqual(runningJob({}));
+        });
+
+        it('starts to look once the pages are known, and stops when the chapter stops running', async () => {
+            const { queue, downloads, clock, db } = setup();
+            queue.enqueue(request([chapter(1)]));
+            expect(vi.getTimerCount()).toBe(0);
+            downloads[0]?.options.onPageCount(10);
+            expect(vi.getTimerCount()).toBe(1);
+            queue.pause(db.chaptersOf(1)[0]!.id);
+            downloads[0]?.finish({ status: 'cancelled' });
+            await vi.waitFor(() => {
+                expect(queue.list()[0]?.status).toBe('paused');
+            });
+            expect(vi.getTimerCount()).toBe(0);
+            clock.now = 5000;
+            queue.resume(db.chaptersOf(1)[0]!.id);
+            downloads[1]?.options.onPageCount(10);
+            expect(vi.getTimerCount()).toBe(1);
+            queue.forget([db.chaptersOf(1)[0]!.id]);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+    });
+
+    it('measures from the moment the pages are known, not from the start of the run (asking for the list of the pages can take long)', () => {
+        const { queue, downloads, updates, clock } = setup();
+        queue.enqueue(request([chapter(1)]));
+        clock.now = 5000;
+        downloads[0]?.options.onPageCount(10);
+        clock.now = 5500;
+        downloads[0]?.options.onPageFetched(1000);
+        downloads[0]?.options.onProgress(1, 10);
+        // 1000 bytes in the half second since the pages were known, not in the five and a half since the run started.
+        expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 2000, etaSeconds: 4.5 }));
+    });
+
+    it('tells no speed before the pages are known', () => {
+        const { queue, downloads, updates, clock } = setup();
+        queue.enqueue(request([chapter(1)]));
+        clock.now = 3000;
+        downloads[0]?.options.onProgress(0, 10);
+        expect(updates.at(-1)).toEqual(runningJob({ pageCount: 0 }));
     });
 });
 
@@ -988,9 +1264,9 @@ describe('MangaDownloadQueue the chapters paused when the app last closed', () =
         const { queue, updates, counted, downloads } = setup({}, { db, pages: { [`${ONE_PIECE}/Chapter 1.cbz.part`]: 5, [`${ONE_PIECE}/Chapter 2.cbz.part`]: 12 } });
         queue.restore();
         expect(queue.list()).toEqual([
-            { chapterId: first, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: 'src-a', status: 'paused', pagesDone: 5, pageCount: 20, percent: 25, error: null, missingPages: 0 },
+            { chapterId: first, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: 'src-a', status: 'paused', pagesDone: 5, pageCount: 20, percent: 25, bytesPerSecond: null, etaSeconds: null, error: null, missingPages: 0 },
             // More pages than the chapter has are not counted past its end.
-            { chapterId: second, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: 'src-a', status: 'paused', pagesDone: 10, pageCount: 10, percent: 100, error: null, missingPages: 0 }
+            { chapterId: second, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: 'src-a', status: 'paused', pagesDone: 10, pageCount: 10, percent: 100, bytesPerSecond: null, etaSeconds: null, error: null, missingPages: 0 }
         ]);
         expect(counted).toEqual([`${ONE_PIECE}/Chapter 1.cbz.part`, `${ONE_PIECE}/Chapter 2.cbz.part`]);
         expect(updates).toEqual([]);

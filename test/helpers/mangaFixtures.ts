@@ -97,6 +97,8 @@ export function makeMangaJob(overrides: Partial<MangaJob> = {}): MangaJob {
         pagesDone: 5,
         pageCount: 20,
         percent: 25,
+        bytesPerSecond: null,
+        etaSeconds: null,
         error: null,
         missingPages: 0,
         ...overrides

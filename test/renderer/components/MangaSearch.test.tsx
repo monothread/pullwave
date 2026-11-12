@@ -8,6 +8,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import * as blockWindow from '@renderer/hooks/useBlockWindow';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -291,5 +292,30 @@ describe('MangaSearch', () => {
         useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sources: [], sourcesStatus: 'loading' } });
         render(<MangaSearch />);
         expect(screen.getByText('LOADING…')).toBeInTheDocument();
+    });
+});
+
+describe('MangaSearch with many sources', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('draws the sources of the search by blocks, kept for the name searched for', async () => {
+        const user = userEvent.setup();
+        const hook = vi.spyOn(blockWindow, 'useBlockWindow');
+        render(<MangaSearch />);
+        await searchFor(user, 'One Piece');
+        await waitFor(() => {
+            expect(useMangaStore.getState().search.status).toBe('done');
+        });
+        const { results } = useMangaStore.getState().search;
+        // Every source but the one for adults is searched.
+        expect(results.map((result) => {
+            return result.source.id;
+        })).toEqual(['5', '6', '7', '8']);
+        expect(hook).toHaveBeenLastCalledWith(results, 'manga-search:One Piece', 4);
+        const container = document.querySelector('.manga__search-results');
+        expect(container).not.toBeNull();
+        expect(within(container as HTMLElement).getAllByTestId('manga-search-source')).toHaveLength(results.length);
     });
 });

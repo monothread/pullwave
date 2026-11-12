@@ -306,6 +306,9 @@ export interface MangaJob {
     pageCount: number;
     // 0 to 100.
     percent: number;
+    // The speed of the last few seconds and the time the chapter still needs; null while it is not running or nothing was measured.
+    bytesPerSecond: number | null;
+    etaSeconds: number | null;
     error: MangaError | null;
     // How many pages the source would not give when the chapter ended (0 until then, and for a chapter that is whole).
     missingPages: number;

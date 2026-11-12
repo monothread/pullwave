@@ -1,3 +1,5 @@
+import { useIncrementalList } from '../hooks/useIncrementalList';
+import { ListMore } from './ListMore';
 import { useEffect, useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
@@ -48,7 +50,9 @@ export function MangaHistory() {
         }
         return day === today - DAY_MS ? t('manga.recent.yesterday') : new Date(day).toLocaleDateString();
     };
-    const days = groupByDay<ReadingEntry>(history, (entry) => {
+    // A long list is drawn a part at a time: the days are made of the entries drawn so far.
+    const { shown: drawn, hasMore, endRef } = useIncrementalList(history, 'manga-history');
+    const days = groupByDay<ReadingEntry>(drawn, (entry) => {
         return entry.readAt;
     });
 
@@ -110,6 +114,7 @@ export function MangaHistory() {
                     </section>
                 );
             })}
+            <ListMore hasMore={hasMore} endRef={endRef} />
         </section>
     );
 }

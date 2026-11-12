@@ -1,4 +1,4 @@
-import { CONTINUE_LIMIT, activeDownloads, continueReading, continueWatching } from '@renderer/home/homeData';
+import { CONTINUE_LIMIT, activeDownloads, activeTotal, continueReading, continueWatching, statusCounts } from '@renderer/home/homeData';
 import { makeAnime, makeAnimeJob, makeEpisode } from '../../helpers/animeFixtures';
 import { makeAnimeHistory, makeReading } from '../../helpers/homeFixtures';
 import type { LibraryManga, ReadingEntry } from '@shared/manga';
@@ -175,6 +175,19 @@ describe('continueReading', () => {
                 return entry.id;
             })
         ).toEqual([1, 2]);
+    });
+});
+
+describe('statusCounts and activeTotal', () => {
+    it('counts the running, waiting and paused downloads, leaving out the ones that are over', () => {
+        const counts = statusCounts([{ status: 'running' }, { status: 'queued' }, { status: 'queued' }, { status: 'paused' }, { status: 'done' }, { status: 'error' }, { status: 'cancelled' }]);
+        expect(counts).toEqual({ running: 1, queued: 2, paused: 1 });
+        expect(activeTotal(counts)).toBe(4);
+    });
+
+    it('counts nothing for no downloads', () => {
+        expect(statusCounts([])).toEqual({ running: 0, queued: 0, paused: 0 });
+        expect(activeTotal({ running: 0, queued: 0, paused: 0 })).toBe(0);
     });
 });
 

@@ -17,6 +17,9 @@ export default defineConfig({
     },
     renderer: {
         plugins: [react()],
-        resolve: { alias: aliases }
+        resolve: { alias: aliases },
+        // The code of the window is minified: less to read and compile each time the app opens. The CSS is left as it is written, so the look
+        // of the app is exactly the one of the style sheets.
+        build: { minify: true, cssMinify: false }
     }
 });

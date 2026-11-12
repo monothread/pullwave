@@ -17,6 +17,20 @@ export const FLARESOLVERR_POLL_INTERVAL_MS = 500;
 export const FLARESOLVERR_STOP_SECONDS = 3;
 const OUTPUT_LINES = 20;
 
+// What docker says of a layer when it is downloaded (it is then checked and put in place), and when it is in place. Without a terminal docker
+// tells only when a layer goes from one step to the next, not how much of it came.
+const LAYER_DOWNLOADED = /Download complete|Verifying Checksum|Extracting/;
+const LAYER_IN_PLACE = /Pull complete|Already exists/;
+
+// How far the image is, from the steps of its layers: half of a layer once it is downloaded, the whole of it once it is in place. It never goes
+// back: docker names the layers one by one as it starts, so one more layer named would otherwise make the bar shrink.
+export function pullPercent(before: number, layers: number, downloaded: number, finished: number): number {
+    if (layers === 0) {
+        return before;
+    }
+    return Math.max(before, Math.floor(((downloaded + finished) / (layers * 2)) * 100));
+}
+
 export class FlareSolverrDockerError extends Error {
     constructor(
         readonly code: 'NO_DOCKER' | 'PULL_FAILED' | 'START_FAILED',
@@ -300,17 +314,24 @@ export class FlareSolverrDocker {
         }
         this.update({ status: 'downloading', percent: 0, bytesDone: 0, bytesTotal: 0, error: null });
         const layers = new Set<string>();
+        const downloaded = new Set<string>();
         const finished = new Set<string>();
         const pulled = await this.docker(['pull', this.image], (line) => {
             const match = /^([0-9a-f]{12}): (.+)$/.exec(line);
             if (match === null) {
                 return;
             }
-            layers.add(match[1]!);
-            if (/Pull complete|Already exists/.test(match[2]!)) {
-                finished.add(match[1]!);
+            const layer = match[1]!;
+            const step = match[2]!;
+            layers.add(layer);
+            if (LAYER_DOWNLOADED.test(step)) {
+                downloaded.add(layer);
             }
-            this.update({ bytesDone: finished.size, bytesTotal: layers.size, percent: Math.floor((finished.size / layers.size) * 100) });
+            if (LAYER_IN_PLACE.test(step)) {
+                downloaded.add(layer);
+                finished.add(layer);
+            }
+            this.update({ bytesDone: finished.size, bytesTotal: layers.size, percent: pullPercent(this.current.percent, layers.size, downloaded.size, finished.size) });
         });
         if (pulled.code !== 0) {
             this.problem = 'start-failed';

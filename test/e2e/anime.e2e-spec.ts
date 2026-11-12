@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
+import { scrollToBottom, scrollToTop, scrollUntilDrawn } from './windowedList';
 import { systemPromptFor } from '../../src/main/services/subtitleTranslator';
 
 const ROOT = resolve(__dirname, '../..');
@@ -942,7 +943,6 @@ test('lists the results past the first page as the list is scrolled to its end, 
     // The source gives 30 results to a page: the next ones come when the end of the list is reached, with no button to ask for them.
     await expect(page.getByText('30 RESULTS', { exact: true })).toBeVisible();
     await expect(page.locator('.history__title').first()).toHaveText('Many Anime 1');
-    await expect(page.locator('.history__title').last()).toHaveText('Many Anime 30');
     await expect(page.getByRole('button', { name: /LOAD MORE/ })).toHaveCount(0);
     await page.getByTestId('anime-end-of-list').scrollIntoViewIfNeeded();
     await expect(page.getByText('60 RESULTS', { exact: true })).toBeVisible();
@@ -950,14 +950,23 @@ test('lists the results past the first page as the list is scrolled to its end, 
     await expect(page.getByText('70 RESULTS', { exact: true })).toBeVisible();
     await expect(page.getByTestId('anime-end-of-list')).toHaveCount(0);
     await expect(page.getByTestId('anime-results-limit')).toHaveCount(0);
-    await expect(page.locator('.history__title')).toHaveCount(70);
-    await expect(page.locator('.history__title').nth(30)).toHaveText('Many Anime 31');
+    // The grid is drawn by blocks of rows: at the end of the list its last results are drawn, and the first ones, far above, are a spacer
+    // as tall as them.
+    await scrollToBottom(page);
     await expect(page.locator('.history__title').last()).toHaveText('Many Anime 70');
+    await expect(page.getByTestId('list-window-spacer')).not.toHaveCount(0);
+    await expect(page.getByText('Many Anime 1', { exact: true })).toHaveCount(0);
+    expect(await page.locator('.history__title').count()).toBeLessThan(70);
     // Each time the list asked for one result more than it had: ani-cli read the pages until it had it.
     expect(searchMinCalls(userData, 'many')).toEqual(['1 | many', '31 | many', '61 | many']);
+    // Back at the top, the first results are drawn again.
+    await scrollToTop(page);
+    await expect(page.locator('.history__title').first()).toHaveText('Many Anime 1');
 
     // A result of the third page is opened by its position: the episodes are asked for with the search read up to it.
-    await page.getByRole('button', { name: 'OPEN: Many Anime 45', exact: true }).click();
+    const later = page.getByRole('button', { name: 'OPEN: Many Anime 45', exact: true });
+    await scrollUntilDrawn(page, later);
+    await later.click();
     await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
     expect(searchMinCalls(userData, '-S 45 many')).toEqual(['45 | -S 45 many']);
 });
@@ -979,11 +988,14 @@ test('lists no more than the most results of a search and asks to make it more s
     await expect(page.getByText('120 RESULTS', { exact: true })).toBeVisible();
     await expect(page.getByTestId('anime-results-limit')).toHaveText('Showing the first 120 results. Make the search more specific to see the others.');
     await expect(page.getByTestId('anime-end-of-list')).toHaveCount(0);
-    await expect(page.locator('.history__title')).toHaveCount(120);
+    // The grid is drawn by blocks of rows: at its end the last results are drawn, and the first ones are a spacer.
+    await scrollToBottom(page);
     await expect(page.locator('.history__title').last()).toHaveText('Many Anime 120');
+    await expect(page.getByTestId('list-window-spacer')).not.toHaveCount(0);
+    expect(await page.locator('.history__title').count()).toBeLessThan(120);
     await page.waitForTimeout(1500);
     expect(searchMinCalls(userData, 'endless')).toEqual(['1 | endless', '31 | endless', '61 | endless', '91 | endless']);
-    await expect(page.locator('.history__title')).toHaveCount(120);
+    await expect(page.getByText('120 RESULTS', { exact: true })).toBeVisible();
 });
 
 test('searches an anime, lists the results and reports when nothing is found', { tag: '@windows' }, async () => {
@@ -1739,7 +1751,9 @@ test.describe('library and folder in sync', () => {
             season: 1
         });
         await session.app.close();
-        rmSync(join(userData, 'anime', 'anime.db'), { force: true });
+        ['anime.db', 'anime.db-wal', 'anime.db-shm'].forEach((file) => {
+            rmSync(join(userData, 'anime', file), { force: true });
+        });
 
         session = await launch(userData);
         await openLibrary(session.page);
@@ -2500,7 +2514,9 @@ test.describe('series and seasons', () => {
         await waitForDownloaded(page);
         await downloadSecondEntry(page, 'Fake Anime', '2');
         await session.app.close();
-        rmSync(join(userData, 'anime', 'anime.db'), { force: true });
+        ['anime.db', 'anime.db-wal', 'anime.db-shm'].forEach((file) => {
+            rmSync(join(userData, 'anime', file), { force: true });
+        });
 
         session = await launch(userData);
         await openAnimeTab(session.page);

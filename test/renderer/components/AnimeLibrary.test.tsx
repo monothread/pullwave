@@ -13,6 +13,7 @@ import { makeAnimeHistory } from '../../helpers/homeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -2655,5 +2656,56 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
         expect(seasonView.querySelector('.series.detail')).not.toHaveClass('series--overview');
         unmount();
         expect(useBackdropStore.getState().url).toBeNull();
+    });
+});
+
+describe('AnimeLibrary with long lists', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function numbered(count: number, text: string): string[] {
+        return Array.from({ length: count }, (_unused, index) => {
+            return `${text} ${String(index + 1).padStart(2, '0')}`;
+        });
+    }
+
+    it('draws the first 60 anime of a big library, and the others when the end of the grid comes into view', () => {
+        useAnimeStore.setState({
+            library: numbered(70, 'Anime').map((title, index) => {
+                return makeAnime([], { id: 100 + index, title });
+            })
+        });
+        render(<AnimeLibrary />);
+        const cards = (): number => {
+            return screen.getAllByTestId('anime-card').length;
+        };
+        expect(cards()).toBe(60);
+        expect(screen.getByTestId('list-more').tagName).toBe('DIV');
+        seeEnd(observers);
+        expect(cards()).toBe(70);
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
+    });
+
+    it('draws the first 60 episodes of an anime, and the others when the end of the list comes into view', async () => {
+        const user = userEvent.setup();
+        const episodes = Array.from({ length: 70 }, (_unused, index) => {
+            return makeEpisode({ id: 1000 + index, number: String(index + 1) });
+        });
+        useAnimeStore.setState({ library: [makeAnime(episodes, { id: 50, title: 'One Piece' })] });
+        render(<AnimeLibrary />);
+        await user.click(screen.getByRole('button', { name: 'OPEN SERIES: One Piece' }));
+        await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
+        expect(screen.getAllByTestId('anime-episode')).toHaveLength(60);
+        expect(screen.getByTestId('list-more').tagName).toBe('LI');
+        seeEnd(observers);
+        expect(screen.getAllByTestId('anime-episode')).toHaveLength(70);
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

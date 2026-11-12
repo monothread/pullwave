@@ -8,6 +8,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -257,3 +258,38 @@ describe('MangaUpdates while a check is going on', () => {
     });
 });
 
+describe('MangaUpdates with a long list', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // 35 chapters found today and 35 yesterday, the newest first.
+    const LONG = Array.from({ length: 70 }, (_unused, index) => {
+        return entry({ id: index + 1, chapterId: index + 1, chapterName: `Chapter ${String(index + 1)}`, foundAt: at(index < 35 ? 0 : 1, 10) - index * 1000 });
+    });
+
+    function perDay(): number[] {
+        return screen.getAllByTestId('manga-update-day').map((day) => {
+            return within(day).getAllByTestId('manga-update').length;
+        });
+    }
+
+    it('draws the first 60 chapters split by day, and the others when the end of the list comes into view', async () => {
+        mock.api.manga.updates.mockResolvedValue(LONG);
+        render(<MangaUpdates />);
+        await vi.waitFor(() => {
+            expect(screen.getAllByTestId('manga-update-day')).toHaveLength(2);
+        });
+        expect(perDay()).toEqual([35, 25]);
+        expect(screen.getByTestId('list-more')).toBeInTheDocument();
+        seeEnd(observers);
+        expect(perDay()).toEqual([35, 35]);
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
+    });
+});

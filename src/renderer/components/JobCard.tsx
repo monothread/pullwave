@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { DownloadJob } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
 import { ConfirmButton } from './ConfirmButton';
@@ -17,7 +18,7 @@ interface JobCardProps {
     onShowFile: (path: string) => void;
 }
 
-export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onRemove, onClearPartials, onShowFile }: JobCardProps) {
+function JobCardView({ job, onCancel, onPause, onResume, onStop, onRetry, onRemove, onClearPartials, onShowFile }: JobCardProps) {
     const t = useTranslator();
     const isActive = job.status === 'queued' || job.status === 'running' || job.status === 'paused';
     const phase = livePhase(job);
@@ -154,3 +155,6 @@ export function JobCard({ job, onCancel, onPause, onResume, onStop, onRetry, onR
         </article>
     );
 }
+
+// A card is drawn again only when its download or its actions change: the progress of one download does not draw the others again.
+export const JobCard = memo(JobCardView);

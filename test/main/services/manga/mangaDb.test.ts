@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import type { MangaChapter, MangaDetails, MangaSummary } from '@shared/manga';
@@ -23,8 +23,67 @@ afterEach(() => {
 });
 
 describe('MangaDb schema', () => {
+    it('writes through the WAL journal, flushing the disk only when the journal is copied into the file', () => {
+        const path = join(makeTempDir(), 'manga.db');
+        const db = new MangaDb(path);
+        db.close();
+        const raw = new DatabaseSync(path);
+        expect(raw.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' });
+        raw.close();
+        const again = new MangaDb(path);
+        const check = new DatabaseSync(path);
+        expect(check.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' });
+        check.close();
+        again.close();
+    });
+
+    it('copies the journal into the file and empties it on a checkpoint, and keeps working after it', () => {
+        const path = join(makeTempDir(), 'manga.db');
+        const db = new MangaDb(path);
+        const saved = db.upsertManga(MANGA);
+        expect(statSync(`${path}-wal`).size).toBeGreaterThan(0);
+        db.checkpoint();
+        expect(statSync(`${path}-wal`).size).toBe(0);
+        const other = db.upsertManga({ ...MANGA, remoteId: 8, title: 'Bleach' });
+        expect(db.getManga(saved.id)).toEqual(saved);
+        expect(db.getManga(other.id)?.title).toBe('Bleach');
+        db.close();
+    });
+
+    it('finds the chapter that has a place through an index of the chapters being made', () => {
+        const path = join(makeTempDir(), 'manga.db');
+        new MangaDb(path).close();
+        const raw = new DatabaseSync(path);
+        expect(raw.prepare(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'chapter_output_path'`).get()).toEqual({
+            sql: 'CREATE INDEX chapter_output_path ON chapter (output_path) WHERE output_path IS NOT NULL'
+        });
+        const plan = raw.prepare('EXPLAIN QUERY PLAN SELECT 1 AS claimed FROM chapter WHERE output_path = ? AND id != ? LIMIT 1').all('/a.cbz', 1);
+        expect(plan.map((step) => {
+            return step.detail;
+        })).toEqual(['SEARCH chapter USING COVERING INDEX chapter_output_path (output_path=?)']);
+        raw.close();
+    });
+
+    it('adds the index of the places to a library of the previous version, keeping its chapters', () => {
+        const path = join(makeTempDir(), 'manga.db');
+        const before = new MangaDb(path);
+        const manga = before.upsertManga(MANGA);
+        const id = before.ensureChapter(manga.id, chapter(1)).id;
+        before.markDownloading(id, '/library/One Piece/Chapter 1.cbz');
+        before.close();
+        const old = new DatabaseSync(path);
+        old.exec('DROP INDEX chapter_output_path; PRAGMA user_version = 10;');
+        old.close();
+        const db = new MangaDb(path);
+        expect(db.schemaVersion).toBe(11);
+        expect(db.isOutputPathClaimed('/library/One Piece/Chapter 1.cbz', id + 1)).toBe(true);
+        expect(db.isOutputPathClaimed('/library/One Piece/Chapter 1.cbz', id)).toBe(false);
+        expect(db.isOutputPathClaimed('/library/One Piece/Chapter 2.cbz', id + 1)).toBe(false);
+        db.close();
+    });
+
     it('applies the migrations and remembers the version', () => {
-        expect(new MangaDb(':memory:').schemaVersion).toBe(10);
+        expect(new MangaDb(':memory:').schemaVersion).toBe(11);
     });
 
     it('keeps the library in a file and reads it again', () => {
@@ -34,7 +93,7 @@ describe('MangaDb schema', () => {
         first.close();
         expect(existsSync(path)).toBe(true);
         const second = new MangaDb(path);
-        expect(second.schemaVersion).toBe(10);
+        expect(second.schemaVersion).toBe(11);
         expect(second.getManga(saved.id)).toEqual(saved);
         second.close();
     });
@@ -295,10 +354,10 @@ describe('MangaDb states of a download', () => {
         before.markPaused(id);
         before.close();
         const old = new DatabaseSync(path);
-        old.exec('ALTER TABLE chapter DROP COLUMN error_details; ALTER TABLE chapter DROP COLUMN output_path; PRAGMA user_version = 8;');
+        old.exec('DROP INDEX chapter_output_path; ALTER TABLE chapter DROP COLUMN error_details; ALTER TABLE chapter DROP COLUMN output_path; PRAGMA user_version = 8;');
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(10);
+        expect(db.schemaVersion).toBe(11);
         expect(db.pausedChapters().map((item) => {
             return [item.id, item.status];
         })).toEqual([[id, 'paused']]);
@@ -314,10 +373,10 @@ describe('MangaDb states of a download', () => {
         before.markFailed(id, 'error', { code: 'DISK', message: 'full' });
         before.close();
         const old = new DatabaseSync(path);
-        old.exec('ALTER TABLE chapter DROP COLUMN error_details; PRAGMA user_version = 9;');
+        old.exec('DROP INDEX chapter_output_path; ALTER TABLE chapter DROP COLUMN error_details; PRAGMA user_version = 9;');
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(10);
+        expect(db.schemaVersion).toBe(11);
         expect(db.getChapter(id)?.error).toEqual({ code: 'DISK', message: 'full' });
         db.markFailed(id, 'error', { code: 'DISK', message: 'full again', details: { occurredAt: 7 } });
         expect(db.getChapter(id)?.error).toEqual({ code: 'DISK', message: 'full again', details: { occurredAt: 7 } });
@@ -444,7 +503,7 @@ describe('MangaDb the page of the manga on its site', () => {
             PRAGMA user_version = 2;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(10);
+        expect(db.schemaVersion).toBe(11);
         expect(db.list()).toEqual([{ id: 1, sourceId: 's', remoteId: 1, title: 'Old', thumbnailUrl: null, url: null, author: 'Someone', artist: null, description: null, genres: [], status: 'unknown', createdAt: 3, series: null, season: null, seasonName: null, groupIds: [], chapters: [] }]);
         db.close();
     });
@@ -945,7 +1004,7 @@ describe('MangaDb when a chapter was put in the library', () => {
             PRAGMA user_version = 4;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(10);
+        expect(db.schemaVersion).toBe(11);
         expect(db.chaptersOf(1)[0]).toMatchObject({ remoteId: 5, addedAt: null });
         db.close();
     });
@@ -1050,7 +1109,7 @@ describe('MangaDb the cover that is kept', () => {
             PRAGMA user_version = 5;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(10);
+        expect(db.schemaVersion).toBe(11);
         expect(db.coverHash(1)).toBeNull();
         expect(db.coverless().map((item) => {
             return item.title;
@@ -1309,7 +1368,7 @@ describe('MangaDb the tables of the histories in a library made before them', ()
             PRAGMA user_version = 6;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(10);
+        expect(db.schemaVersion).toBe(11);
         expect(db.updates()).toEqual([]);
         expect(db.readingHistory()).toEqual([]);
         db.recordReading({ sourceId: 's', mangaRemoteId: 1, title: 'Old', thumbnailUrl: null, chapterRemoteId: 2, chapterName: '', chapterNumber: null, page: 0, pageCount: 1 });
@@ -1336,7 +1395,7 @@ describe('MangaDb the order of the groups in a library made before it', () => {
             PRAGMA user_version = 7;`);
         old.close();
         const db = new MangaDb(path);
-        expect(db.schemaVersion).toBe(10);
+        expect(db.schemaVersion).toBe(11);
         // By name, whatever the case; the ones with the same name by their id.
         expect(
             db.listGroups().map((group) => {

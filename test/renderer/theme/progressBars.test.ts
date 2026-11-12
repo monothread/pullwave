@@ -164,7 +164,7 @@ describe('the movement of the neon inside each bar', () => {
         ['.progress--processing::after', 'scan-sweep 1s linear infinite'],
         ['.progress--saving::after', 'scan-sweep 0.9s linear infinite'],
         ['.progress--merging::after', 'scan-sweep 1.1s linear infinite'],
-        ['.progress--cloudflare::after', 'cloudflare-sweep 1.4s ease-in-out infinite']
+        ['.progress--cloudflare::after', 'cloudflare-sweep 1.4s ease-in-out infinite alternate']
     ])('sweeps a bright line over the bar with %s', (selector, animation) => {
         const sweep = styleOf(cyberpunk, selector);
         expect(sweep['animation']).toBe(animation);

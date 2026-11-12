@@ -9,7 +9,7 @@ import { AnimeLibrary } from './AnimeLibrary';
 import { AnimePlayer } from './AnimePlayer';
 import { AnimeSchedule } from './AnimeSchedule';
 import { AnimeSearch } from './AnimeSearch';
-import { AnimeStreamPlayer } from './AnimeStreamPlayer';
+import { LazyAnimeStreamPlayer } from './LazyAnimeStreamPlayer';
 import { AnimeUpdates } from './AnimeUpdates';
 import { AudioReportDialog } from './AudioReportDialog';
 import { ProgramsGate } from './ProgramsSetup';
@@ -62,7 +62,7 @@ export function AnimePanel() {
                 </div>
                 <AnimeSubtitleJobs />
                 <AnimePlayer />
-                <AnimeStreamPlayer />
+                <LazyAnimeStreamPlayer />
             </section>
         );
     }
@@ -76,7 +76,7 @@ export function AnimePanel() {
                 </div>
                 <AnimeJobs />
                 <AnimePlayer />
-                <AnimeStreamPlayer />
+                <LazyAnimeStreamPlayer />
             </section>
         );
     }
@@ -129,7 +129,7 @@ export function AnimePanel() {
             )}
             {view === 'settings' && <SettingsPanel scope="anime" />}
             <AnimePlayer />
-            <AnimeStreamPlayer />
+            <LazyAnimeStreamPlayer />
             <AudioReportDialog />
         </section>
     );

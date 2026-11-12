@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { localCoverUrl, type MangaRecord } from '@shared/manga';
 import { detectImageType } from './imageType';
@@ -44,6 +45,9 @@ export class MangaCovers {
     // The covers that did not come: they are not asked for again until the app opens again.
     private readonly failed = new Set<number>();
     private backfilling: Promise<boolean> | null = null;
+    // Whether the file of each cover is there (by its path), looked at once: after that this class knows it from what it writes, deletes
+    // and fails to read. The library asks for the address of every cover each time it is listed.
+    private readonly onDisk = new Map<string, boolean>();
 
     constructor(private readonly deps: MangaCoversDependencies) {
         this.fetchImpl = deps.fetchImpl ?? fetch;
@@ -56,17 +60,35 @@ export class MangaCovers {
     // The file with the cover of the manga, when one is kept.
     fileOf(mangaId: number): string | null {
         const path = this.pathOf(mangaId);
-        return this.deps.db.coverHash(mangaId) !== null && existsSync(path) ? path : null;
+        return this.deps.db.coverHash(mangaId) !== null && this.isOnDisk(mangaId) ? path : null;
     }
 
     // The address the window shows the cover with, when one is kept.
     urlOf(mangaId: number): string | null {
         const hash = this.deps.db.coverHash(mangaId);
-        return hash !== null && existsSync(this.pathOf(mangaId)) ? localCoverUrl(mangaId, hash.slice(0, FINGERPRINT_LENGTH)) : null;
+        return hash !== null && this.isOnDisk(mangaId) ? localCoverUrl(mangaId, hash.slice(0, FINGERPRINT_LENGTH)) : null;
     }
 
-    read(path: string): Promise<Buffer> {
-        return Promise.resolve(readFileSync(path));
+    private isOnDisk(mangaId: number): boolean {
+        const path = this.pathOf(mangaId);
+        const known = this.onDisk.get(path);
+        if (known !== undefined) {
+            return known;
+        }
+        const found = existsSync(path);
+        this.onDisk.set(path, found);
+        return found;
+    }
+
+    // Read without stopping the main process, which also answers the window while the library shows its covers. A file that is gone
+    // (taken out of the data folder while the app runs) is known as gone: the cover is shown from the source again and taken again.
+    async read(path: string): Promise<Buffer> {
+        try {
+            return await readFile(path);
+        } catch (error) {
+            this.onDisk.set(path, false);
+            throw error;
+        }
     }
 
     // Takes the cover from where the manga says it is. True when what is kept changed (a new image, or the first one).
@@ -102,7 +124,7 @@ export class MangaCovers {
         }
         this.failed.delete(mangaId);
         const hash = sha256(bytes);
-        if (hash === this.deps.db.coverHash(mangaId) && existsSync(this.pathOf(mangaId))) {
+        if (hash === this.deps.db.coverHash(mangaId) && this.isOnDisk(mangaId)) {
             return false;
         }
         this.write(mangaId, bytes);
@@ -149,6 +171,7 @@ export class MangaCovers {
         const partial = `${path}.part`;
         writeFileSync(partial, bytes);
         renameSync(partial, path);
+        this.onDisk.set(path, true);
     }
 
     private get missing(): MangaRecord[] {
@@ -198,6 +221,7 @@ export class MangaCovers {
     remove(mangaId: number): void {
         rmSync(this.pathOf(mangaId), { force: true });
         rmSync(`${this.pathOf(mangaId)}.part`, { force: true });
+        this.onDisk.set(this.pathOf(mangaId), false);
         this.failed.delete(mangaId);
     }
 }

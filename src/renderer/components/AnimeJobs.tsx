@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { IncrementalItems } from './IncrementalItems';
+import { memo, useState } from 'react';
 import type { AnimeJob } from '@shared/anime';
 import { DownloadHero } from '../downloads/DownloadHero';
 import { AnimeCover } from './AnimeCover';
@@ -40,6 +41,91 @@ function isManageable(job: AnimeJob): boolean {
     return job.status === 'running' || job.status === 'queued' || job.status === 'paused';
 }
 
+// One episode of the queue. It is drawn again only when its download changes: the progress of one episode does not draw the others again.
+// Its actions ask the store as it is when they are used.
+const AnimeJobRow = memo(function AnimeJobRow({ job }: { job: AnimeJob }) {
+    const t = useTranslator();
+    const title = t('anime.job.title', { title: job.animeTitle, episode: job.episode });
+    return (
+        <article className={`job job--${job.status}`} data-testid="anime-job">
+            <header className="job__head">
+                <h3 className="job__title" title={title}>
+                    {title}
+                </h3>
+                <span className="job__badges">
+                    <span className={`badge badge--${job.status}`}>{t(animeStatusKey(job.status))}</span>
+                </span>
+            </header>
+            <div
+                className="progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(job.percent)}
+                aria-label={t('anime.progress.aria', { title: job.animeTitle, episode: job.episode })}
+            >
+                <div className="progress__bar" style={{ width: `${job.percent}%` }} />
+            </div>
+            <div className="job__meta">
+                <span>{formatPercent(job.percent)}</span>
+                {job.speed && <span>{job.speed}</span>}
+                {job.eta && <span>{t('job.eta', { eta: job.eta })}</span>}
+            </div>
+            {job.error && (
+                <p className="field__warning" role="alert">
+                    <ErrorNotice report={animeErrorReport(t, job.error)} />
+                </p>
+            )}
+            <div className="job__actions">
+                {job.status === 'running' && (
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            void useAnimeStore.getState().pauseJob(job.episodeId);
+                        }}
+                    >
+                        {t('anime.job.pause')}
+                    </button>
+                )}
+                {job.status === 'paused' && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void useAnimeStore.getState().resumeJob(job.episodeId);
+                        }}
+                    >
+                        {t('anime.job.resume')}
+                    </button>
+                )}
+                {(job.status === 'queued' || job.status === 'running' || job.status === 'paused') && (
+                    <ConfirmButton
+                        className="btn btn--small btn--hot"
+                        dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('anime.job.cancel'), cancelLabel: t('confirm.back') }}
+                        onConfirm={() => {
+                            void useAnimeStore.getState().cancelJob(job.episodeId);
+                        }}
+                    >
+                        {t('anime.job.cancel')}
+                    </ConfirmButton>
+                )}
+                {(job.status === 'error' || job.status === 'cancelled') && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void useAnimeStore.getState().retryJob(job.episodeId);
+                        }}
+                    >
+                        {t('anime.job.retry')}
+                    </button>
+                )}
+            </div>
+        </article>
+    );
+});
+
 // The list on the downloads screen: the running ones first, then the waiting ones, then the ones that are over.
 export function AnimeJobs() {
     const t = useTranslator();
@@ -49,18 +135,6 @@ export function AnimeJobs() {
     });
     const queueHeld = useAnimeStore((state) => {
         return state.queueHeld;
-    });
-    const cancelJob = useAnimeStore((state) => {
-        return state.cancelJob;
-    });
-    const retryJob = useAnimeStore((state) => {
-        return state.retryJob;
-    });
-    const pauseJob = useAnimeStore((state) => {
-        return state.pauseJob;
-    });
-    const resumeJob = useAnimeStore((state) => {
-        return state.resumeJob;
     });
     const clearFinishedJobs = useAnimeStore((state) => {
         return state.clearFinishedJobs;
@@ -170,87 +244,9 @@ export function AnimeJobs() {
                 />
             )}
             {queueHeld && jobs.some(isQueued) && <p className="field__hint">{t('anime.jobs.held')}</p>}
-            {sorted.map((job) => {
-                const title = t('anime.job.title', { title: job.animeTitle, episode: job.episode });
-                return (
-                    <article key={job.episodeId} className={`job job--${job.status}`} data-testid="anime-job">
-                        <header className="job__head">
-                            <h3 className="job__title" title={title}>
-                                {title}
-                            </h3>
-                            <span className="job__badges">
-                                <span className={`badge badge--${job.status}`}>{t(animeStatusKey(job.status))}</span>
-                            </span>
-                        </header>
-                        <div
-                            className="progress"
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={Math.round(job.percent)}
-                            aria-label={t('anime.progress.aria', { title: job.animeTitle, episode: job.episode })}
-                        >
-                            <div className="progress__bar" style={{ width: `${job.percent}%` }} />
-                        </div>
-                        <div className="job__meta">
-                            <span>{formatPercent(job.percent)}</span>
-                            {job.speed && <span>{job.speed}</span>}
-                            {job.eta && <span>{t('job.eta', { eta: job.eta })}</span>}
-                        </div>
-                        {job.error && (
-                            <p className="field__warning" role="alert">
-                                <ErrorNotice report={animeErrorReport(t, job.error)} />
-                            </p>
-                        )}
-                        <div className="job__actions">
-                            {job.status === 'running' && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small"
-                                    onClick={() => {
-                                        void pauseJob(job.episodeId);
-                                    }}
-                                >
-                                    {t('anime.job.pause')}
-                                </button>
-                            )}
-                            {job.status === 'paused' && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small btn--primary"
-                                    onClick={() => {
-                                        void resumeJob(job.episodeId);
-                                    }}
-                                >
-                                    {t('anime.job.resume')}
-                                </button>
-                            )}
-                            {(job.status === 'queued' || job.status === 'running' || job.status === 'paused') && (
-                                <ConfirmButton
-                                    className="btn btn--small btn--hot"
-                                    dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('anime.job.cancel'), cancelLabel: t('confirm.back') }}
-                                    onConfirm={() => {
-                                        void cancelJob(job.episodeId);
-                                    }}
-                                >
-                                    {t('anime.job.cancel')}
-                                </ConfirmButton>
-                            )}
-                            {(job.status === 'error' || job.status === 'cancelled') && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small btn--primary"
-                                    onClick={() => {
-                                        void retryJob(job.episodeId);
-                                    }}
-                                >
-                                    {t('anime.job.retry')}
-                                </button>
-                            )}
-                        </div>
-                    </article>
-                );
-            })}
+            <IncrementalItems items={sorted} listKey="anime-jobs" end="div" renderItem={(job) => {
+                return <AnimeJobRow key={job.episodeId} job={job} />;
+            }} />
         </section>
     );
 }

@@ -7,6 +7,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -429,5 +430,43 @@ describe('MangaMigrateSource', () => {
             expect(screen.queryByLabelText('Search in')).not.toBeInTheDocument();
             expect(screen.getByText('There is no other source: install another extension first.')).toBeInTheDocument();
         });
+    });
+});
+
+describe('MangaMigrateSource with many results', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // Six sources besides the one of the manga, with twelve results each: 72 candidates.
+    const MANY_SOURCES = [
+        makeSource({ id: '123', name: 'Current Dex', lang: 'en' }),
+        ...Array.from({ length: 6 }, (_unused, index) => {
+            return makeSource({ id: String(500 + index), name: `Source ${String(index + 1)}`, lang: 'en' });
+        })
+    ];
+
+    it('draws the first 60 candidates, and the others when the end of the list comes into view', async () => {
+        const user = userEvent.setup();
+        useMangaStore.setState({ browse: { ...initialManga.browse, sources: MANY_SOURCES, sourcesStatus: 'ready' } });
+        mock.api.manga.list.mockImplementation(async (request: { sourceId: string }) => {
+            const items = Array.from({ length: 12 }, (_unused, index) => {
+                return makeSummary({ remoteId: Number(request.sourceId) * 100 + index, sourceId: request.sourceId, title: `One Piece ${String(index + 1)}` });
+            });
+            return { ok: true, value: { items, hasNextPage: false } };
+        });
+        renderPanel();
+        await user.click(screen.getByRole('button', { name: 'SEARCH' }));
+        expect(await screen.findAllByTestId('manga-candidate')).toHaveLength(60);
+        expect(screen.getByTestId('list-more').tagName).toBe('LI');
+        seeEnd(observers);
+        expect(screen.getAllByTestId('manga-candidate')).toHaveLength(72);
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

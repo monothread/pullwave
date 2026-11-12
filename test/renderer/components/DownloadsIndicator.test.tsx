@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
-import { DownloadsIndicator, countByKind } from '@renderer/components/DownloadsIndicator';
+import { DownloadsIndicator } from '@renderer/components/DownloadsIndicator';
 import { useAnimeStore } from '@renderer/store/animeStore';
 import type { SubtitleActivity } from '@renderer/store/subtitleActivity';
 import { useAppStore } from '@renderer/store/appStore';
@@ -42,13 +42,6 @@ afterEach(() => {
     useAppStore.setState(initialApp, true);
     useAnimeStore.setState(initialAnime, true);
     useMangaStore.setState(initialManga, true);
-});
-
-describe('countByKind', () => {
-    it('counts the downloads of each section', () => {
-        expect(countByKind(['video', 'anime', 'anime'])).toEqual({ video: 1, anime: 2, manga: 0 });
-        expect(countByKind([])).toEqual({ video: 0, anime: 0, manga: 0 });
-    });
 });
 
 describe('DownloadsIndicator', () => {

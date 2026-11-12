@@ -1,3 +1,4 @@
+import { IncrementalItems } from './IncrementalItems';
 import { useEffect, useRef, useState } from 'react';
 import type { AnimeAiringOverride, AnimeEpisodeRecord, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
@@ -488,9 +489,9 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
                     <ListOrderSelect kind="episodes" itemKey={orderKey} />
                 </div>
                 <ul className="episode-cards">
-                    {inListOrder(anime.episodes, episodeOrder).map((episode) => {
+                    <IncrementalItems items={inListOrder(anime.episodes, episodeOrder)} listKey={`anime-episodes:${String(anime.id)}`} end="li" renderItem={(episode) => {
                         return <EpisodeRow key={episode.id} anime={anime} episode={episode} t={t} />;
-                    })}
+                    }} />
                 </ul>
             </article>
         </section>
@@ -863,7 +864,7 @@ export function AnimeLibrary() {
             {shown.length === 0 && <p className="empty">{t('anime.library.search.none')}</p>}
             {shown.length > 0 && groups.length === 0 && <p className="empty">{t(NO_MATCH_MESSAGES[filter])}</p>}
             <div className="cover-grid">
-                {groups.map((group) => {
+                <IncrementalItems items={groups} listKey="anime-library" end="div" renderItem={(group) => {
                     return (
                         <SeriesCard
                             key={group.key}
@@ -874,7 +875,7 @@ export function AnimeLibrary() {
                             }}
                         />
                     );
-                })}
+                }} />
             </div>
         </section>
     );

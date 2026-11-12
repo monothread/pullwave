@@ -1,3 +1,4 @@
+import { WindowedList, windowBack } from './WindowedList';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
@@ -71,14 +72,18 @@ export function AnimeSearch() {
             {search.status === 'done' && search.results.length > 0 && (
                 <>
                     <span className="section-label">{t('anime.results.label', { count: search.results.length })}</span>
-                    <ul className="cover-grid">
-                        {search.results.map((result) => {
+                    <WindowedList
+                        as="ul"
+                        className="cover-grid"
+                        items={search.results}
+                        listKey={`anime-search:${search.searchedQuery}`}
+                        renderItem={(result, back) => {
                             // An anime is in the library from the moment it is added, whether or not an episode of it was downloaded.
                             const saved = libraryEntry(library, result.title);
                             const joined = saved;
                             const inSeries = joined?.series != null && joined.season !== null;
                             return (
-                                <li key={result.index} className="history__item cover-card row--link">
+                                <li key={result.index} className="history__item cover-card row--link" {...windowBack(back)}>
                                     {result.unconfirmed === true ? <AnimeCover title={result.title} url={null} /> : <AnimeCover title={result.title} />}
                                     <div className="history__main">
                                         <span className="history__title">
@@ -119,8 +124,8 @@ export function AnimeSearch() {
                                     </div>
                                 </li>
                             );
-                        })}
-                    </ul>
+                        }}
+                    />
                     {search.hasNextPage && (
                         <div ref={endOfList} className="manga__more" data-testid="anime-end-of-list">
                             {search.loadingMore && <p className="empty">{t('anime.results.loading')}</p>}

@@ -1,3 +1,4 @@
+import { IncrementalItems } from './IncrementalItems';
 import { useEffect } from 'react';
 import { useMangaLanguage } from '../hooks/useMangaLanguage';
 import { useTranslator } from '../i18n/useTranslator';
@@ -124,7 +125,7 @@ export function MangaExtensions() {
                     </div>
                     {status === 'ready' && shown.length === 0 && <p className="empty">{t(onlyInstalledHidesAll ? 'manga.ext.noneInstalled' : 'manga.ext.none')}</p>}
                     <ul className="history__list">
-                        {shown.map((extension) => {
+                        <IncrementalItems items={shown} listKey="manga-extensions" end="li" renderItem={(extension) => {
                             const working = busy.includes(extension.pkgName);
                             return (
                                 <li key={extension.pkgName} className="history__item" data-testid="manga-extension">
@@ -183,7 +184,7 @@ export function MangaExtensions() {
                                     </span>
                                 </li>
                             );
-                        })}
+                        }} />
                     </ul>
                 </>
             )}

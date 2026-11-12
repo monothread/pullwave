@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ICON_KEY_LENGTH, MAX_ICON_BYTES, MangaIcons, parseIconUrl } from '@main/services/manga/mangaIcons';
 import { cleanTempDirs, makeTempDir } from '../../../helpers/tempDir';
@@ -202,5 +202,47 @@ describe('MangaIcons', () => {
         const key = icons.keyOf('/api/v1/extension/icon/fake');
         writeFileSync(join(directory, key), PNG);
         await expect(icons.read(join(directory, key))).resolves.toEqual(Buffer.from(PNG));
+    });
+
+    it('looks at the folder once for each icon, and keeps the answer after that', () => {
+        const { icons, directory } = setup();
+        const absent = 'a'.repeat(ICON_KEY_LENGTH);
+        const present = 'b'.repeat(ICON_KEY_LENGTH);
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(join(directory, present), PNG);
+        expect(icons.fileOf(absent)).toBeNull();
+        expect(icons.fileOf(present)).toBe(join(directory, present));
+        writeFileSync(join(directory, absent), PNG);
+        rmSync(join(directory, present));
+        expect(icons.fileOf(absent)).toBeNull();
+        expect(icons.fileOf(present)).toBe(join(directory, present));
+    });
+
+    it('knows an icon it took is there, even when the folder was looked at before', async () => {
+        const { icons, directory } = setup();
+        const key = icons.keyOf('/api/v1/extension/icon/fake');
+        expect(icons.fileOf(key)).toBeNull();
+        expect(icons.present(`${BASE}/api/v1/extension/icon/fake`)).toBe(`${BASE}/api/v1/extension/icon/fake`);
+        await settled();
+        expect(icons.fileOf(key)).toBe(join(directory, key));
+        expect(icons.present(`${BASE}/api/v1/extension/icon/fake`)).toBe(`pullwave-manga://icon/${key}`);
+    });
+
+    it('fails to read an icon whose file is not there', async () => {
+        const { icons, directory } = setup();
+        await expect(icons.read(join(directory, 'gone'))).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('knows an icon is gone once its file cannot be read, and shows it from the server again', async () => {
+        const { icons, directory } = setup();
+        const address = `${BASE}/api/v1/extension/icon/fake`;
+        icons.present(address);
+        await settled();
+        const key = icons.keyOf('/api/v1/extension/icon/fake');
+        expect(icons.present(address)).toBe(`pullwave-manga://icon/${key}`);
+        rmSync(join(directory, key));
+        await expect(icons.read(join(directory, key))).rejects.toMatchObject({ code: 'ENOENT' });
+        expect(icons.fileOf(key)).toBeNull();
+        expect(icons.present(address)).toBe(address);
     });
 });

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { detectImageType } from './imageType';
@@ -36,6 +37,9 @@ export class MangaIcons {
     private readonly fetchImpl: typeof fetch;
     // The icons that were asked for in this run (once each).
     private readonly asked = new Set<string>();
+    // Whether the file of each icon is there (by its path), looked at once: after that this class knows it from what it writes and fails
+    // to read.
+    private readonly onDisk = new Map<string, boolean>();
 
     constructor(private readonly deps: MangaIconsDependencies) {
         this.fetchImpl = deps.fetchImpl ?? fetch;
@@ -48,11 +52,23 @@ export class MangaIcons {
 
     fileOf(key: string): string | null {
         const path = join(this.deps.directory, key);
-        return existsSync(path) ? path : null;
+        let found = this.onDisk.get(path);
+        if (found === undefined) {
+            found = existsSync(path);
+            this.onDisk.set(path, found);
+        }
+        return found ? path : null;
     }
 
-    read(path: string): Promise<Buffer> {
-        return Promise.resolve(readFileSync(path));
+    // Read without stopping the main process, which also answers the window while the sources show their icons. A file that is gone is
+    // known as gone: the icon is shown from the server again.
+    async read(path: string): Promise<Buffer> {
+        try {
+            return await readFile(path);
+        } catch (error) {
+            this.onDisk.set(path, false);
+            throw error;
+        }
     }
 
     // The address to show an icon with: the one that is kept when there is one, otherwise the one the server gives. Either way the icon is
@@ -93,6 +109,7 @@ export class MangaIcons {
             const partial = `${path}.part`;
             writeFileSync(partial, bytes);
             renameSync(partial, path);
+            this.onDisk.set(path, true);
         } catch {
             return;
         }

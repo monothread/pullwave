@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AnimeHistoryRequest, AnimeScheduleEntry } from '@shared/anime';
@@ -18,6 +19,30 @@ afterEach(() => {
 });
 
 describe('AnimeDb schema', () => {
+    it('writes through the WAL journal, flushing the disk only when the journal is copied into the file', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        new AnimeDb(path).close();
+        const raw = new DatabaseSync(path);
+        expect(raw.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' });
+        raw.close();
+    });
+
+    it('copies the journal into the file and empties it on a checkpoint, and keeps working after it', () => {
+        const path = join(makeTempDir(), 'anime.db');
+        const db = new AnimeDb(path, () => {
+            return NOW;
+        });
+        const anime = db.upsertAnime(NARUTO);
+        expect(statSync(`${path}-wal`).size).toBeGreaterThan(0);
+        db.checkpoint();
+        expect(statSync(`${path}-wal`).size).toBe(0);
+        db.ensureEpisode(anime.id, '1');
+        expect(db.list().map((entry) => {
+            return entry.title;
+        })).toEqual(['Naruto']);
+        db.close();
+    });
+
     it('applies the migrations and remembers the version', () => {
         expect(makeDb().schemaVersion).toBe(13);
     });

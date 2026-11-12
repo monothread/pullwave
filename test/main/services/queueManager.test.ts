@@ -3,7 +3,7 @@ import type { DownloadError, DownloadInfo, DownloadJob, HistoryEntry, PostProces
 import { applyLanguage } from '@main/services/language';
 import type { PausedDownload } from '@main/services/pausedStore';
 import { makeJob } from '../../helpers/mockApi';
-import { LIVE_END_RETRY_MS, LIVE_TICK_MS, QueueManager, type QueueDependencies } from '@main/services/queueManager';
+import { LIVE_END_RETRY_MS, LIVE_TICK_MS, PROGRESS_EMIT_MS, QueueManager, type QueueDependencies } from '@main/services/queueManager';
 import { buildYtdlpArgs } from '@main/services/ytdlpArgsBuilder';
 import type { RunHandle, RunResult } from '@main/services/ytdlpRunner';
 
@@ -3193,5 +3193,136 @@ describe('QueueManager thumbnails', () => {
         await double.answer('pullwave-thumb://job/job-1?v=2');
         expect(double.load).toHaveBeenLastCalledWith('job-1', 'https://i.ytimg.com/vi/abc/1.jpg');
         expect(queue.list()[0]?.thumbnail).toBe('pullwave-thumb://job/job-1?v=2');
+    });
+});
+
+describe('QueueManager progress updates sent to the window', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    function progressUpdates(updates: DownloadJob[]): Array<Pick<DownloadJob, 'percent' | 'speed'>> {
+        return updates
+            .filter((job) => {
+                return job.status === 'running' && job.speed.length > 0;
+            })
+            .map((job) => {
+                return { percent: job.percent, speed: job.speed };
+            });
+    }
+
+    it('waits 250 milliseconds between two progress updates of a download', () => {
+        expect(PROGRESS_EMIT_MS).toBe(250);
+    });
+
+    it('sends the first progress at once and keeps the next ones for the end of the wait, sending only the last', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        runs[0]?.onProgress(progress({ percent: 20, speed: '2MiB/s' }));
+        runs[0]?.onProgress(progress({ percent: 30, speed: '3MiB/s' }));
+        expect(progressUpdates(updates)).toEqual([{ percent: 10, speed: '1MiB/s' }]);
+        expect(queue.list()[0]).toMatchObject({ percent: 30, speed: '3MiB/s' });
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS - 1);
+        expect(progressUpdates(updates)).toHaveLength(1);
+        vi.advanceTimersByTime(1);
+        expect(progressUpdates(updates)).toEqual([{ percent: 10, speed: '1MiB/s' }, { percent: 30, speed: '3MiB/s' }]);
+    });
+
+    it('waits again after sending the last progress of a wait', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        runs[0]?.onProgress(progress({ percent: 20, speed: '2MiB/s' }));
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS);
+        runs[0]?.onProgress(progress({ percent: 25, speed: '2MiB/s' }));
+        expect(progressUpdates(updates)).toEqual([{ percent: 10, speed: '1MiB/s' }, { percent: 20, speed: '2MiB/s' }]);
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS);
+        expect(progressUpdates(updates).at(-1)).toEqual({ percent: 25, speed: '2MiB/s' });
+    });
+
+    it('sends the next progress at once when nothing came during the wait', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS);
+        expect(progressUpdates(updates)).toHaveLength(1);
+        runs[0]?.onProgress(progress({ percent: 40, speed: '4MiB/s' }));
+        expect(progressUpdates(updates)).toEqual([{ percent: 10, speed: '1MiB/s' }, { percent: 40, speed: '4MiB/s' }]);
+    });
+
+    it('waits for each download on its own', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        queue.add(URL_B);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        runs[1]?.onProgress(progress({ percent: 50, speed: '5MiB/s' }));
+        expect(updates.filter((job) => {
+            return job.speed.length > 0;
+        }).map((job) => {
+            return [job.id, job.percent];
+        })).toEqual([['job-1', 10], ['job-2', 50]]);
+    });
+
+    it('does not send the kept progress again when another update of the download already carried it', async () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        runs[0]?.onProgress(progress({ percent: 20, speed: '2MiB/s' }));
+        runs[0]?.resolve({ status: 'done', filePath: '/dl/a.mp4' });
+        await vi.waitFor(() => {
+            expect(queue.list()[0]?.status).toBe('done');
+        });
+        const count = updates.length;
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS);
+        expect(updates).toHaveLength(count);
+        expect(updates.at(-1)).toMatchObject({ id: 'job-1', status: 'done', percent: 100 });
+    });
+
+    it('does not send the kept progress of a download that was removed', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        runs[0]?.onProgress(progress({ percent: 20, speed: '2MiB/s' }));
+        queue.remove('job-1');
+        const count = updates.length;
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS);
+        expect(updates).toHaveLength(count);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('does not send the kept progress after the queue is shut down', async () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        runs[0]?.onProgress(progress({ percent: 20, speed: '2MiB/s' }));
+        const closing = queue.shutdown(0);
+        const count = updates.length;
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS);
+        await closing;
+        expect(updates.slice(count).filter((job) => {
+            return job.percent === 20 && job.status === 'running';
+        })).toEqual([]);
+    });
+
+    it('sends at once, and keeps nothing for later, the progress that comes while the queue shuts down', async () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s' }));
+        const closing = queue.shutdown(0);
+        const count = updates.length;
+        runs[0]?.onProgress(progress({ percent: 30, speed: '3MiB/s' }));
+        runs[0]?.onProgress(progress({ percent: 40, speed: '4MiB/s' }));
+        expect(updates.slice(count).map((job) => {
+            return job.percent;
+        })).toEqual([30, 40]);
+        await closing;
+        const after = updates.length;
+        vi.advanceTimersByTime(PROGRESS_EMIT_MS);
+        expect(updates).toHaveLength(after);
     });
 });

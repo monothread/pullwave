@@ -333,7 +333,8 @@ describe('AnimePanel', () => {
         const user = userEvent.setup();
         useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null, nextEpisode: null } });
         render(<AnimePanel />);
-        expect(screen.getByRole('dialog', { name: 'Naruto · EP 2' })).toBeInTheDocument();
+        // The player is loaded the first time a stream is opened.
+        expect(await screen.findByRole('dialog', { name: 'Naruto · EP 2' })).toBeInTheDocument();
         act(() => {
             useAnimeStore.getState().closeStream();
             useAnimeStore.getState().openDownloads();
@@ -342,6 +343,13 @@ describe('AnimePanel', () => {
         expect(screen.getByRole('dialog', { name: 'Naruto · EP 3' })).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'CLOSE' }));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('draws no player while no stream is open', () => {
+        useAnimeStore.setState({ streaming: null });
+        const { container } = render(<AnimePanel />);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        expect(container.querySelector('video')).toBeNull();
     });
 
     it.each(['library', 'settings', 'updates'] as const)('opens the report of the audio check over the section, on the %s tab', (view) => {

@@ -13,7 +13,7 @@ import { useEffect, useRef } from 'react';
 import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, type AnimeQuality, type AnimeSubtitleSetting } from '@shared/anime';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import { chosenBrowserWarning, findChosenBrowser, NO_BROWSER_CHOSEN } from '@shared/browserChoice';
-import { LANGUAGE_NAMES, type Translator } from '@shared/i18n';
+import { LANGUAGE_NAMES, type Translator } from '@shared/i18n/core';
 import { translationSetupGap } from '@shared/llm';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
 import type { DetectedBrowser, LanguageSetting, SiteBrowser, ThemeName } from '@shared/types';

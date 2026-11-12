@@ -1,3 +1,4 @@
+import { IncrementalItems } from './IncrementalItems';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { ConfirmButton } from './ConfirmButton';
@@ -6,31 +7,39 @@ import { sortForDisplay } from './jobStatus';
 import { DownloadHero } from '../downloads/DownloadHero';
 import { VideoThumbnail } from '../downloads/VideoThumbnail';
 
+// The actions of the cards, the same for every card and every drawing (so a card whose download did not change is not drawn again). They
+// ask the store as it is when they are used.
+const JOB_ACTIONS = {
+    onCancel: (id: string): void => {
+        void useAppStore.getState().cancelJob(id);
+    },
+    onPause: (id: string): void => {
+        void useAppStore.getState().pauseJob(id);
+    },
+    onResume: (id: string): void => {
+        void useAppStore.getState().resumeJob(id);
+    },
+    onStop: (id: string): void => {
+        void useAppStore.getState().stopJob(id);
+    },
+    onRetry: (id: string): void => {
+        void useAppStore.getState().retryJob(id);
+    },
+    onRemove: (id: string): void => {
+        void useAppStore.getState().removeJob(id);
+    },
+    onClearPartials: (id: string): void => {
+        void useAppStore.getState().clearPartialFiles(id);
+    },
+    onShowFile: (path: string): void => {
+        void window.api.showItemInFolder(path);
+    }
+};
+
 export function QueueList() {
     const t = useTranslator();
     const jobs = useAppStore((state) => {
         return state.jobs;
-    });
-    const cancelJob = useAppStore((state) => {
-        return state.cancelJob;
-    });
-    const pauseJob = useAppStore((state) => {
-        return state.pauseJob;
-    });
-    const resumeJob = useAppStore((state) => {
-        return state.resumeJob;
-    });
-    const stopJob = useAppStore((state) => {
-        return state.stopJob;
-    });
-    const retryJob = useAppStore((state) => {
-        return state.retryJob;
-    });
-    const removeJob = useAppStore((state) => {
-        return state.removeJob;
-    });
-    const clearPartialFiles = useAppStore((state) => {
-        return state.clearPartialFiles;
     });
     const clearFinished = useAppStore((state) => {
         return state.clearFinished;
@@ -80,38 +89,11 @@ export function QueueList() {
                     </ConfirmButton>
                 )}
             </div>
-            {sortForDisplay(jobs).map((job) => {
+            <IncrementalItems items={sortForDisplay(jobs)} listKey="download-queue" end="div" renderItem={(job) => {
                 return (
-                    <JobCard
-                        key={job.id}
-                        job={job}
-                        onCancel={(id) => {
-                            void cancelJob(id);
-                        }}
-                        onPause={(id) => {
-                            void pauseJob(id);
-                        }}
-                        onResume={(id) => {
-                            void resumeJob(id);
-                        }}
-                        onStop={(id) => {
-                            void stopJob(id);
-                        }}
-                        onRetry={(id) => {
-                            void retryJob(id);
-                        }}
-                        onRemove={(id) => {
-                            void removeJob(id);
-                        }}
-                        onClearPartials={(id) => {
-                            void clearPartialFiles(id);
-                        }}
-                        onShowFile={(path) => {
-                            void window.api.showItemInFolder(path);
-                        }}
-                    />
+                    <JobCard key={job.id} job={job} {...JOB_ACTIONS} />
                 );
-            })}
+            }} />
         </section>
     );
 }

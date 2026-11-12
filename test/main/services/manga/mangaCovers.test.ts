@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FINGERPRINT_LENGTH, MAX_COVER_BYTES, MangaCovers } from '@main/services/manga/mangaCovers';
 import { MangaDb } from '@main/services/manga/mangaDb';
@@ -213,6 +213,58 @@ describe('MangaCovers the ones the library lacks', () => {
         const results = await Promise.all([covers.backfill(), covers.backfill()]);
         expect(results).toEqual([true, true]);
         expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('MangaCovers whether the file of a cover is there', () => {
+    it('looks at the folder once for each cover, and keeps the answer after that', () => {
+        const { covers, db, directory, add } = setup();
+        const manga = add(7);
+        db.setCoverHash(manga.id, hash(JPEG));
+        expect(covers.urlOf(manga.id)).toBeNull();
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(join(directory, String(manga.id)), JPEG);
+        expect(covers.urlOf(manga.id)).toBeNull();
+        expect(covers.fileOf(manga.id)).toBeNull();
+        const other = add(8);
+        db.setCoverHash(other.id, hash(JPEG));
+        writeFileSync(join(directory, String(other.id)), JPEG);
+        expect(covers.urlOf(other.id)).toBe(`pullwave-manga://cover/${String(other.id)}?v=${hash(JPEG).slice(0, FINGERPRINT_LENGTH)}`);
+        rmSync(join(directory, String(other.id)));
+        expect(covers.fileOf(other.id)).toBe(join(directory, String(other.id)));
+    });
+
+    it('knows the cover it wrote is there, and the one it removed is not', async () => {
+        const { covers, directory, add } = setup();
+        const manga = add(7);
+        expect(covers.fileOf(manga.id)).toBeNull();
+        await covers.refresh(manga.id);
+        expect(covers.fileOf(manga.id)).toBe(join(directory, String(manga.id)));
+        covers.remove(manga.id);
+        expect(covers.fileOf(manga.id)).toBeNull();
+        await covers.refresh(manga.id);
+        expect(covers.urlOf(manga.id)).toBe(`pullwave-manga://cover/${String(manga.id)}?v=${hash(JPEG).slice(0, FINGERPRINT_LENGTH)}`);
+    });
+
+    it('fails to read a cover whose file is not there', async () => {
+        const { covers, directory } = setup();
+        await expect(covers.read(join(directory, 'gone'))).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('knows a cover is gone once its file cannot be read: it gives no address and takes it again', async () => {
+        const { covers, directory, fetchImpl, add } = setup();
+        const manga = add(7);
+        await covers.refresh(manga.id);
+        const path = join(directory, String(manga.id));
+        rmSync(path);
+        expect(covers.fileOf(manga.id)).toBe(path);
+        await expect(covers.read(path)).rejects.toMatchObject({ code: 'ENOENT' });
+        expect(covers.fileOf(manga.id)).toBeNull();
+        expect(covers.urlOf(manga.id)).toBeNull();
+        await expect(covers.refresh(manga.id)).resolves.toBe(true);
+        expect(fetchImpl).toHaveBeenCalledTimes(2);
+        expect(readFileSync(path)).toEqual(Buffer.from(JPEG));
+        expect(covers.fileOf(manga.id)).toBe(path);
     });
 });
 

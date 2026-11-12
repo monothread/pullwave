@@ -7,6 +7,8 @@ export interface FakeDockerOptions {
     pullFails?: boolean;
     runFails?: boolean;
     containerId?: string;
+    // What `docker pull` writes, line by line (the pull of two layers when not given).
+    pullLines?: readonly string[];
 }
 
 const PULL_LINES = [
@@ -57,11 +59,11 @@ export function fakeDocker(options: FakeDockerOptions = {}): FakeDocker {
                 if (options.pullFails === true) {
                     return result(1, '', 'Error response from daemon: manifest unknown');
                 }
-                PULL_LINES.forEach((line) => {
+                (options.pullLines ?? PULL_LINES).forEach((line) => {
                     onLine?.(line);
                 });
                 imagePresent = true;
-                return result(0, PULL_LINES.join('\n'));
+                return result(0, (options.pullLines ?? PULL_LINES).join('\n'));
             case 'run':
                 return options.runFails === true ? result(125, '', 'docker: port is already allocated') : result(0, `${options.containerId ?? 'c0ffee'}\n`);
             case 'logs':

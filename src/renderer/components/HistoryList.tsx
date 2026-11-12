@@ -1,3 +1,4 @@
+import { IncrementalItems } from './IncrementalItems';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { ConfirmButton } from './ConfirmButton';
@@ -31,7 +32,7 @@ export function HistoryList() {
                 </ConfirmButton>
             </div>
             <ul className="history__list">
-                {history.map((entry) => {
+                <IncrementalItems items={history} listKey="download-history" end="li" renderItem={(entry) => {
                     return (
                         <li key={entry.id} className={`history__item history__item--${entry.status}`}>
                             <div className="history__main">
@@ -56,7 +57,7 @@ export function HistoryList() {
                             )}
                         </li>
                     );
-                })}
+                }} />
             </ul>
         </section>
     );

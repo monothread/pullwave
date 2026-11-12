@@ -24,7 +24,7 @@ import { withViewTransition } from './navigation/viewTransition';
 import { playUiSound } from './sound/uiSound';
 import { useUiPrefsStore } from './store/uiPrefsStore';
 import { sectionAfter } from './navigation/sections';
-import { useAppLanguage, useTranslator } from './i18n/useTranslator';
+import { useAppLanguage, useLanguageCatalog, useTranslator } from './i18n/useTranslator';
 import { useAnimeStore } from './store/animeStore';
 import { useMangaStore } from './store/mangaStore';
 import { useProgramsStore } from './store/programsStore';
@@ -35,6 +35,7 @@ import { applyTheme, DARK_SCHEME_QUERY, rememberTheme } from './theme/resolveThe
 export function App() {
     const t = useTranslator();
     const language = useAppLanguage();
+    useLanguageCatalog();
     useMouseNavigation();
     useSpatialNavigation();
     useUiSounds();

@@ -45,6 +45,9 @@ export interface QueueDependencies {
 }
 
 export const LIVE_TICK_MS = 1000;
+// Shortest time between two progress updates of the same download sent to the window: yt-dlp writes its progress many times a
+// second, and each update is a message to the window and a new drawing of the queue.
+export const PROGRESS_EMIT_MS = 250;
 export const LIVE_STOP_TIMEOUT_MS = 8000;
 // Pause between two attempts to find out whether a live stream that stopped is back.
 export const LIVE_END_RETRY_MS = 2000;
@@ -63,6 +66,12 @@ const SALVAGE_FAILED_ERROR: DownloadError = {
     hint: 'The stream was stopped, but the partial file could not be converted. A file ending in .part may still be in the download folder.',
     raw: 'ffmpeg could not copy the partial recording into the final file.'
 };
+
+// The time after a progress update of a download is sent, and whether a newer one came in that time (it is sent at the end).
+interface ProgressCooldown {
+    timer: ReturnType<typeof setTimeout>;
+    pending: boolean;
+}
 
 // A live stream that seems to have ended, while the app checks whether it really did.
 interface EndCheck {
@@ -94,6 +103,7 @@ export class QueueManager {
     private readonly pauseRequested = new Set<string>();
     // The part of the recording each live job is in (1 for the first file, +1 each time the stream came back).
     private readonly parts = new Map<string, number>();
+    private readonly progressCooldowns = new Map<string, ProgressCooldown>();
     private closed = false;
     private readonly generateId: () => string;
     private readonly now: () => number;
@@ -208,6 +218,9 @@ export class QueueManager {
     // behind are deleted (the setting that keeps them after a failure does not apply: nothing is there to resume once the app is closed).
     async shutdown(timeoutMs: number = LIVE_STOP_TIMEOUT_MS): Promise<void> {
         this.closed = true;
+        [...this.progressCooldowns.keys()].forEach((id) => {
+            this.stopProgressCooldown(id);
+        });
         this.jobs.forEach((job) => {
             if (this.endChecks.has(job.id)) {
                 this.concludeEndCheck(job);
@@ -375,6 +388,7 @@ export class QueueManager {
             this.outputPaths.delete(id);
         }
         this.stopTicker(id);
+        this.stopProgressCooldown(id);
         this.parts.delete(id);
         this.stopRequested.delete(id);
         this.pauseRequested.delete(id);
@@ -409,7 +423,49 @@ export class QueueManager {
     }
 
     private emit(job: DownloadJob): void {
+        const cooldown = this.progressCooldowns.get(job.id);
+        if (cooldown !== undefined) {
+            cooldown.pending = false;
+        }
         this.deps.onJobUpdate({ ...job });
+    }
+
+    // Sends the progress of a download at most once every PROGRESS_EMIT_MS; the last one that came in that time is sent at its end.
+    private emitProgress(job: DownloadJob): void {
+        // While the queue shuts down nothing waits any more: what comes is sent as it comes.
+        if (this.closed) {
+            this.emit(job);
+            return;
+        }
+        const cooldown = this.progressCooldowns.get(job.id);
+        if (cooldown !== undefined) {
+            cooldown.pending = true;
+            return;
+        }
+        this.emit(job);
+        this.startProgressCooldown(job);
+    }
+
+    private startProgressCooldown(job: DownloadJob): void {
+        const cooldown: ProgressCooldown = {
+            pending: false,
+            timer: setTimeout(() => {
+                this.progressCooldowns.delete(job.id);
+                if (cooldown.pending && !this.closed && this.find(job.id) !== undefined) {
+                    this.emit(job);
+                    this.startProgressCooldown(job);
+                }
+            }, PROGRESS_EMIT_MS)
+        };
+        this.progressCooldowns.set(job.id, cooldown);
+    }
+
+    private stopProgressCooldown(id: string): void {
+        const cooldown = this.progressCooldowns.get(id);
+        if (cooldown !== undefined) {
+            clearTimeout(cooldown.timer);
+            this.progressCooldowns.delete(id);
+        }
     }
 
     private pump(): void {
@@ -681,7 +737,7 @@ export class QueueManager {
         job.speed = progress.speed;
         job.eta = progress.eta;
         job.title = progress.title.length > 0 ? progress.title : job.title;
-        this.emit(job);
+        this.emitProgress(job);
     }
 
     private async finishStopped(job: DownloadJob): Promise<void> {

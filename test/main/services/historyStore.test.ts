@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HistoryEntry } from '@shared/types';
 import { HISTORY_LIMIT, HistoryStore } from '@main/services/historyStore';
@@ -36,6 +37,12 @@ describe('HistoryStore', () => {
         expect(list).toHaveLength(HISTORY_LIMIT);
         expect(list[0]).toEqual(entry('new'));
         expect(list[HISTORY_LIMIT - 1]).toEqual(entry(`old-${HISTORY_LIMIT - 2}`));
+    });
+
+    it('writes the file without indentation', () => {
+        const path = join(makeTempDir(), 'h.json');
+        new HistoryStore(path).add(entry('a'));
+        expect(readFileSync(path, 'utf-8')).toBe(JSON.stringify([entry('a')]));
     });
 
     it('clears all entries', () => {

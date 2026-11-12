@@ -12,7 +12,8 @@ import {
     FLARESOLVERR_VERSION,
     FlareSolverrDocker,
     FlareSolverrDockerError,
-    ownerPid
+    ownerPid,
+    pullPercent
 } from '@main/services/tools/flaresolverrDocker';
 import { LogHub, processLogs } from '@main/services/logHub';
 import { fakeDocker, type FakeDockerOptions } from '../../../helpers/fakeDocker';
@@ -123,6 +124,66 @@ describe('FlareSolverrDocker image', () => {
         ]);
         expect(state).toMatchObject({ status: 'ready', percent: 100, error: null });
         expect(helper.failure).toBeNull();
+    });
+
+    it('moves the bar half a layer when a layer is downloaded and the other half when it is in place', async () => {
+        const { helper, states } = setup({
+            imagePresent: false,
+            pullLines: [
+                'v3.5.2: Pulling from flaresolverr/flaresolverr',
+                'aaaaaaaaaaaa: Pulling fs layer',
+                'bbbbbbbbbbbb: Pulling fs layer',
+                'cccccccccccc: Pulling fs layer',
+                'aaaaaaaaaaaa: Download complete',
+                'aaaaaaaaaaaa: Pull complete',
+                'bbbbbbbbbbbb: Waiting',
+                'bbbbbbbbbbbb: Verifying Checksum',
+                'cccccccccccc: Downloading',
+                'bbbbbbbbbbbb: Extracting',
+                'cccccccccccc: Download complete',
+                'bbbbbbbbbbbb: Pull complete',
+                'cccccccccccc: Pull complete',
+                'Status: Downloaded newer image for ghcr.io/flaresolverr/flaresolverr:v3.5.2'
+            ]
+        });
+        await helper.prepare();
+        expect(states.map((item) => {
+            return [item.bytesDone, item.bytesTotal, item.percent];
+        })).toEqual([
+            [0, 0, 0],
+            [0, 1, 0],
+            [0, 2, 0],
+            [0, 3, 0],
+            [0, 3, 16],
+            [1, 3, 33],
+            [1, 3, 33],
+            [1, 3, 50],
+            [1, 3, 50],
+            [1, 3, 50],
+            [1, 3, 66],
+            [2, 3, 83],
+            [3, 3, 100],
+            [3, 3, 100]
+        ]);
+    });
+});
+
+describe('pullPercent', () => {
+    it('counts half of a layer once it is downloaded and the whole of it once it is in place', () => {
+        expect(pullPercent(0, 4, 0, 0)).toBe(0);
+        expect(pullPercent(0, 4, 1, 0)).toBe(12);
+        expect(pullPercent(0, 4, 2, 1)).toBe(37);
+        expect(pullPercent(0, 4, 4, 4)).toBe(100);
+    });
+
+    it('never goes back below what it was', () => {
+        expect(pullPercent(50, 4, 1, 0)).toBe(50);
+        expect(pullPercent(50, 4, 4, 1)).toBe(62);
+    });
+
+    it('keeps what it was while no layer is known', () => {
+        expect(pullPercent(0, 0, 0, 0)).toBe(0);
+        expect(pullPercent(30, 0, 0, 0)).toBe(30);
     });
 
     it('does not pull twice when asked twice at once', async () => {

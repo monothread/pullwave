@@ -1,3 +1,4 @@
+import { WindowedList, windowBack } from './WindowedList';
 import { useEffect } from 'react';
 import type { MangaSummary } from '@shared/manga';
 import { useMangaLanguage } from '../hooks/useMangaLanguage';
@@ -114,23 +115,29 @@ export function MangaSearch() {
             {search.status !== 'idle' && (
                 <span className="section-label">{searching ? t('manga.search.progress', { done: finished, total: search.results.length }) : t('manga.search.summary', { name: search.searchedFor, found: foundIn, total: search.results.length })}</span>
             )}
-            {search.results.map((result) => {
-                return (
-                    <div key={result.source.id} className="manga__source-group" data-testid="manga-search-source">
-                        <h3 className="section-label">
-                            {`${result.source.name} (${sourceLanguageLabel(result.source.lang, t)})`} <span className={`badge ${BADGE_CLASSES[result.status]}`}>{t(STATUS_KEYS[result.status], { count: result.items.length })}</span>
-                        </h3>
-                        {result.status === 'error' && result.error && <MangaErrorNotice error={result.error} />}
-                        {result.items.length > 0 && (
-                            <ul className="cover-grid">
-                                {result.items.map((item) => {
-                                    return <MangaResultCard key={item.remoteId} item={item} library={library} onOpen={openFound} />;
-                                })}
-                            </ul>
-                        )}
-                    </div>
-                );
-            })}
+            <WindowedList
+                as="div"
+                className="manga__search-results"
+                items={search.results}
+                listKey={`manga-search:${search.searchedFor}`}
+                renderItem={(result, back) => {
+                    return (
+                        <div key={result.source.id} className="manga__source-group" data-testid="manga-search-source" {...windowBack(back)}>
+                            <h3 className="section-label">
+                                {`${result.source.name} (${sourceLanguageLabel(result.source.lang, t)})`} <span className={`badge ${BADGE_CLASSES[result.status]}`}>{t(STATUS_KEYS[result.status], { count: result.items.length })}</span>
+                            </h3>
+                            {result.status === 'error' && result.error && <MangaErrorNotice error={result.error} />}
+                            {result.items.length > 0 && (
+                                <ul className="cover-grid">
+                                    {result.items.map((item) => {
+                                        return <MangaResultCard key={item.remoteId} item={item} library={library} onOpen={openFound} />;
+                                    })}
+                                </ul>
+                            )}
+                        </div>
+                    );
+                }}
+            />
         </section>
     );
 }

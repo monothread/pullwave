@@ -1411,6 +1411,17 @@ body::after {
 .manga__migrate-filters > .field { flex: 1 1 150px; min-width: 0; }
 .manga__migrate-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .manga__more { min-height: 48px; display: flex; align-items: center; justify-content: center; }
+/* The end of a list drawn a part at a time: when it comes into view, more of the list is drawn. */
+.list-more { min-height: 1px; grid-column: 1 / -1; list-style: none; }
+/* A block of a long list that is not drawn: as tall as it was, across all the columns of the grid. */
+.list-window__spacer { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; }
+/* A card of a long list drawn again after its block left the screen shows as it was when it left: its entrance (the rise of the card, the
+   blur and the focus of its cover) was played the first time it was drawn, and is not played again. */
+.cover-grid > .cover-card[data-window-back],
+[data-window-back] .cover-grid > .cover-card,
+.cover-card[data-window-back] img.cover,
+[data-window-back] .cover-card img.cover { animation: none; }
+[data-window-back] .cover--loading { filter: none; opacity: 1; }
 .manga__head { gap: 14px; position: relative; }
 .manga__head-gear { position: absolute; top: 6px; right: 6px; }
 .manga__organize { display: flex; flex-direction: column; gap: 10px; }
@@ -1436,7 +1447,8 @@ body::after {
     left: 0;
     width: 30%;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
-    animation: cloudflare-sweep 1.4s ease-in-out infinite;
+    /* Back and forth: going only one way, the crest slowed down to a stop at the end and jumped back to the start, which looked stuck. */
+    animation: cloudflare-sweep 1.4s ease-in-out infinite alternate;
 }
 @keyframes cloudflare-sweep { from { left: 0; } to { left: 70%; } }
 

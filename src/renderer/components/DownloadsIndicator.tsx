@@ -1,22 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { openActiveDownload, openSubtitleJobs } from '../home/homeActions';
-import { activeDownloads, type ActiveDownloadKind } from '../home/homeData';
+import { activeTotal, type ActiveDownloadKind } from '../home/homeData';
+import { useActiveCounts } from '../hooks/useActiveCounts';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
-import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
-import { useShownJobs } from '../hooks/useShownManga';
 
 const KINDS: readonly ActiveDownloadKind[] = ['video', 'anime', 'manga'];
-
-// How many downloads of each section are not over.
-export function countByKind(kinds: readonly ActiveDownloadKind[]): Record<ActiveDownloadKind, number> {
-    const counts: Record<ActiveDownloadKind, number> = { video: 0, anime: 0, manga: 0 };
-    kinds.forEach((kind) => {
-        counts[kind] += 1;
-    });
-    return counts;
-}
 
 interface IndicatorRowProps {
     section: string;
@@ -41,12 +31,6 @@ export function DownloadsIndicator() {
     const t = useTranslator();
     const [open, setOpen] = useState(false);
     const holderRef = useRef<HTMLDivElement>(null);
-    const videoJobs = useAppStore((state) => {
-        return state.jobs;
-    });
-    const animeJobs = useAnimeStore((state) => {
-        return state.jobs;
-    });
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
@@ -54,17 +38,13 @@ export function DownloadsIndicator() {
     const subtitleJobs = useAnimeStore((state) => {
         return state.subtitleJobs.length;
     });
-    const mangaJobs = useShownJobs();
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });
+    const active = useActiveCounts();
     const counts = useMemo(() => {
-        return countByKind(
-            activeDownloads(videoJobs, animeJobs, mangaJobs).map((item) => {
-                return item.kind;
-            })
-        );
-    }, [videoJobs, animeJobs, mangaJobs]);
+        return { video: activeTotal(active.video), anime: activeTotal(active.anime), manga: activeTotal(active.manga) };
+    }, [active]);
     const total = counts.video + counts.anime + counts.manga + subtitleJobs;
     const kinds = KINDS.filter((kind) => {
         return (kind !== 'anime' || animeSupported) && (kind !== 'manga' || mangaSupported);

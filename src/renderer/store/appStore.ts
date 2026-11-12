@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
+import type { MessageKey, MessageParams } from '@shared/i18n/core';
+import { createTranslator, loadCatalog } from '../i18n/catalogs';
 import type { LlmStatus } from '@shared/llm';
 import { useFxStore } from '../fx/fxStore';
 import { resolveAppLanguage } from '../i18n/language';
@@ -265,6 +266,8 @@ export const useAppStore = create<AppState>((set, get) => {
         saveSettings: async (settings) => {
             const previous = get().settings;
             const saved = await window.api.saveSettings(settings);
+            // A new language is shown once its texts are there (and the messages the stores write from then on are in it).
+            await loadCatalog(resolveAppLanguage(saved.language));
             set({ settings: saved });
             if (saved.ytdlpPath !== previous.ytdlpPath || saved.ffmpegPath !== previous.ffmpegPath) {
                 await get().refreshBinaries();

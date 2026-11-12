@@ -7,7 +7,7 @@ export class HistoryStore {
     private readonly store: JsonStore<HistoryEntry[]>;
 
     constructor(filePath: string) {
-        this.store = new JsonStore<HistoryEntry[]>(filePath, []);
+        this.store = new JsonStore<HistoryEntry[]>(filePath, [], { compact: true });
     }
 
     list(): HistoryEntry[] {

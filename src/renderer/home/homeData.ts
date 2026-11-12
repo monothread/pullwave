@@ -180,6 +180,27 @@ function isActive(status: string): status is ActiveDownloadItem['status'] {
     return ACTIVE_STATUSES.has(status);
 }
 
+// How many downloads of a section are running, waiting and paused.
+export interface StatusCounts {
+    running: number;
+    queued: number;
+    paused: number;
+}
+
+export function statusCounts(jobs: ReadonlyArray<{ status: string }>): StatusCounts {
+    const counts: StatusCounts = { running: 0, queued: 0, paused: 0 };
+    jobs.forEach((job) => {
+        if (isActive(job.status)) {
+            counts[job.status] += 1;
+        }
+    });
+    return counts;
+}
+
+export function activeTotal(counts: StatusCounts): number {
+    return counts.running + counts.queued + counts.paused;
+}
+
 // Every download that is not over, of the three sections: the running ones first, then the waiting ones, then the paused ones.
 export function activeDownloads(videos: readonly DownloadJob[], episodes: readonly AnimeJob[], chapters: readonly MangaJob[]): ActiveDownloadItem[] {
     const items: ActiveDownloadItem[] = [];

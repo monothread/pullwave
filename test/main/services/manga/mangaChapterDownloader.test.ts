@@ -54,6 +54,7 @@ interface Setup {
     sleeps: number[];
     pageCounts: number[];
     progress: Array<[number, number]>;
+    fetchedBytes: number[];
     options: (overrides?: Partial<ChapterDownloadOptions>) => ChapterDownloadOptions;
     signals: AbortSignal[];
 }
@@ -66,6 +67,7 @@ function setup(parts: { pages?: string[] | Error; fetchImage?: (url: string, att
     const attempts = new Map<string, number>();
     const pageCounts: number[] = [];
     const progress: Array<[number, number]> = [];
+    const fetchedBytes: number[] = [];
     const format = parts.format ?? 'cbz';
     const outputPath = join(dir, format === 'cbz' ? 'Chapter 1.cbz' : 'Chapter 1');
     const downloader = new MangaChapterDownloader({
@@ -98,13 +100,16 @@ function setup(parts: { pages?: string[] | Error; fetchImage?: (url: string, att
             onPageCount: (count) => {
                 pageCounts.push(count);
             },
+            onPageFetched: (bytes) => {
+                fetchedBytes.push(bytes);
+            },
             onProgress: (done, total) => {
                 progress.push([done, total]);
             },
             ...overrides
         };
     };
-    return { downloader, dir, outputPath, fetched, sleeps, pageCounts, progress, options, signals };
+    return { downloader, dir, outputPath, fetched, sleeps, pageCounts, progress, fetchedBytes, options, signals };
 }
 
 afterEach(() => {
@@ -139,7 +144,23 @@ describe('MangaChapterDownloader into a CBZ', () => {
         expect(context.fetched).toEqual(PAGES);
         expect(context.pageCounts).toEqual([3]);
         expect(context.progress).toEqual([[1, 3], [2, 3], [3, 3]]);
+        expect(context.fetchedBytes).toEqual([JPEG.byteLength, PNG.byteLength, WEBP.byteLength]);
         expect(readdirSync(context.dir)).toEqual(['Chapter 1.cbz']);
+    });
+
+    it('tells the bytes of each page it asked for before telling the progress of that page', async () => {
+        const events: string[] = [];
+        const context = setup();
+        const result = await context.downloader.download(context.options({
+            onPageFetched: (bytes) => {
+                events.push(`bytes ${String(bytes)}`);
+            },
+            onProgress: (done, total) => {
+                events.push(`progress ${String(done)}/${String(total)}`);
+            }
+        })).result;
+        expect(result.status).toBe('done');
+        expect(events).toEqual(['bytes 7', 'progress 1/3', 'bytes 7', 'progress 2/3', 'bytes 7', 'progress 3/3']);
     });
 
     it('names the pages with a width that sorts for long chapters', async () => {
@@ -179,6 +200,8 @@ describe('MangaChapterDownloader into a CBZ', () => {
             return entry.name;
         })).toEqual(['001.jpg', '002.jpg', '003.jpg', 'ComicInfo.xml']);
         expect(context.progress).toEqual([[1, 3], [2, 3], [3, 3]]);
+        // The page that was there already brought nothing now: only the two asked for have bytes.
+        expect(context.fetchedBytes).toEqual([JPEG.byteLength, JPEG.byteLength]);
     });
 });
 
@@ -205,6 +228,8 @@ describe('MangaChapterDownloader a server that does not answer', () => {
         expect(context.fetched).toHaveLength(2 + 5 * (1 + PAGE_RETRY_DELAYS_MS.length));
         expect(context.fetched.at(-1)).toBe(MANY[6]);
         expect(context.progress).toEqual([[1, 12], [2, 12], [3, 12], [4, 12], [5, 12], [6, 12]]);
+        // The page that ended the chapter was asked for too, and brought nothing.
+        expect(context.fetchedBytes).toEqual([JPEG.byteLength, JPEG.byteLength, 0, 0, 0, 0, 0]);
         expect(readdirSync(`${context.outputPath}.part`).sort()).toEqual(['001.jpg', '002.jpg']);
         expect(existsSync(context.outputPath)).toBe(false);
     });
@@ -307,6 +332,7 @@ describe('MangaChapterDownloader failures', () => {
         expect(context.fetched).toEqual([PAGES[0], PAGES[1], PAGES[1], PAGES[1], PAGES[2]]);
         expect(context.sleeps).toEqual([...PAGE_RETRY_DELAYS_MS]);
         expect(context.progress).toEqual([[1, 3], [2, 3], [3, 3]]);
+        expect(context.fetchedBytes).toEqual([JPEG.byteLength, 0, JPEG.byteLength]);
         const entries = readZipEntries(readFileSync(context.outputPath));
         expect(entries.map((entry) => {
             return entry.name;
@@ -358,6 +384,7 @@ describe('MangaChapterDownloader failures', () => {
         const result = await context.downloader.download(context.options()).result;
         expect(result.status === 'done' ? result.value.missingPages : null).toEqual([]);
         expect(context.fetched).toEqual([PAGES[1]]);
+        expect(context.fetchedBytes).toEqual([JPEG.byteLength]);
     });
 
     it('fails with the last failure when no page at all could be downloaded', async () => {
@@ -564,6 +591,8 @@ describe('MangaChapterDownloader downloading again the missing pages', () => {
         const result = await context.downloader.repair(repairOptions());
         expect(result).toEqual({ status: 'done', value: { filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 3, missingPages: [] } });
         expect(context.fetched.slice(fetchedBefore())).toEqual([PAGES[1]]);
+        // Only the first download told the bytes of its pages; the repair has no one to tell them to.
+        expect(context.fetchedBytes).toEqual([PNG.byteLength, 0, PNG.byteLength]);
         const entries = readZipEntries(readFileSync(context.outputPath));
         expect(entries.map((entry) => {
             return entry.name;

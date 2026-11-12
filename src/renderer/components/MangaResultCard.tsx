@@ -3,21 +3,24 @@ import { useTranslator } from '../i18n/useTranslator';
 import { MangaCover } from './MangaCover';
 import { libraryEntriesByTitle, libraryEntry } from './mangaText';
 import { RowLink } from './RowLink';
+import { windowBack } from './WindowedList';
 
 interface MangaResultCardProps {
     item: MangaSummary;
     library: readonly LibraryManga[];
     onOpen: (item: MangaSummary) => void;
+    // The card is drawn again after it left the screen with its block (see WindowedList): it shows as it was, with no entrance.
+    back?: boolean;
 }
 
 // A manga found in a source: its cover and title (a click opens it), and a mark when it is in the library, or when the same title is there
 // from another source.
-export function MangaResultCard({ item, library, onOpen }: MangaResultCardProps) {
+export function MangaResultCard({ item, library, onOpen, back = false }: MangaResultCardProps) {
     const t = useTranslator();
     const saved = libraryEntry(library, item.sourceId, item.remoteId);
     const inOtherSource = saved === null && libraryEntriesByTitle(library, item.title, item.sourceId).length > 0;
     return (
-        <li className="history__item cover-card row--link">
+        <li className="history__item cover-card row--link" {...windowBack(back)}>
             <MangaCover url={item.thumbnailUrl} />
             <div className="history__main">
                 <span className="history__title">

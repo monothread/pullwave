@@ -1,3 +1,4 @@
+import { IncrementalItems } from './IncrementalItems';
 import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { LibraryManga, MangaChapter, MangaDetails, MangaSource, MangaSummary } from '@shared/manga';
@@ -183,7 +184,7 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
                     {results !== null && searching === null && results.length === 0 && <p className="empty">{t('manga.migrateSource.none')}</p>}
                     {results !== null && results.length > 0 && (
                         <ul className="history__list manga__candidates">
-                            {results.map((candidate) => {
+                            <IncrementalItems items={results} listKey="manga-migrate-candidates" end="li" renderItem={(candidate) => {
                                 const selected = chosen?.candidate === candidate;
                                 return (
                                     <li key={`${candidate.source.id}-${String(candidate.item.remoteId)}`} className={`history__item row--link${selected ? ' history__item--selected' : ''}`} data-testid="manga-candidate">
@@ -203,7 +204,7 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
                                         </div>
                                     </li>
                                 );
-                            })}
+                            }} />
                         </ul>
                     )}
                     {chosen?.status === 'loading' && <p className="empty">{t('manga.migrateSource.reading')}</p>}

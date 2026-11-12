@@ -1,8 +1,5 @@
-import { useMemo } from 'react';
-import { activeDownloads } from '../home/homeData';
-import { useShownJobs } from '../hooks/useShownManga';
-import { useAnimeStore } from '../store/animeStore';
-import { useAppStore } from '../store/appStore';
+import { activeTotal } from '../home/homeData';
+import { useActiveCounts } from '../hooks/useActiveCounts';
 
 export type ActivityLevel = 'idle' | 'busy' | 'rush';
 
@@ -18,14 +15,6 @@ export function activityOf(count: number): ActivityLevel {
 
 // How busy the app is, from the downloads going on in every section: the wave of the name follows it.
 export function useActivityLevel(): ActivityLevel {
-    const videoJobs = useAppStore((state) => {
-        return state.jobs;
-    });
-    const animeJobs = useAnimeStore((state) => {
-        return state.jobs;
-    });
-    const mangaJobs = useShownJobs();
-    return useMemo(() => {
-        return activityOf(activeDownloads(videoJobs, animeJobs, mangaJobs).length);
-    }, [videoJobs, animeJobs, mangaJobs]);
+    const counts = useActiveCounts();
+    return activityOf(activeTotal(counts.video) + activeTotal(counts.anime) + activeTotal(counts.manga));
 }

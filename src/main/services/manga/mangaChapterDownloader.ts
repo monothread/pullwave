@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ErrorDetails } from '@shared/errorDetails';
 import type { MangaChapter, MangaDetails, MangaError, MangaErrorCode, MangaOutputFormat } from '@shared/manga';
@@ -39,7 +39,15 @@ export interface ChapterDownloadOptions {
     outputPath: string;
     // The number of pages is known.
     onPageCount: (pageCount: number) => void;
+    // A page was asked of the server (not one already on the disk): the bytes it brought, 0 when it could not be downloaded.
+    onPageFetched: (bytes: number) => void;
     onProgress: (pagesDone: number, pageCount: number) => void;
+}
+
+// What asking for one page gave: the failure when it could not be downloaded, and the bytes it brought (0 then).
+interface PageAttempt {
+    failure: ChapterFailure | null;
+    bytes: number;
 }
 
 // What identifies a chapter in its ComicInfo.
@@ -137,12 +145,23 @@ function toError(error: unknown): MangaError {
     return { code: 'UNKNOWN', message: messageOf(error), details: describeError(error, known) };
 }
 
-// The file of a page that is already there complete (the name without the extension, which is only known once it is downloaded).
-function existingPage(workDirectory: string, name: string): string | null {
-    const found = readdirSync(workDirectory).find((file) => {
-        return file.startsWith(`${name}.`) && !file.endsWith(TEMPORARY_EXTENSION);
-    });
-    return found ?? null;
+// The names (without the extension, which is only known once a page is downloaded) of the pages already there complete. The folder
+// is read once per chapter, not once per page.
+async function existingPageNames(workDirectory: string): Promise<Set<string>> {
+    const files = await readdir(workDirectory);
+    return new Set(files.flatMap((file) => {
+        const dot = file.indexOf('.');
+        return dot > 0 && !file.endsWith(TEMPORARY_EXTENSION) ? [file.slice(0, dot)] : [];
+    }));
+}
+
+async function pathExists(path: string): Promise<boolean> {
+    try {
+        await stat(path);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 // Downloads the pages of a chapter one at a time into a folder beside the final place (a page that is there already is not asked
@@ -180,7 +199,8 @@ export class MangaChapterDownloader {
         }
         options.onPageCount(addresses.length);
         const workDirectory = chapterWorkDirectory(options.outputPath);
-        mkdirSync(workDirectory, { recursive: true });
+        await mkdir(workDirectory, { recursive: true });
+        const existing = await existingPageNames(workDirectory);
         const missingPages: number[] = [];
         let lastFailure: ChapterFailure | null = null;
         const streak = new FailureStreak();
@@ -188,8 +208,9 @@ export class MangaChapterDownloader {
         for (const [index, address] of addresses.entries()) {
             signal.throwIfAborted();
             const name = pageFileName(index, addresses.length);
-            if (existingPage(workDirectory, name) === null) {
-                const failure = await this.tryPage(address, join(workDirectory, name), signal);
+            if (!existing.has(name)) {
+                const { failure, bytes } = await this.tryPage(address, join(workDirectory, name), signal);
+                options.onPageFetched(bytes);
                 if (failure !== null) {
                     missingPages.push(index);
                     lastFailure = failure;
@@ -232,14 +253,14 @@ export class MangaChapterDownloader {
         // A CBZ is opened into a folder beside it, and made again once the pages are there; a folder of images is worked in place.
         const directory = isArchive ? chapterWorkDirectory(options.filePath) : options.filePath;
         if (isArchive) {
-            rmSync(directory, { recursive: true, force: true });
-            mkdirSync(directory, { recursive: true });
+            await rm(directory, { recursive: true, force: true });
+            await mkdir(directory, { recursive: true });
         }
         try {
             if (isArchive) {
                 await (this.deps.extractCbzPages ?? defaultExtractCbzPages)(options.filePath, directory);
             }
-            const lacking = missingPageIndexes(readdirSync(directory).filter(isCompletePage), addresses.length);
+            const lacking = missingPageIndexes((await readdir(directory)).filter(isCompletePage), addresses.length);
             const wanted = options.pageIndex === null ? lacking : lacking.filter((index) => {
                 return index === options.pageIndex;
             });
@@ -247,7 +268,7 @@ export class MangaChapterDownloader {
             const streak = new FailureStreak();
             for (const index of wanted) {
                 signal.throwIfAborted();
-                const failure = await this.tryPage(addresses[index] ?? '', join(directory, pageFileName(index, addresses.length)), signal);
+                const { failure } = await this.tryPage(addresses[index] ?? '', join(directory, pageFileName(index, addresses.length)), signal);
                 if (failure !== null) {
                     failures.push(failure);
                 }
@@ -260,31 +281,30 @@ export class MangaChapterDownloader {
             if (failures.length > 0 && failures.length === wanted.length) {
                 throw failures[failures.length - 1];
             }
-            return isArchive ? await this.finishCbz(options, options.filePath, directory, addresses.length) : this.finishFolderInPlace(options, directory, addresses.length);
+            return isArchive ? await this.finishCbz(options, options.filePath, directory, addresses.length) : await this.finishFolderInPlace(options, directory, addresses.length);
         } finally {
             if (isArchive) {
-                rmSync(directory, { recursive: true, force: true });
+                await rm(directory, { recursive: true, force: true });
             }
         }
     }
 
-    // One page that is asked for with its retries: the failure when the site would not give it (the chapter goes on without it), nothing
-    // when it is there. A cancellation or a full disk is not a failure of the page and goes up.
-    private async tryPage(address: string, basePath: string, signal: AbortSignal): Promise<ChapterFailure | null> {
+    // One page that is asked for with its retries: the failure when the site would not give it (the chapter goes on without it), or
+    // the bytes it brought when it is there. A cancellation or a full disk is not a failure of the page and goes up.
+    private async tryPage(address: string, basePath: string, signal: AbortSignal): Promise<PageAttempt> {
         try {
-            await this.downloadPage(address, basePath, signal);
-            return null;
+            return { failure: null, bytes: await this.downloadPage(address, basePath, signal) };
         } catch (error) {
             if (error instanceof ChapterFailure) {
-                return error;
+                return { failure: error, bytes: 0 };
             }
             throw error;
         }
     }
 
     // One page, asked for again a couple of times when the site fails; written under a temporary name and only given its final name
-    // (and extension) once it is whole.
-    private async downloadPage(address: string, basePath: string, signal: AbortSignal): Promise<void> {
+    // (and extension) once it is whole. Returns the bytes of the page.
+    private async downloadPage(address: string, basePath: string, signal: AbortSignal): Promise<number> {
         const sleep = this.deps.sleep ?? defaultSleep;
         let lastFailure: ChapterFailure | null = null;
         for (let attempt = 0; attempt <= PAGE_RETRY_DELAYS_MS.length; attempt += 1) {
@@ -293,8 +313,7 @@ export class MangaChapterDownloader {
             }
             signal.throwIfAborted();
             try {
-                await this.fetchPage(address, basePath, signal);
-                return;
+                return await this.fetchPage(address, basePath, signal);
             } catch (error) {
                 if (signal.aborted || isAbort(error) || isDiskError(error)) {
                     throw error;
@@ -317,7 +336,7 @@ export class MangaChapterDownloader {
         return new ChapterFailure(code === 'SERVER_UNAVAILABLE' ? 'SERVER_UNAVAILABLE' : 'REQUEST_FAILED', messageOf(error), false, known);
     }
 
-    private async fetchPage(address: string, basePath: string, signal: AbortSignal): Promise<void> {
+    private async fetchPage(address: string, basePath: string, signal: AbortSignal): Promise<number> {
         const image = await this.deps.fetchImage(address, signal);
         const pageKnown: Partial<ErrorDetails> = { operation: PAGE_OPERATION, url: address };
         if (image.status !== 200) {
@@ -332,50 +351,55 @@ export class MangaChapterDownloader {
         }
         const type = resolveImageType(image.bytes, image.contentType);
         const temporaryPath = `${basePath}${TEMPORARY_EXTENSION}`;
-        writeFileSync(temporaryPath, image.bytes);
-        renameSync(temporaryPath, `${basePath}.${type.extension}`);
+        await writeFile(temporaryPath, image.bytes);
+        await rename(temporaryPath, `${basePath}.${type.extension}`);
+        return image.bytes.byteLength;
     }
 
     private async finish(options: ChapterDownloadOptions, workDirectory: string, pageCount: number, missingPages: number[]): Promise<ChapterDownloadResult> {
         if (options.format === 'cbz') {
             const result = await this.finishCbz(options, options.outputPath, workDirectory, pageCount);
-            rmSync(workDirectory, { recursive: true, force: true });
+            await rm(workDirectory, { recursive: true, force: true });
             return result;
         }
-        writeFileSync(join(workDirectory, COMIC_INFO_FILE), this.comicInfoOf(options, workDirectory, pageCount), 'utf-8');
-        if (existsSync(options.outputPath)) {
+        const present = (await readdir(workDirectory)).filter(isCompletePage).length;
+        await writeFile(join(workDirectory, COMIC_INFO_FILE), this.comicInfoOf(options, present, pageCount), 'utf-8');
+        if (await pathExists(options.outputPath)) {
             throw new ChapterFailure('DISK', 'The place for the chapter is taken', true);
         }
-        renameSync(workDirectory, options.outputPath);
-        return { filePath: options.outputPath, sizeBytes: folderSize(options.outputPath), pageCount, missingPages };
+        await rename(workDirectory, options.outputPath);
+        return { filePath: options.outputPath, sizeBytes: await folderSize(options.outputPath), pageCount, missingPages };
     }
 
     // Makes the CBZ of the pages in the folder (in the place of the one there, when there is one).
     private async finishCbz(identity: ChapterIdentity, outputPath: string, directory: string, pageCount: number): Promise<ChapterDownloadResult> {
-        const pages = readdirSync(directory).filter(isCompletePage).sort();
+        const pages = (await readdir(directory)).filter(isCompletePage).sort();
         const entries: CbzEntry[] = pages.map((file) => {
             return { name: file, path: join(directory, file) };
         });
-        const comicInfo = this.comicInfoOf(identity, directory, pageCount);
+        const comicInfo = this.comicInfoOf(identity, pages.length, pageCount);
         await (this.deps.writeCbz ?? defaultWriteCbz)(outputPath, entries, [{ name: COMIC_INFO_FILE, content: comicInfo }]);
-        return { filePath: outputPath, sizeBytes: statSync(outputPath).size, pageCount, missingPages: missingPageIndexes(pages, pageCount) };
+        return { filePath: outputPath, sizeBytes: (await stat(outputPath)).size, pageCount, missingPages: missingPageIndexes(pages, pageCount) };
     }
 
     // A folder of images that got pages back: its ComicInfo is written again.
-    private finishFolderInPlace(identity: ChapterIdentity, directory: string, pageCount: number): ChapterDownloadResult {
-        writeFileSync(join(directory, COMIC_INFO_FILE), this.comicInfoOf(identity, directory, pageCount), 'utf-8');
-        const pages = readdirSync(directory).filter(isCompletePage);
-        return { filePath: directory, sizeBytes: folderSize(directory), pageCount, missingPages: missingPageIndexes(pages, pageCount) };
+    private async finishFolderInPlace(identity: ChapterIdentity, directory: string, pageCount: number): Promise<ChapterDownloadResult> {
+        const pages = (await readdir(directory)).filter(isCompletePage);
+        await writeFile(join(directory, COMIC_INFO_FILE), this.comicInfoOf(identity, pages.length, pageCount), 'utf-8');
+        return { filePath: directory, sizeBytes: await folderSize(directory), pageCount, missingPages: missingPageIndexes(pages, pageCount) };
     }
 
-    private comicInfoOf(identity: ChapterIdentity, directory: string, pageCount: number): string {
-        const present = readdirSync(directory).filter(isCompletePage).length;
+    private comicInfoOf(identity: ChapterIdentity, present: number, pageCount: number): string {
         return buildComicInfo({ seriesTitle: identity.seriesTitle, chapter: identity.chapter, details: identity.details, pageCount: Math.min(present, pageCount) });
     }
 }
 
-function folderSize(directory: string): number {
-    return readdirSync(directory).reduce((total, file) => {
-        return total + statSync(join(directory, file)).size;
+async function folderSize(directory: string): Promise<number> {
+    const files = await readdir(directory);
+    const sizes = await Promise.all(files.map(async (file) => {
+        return (await stat(join(directory, file))).size;
+    }));
+    return sizes.reduce((total, size) => {
+        return total + size;
     }, 0);
 }

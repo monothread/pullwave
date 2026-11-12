@@ -165,8 +165,8 @@ describe('createMangaRuntime availability', () => {
             externalBaseUrl: EXTERNAL
         });
         expect(runtime?.queue.list()).toEqual([
-            { chapterId: kept.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: '123', status: 'paused', pagesDone: 2, pageCount: 4, percent: 50, error: null, missingPages: 0 },
-            { chapterId: lost.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: '123', status: 'paused', pagesDone: 0, pageCount: 4, percent: 0, error: null, missingPages: 0 }
+            { chapterId: kept.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: '123', status: 'paused', pagesDone: 2, pageCount: 4, percent: 50, bytesPerSecond: null, etaSeconds: null, error: null, missingPages: 0 },
+            { chapterId: lost.id, mangaId: manga.id, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: '123', status: 'paused', pagesDone: 0, pageCount: 4, percent: 0, bytesPerSecond: null, etaSeconds: null, error: null, missingPages: 0 }
         ]);
         runtime?.queue.cancel(kept.id);
         expect(existsSync(work)).toBe(false);

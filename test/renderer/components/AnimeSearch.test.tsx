@@ -11,6 +11,8 @@ import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@
 import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
+import * as blockWindow from '@renderer/hooks/useBlockWindow';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -1325,5 +1327,64 @@ describe('AnimeDetail: the cover behind the screen', () => {
         expect(container.querySelector('.anime__detail')).toHaveClass('detail-screen');
         unmount();
         expect(useBackdropStore.getState().url).toBeNull();
+    });
+});
+
+describe('AnimeSearch with long lists', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    it('draws the results by blocks of the grid, kept for the search that was made', () => {
+        const hook = vi.spyOn(blockWindow, 'useBlockWindow');
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'cyberpunk', status: 'done', results: RESULTS, searchedQuery: 'cyberpunk', hasNextPage: false } });
+        render(<AnimeSearch />);
+        expect(hook).toHaveBeenLastCalledWith(RESULTS, 'anime-search:cyberpunk', 4);
+        const grid = document.querySelector('ul.cover-grid');
+        expect(grid).not.toBeNull();
+        expect(Array.from(grid!.querySelectorAll('.history__title')).map((title) => {
+            return title.textContent;
+        })).toEqual(
+            RESULTS.map((result) => {
+                return result.title;
+            })
+        );
+    });
+
+    it('draws the first 60 episodes of an anime that was found, and the others when the end of the grid comes into view', () => {
+        const episodes = Array.from({ length: 70 }, (_unused, index) => {
+            return String(index + 1);
+        });
+        useAnimeStore.setState({
+            search: { ...INITIAL_SEARCH, status: 'done', results: RESULTS, searchedQuery: 'cyberpunk' },
+            selection: { result: RESULTS[0] as AnimeSearchResult, query: 'cyberpunk', status: 'ready', episodes, error: null }
+        });
+        render(<AnimeSearch />);
+        const chips = (): Array<string | null> => {
+            return screen.getAllByRole('button', { name: /^EP \d+$/ }).map((button) => {
+                return button.textContent;
+            });
+        };
+        expect(screen.getByText('70 EPISODES')).toBeInTheDocument();
+        expect(chips()).toEqual(
+            episodes.slice(0, 60).map((number) => {
+                return `EP ${number}`;
+            })
+        );
+        expect(screen.getByTestId('list-more').tagName).toBe('DIV');
+        seeEnd(observers);
+        expect(chips()).toEqual(
+            episodes.map((number) => {
+                return `EP ${number}`;
+            })
+        );
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

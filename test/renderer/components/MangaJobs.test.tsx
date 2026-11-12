@@ -9,6 +9,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -368,6 +369,13 @@ describe('MangaJobs trying the failed ones again', () => {
 });
 
 describe('MangaJobs: the chapter downloading', () => {
+    // The speed and the time left the big card draws, in that order.
+    function heroValues(hero: HTMLElement): Array<string | null> {
+        return [...hero.querySelectorAll('.download-hero__value')].map((element) => {
+            return element.getAttribute('data-text');
+        });
+    }
+
     it('shows the running chapter big at the top, with the pages and the cover of the manga of the library', () => {
         useMangaStore.setState({
             jobs: [makeMangaJob({ chapterId: 1, mangaId: 4, status: 'running', mangaTitle: 'One Piece', chapterName: 'Romance Dawn', pagesDone: 5, pageCount: 20, percent: 25 }), makeMangaJob({ chapterId: 2, status: 'queued' })],
@@ -379,7 +387,38 @@ describe('MangaJobs: the chapter downloading', () => {
         expect(hero.querySelector('.download-hero__detail')).toHaveAttribute('data-text', 'Romance Dawn · 5 of 20 pages');
         expect(hero.querySelector('.download-hero__art img')).toHaveAttribute('src', 'https://img/op.jpg');
         expect(hero.querySelector('.speed-graph')).toBeNull();
+        expect(heroValues(hero)).toEqual(['—', '—']);
         expect(hero.querySelector('.download-hero__next')).toHaveTextContent('UP NEXT: 1');
+    });
+
+    it('shows the speed and the time left of the running chapter, with the graph of the speed', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ status: 'running', bytesPerSecond: 1.4 * 1024 * 1024, etaSeconds: 192 })], library: [] });
+        render(<MangaJobs />);
+        const hero = screen.getByTestId('download-hero');
+        expect(heroValues(hero)).toEqual(['1.4 MiB/s', '03:12']);
+        // The speed is in bytes, so the card can draw its graph (the readings of the graph are the card's own business).
+        expect(within(hero).getByRole('img', { name: 'Speed of the last minute', hidden: true })).toBeInTheDocument();
+    });
+
+    it('writes a time left of more than an hour with the hours, and a slow speed in bytes', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ status: 'running', bytesPerSecond: 512, etaSeconds: 3849.6 })], library: [] });
+        render(<MangaJobs />);
+        expect(heroValues(screen.getByTestId('download-hero'))).toEqual(['512 B/s', '1:04:09']);
+    });
+
+    it('shows the speed alone while the time left is not known', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ status: 'running', bytesPerSecond: 0, etaSeconds: null })], library: [] });
+        render(<MangaJobs />);
+        expect(heroValues(screen.getByTestId('download-hero'))).toEqual(['0 B/s', '—']);
+    });
+
+    it('shows the speed and the time left only at the top, not on the card of the chapter', () => {
+        useMangaStore.setState({ jobs: [makeMangaJob({ status: 'running', bytesPerSecond: 2048, etaSeconds: 30 })], library: [] });
+        render(<MangaJobs />);
+        const card = screen.getByTestId('manga-job');
+        expect(within(card).queryByText('2.0 KiB/s')).not.toBeInTheDocument();
+        expect(within(card).queryByText('00:30')).not.toBeInTheDocument();
+        expect(heroValues(screen.getByTestId('download-hero'))).toEqual(['2.0 KiB/s', '00:30']);
     });
 
     it('says only the chapter while its pages are not known, and draws no cover when the manga is not in the library', () => {
@@ -394,5 +433,46 @@ describe('MangaJobs: the chapter downloading', () => {
         useMangaStore.setState({ jobs: [makeMangaJob({ status: 'queued' })] });
         render(<MangaJobs />);
         expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaJobs with a long queue', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+        useMangaStore.setState({
+            jobs: Array.from({ length: 70 }, (_unused, index) => {
+                return makeMangaJob({ chapterId: index + 1, status: 'queued', chapterName: `Chapter ${String(index + 1)}` });
+            })
+        });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function headings(): Array<string | null> {
+        return screen.getAllByTestId('manga-job').map((job) => {
+            return within(job).getByRole('heading', { level: 3 }).textContent;
+        });
+    }
+
+    it('draws the first 60 downloads, counts all of them, and draws the others when the end of the list comes into view', () => {
+        render(<MangaJobs />);
+        expect(headings()).toEqual(
+            Array.from({ length: 60 }, (_unused, index) => {
+                return `One Piece · Chapter ${String(index + 1)}`;
+            })
+        );
+        expect(screen.getByText('DOWNLOADS (70)', { selector: '.section-label' })).toBeInTheDocument();
+        expect(screen.getByTestId('list-more')).toBeInTheDocument();
+        seeEnd(observers);
+        expect(headings()).toEqual(
+            Array.from({ length: 70 }, (_unused, index) => {
+                return `One Piece · Chapter ${String(index + 1)}`;
+            })
+        );
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

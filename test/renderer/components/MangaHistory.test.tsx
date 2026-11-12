@@ -9,6 +9,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -177,5 +178,41 @@ describe('MangaHistory', () => {
     it('is a region named after the tab', () => {
         render(<MangaHistory />);
         expect(screen.getByRole('region', { name: 'HISTORY' })).toBeInTheDocument();
+    });
+});
+
+describe('MangaHistory with a long list', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // 35 mangas read today and 35 yesterday, the last read first.
+    const LONG = Array.from({ length: 70 }, (_unused, index) => {
+        return line({ id: index + 1, mangaRemoteId: index + 1, title: `Manga ${String(index + 1)}`, readAt: at(index < 35 ? 0 : 1, 10) - index * 1000 });
+    });
+
+    function perDay(): number[] {
+        return screen.getAllByTestId('manga-history-day').map((day) => {
+            return within(day).getAllByTestId('manga-history-entry').length;
+        });
+    }
+
+    it('draws the first 60 readings split by day, and the others when the end of the list comes into view', async () => {
+        mock.api.manga.readingHistory.mockResolvedValue(LONG);
+        render(<MangaHistory />);
+        expect(await screen.findByText('Manga 1')).toBeInTheDocument();
+        expect(perDay()).toEqual([35, 25]);
+        expect(screen.queryByText('Manga 61')).not.toBeInTheDocument();
+        expect(screen.getByTestId('list-more')).toBeInTheDocument();
+        seeEnd(observers);
+        expect(perDay()).toEqual([35, 35]);
+        expect(screen.getByText('Manga 70')).toBeInTheDocument();
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

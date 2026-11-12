@@ -1,3 +1,4 @@
+import { WindowedList } from './WindowedList';
 import { useEffect } from 'react';
 import type { MangaListKind, MangaSummary } from '@shared/manga';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
@@ -209,11 +210,15 @@ export function MangaBrowse() {
             {items.length > 0 && (
                 <>
                     <span className="section-label">{t('manga.browse.results', { count: items.length })}</span>
-                    <ul className="cover-grid">
-                        {items.map((item) => {
-                            return <MangaResultCard key={item.remoteId} item={item} library={library} onOpen={openFound} />;
-                        })}
-                    </ul>
+                    <WindowedList
+                        as="ul"
+                        className="cover-grid"
+                        items={items}
+                        listKey={`manga-browse:${String(sourceId)}:${mode}`}
+                        renderItem={(item, back) => {
+                            return <MangaResultCard key={item.remoteId} item={item} library={library} onOpen={openFound} back={back} />;
+                        }}
+                    />
                     {hasNextPage && (
                         <div ref={endOfList} className="manga__more" data-testid="manga-end-of-list">
                             {loadingMore && <p className="empty">{t('manga.browse.loading')}</p>}

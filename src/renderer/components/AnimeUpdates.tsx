@@ -1,3 +1,5 @@
+import { useIncrementalList } from '../hooks/useIncrementalList';
+import { ListMore } from './ListMore';
 import { useEffect, useState } from 'react';
 import type { AnimeArrivalOrigin, AnimeCheckState, AnimeUpdateEntry } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
@@ -63,7 +65,9 @@ export function AnimeUpdates() {
         }
         return day === today - DAY_MS ? t('anime.recent.yesterday') : new Date(day).toLocaleDateString();
     };
-    const days = groupByDay<AnimeUpdateEntry>(updates, (entry) => {
+    // A long list is drawn a part at a time: the days are made of the entries drawn so far.
+    const { shown: drawn, hasMore, endRef } = useIncrementalList(updates, 'anime-updates');
+    const days = groupByDay<AnimeUpdateEntry>(drawn, (entry) => {
         return entry.foundAt;
     });
     // One check at a time: the button is off while one is going on, whether the button started it or the hourly look did.
@@ -135,6 +139,7 @@ export function AnimeUpdates() {
                     </section>
                 );
             })}
+            <ListMore hasMore={hasMore} endRef={endRef} />
         </section>
     );
 }

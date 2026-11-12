@@ -1,4 +1,4 @@
-import { resolveLanguage } from '@shared/i18n';
+import { resolveLanguage } from '@shared/i18n/core';
 import type { LanguageCode, LanguageSetting } from '@shared/types';
 
 export function systemLocale(): string {

@@ -671,6 +671,15 @@ function bootstrap(): BootstrapResult {
     });
     app.on('will-quit', () => {
         cutPreview.dispose();
+        // The journal of each database is written into its file, so the file is whole on its own once the app is closed. A database that
+        // cannot be written now keeps its journal, which it reads again the next time it opens: the app quits all the same.
+        [manga?.db, anime?.db].forEach((db) => {
+            try {
+                db?.checkpoint();
+            } catch {
+                return;
+            }
+        });
     });
     registerCutHandlers(ipcMain, cutter, cutPreview);
     logWatchers = registerLogHandlers(ipcMain, { hub: processLogs, send: sendToRenderer });

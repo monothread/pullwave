@@ -1,5 +1,6 @@
 import { FALLBACK_LANGUAGE, LANGUAGE_CODES, LANGUAGE_SETTINGS } from '@shared/constants';
 import { CATALOGS, createTranslator, interpolate, languageFromLocale, LANGUAGE_NAMES, resolveLanguage } from '@shared/i18n';
+import * as core from '@shared/i18n/core';
 import { en, type MessageKey } from '@shared/i18n/en';
 import type { LanguageCode } from '@shared/types';
 
@@ -90,6 +91,27 @@ describe('createTranslator', () => {
         expect(createTranslator('en')('update.available', { version: '1.2.3' })).toBe('Version 1.2.3 is available.');
         expect(createTranslator('pt')('update.available', { version: '1.2.3' })).toBe('A versão 1.2.3 está disponível.');
         expect(createTranslator('zh')('queue.label', { count: 4 })).toBe('队列 [4]');
+    });
+});
+
+describe('translatorFor', () => {
+    it('reads the texts from the messages it is given and interpolates the params', () => {
+        const t = core.translatorFor(CATALOGS.es);
+        expect(t('downloads.nav.history')).toBe('HISTORIAL');
+        expect(t('update.available', { version: '2.0.0' })).toBe(CATALOGS.es['update.available'].replace('{version}', '2.0.0'));
+    });
+});
+
+describe('the core without the catalogs', () => {
+    it('gives the same functions and names the index gives', () => {
+        expect(core.interpolate).toBe(interpolate);
+        expect(core.languageFromLocale).toBe(languageFromLocale);
+        expect(core.resolveLanguage).toBe(resolveLanguage);
+        expect(core.LANGUAGE_NAMES).toBe(LANGUAGE_NAMES);
+    });
+
+    it('has none of the catalogs, so the window can load them one at a time', () => {
+        expect(Object.keys(core).sort()).toEqual(['LANGUAGE_NAMES', 'interpolate', 'languageFromLocale', 'resolveLanguage', 'translatorFor']);
     });
 });
 

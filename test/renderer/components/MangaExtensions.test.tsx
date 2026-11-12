@@ -8,6 +8,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeExtension } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -342,5 +343,40 @@ describe('MangaExtensions', () => {
             await screen.findByText('Alpha');
             expect(names()).toEqual(['Alpha', 'Beta']);
         });
+    });
+});
+
+describe('MangaExtensions with a long catalog', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // 70 extensions, named so that their order by name is their order here.
+    const CATALOG = Array.from({ length: 70 }, (_unused, index) => {
+        const number = String(index + 1).padStart(2, '0');
+        return makeExtension({ pkgName: `ext.${number}`, name: `Extension ${number}`, lang: 'en' });
+    });
+
+    function catalogNames(count: number): string[] {
+        return CATALOG.slice(0, count).map((extension) => {
+            return extension.name;
+        });
+    }
+
+    it('draws the first 60 extensions, and the others when the end of the list comes into view', async () => {
+        mock.api.manga.extensions.mockResolvedValue({ ok: true, value: CATALOG });
+        render(<MangaExtensions />);
+        expect(await screen.findByText('Extension 01')).toBeInTheDocument();
+        expect(names()).toEqual(catalogNames(60));
+        expect(screen.getByTestId('list-more').tagName).toBe('LI');
+        seeEnd(observers);
+        expect(names()).toEqual(catalogNames(70));
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

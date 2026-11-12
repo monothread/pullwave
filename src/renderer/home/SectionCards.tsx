@@ -6,11 +6,11 @@ import { SECTION_TABS } from '../components/SideNav';
 import { useTranslator } from '../i18n/useTranslator';
 import { animeNews, mangaNews } from '../spotlight/spotlightData';
 import { useAnimeStore } from '../store/animeStore';
-import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import { openAnime, openManga, pasteLink, showCut } from './homeActions';
-import { activeDownloads } from './homeData';
-import { useShownJobs, useShownLibrary } from '../hooks/useShownManga';
+import { activeTotal } from './homeData';
+import { useActiveCounts } from '../hooks/useActiveCounts';
+import { useShownLibrary } from '../hooks/useShownManga';
 
 interface CardAction {
     label: MessageKey;
@@ -123,33 +123,24 @@ export function SectionCards() {
     const [openedAt] = useState(() => {
         return Date.now();
     });
-    const videoJobs = useAppStore((state) => {
-        return state.jobs;
-    });
+    const active = useActiveCounts();
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
     const animeLibrary = useAnimeStore((state) => {
         return state.library;
     });
-    const animeJobs = useAnimeStore((state) => {
-        return state.jobs;
-    });
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });
     const mangaLibrary = useShownLibrary();
-    const mangaJobs = useShownJobs();
     // Whether an extension gives a source to browse (known once the sources were read).
     const hasSources = useMangaStore((state) => {
         return state.browse.sourcesStatus === 'ready' && state.browse.sources.length > 0;
     });
     const cards = useMemo(() => {
-        const active = activeDownloads(videoJobs, animeJobs, mangaJobs);
         const count = (kind: 'video' | 'anime' | 'manga', status?: 'running' | 'queued'): number => {
-            return active.filter((item) => {
-                return item.kind === kind && (status === undefined || item.status === status);
-            }).length;
+            return status === undefined ? activeTotal(active[kind]) : active[kind][status];
         };
         const newsLine = (news: number): string => {
             return news > 0 ? t('home.card.news', { count: news }) : t('home.card.noNews');
@@ -210,7 +201,7 @@ export function SectionCards() {
         return sectionOrder(animeSupported, mangaSupported).map((section) => {
             return models[section];
         });
-    }, [t, openedAt, videoJobs, animeSupported, animeLibrary, animeJobs, mangaSupported, mangaLibrary, mangaJobs, hasSources]);
+    }, [t, openedAt, active, animeSupported, animeLibrary, mangaSupported, mangaLibrary, hasSources]);
 
     return (
         <ul className="section-cards" aria-label={t('home.cards')}>

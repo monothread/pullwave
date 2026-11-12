@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { createTranslator, type MessageKey, type MessageParams } from '@shared/i18n';
+import type { MessageKey, MessageParams } from '@shared/i18n/core';
+import { createTranslator } from '../i18n/catalogs';
 import type { ProgramInfo, ProgramLookupReason, ProgramsStatus, ProgramVersions } from '@shared/programs';
 import { PROGRAM_IDS, type ProgramId, type ToolState } from '@shared/tools';
 import { resolveAppLanguage } from '../i18n/language';

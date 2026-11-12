@@ -1,3 +1,4 @@
+import { IncrementalItems } from './IncrementalItems';
 import { useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
@@ -161,7 +162,7 @@ export function AnimeDetail() {
                     </div>
                     <p className="field__hint">{t('anime.episodes.hint')}</p>
                     <div className="episode-grid" role="group" aria-label={t('anime.episodes.label', { count: selection.episodes.length })}>
-                        {inListOrder(selection.episodes, episodeOrder).map((number) => {
+                        <IncrementalItems items={inListOrder(selection.episodes, episodeOrder)} listKey={`anime-search-episodes:${selection.result.title}`} end="div" renderItem={(number) => {
                             const isDownloaded = downloaded.has(number);
                             return (
                                 <button
@@ -176,7 +177,7 @@ export function AnimeDetail() {
                                     {t('anime.episode', { number })}
                                 </button>
                             );
-                        })}
+                        }} />
                     </div>
                 </>
             )}

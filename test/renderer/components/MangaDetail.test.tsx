@@ -13,6 +13,7 @@ import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSour
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 const { flyMock, coverElement } = vi.hoisted(() => {
     return { flyMock: vi.fn(), coverElement: { id: 'the-cover' } };
@@ -1505,4 +1506,55 @@ describe('MangaDetail the order of the chapters', () => {
             ]
         });
     });
+});
+
+describe('MangaDetail with many chapters', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    const MANY = Array.from({ length: 70 }, (_unused, index) => {
+        return makeChapter({ remoteId: 100 + index, name: `Chapter ${String(index + 1)}`, number: index + 1, scanlator: null, dateUploaded: null });
+    });
+
+    function rowNames(): string[] {
+        return screen.getAllByTestId('manga-chapter').map((row) => {
+            return row.querySelector('.history__title')?.textContent ?? '';
+        });
+    }
+
+    function chapterNames(count: number): string[] {
+        return Array.from({ length: count }, (_unused, index) => {
+            return `Chapter ${String(index + 1)}`;
+        });
+    }
+
+    it('counts all the chapters, draws the first 60, and the others when the end of the list comes into view', () => {
+        open({ chapters: MANY });
+        render(<MangaDetail />);
+        expect(screen.getByText('Chapters (70)')).toBeInTheDocument();
+        expect(rowNames()).toEqual(chapterNames(60));
+        expect(screen.getByTestId('list-more').tagName).toBe('LI');
+        seeEnd(observers);
+        expect(rowNames()).toEqual(chapterNames(70));
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
+    });
+
+    it('draws the first 60 of the order picked for the list (the newest first)', () => {
+        useSortPrefsStore.setState({ list: { chapters: { [mangaListKeyOf()]: 'desc' }, episodes: {} } });
+        open({ chapters: MANY });
+        render(<MangaDetail />);
+        expect(rowNames()).toEqual(chapterNames(70).reverse().slice(0, 60));
+    });
+
+    function mangaListKeyOf(): string {
+        const manga = makeSummary();
+        return `${manga.sourceId}:${String(manga.remoteId)}`;
+    }
 });

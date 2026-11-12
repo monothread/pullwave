@@ -1,3 +1,4 @@
+import { IncrementalItems } from './IncrementalItems';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { LibraryManga } from '@shared/manga';
 import { foldSeries } from '@shared/series';
@@ -341,7 +342,7 @@ export function MangaLibrary() {
             {shown.length === 0 && <p className="empty">{currentGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}
             {shown.length > 0 && cards.length === 0 && <p className="empty">{t('library.filter.noNews')}</p>}
             <ul className="cover-grid">
-                {cards.map((card) => {
+                <IncrementalItems items={cards} listKey="manga-library" end="li" renderItem={(card) => {
                     const single = card.entries[0];
                     return card.key.startsWith('manga-') && single !== undefined ? (
                         <MangaRow key={card.key} manga={single} />
@@ -354,7 +355,7 @@ export function MangaLibrary() {
                             }}
                         />
                     );
-                })}
+                }} />
             </ul>
         </section>
     );

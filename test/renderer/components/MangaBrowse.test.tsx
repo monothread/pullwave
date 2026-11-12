@@ -7,6 +7,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import * as blockWindow from '@renderer/hooks/useBlockWindow';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -528,5 +529,29 @@ describe('MangaBrowse and the manga opened from the library', () => {
         });
         render(<MangaBrowse />);
         expect(await screen.findByRole('button', { name: 'Open: Site A' })).toBeInTheDocument();
+    });
+});
+
+describe('MangaBrowse with a long list', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('draws the mangas of the source by blocks of the grid, kept for the source and the list (popular, latest, search)', () => {
+        const hook = vi.spyOn(blockWindow, 'useBlockWindow');
+        useMangaStore.setState({ browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready', sourceId: '5', mode: 'popular', status: 'done', items: ITEMS, hasNextPage: false } });
+        render(<MangaBrowse />);
+        expect(hook).toHaveBeenLastCalledWith(ITEMS, 'manga-browse:5:popular', 4);
+        const grid = document.querySelector('ul.cover-grid');
+        expect(grid).not.toBeNull();
+        expect(within(grid as HTMLElement).getByText('Naruto')).toBeInTheDocument();
+        expect(within(grid as HTMLElement).getByText('Bleach')).toBeInTheDocument();
+    });
+
+    it('keeps the blocks of the latest apart from the ones of the popular', () => {
+        const hook = vi.spyOn(blockWindow, 'useBlockWindow');
+        useMangaStore.setState({ browse: { ...initialManga.browse, sources: SOURCES, sourcesStatus: 'ready', sourceId: '5', mode: 'latest', status: 'done', items: ITEMS, hasNextPage: false } });
+        render(<MangaBrowse />);
+        expect(hook).toHaveBeenLastCalledWith(ITEMS, 'manga-browse:5:latest', 4);
     });
 });

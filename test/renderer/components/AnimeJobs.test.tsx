@@ -9,6 +9,7 @@ import { makeAnimeJob } from '../../helpers/animeFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -347,5 +348,43 @@ describe('AnimeJobs the window to manage the downloads', () => {
         useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'done' }), makeAnimeJob({ episodeId: 2, status: 'error' }), makeAnimeJob({ episodeId: 3, status: 'cancelled' })] });
         render(<AnimeJobs />);
         expect(screen.queryByRole('button', { name: 'MANAGE' })).not.toBeInTheDocument();
+    });
+});
+
+describe('AnimeJobs with a long queue', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+        useAnimeStore.setState({
+            jobs: Array.from({ length: 70 }, (_unused, index) => {
+                return makeAnimeJob({ episodeId: index + 1, episode: String(index + 1), status: 'queued' });
+            })
+        });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function headings(): Array<string | null> {
+        return screen.getAllByTestId('anime-job').map((job) => {
+            return within(job).getByRole('heading', { level: 3 }).textContent;
+        });
+    }
+
+    function titles(count: number): string[] {
+        return Array.from({ length: count }, (_unused, index) => {
+            return `Naruto · EP ${String(index + 1)}`;
+        });
+    }
+
+    it('draws the first 60 downloads and draws the others when the end of the list comes into view', () => {
+        render(<AnimeJobs />);
+        expect(headings()).toEqual(titles(60));
+        expect(screen.getByTestId('list-more')).toBeInTheDocument();
+        seeEnd(observers);
+        expect(headings()).toEqual(titles(70));
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

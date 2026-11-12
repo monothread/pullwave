@@ -17,6 +17,8 @@ const STORE_URL = 'https://store.example/index.min.json';
 const EXTENSION_PKG = 'eu.kanade.tachiyomi.extension.en.fakedex';
 const SOURCE_ID = '4242';
 const OTHER_SOURCE_ID = '5252';
+// How many pages the list of the source that never seems to end has.
+const ENDLESS_PAGES = 40;
 // Enough of a JPEG for the app to recognize it by its first bytes.
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 // A picture a browser can decode: the covers are shown in the page, so they have to be real.
@@ -65,6 +67,8 @@ class FakeSuwayomi {
     failDetails = false;
     // The list of the first source has more than a page: 12 mangas, and 3 more in the second page.
     pagedList = false;
+    // The list of the first source never seems to end: pages of 30 mangas, up to ENDLESS_PAGES pages.
+    endlessList = false;
     private server: Server | null = null;
 
     get url(): string {
@@ -165,6 +169,19 @@ class FakeSuwayomi {
                         { __typename: 'SortFilter', name: 'Sort', sortOptions: ['Name', 'Date'], sortValue: { index: 0, ascending: true } },
                         { __typename: 'GroupFilter', name: 'Genre', filters: [{ __typename: 'TriStateFilter', name: 'Drama', triValue: 'IGNORE' }] }
                     ]
+                }
+            };
+        }
+        if (query.includes('fetchSourceManga') && this.endlessList && variables['source'] !== OTHER_SOURCE_ID) {
+            const page = Number(variables['page']);
+            return {
+                fetchSourceManga: {
+                    hasNextPage: page < ENDLESS_PAGES,
+                    mangas: Array.from({ length: 30 }, (_unused, index) => {
+                        const id = 1000 + (page - 1) * 30 + index;
+                        // Some titles are long and take more lines, as the titles of a real source do.
+                        return this.manga(id, id % 7 === 0 ? `Endless ${String(id)} with a title so long that it takes three lines of the card to be read whole` : `Endless ${String(id)}`);
+                    })
                 }
             };
         }
@@ -750,6 +767,123 @@ test.describe('manga section', () => {
         await expect(session.page.getByText('Results: 15')).toBeVisible();
     });
 
+    test('keeps working when Page Down is held on a list of a source that has many pages', async () => {
+        fake.endlessList = true;
+        session = await launch();
+        const errors: string[] = [];
+        session.page.on('pageerror', (error) => {
+            errors.push(error.message);
+        });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await goTo(session.page, 'BROWSE');
+        await backToSources(session.page);
+        await session.page.getByRole('button', { name: 'POPULAR: Fake Dex', exact: true }).click();
+        await expect(session.page.getByText('Results: 30')).toBeVisible();
+        await session.page.getByRole('button', { name: 'Open: Endless 1000' }).focus();
+        // A key held down repeats about every 30 ms.
+        for (let press = 0; press < 400; press += 1) {
+            await session.page.keyboard.press('PageDown');
+            await session.page.waitForTimeout(30);
+        }
+        expect(errors).toEqual([]);
+        await expect(session.page.getByText(/^Results: \d+$/)).toBeVisible();
+        const results = Number((await session.page.getByText(/^Results: \d+$/).textContent())?.replace('Results: ', ''));
+        expect(results).toBeGreaterThan(30);
+        await expect(session.page.getByRole('region', { name: 'Manga' })).toBeVisible();
+    });
+
+    test('draws the covers on the screen, as they were, after the list was scrolled far down and quickly back up', async () => {
+        fake.endlessList = true;
+        fake.imageDelayMs = 400;
+        session = await launch();
+        await session.page.setViewportSize({ width: 3440, height: 1368 });
+        await openManga(session.page);
+        await installExtension(session.page);
+        await goTo(session.page, 'BROWSE');
+        await backToSources(session.page);
+        await session.page.getByRole('button', { name: 'POPULAR: Fake Dex', exact: true }).click();
+        await expect(session.page.getByText('Results: 30')).toBeVisible();
+        const grid = session.page.locator('ul.cover-grid');
+        // The cards drawn for the first time come in as always.
+        expect(await grid.locator('.cover-card').first().evaluate((card) => {
+            return getComputedStyle(card).animationName;
+        })).toBe('bp-rise');
+        await grid.hover();
+        // The window is as big as an ultrawide screen of 1440 lines, where the interface is zoomed: the layout and the screen are not measured in
+        // the same pixels. Down until more than 400 mangas were listed (the farther down, the bigger a mistake between the two), then up as fast
+        // as a mouse wheel spun hard.
+        expect(await session.page.evaluate(() => {
+            return getComputedStyle(document.documentElement).zoom;
+        })).toBe('1.2');
+        for (let turn = 0; turn < 200 && Number((await session.page.getByText(/^Results: \d+$/).textContent())?.replace('Results: ', '')) < 420; turn += 1) {
+            await session.page.mouse.wheel(0, 1200);
+            await session.page.waitForTimeout(40);
+        }
+        // What is on the screen, from the top to the bottom of the part of the window that scrolls: covers, never an empty block.
+        // A card that is not shown whole (faded, or playing its entrance or the one of its cover) counts as one that is not there. The light of
+        // the card under the mouse (the wheel is turned over the grid) is not an entrance.
+        const screenful = async (): Promise<{ found: string[]; scrollTop: number }> => {
+            return session.page.evaluate(() => {
+                const main = document.querySelector('.app__main')!;
+                const box = main.getBoundingClientRect();
+                const x = document.querySelector('ul.cover-grid')!.getBoundingClientRect().left + 40;
+                const found: string[] = [];
+                for (let y = box.top + 20; y < box.bottom; y += 60) {
+                    const element = document.elementFromPoint(x, y);
+                    const card = element?.closest<HTMLElement>('.cover-card') ?? null;
+                    if (element?.closest('.list-window__spacer') !== null) {
+                        found.push('spacer');
+                    } else if (card === null) {
+                        found.push('other');
+                    } else {
+                        const entrances = card.getAnimations({ subtree: true }).filter((animation) => {
+                            return animation instanceof CSSAnimation && ['bp-rise', 'bp-cover-focus'].includes(animation.animationName);
+                        });
+                        const settled = getComputedStyle(card).opacity === '1' && entrances.length === 0;
+                        found.push(settled ? 'card' : 'card coming in');
+                    }
+                }
+                return { found, scrollTop: main.scrollTop };
+            });
+        };
+        // Where the scroll down stopped, then after each spin of the wheel up, from there to the top.
+        const blanks: Array<{ found: string[]; scrollTop: number }> = [];
+        // The last page that came is drawn for the first time: its cards come in as always, and are given the time to.
+        await session.page.waitForTimeout(1500);
+        const deep = await screenful();
+        expect(deep.scrollTop).toBeGreaterThan(10000);
+        if (deep.found.some((item) => {
+            return item !== 'card' && item !== 'other';
+        })) {
+            blanks.push(deep);
+        }
+        for (let burst = 0; burst < 12; burst += 1) {
+            for (let turn = 0; turn < 4; turn += 1) {
+                await session.page.mouse.wheel(0, -500);
+                await session.page.waitForTimeout(16);
+            }
+            await session.page.waitForTimeout(100);
+            const seen = await screenful();
+            if (seen.found.includes('spacer') || seen.found.includes('card coming in')) {
+                blanks.push(seen);
+            }
+        }
+        // From the top, a jump far down: the blocks there were left out on the way up and are placed again from far away.
+        for (const share of [0.85, 0.6, 1]) {
+            await session.page.evaluate((part) => {
+                const main = document.querySelector('.app__main')!;
+                main.scrollTop = (main.scrollHeight - main.clientHeight) * part;
+            }, share);
+            await session.page.waitForTimeout(400);
+            const seen = await screenful();
+            if (seen.found.includes('spacer')) {
+                blanks.push(seen);
+            }
+        }
+        expect(blanks).toEqual([]);
+    });
+
     test('clears the results of the search of all the sources and of the search of a source when the name is erased', async () => {
         fake.otherSource = true;
         session = await launch();
@@ -1266,6 +1400,28 @@ test.describe('manga section', () => {
         // Never back, and the last thing shown is the full bar, not a bar that was cut off half way.
         expect(fills.every((fill, index) => {return index === 0 || fill >= fills[index - 1]! - 0.01})).toBe(true);
         expect(fills.at(-1)).toBeGreaterThan(99.5);
+    });
+
+    test('shows the speed of the chapter being downloaded and the time it still needs, with the graph of the speed', async () => {
+        // Ten pages of the same small picture, a third of a second each: a few dozen bytes a second, a few seconds left.
+        fake.imageDelayMs = 300;
+        fake.pageTotal = 10;
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await session.page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).click();
+        const hero = session.page.getByTestId('download-hero');
+        const values = hero.locator('.download-hero__value');
+        await expect(hero).toBeVisible();
+        await expect(values.nth(0)).toHaveAttribute('data-text', /^\d+ B\/s$/, { timeout: 5000 });
+        await expect(values.nth(1)).toHaveAttribute('data-text', /^00:0\d$/);
+        await expect(hero.locator('.speed-graph')).toBeVisible();
+        // The speed is of the chapter running, not a value the screen keeps: the card of the chapter in the list shows none of it.
+        const speed = (await values.nth(0).getAttribute('data-text')) ?? '';
+        await expect(session.page.getByTestId('manga-job').first()).not.toContainText(speed);
+        await expect(session.page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 20000 });
     });
 
     test('keeps the settings in view wherever the chapter is, goes back to the top, and scrolls by itself', async () => {

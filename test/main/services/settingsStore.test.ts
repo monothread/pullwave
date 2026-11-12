@@ -27,4 +27,32 @@ describe('SettingsStore', () => {
         writeFileSync(path, JSON.stringify({ downloadDir: '/old' }));
         expect(new SettingsStore(path).get()).toEqual({ ...DEFAULT_SETTINGS, downloadDir: '/old' });
     });
+
+    it('reads the file once and keeps the settings after that', () => {
+        const path = join(makeTempDir(), 's.json');
+        writeFileSync(path, JSON.stringify({ downloadDir: '/first' }));
+        const store = new SettingsStore(path);
+        expect(store.get().downloadDir).toBe('/first');
+        writeFileSync(path, JSON.stringify({ downloadDir: '/changed-outside' }));
+        expect(store.get()).toEqual({ ...DEFAULT_SETTINGS, downloadDir: '/first' });
+    });
+
+    it('gives the saved settings after a save, without reading the file', () => {
+        const path = join(makeTempDir(), 's.json');
+        const store = new SettingsStore(path);
+        store.get();
+        store.save({ ...DEFAULT_SETTINGS, downloadDir: '/saved' });
+        writeFileSync(path, '{ broken');
+        expect(store.get()).toEqual({ ...DEFAULT_SETTINGS, downloadDir: '/saved' });
+    });
+
+    it('gives a copy each time, so changing what was given does not change the settings', () => {
+        const store = new SettingsStore(join(makeTempDir(), 's.json'));
+        const given = store.get();
+        given.downloadDir = '/changed';
+        expect(store.get().downloadDir).toBe(DEFAULT_SETTINGS.downloadDir);
+        const saved = store.save({ ...DEFAULT_SETTINGS, downloadDir: '/saved' });
+        saved.downloadDir = '/changed-again';
+        expect(store.get().downloadDir).toBe('/saved');
+    });
 });

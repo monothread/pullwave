@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
+import { JOURNAL_PRAGMAS } from './sqliteJournal';
 import type {
     AniError,
     AniErrorCode,
@@ -268,6 +269,7 @@ function compareEpisodes(first: AnimeEpisodeRecord, second: AnimeEpisodeRecord):
 
 export class AnimeDb {
     private readonly db: DatabaseSync;
+    private readonly statements = new Map<string, StatementSync>();
 
     constructor(
         path: string,
@@ -279,6 +281,7 @@ export class AnimeDb {
         this.db = new DatabaseSync(path);
         try {
             this.db.exec('PRAGMA foreign_keys = ON');
+            this.db.exec(JOURNAL_PRAGMAS);
             this.migrate();
         } catch (error) {
             // The file must not stay open (and locked, on Windows) when the library cannot be used.
@@ -315,16 +318,32 @@ export class AnimeDb {
         }
     }
 
+    // Each query is prepared once and used again: the queries are fixed texts, so there are only as many as the class has.
+    private statement(sql: string): StatementSync {
+        let prepared = this.statements.get(sql);
+        if (prepared === undefined) {
+            prepared = this.db.prepare(sql);
+            this.statements.set(sql, prepared);
+        }
+        return prepared;
+    }
+
     private one(sql: string, ...params: SQLInputValue[]): Row | null {
-        return (this.db.prepare(sql).get(...params) as Row | undefined) ?? null;
+        return (this.statement(sql).get(...params) as Row | undefined) ?? null;
     }
 
     private all(sql: string, ...params: SQLInputValue[]): Row[] {
-        return this.db.prepare(sql).all(...params) as Row[];
+        return this.statement(sql).all(...params) as Row[];
     }
 
     private run(sql: string, ...params: SQLInputValue[]): void {
-        this.db.prepare(sql).run(...params);
+        this.statement(sql).run(...params);
+    }
+
+    // Writes what the journal holds into the database file and empties it (the app does it when it quits): a database file that is
+    // deleted or copied then is whole on its own.
+    checkpoint(): void {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
     }
 
     get schemaVersion(): number {

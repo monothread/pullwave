@@ -1,10 +1,12 @@
+import { IncrementalItems } from './IncrementalItems';
 import type { MangaJob } from '@shared/manga';
 import { DownloadHero } from '../downloads/DownloadHero';
+import { formatSpeed } from '../downloads/speed';
 import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { ConfirmButton } from './ConfirmButton';
-import { formatPercent } from './jobStatus';
+import { formatDuration, formatPercent } from './jobStatus';
 import { jobStatusKey } from './mangaText';
 import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { MangaErrorNotice } from './MangaErrorNotice';
@@ -58,24 +60,94 @@ function MangaJobBar({ percent, title }: MangaJobBarProps) {
     );
 }
 
+// The speed and the time left of the chapter being downloaded, as the big card shows them ("" while they are not known).
+function speedText(job: MangaJob): string {
+    return job.bytesPerSecond === null ? '' : formatSpeed(job.bytesPerSecond);
+}
+
+function etaText(job: MangaJob): string {
+    return job.etaSeconds === null ? '' : formatDuration(job.etaSeconds);
+}
+
+// One chapter of the queue. It is drawn again only when its download changes: the progress of one chapter does not draw the others again.
+// Its actions ask the store as it is when they are used.
+const MangaJobRow = memo(function MangaJobRow({ job }: { job: MangaJob }) {
+    const t = useTranslator();
+    const title = `${job.mangaTitle} · ${job.chapterName}`;
+    return (
+        <article className={`job job--${job.status}`} data-testid="manga-job">
+            <header className="job__head">
+                <h3 className="job__title" title={title}>
+                    {title}
+                </h3>
+                <span className="job__badges">
+                    <span className={`badge badge--${job.status}`}>{t(jobStatusKey(job.status))}</span>
+                </span>
+            </header>
+            <MangaJobBar percent={job.percent} title={title} />
+            <div className="job__meta">
+                <span>{formatPercent(job.percent)}</span>
+                {job.pageCount > 0 && <span>{t('manga.jobs.pages', { done: job.pagesDone, total: job.pageCount })}</span>}
+            </div>
+            {job.error && (
+                <MangaErrorNotice error={job.error} />
+            )}
+            <div className="job__actions">
+                {job.status === 'running' && (
+                    <button
+                        type="button"
+                        className="btn btn--small"
+                        onClick={() => {
+                            void useMangaStore.getState().pauseJob(job.chapterId);
+                        }}
+                    >
+                        {t('manga.jobs.pause')}
+                    </button>
+                )}
+                {job.status === 'paused' && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void useMangaStore.getState().resumeJob(job.chapterId);
+                        }}
+                    >
+                        {t('manga.jobs.resume')}
+                    </button>
+                )}
+                {(job.status === 'queued' || job.status === 'running' || job.status === 'paused') && (
+                    <ConfirmButton
+                        className="btn btn--small btn--hot"
+                        dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('manga.jobs.cancel'), cancelLabel: t('confirm.back') }}
+                        onConfirm={() => {
+                            void useMangaStore.getState().cancelJob(job.chapterId);
+                        }}
+                    >
+                        {t('manga.jobs.cancel')}
+                    </ConfirmButton>
+                )}
+                {(job.status === 'error' || job.status === 'cancelled') && (
+                    <button
+                        type="button"
+                        className="btn btn--small btn--primary"
+                        onClick={() => {
+                            void useMangaStore.getState().retryJob(job.chapterId);
+                        }}
+                    >
+                        {t('manga.jobs.retry')}
+                    </button>
+                )}
+            </div>
+        </article>
+    );
+});
+
 export function MangaJobs() {
     const t = useTranslator();
     const [managing, setManaging] = useState(false);
     const jobs = useShownJobs();
     const queueHeld = useMangaStore((state) => {
         return state.queueHeld;
-    });
-    const cancelJob = useMangaStore((state) => {
-        return state.cancelJob;
-    });
-    const retryJob = useMangaStore((state) => {
-        return state.retryJob;
-    });
-    const pauseJob = useMangaStore((state) => {
-        return state.pauseJob;
-    });
-    const resumeJob = useMangaStore((state) => {
-        return state.resumeJob;
     });
     const library = useMangaStore((state) => {
         return state.library;
@@ -121,8 +193,8 @@ export function MangaJobs() {
                     title={running.mangaTitle}
                     detail={running.pageCount > 0 ? `${running.chapterName} · ${t('downloads.hero.pages', { done: running.pagesDone, total: running.pageCount })}` : running.chapterName}
                     percent={running.percent}
-                    speed=""
-                    eta=""
+                    speed={speedText(running)}
+                    eta={etaText(running)}
                     kind="manga"
                     cover={<MangaCover url={runningCover} />}
                     waiting={waiting}
@@ -194,75 +266,9 @@ export function MangaJobs() {
                 />
             )}
             {queueHeld && jobs.some(isQueued) && <p className="field__hint">{t('manga.jobs.held')}</p>}
-            {sorted.map((job) => {
-                const title = `${job.mangaTitle} · ${job.chapterName}`;
-                return (
-                    <article key={job.chapterId} className={`job job--${job.status}`} data-testid="manga-job">
-                        <header className="job__head">
-                            <h3 className="job__title" title={title}>
-                                {title}
-                            </h3>
-                            <span className="job__badges">
-                                <span className={`badge badge--${job.status}`}>{t(jobStatusKey(job.status))}</span>
-                            </span>
-                        </header>
-                        <MangaJobBar percent={job.percent} title={title} />
-                        <div className="job__meta">
-                            <span>{formatPercent(job.percent)}</span>
-                            {job.pageCount > 0 && <span>{t('manga.jobs.pages', { done: job.pagesDone, total: job.pageCount })}</span>}
-                        </div>
-                        {job.error && (
-                            <MangaErrorNotice error={job.error} />
-                        )}
-                        <div className="job__actions">
-                            {job.status === 'running' && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small"
-                                    onClick={() => {
-                                        void pauseJob(job.chapterId);
-                                    }}
-                                >
-                                    {t('manga.jobs.pause')}
-                                </button>
-                            )}
-                            {job.status === 'paused' && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small btn--primary"
-                                    onClick={() => {
-                                        void resumeJob(job.chapterId);
-                                    }}
-                                >
-                                    {t('manga.jobs.resume')}
-                                </button>
-                            )}
-                            {(job.status === 'queued' || job.status === 'running' || job.status === 'paused') && (
-                                <ConfirmButton
-                                    className="btn btn--small btn--hot"
-                                    dialog={{ title: t('confirm.jobCancel.title'), message: t('confirm.jobCancel.message'), confirmLabel: t('manga.jobs.cancel'), cancelLabel: t('confirm.back') }}
-                                    onConfirm={() => {
-                                        void cancelJob(job.chapterId);
-                                    }}
-                                >
-                                    {t('manga.jobs.cancel')}
-                                </ConfirmButton>
-                            )}
-                            {(job.status === 'error' || job.status === 'cancelled') && (
-                                <button
-                                    type="button"
-                                    className="btn btn--small btn--primary"
-                                    onClick={() => {
-                                        void retryJob(job.chapterId);
-                                    }}
-                                >
-                                    {t('manga.jobs.retry')}
-                                </button>
-                            )}
-                        </div>
-                    </article>
-                );
-            })}
+            <IncrementalItems items={sorted} listKey="manga-jobs" end="div" renderItem={(job) => {
+                return <MangaJobRow key={job.chapterId} job={job} />;
+            }} />
         </section>
     );
 }

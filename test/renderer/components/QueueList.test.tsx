@@ -6,6 +6,7 @@ import { QueueList } from '@renderer/components/QueueList';
 import { useAppStore } from '@renderer/store/appStore';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, makeJob, type MockApiHandle } from '../../helpers/mockApi';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initial = useAppStore.getState();
@@ -266,5 +267,46 @@ describe('QueueList: the download going on', () => {
         useAppStore.setState({ jobs });
         render(<QueueList />);
         expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
+    });
+});
+
+describe('QueueList with a long queue', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+        useAppStore.setState({
+            jobs: Array.from({ length: 70 }, (_unused, index) => {
+                return makeJob({ id: `job-${String(index + 1)}`, title: `Video ${String(index + 1)}`, status: 'queued' });
+            })
+        });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function titles(): Array<string | null> {
+        return screen.getAllByTestId('job-card').map((card) => {
+            return within(card).getByRole('heading', { level: 3 }).textContent;
+        });
+    }
+
+    it('draws the first 60 downloads in the order of the queue, counts all of them, and draws the others when the end comes into view', () => {
+        render(<QueueList />);
+        const first = titles();
+        expect(first).toHaveLength(60);
+        expect(screen.getByText('QUEUE [70]')).toBeInTheDocument();
+        expect(screen.getByTestId('list-more')).toBeInTheDocument();
+        seeEnd(observers);
+        const all = titles();
+        expect(all).toHaveLength(70);
+        expect(all.slice(0, 60)).toEqual(first);
+        expect([...all].sort()).toEqual(
+            Array.from({ length: 70 }, (_unused, index) => {
+                return `Video ${String(index + 1)}`;
+            }).sort()
+        );
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

@@ -9,6 +9,7 @@ import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@
 import { makeChapterRecord, makeLibraryManga, makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { makeReading } from '../../helpers/homeFixtures';
+import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -913,5 +914,45 @@ describe('MangaLibrary: the highlights, the filters and the order', () => {
         await userEvent.type(screen.getByLabelText('Search the library'), 'solo');
         expect(screen.queryByRole('region', { name: 'Highlights of the library' })).not.toBeInTheDocument();
         expect(cardTitles()).toEqual(['Solo Manga']);
+    });
+});
+
+describe('MangaLibrary with a big library', () => {
+    let observers: ObservedEnd[] = [];
+
+    beforeEach(() => {
+        observers = stubIntersectionObserver();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    // 70 mangas, named so that their order by name is their order here.
+    const BIG = Array.from({ length: 70 }, (_unused, index) => {
+        const number = String(index + 1).padStart(2, '0');
+        return makeLibraryManga([], { id: 100 + index, remoteId: 100 + index, title: `Manga ${number}`, thumbnailUrl: null });
+    });
+
+    function titles(): Array<string | null> {
+        return screen.getAllByTestId('manga-entry').map((entry) => {
+            return within(entry).getByRole('heading').textContent;
+        });
+    }
+
+    function libraryTitles(count: number): string[] {
+        return BIG.slice(0, count).map((manga) => {
+            return manga.title;
+        });
+    }
+
+    it('draws the first 60 mangas, and the others when the end of the grid comes into view', () => {
+        useMangaStore.setState({ library: BIG });
+        render(<MangaLibrary />);
+        expect(titles()).toEqual(libraryTitles(60));
+        expect(screen.getByTestId('list-more').tagName).toBe('LI');
+        seeEnd(observers);
+        expect(titles()).toEqual(libraryTitles(70));
+        expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
     });
 });

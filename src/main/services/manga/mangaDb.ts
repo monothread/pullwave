@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
+import { JOURNAL_PRAGMAS } from '../sqliteJournal';
 import { matchChapters, droppedChapters } from '@shared/mangaSourceMigration';
 import { sameSeries } from '@shared/series';
 import { parseErrorDetails, serializeErrorDetails } from '../errorDetails';
@@ -126,7 +127,10 @@ const MIGRATIONS: readonly string[] = [
     // Where a chapter that was started is being made (its pages are kept beside it), so a pause survives the app being closed.
     `ALTER TABLE chapter ADD COLUMN output_path TEXT;`,
     // Everything known about the error of a chapter (what was being done, the address, the HTTP status, the stack...), as JSON.
-    `ALTER TABLE chapter ADD COLUMN error_details TEXT;`
+    `ALTER TABLE chapter ADD COLUMN error_details TEXT;`,
+    // Whether the place a chapter is being made in is taken by another is asked each time a chapter starts: without an index every
+    // chapter of the library is read for it. Only the chapters being made have the place, so only they are in the index.
+    `CREATE INDEX chapter_output_path ON chapter (output_path) WHERE output_path IS NOT NULL;`
 ];
 
 type Row = Record<string, unknown>;
@@ -236,6 +240,7 @@ function compareChapters(first: MangaChapterRecord, second: MangaChapterRecord):
 
 export class MangaDb {
     private readonly db: DatabaseSync;
+    private readonly statements = new Map<string, StatementSync>();
 
     constructor(
         path: string,
@@ -247,6 +252,7 @@ export class MangaDb {
         this.db = new DatabaseSync(path);
         try {
             this.db.exec('PRAGMA foreign_keys = ON');
+            this.db.exec(JOURNAL_PRAGMAS);
             this.migrate();
         } catch (error) {
             // The file must not stay open (and locked, on Windows) when the library cannot be used.
@@ -270,16 +276,32 @@ export class MangaDb {
         });
     }
 
+    // Each query is prepared once and used again: the queries are fixed texts, so there are only as many as the class has.
+    private statement(sql: string): StatementSync {
+        let prepared = this.statements.get(sql);
+        if (prepared === undefined) {
+            prepared = this.db.prepare(sql);
+            this.statements.set(sql, prepared);
+        }
+        return prepared;
+    }
+
     private one(sql: string, ...params: SQLInputValue[]): Row | null {
-        return (this.db.prepare(sql).get(...params) as Row | undefined) ?? null;
+        return (this.statement(sql).get(...params) as Row | undefined) ?? null;
     }
 
     private all(sql: string, ...params: SQLInputValue[]): Row[] {
-        return this.db.prepare(sql).all(...params) as Row[];
+        return this.statement(sql).all(...params) as Row[];
     }
 
     private run(sql: string, ...params: SQLInputValue[]): void {
-        this.db.prepare(sql).run(...params);
+        this.statement(sql).run(...params);
+    }
+
+    // Writes what the journal holds into the database file and empties it (the app does it when it quits): a database file that is
+    // deleted or copied then is whole on its own.
+    checkpoint(): void {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
     }
 
     get schemaVersion(): number {

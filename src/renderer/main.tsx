@@ -12,10 +12,14 @@ import './theme/bp-library.css';
 import './theme/bp-downloads.css';
 import './theme/bp-fun.css';
 import { applyTheme, rememberedTheme } from './theme/resolveTheme';
+import { loadStartCatalogs } from './i18n/catalogs';
 
 applyTheme(rememberedTheme());
 
-const container = document.getElementById('root');
-if (container) {
-    createRoot(container).render(<StrictMode>{window.api ? <App /> : <BridgeMissing />}</StrictMode>);
-}
+// The texts of the languages the window can show at its start are loaded before the first drawing (see loadStartCatalogs).
+void loadStartCatalogs(window.api ? window.api.getSettings : null).finally(() => {
+    const container = document.getElementById('root');
+    if (container) {
+        createRoot(container).render(<StrictMode>{window.api ? <App /> : <BridgeMissing />}</StrictMode>);
+    }
+});
