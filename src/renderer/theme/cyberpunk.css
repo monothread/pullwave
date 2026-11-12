@@ -1488,7 +1488,9 @@ body::after {
 .reader__stage, .reader__scroll { position: relative; display: flex; flex-direction: column; align-items: center; min-height: calc(40vh / var(--ui-zoom, 1)); padding: 8px; border: 1px solid var(--line); }
 .reader__stage { cursor: pointer; justify-content: center; }
 .reader__scroll { gap: 8px; }
-.reader__scroll--webtoon { gap: 0; padding: 0; }
+/* The webtoon is a column of at most 900 pixels in the middle (as wide as the room when there is less): wider, a strip made for the screen of a
+   phone grows so much that a panel no longer fits on screen. */
+.reader__scroll--webtoon { gap: 0; padding: 0; width: min(100%, 900px); margin-inline: auto; box-sizing: border-box; }
 .reader--dark .reader__stage, .reader--dark .reader__scroll { background: #14141c; }
 .reader--black .reader__stage, .reader--black .reader__scroll { background: #000; }
 .reader--gray .reader__stage, .reader--gray .reader__scroll { background: #555; }

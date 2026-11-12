@@ -286,6 +286,16 @@ interface Session {
     userData: string;
 }
 
+// Where the column of the webtoon stands in the room of the reader (the flow it is in), and how wide its pages are, in pixels.
+interface WebtoonColumnLayout {
+    roomWidth: number;
+    columnWidth: number;
+    columnInnerWidth: number;
+    leftGap: number;
+    rightGap: number;
+    pageWidths: number[];
+}
+
 let workDir: string;
 let fake: FakeSuwayomi;
 let session: Session;
@@ -2699,6 +2709,83 @@ test.describe('manga section', () => {
         await expect(reader.getByRole('img')).toHaveCount(4);
         return { reader, area: session.page.locator('.app__main'), title: reader.locator('.reader__title') };
     }
+
+    // Measures the column of the webtoon against the room of the reader around it.
+    async function webtoonColumnLayout(reader: Locator): Promise<WebtoonColumnLayout> {
+        return reader.getByTestId('reader-scroll').evaluate((column): WebtoonColumnLayout => {
+            const room = column.parentElement!.getBoundingClientRect();
+            const box = column.getBoundingClientRect();
+            const pages = Array.from(column.querySelectorAll('img[data-page]'));
+            return {
+                roomWidth: room.width,
+                columnWidth: box.width,
+                columnInnerWidth: column.clientWidth,
+                leftGap: box.left - room.left,
+                rightGap: room.right - box.right,
+                pageWidths: pages.map((page) => {
+                    return page.getBoundingClientRect().width;
+                })
+            };
+        });
+    }
+
+    test('keeps the webtoon in a column of at most 900 pixels in the middle, standing up and lying down, and as wide as the room when there is less', async () => {
+        const { reader } = await openWebtoon();
+        const column = reader.getByTestId('reader-scroll');
+        await expect(column).toHaveClass(/reader__scroll--webtoon/);
+
+        // Standing up (1080 wide): the room is wider than 900, so the column stops at 900 and has the same room on both sides.
+        const standing = await webtoonColumnLayout(reader);
+        expect(standing.roomWidth).toBeGreaterThan(900);
+        expect(standing.columnWidth).toBe(900);
+        // The border of the column (1 pixel on each side) is inside the 900: the pages fill what is left.
+        expect(standing.columnInnerWidth).toBe(898);
+        expect(Math.abs(standing.leftGap - standing.rightGap)).toBeLessThanOrEqual(1);
+        expect(standing.leftGap).toBeGreaterThan(0);
+        expect(standing.pageWidths).toEqual([898, 898, 898, 898]);
+
+        // Lying down (1920x1080): far more room, the same column of 900 in the middle.
+        await session.page.setViewportSize({ width: 1920, height: 1080 });
+        await expect
+            .poll(async () => {
+                return (await webtoonColumnLayout(reader)).roomWidth;
+            })
+            .toBeGreaterThan(standing.roomWidth);
+        const lying = await webtoonColumnLayout(reader);
+        expect(lying.columnWidth).toBe(900);
+        expect(lying.columnInnerWidth).toBe(898);
+        expect(Math.abs(lying.leftGap - lying.rightGap)).toBeLessThanOrEqual(1);
+        expect(lying.leftGap).toBeGreaterThan(standing.leftGap);
+        expect(lying.pageWidths).toEqual([898, 898, 898, 898]);
+
+        // A narrow window (700 wide): the room is less than 900, so the column takes all of it and goes no further.
+        await session.page.setViewportSize({ width: 700, height: 1080 });
+        await expect
+            .poll(async () => {
+                return (await webtoonColumnLayout(reader)).roomWidth;
+            })
+            .toBeLessThan(900);
+        const narrow = await webtoonColumnLayout(reader);
+        expect(narrow.columnWidth).toBe(narrow.roomWidth);
+        expect(narrow.leftGap).toBe(0);
+        expect(narrow.rightGap).toBe(0);
+        expect(narrow.pageWidths).toEqual(Array.from({ length: 4 }, () => {
+            return narrow.columnInnerWidth;
+        }));
+        expect(narrow.columnInnerWidth).toBe(narrow.roomWidth - 2);
+
+        // The vertical scroll is not a webtoon: lying down, its column still takes all the room.
+        await session.page.setViewportSize({ width: 1920, height: 1080 });
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('vertical');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+        await expect(column).toHaveClass(/reader__scroll--vertical/);
+        const vertical = await webtoonColumnLayout(reader);
+        expect(vertical.roomWidth).toBe(lying.roomWidth);
+        expect(vertical.columnWidth).toBe(vertical.roomWidth);
+        expect(vertical.leftGap).toBe(0);
+        expect(vertical.rightGap).toBe(0);
+    });
 
     test('puts the reader in fullscreen with a double click on the pages, and leaves it with another or with Escape, without closing the reader', async () => {
         const { reader } = await openWebtoon();
