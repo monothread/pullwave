@@ -10,6 +10,7 @@ version_number="0.0.0-fake"
 #   episodes:  -S <n> <words>                lists episodes 1 to 3, or 1 to 4 once a test wrote more-episodes in the history folder (words with "single": the one episode is picked silently)
 #   stream:    -S <n> -e <ep> -q <q> ...     (with the debug player) prints the address of the episode, the subtitle and the list of subtitles
 #   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists,
+#                                            "split": the picture and then the audio, each announced as a part and three seconds half way, as the stand-in of ffmpeg does,
 #                                            "flaky": a connection error the first time each episode is asked for, and the video the next time;
 #                                            when a test wrote download-subtitle in the history folder, its text is also saved as a subtitle of the source,
 #                                            English unless download-subtitle-label holds another label, written in the file name as the patch writes it)
@@ -65,13 +66,32 @@ if [ "$download" = 1 ]; then
     title="Fake Anime"
     [ "$index" = 2 ] && title="Fake Anime 2"
     file="$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.mp4"
-    printf '[download] Destination: %s\n' "$file"
-    printf '[download]  25.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 1/4)\n'
-    # A "slow" download takes long enough to be cancelled; its file only exists if nobody ended it.
     case "$query" in
-        *slow*) printf 'unfinished' > "$file.part"; sleep 5 ;;
+        *split*)
+            # The picture and the audio come apart, as the stand-in of ffmpeg downloads them: it says which part starts before each one,
+            # and each part counts from 0 again. Each part stays half way for three seconds, so a test sees the two bars.
+            printf 'PULLWAVE_PART\t0\tvideo,audio\n'
+            printf '[download] Destination: %s\n' "$file.video.mp4"
+            printf '[download]  40.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 2/5)\n'
+            sleep 3
+            printf '[download] 100%% of   19.00B in 00:00:01 at 1.00MiB/s\n'
+            printf 'PULLWAVE_PART\t1\tvideo,audio\n'
+            printf '[download] Destination: %s\n' "$file.audio.mp4"
+            printf '[download]  30.0%% of ~  10.00B at  1.00MiB/s ETA 00:01 (frag 3/10)\n'
+            sleep 3
+            printf '[download] 100%% of   10.00B in 00:00:01 at 1.00MiB/s\n'
+            printf '[download] Destination: %s\n' "$file"
+            ;;
+        *)
+            printf '[download] Destination: %s\n' "$file"
+            printf '[download]  25.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 1/4)\n'
+            # A "slow" download takes long enough to be cancelled; its file only exists if nobody ended it.
+            case "$query" in
+                *slow*) printf 'unfinished' > "$file.part"; sleep 5 ;;
+            esac
+            printf '[download] 100%% of   19.00B in 00:00:01 at 1.00MiB/s\n'
+            ;;
     esac
-    printf '[download] 100%% of   19.00B in 00:00:01 at 1.00MiB/s\n'
     # A test can give the file the source would write: the one named in hidden-video is copied as the episode (a video behind pictures).
     if [ -f "$ANI_CLI_HIST_DIR/hidden-video" ]; then
         cp "$(cat "$ANI_CLI_HIST_DIR/hidden-video")" "$file"

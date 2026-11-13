@@ -80,8 +80,7 @@ export function runYtdlpLiveAware(options: LiveAwareRunOptions): RunHandle {
                     downloadedBytes: progress.downloadedBytes,
                     elapsedSeconds: progress.elapsedSeconds,
                     live: true,
-                    formatId: '',
-                    partBytes: null
+                    formatId: ''
                 });
             }
         });

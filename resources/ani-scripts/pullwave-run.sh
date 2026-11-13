@@ -43,6 +43,13 @@ pullwave_fetch() {
     yt-dlp --referer "$1" "$2" --no-skip-unavailable-fragments --fragment-retries infinite --retries 20 --retry-sleep http:exp=1:10 --retry-sleep fragment:exp=1:10 -N 16 -o "$3"
 }
 
+# Before each part of an episode whose picture and audio come apart, the app is told which part starts (from 0) and which parts the episode
+# has, so it shows a bar for each one: PULLWAVE_PART<TAB>index<TAB>video,audio. It goes to stdout, where yt-dlp writes its progress, so the
+# app reads it before the first line of progress of that part.
+pullwave_part() {
+    printf 'PULLWAVE_PART\t%s\tvideo,audio\n' "$1"
+}
+
 # $1 = the referer, $2 = the picture, $3 = the audio (empty when it comes with the picture), $4 = the file of the episode.
 pullwave_download() {
     if [ -z "$3" ]; then
@@ -50,8 +57,8 @@ pullwave_download() {
         return
     fi
     _pw_joined="$4.joined.mp4"
-    if pullwave_fetch "$1" "$2" "$4.video.mp4" &&
-        pullwave_fetch "$1" "$3" "$4.audio.mp4" &&
+    if pullwave_part 0 && pullwave_fetch "$1" "$2" "$4.video.mp4" &&
+        pullwave_part 1 && pullwave_fetch "$1" "$3" "$4.audio.mp4" &&
         command ffmpeg -nostdin -y -loglevel error -i "$4.video.mp4" -i "$4.audio.mp4" -map 0:v:0 -map 1:a:0 -c copy -movflags +faststart -f mp4 "$_pw_joined" &&
         mv -f "$_pw_joined" "$4"; then
         rm -f "$4.video.mp4" "$4.audio.mp4"

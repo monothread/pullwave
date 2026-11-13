@@ -1,6 +1,7 @@
 import type { Translator } from '@shared/i18n';
 import type { DownloadJob } from '@shared/types';
 import { formatBytes, formatDuration, formatPercent, processingTextKey, type LivePhase } from './jobStatus';
+import { hasParts, PartBars } from './PartBars';
 
 interface JobProgressProps {
     job: DownloadJob;
@@ -9,7 +10,7 @@ interface JobProgressProps {
 }
 
 // The bar of a card: sweeping while the downloaded file is processed, while a stopped recording is saved or its parts of a recording are joined, draining while a live stream's end is checked, sweeping while waiting for one to start,
-// striped while recording it, and a percentage otherwise.
+// striped while recording it, one bar for each part when the video and the audio are downloaded apart, and a percentage otherwise.
 export function JobProgress({ job, phase, t }: JobProgressProps) {
     if (phase === 'verifying' && job.endCheck !== null) {
         return (
@@ -60,6 +61,9 @@ export function JobProgress({ job, phase, t }: JobProgressProps) {
             </div>
         );
     }
+    if (hasParts(job.parts)) {
+        return <PartBars parts={job.parts} t={t} />;
+    }
     return (
         <div
             className="progress"
@@ -108,6 +112,10 @@ function JobMetaMain({ job, phase, t }: JobProgressProps) {
                 <span>{formatBytes(job.downloadedBytes)}</span>
             </>
         );
+    }
+    // Each part has its percentage beside its bar.
+    if (hasParts(job.parts)) {
+        return null;
     }
     return <span>{formatPercent(job.percent)}</span>;
 }

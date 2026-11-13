@@ -132,7 +132,8 @@ describe('AnimeDownloadQueue.enqueue', () => {
             percent: 0,
             speed: '',
             eta: '',
-            error: null
+            error: null,
+            parts: null
         });
         expect(state.libraryChanges).toBeGreaterThan(0);
     });
@@ -275,6 +276,111 @@ describe('AnimeDownloadQueue progress', () => {
                 return job.percent;
             })
         ).toEqual([1, 1.6, 99.9, 100, 100]);
+    });
+});
+
+describe('AnimeDownloadQueue progress of an episode whose picture and audio are downloaded apart', () => {
+    function report(downloads: ReturnType<typeof setup>['downloads'], percent: number): void {
+        downloads[0]?.options.onProgress?.({ percent, totalBytes: null, speed: '1.00MiB/s', eta: '00:10' });
+    }
+
+    it('gives the episode a bar for each part as the first part starts, all empty, and sends them to the window', () => {
+        const { queue, downloads, updates } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        const before = updates.length;
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        expect(updates.slice(before)).toEqual([
+            { episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null, parts: [{ kind: 'video', percent: 0 }, { kind: 'audio', percent: 0 }] }
+        ]);
+    });
+
+    it('fills the bar of the picture and then the one of the audio, the picture staying full, with the percentage of the part going on', () => {
+        const { queue, downloads, updates } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        report(downloads, 40);
+        expect(updates.at(-1)).toMatchObject({ percent: 40, speed: '1.00MiB/s', eta: '00:10', parts: [{ kind: 'video', percent: 40 }, { kind: 'audio', percent: 0 }] });
+        report(downloads, 100);
+        expect(updates.at(-1)).toMatchObject({ percent: 100, parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 0 }] });
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 1 });
+        expect(updates.at(-1)).toMatchObject({ parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 0 }] });
+        report(downloads, 25);
+        expect(updates.at(-1)).toMatchObject({ percent: 25, parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 25 }] });
+    });
+
+    it('takes the parts before the one that starts as complete, even when their last line was never seen', () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        report(downloads, 60);
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 1 });
+        expect(queue.list()[0]?.parts).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 0 }
+        ]);
+    });
+
+    it('counts the small steps of each part from its own start, so the first lines of the audio are not held back', () => {
+        const { queue, downloads, updates } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        report(downloads, 100);
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 1 });
+        const before = updates.length;
+        report(downloads, 0.3);
+        report(downloads, 0.6);
+        expect(
+            updates.slice(before).map((job) => {
+                return job.parts?.[1]?.percent;
+            })
+        ).toEqual([0.6]);
+    });
+
+    it('keeps the bar of a part between 0 and 100 whatever yt-dlp says', () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        report(downloads, 104);
+        expect(queue.list()[0]?.parts?.[0]).toEqual({ kind: 'video', percent: 100 });
+    });
+
+    it('has no bars of parts for an episode that comes whole', () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        report(downloads, 30);
+        expect(queue.list()[0]).toMatchObject({ percent: 30, parts: null });
+    });
+
+    it('keeps the parts of each episode apart', () => {
+        const { queue, downloads } = setup({ maxConcurrent: 2 });
+        queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        downloads[1]?.options.onProgress?.({ percent: 50, totalBytes: null, speed: null, eta: null });
+        expect(queue.list().map((job) => {
+            return job.parts;
+        })).toEqual([[{ kind: 'video', percent: 0 }, { kind: 'audio', percent: 0 }], null]);
+    });
+
+    it('keeps the bars of a paused episode, and a resumed one starts again as a new job does, until its run says which part starts', async () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        report(downloads, 100);
+        downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 1 });
+        report(downloads, 30);
+        queue.pause(1);
+        downloads[0]?.finish({ status: 'cancelled' });
+        await settleResults();
+        expect(queue.list()[0]).toMatchObject({ status: 'paused', parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 30 }] });
+        queue.resume(1);
+        downloads[1]?.options.onProgress?.({ percent: 80, totalBytes: null, speed: null, eta: null });
+        expect(queue.list()[0]).toMatchObject({ status: 'running', percent: 80, parts: null });
+        downloads[1]?.options.onPart?.({ kinds: ['video', 'audio'], index: 1 });
+        downloads[1]?.options.onProgress?.({ percent: 35, totalBytes: null, speed: null, eta: null });
+        expect(queue.list()[0]?.parts).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 35 }
+        ]);
     });
 });
 
@@ -521,7 +627,7 @@ describe('AnimeDownloadQueue.redownload', () => {
             downloadDir: downloads[0]?.options.downloadDir
         });
         expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, error: null });
-        expect(queue.list()).toEqual([{ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null }]);
+        expect(queue.list()).toEqual([{ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null, parts: null }]);
         expect(state.libraryChanges).toBe(libraryChanges + 2);
     });
 
@@ -1550,8 +1656,8 @@ describe('AnimeDownloadQueue the episodes paused when the app last closed', () =
         queue.restore();
 
         expect(queue.list()).toEqual([
-            { episodeId: paused[0]!.id, animeId: naruto.id, animeTitle: 'Naruto', episode: '2', status: 'paused', percent: 0, speed: '', eta: '', error: null },
-            { episodeId: paused[1]!.id, animeId: bleach.id, animeTitle: 'Bleach', episode: '5', status: 'paused', percent: 0, speed: '', eta: '', error: null }
+            { episodeId: paused[0]!.id, animeId: naruto.id, animeTitle: 'Naruto', episode: '2', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null },
+            { episodeId: paused[1]!.id, animeId: bleach.id, animeTitle: 'Bleach', episode: '5', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null }
         ]);
         expect(updates).toEqual([]);
         expect(downloads).toEqual([]);
@@ -1744,7 +1850,7 @@ describe('AnimeDownloadQueue downloads that are complete', () => {
         downloads[0]?.finish(doneAt('/a/Naruto Episode 1.mp4'));
         await settleResults();
 
-        expect(updates.at(-1)).toEqual({ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'done', percent: 100, speed: '', eta: '', error: null });
+        expect(updates.at(-1)).toEqual({ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'done', percent: 100, speed: '', eta: '', error: null, parts: null });
         expect(queue.list()).toEqual([]);
         expect(queue.pendingCount()).toBe(0);
     });

@@ -161,15 +161,15 @@ describe('runYtdlpLiveAware a download that is not a live HLS stream', () => {
         const onParts = vi.fn();
         runYtdlpLiveAware({ binary: '/bin/yt-dlp', args: ['--newline', 'https://x.test/v'], ffmpegBinary: '/bin/ffmpeg', onProgress: vi.fn(), onParts, runner });
         expect(passed).toHaveLength(1);
-        passed[0]?.onParts?.([{ formatId: '137', expectedBytes: 900 }, { formatId: '140', expectedBytes: 100 }]);
+        passed[0]?.onParts?.([{ formatId: '137', kind: 'video' }, { formatId: '140', kind: 'audio' }]);
         expect(onParts).toHaveBeenCalledTimes(1);
-        expect(onParts).toHaveBeenCalledWith([{ formatId: '137', expectedBytes: 900 }, { formatId: '140', expectedBytes: 100 }]);
+        expect(onParts).toHaveBeenCalledWith([{ formatId: '137', kind: 'video' }, { formatId: '140', kind: 'audio' }]);
     });
 
     it('gives the progress of yt-dlp to the caller', () => {
         const { runs, progress, start } = setup();
         start();
-        const info: ProgressInfo = { percent: 12, speed: '1MiB/s', eta: '00:10', title: 'T', downloadedBytes: 10, elapsedSeconds: 2, live: false, formatId: '137', partBytes: 900 };
+        const info: ProgressInfo = { percent: 12, speed: '1MiB/s', eta: '00:10', title: 'T', downloadedBytes: 10, elapsedSeconds: 2, live: false, formatId: '137' };
         runs[0]?.options.onProgress(info);
         expect(progress).toEqual([info]);
     });
@@ -276,7 +276,7 @@ describe('runYtdlpLiveAware a live HLS stream', () => {
         runs[0]?.options.onStream?.(LIVE);
         await settle();
         recordings[0]?.options.onProgress?.({ downloadedBytes: 5_000_000, bytesPerSecond: 1.5 * 1024 * 1024, elapsedSeconds: 7, lostSegments: 2 });
-        expect(progress).toEqual([{ percent: 0, speed: '1.50MiB/s', eta: '', title: '', downloadedBytes: 5_000_000, elapsedSeconds: 7, live: true, formatId: '', partBytes: null }]);
+        expect(progress).toEqual([{ percent: 0, speed: '1.50MiB/s', eta: '', title: '', downloadedBytes: 5_000_000, elapsedSeconds: 7, live: true, formatId: '' }]);
     });
 
     it('gives the error of the recording the way the errors of yt-dlp are given', async () => {
@@ -333,7 +333,7 @@ describe('runYtdlpLiveAware a live HLS stream', () => {
         recordings[0]?.startFailed(new Error('x'));
         recordings[0]?.finish({ status: 'error', message: 'x' });
         await settle();
-        runs[1]?.options.onProgress({ percent: 0, speed: '2MiB/s', eta: '', title: 'T', downloadedBytes: 1, elapsedSeconds: 1, live: true, formatId: '', partBytes: null });
+        runs[1]?.options.onProgress({ percent: 0, speed: '2MiB/s', eta: '', title: 'T', downloadedBytes: 1, elapsedSeconds: 1, live: true, formatId: '' });
         expect(progress).toHaveLength(1);
         expect(progress[0]?.speed).toBe('2MiB/s');
     });

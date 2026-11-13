@@ -218,6 +218,24 @@ describe('QueueList pause and resume', () => {
 });
 
 describe('QueueList: the download going on', () => {
+    it('shows the bars of the parts of the running download in the banner and in its card, when its video and audio come apart', () => {
+        useAppStore.setState({
+            jobs: [makeJob({ id: 'r', status: 'running', title: 'Split video', percent: 25, speed: '1.00MiB/s', eta: '00:20', parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 25 }] })]
+        });
+        render(<QueueList />);
+        const hero = screen.getByTestId('download-hero');
+        expect(Array.from(hero.querySelectorAll('.job-part__name')).map((name) => {
+            return name.getAttribute('data-text');
+        })).toEqual(['VIDEO', 'AUDIO']);
+        expect(Array.from(hero.querySelectorAll<HTMLElement>('.job-part .progress__bar')).map((bar) => {
+            return bar.style.width;
+        })).toEqual(['100%', '25%']);
+        expect(hero.querySelector('.download-hero__percent')).toBeNull();
+        const card = screen.getByTestId('job-card');
+        expect(within(card).getByRole('progressbar', { name: 'Download progress: VIDEO' })).toHaveAttribute('aria-valuenow', '100');
+        expect(within(card).getByRole('progressbar', { name: 'Download progress: AUDIO' })).toHaveAttribute('aria-valuenow', '25');
+    });
+
     it('shows the first running download big at the top, with how many wait after it', () => {
         useAppStore.setState({
             jobs: [

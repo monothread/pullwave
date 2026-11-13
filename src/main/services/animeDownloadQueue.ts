@@ -1,7 +1,7 @@
 import type { RepairResult } from './imageHeaderRepair';
 import { posix, win32 } from 'node:path';
-import type { AniDownloadProgress, AniError, AniErrorCode, AnimeAddRequest, AnimeAddResponse, AnimeDownloadRequest, AnimeEpisodeRecord, AnimeJob, AnimeRecord, LibraryAnime } from '@shared/anime';
-import type { Settings } from '@shared/types';
+import type { AniDownloadProgress, AniError, AniErrorCode, AniPartStart, AnimeAddRequest, AnimeAddResponse, AnimeDownloadRequest, AnimeEpisodeRecord, AnimeJob, AnimeRecord, LibraryAnime } from '@shared/anime';
+import type { DownloadPart, Settings } from '@shared/types';
 import type { AnimeDb } from './animeDb';
 import {
     animeBaseDirectory,
@@ -64,6 +64,8 @@ export class AnimeDownloadQueue {
     // The runs that are going on, until they end (also the run of an episode removed from the library, whose job is gone).
     private readonly handles = new Map<number, AniDownloadHandle>();
     private readonly lastReported = new Map<number, number>();
+    // The part (from 0) each running download of an episode whose picture and audio come apart is downloading.
+    private readonly currentParts = new Map<number, number>();
     // The folder each running download writes to.
     private readonly downloadDirs = new Map<number, string>();
     private closed = false;
@@ -323,6 +325,7 @@ export class AnimeDownloadQueue {
             }
             this.jobs.delete(episodeId);
             this.lastReported.delete(episodeId);
+            this.currentParts.delete(episodeId);
             this.pauseRequested.delete(episodeId);
             this.startsWhileHeld.delete(episodeId);
             this.tries.delete(episodeId);
@@ -419,7 +422,8 @@ export class AnimeDownloadQueue {
             percent: 0,
             speed: '',
             eta: '',
-            error: null
+            error: null,
+            parts: null
         };
     }
 
@@ -508,6 +512,7 @@ export class AnimeDownloadQueue {
         }
         db.markDownloading(job.episodeId);
         this.lastReported.delete(job.episodeId);
+        this.currentParts.delete(job.episodeId);
         this.update(job, { status: 'running' });
         this.deps.onLibraryChanged();
         const handle = this.deps.download({
@@ -518,6 +523,9 @@ export class AnimeDownloadQueue {
             downloadDir,
             onProgress: (progress) => {
                 this.reportProgress(job, progress);
+            },
+            onPart: (part) => {
+                this.startPart(job, part);
             }
         });
         this.handles.set(job.episodeId, handle);
@@ -525,6 +533,7 @@ export class AnimeDownloadQueue {
         void handle.result.then((result) => {
             this.handles.delete(job.episodeId);
             this.downloadDirs.delete(job.episodeId);
+            this.currentParts.delete(job.episodeId);
             // The pause only counts for the run it was asked of, whichever way that run ended.
             const paused = this.pauseRequested.delete(job.episodeId);
             if (!this.jobs.has(job.episodeId)) {
@@ -589,7 +598,29 @@ export class AnimeDownloadQueue {
             return;
         }
         this.lastReported.set(job.episodeId, progress.percent);
-        this.update(job, { percent: progress.percent, speed: progress.speed ?? '', eta: progress.eta ?? '' });
+        this.update(job, { percent: progress.percent, speed: progress.speed ?? '', eta: progress.eta ?? '', parts: this.partsAfter(job, progress.percent) });
+    }
+
+    // A part of an episode whose picture and audio come apart starts: every part has a bar, the ones before it full and the others empty, and
+    // the progress lines from now on are about this one (each part counts from 0 again).
+    private startPart(job: AnimeJob, part: AniPartStart): void {
+        this.currentParts.set(job.episodeId, part.index);
+        this.lastReported.delete(job.episodeId);
+        const parts = part.kinds.map((kind, position): DownloadPart => {
+            return { kind, percent: position < part.index ? 100 : 0 };
+        });
+        this.update(job, { parts });
+    }
+
+    // The bars of the parts once a progress line came: the part being downloaded is where the line says, the others are untouched.
+    private partsAfter(job: AnimeJob, percent: number): DownloadPart[] | null {
+        const index = this.currentParts.get(job.episodeId);
+        if (job.parts === null || index === undefined) {
+            return job.parts;
+        }
+        return job.parts.map((part, position) => {
+            return position === index ? { ...part, percent: Math.min(100, Math.max(0, percent)) } : part;
+        });
     }
 
     // A failure that may pass is tried again (what was downloaded is kept); one that will not, or an episode that has used its tries, is

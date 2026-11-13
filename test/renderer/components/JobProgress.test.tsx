@@ -2,10 +2,15 @@
 import { render, screen } from '@testing-library/react';
 import { createTranslator } from '@shared/i18n';
 import { JobMeta, JobProgress } from '@renderer/components/JobProgress';
+import type { DownloadPart } from '@shared/types';
 import { makeJob } from '../../helpers/mockApi';
 
 const t = createTranslator('en');
 const END_CHECK = { secondsLeft: 4, totalSeconds: 10 };
+const PARTS: DownloadPart[] = [
+    { kind: 'video', percent: 100 },
+    { kind: 'audio', percent: 34.2 }
+];
 
 describe('JobProgress', () => {
     it('shows a percentage bar for an ordinary download', () => {
@@ -71,6 +76,44 @@ describe('JobProgress', () => {
         render(<JobProgress job={makeJob({ live: true, status: 'done', percent: 100 })} phase={null} t={t} />);
         expect(screen.getByRole('progressbar', { name: 'Download progress' })).toHaveAttribute('aria-valuenow', '100');
     });
+
+    it('shows a bar for each part, one under the other, in place of the one bar, when the video and the audio come apart', () => {
+        render(<JobProgress job={makeJob({ percent: 34.2, parts: PARTS })} phase={null} t={t} />);
+        expect(screen.queryByRole('progressbar', { name: 'Download progress' })).not.toBeInTheDocument();
+        const bars = screen.getAllByRole('progressbar');
+        expect(
+            bars.map((bar) => {
+                return [bar.getAttribute('aria-label'), bar.getAttribute('aria-valuenow'), (bar.firstElementChild as HTMLElement).style.width];
+            })
+        ).toEqual([
+            ['Download progress: VIDEO', '100', '100%'],
+            ['Download progress: AUDIO', '34', '34.2%']
+        ]);
+        expect(screen.getAllByTestId('job-part').map((row) => {
+            return row.textContent;
+        })).toEqual(['VIDEO100.0%', 'AUDIO34.2%']);
+    });
+
+    it('shows the one bar of the download for a single part', () => {
+        render(<JobProgress job={makeJob({ percent: 20, parts: [{ kind: 'video', percent: 20 }] })} phase={null} t={t} />);
+        expect(screen.getByRole('progressbar', { name: 'Download progress' })).toHaveAttribute('aria-valuenow', '20');
+        expect(screen.queryByTestId('job-parts')).not.toBeInTheDocument();
+    });
+
+    it.each([
+        ['processing', makeJob({ parts: PARTS, postProcess: 'Merger' })],
+        ['waiting', makeJob({ parts: PARTS, waitingForLive: true })]
+    ] as const)('keeps the bar of the %s phase over the bars of the parts', (phase, job) => {
+        render(<JobProgress job={job} phase={phase} t={t} />);
+        expect(screen.getAllByRole('progressbar')).toHaveLength(1);
+        expect(screen.queryByTestId('job-parts')).not.toBeInTheDocument();
+    });
+
+    it('shows the striped bar of a recording over the bars of the parts', () => {
+        render(<JobProgress job={makeJob({ live: true, parts: PARTS })} phase={null} t={t} />);
+        expect(screen.getByRole('progressbar', { name: 'Recording a live stream' })).toHaveClass('progress--live');
+        expect(screen.queryByTestId('job-parts')).not.toBeInTheDocument();
+    });
 });
 
 describe('JobMeta', () => {
@@ -79,6 +122,14 @@ describe('JobMeta', () => {
         expect(screen.getByText('10.0%')).toBeInTheDocument();
         expect(screen.getByText('2MiB/s')).toBeInTheDocument();
         expect(screen.getByText('ETA 00:30')).toBeInTheDocument();
+    });
+
+    it('leaves the percentage to the bars of the parts, and still shows the speed and the ETA of the part going on', () => {
+        const { container } = render(<JobMeta job={makeJob({ percent: 34.2, speed: '2MiB/s', eta: '00:30', parts: PARTS })} phase={null} t={t} />);
+        expect(screen.queryByText('34.2%')).not.toBeInTheDocument();
+        expect(Array.from(container.querySelectorAll('.job__meta > span')).map((span) => {
+            return span.textContent;
+        })).toEqual(['2MiB/s', 'ETA 00:30']);
     });
 
     it('omits the speed and the ETA when they are empty', () => {

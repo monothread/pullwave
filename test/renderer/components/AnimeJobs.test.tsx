@@ -47,6 +47,38 @@ describe('AnimeJobs', () => {
         expect(screen.getByText('DOWNLOADS (1)', { selector: '.section-label' })).toBeInTheDocument();
     });
 
+    it('shows a bar for each part of an episode whose picture and audio come apart, with their percentages beside them instead of the one percentage', () => {
+        useAnimeStore.setState({
+            jobs: [makeAnimeJob({ animeTitle: 'Reborn', episode: '5', percent: 30, speed: '1.50MiB/s', eta: '00:10', parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 30 }] })]
+        });
+        render(<AnimeJobs />);
+
+        const job = screen.getByTestId('anime-job');
+        expect(within(job).queryByRole('progressbar', { name: 'Download progress of Reborn, episode 5' })).not.toBeInTheDocument();
+        expect(
+            within(job)
+                .getAllByRole('progressbar')
+                .map((bar) => {
+                    return [bar.getAttribute('aria-label'), bar.getAttribute('aria-valuenow'), (bar.firstElementChild as HTMLElement).style.width];
+                })
+        ).toEqual([
+            ['Download progress: VIDEO', '100', '100%'],
+            ['Download progress: AUDIO', '30', '30%']
+        ]);
+        expect(within(job).getAllByTestId('job-part').map((row) => {
+            return row.textContent;
+        })).toEqual(['VIDEO100.0%', 'AUDIO30.0%']);
+        expect(job.querySelector('.job__meta')?.textContent).toBe('1.50MiB/sETA 00:10');
+    });
+
+    it('shows the one bar of an episode with a single part', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ animeTitle: 'Naruto', episode: '1', percent: 20, parts: [{ kind: 'video', percent: 20 }] })] });
+        render(<AnimeJobs />);
+        const job = screen.getByTestId('anime-job');
+        expect(within(job).getByRole('progressbar', { name: 'Download progress of Naruto, episode 1' })).toHaveAttribute('aria-valuenow', '20');
+        expect(within(job).queryByTestId('job-parts')).not.toBeInTheDocument();
+    });
+
     it('leaves the speed and the time out when there are none', () => {
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'queued', percent: 0, speed: '', eta: '' })] });
         render(<AnimeJobs />);
@@ -242,6 +274,19 @@ describe('AnimeJobs: the episode downloading', () => {
         })).toEqual(['2.00MiB/s', '01:00']);
         expect(hero.querySelector('.download-hero__next')).toHaveTextContent('UP NEXT: 1');
         expect(hero.querySelector('.download-hero__art .cover')).not.toBeNull();
+    });
+
+    it('shows the bars of the parts of the running episode in the banner, in place of the one bar and the big percent', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'running', percent: 60, parts: [{ kind: 'video', percent: 60 }, { kind: 'audio', percent: 0 }] })] });
+        render(<AnimeJobs />);
+        const hero = screen.getByTestId('download-hero');
+        expect(Array.from(hero.querySelectorAll('.job-part__name')).map((name) => {
+            return name.getAttribute('data-text');
+        })).toEqual(['VIDEO', 'AUDIO']);
+        expect(Array.from(hero.querySelectorAll('.job-part__percent')).map((percent) => {
+            return percent.getAttribute('data-text');
+        })).toEqual(['60.0%', '0.0%']);
+        expect(hero.querySelector('.download-hero__percent')).toBeNull();
     });
 
     it('has no banner while no episode downloads', () => {

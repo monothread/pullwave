@@ -270,36 +270,67 @@ test('downloads a video, says it is complete for five seconds, removes its card 
     await expect(item).toContainText('COMPLETE');
 });
 
-test('counts the video and the audio that are downloaded apart as one bar, which never falls back when the audio starts', async () => {
+test('shows a bar for the video and one for the audio, both in sight from the start, the video filling first and the audio after it', async () => {
     const { page } = session;
-    // Every value the bar of the card shows, as it shows it.
+    // Every state the bars of the parts of the card show, as "NAME:value" for each bar in order, and the names the banner draws.
     await page.evaluate(() => {
-        const seen: number[] = [];
-        (window as unknown as { barValues: number[] }).barValues = seen;
+        const seen: string[] = [];
+        const banner: string[] = [];
+        const store = window as unknown as { partStates: string[]; bannerParts: string[] };
+        store.partStates = seen;
+        store.bannerParts = banner;
         new MutationObserver(() => {
-            const bar = document.querySelector('[data-testid="job-card"] [role="progressbar"][aria-valuenow]');
-            const value = bar === null ? null : Number(bar.getAttribute('aria-valuenow'));
-            if (value !== null && seen.at(-1) !== value) {
-                seen.push(value);
+            const bars = Array.from(document.querySelectorAll('[data-testid="job-card"] [data-testid="job-part"] [role="progressbar"]'));
+            const state = bars
+                .map((bar) => {
+                    return `${(bar.getAttribute('aria-label') ?? '').replace('Download progress: ', '')}:${bar.getAttribute('aria-valuenow') ?? ''}`;
+                })
+                .join('|');
+            if (state.length > 0 && seen.at(-1) !== state) {
+                seen.push(state);
+            }
+            const names = Array.from(document.querySelectorAll('[data-testid="download-hero"] .job-part__name')).map((name) => {
+                return name.getAttribute('data-text') ?? '';
+            });
+            if (names.length > 0 && banner.length === 0) {
+                banner.push(...names);
             }
         }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-valuenow'] });
     });
     await submitUrl(page, 'https://example.com/twoparts');
     await expectDownloadsComplete(page);
-    const values = await page.evaluate(() => {
-        return (window as unknown as { barValues: number[] }).barValues;
+    const { states, banner } = await page.evaluate(() => {
+        const store = window as unknown as { partStates: string[]; bannerParts: string[] };
+        return { states: store.partStates, banner: store.bannerParts };
     });
-    // The video is nine tenths of the bytes: 0..100% of it is 0..90% of the bar, and the audio fills the rest.
-    const POSSIBLE = [0, 18, 36, 54, 72, 90, 93, 95, 98, 100];
-    values.forEach((value) => {
-        expect(POSSIBLE, `value ${String(value)} of ${JSON.stringify(values)}`).toContain(value);
+    const parsed = states.map((state) => {
+        return state.split('|').map((bar) => {
+            const [name = '', value = ''] = bar.split(':');
+            return { name, value: Number(value) };
+        });
     });
-    values.slice(1).forEach((value, index) => {
-        expect(value, JSON.stringify(values)).toBeGreaterThan(values[index] ?? 0);
+    // Both bars are there from the first moment, the video over the audio, and they start empty.
+    parsed.forEach((bars) => {
+        expect(bars.map((bar) => { return bar.name; }), JSON.stringify(states)).toEqual(['VIDEO', 'AUDIO']);
     });
-    expect(values).toContain(90);
-    expect(values.some((value) => { return value > 90 && value < 100; }), JSON.stringify(values)).toBe(true);
-    expect(values.some((value) => { return value > 0 && value < 90; }), JSON.stringify(values)).toBe(true);
+    expect(states[0]).toBe('VIDEO:0|AUDIO:0');
+    // Neither bar ever goes back, and the audio only moves once the video is full.
+    parsed.slice(1).forEach((bars, index) => {
+        const previous = parsed[index] ?? [];
+        expect(bars[0]?.value ?? 0, JSON.stringify(states)).toBeGreaterThanOrEqual(previous[0]?.value ?? 0);
+        expect(bars[1]?.value ?? 0, JSON.stringify(states)).toBeGreaterThanOrEqual(previous[1]?.value ?? 0);
+    });
+    parsed.forEach((bars) => {
+        if ((bars[1]?.value ?? 0) > 0) {
+            expect(bars[0]?.value, JSON.stringify(states)).toBe(100);
+        }
+    });
+    // The video was seen filling on its own, the audio filling after it, and both full at the end.
+    expect(parsed.some((bars) => { return (bars[0]?.value ?? 0) > 0 && (bars[0]?.value ?? 0) < 100 && bars[1]?.value === 0; }), JSON.stringify(states)).toBe(true);
+    expect(parsed.some((bars) => { return bars[0]?.value === 100 && (bars[1]?.value ?? 0) > 0 && (bars[1]?.value ?? 0) < 100; }), JSON.stringify(states)).toBe(true);
+    expect(states.at(-1)).toBe('VIDEO:100|AUDIO:100');
+    // The banner of the download going on shows the same two bars.
+    expect(banner).toEqual(['VIDEO', 'AUDIO']);
 });
 
 test('stacks the completions, newest on top, each one going away five seconds after it showed up', async () => {

@@ -120,4 +120,47 @@ describe('DownloadHero', () => {
         render(<DownloadHero {...BASE} percent={-5} />);
         expect(drawn(heroElement(), '.download-hero__percent')).toEqual(['0%']);
     });
+
+    it('shows a bar for each part, drawn with its name and percentage, in place of the one bar and the big percent, when the video and the audio come apart', () => {
+        render(<DownloadHero {...BASE} parts={[{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 42.4 }]} />);
+        const hero = heroElement();
+        expect(hero.querySelectorAll('.job-parts')).toHaveLength(1);
+        expect(
+            Array.from(hero.querySelectorAll<HTMLElement>('.job-part .progress__bar')).map((bar) => {
+                return [bar.parentElement?.className, bar.style.width, bar.style.animationDuration];
+            })
+        ).toEqual([
+            ['progress download-hero__bar', '100%', '2.21s'],
+            ['progress download-hero__bar', '42.4%', '2.21s']
+        ]);
+        expect(drawn(hero, '.job-part__name')).toEqual(['VIDEO', 'AUDIO']);
+        expect(drawn(hero, '.job-part__percent')).toEqual(['100.0%', '42.4%']);
+        expect(hero.querySelector('.download-hero__percent')).toBeNull();
+        expect(hero.querySelectorAll('.download-hero__bar')).toHaveLength(2);
+        expect(drawn(hero, '.download-hero__value')).toEqual(['2.00MiB/s', '00:30']);
+    });
+
+    it('makes the flow of the bars of the parts follow the speed too', () => {
+        const parts = [
+            { kind: 'video', percent: 30 },
+            { kind: 'audio', percent: 0 }
+        ] as const;
+        render(<DownloadHero {...BASE} parts={[...parts]} speed="20.00MiB/s" />);
+        expect(
+            Array.from(document.querySelectorAll<HTMLElement>('.job-part .progress__bar')).map((bar) => {
+                return bar.style.animationDuration;
+            })
+        ).toEqual(['0.5s', '0.5s']);
+    });
+
+    it.each([
+        ['no parts', null],
+        ['a single part', [{ kind: 'video' as const, percent: 42.4 }]]
+    ])('keeps the one bar and the big percent with %s', (_name, parts) => {
+        render(<DownloadHero {...BASE} parts={parts} />);
+        const hero = heroElement();
+        expect(hero.querySelector('.job-parts')).toBeNull();
+        expect(hero.querySelector('.download-hero__bar .progress__bar')).toHaveStyle({ width: '42.4%' });
+        expect(drawn(hero, '.download-hero__percent')).toEqual(['42%']);
+    });
 });

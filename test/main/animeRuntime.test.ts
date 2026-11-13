@@ -112,7 +112,7 @@ describe('createAnimeRuntime', () => {
 
         const runtime = open(given);
         expect(runtime?.queue.list()).toEqual([
-            { episodeId: episode.id, animeId: anime.id, animeTitle: 'Naruto', episode: '1', status: 'paused', percent: 0, speed: '', eta: '', error: null }
+            { episodeId: episode.id, animeId: anime.id, animeTitle: 'Naruto', episode: '1', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null }
         ]);
         runtime?.queue.cancel(episode.id);
         expect(runtime?.db.getEpisode(episode.id)?.status).toBe('cancelled');

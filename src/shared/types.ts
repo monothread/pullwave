@@ -262,6 +262,18 @@ export interface DownloadJob {
     postProcess: string | null;
     // The picture of the video, served by the app from memory (VIDEO_THUMBNAIL_SCHEME); null until it was fetched, or when there is none.
     thumbnail: string | null;
+    // The parts of a video whose formats are downloaded one after the other (the video and the audio when they are apart), each with a bar
+    // of its own; null when the video is a single format.
+    parts: DownloadPart[] | null;
+}
+
+// What a part of a download that comes in parts holds: the picture, the sound, or something else (a format whose codecs the site does not say).
+export type DownloadPartKind = 'video' | 'audio' | 'other';
+
+// One of the parts of a download that comes in parts, and how far it is (0 to 100; 100 once it is complete).
+export interface DownloadPart {
+    kind: DownloadPartKind;
+    percent: number;
 }
 
 export interface ProgressInfo {
@@ -273,16 +285,14 @@ export interface ProgressInfo {
     downloadedBytes: number | null;
     elapsedSeconds: number | null;
     live: boolean;
-    // The format of the part being downloaded ('' when yt-dlp does not say) and its whole size (null when it is not known).
+    // The format of the part being downloaded ('' when yt-dlp does not say).
     formatId: string;
-    partBytes: number | null;
 }
 
-// One of the formats yt-dlp downloads one after the other for a video (the video and the audio when they are apart), with the size it
-// expects for it (null when the site does not give one).
+// One of the formats yt-dlp downloads one after the other for a video (the video and the audio when they are apart), and what it holds.
 export interface FormatPart {
     formatId: string;
-    expectedBytes: number | null;
+    kind: DownloadPartKind;
 }
 
 // yt-dlp reports when each post-processor (the steps that run after the bytes are downloaded) starts and finishes.

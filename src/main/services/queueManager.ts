@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
 import { isValidHttpUrl } from '@shared/url';
 import { statSync } from 'node:fs';
-import type { AddJobResult, DownloadJob, DownloadError, DownloadInfo, FormatPart, HistoryEntry, PostProcessEvent, ProgressInfo, Settings } from '@shared/types';
-import { CombinedProgress } from './combinedProgress';
+import type { AddJobResult, DownloadJob, DownloadError, DownloadInfo, DownloadPart, FormatPart, HistoryEntry, PostProcessEvent, ProgressInfo, Settings } from '@shared/types';
 import type { RunHandle, RunResult } from './ytdlpRunner';
 import { buildYtdlpArgs, type RequestExtras } from './ytdlpArgsBuilder';
 import { translateMain } from './language';
@@ -90,11 +89,22 @@ function isFinished(job: DownloadJob): boolean {
     return FINISHED_STATUSES.includes(job.status);
 }
 
+// The bars of the parts of a download that is complete: every part is complete too.
+function completeParts(parts: DownloadPart[] | null): DownloadPart[] | null {
+    if (parts === null) {
+        return null;
+    }
+    return parts.map((part) => {
+        return { ...part, percent: 100 };
+    });
+}
+
 export class QueueManager {
     private readonly jobs: DownloadJob[] = [];
     private readonly handles = new Map<string, RunHandle>();
-    // The progress of the whole video of each run whose formats are downloaded one after the other (the video, then the audio).
-    private readonly combined = new Map<string, CombinedProgress>();
+    // The formats of the video being downloaded by each run whose formats come one after the other (the video, then the audio), in their order:
+    // the format of a progress line says which part it is about.
+    private readonly partFormats = new Map<string, string[]>();
     private readonly extras = new Map<string, RequestExtras>();
     private readonly salvaging = new Set<Promise<void>>();
     private readonly livePaths = new Map<string, string>();
@@ -323,7 +333,8 @@ export class QueueManager {
             merging: false,
             saving: false,
             postProcess: null,
-            thumbnail: null
+            thumbnail: null,
+            parts: null
         };
         this.jobs.push(job);
         this.extras.set(job.id, options);
@@ -363,7 +374,7 @@ export class QueueManager {
         if (!job || (job.status !== 'error' && job.status !== 'cancelled')) {
             return;
         }
-        Object.assign(job, { status: 'queued', percent: 0, speed: '', eta: '', error: null, filePath: null, live: false, elapsedSeconds: 0, downloadedBytes: 0, hasPartial: false, waitingForLive: false, endCheck: null, merging: false, saving: false, postProcess: null });
+        Object.assign(job, { status: 'queued', percent: 0, speed: '', eta: '', error: null, filePath: null, live: false, elapsedSeconds: 0, downloadedBytes: 0, hasPartial: false, waitingForLive: false, endCheck: null, merging: false, saving: false, postProcess: null, parts: null });
         this.outputPaths.delete(job.id);
         this.parts.delete(job.id);
         this.stopRequested.delete(job.id);
@@ -507,7 +518,7 @@ export class QueueManager {
     private launch(job: DownloadJob, settings: Settings, extras: RequestExtras | undefined, resumedPart?: number): void {
         const args = buildYtdlpArgs(job.url, settings, this.deps.defaultDownloadDir, this.deps.resolveFfmpegLocation(settings), { ...extras, resumedPart });
         let wentLive = false;
-        this.combined.delete(job.id);
+        this.partFormats.delete(job.id);
         const handle = this.deps.startRun(
             this.deps.resolveYtdlpPath(settings),
             args,
@@ -538,7 +549,7 @@ export class QueueManager {
         void handle.result.then((result) => {
             if (this.handles.get(job.id) === handle) {
                 this.handles.delete(job.id);
-                this.combined.delete(job.id);
+                this.partFormats.delete(job.id);
             }
             job.postProcess = null;
             if (result.status === 'cancelled' && this.pauseRequested.delete(job.id)) {
@@ -734,13 +745,45 @@ export class QueueManager {
         }
     }
 
-    // Each video of a run announces its formats before it starts: the progress of a video in parts is counted as a whole from then on.
+    // Each video of a run announces its formats before it starts: a video whose formats come one after the other has a bar for each of them,
+    // all empty until their turn; a video of a single format has the one bar of the download.
     private applyParts(job: DownloadJob, parts: FormatPart[]): void {
-        if (parts.length > 1) {
-            this.combined.set(job.id, new CombinedProgress(parts));
-        } else {
-            this.combined.delete(job.id);
+        if (parts.length < 2) {
+            this.partFormats.delete(job.id);
+            if (job.parts !== null) {
+                job.parts = null;
+                this.emit(job);
+            }
+            return;
         }
+        this.partFormats.set(
+            job.id,
+            parts.map((part) => {
+                return part.formatId;
+            })
+        );
+        job.parts = parts.map((part) => {
+            return { kind: part.kind, percent: 0 };
+        });
+        this.emit(job);
+    }
+
+    // The bars of the parts once a progress line came: the parts before the one it is about are complete, that one is where the line says,
+    // and the ones after it are untouched. A line about no part of the video leaves them as they were.
+    private partsAfter(job: DownloadJob, progress: ProgressInfo): DownloadPart[] | null {
+        const index = this.partFormats.get(job.id)?.indexOf(progress.formatId) ?? -1;
+        if (job.parts === null || index < 0) {
+            return job.parts;
+        }
+        return job.parts.map((part, position) => {
+            if (position < index) {
+                return { ...part, percent: 100 };
+            }
+            if (position === index) {
+                return { ...part, percent: Math.min(100, Math.max(0, progress.percent)) };
+            }
+            return part;
+        });
     }
 
     private applyProgress(job: DownloadJob, progress: ProgressInfo): void {
@@ -751,7 +794,8 @@ export class QueueManager {
         if (!this.tickers.has(job.id)) {
             job.elapsedSeconds = progress.elapsedSeconds ?? job.elapsedSeconds;
         }
-        job.percent = this.combined.get(job.id)?.percentOf(progress) ?? progress.percent;
+        job.parts = this.partsAfter(job, progress);
+        job.percent = progress.percent;
         job.speed = progress.speed;
         job.eta = progress.eta;
         job.title = progress.title.length > 0 ? progress.title : job.title;
@@ -862,7 +906,7 @@ export class QueueManager {
             return;
         }
         if (result.status === 'done') {
-            Object.assign(job, { status: 'done', percent: 100, speed: '', eta: '', filePath: result.filePath });
+            Object.assign(job, { status: 'done', percent: 100, speed: '', eta: '', filePath: result.filePath, parts: completeParts(job.parts) });
             this.recordHistory(job, 'done', null);
         } else if (result.status === 'error') {
             Object.assign(job, { status: 'error', speed: '', eta: '', error: result.error });

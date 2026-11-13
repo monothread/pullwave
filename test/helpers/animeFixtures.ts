@@ -35,6 +35,7 @@ export function makeAnimeJob(overrides: Partial<AnimeJob> = {}): AnimeJob {
         speed: '1.50MiB/s',
         eta: '00:10',
         error: null,
+        parts: null,
         ...overrides
     };
 }

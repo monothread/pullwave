@@ -22,7 +22,7 @@ interface ControlledRun {
 }
 
 function progress(overrides: Partial<ProgressInfo> = {}): ProgressInfo {
-    return { percent: 0, speed: '', eta: '', title: '', downloadedBytes: null, elapsedSeconds: null, live: false, formatId: '', partBytes: null, ...overrides };
+    return { percent: 0, speed: '', eta: '', title: '', downloadedBytes: null, elapsedSeconds: null, live: false, formatId: '', ...overrides };
 }
 
 const DOWNLOAD_ERROR: DownloadError = { code: 'NETWORK', title: 'Network failure', hint: 'Check your connection and try again.', raw: 'boom' };
@@ -187,7 +187,8 @@ describe('QueueManager.add', () => {
             merging: false,
             saving: false,
             postProcess: null,
-            thumbnail: null
+            thumbnail: null,
+            parts: null
         });
         expect(updates.map((job) => {
             return job.status;
@@ -278,65 +279,185 @@ describe('QueueManager progress and completion', () => {
 });
 
 describe('QueueManager progress of a video whose video and audio are downloaded apart', () => {
-    const VIDEO: FormatPart = { formatId: '137', expectedBytes: 900 };
-    const AUDIO: FormatPart = { formatId: '140', expectedBytes: 100 };
+    const VIDEO: FormatPart = { formatId: '137', kind: 'video' };
+    const AUDIO: FormatPart = { formatId: '140', kind: 'audio' };
 
-    it('counts the video and the audio as one bar, each for its size, so the bar does not fall back to nothing at the audio', () => {
+    it('gives the video a bar for each part, all empty, and sends them to the window as soon as the formats are announced', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        const before = updates.length;
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 0 },
+            { kind: 'audio', percent: 0 }
+        ]);
+        expect(updates).toHaveLength(before + 1);
+        expect(updates.at(-1)).toMatchObject({ id: 'job-1', status: 'running', parts: [{ kind: 'video', percent: 0 }, { kind: 'audio', percent: 0 }] });
+    });
+
+    it('fills the bar of the video and then the one of the audio, the video staying full, with the percentage of the part going on', () => {
         const { queue, runs } = setup();
         queue.add(URL_A);
         runs[0]?.onParts?.([VIDEO, AUDIO]);
-        runs[0]?.onProgress(progress({ percent: 50, formatId: '137', partBytes: 900 }));
-        expect(queue.getJob('job-1')?.percent).toBe(45);
-        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
-        expect(queue.getJob('job-1')?.percent).toBe(90);
-        runs[0]?.onProgress(progress({ percent: 10, formatId: '140', partBytes: 100 }));
-        expect(queue.getJob('job-1')?.percent).toBe(91);
-        runs[0]?.onProgress(progress({ percent: 100, formatId: '140', partBytes: 100 }));
-        expect(queue.getJob('job-1')?.percent).toBe(100);
+        runs[0]?.onProgress(progress({ percent: 50, formatId: '137' }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 50, parts: [{ kind: 'video', percent: 50 }, { kind: 'audio', percent: 0 }] });
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137' }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 100, parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 0 }] });
+        runs[0]?.onProgress(progress({ percent: 10, formatId: '140' }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 10, parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 10 }] });
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '140' }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 100, parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 100 }] });
     });
 
-    it('keeps the percentage of the part as it is when the video is a single format', () => {
+    it('takes the parts before the one a line is about as complete, even when their last line was never seen', () => {
         const { queue, runs } = setup();
         queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO, { formatId: '141', kind: 'other' }]);
+        runs[0]?.onProgress(progress({ percent: 40, formatId: '137' }));
+        runs[0]?.onProgress(progress({ percent: 5, formatId: '141' }));
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 100 },
+            { kind: 'other', percent: 5 }
+        ]);
+    });
+
+    it('leaves the parts after the one a line is about as they were', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 30, formatId: '140' }));
+        runs[0]?.onProgress(progress({ percent: 60, formatId: '137' }));
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 60 },
+            { kind: 'audio', percent: 30 }
+        ]);
+    });
+
+    it.each([
+        ['no format', ''],
+        ['a format that is not one of the video', '18']
+    ])('leaves the bars as they were for a line with %s, and still shows its percentage', (_name, formatId) => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 20, formatId: '137' }));
+        runs[0]?.onProgress(progress({ percent: 75, formatId }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 75, parts: [{ kind: 'video', percent: 20 }, { kind: 'audio', percent: 0 }] });
+    });
+
+    it('keeps the bar of a part between 0 and 100 whatever yt-dlp says', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 104.2, formatId: '137' }));
+        expect(queue.getJob('job-1')?.parts?.[0]).toEqual({ kind: 'video', percent: 100 });
+        runs[0]?.onProgress(progress({ percent: -3, formatId: '140' }));
+        expect(queue.getJob('job-1')?.parts?.[1]).toEqual({ kind: 'audio', percent: 0 });
+    });
+
+    it('has no bars of parts for a video of a single format, and sends nothing for it when it had none', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        const before = updates.length;
         runs[0]?.onParts?.([]);
-        runs[0]?.onProgress(progress({ percent: 30, formatId: '18', partBytes: 1000 }));
-        expect(queue.getJob('job-1')?.percent).toBe(30);
+        runs[0]?.onParts?.([{ formatId: '18', kind: 'other' }]);
+        expect(updates).toHaveLength(before);
+        runs[0]?.onProgress(progress({ percent: 30, formatId: '18' }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 30, parts: null });
     });
 
-    it('keeps the percentage of the part as it is when the formats were never announced', () => {
+    it('has no bars of parts when the formats were never announced', () => {
         const { queue, runs } = setup();
         queue.add(URL_A);
-        runs[0]?.onProgress(progress({ percent: 70, formatId: '137', partBytes: 900 }));
-        expect(queue.getJob('job-1')?.percent).toBe(70);
+        runs[0]?.onProgress(progress({ percent: 70, formatId: '137' }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 70, parts: null });
     });
 
-    it('starts over with the formats of the next video of a playlist, and forgets them for a next video of a single format', () => {
-        const { queue, runs } = setup();
+    it('starts over with the parts of the next video of a playlist, and drops them for a next video of a single format', () => {
+        const { queue, runs, updates } = setup();
         queue.add(URL_A);
         runs[0]?.onParts?.([VIDEO, AUDIO]);
-        runs[0]?.onProgress(progress({ percent: 100, formatId: '140', partBytes: 100 }));
-        expect(queue.getJob('job-1')?.percent).toBe(100);
-        runs[0]?.onParts?.([{ formatId: '248', expectedBytes: 300 }, { formatId: '251', expectedBytes: 100 }]);
-        runs[0]?.onProgress(progress({ percent: 50, formatId: '248', partBytes: 300 }));
-        expect(queue.getJob('job-1')?.percent).toBe(37.5);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '140' }));
+        runs[0]?.onParts?.([{ formatId: '248', kind: 'video' }, { formatId: '251', kind: 'audio' }]);
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 0 },
+            { kind: 'audio', percent: 0 }
+        ]);
+        runs[0]?.onProgress(progress({ percent: 50, formatId: '248' }));
+        runs[0]?.onProgress(progress({ percent: 90, formatId: '140' }));
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 50 },
+            { kind: 'audio', percent: 0 }
+        ]);
         runs[0]?.onParts?.([]);
-        runs[0]?.onProgress(progress({ percent: 20, formatId: '140', partBytes: 100 }));
-        expect(queue.getJob('job-1')?.percent).toBe(20);
+        expect(queue.getJob('job-1')?.parts).toBeNull();
+        expect(updates.at(-1)).toMatchObject({ id: 'job-1', parts: null });
     });
 
-    it('forgets the formats of a run that ended, so a retry counts its own parts from the start', async () => {
+    it('fills every bar when the download is complete', async () => {
         const { queue, runs } = setup();
         queue.add(URL_A);
         runs[0]?.onParts?.([VIDEO, AUDIO]);
-        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137' }));
+        runs[0]?.onProgress(progress({ percent: 97, formatId: '140' }));
+        runs[0]?.resolve({ status: 'done', filePath: '/dl/a.mp4' });
+        await flush();
+        expect(queue.getJob('job-1')).toMatchObject({ status: 'done', percent: 100, parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 100 }] });
+    });
+
+    it('keeps the bars where they were when the download fails', async () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137' }));
+        runs[0]?.onProgress(progress({ percent: 40, formatId: '140' }));
+        runs[0]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
+        await flush();
+        expect(queue.getJob('job-1')).toMatchObject({ status: 'error', parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 40 }] });
+    });
+
+    it('drops the bars and the formats of a run that ended when it is retried, so the retry shows its own parts', async () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137' }));
         runs[0]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
         await flush();
         queue.retry('job-1');
-        runs[1]?.onProgress(progress({ percent: 15, formatId: '137', partBytes: 900 }));
-        expect(queue.getJob('job-1')?.percent).toBe(15);
+        expect(queue.getJob('job-1')?.parts).toBeNull();
+        runs[1]?.onProgress(progress({ percent: 15, formatId: '137' }));
+        expect(queue.getJob('job-1')).toMatchObject({ percent: 15, parts: null });
         runs[1]?.onParts?.([VIDEO, AUDIO]);
-        runs[1]?.onProgress(progress({ percent: 20, formatId: '137', partBytes: 900 }));
-        expect(queue.getJob('job-1')?.percent).toBe(18);
+        runs[1]?.onProgress(progress({ percent: 20, formatId: '137' }));
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 20 },
+            { kind: 'audio', percent: 0 }
+        ]);
+    });
+
+    it('keeps the bars of a paused download, and goes on with them once the run that resumes it announces the formats again', async () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137' }));
+        runs[0]?.onProgress(progress({ percent: 30, formatId: '140' }));
+        queue.pause('job-1');
+        await flush();
+        expect(queue.getJob('job-1')).toMatchObject({ status: 'paused', parts: [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 30 }] });
+        queue.resume('job-1');
+        runs[1]?.onProgress(progress({ percent: 50, formatId: '140' }));
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 30 }
+        ]);
+        runs[1]?.onParts?.([VIDEO, AUDIO]);
+        runs[1]?.onProgress(progress({ percent: 100, formatId: '137' }));
+        runs[1]?.onProgress(progress({ percent: 55, formatId: '140' }));
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 55 }
+        ]);
     });
 
     it('keeps the parts of each download apart', () => {
@@ -344,18 +465,21 @@ describe('QueueManager progress of a video whose video and audio are downloaded 
         queue.add(URL_A);
         queue.add(URL_B);
         runs[0]?.onParts?.([VIDEO, AUDIO]);
-        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
-        runs[1]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
-        expect(queue.getJob('job-1')?.percent).toBe(90);
-        expect(queue.getJob('job-2')?.percent).toBe(100);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137' }));
+        runs[1]?.onProgress(progress({ percent: 100, formatId: '137' }));
+        expect(queue.getJob('job-1')?.parts).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 0 }
+        ]);
+        expect(queue.getJob('job-2')).toMatchObject({ percent: 100, parts: null });
     });
 
-    it('sends the whole percentage to the window, not the one of the part', () => {
+    it('sends the bars of the parts to the window with the progress', () => {
         const { queue, runs, updates } = setup();
         queue.add(URL_A);
         runs[0]?.onParts?.([VIDEO, AUDIO]);
-        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
-        expect(updates.at(-1)).toMatchObject({ id: 'job-1', status: 'running', percent: 90 });
+        runs[0]?.onProgress(progress({ percent: 64, formatId: '137', speed: '3MiB/s', eta: '00:04' }));
+        expect(updates.at(-1)).toMatchObject({ id: 'job-1', status: 'running', percent: 64, speed: '3MiB/s', eta: '00:04', parts: [{ kind: 'video', percent: 64 }, { kind: 'audio', percent: 0 }] });
     });
 });
 

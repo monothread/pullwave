@@ -21,31 +21,31 @@ const url = args[args.length - 1];
 const downloadDir = args[args.indexOf('-P') + 1];
 const title = 'Fake Video';
 
-// A progress line as the app asks yt-dlp for it: the part being downloaded (its format and whole size) comes before the title.
-function progress(percent, formatId = 'NA', partBytes = 'NA') {
-    process.stdout.write(`CYBERPROG|${percent.toFixed(1).padStart(6)}%|1.00MiB/s|00:01|${Math.round(percent * 1000)}|${percent / 10}|False|${formatId}|${partBytes}|${title}\n`);
+// A progress line as the app asks yt-dlp for it: the format of the part being downloaded comes before the title.
+function progress(percent, formatId = 'NA') {
+    process.stdout.write(`CYBERPROG|${percent.toFixed(1).padStart(6)}%|1.00MiB/s|00:01|${Math.round(percent * 1000)}|${percent / 10}|False|${formatId}|${title}\n`);
 }
 
-// Like a video whose video and audio are apart (taken from a real run of yt-dlp): it announces both formats with their sizes, then
+// Like a video whose video and audio are apart (taken from a real run of yt-dlp): it announces both formats with their codecs, then
 // downloads the video from 0 to 100% and the audio from 0 to 100% again, and merges them.
 function runTwoParts() {
     const parts = [
-        { format_id: '137', url: 'https://cdn.test/video.mp4', protocol: 'https', filesize: 900000 },
-        { format_id: '140', url: 'https://cdn.test/audio.m4a', protocol: 'https', filesize: 100000 }
+        { format_id: '137', url: 'https://cdn.test/video.mp4', protocol: 'https', vcodec: 'avc1.640028', acodec: 'none', height: 1080 },
+        { format_id: '140', url: 'https://cdn.test/audio.m4a', protocol: 'https', vcodec: 'none', acodec: 'mp4a.40.2', resolution: 'audio only' }
     ];
     process.stdout.write(`CYBERSTREAM|${JSON.stringify({ is_live: false, protocol: 'https+https', requested_formats: parts })}\n`);
     const steps = [
         ...[0, 20, 40, 60, 80, 100].map((percent) => {
-            return ['137', 900000, percent];
+            return ['137', percent];
         }),
         ...[25, 50, 75, 100].map((percent) => {
-            return ['140', 100000, percent];
+            return ['140', percent];
         })
     ];
     let index = 0;
     const timer = setInterval(() => {
-        const [formatId, size, percent] = steps[index];
-        progress(percent, formatId, size);
+        const [formatId, percent] = steps[index];
+        progress(percent, formatId);
         index += 1;
         if (index === steps.length) {
             clearInterval(timer);

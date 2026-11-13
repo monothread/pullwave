@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { keepInside, PausedStore, readExtras, readPausedDownload, type PausedDownload } from '@main/services/pausedStore';
+import { keepInside, PausedStore, readExtras, readParts, readPausedDownload, type PausedDownload } from '@main/services/pausedStore';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 import { makeJob } from '../../helpers/mockApi';
 
@@ -31,6 +31,20 @@ describe('readPausedDownload', () => {
     it('brings a paused download back without a picture: the pictures are kept in memory only, so the one of an earlier run is gone', () => {
         const read = readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, thumbnail: 'pullwave-thumb://job/p1?v=3' } });
         expect(read?.job.thumbnail).toBeNull();
+    });
+
+    it('brings back the bars of the parts of a download whose video and audio come apart', () => {
+        const parts = [
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 37.5 }
+        ];
+        const read = readPausedDownload(JSON.parse(JSON.stringify({ ...PAUSED, job: { ...PAUSED.job, parts } })));
+        expect(read?.job.parts).toEqual(parts);
+    });
+
+    it('has no bars of parts when the file has none, or has some that cannot be read', () => {
+        expect(readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, parts: undefined } })?.job.parts).toBeNull();
+        expect(readPausedDownload({ ...PAUSED, job: { ...PAUSED.job, parts: [{ kind: 'subtitle', percent: 5 }, { kind: 'audio', percent: 5 }] } })?.job.parts).toBeNull();
     });
 
     it('keeps the percent between 0 and 100', () => {
@@ -129,6 +143,51 @@ describe('PausedStore', () => {
             store.save([PAUSED]);
         }).not.toThrow();
         expect(store.load()).toEqual([]);
+    });
+});
+
+describe('readParts', () => {
+    it('reads two parts or more, each of a kind the app knows and with a percent', () => {
+        expect(readParts([{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 0 }, { kind: 'other', percent: 12.5 }])).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 0 },
+            { kind: 'other', percent: 12.5 }
+        ]);
+    });
+
+    it('keeps the percent of each part between 0 and 100', () => {
+        expect(readParts([{ kind: 'video', percent: 180 }, { kind: 'audio', percent: -2 }])).toEqual([
+            { kind: 'video', percent: 100 },
+            { kind: 'audio', percent: 0 }
+        ]);
+    });
+
+    it('leaves out the fields a part does not have', () => {
+        expect(readParts([{ kind: 'video', percent: 10, formatId: '137' }, { kind: 'audio', percent: 0, extra: true }])).toEqual([
+            { kind: 'video', percent: 10 },
+            { kind: 'audio', percent: 0 }
+        ]);
+    });
+
+    it.each([
+        ['nothing', undefined],
+        ['null', null],
+        ['an object that is not a list', { kind: 'video', percent: 1 }],
+        ['an empty list', []],
+        ['a single part', [{ kind: 'video', percent: 1 }]]
+    ])('has no parts for %s', (_name, raw) => {
+        expect(readParts(raw)).toBeNull();
+    });
+
+    it.each([
+        ['a kind the app does not know', { kind: 'subtitle', percent: 1 }],
+        ['no kind', { percent: 1 }],
+        ['a percent that is not a number', { kind: 'audio', percent: '50' }],
+        ['a percent that is not finite', { kind: 'audio', percent: Number.NaN }],
+        ['something that is not an object', 'audio'],
+        ['null', null]
+    ])('has no parts when one of them has %s', (_name, part) => {
+        expect(readParts([{ kind: 'video', percent: 100 }, part])).toBeNull();
     });
 });
 

@@ -8,6 +8,7 @@ import { useAnimeStore } from '../store/animeStore';
 import { ConfirmButton } from './ConfirmButton';
 import { animeErrorReport, animeStatusKey } from './animeText';
 import { formatPercent } from './jobStatus';
+import { hasParts, PartBars } from './PartBars';
 import { ErrorNotice } from './ErrorNotice';
 import { AnimeManageDownloads } from './AnimeManageDownloads';
 
@@ -56,18 +57,22 @@ const AnimeJobRow = memo(function AnimeJobRow({ job }: { job: AnimeJob }) {
                     <span className={`badge badge--${job.status}`}>{t(animeStatusKey(job.status))}</span>
                 </span>
             </header>
-            <div
-                className="progress"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(job.percent)}
-                aria-label={t('anime.progress.aria', { title: job.animeTitle, episode: job.episode })}
-            >
-                <div className="progress__bar" style={{ width: `${job.percent}%` }} />
-            </div>
+            {hasParts(job.parts) ? (
+                <PartBars parts={job.parts} t={t} />
+            ) : (
+                <div
+                    className="progress"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(job.percent)}
+                    aria-label={t('anime.progress.aria', { title: job.animeTitle, episode: job.episode })}
+                >
+                    <div className="progress__bar" style={{ width: `${job.percent}%` }} />
+                </div>
+            )}
             <div className="job__meta">
-                <span>{formatPercent(job.percent)}</span>
+                {!hasParts(job.parts) && <span>{formatPercent(job.percent)}</span>}
                 {job.speed && <span>{job.speed}</span>}
                 {job.eta && <span>{t('job.eta', { eta: job.eta })}</span>}
             </div>
@@ -171,6 +176,7 @@ export function AnimeJobs() {
                     title={running.animeTitle}
                     detail={t('anime.episode', { number: running.episode })}
                     percent={running.percent}
+                    parts={running.parts}
                     speed={running.speed}
                     eta={running.eta}
                     kind="anime"

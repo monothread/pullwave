@@ -10,7 +10,9 @@ import {
     parseAnimeChoice,
     parseDestinationLine,
     parseMenuLine,
+    parsePartLine,
     parseProgressLine,
+    PART_MARKER,
     stripAnsi
 } from '@main/services/aniOutputParser';
 
@@ -259,6 +261,41 @@ describe('parseDestinationLine', () => {
     it('ignores other lines', () => {
         expect(parseDestinationLine('[download] 100% of 107.36MiB in 00:00:44')).toBeNull();
         expect(parseDestinationLine('')).toBeNull();
+    });
+});
+
+describe('parsePartLine', () => {
+    it('names the marker the stand-in of ffmpeg prints', () => {
+        expect(PART_MARKER).toBe('PULLWAVE_PART');
+    });
+
+    it('reads the part that starts and the parts of the episode, in their order', () => {
+        expect(parsePartLine('PULLWAVE_PART\t0\tvideo,audio')).toEqual({ kinds: ['video', 'audio'], index: 0 });
+        expect(parsePartLine('PULLWAVE_PART\t1\tvideo,audio')).toEqual({ kinds: ['video', 'audio'], index: 1 });
+        expect(parsePartLine('PULLWAVE_PART\t2\tvideo,audio,other')).toEqual({ kinds: ['video', 'audio', 'other'], index: 2 });
+    });
+
+    it('reads the line with colors and spaces around it', () => {
+        expect(parsePartLine(`${ESC}[0m  PULLWAVE_PART\t1\tvideo,audio  `)).toEqual({ kinds: ['video', 'audio'], index: 1 });
+    });
+
+    it.each([
+        ['a part past the last one', 'PULLWAVE_PART\t2\tvideo,audio'],
+        ['a part that is not a number', 'PULLWAVE_PART\tone\tvideo,audio'],
+        ['a negative part', 'PULLWAVE_PART\t-1\tvideo,audio'],
+        ['a part with a decimal point', 'PULLWAVE_PART\t0.5\tvideo,audio'],
+        ['no part', 'PULLWAVE_PART\t\tvideo,audio'],
+        ['a single part', 'PULLWAVE_PART\t0\tvideo'],
+        ['a kind the app does not know', 'PULLWAVE_PART\t0\tvideo,subtitle'],
+        ['an empty kind', 'PULLWAVE_PART\t0\tvideo,'],
+        ['no kinds', 'PULLWAVE_PART\t0'],
+        ['a field more', 'PULLWAVE_PART\t0\tvideo,audio\textra'],
+        ['another marker', 'PULLWAVE_MENU\t0\tvideo,audio'],
+        ['the marker inside another line', 'the PULLWAVE_PART\t0\tvideo,audio line'],
+        ['a progress line', '[download]  10.0% of ~ 1.00MiB at 1.00MiB/s ETA 00:01'],
+        ['an empty line', '']
+    ])('gives null for %s', (_name, line) => {
+        expect(parsePartLine(line)).toBeNull();
     });
 });
 

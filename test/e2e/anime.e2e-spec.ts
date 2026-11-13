@@ -1320,6 +1320,48 @@ test('cancelling a download ends the process: the file is never finished', { tag
     await expect(page.getByTestId('anime-episode').locator('.history__meta').first()).toHaveText('CANCELLED');
 });
 
+test('shows a bar for the picture and one for the audio of an episode whose audio comes apart, the picture filling first and the audio after it', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await search(page, 'split');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1]);
+    await showDownloads(page);
+    const job = page.getByTestId('anime-job');
+    const video = job.getByRole('progressbar', { name: 'Download progress: VIDEO' });
+    const audio = job.getByRole('progressbar', { name: 'Download progress: AUDIO' });
+
+    // The picture first: both bars are there, the audio still empty, and no one bar of the episode.
+    await expect(video).toHaveAttribute('aria-valuenow', '40');
+    await expect(audio).toHaveAttribute('aria-valuenow', '0');
+    await expect(job.getByRole('progressbar', { name: 'Download progress of Fake Anime, episode 1' })).toHaveCount(0);
+    await expect(job.getByTestId('job-part')).toHaveText(['VIDEO40.0%', 'AUDIO0.0%']);
+    const banner = page.getByTestId('download-hero');
+    await expect(banner.locator('.job-part__name')).toHaveCount(2);
+    expect(await banner.locator('.job-part__name').evaluateAll((names) => {
+        return names.map((name) => {
+            return name.getAttribute('data-text');
+        });
+    })).toEqual(['VIDEO', 'AUDIO']);
+    await expect(banner.locator('.download-hero__percent')).toHaveCount(0);
+
+    // Then the audio: the picture stays full and the audio fills from its own start.
+    await expect(audio).toHaveAttribute('aria-valuenow', '30');
+    await expect(video).toHaveAttribute('aria-valuenow', '100');
+    await expect(job.getByTestId('job-part')).toHaveText(['VIDEO100.0%', 'AUDIO30.0%']);
+    await expect(job.locator('.progress__bar')).toHaveCount(2);
+    const widths = await job.locator('.job-part .progress__bar').evaluateAll((bars) => {
+        return bars.map((bar) => {
+            return (bar as HTMLElement).style.width;
+        });
+    });
+    expect(widths).toEqual(['100%', '30%']);
+
+    // Once the audio is done the episode is complete and leaves the downloads.
+    await backFromDownloads(page);
+    await waitForDownloaded(page);
+});
+
 test('closing the app cancels a download that is running and deletes the folder of its episode, with the unfinished file', { tag: '@windows' }, async () => {
     const { page, animeDir } = session;
     await openAnimeTab(page);

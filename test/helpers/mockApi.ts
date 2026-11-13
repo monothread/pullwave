@@ -843,6 +843,7 @@ export function makeJob(overrides: Partial<DownloadJob> = {}): DownloadJob {
         saving: false,
         postProcess: null,
         thumbnail: null,
+        parts: null,
         ...overrides
     };
 }

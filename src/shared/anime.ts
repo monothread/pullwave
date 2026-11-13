@@ -1,6 +1,7 @@
 // Types of the anime section (ani-cli). It exists on Linux and Windows.
 import type { LlmError, SpeechTranslatesTo } from './llm';
 import type { ErrorDetails } from './errorDetails';
+import type { DownloadPart, DownloadPartKind } from './types';
 
 export interface AnimeSearchResult {
     // Position in the result list of that exact search: ani-cli selects an entry by it (`-S <index>`).
@@ -36,6 +37,13 @@ export interface AniDownloadProgress {
     totalBytes: number | null;
     speed: string | null;
     eta: string | null;
+}
+
+// The stand-in of ffmpeg (pullwave-run.sh) downloads the picture and the audio of an episode apart, one after the other: before each one it
+// says which parts the episode has, in their order, and which of them (from 0) starts now.
+export interface AniPartStart {
+    kinds: DownloadPartKind[];
+    index: number;
 }
 
 export type AniRunResult<T> = { status: 'done'; value: T } | { status: 'error'; error: AniError } | { status: 'cancelled' };
@@ -153,6 +161,8 @@ export interface AnimeJob {
     speed: string;
     eta: string;
     error: AniError | null;
+    // The parts of an episode whose picture and audio are downloaded apart, each with a bar of its own; null for one that comes whole.
+    parts: DownloadPart[] | null;
 }
 
 // Which ani-cli is in use: where it is, which version it says it is and where it comes from.

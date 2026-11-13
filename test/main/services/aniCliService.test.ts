@@ -628,12 +628,14 @@ describe('AniCliService.download', () => {
         expect(await service.download(request).result).toEqual({ status: 'done', value: { filePath: null } });
     });
 
-    it('forwards the progress and destination callbacks', async () => {
+    it('forwards the progress, part and destination callbacks', async () => {
         const onProgress = vi.fn();
+        const onPart = vi.fn();
         const onDestination = vi.fn();
         const { service, callsOf } = setup([done(outcome({ exitCode: 0 }))]);
-        await service.download({ ...request, onProgress, onDestination }).result;
+        await service.download({ ...request, onProgress, onPart, onDestination }).result;
         expect(callsOf()[0]?.onProgress).toBe(onProgress);
+        expect(callsOf()[0]?.onPart).toBe(onPart);
         expect(callsOf()[0]?.onDestination).toBe(onDestination);
     });
 

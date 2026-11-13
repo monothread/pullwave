@@ -67,6 +67,7 @@ export function QueueList() {
                     title={running.title ?? running.url}
                     detail={null}
                     percent={running.percent}
+                    parts={running.parts}
                     speed={running.speed}
                     eta={running.eta}
                     kind="downloads"

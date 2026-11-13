@@ -396,6 +396,14 @@ body::after {
 .job--error .progress .progress__bar { background: var(--red); animation: none; }
 
 .job__meta { display: flex; gap: 16px; color: var(--muted); font-size: 12px; }
+
+/* A download whose video and audio come apart has a bar for each part, one under the other: the name of the part, its bar and its percentage
+   (D-194). The bars are the plain ones of a download, so they flow and glow as the one bar would. The rows share the columns, so the bars start
+   and end at the same place whatever the names are. */
+.job-parts { display: grid; grid-template-columns: max-content minmax(0, 1fr) 52px; align-items: center; gap: 6px 10px; }
+.job-part { display: contents; }
+.job-part__name { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 2px; }
+.job-part__percent { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 .job__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .error-banner {

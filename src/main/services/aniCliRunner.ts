@@ -1,4 +1,4 @@
-import type { AniDownloadProgress, AniRunResult } from '@shared/anime';
+import type { AniDownloadProgress, AniPartStart, AniRunResult } from '@shared/anime';
 import {
     isDownloadFailedLine,
     isSearchMoreLine,
@@ -6,6 +6,7 @@ import {
     mapAniSpawnError,
     parseDestinationLine,
     parseMenuLine,
+    parsePartLine,
     parseProgressLine,
     stripAnsi
 } from './aniOutputParser';
@@ -37,6 +38,8 @@ export interface AniRunOptions {
     args: string[];
     env: NodeJS.ProcessEnv;
     onProgress?: (progress: AniDownloadProgress) => void;
+    // A part of an episode whose picture and audio are downloaded apart starts (the progress lines after it are about that part).
+    onPart?: (part: AniPartStart) => void;
     onDestination?: (path: string) => void;
     spawnFn?: SpawnFn;
     platform?: NodeJS.Platform;
@@ -90,6 +93,11 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
         }
         if (isDownloadFailedLine(line)) {
             downloadFailed = true;
+            return;
+        }
+        const part = parsePartLine(line);
+        if (part) {
+            options.onPart?.(part);
             return;
         }
         const clean = stripAnsi(line);

@@ -1,4 +1,4 @@
-import type { AniDownloadProgress } from '@shared/anime';
+import type { AniDownloadProgress, AniPartStart } from '@shared/anime';
 import { asDownloadResult, runAniCli, type AniRunOutcome } from '@main/services/aniCliRunner';
 import { EXIT_GRACE_MS, KILL_ESCALATION_MS } from '@main/services/ytdlpRunner';
 import { LogHub, processLogs } from '@main/services/logHub';
@@ -18,6 +18,7 @@ function start(platform: NodeJS.Platform = 'linux') {
     });
     const killGroup = vi.fn();
     const progress: AniDownloadProgress[] = [];
+    const parts: AniPartStart[] = [];
     const destinations: string[] = [];
     const handle = runAniCli({
         binary: '/app/resources/bin/ani/busybox',
@@ -29,11 +30,14 @@ function start(platform: NodeJS.Platform = 'linux') {
         onProgress: (value) => {
             progress.push(value);
         },
+        onPart: (part) => {
+            parts.push(part);
+        },
         onDestination: (path) => {
             destinations.push(path);
         }
     });
-    return { fake, spawnFn, killGroup, progress, destinations, handle };
+    return { fake, spawnFn, killGroup, progress, parts, destinations, handle };
 }
 
 beforeEach(() => {
@@ -162,6 +166,55 @@ describe('runAniCli', () => {
         expect(destinations).toEqual(['/home/me/Anime/Reborn Episode 5.mp4.video.mp4']);
     });
 
+    it('tells each part the stand-in of ffmpeg starts, in order with the progress, and keeps the lines out of the output', async () => {
+        const fake = createFakeChild();
+        const events: string[] = [];
+        const handle = runAniCli({
+            binary: 'busybox',
+            args: [],
+            env: ENV,
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: (value) => {
+                events.push(`progress ${String(value.percent)}`);
+            },
+            onPart: (part) => {
+                events.push(`part ${String(part.index)} of ${part.kinds.join(',')}`);
+            }
+        });
+        fake.stdout.write('PULLWAVE_PART\t0\tvideo,audio\n');
+        fake.stdout.write('[download] Destination: /home/me/Anime/Reborn Episode 5.mp4.video.mp4\n');
+        fake.stdout.write('[download] 100% of  100.00MiB in 00:00:50 at 2.00MiB/s\n');
+        fake.stdout.write(`${ESC}[0mPULLWAVE_PART\t1\tvideo,audio\n`);
+        fake.stdout.write('[download]  10.0% of ~ 5.00MiB at 1.00MiB/s ETA 00:04\n');
+        fake.emitter.emit('close', 0);
+
+        const result = await handle.result;
+        expect(events).toEqual(['part 0 of video,audio', 'progress 100', 'part 1 of video,audio', 'progress 10']);
+        expect(result.status === 'done' && result.value.output).toBe('[download] Destination: /home/me/Anime/Reborn Episode 5.mp4.video.mp4\n');
+    });
+
+    it('reads the marker of a part from stderr too', async () => {
+        const { fake, handle, parts } = start();
+        fake.stderr.write('PULLWAVE_PART\t1\tvideo,audio\n');
+        fake.emitter.emit('close', 0);
+
+        const result = await handle.result;
+        expect(parts).toEqual([{ kinds: ['video', 'audio'], index: 1 }]);
+        expect(result.status === 'done' && result.value.output).toBe('');
+    });
+
+    it('takes a marker of a part that cannot be read as an ordinary line', async () => {
+        const { fake, handle, parts } = start();
+        fake.stdout.write('PULLWAVE_PART\t5\tvideo,audio\n');
+        fake.emitter.emit('close', 0);
+
+        const result = await handle.result;
+        expect(parts).toEqual([]);
+        expect(result.status === 'done' && result.value.output).toBe('PULLWAVE_PART\t5\tvideo,audio\n');
+    });
+
     it('does not take a line that only mentions the failure for one', async () => {
         const { fake, handle } = start();
         fake.stderr.write('the PULLWAVE_DOWNLOAD_FAILED line\n');
@@ -181,9 +234,10 @@ describe('runAniCli', () => {
         expect(result.status === 'done' && result.value.output).toBe('Checking dependencies...\nlinks fetched\n');
     });
 
-    it('works without progress and destination callbacks', async () => {
+    it('works without progress, part and destination callbacks', async () => {
         const fake = createFakeChild();
         const handle = runAniCli({ binary: 'busybox', args: [], env: ENV, spawnFn: () => { return fake.child; } });
+        fake.stdout.write('PULLWAVE_PART\t0\tvideo,audio\n');
         fake.stdout.write('[download] Destination: /a.mp4\n');
         fake.stdout.write('[download]  1.0% of 1.00MiB at 1.00MiB/s ETA 00:01\n');
         fake.emitter.emit('close', 0);

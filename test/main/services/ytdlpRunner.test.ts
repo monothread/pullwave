@@ -78,7 +78,7 @@ describe('runYtdlp', () => {
 
     it('reports progress and resolves done with the file path', async () => {
         const { fake, progress, run } = start();
-        fake.stdout.write('CYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|137|9000|Title\nCYBERPROG| 100.0%|2MiB/s|00:00|2000|3.5|False|140|2000|Title\n');
+        fake.stdout.write('CYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|137|Title\nCYBERPROG| 100.0%|2MiB/s|00:00|2000|3.5|False|140|Title\n');
         fake.stdout.write('CYBERFILE|/d/Title [id].mp4\n');
         await new Promise((resolve) => {
             setImmediate(resolve);
@@ -86,8 +86,8 @@ describe('runYtdlp', () => {
         fake.emitter.emit('close', 0);
         await expect(run.result).resolves.toEqual({ status: 'done', filePath: '/d/Title [id].mp4' });
         expect(progress).toEqual([
-            { percent: 10, speed: '1MiB/s', eta: '00:09', title: 'Title', downloadedBytes: 1000, elapsedSeconds: 1.5, live: false, formatId: '137', partBytes: 9000 },
-            { percent: 100, speed: '2MiB/s', eta: '00:00', title: 'Title', downloadedBytes: 2000, elapsedSeconds: 3.5, live: false, formatId: '140', partBytes: 2000 }
+            { percent: 10, speed: '1MiB/s', eta: '00:09', title: 'Title', downloadedBytes: 1000, elapsedSeconds: 1.5, live: false, formatId: '137' },
+            { percent: 100, speed: '2MiB/s', eta: '00:00', title: 'Title', downloadedBytes: 2000, elapsedSeconds: 3.5, live: false, formatId: '140' }
         ]);
     });
 
@@ -138,8 +138,8 @@ describe('runYtdlp', () => {
             onParts
         });
         const formats = [
-            { format_id: '137', url: 'https://cdn.test/v.mp4', protocol: 'https', filesize: 900 },
-            { format_id: '140', url: 'https://cdn.test/a.m4a', protocol: 'https', filesize_approx: 100 }
+            { format_id: '137', url: 'https://cdn.test/v.mp4', protocol: 'https', vcodec: 'avc1', acodec: 'none' },
+            { format_id: '140', url: 'https://cdn.test/a.m4a', protocol: 'https', vcodec: 'none', acodec: 'mp4a' }
         ];
         fake.stdout.write(`CYBERSTREAM|${JSON.stringify({ is_live: false, protocol: 'https+https', requested_formats: formats })}\n`);
         fake.stdout.write(`CYBERSTREAM|${JSON.stringify({ is_live: false, url: 'https://cdn.test/single.mp4', protocol: 'https', format_id: '18' })}\n`);
@@ -149,7 +149,7 @@ describe('runYtdlp', () => {
             setImmediate(resolve);
         });
         expect(onParts.mock.calls).toEqual([
-            [[{ formatId: '137', expectedBytes: 900 }, { formatId: '140', expectedBytes: 100 }]],
+            [[{ formatId: '137', kind: 'video' }, { formatId: '140', kind: 'audio' }]],
             [[]],
             [[]]
         ]);

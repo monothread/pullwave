@@ -29,6 +29,7 @@ const FILES_WITH_BARS: Record<string, string[]> = {
     'MangaJobs.tsx': ['progress'],
     'MangaReader.tsx': ['progress'],
     'MangaSetup.tsx': ['progress'],
+    'PartBars.tsx': ['progress'],
     'ProgramsSetup.tsx': ['progress'],
     'ProgramsStatusBlock.tsx': ['progress'],
     'ReaderChapterZone.tsx': ['progress'],
@@ -81,6 +82,28 @@ describe('the map of the progress bars of the app', () => {
                 // Every bar has a name for a screen reader; the ones that know how far they are also say it.
                 expect(source, file).toMatch(/aria-label=/);
             });
+    });
+});
+
+describe('the bars of the parts of a download whose video and audio come apart (D-194)', () => {
+    it('lays the parts out one under the other, in columns they share: the name as wide as the widest, the bar in the rest and the percentage at the end', () => {
+        expect(styleOf(cyberpunk, '.job-parts')).toEqual({
+            display: 'grid',
+            'grid-template-columns': 'max-content minmax(0, 1fr) 52px',
+            'align-items': 'center',
+            gap: '6px 10px'
+        });
+        expect(styleOf(cyberpunk, '.job-part')).toEqual({ display: 'contents' });
+    });
+
+    it('writes the name and the percentage of each part small and quiet beside its bar', () => {
+        expect(styleOf(cyberpunk, '.job-part__name')).toEqual({ color: 'var(--muted)', 'font-size': '11px', 'font-weight': '700', 'letter-spacing': '2px' });
+        expect(styleOf(cyberpunk, '.job-part__percent')).toEqual({ color: 'var(--muted)', 'font-size': '12px', 'font-variant-numeric': 'tabular-nums', 'text-align': 'right' });
+    });
+
+    it('draws the bar of each part as the plain bar of a download, so it flows and glows as the one bar does', () => {
+        expect(classesUsedBy('PartBars.tsx')).toEqual([]);
+        expect(styleOf(cyberpunk, PLAIN_BAR)['animation']).toBe('bar-wave-flow 1.4s linear infinite');
     });
 });
 

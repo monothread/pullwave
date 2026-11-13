@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path';
-import type { DownloadJob } from '@shared/types';
+import type { DownloadJob, DownloadPart, DownloadPartKind } from '@shared/types';
 import type { RequestExtras } from './ytdlpArgsBuilder';
 import { JsonStore } from './jsonStore';
 import { sanitizeDownloadOptions } from './settingsSanitizer';
@@ -30,6 +30,31 @@ function isShortText(value: unknown): value is string {
 
 function isNumber(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value);
+}
+
+const PART_KINDS: readonly DownloadPartKind[] = ['video', 'audio', 'other'];
+
+function readPart(raw: unknown): DownloadPart | null {
+    const part = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+    const kind = PART_KINDS.find((known) => {
+        return known === part.kind;
+    });
+    if (kind === undefined || !isNumber(part.percent)) {
+        return null;
+    }
+    return { kind, percent: Math.min(100, Math.max(0, part.percent)) };
+}
+
+// The bars of the parts of a paused download (the video and the audio that are apart), or null when it has none or what the file says of
+// them is not a list of two parts or more that can all be read.
+export function readParts(raw: unknown): DownloadPart[] | null {
+    if (!Array.isArray(raw) || raw.length < 2) {
+        return null;
+    }
+    const parts = raw.map(readPart);
+    return parts.every((part): part is DownloadPart => {
+        return part !== null;
+    }) ? parts : null;
 }
 
 // How a download was asked for, keeping only the fields it can have and with values it can have: the file may be edited, or from another
@@ -94,7 +119,8 @@ export function readPausedDownload(raw: unknown): PausedDownload | null {
             saving: false,
             postProcess: null,
             // The pictures are kept in memory only: a download paused in an earlier run of the app gets its picture again when it goes on.
-            thumbnail: null
+            thumbnail: null,
+            parts: readParts(job.parts)
         },
         extras,
         outputPaths

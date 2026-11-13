@@ -1,5 +1,6 @@
 import type { ErrorDetails } from '@shared/errorDetails';
-import type { AniDownloadProgress, AniError, AniErrorCode, AnimeSearchResult } from '@shared/anime';
+import type { AniDownloadProgress, AniError, AniErrorCode, AniPartStart, AnimeSearchResult } from '@shared/anime';
+import type { DownloadPartKind } from '@shared/types';
 import { SOURCE_ID_MARKER } from './aniMenuIds';
 import { SEARCH_MORE_MARKER } from './aniSearchPages';
 import { describeError } from './errorDetails';
@@ -108,6 +109,36 @@ export function parseProgressLine(line: string): AniDownloadProgress | null {
         totalBytes: unit === undefined ? null : Math.round(size * unit),
         speed: match[4] ?? null,
         eta: match[5] ?? null
+    };
+}
+
+// What the stand-in of ffmpeg prints before it downloads each part of an episode whose picture and audio come apart (see pullwave-run.sh):
+// PULLWAVE_PART<TAB>the part that starts (from 0)<TAB>the parts of the episode, in their order, apart by commas.
+export const PART_MARKER = 'PULLWAVE_PART';
+const PART_KINDS: readonly DownloadPartKind[] = ['video', 'audio', 'other'];
+
+function toPartKind(value: string): DownloadPartKind | null {
+    return PART_KINDS.find((kind) => {
+        return kind === value;
+    }) ?? null;
+}
+
+// The part that starts and the parts of the episode, or null when the line is another one or says something the app does not know.
+export function parsePartLine(line: string): AniPartStart | null {
+    const [marker, indexText = '', kindsText = '', ...rest] = stripAnsi(line).trim().split('\t');
+    if (marker !== PART_MARKER || rest.length > 0 || !/^\d+$/.test(indexText)) {
+        return null;
+    }
+    const kinds = kindsText.split(',').map(toPartKind);
+    const index = Number(indexText);
+    if (kinds.length < 2 || index >= kinds.length || kinds.includes(null)) {
+        return null;
+    }
+    return {
+        kinds: kinds.filter((kind): kind is DownloadPartKind => {
+            return kind !== null;
+        }),
+        index
     };
 }
 
