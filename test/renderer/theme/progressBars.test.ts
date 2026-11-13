@@ -10,6 +10,9 @@ const consoleLayer = readStylesheet('console.css');
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 const PLAIN_BAR = ".progress:not([class*='progress--']) .progress__bar";
+const SWEEPS = ['.progress--verify::after', '.progress--waiting::after', '.progress--processing::after', '.progress--saving::after', '.progress--merging::after', '.progress--cloudflare::after'];
+const PULSING_LAYERS = ['.progress .progress__bar::before', ...SWEEPS];
+const BAND = 'linear-gradient(transparent 30%, #000 30% 70%, transparent 70%)';
 
 // Every place of the app that draws a progress bar (a `.progress` with a `.progress__bar`, or a range of the player), by the file that
 // draws it: when a bar is added to a file that is not here, this list has to say so, and the CSS below has to cover it.
@@ -98,12 +101,26 @@ describe('the neon of every bar', () => {
         });
     });
 
-    it('gives the bar a bright core, a close halo and wider soft ones, in the colour of its state', () => {
+    it('gives the bar a bright rim, a close halo and wider soft ones, in the colour of its state, as drop shadows that follow the shape of the wave', () => {
         expect(bar['--bar-glow']).toBe('var(--cyan)');
-        const layers = layersOf(bar['box-shadow']);
-        expect(layers).toHaveLength(5);
-        expect(layers[0]).toBe('inset 0 0 3px rgba(255, 255, 255, 0.85)');
-        expect(layers.slice(1)).toEqual(['0 0 3px var(--bar-glow)', '0 0 8px var(--bar-glow)', '0 0 16px var(--bar-glow)', '0 0 28px color-mix(in srgb, var(--bar-glow) 65%, transparent)']);
+        expect(bar['--bar-neon']).toBe(
+            'drop-shadow(0 0 1px rgba(255, 255, 255, 0.85)) drop-shadow(0 0 3px var(--bar-glow)) drop-shadow(0 0 7px var(--bar-glow)) drop-shadow(0 0 14px color-mix(in srgb, var(--bar-glow) 65%, transparent))'
+        );
+        expect(bar['filter']).toBe('var(--bar-neon)');
+        // A box shadow would glow around the box of the bar, not around the wave.
+        expect(bar['box-shadow']).toBe('none');
+    });
+
+    it('wins over the box shadows the kinds of bar had: the neon rule comes after all of them and is as specific as they are', () => {
+        const order = cyberpunk.rules.map((rule) => {
+            return rule.selector;
+        });
+        const neon = order.indexOf('.progress .progress__bar');
+        ['live', 'verify', 'waiting', 'processing', 'saving', 'merging'].forEach((kind) => {
+            const selector = `.progress--${kind} .progress__bar`;
+            expect(styleOf(cyberpunk, selector)['box-shadow'], kind).toMatch(/^0 0 10px var\(--[a-z]+\)$/);
+            expect(order.indexOf(selector), kind).toBeLessThan(neon);
+        });
     });
 
     it.each([
@@ -128,6 +145,141 @@ describe('the neon of every bar', () => {
                     expect(rule.declarations['filter'], rule.selector).not.toBe('none');
                 });
         });
+    });
+});
+
+describe('the pulses that run along every bar', () => {
+    const track = styleOf(cyberpunk, '.progress');
+    const fill = styleOf(cyberpunk, '.progress .progress__bar::before');
+    const bar = styleOf(cyberpunk, '.progress .progress__bar');
+    const COUNTS = [1, 2, 3, 4];
+    const ROUNDS = [2, 4, 1, 3, 2, 1, 4, 3, 1, 2, 4, 3];
+    // The points of the outline of a train: the top edge from the left to the right, then the bottom edge back.
+    const outlineOf = (count: number): Array<[number, number]> => {
+        return [...(track[`--bar-pulses-${String(count)}`] ?? '').matchAll(/[ML]([\d.]+) ([\d.]+)/g)].map((match) => {
+            return [Number(match[1]), Number(match[2])];
+        });
+    };
+    const topEdgeOf = (count: number): Array<[number, number]> => {
+        return outlineOf(count).slice(0, 81);
+    };
+    // The middles of the swells: the points of the top edge higher than the band and than the points around them.
+    const crestsOf = (count: number): Array<[number, number]> => {
+        const top = topEdgeOf(count);
+        return top.filter(([, y], index) => {
+            return y < 30 && y < (top[index - 1]?.[1] ?? 30) && y <= (top[index + 1]?.[1] ?? 30);
+        });
+    };
+
+    it('makes the track as tall as the pulses, with its line around it, and gives it the band, the trains and the movements of the pulses', () => {
+        expect(track).toEqual({
+            height: '14px',
+            background: 'var(--input-bg)',
+            border: '1px solid var(--line)',
+            overflow: 'visible',
+            '--bar-band': BAND,
+            '--bar-pulses-1': track['--bar-pulses-1'],
+            '--bar-pulses-2': track['--bar-pulses-2'],
+            '--bar-pulses-3': track['--bar-pulses-3'],
+            '--bar-pulses-4': track['--bar-pulses-4'],
+            '--bar-pulses': 'var(--bar-pulses-1)',
+            animation: 'bar-pulse 1.6s linear infinite, bar-pulse-count 19.2s linear infinite'
+        });
+        expect(styleOf(cyberpunk, '.progress--cloudflare')).toEqual({ position: 'relative' });
+    });
+
+    it('lets the bar paint nothing itself, over the fill of every kind of bar, and draws the fill in its ::before with the background of the bar', () => {
+        expect(bar['background-clip']).toBe('text !important');
+        expect(bar['position']).toBe('relative');
+        expect(fill).toEqual({
+            content: "''",
+            position: 'absolute',
+            inset: '0',
+            background: 'inherit',
+            'background-clip': 'border-box',
+            'mask-image': 'var(--bar-pulses), var(--bar-band)',
+            'mask-size': '192px 100%, 100% 100%',
+            'mask-repeat': 'no-repeat, repeat-x',
+            'mask-position': 'inherit'
+        });
+    });
+
+    it.each(PULSING_LAYERS)('cuts %s in the shape of the train of the round over the band, the train first so it takes the position the track moves', (selector) => {
+        const rule = cyberpunk.rules.find((candidate) => {
+            return candidate.selector === selector && candidate.declarations['mask-image'] !== undefined;
+        });
+        expect(rule?.media).toBeNull();
+        expect(rule?.declarations).toEqual({
+            'mask-image': 'var(--bar-pulses), var(--bar-band)',
+            'mask-size': '192px 100%, 100% 100%',
+            'mask-repeat': 'no-repeat, repeat-x',
+            'mask-position': 'inherit'
+        });
+    });
+
+    it.each(COUNTS)('draws a train of %i swells as a picture of four slots, stretched over its tile', (count) => {
+        expect(track[`--bar-pulses-${String(count)}`]).toMatch(/^url\("data:image\/svg\+xml,%3Csvg xmlns='http:\/\/www\.w3\.org\/2000\/svg' viewBox='0 0 400 100' preserveAspectRatio='none'%3E%3Cpath d='M0 30L.+Z'\/%3E%3C\/svg%3E"\)$/);
+        expect(outlineOf(count)).toHaveLength(162);
+    });
+
+    it.each(COUNTS)('swells %i times, a slot apart, in the middle of the tile', (count) => {
+        const middles = Array.from({ length: count }, (_value, index) => {
+            return 200 + (index - (count - 1) / 2) * 100;
+        });
+        expect(crestsOf(count)).toEqual(middles.map((x) => { return [x, 10]; }));
+    });
+
+    it.each(COUNTS)('flattens the %i swells: they reach four fifths of the track, from a band of two fifths, and go into the band with no step', (count) => {
+        const top = topEdgeOf(count);
+        expect(top[0]).toEqual([0, 30]);
+        expect(top[80]).toEqual([400, 30]);
+        top.forEach(([, y]) => {
+            expect(y).toBeGreaterThanOrEqual(10);
+            expect(y).toBeLessThanOrEqual(30);
+        });
+    });
+
+    it.each(COUNTS)('swells the %i swells the same up and down: each point of the bottom edge is the mirror of the one of the top edge', (count) => {
+        const top = topEdgeOf(count);
+        const bottom = outlineOf(count).slice(81).reverse();
+        top.forEach(([x, y], index) => {
+            expect(bottom[index]).toEqual([x, Number((100 - y).toFixed(1))]);
+        });
+    });
+
+    it('runs the train from out of the start of the bar to past its head, a tile away at both ends, whatever the width of the bar', () => {
+        expect(keyframesOf(cyberpunk, 'bar-pulse')?.body.replace(/\s+/g, ' ').trim()).toBe('from { mask-position: calc(0% - 192px) 0; } to { mask-position: calc(100% + 192px) 0; }');
+        expect(keyframesOf(cyberpunk, 'bar-swell')).toBeUndefined();
+    });
+
+    it('picks the number of swells of each round in an order that does not show, every number as often, and changes it only between two rounds', () => {
+        const frames = [...(keyframesOf(cyberpunk, 'bar-pulse-count')?.body ?? '').matchAll(/([\d.]+)%, ([\d.]+)% \{ --bar-pulses: var\(--bar-pulses-(\d)\); \}/g)].map((match) => {
+            return { from: Number(match[1]), to: Number(match[2]), count: Number(match[3]) };
+        });
+        expect(frames.map((frame) => { return frame.count; })).toEqual(ROUNDS);
+        frames.forEach((frame, index) => {
+            expect(frame.from).toBeCloseTo((100 * index) / ROUNDS.length, 1);
+            expect(frame.to).toBeCloseTo((100 * (index + 1)) / ROUNDS.length - 0.01, 1);
+        });
+        COUNTS.forEach((count) => {
+            expect(ROUNDS.filter((round) => { return round === count; })).toHaveLength(3);
+        });
+        ROUNDS.forEach((round, index) => {
+            expect(round).not.toBe(ROUNDS[(index + 1) % ROUNDS.length]);
+        });
+        // Twelve rounds of the pulse in one loop of the number, so a round and its number start together.
+        expect(1.6 * ROUNDS.length).toBeCloseTo(19.2, 5);
+    });
+
+    it('passes the position and the number of swells from the track down to the bar, so the fill and the line that sweeps over it pulse in step', () => {
+        expect(bar['mask-position']).toBe('inherit');
+        expect(bar['mask-image']).toBeUndefined();
+        expect(bar['--bar-pulses']).toBeUndefined();
+    });
+
+    it('leaves what the player has loaded as tall as the track: neither the band nor the pulses cut it', () => {
+        expect(styleOf(cyberpunk, '.player__buffered')).toEqual({});
+        expect(cyberpunk.rules.filter((rule) => { return rule.selector.includes('.player__buffered'); })).toEqual([]);
     });
 });
 
@@ -158,23 +310,25 @@ describe('the movement of the neon inside each bar', () => {
         expect(wave['width']).toBe('100%');
     });
 
+    const WHITE_LINE = 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent)';
     it.each([
-        ['.progress--verify::after', 'scan-sweep 1s linear infinite'],
-        ['.progress--waiting::after', 'scan-sweep 1.8s ease-in-out infinite alternate'],
-        ['.progress--processing::after', 'scan-sweep 1s linear infinite'],
-        ['.progress--saving::after', 'scan-sweep 0.9s linear infinite'],
-        ['.progress--merging::after', 'scan-sweep 1.1s linear infinite'],
-        ['.progress--cloudflare::after', 'cloudflare-sweep 1.4s ease-in-out infinite alternate']
-    ])('sweeps a bright line over the bar with %s', (selector, animation) => {
+        ['.progress--verify::after', `${WHITE_LINE} 0 0 / 28% 100% no-repeat`, 'scan-sweep 1s linear infinite'],
+        ['.progress--waiting::after', 'linear-gradient(90deg, transparent, var(--magenta), transparent) 0 0 / 22% 100% no-repeat', 'scan-sweep 1.8s ease-in-out infinite alternate'],
+        ['.progress--processing::after', `${WHITE_LINE} 0 0 / 28% 100% no-repeat`, 'scan-sweep 1s linear infinite'],
+        ['.progress--saving::after', `${WHITE_LINE} 0 0 / 28% 100% no-repeat`, 'scan-sweep 0.9s linear infinite'],
+        ['.progress--merging::after', `${WHITE_LINE} 0 0 / 28% 100% no-repeat`, 'scan-sweep 1.1s linear infinite'],
+        ['.progress--cloudflare::after', 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent) 0 0 / 30% 100% no-repeat', 'scan-sweep 1.4s ease-in-out infinite alternate']
+    ])('sweeps a bright line over the bar with %s, as a band that slides inside a box as wide as the track', (selector, background, animation) => {
         const sweep = styleOf(cyberpunk, selector);
-        expect(sweep['animation']).toBe(animation);
-        expect(sweep['position']).toBe('absolute');
-        expect(sweep['content']).toBe("''");
+        expect(sweep).toMatchObject({ content: "''", position: 'absolute', inset: '0', background, animation });
+        // The box does not move (the wave that cuts it is in the place of the one of the bar): the band moves inside it.
+        expect(sweep['width']).toBeUndefined();
+        expect(sweep['left']).toBeUndefined();
     });
 
-    it('keeps every sweep inside the track, so nothing has to clip the glow', () => {
-        expect(keyframesOf(cyberpunk, 'scan-sweep')?.body.replace(/\s+/g, ' ').trim()).toBe('from { left: 0; } to { left: 72%; }');
-        expect(keyframesOf(cyberpunk, 'cloudflare-sweep')?.body.replace(/\s+/g, ' ').trim()).toBe('from { left: 0; } to { left: 70%; }');
+    it('slides every band from the start of the track to its end, so it stays inside the track and nothing has to clip the glow', () => {
+        expect(keyframesOf(cyberpunk, 'scan-sweep')?.body.replace(/\s+/g, ' ').trim()).toBe('from { background-position: 0 0; } to { background-position: 100% 0; }');
+        expect(keyframesOf(cyberpunk, 'cloudflare-sweep')).toBeUndefined();
         expect(styleOf(cyberpunk, '.progress--cloudflare')['overflow']).toBeUndefined();
     });
 
@@ -261,7 +415,7 @@ describe('the timeline and the volume of the player', () => {
         const wave = styleOf(cyberpunk, ".progress:not([class*='progress--']) .progress__bar");
         expect(wave['animation']).toBe('bar-wave-flow 1.4s linear infinite');
         expect(wave['background-size']).toBe('160px 100%');
-        expect(styleOf(cyberpunk, '.progress')).toMatchObject({ height: '8px', border: '1px solid var(--line)', overflow: 'visible' });
+        expect(styleOf(cyberpunk, '.progress')).toMatchObject({ height: '14px', border: '1px solid var(--line)', overflow: 'visible', animation: 'bar-pulse 1.6s linear infinite, bar-pulse-count 19.2s linear infinite' });
         expect(cyberpunk.rules.some((rule) => { return rule.media?.includes(REDUCED_MOTION) === true && rule.selector.includes('.player__seek'); })).toBe(false);
     });
 

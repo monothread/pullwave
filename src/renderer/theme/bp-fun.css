@@ -118,8 +118,9 @@
     to { opacity: 1; transform: scaleX(1.3); }
 }
 
+/* The flash comes on top of the pulses of the bar (cyberpunk.css), which go on. */
 .job--done .progress {
-    animation: bp-bar-flash 0.8s ease-out;
+    animation: bp-bar-flash 0.8s ease-out, bar-pulse 1.6s linear infinite, bar-pulse-count 19.2s linear infinite;
 }
 
 @keyframes bp-bar-flash {
@@ -784,9 +785,10 @@ img.cover:not(.cover--loading) {
     animation-timing-function: linear, ease-in-out;
 }
 
+/* The neon of the bar is a filter too (cyberpunk.css): the shine keeps it. */
 @keyframes bp-zone-full {
-    from { filter: brightness(1); }
-    to { filter: brightness(1.5); }
+    from { filter: brightness(1) var(--bar-neon); }
+    to { filter: brightness(1.5) var(--bar-neon); }
 }
 
 /* The auto scroll shows it is going: chevrons run down the button, with the speed beside them. */
@@ -942,9 +944,10 @@ textarea:not(:disabled),
 
 /* --- Things that were in each other's way over the player and the reader ----------------------------------------------------------------- */
 /* The part watched of the timeline starts crisp at the very start of the bar: its glow and the light at its head (which is wider than the bar when
-   the video has only just begun) no longer spill out on the left. */
+   the video has only just begun) no longer spill out on the left. Only the left is cut: on the other sides the cut is beyond the end of the glow,
+   so the glow fades out softly instead of ending in a hard box. */
 .player__timeline .progress__bar {
-    clip-path: inset(-8px -14px -8px 0);
+    clip-path: inset(-40px -40px -40px 0);
 }
 
 /* The notices that come while a video plays (a download that finished) sit at the top of the video, out of the way of the panel of the next episode

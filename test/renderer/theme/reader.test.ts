@@ -50,6 +50,18 @@ describe('a page of the reader whose picture is on its way', () => {
     });
 });
 
+describe('the column of the webtoon', () => {
+    it('is at most 938 pixels wide (the room of the reader on a screen 1080 wide standing up), in the middle, with its border inside and no gap between the pages', () => {
+        expect(styleOf(cyberpunk, '.reader__scroll--webtoon')).toEqual({
+            gap: '0',
+            padding: '0',
+            width: 'min(100%, 938px)',
+            'margin-inline': 'auto',
+            'box-sizing': 'border-box'
+        });
+    });
+});
+
 describe('the reader in fullscreen', () => {
     it('puts the background of the theme behind the pages of the area in fullscreen', () => {
         expect(styleOf(cyberpunk, '.app__main:fullscreen')).toEqual({ background: 'var(--bg)' });

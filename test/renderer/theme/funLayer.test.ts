@@ -167,7 +167,8 @@ describe('bp-fun.css: the bars and the notices', () => {
     });
 
     it('flashes the bar of a download that is done and stamps its badge', () => {
-        expect(styleOf(sheet, '.job--done .progress')).toEqual({ animation: 'bp-bar-flash 0.8s ease-out' });
+        // The flash comes on top of the pulses of the bar, which go on.
+        expect(styleOf(sheet, '.job--done .progress')).toEqual({ animation: 'bp-bar-flash 0.8s ease-out, bar-pulse 1.6s linear infinite, bar-pulse-count 19.2s linear infinite' });
         expect(styleOf(sheet, '.badge--done')).toEqual({ animation: 'bp-stamp 0.55s var(--bp-ease-spring) backwards' });
     });
 
@@ -326,7 +327,16 @@ describe('bp-fun.css: the player', () => {
 
     it('draws what is loaded as a lighter stretch under the part watched, which the mouse goes through', () => {
         expect(styleOf(sheet, '.player__timeline .progress')).toEqual({ position: 'relative' });
-        expect(styleOf(sheet, '.player__buffered')).toMatchObject({ position: 'absolute', left: '0', 'pointer-events': 'none', transition: 'width 0.3s ease' });
+        // From the top to the bottom of the track, so it fills its whole height.
+        expect(styleOf(sheet, '.player__buffered')).toEqual({
+            position: 'absolute',
+            top: '0',
+            bottom: '0',
+            left: '0',
+            background: 'color-mix(in srgb, var(--text) 22%, transparent)',
+            'pointer-events': 'none',
+            transition: 'width 0.3s ease'
+        });
     });
 
     it('opens the settings with a rise and has its lines come one after the other', () => {
@@ -392,6 +402,8 @@ describe('bp-fun.css: the reader', () => {
             'animation-direction': 'normal, alternate',
             'animation-timing-function': 'linear, ease-in-out'
         });
+        // The shine is a filter, like the neon of the bar: it keeps the neon in both of its ends.
+        expect(keyframesOf(sheet, 'bp-zone-full')?.body.replace(/\s+/g, ' ').trim()).toBe('from { filter: brightness(1) var(--bar-neon); } to { filter: brightness(1.5) var(--bar-neon); }');
     });
 
     it('runs chevrons down the button of the auto scroll, each a little after the one before, with the speed beside them', () => {
@@ -480,8 +492,8 @@ describe('bp-fun.css: the pictures of the menu stay in their boxes', () => {
 });
 
 describe('bp-fun.css: what was in the way of something else', () => {
-    it('cuts the part watched of the timeline at the start of the bar, so its glow and the light at its head do not spill out on the left', () => {
-        expect(styleOf(sheet, '.player__timeline .progress__bar')).toEqual({ 'clip-path': 'inset(-8px -14px -8px 0)' });
+    it('cuts the part watched of the timeline only at the start of the bar, so its glow does not spill out on the left and fades out softly on the other sides', () => {
+        expect(styleOf(sheet, '.player__timeline .progress__bar')).toEqual({ 'clip-path': 'inset(-40px -40px -40px 0)' });
     });
 
     it('puts the notices at the top of the video while it plays, away from the panel of the next episode and from the bar, and above the buttons of the reader', () => {

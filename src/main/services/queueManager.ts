@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
 import { isValidHttpUrl } from '@shared/url';
 import { statSync } from 'node:fs';
-import type { AddJobResult, DownloadJob, DownloadError, DownloadInfo, HistoryEntry, PostProcessEvent, ProgressInfo, Settings } from '@shared/types';
+import type { AddJobResult, DownloadJob, DownloadError, DownloadInfo, FormatPart, HistoryEntry, PostProcessEvent, ProgressInfo, Settings } from '@shared/types';
+import { CombinedProgress } from './combinedProgress';
 import type { RunHandle, RunResult } from './ytdlpRunner';
 import { buildYtdlpArgs, type RequestExtras } from './ytdlpArgsBuilder';
 import { translateMain } from './language';
@@ -21,7 +22,8 @@ export interface QueueDependencies {
         onInfo: (info: DownloadInfo) => void,
         onWaiting?: () => void,
         onPostProcess?: (event: PostProcessEvent) => void,
-        onThumbnail?: (address: string) => void
+        onThumbnail?: (address: string) => void,
+        onParts?: (parts: FormatPart[]) => void
     ) => RunHandle;
     // Fetches the picture of each video and keeps it while its download is in the queue; without it the downloads have no picture.
     thumbnails?: Pick<VideoThumbnails, 'load' | 'forget'>;
@@ -91,6 +93,8 @@ function isFinished(job: DownloadJob): boolean {
 export class QueueManager {
     private readonly jobs: DownloadJob[] = [];
     private readonly handles = new Map<string, RunHandle>();
+    // The progress of the whole video of each run whose formats are downloaded one after the other (the video, then the audio).
+    private readonly combined = new Map<string, CombinedProgress>();
     private readonly extras = new Map<string, RequestExtras>();
     private readonly salvaging = new Set<Promise<void>>();
     private readonly livePaths = new Map<string, string>();
@@ -503,6 +507,7 @@ export class QueueManager {
     private launch(job: DownloadJob, settings: Settings, extras: RequestExtras | undefined, resumedPart?: number): void {
         const args = buildYtdlpArgs(job.url, settings, this.deps.defaultDownloadDir, this.deps.resolveFfmpegLocation(settings), { ...extras, resumedPart });
         let wentLive = false;
+        this.combined.delete(job.id);
         const handle = this.deps.startRun(
             this.deps.resolveYtdlpPath(settings),
             args,
@@ -524,12 +529,16 @@ export class QueueManager {
             },
             (address) => {
                 this.applyThumbnail(job, address);
+            },
+            (parts) => {
+                this.applyParts(job, parts);
             }
         );
         this.handles.set(job.id, handle);
         void handle.result.then((result) => {
             if (this.handles.get(job.id) === handle) {
                 this.handles.delete(job.id);
+                this.combined.delete(job.id);
             }
             job.postProcess = null;
             if (result.status === 'cancelled' && this.pauseRequested.delete(job.id)) {
@@ -725,6 +734,15 @@ export class QueueManager {
         }
     }
 
+    // Each video of a run announces its formats before it starts: the progress of a video in parts is counted as a whole from then on.
+    private applyParts(job: DownloadJob, parts: FormatPart[]): void {
+        if (parts.length > 1) {
+            this.combined.set(job.id, new CombinedProgress(parts));
+        } else {
+            this.combined.delete(job.id);
+        }
+    }
+
     private applyProgress(job: DownloadJob, progress: ProgressInfo): void {
         job.live = job.live || progress.live;
         job.waitingForLive = false;
@@ -733,7 +751,7 @@ export class QueueManager {
         if (!this.tickers.has(job.id)) {
             job.elapsedSeconds = progress.elapsedSeconds ?? job.elapsedSeconds;
         }
-        job.percent = progress.percent;
+        job.percent = this.combined.get(job.id)?.percentOf(progress) ?? progress.percent;
         job.speed = progress.speed;
         job.eta = progress.eta;
         job.title = progress.title.length > 0 ? progress.title : job.title;

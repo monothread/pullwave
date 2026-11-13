@@ -1,11 +1,22 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { ErrorDetails } from '@shared/errorDetails';
-import type { DownloadError, DownloadInfo, LiveStreamInfo, PostProcessEvent, ProgressInfo } from '@shared/types';
+import type { DownloadError, DownloadInfo, FormatPart, LiveStreamInfo, PostProcessEvent, ProgressInfo } from '@shared/types';
 import { commandLine } from './errorDetails';
 import { mapDownloadError, mapSpawnError } from './errorMapper';
 import { processLogs, type LogWriter } from './logHub';
 import { killProcessTree, type GroupKill, type TaskkillSpawn } from './processTree';
-import { isWaitLine, parseFileLine, parseInfoLine, parsePostProcessLine, parseProgressLine, parseStreamLine, parseThumbnailLine, POSTPROCESS_PREFIX } from './progressParser';
+import {
+    isWaitLine,
+    parseFileLine,
+    parseFormatPartsLine,
+    parseInfoLine,
+    parsePostProcessLine,
+    parseProgressLine,
+    parseStreamLine,
+    parseThumbnailLine,
+    POSTPROCESS_PREFIX,
+    STREAM_PREFIX
+} from './progressParser';
 
 // After yt-dlp exits its pipes may still be held open by a process it started (an ffmpeg left behind), which would keep
 // the download "running" forever: the result is given anyway once this time has passed.
@@ -39,6 +50,9 @@ export interface RunOptions {
     onInfo?: (info: DownloadInfo) => void;
     // Where the stream about to be downloaded can be fetched from (printed right after the info).
     onStream?: (stream: LiveStreamInfo) => void;
+    // The formats about to be downloaded one after the other for a video (the video and the audio when they are apart), printed with the
+    // stream before each video; empty when the video is a single format.
+    onParts?: (parts: FormatPart[]) => void;
     // The address of the picture of the video about to be downloaded (only when the site gives one).
     onThumbnail?: (address: string) => void;
     // yt-dlp is waiting for a scheduled live stream to start.
@@ -113,6 +127,9 @@ export function runYtdlp(options: RunOptions): RunHandle {
         if (info) {
             options.onInfo?.(info);
             return;
+        }
+        if (line.startsWith(STREAM_PREFIX)) {
+            options.onParts?.(parseFormatPartsLine(line) ?? []);
         }
         const stream = parseStreamLine(line);
         if (stream) {

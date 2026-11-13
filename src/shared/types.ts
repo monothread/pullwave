@@ -265,6 +265,7 @@ export interface DownloadJob {
 }
 
 export interface ProgressInfo {
+    // How far the part being downloaded is (the video and the audio that are apart are two parts, each from 0 to 100).
     percent: number;
     speed: string;
     eta: string;
@@ -272,6 +273,16 @@ export interface ProgressInfo {
     downloadedBytes: number | null;
     elapsedSeconds: number | null;
     live: boolean;
+    // The format of the part being downloaded ('' when yt-dlp does not say) and its whole size (null when it is not known).
+    formatId: string;
+    partBytes: number | null;
+}
+
+// One of the formats yt-dlp downloads one after the other for a video (the video and the audio when they are apart), with the size it
+// expects for it (null when the site does not give one).
+export interface FormatPart {
+    formatId: string;
+    expectedBytes: number | null;
 }
 
 // yt-dlp reports when each post-processor (the steps that run after the bytes are downloaded) starts and finishes.

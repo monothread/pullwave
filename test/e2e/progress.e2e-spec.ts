@@ -38,12 +38,24 @@ interface BarProbe {
     animation: string;
     playState: string;
     moves: boolean;
+    // The drop shadows of the neon, whether they are in the colour of the state, and whether the bar has a box shadow left.
     layers: number;
     glow: boolean;
+    boxShadow: string;
     overflow: string;
-    // The same for the line that sweeps over the track (the ::after), when there is one.
-    sweep: { animation: string; moves: boolean } | null;
+    // The track: its height and the animation that moves the pulse.
+    trackHeight: string;
+    trackAnimation: string;
+    // The fill of the bar (its ::before): cut by the pulse over the thin band, the size of each, and whether the pulse moved between two looks at it.
+    pulse: { masks: number; size: string; moves: boolean };
+    // The same for the line that sweeps over the track (the ::after), when there is one, and whether it swells in step with the bar.
+    sweep: { animation: string; moves: boolean; inStep: boolean } | null;
 }
+
+const BARS = ['plain', 'live', 'verify', 'waiting', 'processing', 'saving', 'merging', 'cloudflare', 'done', 'error'] as const;
+
+// The train of pulses and the band, the train in a tile of 192px, and the train moving.
+const PULSE = { masks: 2, size: '192px 100%, 100% 100%', moves: true };
 
 interface Probes {
     plain: BarProbe;
@@ -56,7 +68,7 @@ interface Probes {
     cloudflare: BarProbe;
     done: BarProbe;
     error: BarProbe;
-    timeline: { layers: number; glow: boolean; sliderShadow: string };
+    timeline: { layers: number; glow: boolean; sliderShadow: string; clip: string; buffered: { masks: number; height: number; trackInside: number } };
     volume: { layers: number; glow: boolean };
 }
 
@@ -94,6 +106,13 @@ async function probeBars(target: Page): Promise<Probes> {
             }
             return layers;
         };
+        const dropShadowsOf = (filter: string): number => {
+            return (filter.match(/drop-shadow\(/g) ?? []).length;
+        };
+        // The layers of the mask (a picture or a gradient each), counted like the layers of a shadow.
+        const masksOf = (element: Element, pseudo: string | null): number => {
+            return layersOf(getComputedStyle(element, pseudo).maskImage);
+        };
         const wait = (milliseconds: number): Promise<void> => {
             return new Promise((resolve) => {
                 setTimeout(resolve, milliseconds);
@@ -112,12 +131,20 @@ async function probeBars(target: Page): Promise<Probes> {
             host.append(wrapper);
             mounted[kind] = { track: wrapper.querySelector('.progress')!, bar: wrapper.querySelector('.progress__bar')! };
         });
+        // The animations start at the first frame drawn after the bars are in the page, which may come late on a busy machine.
+        await new Promise((resolve) => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(resolve);
+            });
+        });
         const MOVING: Record<string, string> = { plain: 'background-position-x', live: 'background-position-x', cloudflare: 'background-position-x' };
         const before: Record<string, string> = {};
         const sweepBefore: Record<string, string> = {};
+        const pulseBefore: Record<string, string> = {};
         Object.entries(mounted).forEach(([kind, { track, bar }]) => {
             before[kind] = position(bar, null, MOVING[kind] ?? 'width');
-            sweepBefore[kind] = position(track, '::after', 'left');
+            sweepBefore[kind] = position(track, '::after', 'background-position-x');
+            pulseBefore[kind] = position(bar, '::before', 'mask-position');
         });
         await wait(450);
         const probes: Record<string, BarProbe> = {};
@@ -126,14 +153,25 @@ async function probeBars(target: Page): Promise<Probes> {
             const after = getComputedStyle(track, '::after');
             const hasSweep = after.content !== 'none' && after.content !== 'normal';
             const glowVariable = kind === 'live' || kind === 'error' ? '--red' : kind === 'done' || kind === 'merging' ? '--green' : kind === 'verify' ? '--yellow' : kind === 'waiting' || kind === 'processing' ? '--magenta' : '--cyan';
+            const fill = getComputedStyle(bar, '::before');
             probes[kind] = {
                 animation: style.animationName,
                 playState: style.animationPlayState,
                 moves: position(bar, null, MOVING[kind] ?? 'width') !== before[kind],
-                layers: layersOf(style.boxShadow),
-                glow: style.boxShadow.includes(colourOf(glowVariable)),
+                layers: dropShadowsOf(style.filter),
+                glow: style.filter.includes(colourOf(glowVariable)),
+                boxShadow: style.boxShadow,
                 overflow: getComputedStyle(track).overflow,
-                sweep: hasSweep ? { animation: after.animationName, moves: position(track, '::after', 'left') !== sweepBefore[kind] } : null
+                trackHeight: getComputedStyle(track).height,
+                trackAnimation: getComputedStyle(track).animationName,
+                pulse: { masks: masksOf(bar, '::before'), size: fill.maskSize, moves: fill.maskPosition !== pulseBefore[kind] },
+                sweep: hasSweep
+                    ? {
+                        animation: after.animationName,
+                        moves: position(track, '::after', 'background-position-x') !== sweepBefore[kind],
+                        inStep: masksOf(track, '::after') === 2 && after.maskPosition === fill.maskPosition
+                    }
+                    : null
             };
         });
         const range = (cssClass: string): { layers: number; glow: boolean } => {
@@ -147,10 +185,18 @@ async function probeBars(target: Page): Promise<Probes> {
         // The timeline of the player is the bar of a download with a transparent slider over it: the glow is the one of the bar.
         const timelineBox = document.createElement('div');
         timelineBox.className = 'player__timeline';
-        timelineBox.innerHTML = '<div class="progress"><div class="progress__bar" style="width: 40%"></div></div><input type="range" class="player__range player__seek">';
+        timelineBox.innerHTML = '<div class="progress"><div class="player__buffered" style="width: 70%"></div><div class="progress__bar" style="width: 40%"></div></div><input type="range" class="player__range player__seek">';
         host.append(timelineBox);
-        const timelineShadow = getComputedStyle(timelineBox.querySelector('.progress__bar')!).boxShadow;
-        const timeline = { layers: layersOf(timelineShadow), glow: timelineShadow.includes(colourOf('--cyan')), sliderShadow: getComputedStyle(timelineBox.querySelector('.player__seek')!).boxShadow };
+        const timelineBar = timelineBox.querySelector('.progress__bar')!;
+        const timelineStyle = getComputedStyle(timelineBar);
+        const buffered = timelineBox.querySelector('.player__buffered')!;
+        const timeline = {
+            layers: dropShadowsOf(timelineStyle.filter),
+            glow: timelineStyle.filter.includes(colourOf('--cyan')),
+            sliderShadow: getComputedStyle(timelineBox.querySelector('.player__seek')!).boxShadow,
+            clip: timelineStyle.clipPath,
+            buffered: { masks: masksOf(buffered, null), height: buffered.getBoundingClientRect().height, trackInside: timelineBox.querySelector('.progress')!.clientHeight }
+        };
         const volume = range('player__range player__volume');
         host.remove();
         return { ...probes, timeline, volume } as unknown as Probes;
@@ -165,14 +211,14 @@ for (const theme of THEMES) {
 
         test('every bar glows like neon, in the colour of its state, and the glow is not clipped by the track', async () => {
             const probes = await probeBars(page);
-            const bars: Array<keyof Omit<Probes, 'timeline' | 'volume'>> = ['plain', 'live', 'verify', 'waiting', 'processing', 'saving', 'merging', 'cloudflare', 'done', 'error'];
-            bars.forEach((kind) => {
-                // A bright core, a close halo and wider soft ones: five layers of shadow, in the colour of the state.
-                expect(probes[kind].layers, `${kind} layers`).toBe(5);
+            BARS.forEach((kind) => {
+                // A bright rim, a close halo and wider soft ones: four drop shadows that follow the wave, in the colour of the state, and no box shadow.
+                expect(probes[kind].layers, `${kind} layers`).toBe(4);
                 expect(probes[kind].glow, `${kind} glow colour`).toBe(true);
+                expect(probes[kind].boxShadow, `${kind} box shadow`).toBe('none');
                 expect(probes[kind].overflow, `${kind} track`).toBe('visible');
             });
-            expect(probes.timeline).toEqual({ layers: 5, glow: true, sliderShadow: 'none' });
+            expect(probes.timeline).toEqual({ layers: 4, glow: true, sliderShadow: 'none', clip: 'inset(-40px -40px -40px 0px)', buffered: { masks: 0, height: 12, trackInside: 12 } });
             expect(probes.volume.layers).toBe(3);
             expect(probes.volume.glow).toBe(true);
         });
@@ -182,13 +228,60 @@ for (const theme of THEMES) {
             expect(probes.plain).toMatchObject({ animation: 'bar-wave-flow', playState: 'running', moves: true, sweep: null });
             expect(probes.live).toMatchObject({ animation: 'live-stripes', playState: 'running', moves: true, sweep: null });
             expect(probes.cloudflare).toMatchObject({ animation: 'bar-wave-flow', playState: 'running', moves: true });
-            expect(probes.cloudflare.sweep).toEqual({ animation: 'cloudflare-sweep', moves: true });
+            expect(probes.cloudflare.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
             expect(probes.verify).toMatchObject({ animation: 'verify-drain', playState: 'running' });
-            expect(probes.verify.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.waiting.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.processing.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.saving.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.merging.sweep).toEqual({ animation: 'scan-sweep', moves: true });
+            expect(probes.verify.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.waiting.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.processing.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.saving.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.merging.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+        });
+
+        test('a train of pulses runs along every bar, over its thin band, in a track as tall as the pulses', async () => {
+            const probes = await probeBars(page);
+            BARS.forEach((kind) => {
+                expect(probes[kind].trackHeight, `${kind} track height`).toBe('14px');
+                expect(probes[kind].trackAnimation, `${kind} track animation`).toBe(kind === 'done' ? 'bp-bar-flash, bar-pulse, bar-pulse-count' : 'bar-pulse, bar-pulse-count');
+                expect(probes[kind].pulse, `${kind} pulse`).toEqual(PULSE);
+            });
+        });
+
+        test('the number of pulses of a bar changes from one round to the next', async () => {
+            const trains = await page.evaluate(async () => {
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'position: fixed; left: 20px; top: 20px; width: 400px; z-index: 9999';
+                wrapper.innerHTML = '<div class="progress"><div class="progress__bar" style="width: 60%"></div></div>';
+                document.body.append(wrapper);
+                const bar = wrapper.querySelector('.progress__bar')!;
+                // The number of swells of a train is the number of its slots that rise from the band (a point at the middle of each).
+                const swellsOf = (): number => {
+                    const image = getComputedStyle(bar, '::before').maskImage;
+                    return [50, 100, 150, 200, 250, 300, 350].filter((x) => {
+                        const point = new RegExp(`L${String(x)} ([\\d.]+)L`).exec(image);
+                        return point !== null && Number(point[1]) < 30;
+                    }).length;
+                };
+                const wait = (milliseconds: number): Promise<void> => {
+                    return new Promise((resolve) => {
+                        setTimeout(resolve, milliseconds);
+                    });
+                };
+                // The rounds take 1.6s from the first frame drawn: the number is read in the middle of the first round and of the second.
+                await new Promise((resolve) => {
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(resolve);
+                    });
+                });
+                await wait(800);
+                const first = swellsOf();
+                await wait(1600);
+                const second = swellsOf();
+                wrapper.remove();
+                return { first, second };
+            });
+            expect([1, 2, 3, 4]).toContain(trains.first);
+            expect([1, 2, 3, 4]).toContain(trains.second);
+            expect(trains.second).not.toBe(trains.first);
         });
 
         test('the bar of a finished download or of a failed one stands still', async () => {
@@ -203,13 +296,14 @@ for (const theme of THEMES) {
             expect(probes.plain).toMatchObject({ animation: 'bar-wave-flow', moves: true });
             expect(probes.cloudflare).toMatchObject({ animation: 'bar-wave-flow', moves: true });
             expect(probes.live).toMatchObject({ animation: 'live-stripes', moves: true });
-            expect(probes.verify.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.waiting.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.processing.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.saving.sweep).toEqual({ animation: 'scan-sweep', moves: true });
-            expect(probes.merging.sweep).toEqual({ animation: 'scan-sweep', moves: true });
+            expect(probes.verify.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.waiting.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.processing.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.saving.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
+            expect(probes.merging.sweep).toEqual({ animation: 'scan-sweep', moves: true, inStep: true });
             expect(probes.plain.glow).toBe(true);
-            expect(probes.plain.layers).toBe(5);
+            expect(probes.plain.layers).toBe(4);
+            expect(probes.plain.pulse).toEqual(PULSE);
         });
     });
 }

@@ -78,7 +78,7 @@ describe('runYtdlp', () => {
 
     it('reports progress and resolves done with the file path', async () => {
         const { fake, progress, run } = start();
-        fake.stdout.write('CYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|Title\nCYBERPROG| 100.0%|2MiB/s|00:00|2000|3.5|False|Title\n');
+        fake.stdout.write('CYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|137|9000|Title\nCYBERPROG| 100.0%|2MiB/s|00:00|2000|3.5|False|140|2000|Title\n');
         fake.stdout.write('CYBERFILE|/d/Title [id].mp4\n');
         await new Promise((resolve) => {
             setImmediate(resolve);
@@ -86,8 +86,8 @@ describe('runYtdlp', () => {
         fake.emitter.emit('close', 0);
         await expect(run.result).resolves.toEqual({ status: 'done', filePath: '/d/Title [id].mp4' });
         expect(progress).toEqual([
-            { percent: 10, speed: '1MiB/s', eta: '00:09', title: 'Title', downloadedBytes: 1000, elapsedSeconds: 1.5, live: false },
-            { percent: 100, speed: '2MiB/s', eta: '00:00', title: 'Title', downloadedBytes: 2000, elapsedSeconds: 3.5, live: false }
+            { percent: 10, speed: '1MiB/s', eta: '00:09', title: 'Title', downloadedBytes: 1000, elapsedSeconds: 1.5, live: false, formatId: '137', partBytes: 9000 },
+            { percent: 100, speed: '2MiB/s', eta: '00:00', title: 'Title', downloadedBytes: 2000, elapsedSeconds: 3.5, live: false, formatId: '140', partBytes: 2000 }
         ]);
     });
 
@@ -119,6 +119,45 @@ describe('runYtdlp', () => {
             live: true,
             sources: [{ url: 'https://cdn.test/live.m3u8', protocol: 'm3u8_native', headers: { Referer: 'https://site.test/' } }]
         });
+        fake.emitter.emit('close', 0);
+        await expect(run.result).resolves.toEqual({ status: 'done', filePath: null });
+    });
+
+    it('tells the formats of each video that are downloaded one after the other, and that a video of a single format has none', async () => {
+        const fake = createFakeChild();
+        const onParts = vi.fn();
+        const onStream = vi.fn();
+        const run = runYtdlp({
+            binary: 'yt-dlp',
+            args: [],
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: vi.fn(),
+            onStream,
+            onParts
+        });
+        const formats = [
+            { format_id: '137', url: 'https://cdn.test/v.mp4', protocol: 'https', filesize: 900 },
+            { format_id: '140', url: 'https://cdn.test/a.m4a', protocol: 'https', filesize_approx: 100 }
+        ];
+        fake.stdout.write(`CYBERSTREAM|${JSON.stringify({ is_live: false, protocol: 'https+https', requested_formats: formats })}\n`);
+        fake.stdout.write(`CYBERSTREAM|${JSON.stringify({ is_live: false, url: 'https://cdn.test/single.mp4', protocol: 'https', format_id: '18' })}\n`);
+        fake.stdout.write('CYBERSTREAM|{broken\n');
+        fake.stdout.write('CYBERINFO|False|/d/v.mp4\n');
+        await new Promise((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(onParts.mock.calls).toEqual([
+            [[{ formatId: '137', expectedBytes: 900 }, { formatId: '140', expectedBytes: 100 }]],
+            [[]],
+            [[]]
+        ]);
+        // The same line still tells where the stream can be fetched from.
+        expect(onStream.mock.calls).toEqual([
+            [{ live: false, sources: [{ url: 'https://cdn.test/v.mp4', protocol: 'https', headers: {} }, { url: 'https://cdn.test/a.m4a', protocol: 'https', headers: {} }] }],
+            [{ live: false, sources: [{ url: 'https://cdn.test/single.mp4', protocol: 'https', headers: {} }] }]
+        ]);
         fake.emitter.emit('close', 0);
         await expect(run.result).resolves.toEqual({ status: 'done', filePath: null });
     });
@@ -215,7 +254,7 @@ describe('runYtdlp', () => {
                 events.push(event);
             }
         });
-        fake.stdout.write('CYBERPROG|100.0%|6.61MiB/s|NA|26225|0.003|NA|sample\nCYBERPP|started|ExtractAudio\nCYBERPP|fini');
+        fake.stdout.write('CYBERPROG|100.0%|6.61MiB/s|NA|26225|0.003|NA|251|26225|sample\nCYBERPP|started|ExtractAudio\nCYBERPP|fini');
         fake.stdout.write('shed|ExtractAudio\nCYBERPP|started|MoveFiles\nCYBERPP|finished|MoveFiles\nCYBERFILE|/d/sample [sample].mp3\n');
         await new Promise((resolve) => {
             setImmediate(resolve);
@@ -248,7 +287,7 @@ describe('runYtdlp', () => {
                 events.push(event);
             }
         });
-        fake.stdout.write('CYBERPROG|100.0%|6.61MiB/s|NA|26225|0.003|NA|sample\n');
+        fake.stdout.write('CYBERPROG|100.0%|6.61MiB/s|NA|26225|0.003|NA|251|26225|sample\n');
         fake.stderr.write('CYBERPP|started|ExtractAudio\nCYBERPP|fini');
         fake.stderr.write('shed|ExtractAudio\r\nCYBERPP|started|MoveFiles\nCYBERPP|finished|MoveFiles\n');
         fake.stdout.write('CYBERFILE|/d/sample [sample].mp3\n');
@@ -403,7 +442,7 @@ describe('runYtdlp', () => {
 
     it('reports the start of each download, telling whether it is live and where the file goes', async () => {
         const { fake, progress, infos, run } = start();
-        fake.stdout.write('CYBERINFO|True|/d/Live [x].mp4\nCYBERPROG|NA|1MiB/s|NA|10|1.0|True|Live\n');
+        fake.stdout.write('CYBERINFO|True|/d/Live [x].mp4\nCYBERPROG|NA|1MiB/s|NA|10|1.0|True|301|NA|Live\n');
         await new Promise((resolve) => {
             setImmediate(resolve);
         });
@@ -502,7 +541,7 @@ describe('runYtdlp log', () => {
 
     it('writes the progress lines as progress and every other line of both outputs as lines, then the code it ended with', async () => {
         const { fake, calls, run } = startLogged([]);
-        fake.stdout.write('[youtube] Extracting URL: https://x.com/v\nCYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|Title\n');
+        fake.stdout.write('[youtube] Extracting URL: https://x.com/v\nCYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|137|9000|Title\n');
         fake.stderr.write('WARNING: [youtube] Falling back\n');
         fake.stdout.write('CYBERFILE|/d/Title [id].mp4\n');
         await flushed();
@@ -512,7 +551,7 @@ describe('runYtdlp log', () => {
         expect(calls).toEqual([
             { method: 'command', program: '/bin/yt-dlp', args: [] },
             { method: 'line', stream: 'stdout', text: '[youtube] Extracting URL: https://x.com/v' },
-            { method: 'progress', stream: 'stdout', text: 'CYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|Title' },
+            { method: 'progress', stream: 'stdout', text: 'CYBERPROG|  10.0%|1MiB/s|00:09|1000|1.5|False|137|9000|Title' },
             { method: 'line', stream: 'stderr', text: 'WARNING: [youtube] Falling back' },
             { method: 'line', stream: 'stdout', text: 'CYBERFILE|/d/Title [id].mp4' },
             { method: 'exit', code: 0, signal: null }

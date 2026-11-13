@@ -81,7 +81,7 @@
 }
 
 .download-hero__bar.progress {
-    height: 12px;
+    height: 14px;
     border-radius: var(--bp-radius-pill);
 }
 

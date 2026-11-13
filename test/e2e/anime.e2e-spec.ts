@@ -796,7 +796,8 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
                 barAnimationName: barStyle.animationName,
                 barAnimationDuration: barStyle.animationDuration,
                 barAnimationPlayState: barStyle.animationPlayState,
-                barHasGlow: barStyle.boxShadow !== 'none' && barStyle.boxShadow.includes('rgb'),
+                barHasGlow: barStyle.filter.startsWith('drop-shadow(') && barStyle.filter.includes('rgb'),
+                barBoxShadow: barStyle.boxShadow,
                 trackHeight: trackStyle.height,
                 trackBorder: trackStyle.borderTopWidth,
                 trackStyle: trackStyle.borderTopStyle,
@@ -809,7 +810,7 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
     };
 
     const playing = await timeline('true');
-    // The timeline is the bar of a download under a transparent slider: 8px with a 1px line, the fill as wide as what was watched, the wave of colours flowing and the neon glow of every bar.
+    // The timeline is the bar of a download under a transparent slider: 14px with a 1px line, the fill as wide as what was watched, the wave of colours flowing and the neon glow of every bar.
     expect(playing).toEqual({
         barWidthRatio: 40,
         barBackgroundSize: '160px 100%',
@@ -817,7 +818,8 @@ test(`in fullscreen, in the ${theme} theme, the controls float over the video an
         barAnimationDuration: '1.4s',
         barAnimationPlayState: 'running',
         barHasGlow: true,
-        trackHeight: '8px',
+        barBoxShadow: 'none',
+        trackHeight: '14px',
         trackBorder: '1px',
         trackStyle: 'solid',
         sliderBackground: 'rgba(0, 0, 0, 0)',
@@ -2274,13 +2276,13 @@ test.describe('the next episode that starts by itself, and the icons of the play
         expect(boxes.toast.bottom).toBeLessThan(boxes.panel.top);
     });
 
-    test('starts the part watched of the timeline crisp at the start of the bar, with nothing of its glow out on the left', async () => {
+    test('starts the part watched of the timeline crisp at the start of the bar, with nothing of its glow out on the left and no hard box around it', async () => {
         const { page } = session;
         const dialog = await playFirstOfTwo(page);
         const clip = await dialog.locator('.player__timeline .progress__bar').evaluate((bar) => {
             return getComputedStyle(bar).clipPath;
         });
-        expect(clip).toBe('inset(-8px -14px -8px 0px)');
+        expect(clip).toBe('inset(-40px -40px -40px 0px)');
     });
 
     test('is turned off in the settings of the player, and stays off when the app opens again', async () => {

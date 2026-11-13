@@ -1184,7 +1184,7 @@ test.describe('manga section', () => {
         const reader = session.page.getByRole('region', { name: 'Reader' });
         const bar = reader.getByRole('progressbar', { name: 'Reading progress' });
         await expect(bar).toHaveAttribute('aria-valuenow', '33');
-        await expect(bar.locator('.progress__bar')).toHaveCSS('box-shadow', /rgb/);
+        await expect(bar.locator('.progress__bar')).toHaveCSS('filter', /^drop-shadow\(.*rgb/);
         await session.page.keyboard.press('ArrowRight');
         await expect(reader.getByText('2 / 3')).toBeVisible();
         await expect(bar).toHaveAttribute('aria-valuenow', '67');
@@ -1338,9 +1338,10 @@ test.describe('manga section', () => {
         const bar = session.page.getByTestId('manga-job').first().locator('.progress__bar');
         await expect(bar).toBeVisible();
         await expect(bar).toHaveClass(/progress__bar--smooth/);
-        // The glow comes out of the bar, in the colour of the theme, and a wave flows through it.
+        // The glow comes out of the bar, in the colour of the theme, around the swell of the wave that flows through it.
         await expect(bar).toHaveCSS('animation-name', 'bar-wave-flow');
-        await expect(bar).toHaveCSS('box-shadow', /rgb.*rgb.*rgb/);
+        await expect(bar).toHaveCSS('filter', /^drop-shadow\(.*rgb.*drop-shadow\(.*rgb.*drop-shadow\(.*rgb/);
+        await expect(bar).toHaveCSS('box-shadow', 'none');
         await expect(session.page.locator('.progress').first()).toHaveCSS('overflow', 'visible');
 
         // A chapter has three pages, so the real value moves in three steps; the bar goes through many values between them, never back.
@@ -2729,22 +2730,23 @@ test.describe('manga section', () => {
         });
     }
 
-    test('keeps the webtoon in a column of at most 900 pixels in the middle, standing up and lying down, and as wide as the room when there is less', async () => {
+    test('keeps the webtoon in a column of at most 938 pixels in the middle, standing up and lying down, and as wide as the room when there is less', async () => {
         const { reader } = await openWebtoon();
         const column = reader.getByTestId('reader-scroll');
         await expect(column).toHaveClass(/reader__scroll--webtoon/);
 
-        // Standing up (1080 wide): the room is wider than 900, so the column stops at 900 and has the same room on both sides.
+        // Standing up (1080 wide): the room is 938, the cap itself, so the column takes the whole room, as wide as the bar of the reader above it.
         const standing = await webtoonColumnLayout(reader);
-        expect(standing.roomWidth).toBeGreaterThan(900);
-        expect(standing.columnWidth).toBe(900);
-        // The border of the column (1 pixel on each side) is inside the 900: the pages fill what is left.
-        expect(standing.columnInnerWidth).toBe(898);
-        expect(Math.abs(standing.leftGap - standing.rightGap)).toBeLessThanOrEqual(1);
-        expect(standing.leftGap).toBeGreaterThan(0);
-        expect(standing.pageWidths).toEqual([898, 898, 898, 898]);
+        expect(standing.roomWidth).toBe(938);
+        expect(standing.columnWidth).toBe(938);
+        expect(standing.columnWidth).toBe(await reader.locator('.reader__bar').evaluate((bar) => { return bar.getBoundingClientRect().width; }));
+        // The border of the column (1 pixel on each side) is inside the 938: the pages fill what is left.
+        expect(standing.columnInnerWidth).toBe(936);
+        expect(standing.leftGap).toBe(0);
+        expect(standing.rightGap).toBe(0);
+        expect(standing.pageWidths).toEqual([936, 936, 936, 936]);
 
-        // Lying down (1920x1080): far more room, the same column of 900 in the middle.
+        // Lying down (1920x1080): far more room, the same column of 938 in the middle.
         await session.page.setViewportSize({ width: 1920, height: 1080 });
         await expect
             .poll(async () => {
@@ -2752,19 +2754,19 @@ test.describe('manga section', () => {
             })
             .toBeGreaterThan(standing.roomWidth);
         const lying = await webtoonColumnLayout(reader);
-        expect(lying.columnWidth).toBe(900);
-        expect(lying.columnInnerWidth).toBe(898);
+        expect(lying.columnWidth).toBe(938);
+        expect(lying.columnInnerWidth).toBe(936);
         expect(Math.abs(lying.leftGap - lying.rightGap)).toBeLessThanOrEqual(1);
-        expect(lying.leftGap).toBeGreaterThan(standing.leftGap);
-        expect(lying.pageWidths).toEqual([898, 898, 898, 898]);
+        expect(lying.leftGap).toBeGreaterThan(0);
+        expect(lying.pageWidths).toEqual([936, 936, 936, 936]);
 
-        // A narrow window (700 wide): the room is less than 900, so the column takes all of it and goes no further.
+        // A narrow window (700 wide): the room is less than 938, so the column takes all of it and goes no further.
         await session.page.setViewportSize({ width: 700, height: 1080 });
         await expect
             .poll(async () => {
                 return (await webtoonColumnLayout(reader)).roomWidth;
             })
-            .toBeLessThan(900);
+            .toBeLessThan(938);
         const narrow = await webtoonColumnLayout(reader);
         expect(narrow.columnWidth).toBe(narrow.roomWidth);
         expect(narrow.leftGap).toBe(0);

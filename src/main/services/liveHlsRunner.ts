@@ -79,7 +79,9 @@ export function runYtdlpLiveAware(options: LiveAwareRunOptions): RunHandle {
                     title: '',
                     downloadedBytes: progress.downloadedBytes,
                     elapsedSeconds: progress.elapsedSeconds,
-                    live: true
+                    live: true,
+                    formatId: '',
+                    partBytes: null
                 });
             }
         });

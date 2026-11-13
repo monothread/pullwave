@@ -10,6 +10,7 @@ import {
     POSTPROCESS_TEMPLATE,
     PROGRESS_TEMPLATE,
     parseFileLine,
+    parseFormatPartsLine,
     parseInfoLine,
     parsePostProcessLine,
     parseProgressLine,
@@ -24,7 +25,7 @@ import {
 describe('progress templates', () => {
     it('exposes the yt-dlp progress template', () => {
         expect(PROGRESS_TEMPLATE).toBe(
-            'download:CYBERPROG|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress.downloaded_bytes)s|%(progress.elapsed)s|%(info.is_live)s|%(info.title)s'
+            'download:CYBERPROG|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress.downloaded_bytes)s|%(progress.elapsed)s|%(info.is_live)s|%(info.format_id)s|%(progress.total_bytes,progress.total_bytes_estimate)s|%(info.title)s'
         );
     });
 
@@ -145,57 +146,157 @@ describe('parseStreamLine', () => {
 });
 
 describe('parseProgressLine', () => {
-    it('parses a complete progress line', () => {
-        expect(parseProgressLine(`${PROGRESS_PREFIX}  14.2%|   4.84MiB/s|00:12|1048576|3.5|False|Me at the zoo`)).toEqual({
+    it('parses a complete progress line, with the format of the part being downloaded and its whole size', () => {
+        expect(parseProgressLine(`${PROGRESS_PREFIX}  14.2%|   4.84MiB/s|00:12|1048576|3.5|False|137|7384510|Me at the zoo`)).toEqual({
             percent: 14.2,
             speed: '4.84MiB/s',
             eta: '00:12',
             title: 'Me at the zoo',
             downloadedBytes: 1048576,
             elapsedSeconds: 3.5,
-            live: false
+            live: false,
+            formatId: '137',
+            partBytes: 7384510
+        });
+    });
+
+    it('reads the line yt-dlp prints for the audio after the video (taken from a real run)', () => {
+        expect(parseProgressLine(`${PROGRESS_PREFIX}  0.9%|1.00MiB/s|00:00|3072|0.01|NA|140|323765|Check`)).toEqual({
+            percent: 0.9,
+            speed: '1.00MiB/s',
+            eta: '00:00',
+            title: 'Check',
+            downloadedBytes: 3072,
+            elapsedSeconds: 0.01,
+            live: false,
+            formatId: '140',
+            partBytes: 323765
         });
     });
 
     it('recognises a live stream', () => {
-        expect(parseProgressLine(`${PROGRESS_PREFIX}100.0%|39.46KiB/s|NA|648600|16.05|True|index 2026`)).toEqual({
+        expect(parseProgressLine(`${PROGRESS_PREFIX}100.0%|39.46KiB/s|NA|648600|16.05|True|301|NA|index 2026`)).toEqual({
             percent: 100,
             speed: '39.46KiB/s',
             eta: '',
             title: 'index 2026',
             downloadedBytes: 648600,
             elapsedSeconds: 16.05,
-            live: true
+            live: true,
+            formatId: '301',
+            partBytes: null
         });
     });
 
     it.each(['False', 'None', 'NA', ''])('does not treat is_live=%s as live', (value) => {
-        expect(parseProgressLine(`${PROGRESS_PREFIX}1.0%|1MiB/s|00:01|10|1|${value}|T`)?.live).toBe(false);
+        expect(parseProgressLine(`${PROGRESS_PREFIX}1.0%|1MiB/s|00:01|10|1|${value}|18|10|T`)?.live).toBe(false);
     });
 
     it('keeps pipes inside the title', () => {
-        expect(parseProgressLine(`${PROGRESS_PREFIX}50.0%|1MiB/s|00:01|10|1|False|A | B | C`)?.title).toBe('A | B | C');
+        expect(parseProgressLine(`${PROGRESS_PREFIX}50.0%|1MiB/s|00:01|10|1|False|18|20|A | B | C`)?.title).toBe('A | B | C');
     });
 
     it('turns NA and Unknown values into empty strings or null numbers', () => {
-        expect(parseProgressLine(`${PROGRESS_PREFIX}100.0%|Unknown B/s|NA|NA|NA|None|Title`)).toEqual({
+        expect(parseProgressLine(`${PROGRESS_PREFIX}100.0%|Unknown B/s|NA|NA|NA|None|NA|NA|Title`)).toEqual({
             percent: 100,
             speed: '',
             eta: '',
             title: 'Title',
             downloadedBytes: null,
             elapsedSeconds: null,
-            live: false
+            live: false,
+            formatId: '',
+            partBytes: null
         });
     });
 
+    it('reads a size that yt-dlp only estimates (a decimal number of bytes)', () => {
+        expect(parseProgressLine(`${PROGRESS_PREFIX}5.0%|1MiB/s|00:10|512|1|False|hls-1080|10240.5|T`)?.partBytes).toBe(10240.5);
+    });
+
     it('uses zero when the percentage is not numeric (live streams have none)', () => {
-        expect(parseProgressLine(`${PROGRESS_PREFIX}NA|1MiB/s|00:01|10|1|True|Title`)?.percent).toBe(0);
+        expect(parseProgressLine(`${PROGRESS_PREFIX}NA|1MiB/s|00:01|10|1|True|NA|NA|Title`)?.percent).toBe(0);
+    });
+
+    it('leaves the format empty and the size unknown on a short line that has neither', () => {
+        expect(parseProgressLine(`${PROGRESS_PREFIX}5.0%|1MiB/s|00:10`)).toEqual({
+            percent: 5,
+            speed: '1MiB/s',
+            eta: '00:10',
+            title: '',
+            downloadedBytes: null,
+            elapsedSeconds: null,
+            live: false,
+            formatId: '',
+            partBytes: null
+        });
     });
 
     it('returns null for lines without the progress prefix', () => {
         expect(parseProgressLine('[download] Destination: file.mp4')).toBeNull();
         expect(parseProgressLine('')).toBeNull();
+    });
+});
+
+describe('parseFormatPartsLine', () => {
+    // Taken from a real run of yt-dlp with a video and an audio apart (the fields that do not matter here are left out).
+    const REAL_LINE = `${STREAM_PREFIX}${JSON.stringify({
+        protocol: 'file+file',
+        requested_formats: [
+            { format_id: '137', url: 'file:///m/video.mp4', protocol: 'file', ext: 'mp4', vcodec: 'avc1', acodec: 'none', filesize: 1997135 },
+            { format_id: '140', url: 'file:///m/audio.m4a', protocol: 'file', ext: 'm4a', vcodec: 'none', acodec: 'mp4a', filesize: 323765 }
+        ]
+    })}`;
+
+    it('gives the formats that are downloaded one after the other, in their order, with their sizes', () => {
+        expect(parseFormatPartsLine(REAL_LINE)).toEqual([
+            { formatId: '137', expectedBytes: 1997135 },
+            { formatId: '140', expectedBytes: 323765 }
+        ]);
+    });
+
+    it('uses the size the site estimates when it does not give the real one', () => {
+        const line = `${STREAM_PREFIX}${JSON.stringify({ requested_formats: [{ format_id: '248', filesize: null, filesize_approx: 5000 }, { format_id: '251', filesize_approx: 800 }] })}`;
+        expect(parseFormatPartsLine(line)).toEqual([
+            { formatId: '248', expectedBytes: 5000 },
+            { formatId: '251', expectedBytes: 800 }
+        ]);
+    });
+
+    it.each([
+        ['no size at all', {}],
+        ['a size of zero', { filesize: 0 }],
+        ['a size that is not a number', { filesize: '5000' }],
+        ['a negative estimate', { filesize_approx: -1 }]
+    ])('leaves the size unknown when the format has %s', (_name, sizes) => {
+        const line = `${STREAM_PREFIX}${JSON.stringify({ requested_formats: [{ format_id: 'v', ...sizes }, { format_id: 'a', filesize: 10 }] })}`;
+        expect(parseFormatPartsLine(line)).toEqual([
+            { formatId: 'v', expectedBytes: null },
+            { formatId: 'a', expectedBytes: 10 }
+        ]);
+    });
+
+    it('gives null for a video of a single format', () => {
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}${JSON.stringify({ protocol: 'https', url: 'https://cdn/v.mp4', format_id: '18' })}`)).toBeNull();
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}${JSON.stringify({ requested_formats: [{ format_id: '18', filesize: 10 }] })}`)).toBeNull();
+    });
+
+    it('gives null when a format has no name (the live streams the app records announce their renditions without one)', () => {
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}${JSON.stringify({ requested_formats: [{ format_id: '137' }, { url: 'https://cdn/a.m3u8' }] })}`)).toBeNull();
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}${JSON.stringify({ requested_formats: [{ format_id: '137' }, { format_id: '' }] })}`)).toBeNull();
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}${JSON.stringify({ requested_formats: [{ format_id: '137' }, 'audio'] })}`)).toBeNull();
+    });
+
+    it('gives null when the list of formats is not a list, or the line is not an object', () => {
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}${JSON.stringify({ requested_formats: { format_id: '137' } })}`)).toBeNull();
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}[1, 2]`)).toBeNull();
+        expect(parseFormatPartsLine(`${STREAM_PREFIX}not json`)).toBeNull();
+    });
+
+    it('gives null for any other line', () => {
+        expect(parseFormatPartsLine('CYBERINFO|False|/d/a.mp4')).toBeNull();
+        expect(parseFormatPartsLine(`${PROGRESS_PREFIX}1.0%|1MiB/s|00:01|10|1|False|137|10|T`)).toBeNull();
+        expect(parseFormatPartsLine('')).toBeNull();
     });
 });
 

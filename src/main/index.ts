@@ -372,8 +372,8 @@ function bootstrap(): BootstrapResult {
         deleteFiles: (paths) => {
             removeFiles(paths);
         },
-        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail) => {
-            return runYtdlpLiveAware({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, env: resolver.spawnEnv(), ffmpegBinary: resolver.ffmpeg(settingsStore.get()).path });
+        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, onParts) => {
+            return runYtdlpLiveAware({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, onParts, env: resolver.spawnEnv(), ffmpegBinary: resolver.ffmpeg(settingsStore.get()).path });
         },
         pausedStorage: pausedStore,
         addHistory: (entry) => {

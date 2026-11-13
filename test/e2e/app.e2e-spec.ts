@@ -270,6 +270,38 @@ test('downloads a video, says it is complete for five seconds, removes its card 
     await expect(item).toContainText('COMPLETE');
 });
 
+test('counts the video and the audio that are downloaded apart as one bar, which never falls back when the audio starts', async () => {
+    const { page } = session;
+    // Every value the bar of the card shows, as it shows it.
+    await page.evaluate(() => {
+        const seen: number[] = [];
+        (window as unknown as { barValues: number[] }).barValues = seen;
+        new MutationObserver(() => {
+            const bar = document.querySelector('[data-testid="job-card"] [role="progressbar"][aria-valuenow]');
+            const value = bar === null ? null : Number(bar.getAttribute('aria-valuenow'));
+            if (value !== null && seen.at(-1) !== value) {
+                seen.push(value);
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-valuenow'] });
+    });
+    await submitUrl(page, 'https://example.com/twoparts');
+    await expectDownloadsComplete(page);
+    const values = await page.evaluate(() => {
+        return (window as unknown as { barValues: number[] }).barValues;
+    });
+    // The video is nine tenths of the bytes: 0..100% of it is 0..90% of the bar, and the audio fills the rest.
+    const POSSIBLE = [0, 18, 36, 54, 72, 90, 93, 95, 98, 100];
+    values.forEach((value) => {
+        expect(POSSIBLE, `value ${String(value)} of ${JSON.stringify(values)}`).toContain(value);
+    });
+    values.slice(1).forEach((value, index) => {
+        expect(value, JSON.stringify(values)).toBeGreaterThan(values[index] ?? 0);
+    });
+    expect(values).toContain(90);
+    expect(values.some((value) => { return value > 90 && value < 100; }), JSON.stringify(values)).toBe(true);
+    expect(values.some((value) => { return value > 0 && value < 90; }), JSON.stringify(values)).toBe(true);
+});
+
 test('stacks the completions, newest on top, each one going away five seconds after it showed up', async () => {
     const { page } = session;
     await page.getByLabel('Link 1', { exact: true }).fill('https://example.com/ok1');

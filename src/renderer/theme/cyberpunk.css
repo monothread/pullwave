@@ -368,7 +368,7 @@ body::after {
 .badge--merging { color: var(--green); animation: badge-blink 1s ease-in-out infinite; }
 
 .progress {
-    height: 8px;
+    height: 14px;
     background: var(--input-bg);
     border: 1px solid var(--line);
     overflow: hidden;
@@ -656,8 +656,7 @@ body::after {
     content: '';
     position: absolute;
     inset: 0;
-    width: 28%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent) 0 0 / 28% 100% no-repeat;
     animation: scan-sweep 1s linear infinite;
 }
 .job__verifying { color: var(--yellow); font-weight: 700; letter-spacing: 1px; }
@@ -674,8 +673,7 @@ body::after {
     content: '';
     position: absolute;
     inset: 0;
-    width: 22%;
-    background: linear-gradient(90deg, transparent, var(--magenta), transparent);
+    background: linear-gradient(90deg, transparent, var(--magenta), transparent) 0 0 / 22% 100% no-repeat;
     animation: scan-sweep 1.8s ease-in-out infinite alternate;
 }
 .job__waiting { color: var(--magenta); font-weight: 700; letter-spacing: 1px; }
@@ -693,8 +691,7 @@ body::after {
     content: '';
     position: absolute;
     inset: 0;
-    width: 28%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent) 0 0 / 28% 100% no-repeat;
     animation: scan-sweep 1s linear infinite;
 }
 .job__processing { color: var(--magenta); font-weight: 700; letter-spacing: 1px; }
@@ -712,8 +709,7 @@ body::after {
     content: '';
     position: absolute;
     inset: 0;
-    width: 28%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent) 0 0 / 28% 100% no-repeat;
     animation: scan-sweep 0.9s linear infinite;
 }
 .job__saving { color: var(--cyan); font-weight: 700; letter-spacing: 1px; }
@@ -731,28 +727,92 @@ body::after {
     content: '';
     position: absolute;
     inset: 0;
-    width: 28%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent) 0 0 / 28% 100% no-repeat;
     animation: scan-sweep 1.1s linear infinite;
 }
 .job__merging { color: var(--green); font-weight: 700; letter-spacing: 1px; }
 .job__merging::after { content: '...'; display: inline-block; width: 1.5em; text-align: left; animation: wait-dots 1.4s steps(4, end) infinite; overflow: hidden; vertical-align: bottom; }
 
-/* Every progress bar glows like neon, in the colour of its state (so of the theme): a bright core, a close halo and a wide soft one. The track
+/* Every progress bar glows like neon, in the colour of its state (so of the theme): a bright rim, a close halo and wider soft ones. The track
    used to keep the glow in (it clips what comes out of it), so it lets it out on every side: the sweeps stay inside the track on their own,
-   so nothing cuts the glow at the start or at the end of the bar. */
+   so nothing cuts the glow at the start or at the end of the bar. The glow is a drop shadow, not a box shadow: it follows the shape of the
+   bar and its pulse (below) instead of the box of the bar. */
 .progress {
     overflow: visible;
 }
 
 .progress .progress__bar {
     --bar-glow: var(--cyan);
-    box-shadow:
-        inset 0 0 3px rgba(255, 255, 255, 0.85),
-        0 0 3px var(--bar-glow),
-        0 0 8px var(--bar-glow),
-        0 0 16px var(--bar-glow),
-        0 0 28px color-mix(in srgb, var(--bar-glow) 65%, transparent);
+    --bar-neon:
+        drop-shadow(0 0 1px rgba(255, 255, 255, 0.85))
+        drop-shadow(0 0 3px var(--bar-glow))
+        drop-shadow(0 0 7px var(--bar-glow))
+        drop-shadow(0 0 14px color-mix(in srgb, var(--bar-glow) 65%, transparent));
+    position: relative;
+    box-shadow: none;
+    filter: var(--bar-neon);
+    /* The bar paints nothing itself: its fill is drawn by its ::before, cut in the shape of the pulse. The kinds of bar set their fill with the
+       background shorthand, which would put the clip back, so this one has to win over all of them. */
+    background-clip: text !important;
+    mask-position: inherit;
+}
+
+/* The fill of the bar: the background of the bar (with its own flow, inherited at every frame), in the shape of the pulse. */
+.progress .progress__bar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: inherit;
+    background-clip: border-box;
+}
+
+/* The bars are thin, and pulses run along them from the start to the head, round after round, as if they pushed the bar on: a train of one to
+   four flattened swells, the same up and down, their number changing from round to round in an order that does not show (twelve rounds before
+   it comes again, and every bar started at its own time). The thin band and the train are two layers of the mask. The track moves the train
+   and picks the number (a mask position and a custom property that do nothing on the track itself), and every layer cut by them takes both
+   from it, so the fill of the bar and the line that sweeps over it pulse in step, whenever each of them appeared. The train starts out of the
+   bar and leaves past its head, a train as long as its tile away, so it never jumps back in sight and the number changes while it is out of
+   sight. The track has no mask, so it keeps one position only: the train is the first layer, and the band repeats along the bar, so it
+   covers the bar whatever position it gets. */
+.progress {
+    --bar-band: linear-gradient(transparent 30%, #000 30% 70%, transparent 70%);
+    --bar-pulses-1: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'%3E%3Cpath d='M0 30L5 30L10 30L15 30L20 30L25 30L30 30L35 30L40 30L45 30L50 30L55 30L60 30L65 30L70 30L75 30L80 30L85 30L90 30L95 30L100 30L105 30L110 30L115 30L120 30L125 30L130 30L135 30L140 30L145 30L150 30L155 29.5L160 28.1L165 25.9L170 23.1L175 20L180 16.9L185 14.1L190 11.9L195 10.5L200 10L205 10.5L210 11.9L215 14.1L220 16.9L225 20L230 23.1L235 25.9L240 28.1L245 29.5L250 30L255 30L260 30L265 30L270 30L275 30L280 30L285 30L290 30L295 30L300 30L305 30L310 30L315 30L320 30L325 30L330 30L335 30L340 30L345 30L350 30L355 30L360 30L365 30L370 30L375 30L380 30L385 30L390 30L395 30L400 30L400 70L395 70L390 70L385 70L380 70L375 70L370 70L365 70L360 70L355 70L350 70L345 70L340 70L335 70L330 70L325 70L320 70L315 70L310 70L305 70L300 70L295 70L290 70L285 70L280 70L275 70L270 70L265 70L260 70L255 70L250 70L245 70.5L240 71.9L235 74.1L230 76.9L225 80L220 83.1L215 85.9L210 88.1L205 89.5L200 90L195 89.5L190 88.1L185 85.9L180 83.1L175 80L170 76.9L165 74.1L160 71.9L155 70.5L150 70L145 70L140 70L135 70L130 70L125 70L120 70L115 70L110 70L105 70L100 70L95 70L90 70L85 70L80 70L75 70L70 70L65 70L60 70L55 70L50 70L45 70L40 70L35 70L30 70L25 70L20 70L15 70L10 70L5 70L0 70Z'/%3E%3C/svg%3E");
+    --bar-pulses-2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'%3E%3Cpath d='M0 30L5 30L10 30L15 30L20 30L25 30L30 30L35 30L40 30L45 30L50 30L55 30L60 30L65 30L70 30L75 30L80 30L85 30L90 30L95 30L100 30L105 29.5L110 28.1L115 25.9L120 23.1L125 20L130 16.9L135 14.1L140 11.9L145 10.5L150 10L155 10.5L160 11.9L165 14.1L170 16.9L175 20L180 23.1L185 25.9L190 28.1L195 29.5L200 30L205 29.5L210 28.1L215 25.9L220 23.1L225 20L230 16.9L235 14.1L240 11.9L245 10.5L250 10L255 10.5L260 11.9L265 14.1L270 16.9L275 20L280 23.1L285 25.9L290 28.1L295 29.5L300 30L305 30L310 30L315 30L320 30L325 30L330 30L335 30L340 30L345 30L350 30L355 30L360 30L365 30L370 30L375 30L380 30L385 30L390 30L395 30L400 30L400 70L395 70L390 70L385 70L380 70L375 70L370 70L365 70L360 70L355 70L350 70L345 70L340 70L335 70L330 70L325 70L320 70L315 70L310 70L305 70L300 70L295 70.5L290 71.9L285 74.1L280 76.9L275 80L270 83.1L265 85.9L260 88.1L255 89.5L250 90L245 89.5L240 88.1L235 85.9L230 83.1L225 80L220 76.9L215 74.1L210 71.9L205 70.5L200 70L195 70.5L190 71.9L185 74.1L180 76.9L175 80L170 83.1L165 85.9L160 88.1L155 89.5L150 90L145 89.5L140 88.1L135 85.9L130 83.1L125 80L120 76.9L115 74.1L110 71.9L105 70.5L100 70L95 70L90 70L85 70L80 70L75 70L70 70L65 70L60 70L55 70L50 70L45 70L40 70L35 70L30 70L25 70L20 70L15 70L10 70L5 70L0 70Z'/%3E%3C/svg%3E");
+    --bar-pulses-3: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'%3E%3Cpath d='M0 30L5 30L10 30L15 30L20 30L25 30L30 30L35 30L40 30L45 30L50 30L55 29.5L60 28.1L65 25.9L70 23.1L75 20L80 16.9L85 14.1L90 11.9L95 10.5L100 10L105 10.5L110 11.9L115 14.1L120 16.9L125 20L130 23.1L135 25.9L140 28.1L145 29.5L150 30L155 29.5L160 28.1L165 25.9L170 23.1L175 20L180 16.9L185 14.1L190 11.9L195 10.5L200 10L205 10.5L210 11.9L215 14.1L220 16.9L225 20L230 23.1L235 25.9L240 28.1L245 29.5L250 30L255 29.5L260 28.1L265 25.9L270 23.1L275 20L280 16.9L285 14.1L290 11.9L295 10.5L300 10L305 10.5L310 11.9L315 14.1L320 16.9L325 20L330 23.1L335 25.9L340 28.1L345 29.5L350 30L355 30L360 30L365 30L370 30L375 30L380 30L385 30L390 30L395 30L400 30L400 70L395 70L390 70L385 70L380 70L375 70L370 70L365 70L360 70L355 70L350 70L345 70.5L340 71.9L335 74.1L330 76.9L325 80L320 83.1L315 85.9L310 88.1L305 89.5L300 90L295 89.5L290 88.1L285 85.9L280 83.1L275 80L270 76.9L265 74.1L260 71.9L255 70.5L250 70L245 70.5L240 71.9L235 74.1L230 76.9L225 80L220 83.1L215 85.9L210 88.1L205 89.5L200 90L195 89.5L190 88.1L185 85.9L180 83.1L175 80L170 76.9L165 74.1L160 71.9L155 70.5L150 70L145 70.5L140 71.9L135 74.1L130 76.9L125 80L120 83.1L115 85.9L110 88.1L105 89.5L100 90L95 89.5L90 88.1L85 85.9L80 83.1L75 80L70 76.9L65 74.1L60 71.9L55 70.5L50 70L45 70L40 70L35 70L30 70L25 70L20 70L15 70L10 70L5 70L0 70Z'/%3E%3C/svg%3E");
+    --bar-pulses-4: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'%3E%3Cpath d='M0 30L5 29.5L10 28.1L15 25.9L20 23.1L25 20L30 16.9L35 14.1L40 11.9L45 10.5L50 10L55 10.5L60 11.9L65 14.1L70 16.9L75 20L80 23.1L85 25.9L90 28.1L95 29.5L100 30L105 29.5L110 28.1L115 25.9L120 23.1L125 20L130 16.9L135 14.1L140 11.9L145 10.5L150 10L155 10.5L160 11.9L165 14.1L170 16.9L175 20L180 23.1L185 25.9L190 28.1L195 29.5L200 30L205 29.5L210 28.1L215 25.9L220 23.1L225 20L230 16.9L235 14.1L240 11.9L245 10.5L250 10L255 10.5L260 11.9L265 14.1L270 16.9L275 20L280 23.1L285 25.9L290 28.1L295 29.5L300 30L305 29.5L310 28.1L315 25.9L320 23.1L325 20L330 16.9L335 14.1L340 11.9L345 10.5L350 10L355 10.5L360 11.9L365 14.1L370 16.9L375 20L380 23.1L385 25.9L390 28.1L395 29.5L400 30L400 70L395 70.5L390 71.9L385 74.1L380 76.9L375 80L370 83.1L365 85.9L360 88.1L355 89.5L350 90L345 89.5L340 88.1L335 85.9L330 83.1L325 80L320 76.9L315 74.1L310 71.9L305 70.5L300 70L295 70.5L290 71.9L285 74.1L280 76.9L275 80L270 83.1L265 85.9L260 88.1L255 89.5L250 90L245 89.5L240 88.1L235 85.9L230 83.1L225 80L220 76.9L215 74.1L210 71.9L205 70.5L200 70L195 70.5L190 71.9L185 74.1L180 76.9L175 80L170 83.1L165 85.9L160 88.1L155 89.5L150 90L145 89.5L140 88.1L135 85.9L130 83.1L125 80L120 76.9L115 74.1L110 71.9L105 70.5L100 70L95 70.5L90 71.9L85 74.1L80 76.9L75 80L70 83.1L65 85.9L60 88.1L55 89.5L50 90L45 89.5L40 88.1L35 85.9L30 83.1L25 80L20 76.9L15 74.1L10 71.9L5 70.5L0 70Z'/%3E%3C/svg%3E");
+    --bar-pulses: var(--bar-pulses-1);
+    animation: bar-pulse 1.6s linear infinite, bar-pulse-count 19.2s linear infinite;
+}
+
+.progress .progress__bar::before,
+.progress--verify::after,
+.progress--waiting::after,
+.progress--processing::after,
+.progress--saving::after,
+.progress--merging::after,
+.progress--cloudflare::after {
+    mask-image: var(--bar-pulses), var(--bar-band);
+    mask-size: 192px 100%, 100% 100%;
+    mask-repeat: no-repeat, repeat-x;
+    mask-position: inherit;
+}
+
+@keyframes bar-pulse { from { mask-position: calc(0% - 192px) 0; } to { mask-position: calc(100% + 192px) 0; } }
+
+/* One round of the pulse each, the number of swells of the train for that round (the value of a custom property changes at once). */
+@keyframes bar-pulse-count {
+    0%, 8.32% { --bar-pulses: var(--bar-pulses-2); }
+    8.33%, 16.66% { --bar-pulses: var(--bar-pulses-4); }
+    16.67%, 24.99% { --bar-pulses: var(--bar-pulses-1); }
+    25%, 33.32% { --bar-pulses: var(--bar-pulses-3); }
+    33.33%, 41.66% { --bar-pulses: var(--bar-pulses-2); }
+    41.67%, 49.99% { --bar-pulses: var(--bar-pulses-1); }
+    50%, 58.32% { --bar-pulses: var(--bar-pulses-4); }
+    58.33%, 66.66% { --bar-pulses: var(--bar-pulses-3); }
+    66.67%, 74.99% { --bar-pulses: var(--bar-pulses-1); }
+    75%, 83.32% { --bar-pulses: var(--bar-pulses-2); }
+    83.33%, 91.66% { --bar-pulses: var(--bar-pulses-4); }
+    91.67%, 99.99% { --bar-pulses: var(--bar-pulses-3); }
 }
 
 .job--done .progress__bar, .progress--merging .progress__bar { --bar-glow: var(--green); }
@@ -767,7 +827,7 @@ body::after {
 .player__range { box-shadow: 0 0 3px var(--cyan), 0 0 10px var(--cyan), 0 0 20px color-mix(in srgb, var(--cyan) 60%, transparent); }
 
 @keyframes verify-drain { from { width: 100%; } to { width: 0%; } }
-@keyframes scan-sweep { from { left: 0; } to { left: 72%; } }
+@keyframes scan-sweep { from { background-position: 0 0; } to { background-position: 100% 0; } }
 @keyframes badge-blink { 50% { opacity: 0.35; } }
 @keyframes wait-dots { from { width: 0; } to { width: 1.5em; } }
 @keyframes job-verify-pulse { 50% { box-shadow: var(--glow-yellow), inset 0 0 18px var(--tint-yellow); } }
@@ -1431,7 +1491,7 @@ body::after {
 
 /* The check of Cloudflare has no end that is known: a wave that always flows from one end of the bar to the other, with a bright
    crest that sweeps it (inside the track, like the others, so the track does not clip the glow of the bar). */
-.progress--cloudflare { position: relative; height: 10px; }
+.progress--cloudflare { position: relative; }
 .progress--cloudflare .progress__bar {
     width: 100%;
     background: linear-gradient(90deg, var(--cyan), var(--magenta) 35%, color-mix(in srgb, var(--magenta) 80%, white) 50%, var(--magenta) 65%, var(--cyan));
@@ -1442,15 +1502,11 @@ body::after {
 .progress--cloudflare::after {
     content: '';
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 30%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent) 0 0 / 30% 100% no-repeat;
     /* Back and forth: going only one way, the crest slowed down to a stop at the end and jumped back to the start, which looked stuck. */
-    animation: cloudflare-sweep 1.4s ease-in-out infinite alternate;
+    animation: scan-sweep 1.4s ease-in-out infinite alternate;
 }
-@keyframes cloudflare-sweep { from { left: 0; } to { left: 70%; } }
 
 /* The filters of the search of a source. */
 .manga__filters { display: flex; flex-direction: column; gap: 10px; }
@@ -1488,9 +1544,10 @@ body::after {
 .reader__stage, .reader__scroll { position: relative; display: flex; flex-direction: column; align-items: center; min-height: calc(40vh / var(--ui-zoom, 1)); padding: 8px; border: 1px solid var(--line); }
 .reader__stage { cursor: pointer; justify-content: center; }
 .reader__scroll { gap: 8px; }
-/* The webtoon is a column of at most 900 pixels in the middle (as wide as the room when there is less): wider, a strip made for the screen of a
-   phone grows so much that a panel no longer fits on screen. */
-.reader__scroll--webtoon { gap: 0; padding: 0; width: min(100%, 900px); margin-inline: auto; box-sizing: border-box; }
+/* The webtoon is a column of at most 938 pixels in the middle (as wide as the room when there is less): wider, a strip made for the screen of a
+   phone grows so much that a panel no longer fits on screen. 938 is the room of the reader in a window 1080 wide (a screen standing up), so
+   there the pages are as wide as the bar of the reader above them. */
+.reader__scroll--webtoon { gap: 0; padding: 0; width: min(100%, 938px); margin-inline: auto; box-sizing: border-box; }
 .reader--dark .reader__stage, .reader--dark .reader__scroll { background: #14141c; }
 .reader--black .reader__stage, .reader--black .reader__scroll { background: #000; }
 .reader--gray .reader__stage, .reader--gray .reader__scroll { background: #555; }

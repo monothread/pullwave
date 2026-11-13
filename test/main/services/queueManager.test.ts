@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { DownloadError, DownloadInfo, DownloadJob, HistoryEntry, PostProcessEvent, ProgressInfo, Settings } from '@shared/types';
+import type { DownloadError, DownloadInfo, DownloadJob, FormatPart, HistoryEntry, PostProcessEvent, ProgressInfo, Settings } from '@shared/types';
 import { applyLanguage } from '@main/services/language';
 import type { PausedDownload } from '@main/services/pausedStore';
 import { makeJob } from '../../helpers/mockApi';
@@ -15,13 +15,14 @@ interface ControlledRun {
     onWaiting: (() => void) | undefined;
     onPostProcess: ((event: PostProcessEvent) => void) | undefined;
     onThumbnail: ((address: string) => void) | undefined;
+    onParts: ((parts: FormatPart[]) => void) | undefined;
     resolve: (result: RunResult) => void;
     cancel: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
 }
 
 function progress(overrides: Partial<ProgressInfo> = {}): ProgressInfo {
-    return { percent: 0, speed: '', eta: '', title: '', downloadedBytes: null, elapsedSeconds: null, live: false, ...overrides };
+    return { percent: 0, speed: '', eta: '', title: '', downloadedBytes: null, elapsedSeconds: null, live: false, formatId: '', partBytes: null, ...overrides };
 }
 
 const DOWNLOAD_ERROR: DownloadError = { code: 'NETWORK', title: 'Network failure', hint: 'Check your connection and try again.', raw: 'boom' };
@@ -50,7 +51,7 @@ function setup(settings: Partial<Settings> = {}, extraDeps: Partial<QueueDepende
         fileSize: (path) => {
             return fileSizes.get(path) ?? null;
         },
-        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail): RunHandle => {
+        startRun: (binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, onParts): RunHandle => {
             let resolveResult: (result: RunResult) => void = () => {
                 return undefined;
             };
@@ -63,7 +64,7 @@ function setup(settings: Partial<Settings> = {}, extraDeps: Partial<QueueDepende
             const stop = vi.fn(() => {
                 resolveResult({ status: 'done', filePath: '/dl/recorded.mp4' });
             });
-            runs.push({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, resolve: resolveResult, cancel, stop });
+            runs.push({ binary, args, onProgress, onInfo, onWaiting, onPostProcess, onThumbnail, onParts, resolve: resolveResult, cancel, stop });
             return { result, cancel, stop };
         },
         addHistory: (entry) => {
@@ -273,6 +274,88 @@ describe('QueueManager progress and completion', () => {
         expect(queue.list()[0]?.status).toBe('cancelled');
         expect(history).toEqual([]);
         expect(onHistoryChanged).not.toHaveBeenCalled();
+    });
+});
+
+describe('QueueManager progress of a video whose video and audio are downloaded apart', () => {
+    const VIDEO: FormatPart = { formatId: '137', expectedBytes: 900 };
+    const AUDIO: FormatPart = { formatId: '140', expectedBytes: 100 };
+
+    it('counts the video and the audio as one bar, each for its size, so the bar does not fall back to nothing at the audio', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 50, formatId: '137', partBytes: 900 }));
+        expect(queue.getJob('job-1')?.percent).toBe(45);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
+        expect(queue.getJob('job-1')?.percent).toBe(90);
+        runs[0]?.onProgress(progress({ percent: 10, formatId: '140', partBytes: 100 }));
+        expect(queue.getJob('job-1')?.percent).toBe(91);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '140', partBytes: 100 }));
+        expect(queue.getJob('job-1')?.percent).toBe(100);
+    });
+
+    it('keeps the percentage of the part as it is when the video is a single format', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([]);
+        runs[0]?.onProgress(progress({ percent: 30, formatId: '18', partBytes: 1000 }));
+        expect(queue.getJob('job-1')?.percent).toBe(30);
+    });
+
+    it('keeps the percentage of the part as it is when the formats were never announced', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onProgress(progress({ percent: 70, formatId: '137', partBytes: 900 }));
+        expect(queue.getJob('job-1')?.percent).toBe(70);
+    });
+
+    it('starts over with the formats of the next video of a playlist, and forgets them for a next video of a single format', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '140', partBytes: 100 }));
+        expect(queue.getJob('job-1')?.percent).toBe(100);
+        runs[0]?.onParts?.([{ formatId: '248', expectedBytes: 300 }, { formatId: '251', expectedBytes: 100 }]);
+        runs[0]?.onProgress(progress({ percent: 50, formatId: '248', partBytes: 300 }));
+        expect(queue.getJob('job-1')?.percent).toBe(37.5);
+        runs[0]?.onParts?.([]);
+        runs[0]?.onProgress(progress({ percent: 20, formatId: '140', partBytes: 100 }));
+        expect(queue.getJob('job-1')?.percent).toBe(20);
+    });
+
+    it('forgets the formats of a run that ended, so a retry counts its own parts from the start', async () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
+        runs[0]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
+        await flush();
+        queue.retry('job-1');
+        runs[1]?.onProgress(progress({ percent: 15, formatId: '137', partBytes: 900 }));
+        expect(queue.getJob('job-1')?.percent).toBe(15);
+        runs[1]?.onParts?.([VIDEO, AUDIO]);
+        runs[1]?.onProgress(progress({ percent: 20, formatId: '137', partBytes: 900 }));
+        expect(queue.getJob('job-1')?.percent).toBe(18);
+    });
+
+    it('keeps the parts of each download apart', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        queue.add(URL_B);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
+        runs[1]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
+        expect(queue.getJob('job-1')?.percent).toBe(90);
+        expect(queue.getJob('job-2')?.percent).toBe(100);
+    });
+
+    it('sends the whole percentage to the window, not the one of the part', () => {
+        const { queue, runs, updates } = setup();
+        queue.add(URL_A);
+        runs[0]?.onParts?.([VIDEO, AUDIO]);
+        runs[0]?.onProgress(progress({ percent: 100, formatId: '137', partBytes: 900 }));
+        expect(updates.at(-1)).toMatchObject({ id: 'job-1', status: 'running', percent: 90 });
     });
 });
 
