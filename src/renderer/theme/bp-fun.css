@@ -950,14 +950,8 @@ textarea:not(:disabled),
     clip-path: inset(-40px -40px -40px 0);
 }
 
-/* The notices that come while a video plays (a download that finished) sit at the top of the video, out of the way of the panel of the next episode
-   and of the buttons of the bar; over the reader they sit above its buttons. */
-body:has(.player) .toasts {
-    top: 124px;
-    right: 36px;
-    bottom: auto;
-}
-
-body:has(.reader) .toasts {
-    bottom: 88px;
+/* The notices always stay at the bottom right, over the player and the reader too; while something is in fullscreen (the video or the reader) they
+   are not shown at all. */
+body:has(:fullscreen) .toasts {
+    display: none;
 }

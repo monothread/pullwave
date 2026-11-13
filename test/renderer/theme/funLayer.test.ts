@@ -496,8 +496,26 @@ describe('bp-fun.css: what was in the way of something else', () => {
         expect(styleOf(sheet, '.player__timeline .progress__bar')).toEqual({ 'clip-path': 'inset(-40px -40px -40px 0)' });
     });
 
-    it('puts the notices at the top of the video while it plays, away from the panel of the next episode and from the bar, and above the buttons of the reader', () => {
-        expect(styleOf(sheet, 'body:has(.player) .toasts')).toEqual({ top: '124px', right: '36px', bottom: 'auto' });
-        expect(styleOf(sheet, 'body:has(.reader) .toasts')).toEqual({ bottom: '88px' });
+    it('hides the notices while something is in fullscreen (the video or the reader)', () => {
+        expect(styleOf(sheet, 'body:has(:fullscreen) .toasts')).toEqual({ display: 'none' });
+    });
+
+    it('never moves the notices away from the bottom right: no sheet places them anywhere else, over the player, the reader or anything', () => {
+        const toastRules = [sheet, ...others].flatMap((candidate) => {
+            return candidate.rules.filter((rule) => {
+                return /\.toasts\b/.test(rule.selector);
+            });
+        });
+        expect(toastRules.map((rule) => {
+            return { selector: rule.selector, declarations: rule.declarations, media: rule.media };
+        })).toEqual([
+            { selector: 'body:has(:fullscreen) .toasts', declarations: { display: 'none' }, media: null },
+            {
+                selector: '.toasts',
+                declarations: { position: 'fixed', right: '20px', bottom: '20px', 'max-width': '480px', display: 'flex', 'flex-direction': 'column-reverse', 'align-items': 'flex-end', gap: '8px', 'z-index': '250' },
+                media: null
+            },
+            { selector: '.app > .toasts', declarations: { margin: '0' }, media: null }
+        ]);
     });
 });

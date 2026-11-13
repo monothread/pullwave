@@ -1,6 +1,7 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
 import { leaveHome } from './startScreen';
+import { expectNoticesAtBottomRight, expectNoticesHidden, showNotice } from './notices';
 import { expectNoSiblingInRing, expectSiblingAfterFolder, makeFolderOnAnotherDisk } from './diskChart';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -2823,6 +2824,26 @@ test.describe('manga section', () => {
         await session.page.waitForTimeout(700);
         await session.page.keyboard.press('Escape');
         await expect(reader).toHaveCount(0);
+    });
+
+    test('keeps the notices at the bottom right of the window over the reader, hides them while the reader is in fullscreen, and shows them there again when it leaves it', async () => {
+        const { reader } = await openWebtoon();
+        const { page } = session;
+        const fullscreenOf = async (): Promise<string | null> => {
+            return page.evaluate(() => {
+                return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+            });
+        };
+        await showNotice(page);
+        await expectNoticesAtBottomRight(page);
+
+        await reader.getByRole('img').nth(1).dblclick();
+        await expect.poll(fullscreenOf).toContain('app__main');
+        await expectNoticesHidden(page);
+
+        await reader.getByRole('img').nth(1).dblclick();
+        await expect.poll(fullscreenOf).toBeNull();
+        await expectNoticesAtBottomRight(page);
     });
 
     test('puts the reader in fullscreen with a double click in the strip in the middle, one page at a time, and not on the sides, where a click turns the page', async () => {

@@ -1,6 +1,7 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
 import { leaveHome } from './startScreen';
+import { expectNoticesAtBottomRight, expectNoticesHidden, showNotice } from './notices';
 import { expectNoSiblingInRing, expectSiblingAfterFolder, makeFolderOnAnotherDisk } from './diskChart';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
@@ -2286,36 +2287,39 @@ test.describe('the next episode that starts by itself, and the icons of the play
         await expect(page.getByRole('dialog', { name: 'Fake Anime · EP 2' })).toBeVisible();
     });
 
-    test('keeps the notices of the downloads away from the panel of the next episode and from the bar of the player', async () => {
+    test('keeps the notices of the downloads at the bottom right of the window while a video plays, with the panel of the next episode shown too', async () => {
         const { page } = session;
         const dialog = await playFirstOfTwo(page);
+        await showNotice(page);
+        await expectNoticesAtBottomRight(page);
         await endEpisode(dialog);
-        const panel = dialog.getByRole('region', { name: 'NEXT EPISODE' });
-        await expect(panel).toBeVisible();
-        await page.evaluate(() => {
-            const toasts = document.querySelector('.toasts');
-            if (toasts === null) {
-                const holder = document.createElement('div');
-                holder.className = 'toasts';
-                holder.innerHTML = '<div class="toast toast--info"><span class="toast__message">A notice</span></div>';
-                document.body.appendChild(holder);
-            }
-        });
-        const boxes = await page.evaluate(() => {
-            const rect = (selector: string) => {
-                const box = (document.querySelector(selector) as HTMLElement).getBoundingClientRect();
-                return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
-            };
-            return { toast: rect('.toasts'), panel: rect('.player__auto-next'), bar: rect('.player__controls'), video: rect('.player__video') };
-        });
-        const crosses = (first: { left: number; right: number; top: number; bottom: number }, second: { left: number; right: number; top: number; bottom: number }): boolean => {
-            return first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
+        await expect(dialog.getByRole('region', { name: 'NEXT EPISODE' })).toBeVisible();
+        await expectNoticesAtBottomRight(page);
+    });
+
+    test('hides the notices of the downloads while the video is in fullscreen, and shows them at the bottom right again when it leaves it @resize', async () => {
+        const { page } = session;
+        const fullscreenOf = async (): Promise<string | null> => {
+            return page.evaluate(() => {
+                return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+            });
         };
-        expect(crosses(boxes.toast, boxes.panel)).toBe(false);
-        expect(crosses(boxes.toast, boxes.bar)).toBe(false);
-        // They are over the video, at its top.
-        expect(boxes.toast.top).toBeGreaterThanOrEqual(boxes.video.top);
-        expect(boxes.toast.bottom).toBeLessThan(boxes.panel.top);
+        const dialog = await playFirstOfTwo(page);
+        await showNotice(page);
+        // The notice sits over the button of the bar, so the video goes in fullscreen with a double click on it.
+        await dialog.locator('video').dblclick();
+        await expect.poll(fullscreenOf).toBe('player__stage');
+        await expectNoticesHidden(page);
+        // Still hidden with the panel of the next episode over the video.
+        await endEpisode(dialog);
+        await expect(dialog.getByRole('region', { name: 'NEXT EPISODE' })).toBeVisible();
+        await expectNoticesHidden(page);
+
+        await page.evaluate(() => {
+            return document.exitFullscreen();
+        });
+        await expect.poll(fullscreenOf).toBeNull();
+        await expectNoticesAtBottomRight(page);
     });
 
     test('starts the part watched of the timeline crisp at the start of the bar, with nothing of its glow out on the left and no hard box around it', async () => {

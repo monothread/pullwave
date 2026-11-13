@@ -252,3 +252,5 @@
 - 2026-11-13 · A bar for each part of a download whose video and audio come apart, in the queue of the videos and in the anime, in the card and in the banner, in place of the one bar of D-193 that jumped from about 50% to about 96% on HLS (D-194). Type check and lint OK; unit tests of what changed; e2e of the two bars of a video and of an episode, of the progress bars in the 21 themes and of the downloads of the app (all OK, `secondary` in a virtual screen).
 
 - Released 0.27.7 (tag `v0.27.7` = `c843643`): a bar for each part of a download whose video and audio come apart, in the videos and in the anime (D-194). Release Linux (whole unit suite OK), then Release Windows, then the draft published with its notes; the Test Windows workflow was not run.
+
+- 2026-11-13 · The notices always at the bottom right, over the player and the reader too, and not shown while the video or the reader is in fullscreen (D-195). Type check and lint OK; unit test of the CSS of the fun layer (82); e2e of the notices over the player in a window and in fullscreen and over the reader (3, all OK, `secondary` in 3440x1900 and `primary-tagged` in 1920x1080).
