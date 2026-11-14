@@ -115,6 +115,7 @@ function StreamVideo({ stream, stageSlot, next, onNext }: StreamVideoProps) {
                 selectedSubtitle={subtitle}
                 onSelectSubtitle={setSubtitle}
                 autoNext={{ enabled: autoNext, onToggle: toggleAutoNext }}
+                preview={{ kind: 'hls', url: stream.url }}
             />
         </>,
         stageSlot

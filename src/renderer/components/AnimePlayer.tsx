@@ -229,6 +229,7 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
         </>
     );
 
+    const videoUrl = episodeVideoUrl(episode.id, opening);
     const stage = (
         <>
             {resumedAt !== null && (
@@ -239,7 +240,7 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
             <video
                 ref={video}
                 className="player__video"
-                src={episodeVideoUrl(episode.id, opening)}
+                src={videoUrl}
                 crossOrigin="anonymous"
                 autoPlay
                 onLoadedMetadata={(event) => {
@@ -299,6 +300,7 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
                 selectedSubtitle={subtitle}
                 onSelectSubtitle={chooseSubtitle}
                 autoNext={{ enabled: autoNext, onToggle: toggleAutoNext }}
+                preview={{ kind: 'file', url: videoUrl }}
                 subtitleManager={{
                     loaded: tracksLoaded,
                     hasSubtitles: tracks.length > 0,

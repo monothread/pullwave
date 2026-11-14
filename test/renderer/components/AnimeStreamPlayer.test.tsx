@@ -12,6 +12,20 @@ import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openedSubtitleMenu } from '../../helpers/playerSettings';
 import { openErrorDialog } from '../../helpers/errorDialog';
 
+// The hidden video the picture above the timeline is taken from (see previewMedia.ts, tested on its own).
+const previewMedia = vi.hoisted(() => {
+    return {
+        open: vi.fn((): { element: HTMLVideoElement; close: () => void } => {
+            return { element: document.createElement('video'), close: vi.fn() };
+        })
+    };
+});
+
+vi.mock('@renderer/components/previewMedia', () => {
+    return { openPreviewMedia: previewMedia.open };
+});
+
+
 const hls = vi.hoisted(() => {
     type Listener = (event: string, data: { fatal?: boolean; levels?: Array<{ height: number; bitrate: number }> }) => void;
     const state = {
@@ -705,5 +719,30 @@ describe('AnimeStreamPlayer', () => {
             fireEvent.keyDown(window, { key: 'Escape' });
             expect(mock.api.closeAnimeStream).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe('AnimeStreamPlayer: the preview of the timeline', () => {
+    it('takes it from the playlist of the stream, at the second under the mouse, only once the mouse is on the timeline', () => {
+        previewMedia.open.mockClear();
+        stream();
+        render(<AnimeStreamPlayer />);
+        const video = document.querySelector('video') as HTMLVideoElement;
+        Object.defineProperty(video, 'duration', { value: 1440, configurable: true });
+        act(() => {
+            video.dispatchEvent(new Event('durationchange'));
+        });
+        expect(previewMedia.open).not.toHaveBeenCalled();
+
+        const bar = screen.getByRole('slider', { name: 'Seek' });
+        bar.getBoundingClientRect = () => {
+            return { left: 0, width: 1440, right: 1440, top: 0, bottom: 6, height: 6, x: 0, y: 0, toJSON: () => { return {}; } };
+        };
+        fireEvent.mouseMove(bar, { clientX: 600.5 });
+        const source = { kind: 'hls', url: STREAM.url };
+        expect(previewMedia.open).toHaveBeenCalledTimes(1);
+        expect(previewMedia.open).toHaveBeenCalledWith(source, 600, expect.any(Function));
+        // The video of the player is the only one in the page: the one the picture comes from is not put in it.
+        expect(document.querySelectorAll('video')).toHaveLength(1);
     });
 });

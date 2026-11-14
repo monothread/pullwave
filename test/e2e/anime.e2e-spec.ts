@@ -2213,6 +2213,122 @@ test.describe('the check of the downloaded episodes', () => {
     });
 });
 
+// The average colour of the picture of the preview above the timeline, with the mouse at this fraction of the seek bar of the player.
+interface ThumbPicture {
+    width: number;
+    height: number;
+    red: number;
+    green: number;
+    blue: number;
+    // Tells one picture from another whose colours average out the same.
+    checksum: number;
+}
+
+// Which of the two colours of the test video the picture is.
+function colourOf(picture: ThumbPicture): 'red' | 'blue' | 'other' {
+    if (picture.red > 200 && picture.blue < 60) {
+        return 'red';
+    }
+    if (picture.blue > 200 && picture.red < 60) {
+        return 'blue';
+    }
+    return 'other';
+}
+
+async function hoverTimelineAt(page: Page, dialog: Locator, fraction: number): Promise<void> {
+    const box = await dialog.getByRole('slider', { name: 'Seek' }).boundingBox();
+    expect(box).not.toBeNull();
+    const { x, y, width, height } = box as { x: number; y: number; width: number; height: number };
+    await page.mouse.move(x + width * fraction, y + height / 2);
+}
+
+async function thumbPicture(dialog: Locator): Promise<ThumbPicture> {
+    const thumb = dialog.getByRole('tooltip').getByTestId('player-thumb');
+    await expect(thumb).toBeVisible({ timeout: 15000 });
+    return thumb.evaluate((canvas: HTMLCanvasElement) => {
+        const { data } = (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height);
+        let red = 0;
+        let green = 0;
+        let blue = 0;
+        let checksum = 0;
+        data.forEach((value, index) => {
+            checksum = (checksum * 31 + value * ((index % 251) + 1)) % 2_147_483_647;
+        });
+        for (let index = 0; index < data.length; index += 4) {
+            red += data[index] ?? 0;
+            green += data[index + 1] ?? 0;
+            blue += data[index + 2] ?? 0;
+        }
+        const pixels = data.length / 4;
+        return { width: canvas.width, height: canvas.height, red: Math.round(red / pixels), green: Math.round(green / pixels), blue: Math.round(blue / pixels), checksum };
+    });
+}
+
+test.describe('the preview of the timeline of a downloaded episode', () => {
+    const FFMPEG = join(ROOT, 'resources', 'bin', `ffmpeg${EXE}`);
+    test.skip(!existsSync(FFMPEG), 'needs the real ffmpeg of resources/bin (node scripts/fetch-binaries.mjs)');
+
+    // The video the fake ani-cli wrote is not a real one: it is replaced by one that is red for its first 4 seconds and blue for the next 4.
+    function replaceWithTwoColours(video: string): void {
+        execFileSync(
+            FFMPEG,
+            ['-hide_banner', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:r=10:d=4', '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=10:d=4', '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', video],
+            { stdio: 'pipe' }
+        );
+    }
+
+    test('shows above the time under the mouse the frame of that very second of the file', async () => {
+        const { page, animeDir } = session;
+        await downloadFirstEpisode(page);
+        replaceWithTwoColours(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'));
+        await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+        await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+        await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+        await page.getByRole('button', { name: 'PLAY: Fake Anime EP 1' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+        const seek = dialog.getByRole('slider', { name: 'Seek' });
+        await expect.poll(async () => {
+            return Number(await seek.getAttribute('max'));
+        }, { timeout: 15000 }).toBeGreaterThan(7);
+        await dialog.locator('video').evaluate((element: HTMLVideoElement) => {
+            element.pause();
+        });
+
+        // The second 2 of 8 is in the red part, the second 5 in the blue one.
+        await hoverTimelineAt(page, dialog, 0.3);
+        await expect(dialog.getByRole('tooltip')).toHaveText('0:02');
+        await expect.poll(async () => {
+            return colourOf(await thumbPicture(dialog));
+        }, { timeout: 15000 }).toBe('red');
+        expect(await thumbPicture(dialog)).toMatchObject({ width: 160, height: 90 });
+
+        await hoverTimelineAt(page, dialog, 0.7);
+        await expect(dialog.getByRole('tooltip')).toHaveText('0:05');
+        await expect.poll(async () => {
+            return colourOf(await thumbPicture(dialog));
+        }, { timeout: 15000 }).toBe('blue');
+        expect(await thumbPicture(dialog)).toMatchObject({ width: 160, height: 90 });
+
+        // Back on a second already seen: its frame comes back.
+        await hoverTimelineAt(page, dialog, 0.3);
+        await expect.poll(async () => {
+            return colourOf(await thumbPicture(dialog));
+        }, { timeout: 15000 }).toBe('red');
+
+        // The video the frames come from is not in the page, and the one playing stayed where it was.
+        await expect(dialog.locator('video')).toHaveCount(1);
+        expect(await dialog.locator('video').evaluate((element: HTMLVideoElement) => {
+            return element.currentTime;
+        })).toBeLessThan(2);
+
+        // Off the timeline there is no tooltip, and so no picture.
+        const box = await seek.boundingBox();
+        await page.mouse.move((box?.x ?? 0) + 10, (box?.y ?? 0) - 200);
+        await expect(dialog.getByRole('tooltip')).toHaveCount(0);
+        await expect(dialog.getByTestId('player-thumb')).toHaveCount(0);
+    });
+});
+
 test.describe('the next episode that starts by itself, and the icons of the player', () => {
     // Two episodes downloaded, the first one open in the player. The fake files are not real videos: the end of one is told to the player.
     async function playFirstOfTwo(page: Page): Promise<Locator> {
@@ -3601,6 +3717,50 @@ test.describe('watching without downloading', () => {
         expect(readFileSync(join(userData, 'anime', 'history', 'players.log'), 'utf-8').trim().split('\n').at(-1)).toBe('debug');
         expect(existsSync(animeDir) ? readdirSync(animeDir) : []).toEqual([]);
     });
+
+    async function waitUntilPlayable(dialog: Locator): Promise<void> {
+        await expect.poll(async () => {
+            return Number(await dialog.getByRole('slider', { name: 'Seek' }).getAttribute('max'));
+        }, { timeout: 20000 }).toBeGreaterThan(5);
+        await dialog.locator('video').evaluate((element: HTMLVideoElement) => {
+            element.pause();
+        });
+    }
+
+    for (const playlist of ['index.m3u8', 'hidden.m3u8']) {
+        test(`shows above the time under the mouse a frame of that second of the stream (${playlist})`, async () => {
+            const { page, userData } = session;
+            writeFileSync(join(userData, 'anime', 'history', 'stream-url'), `${baseUrl}/${playlist}`);
+            await watchEpisode(page, '1');
+            const dialog = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+            await waitUntilPlayable(dialog);
+
+            await hoverTimelineAt(page, dialog, 0.8);
+            await expect(dialog.getByRole('tooltip')).toHaveText(/^0:0[6-7]$/);
+            // The video of the test is 160 by 120: the picture keeps its shape.
+            const late = await thumbPicture(dialog);
+            expect(late).toMatchObject({ width: 160, height: 120 });
+            expect(late.red + late.green + late.blue).toBeGreaterThan(0);
+            // The frame came from the end of the stream: the segment of that part was asked for, through the app, as the site that embeds it.
+            const lastSegment = playlist === 'index.m3u8' ? '/seg3.ts' : '/hseg3.ts.jpg';
+            expect(seen.filter((request) => {
+                return request.path === lastSegment;
+            }).length).toBeGreaterThan(0);
+            expect(seen.every((request) => {
+                return request.referer === REFERER;
+            })).toBe(true);
+
+            // Another second shows another frame (the picture of the test moves).
+            await hoverTimelineAt(page, dialog, 0.1);
+            await expect(dialog.getByRole('tooltip')).toHaveText('0:00');
+            await expect.poll(async () => {
+                return thumbPicture(dialog);
+            }, { timeout: 15000 }).not.toEqual(late);
+
+            await expect(dialog.locator('video')).toHaveCount(1);
+            await expect(dialog.getByRole('alert')).toHaveCount(0);
+        });
+    }
 
     test('seeks in the episode', async () => {
         const { page } = session;

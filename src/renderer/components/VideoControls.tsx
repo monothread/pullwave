@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { useFullscreenIdle } from '../hooks/useFullscreenIdle';
 import { useSubtitleStyle } from '../hooks/useSubtitleStyle';
+import { useSeekPreview } from '../hooks/useSeekPreview';
 import { useVideoBuffer } from '../hooks/useVideoBuffer';
 import { useTranslator } from '../i18n/useTranslator';
 import { seekHover, type SeekHover } from './seekHover';
@@ -9,6 +10,8 @@ import { SubtitleManagerDialog } from './SubtitleManagerDialog';
 import { clamp, SEEK_STEP_SECONDS, shortcutOf, skipFlashOf, VOLUME_STEP, type PlayerShortcut, type SkipFlashDirection } from './playerShortcuts';
 import { atRangeEnd, mediaTimeOf, outsideRange, rangeLength, timeInRange, type PlaybackRange } from './playbackRange';
 import { PlayerIcon } from './PlayerIcon';
+import { previewSecondOf, type SeekPreviewSource } from './seekPreview';
+import { SeekPreviewThumb } from './SeekPreviewThumb';
 
 // Kept here, where the player's other files already import it from.
 export type { SubtitleOption } from './PlayerSettings';
@@ -25,6 +28,8 @@ interface VideoControlsProps {
     autoNext?: AutoNextSetting;
     // The window of the subtitles, opened from the settings of the player; left out, the settings have no way into it.
     subtitleManager?: SubtitleManagerSetting;
+    // Where the picture shown above the timeline, of the second under the mouse, is taken from; left out, the tooltip shows the time only.
+    preview?: SeekPreviewSource;
 }
 
 interface PlaybackState {
@@ -212,7 +217,7 @@ function useRangeLimits(video: RefObject<HTMLVideoElement | null>, range: Playba
 }
 
 // The control bar of the player. It drives the <video> through its own API, so it looks the same in every theme.
-export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range, autoNext, subtitleManager }: VideoControlsProps) {
+export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range, autoNext, subtitleManager, preview }: VideoControlsProps) {
     const t = useTranslator();
     const [state, setState] = useState<PlaybackState>(INITIAL_STATE);
     const subtitleStyle = useSubtitleStyle(video);
@@ -436,6 +441,9 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
     const currentTime = range === undefined ? state.currentTime : timeInRange(state.currentTime, range);
     const seekPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
     const volumePercent = silent ? 0 : state.volume * 100;
+    // The second of the media under the mouse, for the picture of the preview (of the media, not of the part, when there is a part).
+    const previewSecond = hover === null || preview === undefined ? null : previewSecondOf(range === undefined ? hover.time : mediaTimeOf(hover.time, range), state.duration);
+    const previewFrame = useSeekPreview(preview, previewSecond);
 
     return (
         <>
@@ -507,6 +515,7 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                     />
                     {hover !== null && (
                         <span className="player__hover" role="tooltip" style={{ left: `${String(hover.fraction * 100)}%` }}>
+                            {previewFrame !== null && <SeekPreviewThumb frame={previewFrame} />}
                             {formatClock(hover.time)}
                         </span>
                     )}

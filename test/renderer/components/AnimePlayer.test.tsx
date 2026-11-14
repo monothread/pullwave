@@ -13,6 +13,20 @@ import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { openedPlayerSettings, openedSubtitleMenu, openPlayerSettings, subtitleMenu, subtitleOption } from '../../helpers/playerSettings';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
+// The hidden video the picture above the timeline is taken from (see previewMedia.ts, tested on its own).
+const previewMedia = vi.hoisted(() => {
+    return {
+        open: vi.fn((): { element: HTMLVideoElement; close: () => void } => {
+            return { element: document.createElement('video'), close: vi.fn() };
+        })
+    };
+});
+
+vi.mock('@renderer/components/previewMedia', () => {
+    return { openPreviewMedia: previewMedia.open };
+});
+
+
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
@@ -1350,5 +1364,30 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
         expect(screen.getByRole('dialog', { name: 'Create a subtitle' })).toBeInTheDocument();
         expect(useAppStore.getState().notice).toBeNull();
         expect(screen.getByRole('button', { name: 'CREATE SUBTITLE' })).toBeInTheDocument();
+    });
+});
+
+describe('AnimePlayer: the preview of the timeline', () => {
+    it('takes it from the file of the episode, at the second under the mouse, only once the mouse is on the timeline', () => {
+        previewMedia.open.mockClear();
+        render(<AnimePlayer />);
+        const video = getVideo();
+        Object.defineProperty(video, 'duration', { value: 1440, configurable: true });
+        act(() => {
+            video.dispatchEvent(new Event('durationchange'));
+        });
+        expect(previewMedia.open).not.toHaveBeenCalled();
+
+        const bar = screen.getByRole('slider', { name: 'Seek' });
+        bar.getBoundingClientRect = () => {
+            return { left: 0, width: 1440, right: 1440, top: 0, bottom: 6, height: 6, x: 0, y: 0, toJSON: () => { return {}; } };
+        };
+        fireEvent.mouseMove(bar, { clientX: 600.5 });
+        const source = { kind: 'file', url: video.getAttribute('src') };
+        expect(source.url).toMatch(/^pullwave-media:\/\/episode\/1\?v=\d+$/);
+        expect(previewMedia.open).toHaveBeenCalledTimes(1);
+        expect(previewMedia.open).toHaveBeenCalledWith(source, 600, expect.any(Function));
+        // The video of the player is the only one in the page: the one the picture comes from is not put in it.
+        expect(document.querySelectorAll('video')).toHaveLength(1);
     });
 });

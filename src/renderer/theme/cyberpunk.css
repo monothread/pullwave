@@ -1342,6 +1342,19 @@ body::after {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+/* The picture of the second under the mouse, above its time. */
+.player__thumb {
+    display: block;
+    width: 160px;
+    height: auto;
+    background: #000;
+    border: 1px solid var(--line);
 }
 
 .player__button:disabled { opacity: 0.4; cursor: default; box-shadow: none; }

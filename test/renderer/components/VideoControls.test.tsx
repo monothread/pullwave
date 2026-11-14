@@ -7,6 +7,21 @@ import { fakeTextTrackList, type FakeTextTrack } from '../../helpers/textTracks'
 import type { PlaybackRange } from '@renderer/components/playbackRange';
 import type { SubtitleManagerSetting } from '@renderer/components/PlayerSettings';
 import { VideoControls, formatClock, type SubtitleOption } from '@renderer/components/VideoControls';
+import type { SeekPreviewSource } from '@renderer/components/seekPreview';
+
+// The frame the preview of the timeline gives (see useSeekPreview, tested on its own), and what it was asked for at each draw.
+const seekPreview = vi.hoisted(() => {
+    return { frame: null as HTMLCanvasElement | null, calls: [] as Array<[SeekPreviewSource | undefined, number | null]> };
+});
+
+vi.mock('@renderer/hooks/useSeekPreview', () => {
+    return {
+        useSeekPreview: (source: SeekPreviewSource | undefined, second: number | null): HTMLCanvasElement | null => {
+            seekPreview.calls.push([source, second]);
+            return seekPreview.frame;
+        }
+    };
+});
 
 interface Harness {
     video: HTMLVideoElement;
@@ -80,6 +95,8 @@ beforeEach(() => {
 
 afterEach(() => {
     document.body.innerHTML = '';
+    seekPreview.frame = null;
+    seekPreview.calls.length = 0;
 });
 
 describe('formatClock', () => {
@@ -1486,5 +1503,114 @@ describe('VideoControls: the playful extras', () => {
     it('shows no loaded stretch when the timeline is of a part of the media', () => {
         setupRange();
         expect(document.querySelector('.player__buffered')).toBeNull();
+    });
+});
+
+describe('VideoControls: the picture of the preview above the timeline', () => {
+    const FILE: SeekPreviewSource = { kind: 'file', url: 'pullwave-media://episode/1?v=1000' };
+    let getContext: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        // jsdom has no canvas: the picture only has to be drawn on.
+        getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
+            return { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D;
+        });
+    });
+
+    afterEach(() => {
+        getContext.mockRestore();
+    });
+
+    function renderWith(preview: SeekPreviewSource | undefined, duration = 200, range?: PlaybackRange): HTMLInputElement {
+        const video = document.createElement('video');
+        Object.defineProperty(video, 'duration', { value: duration, configurable: true });
+        document.body.appendChild(video);
+        const ref = createRef<HTMLVideoElement>();
+        (ref as { current: HTMLVideoElement | null }).current = video;
+        render(<VideoControls video={ref} subtitles={[]} selectedSubtitle={null} onSelectSubtitle={vi.fn()} range={range} preview={preview} />);
+        const bar = screen.getByRole('slider', { name: 'Seek' }) as HTMLInputElement;
+        bar.getBoundingClientRect = () => {
+            return { left: 100, width: 200, right: 300, top: 0, bottom: 6, height: 6, x: 100, y: 0, toJSON: () => { return {}; } };
+        };
+        return bar;
+    }
+
+    function frame(): HTMLCanvasElement {
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 90;
+        return canvas;
+    }
+
+    it('asks for no second while the mouse is not on the timeline', () => {
+        renderWith(FILE);
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, null]);
+    });
+
+    it('asks for the whole second of the media under the mouse, as the mouse moves', () => {
+        const bar = renderWith(FILE);
+        fireEvent.mouseMove(bar, { clientX: 150 });
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, 50]);
+        fireEvent.mouseMove(bar, { clientX: 150.9 });
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, 50]);
+        fireEvent.mouseMove(bar, { clientX: 201 });
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, 101]);
+        // The end of the bar is the last second the media has.
+        fireEvent.mouseMove(bar, { clientX: 300 });
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, 199]);
+        fireEvent.mouseLeave(bar);
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, null]);
+    });
+
+    it('asks for the second of the media, not of the part, when only a part is played', () => {
+        // A quarter of the part from 20 to 50 is 7.5 seconds into it: 27.5 of the media.
+        const bar = renderWith(FILE, 120, { start: 20, end: 50 });
+        fireEvent.mouseMove(bar, { clientX: 150 });
+        expect(screen.getByRole('tooltip')).toHaveTextContent('0:07');
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, 27]);
+    });
+
+    it('shows the picture in the tooltip, above the time under the mouse', () => {
+        const shown = frame();
+        seekPreview.frame = shown;
+        const bar = renderWith(FILE);
+        expect(screen.queryByTestId('player-thumb')).not.toBeInTheDocument();
+
+        fireEvent.mouseMove(bar, { clientX: 150 });
+        const tooltip = screen.getByRole('tooltip');
+        const thumb = within(tooltip).getByTestId('player-thumb') as HTMLCanvasElement;
+        expect(thumb).toHaveClass('player__thumb');
+        expect(thumb.width).toBe(160);
+        expect(thumb.height).toBe(90);
+        expect(tooltip.firstChild).toBe(thumb);
+        expect(tooltip).toHaveTextContent('0:50');
+
+        fireEvent.mouseLeave(bar);
+        expect(screen.queryByTestId('player-thumb')).not.toBeInTheDocument();
+    });
+
+    it('shows the time alone while there is no picture yet', () => {
+        const bar = renderWith(FILE);
+        fireEvent.mouseMove(bar, { clientX: 150 });
+        expect(screen.getByRole('tooltip')).toHaveTextContent('0:50');
+        expect(screen.queryByTestId('player-thumb')).not.toBeInTheDocument();
+    });
+
+    it('asks for nothing and shows the time alone when the player has no source for it', () => {
+        seekPreview.frame = frame();
+        const bar = renderWith(undefined);
+        fireEvent.mouseMove(bar, { clientX: 150 });
+        expect(seekPreview.calls.at(-1)).toEqual([undefined, null]);
+        expect(seekPreview.calls.every(([source, second]) => {
+            return source === undefined && second === null;
+        })).toBe(true);
+        expect(screen.getByRole('tooltip')).toHaveTextContent('0:50');
+    });
+
+    it('asks for nothing while the length of the media is not known', () => {
+        const bar = renderWith(FILE, 0);
+        fireEvent.mouseMove(bar, { clientX: 150 });
+        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+        expect(seekPreview.calls.at(-1)).toEqual([FILE, null]);
     });
 });
