@@ -1038,6 +1038,7 @@ export const ja: Messages = {
     'tools.toast.failed': '{name} をダウンロードできませんでした。セクションの設定を開いて再試行してください。',
     'tools.chip.failed': '失敗',
     'tools.chip.waiting': '待機中',
+    'tools.chip.summary': 'プログラム {count} 件',
     'tools.notRunning': 'インストールされていますが動作しません。再インストールしてください。',
     'tools.updateBuild': '最新ビルドに更新',
     'tools.latestBuild': '新しいビルドがあります。',

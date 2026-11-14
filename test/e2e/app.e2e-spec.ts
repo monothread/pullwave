@@ -212,9 +212,43 @@ test.describe('the programs the app installs', () => {
             rmSync(emptyTools, { recursive: true, force: true });
         });
 
-        test('says in the header that they are waiting', async () => {
-            const chips = empty.page.locator('.binary-status .chip--pending');
-            await expect(chips).toHaveText(['yt-dlp WAITING', 'ffmpeg WAITING', 'ani-cli WAITING']);
+        test('says in the header that they are waiting: one chip for each on a wide window, one that sums them up on a narrower one', async () => {
+            const { page } = empty;
+            const details = page.locator('.binary-status .binary-status__detail');
+            const summary = page.locator('.binary-status .binary-status__summary');
+            await expect(details).toHaveText(['yt-dlp WAITING', 'ffmpeg WAITING', 'ani-cli WAITING']);
+            await expect(details).toHaveClass([/chip--pending/, /chip--pending/, /chip--pending/]);
+            await expect(summary).toHaveText('3 PROGRAMS');
+            await expect(summary).toHaveClass('chip chip--pending binary-status__summary');
+            await expect(summary).toHaveAttribute('title', 'yt-dlp WAITING\nffmpeg WAITING\nani-cli WAITING');
+            const expectTheBarInside = async (width: number): Promise<void> => {
+                const fit = await page.evaluate(() => {
+                    return { page: document.documentElement.scrollWidth, end: document.querySelector('.topbar__end')!.getBoundingClientRect().right };
+                });
+                expect(fit.page, `${String(width)}: the window does not scroll sideways`).toBe(width);
+                expect(fit.end, `${String(width)}: the end of the bar is inside the window`).toBeLessThanOrEqual(width);
+            };
+
+            // Narrower than 1280 (down to the 1000 of the bar on one line, and the screen standing up): the summary in place of the chips, and the
+            // bar inside the window (the whole window scrolled sideways when the three chips were there).
+            for (const width of [1000, 1080, 1100, 1279]) {
+                await page.setViewportSize({ width, height: 800 });
+                await expect(summary, `${String(width)}: the summary is shown`).toBeVisible();
+                for (const detail of await details.all()) {
+                    await expect(detail, `${String(width)}: the chip of a program is hidden`).toBeHidden();
+                }
+                await expectTheBarInside(width);
+            }
+
+            // 1280 and wider: each chip, no summary, and the bar still inside the window.
+            for (const width of [1280, 1366]) {
+                await page.setViewportSize({ width, height: 800 });
+                await expect(summary, `${String(width)}: the summary is hidden`).toBeHidden();
+                for (const detail of await details.all()) {
+                    await expect(detail, `${String(width)}: the chip of a program is shown`).toBeVisible();
+                }
+                await expectTheBarInside(width);
+            }
         });
 
         test('shows what the video downloader waits for in place of the queue, and keeps the history and the settings reachable', async () => {

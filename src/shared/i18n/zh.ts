@@ -1037,6 +1037,7 @@ export const zh: Messages = {
     'tools.toast.failed': '无法下载 {name}。请打开对应部分的设置重试。',
     'tools.chip.failed': '失败',
     'tools.chip.waiting': '等待中',
+    'tools.chip.summary': '{count} 个程序',
     'tools.notRunning': '已安装但无法运行。请重新安装。',
     'tools.updateBuild': '更新到最新构建',
     'tools.latestBuild': '有更新的构建。',

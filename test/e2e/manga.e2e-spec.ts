@@ -297,6 +297,25 @@ interface WebtoonColumnLayout {
     pageWidths: number[];
 }
 
+// How the area of the reader in fullscreen lays out the bar and the column of the pages across the screen, in pixels.
+interface FullscreenReaderLayout {
+    areaWidth: number;
+    areaClientWidth: number;
+    areaPaddingLeft: number;
+    areaPaddingRight: number;
+    columnLeft: number;
+    columnWidth: number;
+    columnBorderLeft: number;
+    columnBorderRight: number;
+    columnPaddingLeft: number;
+    columnPaddingRight: number;
+    pageWidths: number[];
+    barLeft: number;
+    barWidth: number;
+    barPaddingLeft: number;
+    barPaddingRight: number;
+}
+
 let workDir: string;
 let fake: FakeSuwayomi;
 let session: Session;
@@ -2792,6 +2811,114 @@ test.describe('manga section', () => {
         expect(vertical.rightGap).toBe(0);
     });
 
+    // Measures the bar and the column of the pages against the area of the reader (the element in fullscreen).
+    async function fullscreenReaderLayout(reader: Locator): Promise<FullscreenReaderLayout> {
+        return reader.getByTestId('reader-scroll').evaluate((column): FullscreenReaderLayout => {
+            const area = column.closest('.app__main')!;
+            const bar = area.querySelector('.reader__bar')!;
+            const areaBox = area.getBoundingClientRect();
+            const areaStyle = getComputedStyle(area);
+            const columnBox = column.getBoundingClientRect();
+            const columnStyle = getComputedStyle(column);
+            const barBox = bar.getBoundingClientRect();
+            const barStyle = getComputedStyle(bar);
+            return {
+                areaWidth: areaBox.width,
+                areaClientWidth: area.clientWidth,
+                areaPaddingLeft: parseFloat(areaStyle.paddingLeft),
+                areaPaddingRight: parseFloat(areaStyle.paddingRight),
+                columnLeft: columnBox.left - areaBox.left,
+                columnWidth: columnBox.width,
+                columnBorderLeft: parseFloat(columnStyle.borderLeftWidth),
+                columnBorderRight: parseFloat(columnStyle.borderRightWidth),
+                columnPaddingLeft: parseFloat(columnStyle.paddingLeft),
+                columnPaddingRight: parseFloat(columnStyle.paddingRight),
+                pageWidths: Array.from(column.querySelectorAll('img[data-page]')).map((page) => {
+                    return page.getBoundingClientRect().width;
+                }),
+                barLeft: barBox.left - areaBox.left,
+                barWidth: barBox.width,
+                barPaddingLeft: parseFloat(barStyle.paddingLeft),
+                barPaddingRight: parseFloat(barStyle.paddingRight)
+            };
+        });
+    }
+
+    test('fills the whole width with the pages of the webtoon and of the vertical scroll in fullscreen on a screen standing up, and keeps the room and the cap lying down', async () => {
+        const { reader, area } = await openWebtoon();
+        const column = reader.getByTestId('reader-scroll');
+        await reader.getByRole('img').nth(1).dblclick();
+        await expect(column).toHaveAttribute('data-fullscreen', 'true');
+
+        // Standing up (1080 wide), webtoon: no room on the sides of the page and no cap, the pages as wide as the area less its scrollbar.
+        await expect.poll(async () => {
+            return (await fullscreenReaderLayout(reader)).columnWidth;
+        }).toBe(1070);
+        const webtoon = await fullscreenReaderLayout(reader);
+        expect(webtoon).toEqual({
+            areaWidth: 1080,
+            areaClientWidth: 1070,
+            areaPaddingLeft: 0,
+            areaPaddingRight: 0,
+            columnLeft: 0,
+            columnWidth: 1070,
+            columnBorderLeft: 0,
+            columnBorderRight: 0,
+            columnPaddingLeft: 0,
+            columnPaddingRight: 0,
+            pageWidths: [1070, 1070, 1070, 1070],
+            barLeft: 0,
+            barWidth: 1070,
+            barPaddingLeft: 12,
+            barPaddingRight: 12
+        });
+
+        // The vertical scroll, still in fullscreen: the same whole width, with no padding or border on the sides of its column.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('vertical');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+        await expect(column).toHaveClass(/reader__scroll--vertical/);
+        await expect(column).toHaveAttribute('data-fullscreen', 'true');
+        const vertical = await fullscreenReaderLayout(reader);
+        expect(vertical).toEqual(webtoon);
+
+        // Lying down (1920x1080), still in fullscreen: the page keeps its room on the sides and the webtoon its cap of 938 in the middle.
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+        await reader.getByLabel('Reading mode').selectOption('webtoon');
+        await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+        await expect(column).toHaveClass(/reader__scroll--webtoon/);
+        await session.page.setViewportSize({ width: 1920, height: 1080 });
+        await expect.poll(async () => {
+            return (await fullscreenReaderLayout(reader)).areaWidth;
+        }).toBe(1920);
+        await expect(column).toHaveAttribute('data-fullscreen', 'true');
+        const lying = await fullscreenReaderLayout(reader);
+        expect(lying.areaPaddingLeft).toBe(284);
+        expect(lying.areaPaddingRight).toBe(284);
+        expect(lying.columnWidth).toBe(938);
+        expect(lying.columnBorderLeft).toBe(1);
+        expect(lying.columnBorderRight).toBe(1);
+        expect(lying.pageWidths).toEqual([936, 936, 936, 936]);
+        expect(lying.barPaddingLeft).toBe(0);
+        expect(lying.barPaddingRight).toBe(0);
+        // The column stays in the middle of the room of the page.
+        const room = lying.areaClientWidth - lying.areaPaddingLeft - lying.areaPaddingRight;
+        expect(Math.abs(lying.columnLeft - (lying.areaPaddingLeft + (room - lying.columnWidth) / 2))).toBeLessThanOrEqual(1);
+
+        // Standing up again and out of fullscreen: the webtoon is back in its column of 938, as wide as the bar of the reader.
+        await makeTheWindowTall(session.page);
+        await column.dblclick();
+        await expect(column).toHaveAttribute('data-fullscreen', 'false');
+        await expect.poll(async () => {
+            return (await webtoonColumnLayout(reader)).columnWidth;
+        }).toBe(938);
+        const out = await webtoonColumnLayout(reader);
+        expect(out).toEqual({ roomWidth: 938, columnWidth: 938, columnInnerWidth: 936, leftGap: 0, rightGap: 0, pageWidths: [936, 936, 936, 936] });
+        expect(await area.evaluate((element) => {
+            return getComputedStyle(element).paddingLeft;
+        })).toBe('24px');
+    });
+
     test('puts the reader in fullscreen with a double click on the pages, and leaves it with another or with Escape, without closing the reader', async () => {
         const { reader } = await openWebtoon();
         const fullscreenOf = async (): Promise<string | null> => {
@@ -2807,7 +2934,10 @@ test.describe('manga section', () => {
         // Another chapter is read in fullscreen too: the fullscreen stays while it loads.
         await reader.getByRole('button', { name: 'NEXT CHAPTER', exact: true }).click();
         await expect(reader.locator('.reader__title')).toHaveText('One Piece · The Great Race');
-        await expect(reader.locator('.reader__loading-page')).toHaveCount(0);
+        // Standing up, the pages in fullscreen are as wide as the screen, so the last ones of the chapter are too far below to be loaded yet
+        // (the scroll loads a picture when it comes near): the first page is the one that has to arrive.
+        await expect(reader.locator('.reader__loading-page[data-page="0"]')).toHaveCount(0);
+        await expect(reader.locator('img[data-page="0"]')).toBeVisible();
         await expect.poll(fullscreenOf).toContain('app__main');
         await expect(reader.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'true');
 
@@ -2883,9 +3013,55 @@ test.describe('manga section', () => {
         await expect(reader).toBeVisible();
     });
 
+    test('keeps the room on the sides of the page in fullscreen standing up when the pages are turned one at a time', async () => {
+        fake.pagesArePicture = true;
+        session = await launch();
+        await makeTheWindowTall(session.page);
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const stage = reader.getByTestId('reader-stage');
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        const box = (await stage.boundingBox()) as { width: number };
+        await stage.dblclick({ position: { x: box.width * 0.5, y: 80 } });
+        await expect.poll(() => {
+            return session.page.evaluate(() => {
+                return document.fullscreenElement === null ? null : document.fullscreenElement.className;
+            });
+        }).toContain('app__main');
+        await expect(reader.getByText('1 / 3')).toBeVisible();
+        // 1080 wide: the room of the page is (1080 - 1000) / 2 + 20 + 4 on each side, and the bar of the reader has none of its own.
+        const layout = await stage.evaluate((element) => {
+            const area = element.closest('.app__main')!;
+            const bar = area.querySelector('.reader__bar')!;
+            return {
+                portrait: matchMedia('(orientation: portrait)').matches,
+                areaPaddingLeft: getComputedStyle(area).paddingLeft,
+                areaPaddingRight: getComputedStyle(area).paddingRight,
+                barPaddingLeft: getComputedStyle(bar).paddingLeft,
+                barPaddingRight: getComputedStyle(bar).paddingRight,
+                stageBorderLeft: getComputedStyle(element).borderLeftWidth,
+                stagePaddingLeft: getComputedStyle(element).paddingLeft
+            };
+        });
+        expect(layout).toEqual({
+            portrait: true,
+            areaPaddingLeft: '64px',
+            areaPaddingRight: '64px',
+            barPaddingLeft: '0px',
+            barPaddingRight: '0px',
+            stageBorderLeft: '1px',
+            stagePaddingLeft: '8px'
+        });
+    });
+
     test('turns two pages only in the corners, and the strip in the middle puts the reader in fullscreen', async () => {
         fake.pagesArePicture = true;
         session = await launch();
+        // The stage is clicked: on the tall window the last page, alone and as wide as the stage, is all in view with no scroll under the bar.
+        await makeTheWindowTall(session.page);
         await openManga(session.page);
         await installExtension(session.page);
         await openOnePieceInLibrary(session.page);
@@ -2895,7 +3071,9 @@ test.describe('manga section', () => {
         await reader.getByRole('switch', { name: 'Two pages side by side' }).check();
         await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
         const stage = reader.getByTestId('reader-stage');
+        const loadingPages = reader.locator('.reader__loading-page');
         await expect(reader.getByText('1–2 / 3')).toBeVisible();
+        await expect(loadingPages).toHaveCount(0);
         const box = (await stage.boundingBox()) as { width: number };
         // A click on the pages, between the corners and the middle, turns nothing.
         await stage.click({ position: { x: box.width * 0.32, y: 80 } });
@@ -2904,6 +3082,8 @@ test.describe('manga section', () => {
         // The right corner goes forward (the pages go from the left), the left corner back.
         await stage.click({ position: { x: box.width * 0.95, y: 80 } });
         await expect(reader.getByText('3 / 3')).toBeVisible();
+        // The picture of the last page grows the stage when it arrives: the next click waits for it, or it lands on a stage that is moving.
+        await expect(loadingPages).toHaveCount(0);
         await stage.click({ position: { x: box.width * 0.05, y: 80 } });
         await expect(reader.getByText('1–2 / 3')).toBeVisible();
         // The double click in the middle strip.

@@ -1059,6 +1059,7 @@ export const en = {
     'tools.toast.failed': 'Could not download {name}. Open the settings of the section to try again.',
     'tools.chip.failed': 'FAILED',
     'tools.chip.waiting': 'WAITING',
+    'tools.chip.summary': '{count} PROGRAMS',
     'tools.notRunning': 'It is installed but does not run. Install it again.',
     'tools.updateBuild': 'UPDATE TO THE LATEST BUILD',
     'tools.latestBuild': 'A newer build is available.',

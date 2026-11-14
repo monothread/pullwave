@@ -1043,6 +1043,7 @@ export const es: Messages = {
     'tools.toast.failed': 'No se pudo descargar {name}. Abre los ajustes de la sección para volver a intentarlo.',
     'tools.chip.failed': 'FALLÓ',
     'tools.chip.waiting': 'EN ESPERA',
+    'tools.chip.summary': '{count} PROGRAMAS',
     'tools.notRunning': 'Está instalado pero no se ejecuta. Instálalo de nuevo.',
     'tools.updateBuild': 'ACTUALIZAR A LA ÚLTIMA COMPILACIÓN',
     'tools.latestBuild': 'Hay una compilación más nueva.',

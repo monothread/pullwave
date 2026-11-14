@@ -1043,6 +1043,7 @@ export const pt: Messages = {
     'tools.toast.failed': 'Não foi possível baixar o {name}. Abra as configurações da seção para tentar de novo.',
     'tools.chip.failed': 'FALHOU',
     'tools.chip.waiting': 'AGUARDANDO',
+    'tools.chip.summary': '{count} PROGRAMAS',
     'tools.notRunning': 'Está instalado, mas não roda. Instale de novo.',
     'tools.updateBuild': 'ATUALIZAR PARA A BUILD MAIS RECENTE',
     'tools.latestBuild': 'Há uma build mais recente.',

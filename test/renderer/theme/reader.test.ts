@@ -1,4 +1,4 @@
-import { readStylesheet, styleOf } from '../../helpers/cssRules';
+import { mediaStyleOf, readStylesheet, styleOf } from '../../helpers/cssRules';
 
 const cyberpunk = readStylesheet('cyberpunk.css');
 const shell = readStylesheet('bp-shell.css');
@@ -65,6 +65,54 @@ describe('the column of the webtoon', () => {
 describe('the reader in fullscreen', () => {
     it('puts the background of the theme behind the pages of the area in fullscreen', () => {
         expect(styleOf(cyberpunk, '.app__main:fullscreen')).toEqual({ background: 'var(--bg)' });
+    });
+
+    describe('on a screen standing up', () => {
+        const PORTRAIT = '@media (orientation: portrait)';
+
+        it('takes away the room on the sides of the page only in the scroll modes (the vertical scroll and the webtoon)', () => {
+            expect(mediaStyleOf(cyberpunk, PORTRAIT, '.app__main:fullscreen:has(.reader__scroll)')).toEqual({ 'padding-inline': '0' });
+        });
+
+        it('keeps the room on the sides of the page for the pages turned one or two at a time', () => {
+            expect(mediaStyleOf(cyberpunk, PORTRAIT, '.app__main:fullscreen')).toEqual({});
+        });
+
+        it('keeps 12 pixels on the sides of the bar of the reader in the scroll modes', () => {
+            expect(mediaStyleOf(cyberpunk, PORTRAIT, '.app__main:fullscreen:has(.reader__scroll) .reader__bar')).toEqual({ 'padding-inline': '12px' });
+        });
+
+        it('takes away the padding and the border on the sides of the column of the pages, in the vertical scroll and in the webtoon', () => {
+            expect(mediaStyleOf(cyberpunk, PORTRAIT, '.app__main:fullscreen .reader__scroll')).toEqual({ 'padding-inline': '0', 'border-inline-width': '0' });
+        });
+
+        it('lets the webtoon grow past its cap of 938 pixels, to the whole width', () => {
+            expect(mediaStyleOf(cyberpunk, PORTRAIT, '.app__main:fullscreen .reader__scroll--webtoon')).toEqual({ width: '100%' });
+        });
+
+        it('has no other rule in that media query', () => {
+            const selectors = cyberpunk.rules
+                .filter((rule) => {
+                    return rule.media === PORTRAIT;
+                })
+                .map((rule) => {
+                    return rule.selector;
+                });
+            expect(selectors).toEqual([
+                '.app__main:fullscreen:has(.reader__scroll)',
+                '.app__main:fullscreen:has(.reader__scroll) .reader__bar',
+                '.app__main:fullscreen .reader__scroll',
+                '.app__main:fullscreen .reader__scroll--webtoon'
+            ]);
+        });
+
+        it('leaves the page and the webtoon as they are out of fullscreen and lying down (no rule of the fullscreen at the top of the sheet)', () => {
+            expect(styleOf(cyberpunk, '.app__main:fullscreen .reader__scroll')).toEqual({});
+            expect(styleOf(cyberpunk, '.app__main:fullscreen .reader__scroll--webtoon')).toEqual({});
+            expect(styleOf(cyberpunk, '.app__main:fullscreen:has(.reader__scroll)')).toEqual({});
+            expect(styleOf(cyberpunk, '.app__main:fullscreen:has(.reader__scroll) .reader__bar')).toEqual({});
+            expect(styleOf(cyberpunk, '.reader__scroll--webtoon')).toMatchObject({ width: 'min(100%, 938px)' });
+        });
     });
 });
 

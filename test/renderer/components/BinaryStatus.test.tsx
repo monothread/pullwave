@@ -23,10 +23,15 @@ describe('BinaryStatus', () => {
         ffmpeg: { found: true, path: '/data/tools/ffmpeg/b/bin/ffmpeg', version: '7.0', source: 'installed' as const }
     };
 
+    // The chip of each program (the summary, when there is one, is apart).
     function chips(): Array<string | null> {
-        return Array.from(document.querySelectorAll('.chip')).map((chip) => {
+        return Array.from(document.querySelectorAll('.binary-status__detail')).map((chip) => {
             return chip.textContent;
         });
+    }
+
+    function summary(): HTMLElement | null {
+        return document.querySelector<HTMLElement>('.binary-status__summary');
     }
 
     it('shows nothing before the programs are checked', () => {
@@ -169,6 +174,94 @@ describe('BinaryStatus', () => {
             render(<BinaryStatus />);
             expect(document.querySelectorAll('.chip')).toHaveLength(0);
             expect(screen.queryByText(/FAILED/)).not.toBeInTheDocument();
+        });
+    });
+    describe('the summary of the chips', () => {
+        function setProgram(id: ProgramId, state: Partial<ToolState>): void {
+            const current = useProgramsStore.getState().status ?? makeProgramsStatus();
+            useProgramsStore.setState({
+                status: {
+                    ...current,
+                    programs: current.programs.map((program) => {
+                        return program.id === id ? makeProgramInfo(id, { custom: false, state: { ...program.state, ...state } }) : program;
+                    })
+                }
+            });
+        }
+
+        it('is not there with no chip', () => {
+            useAppStore.setState({ binaries: FOUND });
+            render(<BinaryStatus />);
+            expect(summary()).toBeNull();
+        });
+
+        it('is not there with one chip: one chip fits on the line of the top bar', () => {
+            setProgram('ffmpeg', { status: 'missing', percent: 0, version: null });
+            render(<BinaryStatus />);
+            expect(summary()).toBeNull();
+            expect(chips()).toEqual(['ffmpeg WAITING']);
+        });
+
+        it('counts two programs, grey while they wait or download, with each one on hover, before the chips it sums up', () => {
+            setProgram('ytdlp', { status: 'downloading', percent: 42.4, version: null });
+            setProgram('ffmpeg', { status: 'missing', percent: 0, version: null });
+            render(<BinaryStatus />);
+            const chip = summary()!;
+            expect(chip).toHaveTextContent('2 PROGRAMS');
+            expect(chip.className).toBe('chip chip--pending binary-status__summary');
+            expect(chip).toHaveAttribute('title', 'yt-dlp 42%\nffmpeg WAITING');
+            expect(document.querySelector('.binary-status')!.firstElementChild).toBe(chip);
+            // The chips of the programs are still there, after it, for a window wide enough to show them.
+            expect(chips()).toEqual(['yt-dlp 42%', 'ffmpeg WAITING']);
+            expect(screen.getByText('yt-dlp 42%').className).toBe('chip chip--pending binary-status__detail');
+            expect(screen.getByText('yt-dlp 42%')).not.toHaveAttribute('title');
+        });
+
+        it('counts three programs, red when one failed, with the reason of the failure after a dash', () => {
+            useAnimeStore.setState({ status: makeStatus() });
+            setProgram('ytdlp', { status: 'error', percent: 0, version: null, error: { code: 'DOWNLOAD_FAILED', message: 'getaddrinfo ENOTFOUND github.com' } });
+            setProgram('ffmpeg', { status: 'downloading', percent: 10, version: null });
+            setProgram('anicli', { status: 'missing', percent: 0, version: null });
+            render(<BinaryStatus />);
+            const chip = summary()!;
+            expect(chip).toHaveTextContent('3 PROGRAMS');
+            expect(chip.className).toBe('chip chip--bad binary-status__summary');
+            expect(chip).toHaveAttribute('title', 'yt-dlp FAILED — getaddrinfo ENOTFOUND github.com\nffmpeg 10%\nani-cli WAITING');
+            expect(chips()).toEqual(['yt-dlp FAILED', 'ffmpeg 10%', 'ani-cli WAITING']);
+        });
+
+        it('is red when a program is missing, with the place it should be after a dash', () => {
+            useAppStore.setState({
+                binaries: {
+                    ytdlp: { found: false, path: '/data/tools/ytdlp/1/yt-dlp', version: null, source: 'installed' },
+                    ffmpeg: { found: false, path: '/data/tools/ffmpeg/b/bin/ffmpeg', version: null, source: 'installed' }
+                }
+            });
+            render(<BinaryStatus />);
+            const chip = summary()!;
+            expect(chip).toHaveTextContent('2 PROGRAMS');
+            expect(chip).toHaveClass('chip--bad');
+            expect(chip).toHaveAttribute('title', 'yt-dlp MISSING — /data/tools/ytdlp/1/yt-dlp\nffmpeg MISSING — /data/tools/ffmpeg/b/bin/ffmpeg');
+        });
+
+        it('leaves out the dash when a failure has no reason', () => {
+            setProgram('ytdlp', { status: 'error', percent: 0, version: null, error: null });
+            setProgram('ffmpeg', { status: 'missing', percent: 0, version: null });
+            render(<BinaryStatus />);
+            expect(summary()).toHaveAttribute('title', 'yt-dlp FAILED\nffmpeg WAITING');
+            expect(screen.getByText('yt-dlp FAILED')).toHaveAttribute('title', '');
+        });
+
+        it('goes away when the programs are back to one chip', () => {
+            setProgram('ytdlp', { status: 'downloading', percent: 50, version: null });
+            setProgram('ffmpeg', { status: 'downloading', percent: 60, version: null });
+            const { rerender } = render(<BinaryStatus />);
+            expect(summary()).toHaveTextContent('2 PROGRAMS');
+            useAppStore.setState({ binaries: FOUND });
+            setProgram('ytdlp', { status: 'ready', percent: 100 });
+            rerender(<BinaryStatus />);
+            expect(summary()).toBeNull();
+            expect(chips()).toEqual(['ffmpeg 60%']);
         });
     });
 });

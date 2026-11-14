@@ -145,6 +145,15 @@ body::after {
 /* No chip to show: the programs are all installed and running. */
 .binary-status:empty { display: none; }
 
+/* Two or three chips of the programs and the clock do not fit on the line of the top bar of a window narrower than 1280 pixels (the bar went past
+   the window and the whole window scrolled sideways): there one chip sums them up, with each program on hover. A wider window shows each one. */
+.binary-status__summary { display: none; }
+
+@media (max-width: 1279px) {
+    .binary-status__summary { display: inline-block; }
+    .binary-status:has(.binary-status__summary) .binary-status__detail { display: none; }
+}
+
 .chip {
     padding: 2px 8px;
     border: 1px solid currentColor;
@@ -1754,6 +1763,16 @@ body::after {
 .reader__flow { display: flex; flex-direction: column; gap: 8px; }
 /* The area of the reader in fullscreen (a double click on the pages, in the scroll modes): the background of the theme behind the pages. */
 .app__main:fullscreen { background: var(--bg); }
+/* In fullscreen on a screen standing up, the pages of the vertical scroll and of the webtoon take the whole width: no room on the sides of the
+   page, no cap of the webtoon and no border on the sides of the column. The bar of the reader keeps 12 pixels on its sides. The pages turned
+   one or two at a time keep the room, and so does everything lying down, where the webtoon keeps its cap of 938 (wider, a panel no longer
+   fits on screen). */
+@media (orientation: portrait) {
+    .app__main:fullscreen:has(.reader__scroll) { padding-inline: 0; }
+    .app__main:fullscreen:has(.reader__scroll) .reader__bar { padding-inline: 12px; }
+    .app__main:fullscreen .reader__scroll { padding-inline: 0; border-inline-width: 0; }
+    .app__main:fullscreen .reader__scroll--webtoon { width: 100%; }
+}
 .reader__zone { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 16px; text-align: center; border: 1px dashed var(--line); color: var(--muted); }
 .reader__zone-label { color: var(--cyan); font-size: 12px; letter-spacing: 2px; }
 .reader__zone-title { color: var(--text); font-size: 18px; overflow-wrap: anywhere; }
