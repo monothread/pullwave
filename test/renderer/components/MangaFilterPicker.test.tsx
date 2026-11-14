@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { isPickable, MangaFilterPicker, MAX_SUGGESTIONS, type PickableFilter } from '@renderer/components/MangaFilterPicker';
 import { useAppStore } from '@renderer/store/appStore';
 import { installMockApi } from '../../helpers/mockApi';
+import { expectNotFound } from '../../helpers/notFound';
 
 const initialApp = useAppStore.getState();
 
@@ -72,6 +73,7 @@ describe('MangaFilterPicker', () => {
         await user.type(screen.getByRole('combobox', { name: 'Genre' }), 'zzz');
         expect(screen.queryByRole('option')).not.toBeInTheDocument();
         expect(screen.getByText('Nothing matches.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('Nothing matches.'), 'tiny');
     });
 
     it('picks an option with a click, clears the field and shows the pick as a chip', async () => {

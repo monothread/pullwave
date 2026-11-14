@@ -13,6 +13,7 @@ import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
 import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 import * as blockWindow from '@renderer/hooks/useBlockWindow';
+import { expectNotFound } from '../../helpers/notFound';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -171,6 +172,25 @@ describe('AnimeSearch results', () => {
         useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'done', results: [] } });
         render(<AnimeSearch />);
         expect(screen.getByText('// NOTHING FOUND.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('// NOTHING FOUND.'), 'screen');
+    });
+
+    it('shows a search ani-cli ended with "no results" as a search that found nothing, not as an error', () => {
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'zzz', status: 'error', error: { code: 'NO_RESULTS', raw: 'No results found!' }, searchedQuery: 'zzz' } });
+        render(<AnimeSearch />);
+        expectNotFound(screen.getByText('// NOTHING FOUND.'), 'screen');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.queryByText('Nothing was found for this search.')).not.toBeInTheDocument();
+    });
+
+    it('shows nothing of a search that found nothing while it runs, nor before any search', () => {
+        useAnimeStore.setState({ search: { ...INITIAL_SEARCH, query: 'zzz', status: 'searching' } });
+        const { unmount } = render(<AnimeSearch />);
+        expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
+        unmount();
+        useAnimeStore.setState({ search: INITIAL_SEARCH });
+        render(<AnimeSearch />);
+        expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
     });
 
     it('explains an error, and opens the window with the raw text when it is clicked', async () => {
@@ -178,6 +198,8 @@ describe('AnimeSearch results', () => {
         useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'error', error: { code: 'BLOCKED', raw: 'Blocked by cloudflare.' } } });
         render(<AnimeSearch />);
         const alert = screen.getByRole('alert');
+        // A failure of the source is an error, with no lens of a search that found nothing.
+        expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
         expect(alert).toHaveTextContent('The source blocked the request. Try again later.');
         expect(alert).not.toHaveAttribute('title');
         const dialog = await openErrorDialog(user, 'The source blocked the request. Try again later.');

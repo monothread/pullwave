@@ -7,16 +7,16 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { ConfirmButton } from './ConfirmButton';
 import { animeErrorReport, animeStatusKey } from './animeText';
-import { formatPercent } from './jobStatus';
-import { hasParts, PartBars } from './PartBars';
+import { formatPercent, processingTextKey } from './jobStatus';
+import { hasParts } from './PartBars';
+import { PartsZipper } from './PartsZipper';
+import { StepTrail } from './StepTrail';
+import { useZipPhase } from '../hooks/useZipPhase';
 import { ErrorNotice } from './ErrorNotice';
 import { AnimeManageDownloads } from './AnimeManageDownloads';
 
-const ORDER: Record<AnimeJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
-
-function isFinished(job: AnimeJob): boolean {
-    return job.status === 'done' || job.status === 'error' || job.status === 'cancelled';
-}
+// An episode that just finished stays a few seconds in its place, green, before it leaves for the library.
+const ORDER: Record<AnimeJob['status'], number> = { running: 0, done: 0, paused: 1, queued: 2, error: 3, cancelled: 4 };
 
 function isFailed(job: AnimeJob): boolean {
     return job.status === 'error' || job.status === 'cancelled';
@@ -28,6 +28,10 @@ function isPausable(job: AnimeJob): boolean {
 
 function isRunning(job: AnimeJob): boolean {
     return job.status === 'running';
+}
+
+function isDone(job: AnimeJob): boolean {
+    return job.status === 'done';
 }
 
 function isQueued(job: AnimeJob): boolean {
@@ -44,6 +48,56 @@ function isManageable(job: AnimeJob): boolean {
 
 // One episode of the queue. It is drawn again only when its download changes: the progress of one episode does not draw the others again.
 // Its actions ask the store as it is when they are used.
+function isProcessing(job: AnimeJob): boolean {
+    return job.status === 'running' && job.postProcess !== null;
+}
+
+// The bar of an episode: the bars of its parts (zipped into one once they are downloaded), the bar of the step going on, or how far it is.
+function AnimeJobBar({ job }: { job: AnimeJob }) {
+    const t = useTranslator();
+    const zip = useZipPhase(job.postProcess !== null || job.status === 'done');
+    if (hasParts(job.parts) && zip !== 'joined') {
+        return <PartsZipper parts={job.parts} phase={zip} t={t} />;
+    }
+    if (isProcessing(job)) {
+        return (
+            <div className="progress progress--processing" role="progressbar" aria-label={t('job.processingLabel')}>
+                <div className="progress__bar" />
+            </div>
+        );
+    }
+    return (
+        <div
+            className="progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(job.percent)}
+            aria-label={t('anime.progress.aria', { title: job.animeTitle, episode: job.episode })}
+        >
+            <div className="progress__bar" style={{ width: `${job.percent}%` }} />
+        </div>
+    );
+}
+
+function AnimeJobMeta({ job }: { job: AnimeJob }) {
+    const t = useTranslator();
+    if (isProcessing(job)) {
+        return (
+            <div className="job__meta">
+                <span className="job__processing">{t(processingTextKey(job.postProcess))}</span>
+            </div>
+        );
+    }
+    return (
+        <div className="job__meta">
+            {!hasParts(job.parts) && <span>{formatPercent(job.percent)}</span>}
+            {job.speed && <span>{job.speed}</span>}
+            {job.eta && <span>{t('job.eta', { eta: job.eta })}</span>}
+        </div>
+    );
+}
+
 const AnimeJobRow = memo(function AnimeJobRow({ job }: { job: AnimeJob }) {
     const t = useTranslator();
     const title = t('anime.job.title', { title: job.animeTitle, episode: job.episode });
@@ -57,25 +111,9 @@ const AnimeJobRow = memo(function AnimeJobRow({ job }: { job: AnimeJob }) {
                     <span className={`badge badge--${job.status}`}>{t(animeStatusKey(job.status))}</span>
                 </span>
             </header>
-            {hasParts(job.parts) ? (
-                <PartBars parts={job.parts} t={t} />
-            ) : (
-                <div
-                    className="progress"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(job.percent)}
-                    aria-label={t('anime.progress.aria', { title: job.animeTitle, episode: job.episode })}
-                >
-                    <div className="progress__bar" style={{ width: `${job.percent}%` }} />
-                </div>
-            )}
-            <div className="job__meta">
-                {!hasParts(job.parts) && <span>{formatPercent(job.percent)}</span>}
-                {job.speed && <span>{job.speed}</span>}
-                {job.eta && <span>{t('job.eta', { eta: job.eta })}</span>}
-            </div>
+            <AnimeJobBar job={job} />
+            <StepTrail steps={job.postProcessSteps} status={job.status} t={t} />
+            <AnimeJobMeta job={job} />
             {job.error && (
                 <p className="field__warning" role="alert">
                     <ErrorNotice report={animeErrorReport(t, job.error)} />
@@ -165,7 +203,8 @@ export function AnimeJobs() {
         return ORDER[first.status] - ORDER[second.status];
     });
 
-    const running = jobs.find(isRunning);
+    // The banner shows the episode going on, or the one that just ended while it stays (green) when nothing else is going on.
+    const running = jobs.find(isRunning) ?? jobs.find(isDone);
     const waiting = jobs.filter(isQueued).length;
 
     return (
@@ -177,6 +216,9 @@ export function AnimeJobs() {
                     detail={t('anime.episode', { number: running.episode })}
                     percent={running.percent}
                     parts={running.parts}
+                    postProcess={running.postProcess}
+                    steps={running.postProcessSteps}
+                    done={running.status === 'done'}
                     speed={running.speed}
                     eta={running.eta}
                     kind="anime"
@@ -230,7 +272,7 @@ export function AnimeJobs() {
                         {t('anime.jobs.retryAll', { count: failed })}
                     </button>
                 )}
-                {jobs.some(isFinished) && (
+                {failed > 0 && (
                     <ConfirmButton
                         className="btn btn--small btn--ghost"
                         dialog={{ title: t('confirm.failedClear.title'), message: t('confirm.queueClear.message'), confirmLabel: t('anime.jobs.clear') }}

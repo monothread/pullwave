@@ -9,6 +9,7 @@ import { INITIAL_SCHEDULE, INITIAL_SEARCH, useAnimeStore } from '@renderer/store
 import { useAppStore } from '@renderer/store/appStore';
 import { makeScheduleEntry } from '../../helpers/animeFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { expectNotFound } from '../../helpers/notFound';
 
 const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
@@ -409,6 +410,7 @@ describe('AnimeSchedule', () => {
             await user.type(field, '  naruto ');
 
             expect(screen.getByText('// NO ANIME MATCHES "naruto".')).toBeInTheDocument();
+            expectNotFound(screen.getByText('// NO ANIME MATCHES "naruto".'), 'screen');
             expect(screen.getByText('AIRING [0]')).toBeInTheDocument();
             expect(screen.queryByText('Sousou no Frieren')).not.toBeInTheDocument();
             expect(screen.queryByText('// NOTHING AIRS IN THIS PERIOD.')).not.toBeInTheDocument();

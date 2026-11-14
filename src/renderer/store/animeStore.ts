@@ -11,6 +11,7 @@ import { createTranslator } from '../i18n/catalogs';
 import { resolveAppLanguage } from '../i18n/language';
 import { downloadedEpisodeCount, groupLibrary, isRepairable, libraryEntry, libraryProblems, nextListedEpisode, type AudioReport } from '../components/animeText';
 import { useAppStore } from './appStore';
+import { createDoneLinger } from './doneLinger';
 import { animeListKey, useSortPrefsStore } from './sortPrefsStore';
 import { activitiesOf, updatesOf, upsertSubtitleActivity, type SubtitleActivity } from './subtitleActivity';
 
@@ -282,6 +283,9 @@ function overlayClosed(state: Pick<AnimeState, 'returnView'>): Pick<AnimeState, 
     return { view: state.returnView };
 }
 
+// The episodes whose download is complete and stay a few seconds on the screen of the downloads before they leave it.
+const doneLinger = createDoneLinger<number>();
+
 function translateNow(key: MessageKey, params?: MessageParams): string {
     return createTranslator(resolveAppLanguage(useAppStore.getState().settings.language))(key, params);
 }
@@ -388,21 +392,25 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     });
                 }),
                 api.onAnimeJobUpdate((job) => {
-                    if (job.status === 'done') {
-                        // A download that is complete says so for a few seconds and leaves the screen of the downloads: it is in the library.
+                    set((state) => {
+                        return { jobs: upsertAnimeJob(state.jobs, job) };
+                    });
+                    if (job.status !== 'done') {
+                        doneLinger.cancel(job.episodeId);
+                        return;
+                    }
+                    // A download that is complete says so, stays a few seconds on the screen of the downloads (green) and leaves it: it is
+                    // in the library.
+                    useAppStore.getState().pushToast(translateNow('notice.downloadDone', { title: translateNow('anime.job.title', { title: job.animeTitle, episode: job.episode }) }));
+                    useFxStore.getState().celebrate();
+                    doneLinger.schedule(job.episodeId, () => {
                         set((state) => {
                             return {
                                 jobs: state.jobs.filter((candidate) => {
-                                    return candidate.episodeId !== job.episodeId;
+                                    return candidate.episodeId !== job.episodeId || candidate.status !== 'done';
                                 })
                             };
                         });
-                        useAppStore.getState().pushToast(translateNow('notice.downloadDone', { title: translateNow('anime.job.title', { title: job.animeTitle, episode: job.episode }) }));
-                        useFxStore.getState().celebrate();
-                        return;
-                    }
-                    set((state) => {
-                        return { jobs: upsertAnimeJob(state.jobs, job) };
                     });
                 }),
                 api.onAnimeQueueHeld((queueHeld) => {

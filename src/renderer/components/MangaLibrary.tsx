@@ -17,6 +17,7 @@ import { filterGroups, mangaLastSeen, mangaNews, sortGroups, type LibraryFilter 
 import { useMangaLibrarySort } from '../store/sortPrefsStore';
 import { activeGroup, downloadedCount, downloadedTotals, groupLibrary, inGroup, matchesManga, newChapterCount, searchMatchesByTab, sourceIsMissing, sourceLabelsOf, type MangaLibraryGroup } from './mangaText';
 import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
+import { NotFound } from './NotFound';
 
 interface MangaRowProps {
     manga: LibraryManga;
@@ -339,7 +340,8 @@ export function MangaLibrary() {
             )}
             <LibraryControls kind="manga" filter={filter} sort={sort} allCount={all.length} newsCount={filterGroups(all, 'news', newsOf).length} onFilter={setFilter} onSort={setSort} />
             <span className="section-label">{t('manga.library.label', { count: cards.length })}</span>
-            {shown.length === 0 && <p className="empty">{currentGroup !== null && search.trim().length === 0 ? t('manga.library.emptyGroup') : t('manga.library.search.none')}</p>}
+            {shown.length === 0 && currentGroup !== null && search.trim().length === 0 && <p className="empty">{t('manga.library.emptyGroup')}</p>}
+            {shown.length === 0 && (currentGroup === null || search.trim().length > 0) && <NotFound text={t('manga.library.search.none')} />}
             {shown.length > 0 && cards.length === 0 && <p className="empty">{t('library.filter.noNews')}</p>}
             <ul className="cover-grid">
                 <IncrementalItems items={cards} listKey="manga-library" end="li" renderItem={(card) => {

@@ -20,6 +20,7 @@ function start(platform: NodeJS.Platform = 'linux') {
     const progress: AniDownloadProgress[] = [];
     const parts: AniPartStart[] = [];
     const destinations: string[] = [];
+    const joins: string[] = [];
     const handle = runAniCli({
         binary: '/app/resources/bin/ani/busybox',
         args: ['sh', '/app/resources/bin/ani/ani-cli', 'naruto'],
@@ -33,11 +34,14 @@ function start(platform: NodeJS.Platform = 'linux') {
         onPart: (part) => {
             parts.push(part);
         },
+        onJoin: () => {
+            joins.push('join');
+        },
         onDestination: (path) => {
             destinations.push(path);
         }
     });
-    return { fake, spawnFn, killGroup, progress, parts, destinations, handle };
+    return { fake, spawnFn, killGroup, progress, parts, destinations, joins, handle };
 }
 
 beforeEach(() => {
@@ -205,6 +209,60 @@ describe('runAniCli', () => {
         expect(result.status === 'done' && result.value.output).toBe('');
     });
 
+    it('tells when ffmpeg starts joining the parts, in its order with the parts and the progress, and keeps the marker out of the output', async () => {
+        const fake = createFakeChild();
+        const events: string[] = [];
+        const handle = runAniCli({
+            binary: 'busybox',
+            args: [],
+            env: ENV,
+            spawnFn: () => {
+                return fake.child;
+            },
+            onProgress: (value) => {
+                events.push(`progress ${String(value.percent)}`);
+            },
+            onPart: (part) => {
+                events.push(`part ${String(part.index)}`);
+            },
+            onJoin: () => {
+                events.push('join');
+            }
+        });
+        fake.stdout.write('PULLWAVE_PART\t1\tvideo,audio\n');
+        fake.stdout.write('[download] 100% of  5.00MiB in 00:00:05 at 1.00MiB/s\n');
+        fake.stdout.write(`${ESC}[0mPULLWAVE_JOIN\n`);
+        fake.stdout.write('[download] Destination: /home/me/Anime/Reborn Episode 5.mp4\n');
+        fake.emitter.emit('close', 0);
+
+        const result = await handle.result;
+        expect(events).toEqual(['part 1', 'progress 100', 'join']);
+        expect(result).toEqual({
+            status: 'done',
+            value: { exitCode: 0, output: '[download] Destination: /home/me/Anime/Reborn Episode 5.mp4\n', menuChoices: [], destination: '/home/me/Anime/Reborn Episode 5.mp4', moreResults: false, downloadFailed: false }
+        });
+    });
+
+    it('reads the marker of the joining from stderr too', async () => {
+        const { fake, handle, joins } = start();
+        fake.stderr.write('PULLWAVE_JOIN\n');
+        fake.emitter.emit('close', 0);
+
+        const result = await handle.result;
+        expect(joins).toEqual(['join']);
+        expect(result.status === 'done' && result.value.output).toBe('');
+    });
+
+    it('takes a line that only mentions the joining as an ordinary line', async () => {
+        const { fake, handle, joins } = start();
+        fake.stdout.write('the PULLWAVE_JOIN line\n');
+        fake.emitter.emit('close', 0);
+
+        const result = await handle.result;
+        expect(joins).toEqual([]);
+        expect(result.status === 'done' && result.value.output).toBe('the PULLWAVE_JOIN line\n');
+    });
+
     it('takes a marker of a part that cannot be read as an ordinary line', async () => {
         const { fake, handle, parts } = start();
         fake.stdout.write('PULLWAVE_PART\t5\tvideo,audio\n');
@@ -234,10 +292,11 @@ describe('runAniCli', () => {
         expect(result.status === 'done' && result.value.output).toBe('Checking dependencies...\nlinks fetched\n');
     });
 
-    it('works without progress, part and destination callbacks', async () => {
+    it('works without progress, part, joining and destination callbacks', async () => {
         const fake = createFakeChild();
         const handle = runAniCli({ binary: 'busybox', args: [], env: ENV, spawnFn: () => { return fake.child; } });
         fake.stdout.write('PULLWAVE_PART\t0\tvideo,audio\n');
+        fake.stdout.write('PULLWAVE_JOIN\n');
         fake.stdout.write('[download] Destination: /a.mp4\n');
         fake.stdout.write('[download]  1.0% of 1.00MiB at 1.00MiB/s ETA 00:01\n');
         fake.emitter.emit('close', 0);

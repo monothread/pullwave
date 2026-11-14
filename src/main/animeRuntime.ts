@@ -16,7 +16,8 @@ import { loadSchedule, SCHEDULE_CACHE_MS } from './services/animeSchedule';
 import { AnimeDownloadQueue } from './services/animeDownloadQueue';
 import { AnimeAiringService } from './services/animeAiring';
 import { AnimeUpdateChecker } from './services/animeUpdateChecker';
-import { AutoSubtitleTranslator, autoTranslateTarget } from './services/autoSubtitles';
+import { AutoSubtitleTranslator } from './services/autoSubtitles';
+import { translationTargetOf } from '@shared/subtitleTarget';
 import { JsonStore } from './services/jsonStore';
 import { animeBaseDirectory, isInsideDirectory, removeDirectories, removeEmptyDirectories } from './services/animeFiles';
 import { migrateAnimeFolder, type MigrationFileSystem } from './services/animeMigration';
@@ -324,11 +325,11 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             options.send(IPC.eventSubtitleTranslation, job);
         }
     });
-    // The language the subtitles are wanted in: the one of the anime subtitles of the settings (the automatic translation of the new episodes and
-    // the translation of a season go into it).
+    // The language the subtitles are wanted in: the one of the anime subtitles of the settings, or the language of the app when they leave the
+    // choice to ani-cli (the automatic translation of the new episodes and the translation of a season go into it).
     const translationTarget = (): TranslationLanguage => {
         const settings = options.getSettings();
-        return autoTranslateTarget(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale), settings.translateLanguage);
+        return translationTargetOf(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale));
     };
     // The subtitles of the new episodes the check downloads are translated into the language of the anime subtitles, when the user wants that.
     const autoTranslation = new AutoSubtitleTranslator({

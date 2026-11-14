@@ -1,6 +1,6 @@
 import { TRANSLATION_LANGUAGES, type AnimeSubtitleTrack, type AutoTranslateOffReason, type SubtitleTranslateRequest, type SubtitleTranslateResponse, type TranslationLanguage } from '@shared/anime';
 import type { LlmErrorCode, TranslationSetupGap } from '@shared/llm';
-import { AutoSubtitleTranslator, autoTranslateTarget, offReasonOf, type AutoSubtitleDependencies } from '@main/services/autoSubtitles';
+import { AutoSubtitleTranslator, offReasonOf, type AutoSubtitleDependencies } from '@main/services/autoSubtitles';
 import { hasSubtitleIn } from '@main/services/subtitleLanguage';
 import { listSubtitleTracks, type SubtitleFileSystem } from '@main/services/subtitleFiles';
 import { translateEpisodeSubtitle } from '@main/services/subtitleTranslation';
@@ -71,27 +71,6 @@ async function settle(): Promise<void> {
         await Promise.resolve();
     }
 }
-
-describe('autoTranslateTarget', () => {
-    it.each(['English', 'Portuguese', 'Spanish', 'French', 'German', 'Italian', 'Russian'] as const)('uses the language chosen for the anime subtitles (%s)', (setting) => {
-        expect(autoTranslateTarget(setting, 'en', 'Korean')).toBe(setting);
-    });
-
-    it.each([
-        ['en', 'English'],
-        ['pt', 'Portuguese'],
-        ['es', 'Spanish'],
-        ['zh', 'English'],
-        ['ja', 'English']
-    ] as const)('follows the language of the app (%s) when the anime subtitles follow it', (language, expected) => {
-        expect(autoTranslateTarget('auto', language, 'Korean')).toBe(expected);
-    });
-
-    it('uses the language subtitles are translated into when the anime subtitles are what ani-cli picks', () => {
-        expect(autoTranslateTarget('default', 'pt', 'Portuguese (Brazil)')).toBe('Portuguese (Brazil)');
-        expect(autoTranslateTarget('default', 'en', 'Korean')).toBe('Korean');
-    });
-});
 
 describe('hasSubtitleIn', () => {
     it('finds the language in the label of a subtitle of any kind, whatever its case', () => {

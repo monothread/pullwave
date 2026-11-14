@@ -9,6 +9,7 @@ import { makeExtension } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
+import { expectNotFound } from '../../helpers/notFound';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -213,6 +214,7 @@ describe('MangaExtensions', () => {
         await screen.findByText('Alpha');
         await user.type(screen.getByLabelText('Filter extensions'), 'zzz');
         expect(screen.getByText('No extension found.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('No extension found.'), 'screen');
     });
 
     it('asks the stores for their lists again', async () => {
@@ -300,6 +302,9 @@ describe('MangaExtensions', () => {
             const user = userEvent.setup();
             render(<MangaExtensions />);
             expect(await screen.findByText('No extension is installed. Turn off "Installed only" to see the ones you can install.')).toBeInTheDocument();
+            // Nothing installed is not a search that found nothing: it keeps the ring of the empty screens.
+            expect(screen.getByText('No extension is installed. Turn off "Installed only" to see the ones you can install.')).toHaveClass('empty');
+            expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
             expect(screen.queryByText('No extension found.')).not.toBeInTheDocument();
             await user.click(screen.getByRole('switch', { name: 'Installed only' }));
             expect(names()).toEqual(['Delta']);

@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
+import { FINISHED_CARD_TIMEOUT } from './finishedCards';
 import { leaveHome } from './startScreen';
 import { expectNoticesAtBottomRight, expectNoticesHidden, showNotice } from './notices';
 import { expectNoSiblingInRing, expectSiblingAfterFolder, makeFolderOnAnotherDisk } from './diskChart';
@@ -1009,16 +1010,26 @@ test('searches an anime, lists the results and reports when nothing is found', {
     await expect(page.locator('.history__title')).toHaveText(['Fake Anime', 'Fake Anime 2']);
     expect(calls()).toEqual(['sub | fake']);
 
+    // A search that finds nothing is not an error: the lens sweeps, shakes no, its cross pops and the words come in (D-197).
     await search(page, 'zzz');
-    const alert = page.getByRole('alert');
-    await expect(alert).toHaveText('Nothing was found for this search.');
-    await expect(alert).not.toHaveAttribute('title');
-    await alert.getByRole('button', { name: 'Nothing was found for this search.' }).click();
-    const details = page.getByRole('dialog', { name: 'ERROR DETAILS' });
-    await expect(details.getByTestId('error-message')).toHaveText('No results found!');
-    await expect(details.locator('.error-details__row').filter({ hasText: /^Code/ }).locator('dd')).toHaveText('NO_RESULTS');
-    await details.getByRole('button', { name: 'CLOSE' }).click();
-    await expect(details).toHaveCount(0);
+    const notFound = page.getByTestId('not-found');
+    await expect(notFound).toHaveClass('not-found not-found--screen');
+    await expect(notFound.locator('.not-found__text')).toHaveText('// NOTHING FOUND.');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect.poll(() => {
+        return notFound.locator('.not-found__cross').evaluate((cross) => {
+            return getComputedStyle(cross).transform;
+        });
+    }).toBe('matrix(1, 0, 0, 1, 0, 0)');
+    await expect.poll(() => {
+        return notFound.locator('.not-found__text').evaluate((text) => {
+            return getComputedStyle(text).opacity;
+        });
+    }).toBe('1');
+    expect(await notFound.locator('.not-found__lens').evaluate((lens) => {
+        return getComputedStyle(lens).animationName;
+    })).toBe('not-found-sweep, not-found-shake, not-found-float');
+    expect(calls()).toEqual(['sub | fake', 'sub | zzz']);
 });
 
 test('clears the results when the name is emptied', async () => {
@@ -1041,8 +1052,9 @@ test('clears the message of a search that found nothing when the name is emptied
     const { page } = session;
     await openAnimeTab(page);
     await search(page, 'zzz');
-    await expect(page.getByRole('alert')).toHaveText('Nothing was found for this search.');
+    await expect(page.getByTestId('not-found')).toHaveText('// NOTHING FOUND.');
     await page.getByLabel('Anime name').fill('');
+    await expect(page.getByTestId('not-found')).toHaveCount(0);
     await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
@@ -1103,7 +1115,7 @@ test('downloads an episode with the quality of the settings and shows it in the 
     await waitForDownloaded(page);
     // A finished download leaves the downloads screen: it is in the library from then on.
     await showDownloads(page);
-    await expect(page.getByTestId('anime-job')).toHaveCount(0);
+    await expect(page.getByTestId('anime-job')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await expect(page.getByText('// NO DOWNLOADS YET.')).toBeVisible();
     await backFromDownloads(page);
     expect(calls().at(-1)).toBe('sub | -d -S 1 -e 2 -q 720p fake');
@@ -1238,7 +1250,7 @@ test('pausing a download ends the process and keeps the episode as paused, and r
 
     await job.getByRole('button', { name: 'RESUME' }).click();
     await expect(page.locator('.toast').filter({ hasText: 'Download complete: Fake Anime · EP 1' })).toBeVisible({ timeout: 20000 });
-    await expect(page.getByTestId('anime-job')).toHaveCount(0);
+    await expect(page.getByTestId('anime-job')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     expect(existsSync(file)).toBe(true);
     // Two downloads of the same episode were asked of ani-cli: the one that was paused and the one that went on.
     expect(
@@ -1279,7 +1291,7 @@ test('a paused episode is in the library as paused, with a button to resume it, 
     await reopened.getByRole('button', { name: 'RESUME: Fake Anime EP 1' }).click();
     await expect(reopened.locator('.toast').filter({ hasText: 'Download complete: Fake Anime · EP 1' })).toBeVisible({ timeout: 20000 });
     await showDownloads(reopened);
-    await expect(reopened.getByTestId('anime-job')).toHaveCount(0);
+    await expect(reopened.getByTestId('anime-job')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await backFromDownloads(reopened);
     // The screen of the series, with its episodes shown, is where the user was, and is where they come back to.
     const openSeries = reopened.getByRole('button', { name: 'OPEN SERIES: Fake Anime' });
@@ -1361,6 +1373,62 @@ test('shows a bar for the picture and one for the audio of an episode whose audi
     // Once the audio is done the episode is complete and leaves the downloads.
     await backFromDownloads(page);
     await waitForDownloaded(page);
+});
+
+test('zips the bars of the picture and the audio into one once both are downloaded, shows the joining as a step, and keeps the episode green for five seconds before it leaves', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await search(page, 'split');
+    await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
+    await downloadFromLibrary(page, [1]);
+    await showDownloads(page);
+    // Every moment of the zipper of the card, in the order they came.
+    await page.evaluate(() => {
+        const seen: string[] = [];
+        (window as unknown as { zipStates: string[] }).zipStates = seen;
+        new MutationObserver(() => {
+            const state = document.querySelector('[data-testid="anime-job"] .zipper')?.getAttribute('data-zip');
+            if (state !== undefined && state !== null && seen.at(-1) !== state) {
+                seen.push(state);
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-zip'] });
+    });
+    const job = page.getByTestId('anime-job');
+    await expect(job.getByRole('progressbar', { name: 'Download progress: AUDIO' })).toHaveAttribute('aria-valuenow', '30');
+
+    // ffmpeg joins them: the joining is the step going on, written under the bar, and the bars are zipped into the bar of the step.
+    await expect(job.getByText('Joining video and audio')).toBeVisible();
+    const steps = job.getByRole('list', { name: 'Steps of the download' });
+    await expect(steps.getByRole('listitem')).toHaveText(['Download', 'Join']);
+    expect(await steps.getByRole('listitem').evaluateAll((items) => {
+        return items.map((item) => {
+            return item.getAttribute('data-state');
+        });
+    })).toEqual(['done', 'now']);
+    await expect(job.getByRole('progressbar', { name: 'Processing the downloaded file' })).toBeVisible();
+    await expect(job.locator('.zipper')).toHaveCount(0);
+    expect(await page.evaluate(() => {
+        return (window as unknown as { zipStates: string[] }).zipStates;
+    })).toEqual(['parts', 'split', 'zip', 'settle']);
+    const banner = page.getByTestId('download-hero');
+    await expect(banner.locator('.download-hero__body > .download-hero__bar')).toHaveClass('download-hero__bar progress progress--processing');
+
+    // Complete: the card stays green, with its bar full and every step ticked, and so does the banner, and then the card leaves.
+    await expect(job).toHaveClass(/job--done/);
+    const doneAt = Date.now();
+    await expect(job.locator('.badge')).toHaveText('DOWNLOADED');
+    await expect(job.getByRole('progressbar', { name: 'Download progress of Fake Anime, episode 1' })).toHaveAttribute('aria-valuenow', '100');
+    expect(await steps.getByRole('listitem').evaluateAll((items) => {
+        return items.map((item) => {
+            return item.getAttribute('data-state');
+        });
+    })).toEqual(['done', 'done']);
+    await expect(banner).toHaveClass('download-hero download-hero--done');
+    await expect(banner.locator('.hero__eyebrow')).toHaveText('DOWNLOAD COMPLETE');
+    await expect(page.locator('.toast--info .toast__message', { hasText: 'Download complete: Fake Anime · EP 1' })).toBeVisible();
+    await expect(job).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
+    expect(Date.now() - doneAt).toBeGreaterThan(4000);
+    await expect(banner).toHaveCount(0);
 });
 
 test('closing the app cancels a download that is running and deletes the folder of its episode, with the unfinished file', { tag: '@windows' }, async () => {
@@ -1486,7 +1554,7 @@ test('tries an episode again by itself when the connection drops, and finishes i
 
     await showDownloads(page);
     await expect(page.locator('.toast').filter({ hasText: 'Download complete: Fake Anime · EP 1' })).toBeVisible({ timeout: 30000 });
-    await expect(page.getByTestId('anime-job')).toHaveCount(0);
+    await expect(page.getByTestId('anime-job')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await expect(page.getByText('FAILED')).toHaveCount(0);
     expect(existsSync(join(animeDir, 'Fake Anime', 'Season 1', 'Episode 1', 'Fake Anime Episode 1.mp4'))).toBe(true);
     // ani-cli was asked twice for the same episode: the one that failed with the connection and the one the queue made by itself.
@@ -1637,7 +1705,7 @@ test('keeps the library after the app is restarted', { tag: '@windows' }, async 
     await expect(session.page.getByText('1/3 DOWNLOADED')).toBeVisible();
     await session.page.getByRole('button', { name: 'BACK TO LIBRARY', exact: true }).click();
     await showDownloads(session.page);
-    await expect(session.page.getByTestId('anime-job')).toHaveCount(0);
+    await expect(session.page.getByTestId('anime-job')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await expect(session.page.getByText('// NO DOWNLOADS YET.')).toBeVisible();
 });
 
@@ -3849,7 +3917,7 @@ test.describe('library of the search', () => {
         await expect(page.getByRole('button', { name: 'DOWNLOAD ALL: Fake Anime' })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'OPEN FOLDER: Fake Anime' })).toBeVisible();
         await showDownloads(page);
-        await expect(page.getByTestId('anime-job')).toHaveCount(0);
+        await expect(page.getByTestId('anime-job')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     });
 
     test('downloads only the episodes of one season, from the button of its row, leaving the other seasons of the series alone', async () => {
@@ -4066,7 +4134,7 @@ test.describe('translating subtitles with a language model', () => {
         // The keyring of the machine is not used: the tokens are kept the plain way, which only this variable allows.
         const { userData } = session;
         await session.app.close();
-        session = await launch(userData, { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, translateLanguage: 'Spanish', animeSubtitles: 'Spanish' }, { PULLWAVE_FAKE_SECRETS: '1' });
+        session = await launch(userData, { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, animeSubtitles: 'Spanish' }, { PULLWAVE_FAKE_SECRETS: '1' });
     });
 
     function episodeFolder(episode: number): string {
@@ -4120,7 +4188,8 @@ test.describe('translating subtitles with a language model', () => {
         await expect(page.getByLabel('Provider', { exact: true })).toHaveValue('custom');
         await expect(page.getByLabel('Model', { exact: true })).toHaveValue('fake-model');
         await expect(page.getByLabel('Address (optional)', { exact: true })).toHaveValue(`${baseUrl}/v1`);
-        await expect(page.getByLabel('Default language', { exact: true })).toHaveValue('Spanish');
+        // The translation has no language of its own any more: it goes into the language of the anime subtitles.
+        await expect(page.getByLabel('Default language', { exact: true })).toHaveCount(0);
         await expect(page.getByText('No token is saved for this provider.')).toBeVisible();
         await expect(page.getByLabel('Token (API key)', { exact: true })).toHaveAttribute('type', 'password');
         await page.getByLabel('Token (API key)', { exact: true }).fill(TOKEN);
@@ -4632,7 +4701,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
                 translateProvider: 'custom',
                 translateModel: 'fake-model',
                 translateBaseUrl: `${baseUrl}/v1`,
-                translateLanguage: 'Spanish'
+                animeSubtitles: 'Spanish'
             },
             { PULLWAVE_FAKE_SECRETS: '1' }
         );
@@ -4855,7 +4924,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
                 translateProvider: 'custom',
                 translateModel: 'fake-model',
                 translateBaseUrl: `${baseUrl}/v1`,
-                translateLanguage: 'Spanish'
+                animeSubtitles: 'Spanish'
             },
             { PULLWAVE_FAKE_SECRETS: '1' }
         );
@@ -4963,7 +5032,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await session.app.close();
         session = await launch(
             userData,
-            { transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: `${baseUrl}/v1beta`, translateLanguage: 'Portuguese (Brazil)' },
+            { transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: `${baseUrl}/v1beta`, animeSubtitles: 'Portuguese' },
             { PULLWAVE_FAKE_SECRETS: '1' }
         );
         const { page } = session;
@@ -5694,7 +5763,7 @@ test.describe('the look for new episodes', () => {
         const ENGLISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nHello there\n\n2\n00:00:04.000 --> 00:00:06.000\nSee you\n';
         const SPANISH_SUBTITLE = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nES: Hello there\n\n2\n00:00:04.000 --> 00:00:06.000\nES: See you\n';
         const SWITCH = 'Translate the subtitles of the new episodes downloaded';
-        const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the translation language below when it is "WHAT ANI-CLI PICKS"), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
+        const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the language of the app when it is "WHAT ANI-CLI PICKS"; Portuguese is translated into Brazilian Portuguese), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
         const NEEDS_SETUP = 'Save the token and the model of the provider in SUBTITLE TRANSLATION to turn this on.';
 
         interface LlmRequest {
@@ -5754,7 +5823,7 @@ test.describe('the look for new episodes', () => {
         });
 
         function providerSettings(): Record<string, unknown> {
-            return { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, translateLanguage: 'Korean', animeCheckNewEpisodes: false, animeAutoDownloadNew: true };
+            return { translateProvider: 'custom', translateModel: 'fake-model', translateBaseUrl: `${baseUrl}/v1`, animeCheckNewEpisodes: false, animeAutoDownloadNew: true };
         }
 
         // Opens the app with the provider of the translation set up; with the token kept already (the plain way, which PULLWAVE_FAKE_SECRETS allows)
@@ -5878,17 +5947,20 @@ test.describe('the look for new episodes', () => {
             expect(savedSettings().animeAutoTranslateNew).toBe(true);
         });
 
-        test('uses the language of the translation of the settings when the anime subtitles are what ani-cli picks', async () => {
+        test('translates into the language of the app when the anime subtitles are what ani-cli picks', async () => {
             const page = await relaunchWithProvider({ animeAutoTranslateNew: true, animeSubtitles: 'default' });
+            // The source gives a Spanish subtitle, the one ani-cli picks; the app is in English, so the episode has none in its language.
             sourceHasEnglishSubtitles();
+            writeFileSync(join(historyFolder(), 'download-subtitle-label'), 'Spanish');
+            writeFileSync(join(historyFolder(), 'download-subtitle-is-default'), '');
 
             await findAndDownloadTheFourthEpisode(page);
 
             await expect.poll(() => {
-                return existsSync(episodeFile('translated-Korean.vtt'));
+                return existsSync(episodeFile('translated-English.vtt'));
             }, { timeout: 15000 }).toBe(true);
             expect(received).toHaveLength(1);
-            expect(received[0]?.body.messages[0]?.content).toContain('Korean');
+            expect(received[0]?.body.messages[0]?.content).toContain('English');
         });
 
         test('leaves the episode that has a subtitle in that language already', async () => {

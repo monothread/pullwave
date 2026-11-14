@@ -4,6 +4,7 @@ import type { AnimeCheckState, AnimeHistoryEntry, AnimeJob, AnimeScheduleEntry, 
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { machineTimeZone, zonedDayLimits } from '@shared/timezone';
 import { useAppStore } from '@renderer/store/appStore';
+import { DONE_LINGER_MS } from '@renderer/store/doneLinger';
 import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { INITIAL_SCHEDULE, INITIAL_SEARCH, MAX_SCHEDULE_SEARCH_NAMES, UNSUPPORTED_STATUS, useAnimeStore, type AnimeScheduleState } from '@renderer/store/animeStore';
 import { makeAnime, makeAnimeJob, makeEpisode, makeScheduleEntry, makeStatus } from '../../helpers/animeFixtures';
@@ -208,11 +209,16 @@ describe('init and the jobs that are done', () => {
     }
 
     beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         useAppStore.setState({ toasts: [] });
         mock.api.getAnimeStatus.mockResolvedValue(SUPPORTED);
     });
 
-    it('takes a download that is done off the list, and says so with a toast', async () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('says so with a toast at once, keeps the episode in its place (green) for five seconds, and then takes it off the list', async () => {
         await useAnimeStore.getState().init();
         mock.emitAnimeJob(makeAnimeJob({ status: 'running' }));
         mock.emitAnimeJob(makeAnimeJob({ episodeId: 2, episode: '2', status: 'running' }));
@@ -220,9 +226,32 @@ describe('init and the jobs that are done', () => {
 
         mock.emitAnimeJob(makeAnimeJob({ status: 'done', percent: 100, speed: '', eta: '' }));
 
-        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, episode: '2', status: 'running' })]);
         expect(toastMessages()).toEqual(['Download complete: Naruto · EP 1']);
         expect(useAppStore.getState().notice).toBeNull();
+        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ status: 'done', percent: 100, speed: '', eta: '' }), makeAnimeJob({ episodeId: 2, episode: '2', status: 'running' })]);
+        vi.advanceTimersByTime(DONE_LINGER_MS - 1);
+        expect(useAnimeStore.getState().jobs).toHaveLength(2);
+        vi.advanceTimersByTime(1);
+        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, episode: '2', status: 'running' })]);
+    });
+
+    it('does not take off an episode that went on again (tried again) during its five seconds', async () => {
+        await useAnimeStore.getState().init();
+        mock.emitAnimeJob(makeAnimeJob({ status: 'done', percent: 100 }));
+        mock.emitAnimeJob(makeAnimeJob({ status: 'queued', percent: 0 }));
+        vi.advanceTimersByTime(DONE_LINGER_MS * 2);
+        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ status: 'queued', percent: 0 })]);
+    });
+
+    it('takes off only the episode that stayed its time, whatever else changed meanwhile', async () => {
+        await useAnimeStore.getState().init();
+        mock.emitAnimeJob(makeAnimeJob({ episodeId: 1, episode: '1', status: 'done', percent: 100 }));
+        vi.advanceTimersByTime(2000);
+        mock.emitAnimeJob(makeAnimeJob({ episodeId: 2, episode: '2', status: 'done', percent: 100 }));
+        vi.advanceTimersByTime(3000);
+        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 2, episode: '2', status: 'done', percent: 100 })]);
+        vi.advanceTimersByTime(2000);
+        expect(useAnimeStore.getState().jobs).toEqual([]);
     });
 
     it('celebrates each episode that is done, and not one that is going on', async () => {
@@ -241,6 +270,8 @@ describe('init and the jobs that are done', () => {
         mock.emitAnimeJob(makeAnimeJob({ episodeId: 2, episode: '2', status: 'done' }));
         mock.emitAnimeJob(makeAnimeJob({ episodeId: 3, animeTitle: 'Bleach', episode: '12', status: 'done' }));
         expect(toastMessages()).toEqual(['Download complete: Naruto · EP 1', 'Download complete: Naruto · EP 2', 'Download complete: Bleach · EP 12']);
+        expect(useAnimeStore.getState().jobs).toHaveLength(3);
+        vi.advanceTimersByTime(DONE_LINGER_MS);
         expect(useAnimeStore.getState().jobs).toEqual([]);
     });
 
@@ -251,11 +282,13 @@ describe('init and the jobs that are done', () => {
         expect(toastMessages()).toEqual(['Download concluído: Naruto · EP 1']);
     });
 
-    it('does not add a job that arrives done, because there is nothing left to show of it', async () => {
+    it('shows for its five seconds an episode that arrives done, which the list had not seen going on', async () => {
         await useAnimeStore.getState().init();
         mock.emitAnimeJob(makeAnimeJob({ episodeId: 9, status: 'done' }));
-        expect(useAnimeStore.getState().jobs).toEqual([]);
+        expect(useAnimeStore.getState().jobs).toEqual([makeAnimeJob({ episodeId: 9, status: 'done' })]);
         expect(toastMessages()).toHaveLength(1);
+        vi.advanceTimersByTime(DONE_LINGER_MS);
+        expect(useAnimeStore.getState().jobs).toEqual([]);
     });
 
     it.each(['queued', 'running', 'paused', 'error', 'cancelled'] as const)('keeps a %s job on the list and says nothing', async (status) => {

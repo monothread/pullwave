@@ -46,7 +46,7 @@ describe('TranslationSettings', () => {
         ]);
         const translation = screen.getByRole('group', { name: 'SUBTITLE TRANSLATION (LANGUAGE MODEL)' });
         const speech = screen.getByRole('group', { name: 'SUBTITLE CREATION (SPEECH TO TEXT)' });
-        ['Provider', 'Model', 'Address (optional)', 'Default language'].forEach((label) => {
+        ['Provider', 'Model', 'Address (optional)'].forEach((label) => {
             expect(within(translation).getByLabelText(label)).toBeInTheDocument();
             expect(within(speech).queryByLabelText(label)).not.toBeInTheDocument();
         });
@@ -56,18 +56,19 @@ describe('TranslationSettings', () => {
     });
 
     it('shows the stored values, what the token is for and that it is never shown again', async () => {
-        await renderSettings({ translateProvider: 'gemini', translateModel: 'my-model', translateBaseUrl: 'http://x/v1', translateLanguage: 'Korean' });
+        await renderSettings({ translateProvider: 'gemini', translateModel: 'my-model', translateBaseUrl: 'http://x/v1' });
         expect(screen.getByText('SUBTITLE TRANSLATION (LANGUAGE MODEL)')).toBeInTheDocument();
         expect(screen.getByText('Uses your own account with a provider. The token is kept encrypted on this computer and is never shown again.')).toBeInTheDocument();
         expect(screen.getByLabelText('Provider')).toHaveValue('gemini');
         expect(screen.getByLabelText('Model')).toHaveValue('my-model');
         expect(screen.getByLabelText('Address (optional)')).toHaveValue('http://x/v1');
-        expect(screen.getByLabelText('Default language')).toHaveValue('Korean');
+        // The language it translates into is the one of the anime subtitles: the block has no language of its own.
+        expect(screen.queryByLabelText('Default language')).not.toBeInTheDocument();
         expect(screen.getByText('The name the provider gives the model, as written on its model list.')).toBeInTheDocument();
         expect(screen.getByText('Only to use another address than the one of the provider. Required for "Other".')).toBeInTheDocument();
     });
 
-    it('lists the providers by the names people know and the languages it can translate into', async () => {
+    it('lists the providers by the names people know', async () => {
         await renderSettings();
         expect(optionsOf('Provider')).toEqual([
             ['openai', 'ChatGPT (OpenAI)'],
@@ -78,9 +79,6 @@ describe('TranslationSettings', () => {
             ['kimi', 'Kimi (Moonshot)'],
             ['custom', 'Other (OpenAI-compatible)']
         ]);
-        expect(optionsOf('Default language').map((option) => {
-            return option[0];
-        })).toEqual(['Portuguese (Brazil)', 'Portuguese', 'Spanish', 'English', 'French', 'German', 'Italian', 'Russian', 'Japanese', 'Chinese', 'Korean', 'Arabic', 'Turkish', 'Indonesian']);
     });
 
     it.each([
@@ -100,13 +98,11 @@ describe('TranslationSettings', () => {
         const { change, edit } = await renderSettings();
         fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'deepseek' } });
         expect(change).toHaveBeenLastCalledWith('translateProvider', 'deepseek');
-        fireEvent.change(screen.getByLabelText('Default language'), { target: { value: 'French' } });
-        expect(change).toHaveBeenLastCalledWith('translateLanguage', 'French');
         fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'chat-1' } });
         expect(edit).toHaveBeenLastCalledWith('translateModel', 'chat-1');
         fireEvent.change(screen.getByLabelText('Address (optional)'), { target: { value: 'http://localhost:1234/v1' } });
         expect(edit).toHaveBeenLastCalledWith('translateBaseUrl', 'http://localhost:1234/v1');
-        expect(change).toHaveBeenCalledTimes(2);
+        expect(change).toHaveBeenCalledTimes(1);
         expect(edit).toHaveBeenCalledTimes(2);
     });
 

@@ -10,6 +10,7 @@ import { makeChapterRecord, makeLibraryManga, makeSource } from '../../helpers/m
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { makeReading } from '../../helpers/homeFixtures';
 import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
+import { expectNotFound } from '../../helpers/notFound';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -246,6 +247,7 @@ describe('MangaLibrary series, groups and search', () => {
         await user.clear(field);
         await user.type(field, 'zzz');
         expect(screen.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('// NO MANGA IN THE LIBRARY MATCHES THIS SEARCH.'), 'screen');
     });
 
     it('lists the groups as tabs with the ones in no group first, and limits the library to the one picked', async () => {
@@ -560,6 +562,9 @@ describe('MangaLibrary series, groups and search', () => {
         useMangaStore.setState({ library: [FRIEREN_IN_MANGAS, FRIEREN_2_IN_MANGAS], libraryGroup: 2 });
         render(<MangaLibrary />);
         expect(screen.getByText('// NO MANGA IN THIS GROUP YET. OPEN A MANGA OR A SERIES TO PUT IT HERE.')).toBeInTheDocument();
+        // A group that is empty is not a search that found nothing: it keeps the ring of the empty screens.
+        expect(screen.getByText('// NO MANGA IN THIS GROUP YET. OPEN A MANGA OR A SERIES TO PUT IT HERE.')).toHaveClass('empty');
+        expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
     });
 
     it('searches inside the group', async () => {

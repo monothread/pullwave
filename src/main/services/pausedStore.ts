@@ -118,6 +118,7 @@ export function readPausedDownload(raw: unknown): PausedDownload | null {
             merging: false,
             saving: false,
             postProcess: null,
+            postProcessSteps: [],
             // The pictures are kept in memory only: a download paused in an earlier run of the app gets its picture again when it goes on.
             thumbnail: null,
             parts: readParts(job.parts)

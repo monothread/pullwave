@@ -480,6 +480,7 @@ test.describe('manga section', () => {
         await goTo(session.page, 'EXTENSIONS');
         await session.page.getByRole('switch', { name: 'Installed only' }).uncheck();
         await expect(session.page.getByText('No extension found.')).toBeVisible();
+        await expect(session.page.getByTestId('not-found').filter({ hasText: 'No extension found.' })).toHaveClass('not-found not-found--screen');
         await expect(session.page.getByTestId('manga-extension')).toHaveCount(0);
         await session.page.getByRole('navigation', { name: 'Manga' }).getByRole('button', { name: 'SETTINGS', exact: true }).click();
         const adult = session.page.getByRole('switch', { name: 'Show adult (+18) sources' });
@@ -945,6 +946,7 @@ test.describe('manga section', () => {
         await search.fill('zzz');
         await expect(session.page.getByTestId('manga-source')).toHaveCount(0);
         await expect(session.page.getByText('No source matches that name.')).toBeVisible();
+        await expect(session.page.getByTestId('not-found').filter({ hasText: 'No source matches that name.' })).toHaveClass('not-found not-found--screen');
         await expect(session.page.getByText('Sources: 0')).toBeVisible();
 
         // The one found opens like any other.

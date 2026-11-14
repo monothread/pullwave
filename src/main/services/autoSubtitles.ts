@@ -1,6 +1,4 @@
 import {
-    TRANSLATION_LANGUAGES,
-    type AnimeSubtitleSetting,
     type AnimeSubtitleTrack,
     type AutoTranslateOffReason,
     type SubtitleTranslateRequest,
@@ -8,8 +6,6 @@ import {
     type TranslationLanguage
 } from '@shared/anime';
 import type { LlmErrorCode, TranslationSetupGap } from '@shared/llm';
-import type { LanguageCode } from '@shared/types';
-import { subtitleLabels } from './aniSubtitles';
 import { hasSubtitleIn } from './subtitleLanguage';
 
 // The answers of the provider that would come again for every episode: the translation is turned off when one comes.
@@ -20,18 +16,6 @@ const REFUSALS: Partial<Record<LlmErrorCode, AutoTranslateOffReason>> = {
 };
 
 const SETUP_GAPS: readonly string[] = ['no-token', 'no-model', 'no-address'] satisfies readonly TranslationSetupGap[];
-
-function isTranslationLanguage(value: string): value is TranslationLanguage {
-    return (TRANSLATION_LANGUAGES as readonly string[]).includes(value);
-}
-
-// The language the subtitles are wanted in: the one of the anime subtitles of the settings ("auto" is the language of the app, as ani-cli
-// picks it), or, when that leaves the choice to ani-cli ("default"), the language subtitles are translated into.
-export function autoTranslateTarget(setting: AnimeSubtitleSetting, appLanguage: LanguageCode, translateLanguage: TranslationLanguage): TranslationLanguage {
-    const [label] = subtitleLabels(setting, appLanguage);
-    return label !== undefined && isTranslationLanguage(label) ? label : translateLanguage;
-}
-
 
 // Why the answer of a translation turns the automatic translation off, or null when it does not (a failure of that episode only, or one that
 // may not come again).

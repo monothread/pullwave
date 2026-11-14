@@ -1,7 +1,8 @@
 import { join } from 'node:path';
 import type { AniDownloadProgress, AniRunResult, AnimeAddRequest, AnimeDownloadRequest, AnimeJob } from '@shared/anime';
+import { ANIME_JOIN_STEP } from '@shared/anime';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { Settings } from '@shared/types';
+import type { DownloadPart, Settings } from '@shared/types';
 import { AnimeDb } from '@main/services/animeDb';
 import { ANIME_MAX_TRIES, AnimeDownloadQueue } from '@main/services/animeDownloadQueue';
 import { DEFAULT_ANIME_FOLDER } from '@main/services/animeFiles';
@@ -133,7 +134,9 @@ describe('AnimeDownloadQueue.enqueue', () => {
             speed: '',
             eta: '',
             error: null,
-            parts: null
+            parts: null,
+            postProcess: null,
+            postProcessSteps: []
         });
         expect(state.libraryChanges).toBeGreaterThan(0);
     });
@@ -290,7 +293,7 @@ describe('AnimeDownloadQueue progress of an episode whose picture and audio are 
         const before = updates.length;
         downloads[0]?.options.onPart?.({ kinds: ['video', 'audio'], index: 0 });
         expect(updates.slice(before)).toEqual([
-            { episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null, parts: [{ kind: 'video', percent: 0 }, { kind: 'audio', percent: 0 }] }
+            { episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null, parts: [{ kind: 'video', percent: 0 }, { kind: 'audio', percent: 0 }], postProcess: null, postProcessSteps: [] }
         ]);
     });
 
@@ -381,6 +384,93 @@ describe('AnimeDownloadQueue progress of an episode whose picture and audio are 
             { kind: 'video', percent: 100 },
             { kind: 'audio', percent: 35 }
         ]);
+    });
+});
+
+describe('AnimeDownloadQueue the joining of an episode whose picture and audio came apart', () => {
+    const BOTH_FULL: DownloadPart[] = [{ kind: 'video', percent: 100 }, { kind: 'audio', percent: 100 }];
+
+    function downloadBothParts(downloads: ReturnType<typeof setup>['downloads'], index = 0): void {
+        const options = downloads[index]?.options;
+        options?.onPart?.({ kinds: ['video', 'audio'], index: 0 });
+        options?.onProgress?.({ percent: 100, totalBytes: null, speed: '2.00MiB/s', eta: '00:00' });
+        options?.onPart?.({ kinds: ['video', 'audio'], index: 1 });
+        options?.onProgress?.({ percent: 60, totalBytes: null, speed: '1.00MiB/s', eta: '00:04' });
+    }
+
+    it('fills every bar, ends the speed and the time left, and says the joining goes on, as soon as ffmpeg starts joining', () => {
+        const { queue, downloads, updates } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloadBothParts(downloads);
+        const before = updates.length;
+        downloads[0]?.options.onJoin?.();
+        expect(updates.slice(before)).toEqual([
+            { episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 100, speed: '', eta: '', error: null, parts: BOTH_FULL, postProcess: 'Merger', postProcessSteps: ['Merger'] }
+        ]);
+        expect(queue.list()[0]).toEqual(updates.at(-1));
+    });
+
+    it('names the step as the step of yt-dlp that joins the picture and the audio, so the screen tells it the same way', () => {
+        expect(ANIME_JOIN_STEP).toBe('Merger');
+    });
+
+    it('says the joining goes on for an episode that has no bars of parts too', () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onJoin?.();
+        expect(queue.list()[0]).toMatchObject({ status: 'running', percent: 100, parts: null, postProcess: 'Merger', postProcessSteps: ['Merger'] });
+    });
+
+    it('ends the joining when the episode is complete and keeps the step, so the card shows every step done', async () => {
+        const { queue, downloads, updates } = setup({ maxConcurrent: 1 }, { '/a/Naruto Episode 1.mp4': 4096 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloadBothParts(downloads);
+        downloads[0]?.options.onJoin?.();
+        downloads[0]?.finish(doneAt('/a/Naruto Episode 1.mp4'));
+        await settleResults();
+        expect(updates.at(-1)).toEqual({ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'done', percent: 100, speed: '', eta: '', error: null, parts: BOTH_FULL, postProcess: null, postProcessSteps: ['Merger'] });
+    });
+
+    it('ends the joining of an episode paused while it joined, and its next run starts with no step', async () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloadBothParts(downloads);
+        downloads[0]?.options.onJoin?.();
+        queue.pause(1);
+        downloads[0]?.finish({ status: 'cancelled' });
+        await settleResults();
+        expect(queue.list()[0]).toMatchObject({ status: 'paused', postProcess: null, postProcessSteps: ['Merger'] });
+        queue.resume(1);
+        expect(queue.list()[0]).toMatchObject({ status: 'running', postProcess: null, postProcessSteps: [] });
+    });
+
+    it('ends the joining of an episode cancelled while it joined', async () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onJoin?.();
+        queue.cancel(1);
+        downloads[0]?.finish({ status: 'cancelled' });
+        await settleResults();
+        expect(queue.list()[0]).toMatchObject({ status: 'cancelled', postProcess: null });
+    });
+
+    it('ends the joining of an episode whose run failed for good', async () => {
+        const { queue, downloads } = setup();
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onJoin?.();
+        downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'No sources found for sub!' } });
+        await settleResults();
+        expect(queue.list()[0]).toMatchObject({ status: 'error', postProcess: null });
+    });
+
+    it('ends the joining of an episode whose run failed and is tried again, and the new try starts with no step', async () => {
+        const { queue, downloads } = setup({ maxConcurrent: 1 });
+        queue.enqueue({ ...REQUEST, episodes: ['1'] });
+        downloads[0]?.options.onJoin?.();
+        downloads[0]?.finish({ status: 'error', error: { code: 'NETWORK', raw: 'The connection dropped.' } });
+        await settleResults();
+        expect(downloads).toHaveLength(2);
+        expect(queue.list()[0]).toMatchObject({ status: 'running', postProcess: null, postProcessSteps: [] });
     });
 });
 
@@ -627,7 +717,7 @@ describe('AnimeDownloadQueue.redownload', () => {
             downloadDir: downloads[0]?.options.downloadDir
         });
         expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, error: null });
-        expect(queue.list()).toEqual([{ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null, parts: null }]);
+        expect(queue.list()).toEqual([{ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null, parts: null, postProcess: null, postProcessSteps: [] }]);
         expect(state.libraryChanges).toBe(libraryChanges + 2);
     });
 
@@ -1656,8 +1746,8 @@ describe('AnimeDownloadQueue the episodes paused when the app last closed', () =
         queue.restore();
 
         expect(queue.list()).toEqual([
-            { episodeId: paused[0]!.id, animeId: naruto.id, animeTitle: 'Naruto', episode: '2', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null },
-            { episodeId: paused[1]!.id, animeId: bleach.id, animeTitle: 'Bleach', episode: '5', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null }
+            { episodeId: paused[0]!.id, animeId: naruto.id, animeTitle: 'Naruto', episode: '2', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null, postProcess: null, postProcessSteps: [] },
+            { episodeId: paused[1]!.id, animeId: bleach.id, animeTitle: 'Bleach', episode: '5', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null, postProcess: null, postProcessSteps: [] }
         ]);
         expect(updates).toEqual([]);
         expect(downloads).toEqual([]);
@@ -1850,7 +1940,7 @@ describe('AnimeDownloadQueue downloads that are complete', () => {
         downloads[0]?.finish(doneAt('/a/Naruto Episode 1.mp4'));
         await settleResults();
 
-        expect(updates.at(-1)).toEqual({ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'done', percent: 100, speed: '', eta: '', error: null, parts: null });
+        expect(updates.at(-1)).toEqual({ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'done', percent: 100, speed: '', eta: '', error: null, parts: null, postProcess: null, postProcessSteps: [] });
         expect(queue.list()).toEqual([]);
         expect(queue.pendingCount()).toBe(0);
     });

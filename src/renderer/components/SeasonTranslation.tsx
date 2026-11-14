@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { LibraryAnime, SubtitleTranslatableResponse, SubtitleTranslationJob } from '@shared/anime';
+import { useTranslationTarget } from '../hooks/useTranslationTarget';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
 import { useAppStore } from '../store/appStore';
@@ -35,9 +36,7 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const appLanguage = useAppStore((state) => {
         return state.settings.language;
     });
-    const translateLanguage = useAppStore((state) => {
-        return state.settings.translateLanguage;
-    });
+    const translationTarget = useTranslationTarget();
     const updates = useAnimeStore((state) => {
         return state.translationUpdates;
     });
@@ -72,7 +71,7 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const skipped = finished.filter((job) => {
         return job.status === 'skipped';
     });
-    const skippedLanguage = skipped[0]?.language ?? translatable?.language ?? translateLanguage;
+    const skippedLanguage = skipped[0]?.language ?? translatable?.language ?? translationTarget;
 
     // Asked again when the episodes or the settings that decide the language change, and each time a translation of the season ends (it may
     // have added the subtitle).
@@ -89,7 +88,7 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
         return () => {
             current = false;
         };
-    }, [episodeIds, animeSubtitles, appLanguage, translateLanguage, finished.length]);
+    }, [episodeIds, animeSubtitles, appLanguage, finished.length]);
 
     async function start(found: SubtitleTranslatableResponse): Promise<void> {
         forgetTranslationUpdates(episodeIds);

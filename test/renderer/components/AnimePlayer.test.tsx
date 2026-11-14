@@ -1210,7 +1210,8 @@ describe('AnimePlayer translating subtitles', () => {
 
         it('puts the new subtitle in the list of the player and shows it', async () => {
             await translated();
-            expect(mock.api.translateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 1, trackId: null, language: 'Portuguese (Brazil)' });
+            // The default settings: the anime subtitles follow the language of the app, English here.
+            expect(mock.api.translateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 1, trackId: null, language: 'English' });
             expect(await subtitleOption('Spanish')).toBeInTheDocument();
             expect(document.querySelector('track[id="translated-Spanish"]')).toHaveAttribute('src', 'pullwave-media://subtitle/1/translated-Spanish');
             expect(openedSubtitleMenu()).toHaveValue('translated-Spanish');
@@ -1244,8 +1245,9 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
     const AUDIO_TEXT = '25 min · about 5.7 MiB · 3 requests';
 
     beforeEach(() => {
-        // The subtitle is wanted in the language of the audio, so the audio is only transcribed.
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'Japanese' } });
+        // The window starts on the language of the anime subtitles (English); the subtitle is then wanted in the language of the audio,
+        // chosen in the window, so the audio is only transcribed.
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeSubtitles: 'English' } });
         mock.api.listAnimeSubtitles.mockResolvedValue([]);
         mock.api.estimateAnimeSubtitleGeneration.mockResolvedValue({ ok: true, seconds: 1500, parts: 3, approxBytes: 6_000_000 });
     });
@@ -1308,6 +1310,8 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
             const { user, button } = await withoutSubtitles();
             await user.click(button);
             await screen.findByText(AUDIO_TEXT);
+            expect(screen.getByLabelText('Language of the subtitle')).toHaveValue('English');
+            await user.selectOptions(screen.getByLabelText('Language of the subtitle'), 'Japanese');
             await user.click(screen.getByRole('button', { name: 'CREATE' }));
             await vi.waitFor(() => {
                 expect(screen.queryByRole('dialog', { name: 'Create a subtitle' })).not.toBeInTheDocument();
@@ -1315,7 +1319,7 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
             return user;
         }
 
-        it('asks for it with the languages of the settings, and puts it in the list of the player, showing it', async () => {
+        it('asks for it with the languages chosen in the window, and puts it in the list of the player, showing it', async () => {
             await created();
             expect(mock.api.generateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 1, audioLanguage: 'Japanese', language: 'Japanese' });
             expect(await subtitleOption('Japanese')).toBeInTheDocument();

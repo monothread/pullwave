@@ -9,6 +9,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeSource } from '../../helpers/mangaFixtures';
 import { installMockApi } from '../../helpers/mockApi';
+import { expectNotFound } from '../../helpers/notFound';
 
 const initialApp = useAppStore.getState();
 const initialManga = useMangaStore.getState();
@@ -125,6 +126,7 @@ describe('MangaSources', () => {
         expect(screen.queryByText('No source matches that name.')).not.toBeInTheDocument();
         await user.type(screen.getByLabelText('Search sources'), 'zzz');
         expect(screen.getByText('No source matches that name.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('No source matches that name.'), 'screen');
         expect(screen.getByText('Sources: 0')).toBeInTheDocument();
         expect(screen.queryAllByTestId('manga-source')).toHaveLength(0);
         await user.clear(screen.getByLabelText('Search sources'));

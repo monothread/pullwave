@@ -404,6 +404,64 @@ body::after {
 .job-part { display: contents; }
 .job-part__name { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 2px; }
 .job-part__percent { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* The joining of the bars of the parts once they are downloaded (PartsZipper, D-196): the bars stretch to the whole width while their names and
+   percentages go, a zipper closes them from the start to the end (behind it the bar that is already one, its head on the zipper; ahead of it the
+   two bars, each going into the zipper by a line of light) and the box shrinks to the one bar. Nothing is cut or masked: the bars only grow and
+   shrink, so their flow, pulses and neon stay whole. The times come from useZipPhase. */
+@property --zip { syntax: '<percentage>'; inherits: true; initial-value: 0%; }
+.zipper { position: relative; transition: height var(--zip-settle-ms, 350ms) ease; }
+.zipper .job-part__name, .zipper .job-part__percent { transition: opacity 0.25s ease; }
+.zipper:not([data-zip='parts']) .job-part__name, .zipper:not([data-zip='parts']) .job-part__percent { opacity: 0; overflow: hidden; white-space: nowrap; }
+.zipper[data-measured='true']:not([data-zip='parts']) .job-parts { animation: zipper-split var(--zip-split-ms, 420ms) cubic-bezier(0.6, 0, 0.3, 1) forwards; }
+@keyframes zipper-split {
+    from { grid-template-columns: var(--zip-name-column) minmax(0, 1fr) var(--zip-percent-column); column-gap: var(--zip-gap); }
+    to { grid-template-columns: 0px minmax(0, 1fr) 0px; column-gap: 0px; }
+}
+.zipper[data-zip='zip'] { animation: zipper-close var(--zip-close-ms, 1000ms) cubic-bezier(0.45, 0, 0.55, 1) forwards; }
+.zipper[data-zip='settle'] { --zip: 100%; }
+@keyframes zipper-close { from { --zip: 0%; } to { --zip: 100%; } }
+.zipper[data-zip='zip'] .job-parts .progress { margin-left: calc(var(--zip) + 28px); }
+.zipper[data-zip='settle'] .job-parts { opacity: 0; }
+.zipper__joined { position: absolute; left: 0; top: calc(50% - 7px); width: var(--zip); opacity: 0; }
+.zipper[data-zip='zip'] .zipper__joined, .zipper[data-zip='settle'] .zipper__joined { opacity: 1; }
+.zipper__pull {
+    position: absolute;
+    top: 0;
+    left: var(--zip);
+    width: 32px;
+    height: 100%;
+    margin-left: -2px;
+    overflow: visible;
+    opacity: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 0 3px var(--magenta)) drop-shadow(0 0 7px var(--cyan));
+}
+.zipper__pull path { fill: none; stroke: color-mix(in srgb, var(--cyan) 70%, white); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.zipper[data-zip='zip'] .zipper__pull { opacity: 1; }
+
+/* The steps after the download (StepTrail, D-196): the download, then each step as it starts, one after the other, joined by a short line;
+   the steps done are ticked in green and the one going on is lit in the colour of the processing bar. */
+.steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0; padding: 0; list-style: none; }
+.steps__item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    animation: steps-in 0.3s ease-out backwards;
+}
+.steps__item::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1px solid currentColor; }
+.steps__item + .steps__item::after { content: ''; position: absolute; left: -12px; top: 50%; width: 10px; border-top: 1px solid var(--line); }
+.steps__item--done { color: var(--green); border-color: color-mix(in srgb, var(--green) 50%, var(--line)); }
+.steps__item--done::before { content: '✓'; width: auto; height: auto; border: 0; border-radius: 0; font-size: 11px; font-weight: 800; line-height: 1; }
+.steps__item--now { color: var(--magenta); border-color: var(--magenta); font-weight: 700; box-shadow: var(--glow-hot); }
+.steps__item--now::before { background: var(--magenta); border-color: var(--magenta); animation: badge-blink 1s ease-in-out infinite; }
+@keyframes steps-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
 .job__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .error-banner {
@@ -420,6 +478,81 @@ body::after {
 .error-banner__actions { display: flex; gap: 8px; }
 
 .empty { color: var(--muted); text-align: center; padding: 32px 0; letter-spacing: 2px; }
+
+/* A search or a filter that found nothing (NotFound, D-197): a lens sweeps the rows it looks through, stops, shakes "no", a red cross pops in it
+   with a ring of red leaving it, and the words come in as a broken signal; then the lens floats and the cross breathes. Smaller in a window,
+   only the lens shaking no in a dropdown. The neon of the lens and of the cross is only in the neon themes (console.css). */
+.not-found {
+    --not-found-lens-glow: drop-shadow(0 0 4px var(--cyan)) drop-shadow(0 0 10px color-mix(in srgb, var(--cyan) 60%, transparent));
+    --not-found-cross-glow: drop-shadow(0 0 5px var(--red));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 32px 0;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 2px;
+}
+.not-found__stage { position: relative; width: 168px; height: 92px; }
+.not-found__rows { position: absolute; inset: 18px 10px; display: flex; flex-direction: column; justify-content: space-between; }
+.not-found__rows span { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 35%, transparent); animation: not-found-rows 0.45s steps(3, end) 1.75s forwards; }
+.not-found__rows span:nth-child(2) { width: 78%; animation-delay: 1.8s; }
+.not-found__rows span:nth-child(3) { width: 56%; animation-delay: 1.85s; }
+@keyframes not-found-rows { 0% { opacity: 1; } 30% { opacity: 0.2; transform: translateX(4px); } 60% { opacity: 0.6; transform: translateX(-3px); } 100% { opacity: 0.12; transform: none; } }
+.not-found__lens { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -36px 0 0 -32px; animation: not-found-sweep 1.3s ease-in-out forwards, not-found-shake 0.5s ease-in-out 1.3s, not-found-float 3s ease-in-out 2.4s infinite; }
+.not-found__lens svg { display: block; width: 100%; height: 100%; overflow: visible; filter: var(--not-found-lens-glow); }
+.not-found__glass { fill: color-mix(in srgb, var(--cyan) 10%, transparent); stroke: var(--cyan); stroke-width: 4; }
+.not-found__handle { stroke: var(--cyan); stroke-width: 6; stroke-linecap: round; }
+.not-found__glint { fill: none; stroke: color-mix(in srgb, white 70%, var(--cyan)); stroke-width: 2.5; stroke-linecap: round; opacity: 0.8; }
+.not-found__cross {
+    stroke: var(--red);
+    stroke-width: 5;
+    stroke-linecap: round;
+    transform-origin: 27px 27px;
+    transform: scale(0);
+    filter: var(--not-found-cross-glow);
+    animation: not-found-pop 0.45s cubic-bezier(0.34, 1.8, 0.5, 1) 1.75s forwards, not-found-breathe 1.6s ease-in-out 2.4s infinite;
+}
+.not-found__burst { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -40px 0 0 -34px; border-radius: 50%; border: 2px solid var(--red); opacity: 0; pointer-events: none; animation: not-found-burst 0.7s ease-out 1.8s; }
+.not-found__text { position: relative; margin: 0; opacity: 0; animation: not-found-text 0.6s steps(6, end) 1.9s forwards; }
+@keyframes not-found-sweep {
+    0% { transform: translateX(-58px) rotate(-8deg); }
+    25% { transform: translateX(58px) rotate(8deg); }
+    50% { transform: translateX(-58px) rotate(-8deg); }
+    75% { transform: translateX(46px) rotate(6deg); }
+    100% { transform: translateX(0) rotate(0); }
+}
+@keyframes not-found-sweep-small {
+    0% { transform: translateX(-18px) rotate(-8deg); }
+    25% { transform: translateX(18px) rotate(8deg); }
+    50% { transform: translateX(-18px) rotate(-8deg); }
+    75% { transform: translateX(14px) rotate(6deg); }
+    100% { transform: translateX(0) rotate(0); }
+}
+@keyframes not-found-shake { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-14deg); } 40% { transform: rotate(12deg); } 60% { transform: rotate(-9deg); } 80% { transform: rotate(6deg); } }
+@keyframes not-found-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes not-found-pop { to { transform: scale(1); } }
+@keyframes not-found-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes not-found-burst { 0% { opacity: 0.9; transform: scale(0.6); } 100% { opacity: 0; transform: scale(1.9); } }
+@keyframes not-found-text {
+    0% { opacity: 1; text-shadow: -6px 0 var(--magenta), 6px 0 var(--cyan); clip-path: inset(40% 0 30% 0); transform: translateX(-4px); }
+    35% { text-shadow: 4px 0 var(--magenta), -4px 0 var(--cyan); clip-path: inset(0 0 60% 0); transform: translateX(3px); }
+    70% { text-shadow: -2px 0 var(--magenta), 2px 0 var(--cyan); clip-path: inset(55% 0 0 0); transform: translateX(-1px); }
+    100% { opacity: 1; text-shadow: none; clip-path: inset(0); transform: none; }
+}
+.not-found--small { flex-direction: row; justify-content: center; gap: 12px; padding: 16px 0; text-align: left; letter-spacing: 1px; font-size: 13px; }
+.not-found--small .not-found__stage { width: 64px; height: 44px; flex: none; }
+.not-found--small .not-found__rows { inset: 9px 4px; }
+.not-found--small .not-found__rows span { height: 4px; }
+.not-found--small .not-found__lens { width: 32px; height: 32px; margin: -18px 0 0 -16px; animation-name: not-found-sweep-small, not-found-shake, not-found-float; }
+.not-found--small .not-found__burst { width: 30px; height: 30px; margin: -20px 0 0 -17px; }
+.not-found--tiny { flex-direction: row; gap: 8px; padding: 0; text-align: left; letter-spacing: 0.5px; font-size: 12px; }
+.not-found--tiny .not-found__stage { width: 18px; height: 18px; flex: none; }
+.not-found--tiny .not-found__rows, .not-found--tiny .not-found__burst { display: none; }
+.not-found--tiny .not-found__lens { width: 18px; height: 18px; margin: -9px 0 0 -9px; animation: not-found-shake 0.5s ease-in-out 0.1s, not-found-float 3s ease-in-out 1s infinite; }
+.not-found--tiny .not-found__cross { animation-delay: 0.45s, 1s; }
+.not-found--tiny .not-found__text { animation-delay: 0.5s; }
 
 /* The panels of the settings flow in columns (one, two or three, see responsive.css): each panel is as tall as what is in it and the
    columns fill up evenly, so there are no empty cells and no panel of another width. */
@@ -1334,6 +1467,7 @@ body::after {
 .logs__count { margin: 0; font-size: 12px; color: var(--muted); }
 .logs__screen { position: relative; flex: 1 1 auto; min-height: 160px; display: flex; flex-direction: column; background: var(--log-bg); border: 1px solid var(--line); }
 .logs__empty { margin: auto; padding: 24px; color: var(--log-dim); font-size: 13px; text-align: center; }
+.logs__screen > .not-found { margin: auto; }
 .logs__lines {
     flex: 1 1 auto;
     margin: 0;

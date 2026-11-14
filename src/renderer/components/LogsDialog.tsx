@@ -1,4 +1,4 @@
-import { memo, useId, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { LogLine, LogSource } from '@shared/logs';
 import type { MessageKey } from '@shared/i18n';
@@ -8,6 +8,7 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { highlightLog, logLevelOf, type LogToken } from './logHighlight';
 import { filterLogLines, formatLogText, formatLogTime, LOG_FILTERS, type LogFilter } from './logView';
+import { NotFound } from './NotFound';
 
 // The names of the programs are their own: they are not translated.
 export const LOG_SOURCE_LABELS: Record<LogSource, string> = {
@@ -97,11 +98,16 @@ function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
         }
     }
 
-    function emptyText(): string {
+    // Nothing to show: still loading, no line at all, or a filter that matches none of them (which says so with the lens of a search that found
+    // nothing).
+    function emptyState(): ReactNode {
         if (!loaded) {
-            return t('logs.loading');
+            return <p className="logs__empty">{t('logs.loading')}</p>;
         }
-        return lines.length === 0 ? t('logs.empty') : t('logs.noMatch');
+        if (lines.length === 0) {
+            return <p className="logs__empty">{t('logs.empty')}</p>;
+        }
+        return <NotFound text={t('logs.noMatch')} size="small" />;
     }
 
     return (
@@ -111,7 +117,7 @@ function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
             </p>
             <div className="logs__screen">
                 {shown.length === 0 ? (
-                    <p className="logs__empty">{emptyText()}</p>
+                    emptyState()
                 ) : (
                     <ol ref={listRef} className="logs__lines" aria-label={t('logs.lines', { program: LOG_SOURCE_LABELS[source] })} tabIndex={0} onScroll={handleScroll}>
                         {shown.map((line) => {

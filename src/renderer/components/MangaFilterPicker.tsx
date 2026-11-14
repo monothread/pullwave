@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import type { MangaFilter, MangaTriState } from '@shared/manga';
 import { useTranslator } from '../i18n/useTranslator';
+import { NotFound } from './NotFound';
 
 export type PickableFilter = Extract<MangaFilter, { type: 'tristate' | 'checkbox' }>;
 
@@ -97,7 +98,9 @@ export function MangaFilterPicker({ name, filters, onChange }: { name: string; f
                 />
                 {showList && (
                     <ul id={listId} className="manga__picker-list" role="listbox" aria-label={name}>
-                        {suggestions.length === 0 && <li className="manga__picker-empty">{t('manga.filters.noMatch')}</li>}
+                        {suggestions.length === 0 && <li className="manga__picker-empty">
+                                <NotFound text={t('manga.filters.noMatch')} size="tiny" />
+                            </li>}
                         {suggestions.map((entry) => {
                             return (
                                 <li key={entry.position} role="presentation">

@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 const JOB: DownloadJob = {
-    id: 'j1', url: 'https://x.com/a', status: 'queued', title: null, percent: 0, speed: '', eta: '', filePath: null, error: null, createdAt: 1, pageUrl: null, live: false, elapsedSeconds: 0, downloadedBytes: 0, hasPartial: false, customized: false, waitingForLive: false, endCheck: null, merging: false, saving: false, postProcess: null, thumbnail: null, parts: null
+    id: 'j1', url: 'https://x.com/a', status: 'queued', title: null, percent: 0, speed: '', eta: '', filePath: null, error: null, createdAt: 1, pageUrl: null, live: false, elapsedSeconds: 0, downloadedBytes: 0, hasPartial: false, customized: false, waitingForLive: false, endCheck: null, merging: false, saving: false, postProcess: null, postProcessSteps: [], thumbnail: null, parts: null
 };
 
 function setup(animeFolderLocked?: () => boolean) {

@@ -24,29 +24,53 @@ export function livePhase(job: Pick<DownloadJob, 'status' | 'endCheck' | 'waitin
     return job.waitingForLive ? 'waiting' : null;
 }
 
-// What each yt-dlp post-processor does, by the start of its name (Fixup* are several: FixupM3u8, FixupM4a...).
-const PROCESSING_TEXT_KEYS: ReadonlyArray<readonly [string, MessageKey]> = [
-    ['ExtractAudio', 'job.processing.audio'],
-    ['Merger', 'job.processing.merge'],
-    ['VideoConvertor', 'job.processing.video'],
-    ['VideoRemuxer', 'job.processing.video'],
-    ['Fixup', 'job.processing.fixup'],
-    ['Metadata', 'job.processing.metadata'],
-    ['EmbedThumbnail', 'job.processing.thumbnail'],
-    ['ThumbnailsConvertor', 'job.processing.thumbnail'],
-    ['EmbedSubtitle', 'job.processing.subtitle'],
-    ['SubtitlesConvertor', 'job.processing.subtitle'],
-    ['SponsorBlock', 'job.processing.chapters'],
-    ['ModifyChapters', 'job.processing.chapters'],
-    ['SplitChapters', 'job.processing.chapters'],
-    ['MoveFiles', 'job.processing.move']
+// What each yt-dlp post-processor does, by the start of its name (Fixup* are several: FixupM3u8, FixupM4a...). The same word names the text
+// of the step going on (job.processing.*) and its short name in the trail of steps (job.step.*).
+type ProcessingKind = 'audio' | 'merge' | 'video' | 'fixup' | 'metadata' | 'thumbnail' | 'subtitle' | 'chapters' | 'move' | 'default';
+
+const PROCESSING_KINDS: ReadonlyArray<readonly [string, ProcessingKind]> = [
+    ['ExtractAudio', 'audio'],
+    ['Merger', 'merge'],
+    ['VideoConvertor', 'video'],
+    ['VideoRemuxer', 'video'],
+    ['Fixup', 'fixup'],
+    ['Metadata', 'metadata'],
+    ['EmbedThumbnail', 'thumbnail'],
+    ['ThumbnailsConvertor', 'thumbnail'],
+    ['EmbedSubtitle', 'subtitle'],
+    ['SubtitlesConvertor', 'subtitle'],
+    ['SponsorBlock', 'chapters'],
+    ['ModifyChapters', 'chapters'],
+    ['SplitChapters', 'chapters'],
+    ['MoveFiles', 'move']
 ];
 
-export function processingTextKey(processor: string | null): MessageKey {
-    const match = PROCESSING_TEXT_KEYS.find(([prefix]) => {
+function processingKind(processor: string | null): ProcessingKind {
+    const match = PROCESSING_KINDS.find(([prefix]) => {
         return processor?.startsWith(prefix) === true;
     });
-    return match ? match[1] : 'job.processing.default';
+    return match ? match[1] : 'default';
+}
+
+export function processingTextKey(processor: string | null): MessageKey {
+    return `job.processing.${processingKind(processor)}`;
+}
+
+// One step of the trail: its short name and whether it is done or going on.
+export interface StepItem {
+    key: MessageKey;
+    state: 'done' | 'now';
+}
+
+// The steps after the download as the trail shows them: the ones that started, in their order, two that follow each other and do the same
+// counted once (yt-dlp has several Fixup steps); the last one is going on while the job runs, and every one is done once it ended.
+export function stepItems(steps: readonly string[], running: boolean): StepItem[] {
+    const kinds = steps.map(processingKind).filter((kind, index, all) => {
+        return index === 0 || all[index - 1] !== kind;
+    });
+    return kinds.map((kind, index): StepItem => {
+        return { key: `job.step.${kind}`, state: running && index === kinds.length - 1 ? 'now' : 'done' };
+    });
 }
 
 export function statusLabel(status: JobStatus, live: boolean, t: Translator, phase: LivePhase | null = null): string {
@@ -56,9 +80,9 @@ export function statusLabel(status: JobStatus, live: boolean, t: Translator, pha
     return live && status === 'running' ? t('job.status.recording') : t(`job.status.${status}`);
 }
 
-// The list shows what is happening first (running), then what waits (queued), then what is over; inside each group the
-// newest is on top. The queue itself keeps the order the downloads were added, which is the order they start in.
-const DISPLAY_RANK: Record<JobStatus, number> = { running: 0, paused: 1, queued: 2, done: 3, error: 3, cancelled: 3 };
+// The list shows what is happening first (running, and a download that just finished, which stays a few seconds in its place, green), then
+// what waits (queued), then what is over; inside each group the newest is on top. The queue itself keeps the order the downloads were added, which is the order they start in.
+const DISPLAY_RANK: Record<JobStatus, number> = { running: 0, done: 0, paused: 1, queued: 2, error: 3, cancelled: 3 };
 
 export function sortForDisplay(jobs: DownloadJob[]): DownloadJob[] {
     return jobs

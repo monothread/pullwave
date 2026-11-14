@@ -9,6 +9,7 @@ import { animeErrorKey } from './animeText';
 import { SelectField, TextField } from './fields';
 import { RowLink } from './RowLink';
 import { matchesSearch } from './scheduleSearch';
+import { NotFound } from './NotFound';
 
 const VIEWS: readonly AnimeScheduleView[] = ['day', 'week'];
 
@@ -120,7 +121,7 @@ export function AnimeSchedule() {
             )}
             {loading && entries.length === 0 && <p className="empty">{t('anime.schedule.loading')}</p>}
             {status === 'ready' && schedule.entries.length === 0 && <p className="empty">{t('anime.schedule.empty')}</p>}
-            {status === 'ready' && schedule.entries.length > 0 && entries.length === 0 && <p className="empty">{t('anime.schedule.noMatch', { query: query.trim() })}</p>}
+            {status === 'ready' && schedule.entries.length > 0 && entries.length === 0 && <NotFound text={t('anime.schedule.noMatch', { query: query.trim() })} />}
             {entries.length > 0 &&
                 visibleDays.map((day, position) => {
                     const heading = dayHeading(day.start, timeZone, language);

@@ -1,6 +1,7 @@
 import type { RepairResult } from './imageHeaderRepair';
 import { posix, win32 } from 'node:path';
 import type { AniDownloadProgress, AniError, AniErrorCode, AniPartStart, AnimeAddRequest, AnimeAddResponse, AnimeDownloadRequest, AnimeEpisodeRecord, AnimeJob, AnimeRecord, LibraryAnime } from '@shared/anime';
+import { ANIME_JOIN_STEP } from '@shared/anime';
 import type { DownloadPart, Settings } from '@shared/types';
 import type { AnimeDb } from './animeDb';
 import {
@@ -423,7 +424,9 @@ export class AnimeDownloadQueue {
             speed: '',
             eta: '',
             error: null,
-            parts: null
+            parts: null,
+            postProcess: null,
+            postProcessSteps: []
         };
     }
 
@@ -513,7 +516,7 @@ export class AnimeDownloadQueue {
         db.markDownloading(job.episodeId);
         this.lastReported.delete(job.episodeId);
         this.currentParts.delete(job.episodeId);
-        this.update(job, { status: 'running' });
+        this.update(job, { status: 'running', postProcess: null, postProcessSteps: [] });
         this.deps.onLibraryChanged();
         const handle = this.deps.download({
             query: anime.query,
@@ -526,6 +529,9 @@ export class AnimeDownloadQueue {
             },
             onPart: (part) => {
                 this.startPart(job, part);
+            },
+            onJoin: () => {
+                this.startJoin(job);
             }
         });
         this.handles.set(job.episodeId, handle);
@@ -545,14 +551,14 @@ export class AnimeDownloadQueue {
             }
             if (result.status === 'cancelled' && paused) {
                 db.markPaused(job.episodeId);
-                this.update(job, { status: 'paused', speed: '', eta: '' });
+                this.update(job, { status: 'paused', speed: '', eta: '', postProcess: null });
             } else if (result.status === 'cancelled') {
                 // Closing the app deletes the folder itself, once every run has ended or the wait is over.
                 if (!this.closed) {
                     this.deps.removeDirectory?.(downloadDir);
                 }
                 db.markFailed(job.episodeId, 'cancelled', null);
-                this.update(job, { status: 'cancelled', speed: '', eta: '' });
+                this.update(job, { status: 'cancelled', speed: '', eta: '', postProcess: null });
             } else if (result.status === 'error') {
                 this.onFailure(job, result.error);
             } else {
@@ -612,6 +618,15 @@ export class AnimeDownloadQueue {
         this.update(job, { parts });
     }
 
+    // Both parts of an episode whose picture and audio came apart are downloaded and ffmpeg joins them: every bar is full, and the step of the
+    // joining goes on until the run ends.
+    private startJoin(job: AnimeJob): void {
+        const parts = job.parts?.map((part): DownloadPart => {
+            return { ...part, percent: 100 };
+        }) ?? null;
+        this.update(job, { parts, percent: 100, speed: '', eta: '', postProcess: ANIME_JOIN_STEP, postProcessSteps: [...job.postProcessSteps, ANIME_JOIN_STEP] });
+    }
+
     // The bars of the parts once a progress line came: the part being downloaded is where the line says, the others are untouched.
     private partsAfter(job: AnimeJob, percent: number): DownloadPart[] | null {
         const index = this.currentParts.get(job.episodeId);
@@ -634,7 +649,7 @@ export class AnimeDownloadQueue {
         }
         this.tries.set(job.episodeId, tries);
         this.deps.db.ensureEpisode(job.animeId, job.episode);
-        this.update(job, { status: 'queued', speed: '', eta: '', error: null });
+        this.update(job, { status: 'queued', speed: '', eta: '', error: null, postProcess: null });
     }
 
     private finishDownloaded(job: AnimeJob, filePath: string | null, downloadDir: string, title: string, platform: NodeJS.Platform): void {
@@ -647,7 +662,7 @@ export class AnimeDownloadQueue {
         this.tries.delete(job.episodeId);
         this.deps.db.markDone(job.episodeId, path, size);
         this.deps.onEpisodeDownloaded?.(job.episodeId);
-        this.update(job, { status: 'done', percent: 100, speed: '', eta: '' });
+        this.update(job, { status: 'done', percent: 100, speed: '', eta: '', postProcess: null });
         // The screen of the downloads is for what is going on or went wrong: a download that is complete is in the library.
         this.jobs.delete(job.episodeId);
         void this.afterDownload(job.episodeId, path);
@@ -696,6 +711,6 @@ export class AnimeDownloadQueue {
 
     private finishWithError(job: AnimeJob, error: AniError): void {
         this.deps.db.markFailed(job.episodeId, 'error', error);
-        this.update(job, { status: 'error', speed: '', eta: '', error });
+        this.update(job, { status: 'error', speed: '', eta: '', error, postProcess: null });
     }
 }

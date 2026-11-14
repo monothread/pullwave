@@ -5,6 +5,7 @@ import { ConfirmButton } from './ConfirmButton';
 import { ErrorBanner } from './ErrorBanner';
 import { livePhase, statusLabel } from './jobStatus';
 import { JobMeta, JobProgress } from './JobProgress';
+import { StepTrail } from './StepTrail';
 
 interface JobCardProps {
     job: DownloadJob;
@@ -41,6 +42,7 @@ function JobCardView({ job, onCancel, onPause, onResume, onStop, onRetry, onRemo
                 </span>
             </header>
             <JobProgress job={job} phase={phase} t={t} />
+            <StepTrail steps={job.postProcessSteps} status={job.status} t={t} />
             <JobMeta job={job} phase={phase} t={t} />
             {job.status === 'paused' && !job.hasPartial && <p className="field__hint">{t('job.pausedNoPartial')}</p>}
             {job.error && (

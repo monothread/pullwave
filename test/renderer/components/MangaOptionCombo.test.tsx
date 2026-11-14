@@ -2,6 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MangaOptionCombo } from '@renderer/components/MangaOptionCombo';
+import { expectNotFound } from '../../helpers/notFound';
 
 const OPTIONS = ['Any', 'A day', 'A week', 'A month'];
 
@@ -68,6 +69,7 @@ describe('MangaOptionCombo', () => {
         await user.keyboard('zzz');
         expect(screen.queryByRole('option')).not.toBeInTheDocument();
         expect(screen.getByText('Nothing matches.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('Nothing matches.'), 'tiny');
     });
 
     it('picks an option with a click, closes the list and shows the chosen one again', async () => {

@@ -312,7 +312,6 @@ export const DEFAULT_SETTINGS: Settings = {
     translateProvider: 'openai',
     translateModel: '',
     translateBaseUrl: '',
-    translateLanguage: 'Portuguese (Brazil)',
     transcribeProvider: 'openai',
     transcribeModel: 'whisper-1',
     transcribeBaseUrl: ''

@@ -14,6 +14,7 @@ import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
+import { expectNotFound } from '../../helpers/notFound';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -1013,6 +1014,7 @@ describe('AnimeLibrary', () => {
 
             await user.type(field, 'bleach');
             expect(screen.getByText('// NO ANIME IN THE LIBRARY MATCHES THIS SEARCH.')).toBeInTheDocument();
+            expectNotFound(screen.getByText('// NO ANIME IN THE LIBRARY MATCHES THIS SEARCH.'), 'screen');
             expect(screen.queryByTestId('anime-card')).not.toBeInTheDocument();
             expect(screen.getByText('0 ANIMES')).toBeInTheDocument();
             expect(field).toBeInTheDocument();

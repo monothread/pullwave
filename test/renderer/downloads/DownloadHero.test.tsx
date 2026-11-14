@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, render, screen } from '@testing-library/react';
 import { DownloadHero, type DownloadHeroProps } from '@renderer/downloads/DownloadHero';
+import { ZIP_CLOSE_MS, ZIP_SETTLE_MS, ZIP_SPLIT_MS } from '@renderer/hooks/useZipPhase';
 import { GRAPH_HEIGHT, GRAPH_WIDTH, SpeedGraph } from '@renderer/downloads/SpeedGraph';
 
 const BASE: DownloadHeroProps = { id: 'job-1', title: 'A video', detail: null, percent: 42.4, speed: '2.00MiB/s', eta: '00:30', kind: 'downloads', cover: null, waiting: 2 };
@@ -164,3 +165,78 @@ describe('DownloadHero', () => {
         expect(drawn(hero, '.download-hero__percent')).toEqual(['42%']);
     });
 });
+
+describe('DownloadHero joining the bars, the steps after the download and the end (D-196)', () => {
+    const DOWNLOADED = [
+        { kind: 'video' as const, percent: 100 },
+        { kind: 'audio' as const, percent: 100 }
+    ];
+
+    function advance(ms: number): void {
+        act(() => {
+            vi.advanceTimersByTime(ms);
+        });
+    }
+
+    function heroBar(): HTMLElement {
+        return heroElement().querySelector<HTMLElement>(':scope .download-hero__body > .download-hero__bar') as HTMLElement;
+    }
+
+    it('zips the bars of the parts into one, in the look of the banner, as the first step starts, and then shows the bar of the step going on', () => {
+        const { rerender } = render(<DownloadHero {...BASE} percent={100} parts={DOWNLOADED} />);
+        rerender(<DownloadHero {...BASE} percent={100} parts={DOWNLOADED} postProcess="Merger" steps={['Merger']} speed="" eta="" />);
+        const hero = heroElement();
+        expect(hero.querySelector('.zipper')?.getAttribute('data-zip')).toBe('split');
+        expect(hero.querySelector('.zipper__joined')?.className).toBe('zipper__joined progress download-hero__bar');
+        advance(ZIP_SPLIT_MS);
+        advance(ZIP_CLOSE_MS);
+        advance(ZIP_SETTLE_MS);
+        expect(hero.querySelector('.zipper')).toBeNull();
+        expect(heroBar().className).toBe('download-hero__bar progress progress--processing');
+        expect((heroBar().firstElementChild as HTMLElement).style.width).toBe('100%');
+    });
+
+    it('shows the steps after the download under the bar, drawn, the last one going on', () => {
+        render(<DownloadHero {...BASE} percent={100} postProcess="MoveFiles" steps={['Merger', 'MoveFiles']} speed="" eta="" />);
+        const hero = heroElement();
+        expect(drawn(hero, '.steps__name')).toEqual(['Download', 'Join', 'Move']);
+        expect(Array.from(hero.querySelectorAll('.steps__item')).map((item) => {
+            return item.getAttribute('data-state');
+        })).toEqual(['done', 'done', 'now']);
+        expect(heroBar().className).toBe('download-hero__bar progress progress--processing');
+    });
+
+    it('shows no steps while the file downloads', () => {
+        render(<DownloadHero {...BASE} />);
+        expect(heroElement().querySelector('.steps')).toBeNull();
+        expect(heroBar().className).toBe('download-hero__bar progress');
+    });
+
+    it('shows the download that just ended green, with its bar full and still and every step ticked', () => {
+        render(<DownloadHero {...BASE} percent={100} steps={['Merger', 'MoveFiles']} done speed="" eta="" />);
+        const hero = heroElement();
+        expect(hero.className).toBe('download-hero download-hero--done');
+        expect(hero.querySelector('.hero__eyebrow')).toHaveTextContent('DOWNLOAD COMPLETE');
+        expect(heroBar().className).toBe('download-hero__bar progress');
+        expect(Array.from(hero.querySelectorAll('.steps__item')).map((item) => {
+            return item.getAttribute('data-state');
+        })).toEqual(['done', 'done', 'done']);
+    });
+
+    it('zips the bars of a download in parts that ends with no step after it, and shows it green', () => {
+        const { rerender } = render(<DownloadHero {...BASE} percent={100} parts={DOWNLOADED} />);
+        rerender(<DownloadHero {...BASE} percent={100} parts={DOWNLOADED} done />);
+        expect(heroElement().querySelector('.zipper')?.getAttribute('data-zip')).toBe('split');
+        advance(ZIP_SPLIT_MS);
+        advance(ZIP_CLOSE_MS);
+        advance(ZIP_SETTLE_MS);
+        expect(heroElement().className).toBe('download-hero download-hero--done');
+        expect(heroBar().className).toBe('download-hero__bar progress');
+    });
+
+    it('keeps its wide box when it ends', () => {
+        render(<DownloadHero {...BASE} coverShape="wide" done />);
+        expect(heroElement().className).toBe('download-hero download-hero--wide download-hero--done');
+    });
+});
+

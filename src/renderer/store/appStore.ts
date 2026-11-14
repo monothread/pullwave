@@ -5,6 +5,7 @@ import { createTranslator, loadCatalog } from '../i18n/catalogs';
 import type { LlmStatus } from '@shared/llm';
 import { useFxStore } from '../fx/fxStore';
 import { resolveAppLanguage } from '../i18n/language';
+import { createDoneLinger } from './doneLinger';
 import type {
     AddJobResult,
     AppUpdateState,
@@ -88,6 +89,9 @@ export interface AppState {
 }
 
 // Messages the store creates itself (not reactive): they use the language that is saved when they are created.
+// The downloads that are complete and stay a few seconds in the queue before they leave it.
+const doneLinger = createDoneLinger<string>();
+
 function translateNow(settings: Settings, key: MessageKey, params?: MessageParams): string {
     return createTranslator(resolveAppLanguage(settings.language))(key, params);
 }
@@ -176,22 +180,39 @@ export const useAppStore = create<AppState>((set, get) => {
             ]);
             // The app opens on the home screen (the first state); a section chosen in the menu while the app was starting is kept.
             set({ settings, settingsLoaded: true, jobs, history, binaries, appUpdate });
+            const leaveQueue = (id: string): void => {
+                void get().removeJob(id);
+            };
+            // A download that was complete when the window was opened again (it was staying its last seconds) leaves after its time too.
+            jobs.filter((job) => {
+                return job.status === 'done';
+            }).forEach((job) => {
+                doneLinger.schedule(job.id, () => {
+                    leaveQueue(job.id);
+                });
+            });
             const unsubscribers = [
                 api.onJobUpdate((job) => {
                     const finishedNow = job.status === 'done' && get().jobs.find((candidate) => {
                         return candidate.id === job.id;
                     })?.status !== 'done';
+                    if (job.status !== 'done') {
+                        doneLinger.cancel(job.id);
+                    }
                     set((state) => {
                         return { jobs: upsertJob(state.jobs, job) };
                     });
                     if (finishedNow) {
-                        // A download that is complete says so for a few seconds and leaves the queue (it stays in the history).
+                        // A download that is complete says so, stays a few seconds in the queue (green) and leaves it (it stays in the history).
                         get().pushToast(translateNow(get().settings, 'notice.downloadDone', { title: job.title ?? job.url }));
                         useFxStore.getState().celebrate();
-                        void get().removeJob(job.id);
+                        doneLinger.schedule(job.id, () => {
+                            leaveQueue(job.id);
+                        });
                     }
                 }),
                 api.onJobRemoved((id) => {
+                    doneLinger.cancel(id);
                     set((state) => {
                         return {
                             jobs: state.jobs.filter((job) => {

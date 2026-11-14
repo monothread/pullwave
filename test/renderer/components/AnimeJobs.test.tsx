@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { AnimeJobs } from '@renderer/components/AnimeJobs';
+import { ZIP_CLOSE_MS, ZIP_SETTLE_MS, ZIP_SPLIT_MS } from '@renderer/hooks/useZipPhase';
 import { useAnimeStore, UNSUPPORTED_STATUS, INITIAL_SEARCH } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
 import { makeAnimeJob } from '../../helpers/animeFixtures';
@@ -87,7 +88,7 @@ describe('AnimeJobs', () => {
         expect(screen.getByText('QUEUED')).toHaveClass('badge--queued');
     });
 
-    it('orders the jobs: running, queued, failed, cancelled, done', () => {
+    it('orders the jobs: running and the one that just completed (in the order they came), queued, failed, cancelled', () => {
         useAnimeStore.setState({
             jobs: [
                 makeAnimeJob({ episodeId: 1, episode: '1', status: 'done' }),
@@ -102,7 +103,7 @@ describe('AnimeJobs', () => {
             screen.getAllByTestId('anime-job').map((job) => {
                 return within(job).getByRole('heading').textContent;
             })
-        ).toEqual(['Naruto · EP 5', 'Naruto · EP 4', 'Naruto · EP 3', 'Naruto · EP 2', 'Naruto · EP 1']);
+        ).toEqual(['Naruto · EP 1', 'Naruto · EP 5', 'Naruto · EP 4', 'Naruto · EP 3', 'Naruto · EP 2']);
     });
 
     it('cancels a running or waiting download', async () => {
@@ -162,6 +163,11 @@ describe('AnimeJobs', () => {
 
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'done' })] });
         rerender(<AnimeJobs />);
+        // A download that completed leaves by itself after its moment: there is nothing to clear for it.
+        expect(screen.queryByRole('button', { name: 'CLEAR FAILED' })).not.toBeInTheDocument();
+
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'error' })] });
+        rerender(<AnimeJobs />);
         await user.click(screen.getByRole('button', { name: 'CLEAR FAILED' }));
         expect(mock.api.clearFinishedAnimeJobs).not.toHaveBeenCalled();
         await answerDialog(user, 'Clear the failed ones?', 'CLEAR FAILED');
@@ -170,7 +176,7 @@ describe('AnimeJobs', () => {
 
     it('keeps the downloads going and the finished ones listed when the user goes back or keeps them', async () => {
         const user = userEvent.setup();
-        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 7, status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'done' })] });
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 7, status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'cancelled' })] });
         render(<AnimeJobs />);
         await user.click(screen.getByRole('button', { name: 'CANCEL' }));
         await answerDialog(user, 'Cancel this download?', 'BACK');
@@ -251,7 +257,7 @@ describe('AnimeJobs pause and resume', () => {
             screen.getAllByRole('heading', { level: 3 }).map((heading) => {
                 return heading.textContent;
             })
-        ).toEqual(['Naruto · EP 3', 'Naruto · EP 2', 'Naruto · EP 1', 'Naruto · EP 4']);
+        ).toEqual(['Naruto · EP 3', 'Naruto · EP 4', 'Naruto · EP 2', 'Naruto · EP 1']);
     });
 
     it('does not count a paused download as finished for the button that clears them', () => {
@@ -293,6 +299,100 @@ describe('AnimeJobs: the episode downloading', () => {
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'paused' })] });
         render(<AnimeJobs />);
         expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
+    });
+});
+
+describe('AnimeJobs the joining of the picture and the audio, and the end (D-196)', () => {
+    const DOWNLOADED = [
+        { kind: 'video' as const, percent: 100 },
+        { kind: 'audio' as const, percent: 100 }
+    ];
+
+    function advance(ms: number): void {
+        act(() => {
+            vi.advanceTimersByTime(ms);
+        });
+    }
+
+    function cardSteps(card: HTMLElement): string[] {
+        return within(within(card).getByRole('list', { name: 'Steps of the download' })).getAllByRole('listitem').map((item) => {
+            return `${item.textContent ?? ''}:${item.getAttribute('data-state') ?? ''}`;
+        });
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('zips the bars of the parts into one as the joining starts, then shows the processing bar, the step and the text of the joining', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'running', percent: 100, parts: DOWNLOADED })] });
+        render(<AnimeJobs />);
+        const card = screen.getByTestId('anime-job');
+        expect(card.querySelector('.zipper')?.getAttribute('data-zip')).toBe('parts');
+        act(() => {
+            useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'running', percent: 100, speed: '', eta: '', parts: DOWNLOADED, postProcess: 'Merger', postProcessSteps: ['Merger'] })] });
+        });
+        expect(card.querySelector('.zipper')?.getAttribute('data-zip')).toBe('split');
+        expect(within(card).getByText('Joining video and audio')).toHaveClass('job__processing');
+        expect(cardSteps(card)).toEqual(['Download:done', 'Join:now']);
+        advance(ZIP_SPLIT_MS);
+        advance(ZIP_CLOSE_MS);
+        advance(ZIP_SETTLE_MS);
+        expect(card.querySelector('.zipper')).toBeNull();
+        expect(within(card).getByRole('progressbar', { name: 'Processing the downloaded file' }).className).toBe('progress progress--processing');
+        expect(within(card).queryByText('100.0%')).not.toBeInTheDocument();
+    });
+
+    it('zips the bars in the banner too, and shows the joining going on there', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'running', percent: 100, speed: '', eta: '', parts: DOWNLOADED, postProcess: 'Merger', postProcessSteps: ['Merger'] })] });
+        render(<AnimeJobs />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.querySelector('.zipper')).toBeNull();
+        expect(hero.querySelector('.download-hero__body > .download-hero__bar')?.className).toBe('download-hero__bar progress progress--processing');
+        expect(Array.from(hero.querySelectorAll('.steps__name')).map((name) => {
+            return name.getAttribute('data-text');
+        })).toEqual(['Download', 'Join']);
+    });
+
+    it('shows the episode that just completed green, with its bar full and every step ticked, in its card and in the banner', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'done', percent: 100, speed: '', eta: '', parts: DOWNLOADED, postProcessSteps: ['Merger'] })] });
+        render(<AnimeJobs />);
+        const card = screen.getByTestId('anime-job');
+        expect(card).toHaveClass('job', 'job--done');
+        expect(within(card).getByRole('progressbar', { name: 'Download progress of Naruto, episode 1' })).toHaveAttribute('aria-valuenow', '100');
+        expect(cardSteps(card)).toEqual(['Download:done', 'Join:done']);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.className).toBe('download-hero download-hero--done');
+    });
+
+    it('gives the banner to an episode that downloads rather than to the one that just completed', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, episode: '1', status: 'done', percent: 100 }), makeAnimeJob({ episodeId: 2, episode: '2', status: 'running', percent: 20 })] });
+        render(<AnimeJobs />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.className).toBe('download-hero');
+        expect(hero.querySelector('.download-hero__detail')).toHaveAttribute('data-text', 'EP 2');
+    });
+
+    it('shows no steps and keeps the speed and the percent of an episode that downloads in one piece', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'running', percent: 42.5, speed: '1.50MiB/s', eta: '00:10' })] });
+        render(<AnimeJobs />);
+        const card = screen.getByTestId('anime-job');
+        expect(within(card).queryByRole('list', { name: 'Steps of the download' })).not.toBeInTheDocument();
+        expect(within(card).getByText('42.5%')).toBeInTheDocument();
+        expect(within(card).getByText('1.50MiB/s')).toBeInTheDocument();
+    });
+
+    it('shows no steps and no joining for an episode that failed while it joined', () => {
+        useAnimeStore.setState({ jobs: [makeAnimeJob({ episodeId: 1, status: 'error', percent: 100, parts: DOWNLOADED, postProcess: null, postProcessSteps: ['Merger'], error: { code: 'UNKNOWN', raw: 'boom' } })] });
+        render(<AnimeJobs />);
+        const card = screen.getByTestId('anime-job');
+        expect(within(card).queryByRole('list', { name: 'Steps of the download' })).not.toBeInTheDocument();
+        expect(within(card).queryByText('Joining video and audio')).not.toBeInTheDocument();
+        expect(card.querySelector('.zipper')?.getAttribute('data-zip')).toBe('parts');
     });
 });
 

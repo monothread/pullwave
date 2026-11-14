@@ -1,17 +1,8 @@
 import type { AnimeSubtitleSetting } from '@shared/anime';
+import { SUBTITLE_FALLBACK_LABEL, SUBTITLE_LABEL_OF_LANGUAGE } from '@shared/subtitleTarget';
 import type { LanguageCode } from '@shared/types';
 
 export const SUBTITLE_LABELS_VARIABLE = 'PULLWAVE_SUB_LABELS';
-export const SUBTITLE_FALLBACK_LABEL = 'English';
-
-// The name the source gives the subtitles of each language of the app. Chinese and Japanese have none of their own.
-const LABEL_OF_LANGUAGE: Record<LanguageCode, string> = {
-    en: 'English',
-    pt: 'Portuguese',
-    es: 'Spanish',
-    zh: SUBTITLE_FALLBACK_LABEL,
-    ja: SUBTITLE_FALLBACK_LABEL
-};
 
 // The languages to try, in order. After them ani-cli's own pick (the subtitles the source marks as default) is used, so an
 // empty list leaves ani-cli as it is.
@@ -20,7 +11,7 @@ export function subtitleLabels(setting: AnimeSubtitleSetting, language: Language
         return [];
     }
     if (setting === 'auto') {
-        return [...new Set([LABEL_OF_LANGUAGE[language], SUBTITLE_FALLBACK_LABEL])];
+        return [...new Set([SUBTITLE_LABEL_OF_LANGUAGE[language], SUBTITLE_FALLBACK_LABEL])];
     }
     return [setting];
 }

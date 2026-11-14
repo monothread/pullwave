@@ -65,7 +65,6 @@ describe('sanitizeSettings', () => {
             translateProvider: 'anthropic',
             translateModel: 'my-model',
             translateBaseUrl: 'https://llm.example/v1',
-            translateLanguage: 'Spanish',
             transcribeProvider: 'custom',
             transcribeModel: 'whisper-large',
             transcribeBaseUrl: 'https://stt.example/v1'
@@ -280,8 +279,9 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ animeSubtitles }).animeSubtitles).toBe('auto');
     });
 
-    it('has the translation of subtitles default to ChatGPT, with no model or address, into Brazilian Portuguese', () => {
-        const defaults = { translateProvider: 'openai', translateModel: '', translateBaseUrl: '', translateLanguage: 'Portuguese (Brazil)' };
+    it('has the translation of subtitles default to ChatGPT, with no model or address, and no language of its own', () => {
+        const defaults = { translateProvider: 'openai', translateModel: '', translateBaseUrl: '' };
+        expect(Object.keys(DEFAULT_SETTINGS)).not.toContain('translateLanguage');
         expect(DEFAULT_SETTINGS).toMatchObject(defaults);
         expect(sanitizeSettings({})).toMatchObject(defaults);
     });
@@ -294,12 +294,11 @@ describe('sanitizeSettings', () => {
         expect(sanitizeSettings({ translateProvider }).translateProvider).toBe('openai');
     });
 
-    it.each(['Portuguese (Brazil)', 'Portuguese', 'Spanish', 'English', 'French', 'German', 'Italian', 'Russian', 'Japanese', 'Chinese', 'Korean', 'Arabic', 'Turkish', 'Indonesian'])('keeps the translation language "%s"', (translateLanguage) => {
-        expect(sanitizeSettings({ translateLanguage }).translateLanguage).toBe(translateLanguage);
-    });
-
-    it.each(['spanish', 'Klingon', '', 2, null])('falls back to Brazilian Portuguese for the invalid translation language %j', (translateLanguage) => {
-        expect(sanitizeSettings({ translateLanguage }).translateLanguage).toBe('Portuguese (Brazil)');
+    it('drops the language of translation older settings files have: the translation follows the anime subtitles now (D-197)', () => {
+        const settings = sanitizeSettings({ translateLanguage: 'Korean', animeSubtitles: 'Spanish' });
+        expect(Object.keys(settings)).not.toContain('translateLanguage');
+        expect(settings.animeSubtitles).toBe('Spanish');
+        expect(settings).toEqual({ ...DEFAULT_SETTINGS, animeSubtitles: 'Spanish' });
     });
 
     it('trims the translation model and address and ignores ones that are not text', () => {

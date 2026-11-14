@@ -20,7 +20,7 @@ const TRANSLATED: SubtitleTranslateResponse = { ok: true, tracks: [ENGLISH, JAPA
 
 beforeEach(() => {
     mock = installMockApi();
-    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, translateProvider: 'anthropic', translateModel: 'my-model', translateLanguage: 'Spanish' } });
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, translateProvider: 'anthropic', translateModel: 'my-model', animeSubtitles: 'Spanish' } });
     mock.api.estimateAnimeSubtitleTranslation.mockResolvedValue(ESTIMATE);
 });
 
@@ -53,6 +53,16 @@ describe('SubtitleTranslateDialog', () => {
         renderDialog();
         expect(screen.getByText('Provider: ChatGPT (OpenAI) · Model: —')).toBeInTheDocument();
         await screen.findByText('120 lines, 3 requests, about 5400 tokens of your account.');
+    });
+
+    it.each([
+        ['the Brazilian Portuguese for the anime subtitles in Portuguese', { animeSubtitles: 'Portuguese' }, 'Portuguese (Brazil)'],
+        ['the language of the app when the anime subtitles are what ani-cli picks', { animeSubtitles: 'default', language: 'en' }, 'English'],
+        ['the subtitles asked for the language of the app when the anime subtitles follow it', { animeSubtitles: 'auto', language: 'en' }, 'English']
+    ] as const)('starts on %s', async (_name, change, expected) => {
+        useAppStore.setState({ settings: { ...useAppStore.getState().settings, ...change } });
+        await ready();
+        expect(screen.getByLabelText('Translate into')).toHaveValue(expected);
     });
 
     it('starts with the language of the settings, the subtitle picked by the app and the options of the episode', async () => {

@@ -6,6 +6,7 @@ import type { LogLine, LogSource } from '@shared/logs';
 import { LOG_SOURCE_LABELS, LogsDialog } from '@renderer/components/LogsDialog';
 import { useAppStore } from '@renderer/store/appStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
+import { expectNotFound } from '../../helpers/notFound';
 
 const ESC = String.fromCharCode(27);
 const AT = new Date(2026, 10, 11, 14, 3, 9, 42).getTime();
@@ -148,7 +149,7 @@ describe('LogsDialog', () => {
         await user.clear(search);
         await user.type(search, 'nothing like this');
         expect(screen.queryByRole('list')).not.toBeInTheDocument();
-        expect(screen.getByText('No line matches the filter.')).toHaveClass('logs__empty');
+        expectNotFound(screen.getByText('No line matches the filter.'), 'small');
         expect(screen.getByText('0 of 5 lines')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'COPY' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'CLEAR' })).toBeEnabled();

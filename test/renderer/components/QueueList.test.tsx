@@ -39,13 +39,13 @@ describe('QueueList', () => {
 
     it('shows the newest download on top and the oldest at the bottom among downloads in the same state', () => {
         useAppStore.setState({
-            jobs: [makeJob({ id: 'a', title: 'Oldest', status: 'done' }), makeJob({ id: 'b', title: 'Middle', status: 'done' }), makeJob({ id: 'c', title: 'Newest', status: 'done' })]
+            jobs: [makeJob({ id: 'a', title: 'Oldest', status: 'error' }), makeJob({ id: 'b', title: 'Middle', status: 'error' }), makeJob({ id: 'c', title: 'Newest', status: 'error' })]
         });
         render(<QueueList />);
         expect(titlesOnScreen()).toEqual(['Newest', 'Middle', 'Oldest']);
     });
 
-    it('puts what is running above what waits and what is over, whatever the order they were added in', () => {
+    it('puts what is running, and what just completed, above what waits and what failed, whatever the order they were added in', () => {
         useAppStore.setState({
             jobs: [
                 makeJob({ id: 'a', title: 'Finished early', status: 'done' }),
@@ -57,15 +57,19 @@ describe('QueueList', () => {
             ]
         });
         render(<QueueList />);
-        expect(titlesOnScreen()).toEqual(['Running late', 'Running early', 'Waiting', 'Cancelled', 'Failed', 'Finished early']);
+        expect(titlesOnScreen()).toEqual(['Running late', 'Running early', 'Finished early', 'Waiting', 'Cancelled', 'Failed']);
     });
 
-    it('moves a download below the active ones when it completes', () => {
+    it('keeps a download in its place while it stays a moment after it completes, and moves a failed one below the active ones', () => {
         useAppStore.setState({ jobs: [makeJob({ id: 'a', title: 'First', status: 'running' }), makeJob({ id: 'b', title: 'Second', status: 'running' })] });
         render(<QueueList />);
         expect(titlesOnScreen()).toEqual(['Second', 'First']);
         act(() => {
             useAppStore.setState({ jobs: [makeJob({ id: 'a', title: 'First', status: 'running' }), makeJob({ id: 'b', title: 'Second', status: 'done' })] });
+        });
+        expect(titlesOnScreen()).toEqual(['Second', 'First']);
+        act(() => {
+            useAppStore.setState({ jobs: [makeJob({ id: 'a', title: 'First', status: 'running' }), makeJob({ id: 'b', title: 'Second', status: 'error' })] });
         });
         expect(titlesOnScreen()).toEqual(['First', 'Second']);
     });
@@ -96,7 +100,13 @@ describe('QueueList', () => {
         expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
     });
 
-    it.each(['done', 'error', 'cancelled'] as const)('shows clear finished when a job is %s', async (status) => {
+    it('does not offer to clear a download that completed: it leaves by itself after its moment', () => {
+        useAppStore.setState({ jobs: [makeJob({ status: 'done' }), makeJob({ id: 'r', status: 'running' })] });
+        render(<QueueList />);
+        expect(screen.queryByRole('button', { name: 'CLEAR FINISHED' })).not.toBeInTheDocument();
+    });
+
+    it.each(['error', 'cancelled'] as const)('shows clear finished when a job is %s', async (status) => {
         useAppStore.setState({ jobs: [makeJob({ status })] });
         render(<QueueList />);
         const user = userEvent.setup();
@@ -109,7 +119,7 @@ describe('QueueList', () => {
 
     it('keeps the finished jobs when the user keeps them or presses Esc', async () => {
         const user = userEvent.setup();
-        useAppStore.setState({ jobs: [makeJob({ status: 'done' })] });
+        useAppStore.setState({ jobs: [makeJob({ status: 'error' })] });
         render(<QueueList />);
         await user.click(screen.getByRole('button', { name: 'CLEAR FINISHED' }));
         await answerDialog(user, 'Clear the finished ones?', 'KEEP');
@@ -206,7 +216,7 @@ describe('QueueList pause and resume', () => {
             screen.getAllByRole('heading', { level: 3 }).map((heading) => {
                 return heading.textContent;
             })
-        ).toEqual(['Running', 'Paused', 'Waiting', 'Done']);
+        ).toEqual(['Done', 'Running', 'Paused', 'Waiting']);
     });
 
     it('does not offer to clear the finished ones because of a paused download', () => {
@@ -279,12 +289,47 @@ describe('QueueList: the download going on', () => {
     });
 
     it.each([
-        ['nothing runs', [makeJob({ id: 'q', status: 'queued' }), makeJob({ id: 'd', status: 'done' })]],
-        ['the one running is a live recording', [makeJob({ id: 'l', status: 'running', live: true })]]
+        ['nothing runs', [makeJob({ id: 'q', status: 'queued' }), makeJob({ id: 'e', status: 'error' })]],
+        ['the one running is a live recording', [makeJob({ id: 'l', status: 'running', live: true })]],
+        ['the one that just completed is a live recording', [makeJob({ id: 'l', status: 'done', live: true })]]
     ])('has no banner when %s', (_case, jobs) => {
         useAppStore.setState({ jobs });
         render(<QueueList />);
         expect(screen.queryByTestId('download-hero')).not.toBeInTheDocument();
+    });
+});
+
+describe('QueueList: the download that just completed (D-196)', () => {
+    it('keeps the download that just completed green in the banner while nothing else runs, with every step ticked', () => {
+        useAppStore.setState({ jobs: [makeJob({ id: 'd', status: 'done', title: 'Done video', percent: 100, speed: '', eta: '', postProcessSteps: ['Merger', 'MoveFiles'], filePath: '/dl/a.mp4' })] });
+        render(<QueueList />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.className).toBe('download-hero download-hero--done');
+        expect(hero.querySelector('.download-hero__title')).toHaveAttribute('data-text', 'Done video');
+        expect(Array.from(hero.querySelectorAll('.steps__name')).map((name) => {
+            return name.getAttribute('data-text');
+        })).toEqual(['Download', 'Join', 'Move']);
+        expect(within(screen.getByTestId('job-card')).getByText('COMPLETE')).toBeInTheDocument();
+    });
+
+    it('gives the banner to a download that runs rather than to the one that just completed', () => {
+        useAppStore.setState({
+            jobs: [makeJob({ id: 'd', status: 'done', title: 'Done video', percent: 100 }), makeJob({ id: 'r', status: 'running', title: 'Running video', percent: 30 })]
+        });
+        render(<QueueList />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.className).toBe('download-hero');
+        expect(hero.querySelector('.download-hero__title')).toHaveAttribute('data-text', 'Running video');
+    });
+
+    it('shows the step going on in the banner while the downloaded file is processed', () => {
+        useAppStore.setState({ jobs: [makeJob({ id: 'r', status: 'running', percent: 100, speed: '', eta: '', postProcess: 'Merger', postProcessSteps: ['Merger'] })] });
+        render(<QueueList />);
+        const hero = screen.getByTestId('download-hero');
+        expect(hero.querySelector('.download-hero__body > .download-hero__bar')?.className).toBe('download-hero__bar progress progress--processing');
+        expect(Array.from(hero.querySelectorAll('.steps__item')).map((item) => {
+            return item.getAttribute('data-state');
+        })).toEqual(['done', 'now']);
     });
 });
 

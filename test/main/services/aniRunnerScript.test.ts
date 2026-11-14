@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parsePartLine } from '@main/services/aniOutputParser';
+import { isJoinLine, parsePartLine } from '@main/services/aniOutputParser';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
 // The script that runs ani-cli with its stand-ins (resources/ani-scripts/pullwave-run.sh), run for real by the shell of the system and by the
@@ -122,7 +122,7 @@ describe.skipIf(process.platform === 'win32').each(SHELLS)('pullwave-run.sh, run
             expect(run.ffmpegCalls).toEqual([
                 ['-nostdin', '-y', '-loglevel', 'error', '-i', `${file}.video.mp4`, '-i', `${file}.audio.mp4`, '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', '-movflags', '+faststart', '-f', 'mp4', `${file}.joined.mp4`]
             ]);
-            expect(run.stdout).toBe(`PULLWAVE_PART\t0\tvideo,audio\nPULLWAVE_PART\t1\tvideo,audio\n[download] Destination: ${file}\nexit 0\n`);
+            expect(run.stdout).toBe(`PULLWAVE_PART\t0\tvideo,audio\nPULLWAVE_PART\t1\tvideo,audio\nPULLWAVE_JOIN\n[download] Destination: ${file}\nexit 0\n`);
             expect(run.stderr).toBe('yt-dlp ran\nyt-dlp ran\nffmpeg ran\n');
             expect(run.files).toEqual(['Reborn Episode 5.mp4']);
         });
@@ -141,6 +141,26 @@ describe.skipIf(process.platform === 'win32').each(SHELLS)('pullwave-run.sh, run
                 { kinds: ['video', 'audio'], index: 0 },
                 { kinds: ['video', 'audio'], index: 1 }
             ]);
+        });
+
+        it('tells the app once, after both parts and before ffmpeg joins them, in a line its own parser reads', () => {
+            const run = runScript(shell, download(PICTURE, AUDIO));
+            const lines = run.stdout.split('\n');
+            expect(lines.filter((line) => {
+                return isJoinLine(line);
+            })).toEqual(['PULLWAVE_JOIN']);
+            expect(lines.indexOf('PULLWAVE_JOIN')).toBe(lines.indexOf('PULLWAVE_PART\t1\tvideo,audio') + 1);
+            expect(lines.indexOf('PULLWAVE_JOIN')).toBeLessThan(lines.findIndex((line) => {
+                return line.startsWith('[download] Destination: ');
+            }));
+        });
+
+        it('does not tell of a joining when a part could not be downloaded, since nothing is joined', () => {
+            const run = runScript(shell, download(PICTURE, 'https://cdn.example/fail.m3u8'));
+            expect(run.stdout.split('\n').some((line) => {
+                return isJoinLine(line);
+            })).toBe(false);
+            expect(run.ffmpegCalls).toEqual([]);
         });
 
         it('downloads the picture alone into the file when there is no audio track', () => {
@@ -176,7 +196,7 @@ describe.skipIf(process.platform === 'win32').each(SHELLS)('pullwave-run.sh, run
             const run = runScript(shell, `${download(PICTURE, AUDIO).replace('Reborn Episode 5.mp4', 'nojoin Episode 5.mp4')}\nprintf 'exit %s\\n' "$?"`);
             expect(run.ytdlpCalls).toHaveLength(2);
             expect(run.ffmpegCalls).toHaveLength(1);
-            expect(run.stdout).toBe('PULLWAVE_PART\t0\tvideo,audio\nPULLWAVE_PART\t1\tvideo,audio\nexit 1\n');
+            expect(run.stdout).toBe('PULLWAVE_PART\t0\tvideo,audio\nPULLWAVE_PART\t1\tvideo,audio\nPULLWAVE_JOIN\nexit 1\n');
             expect(run.stderr).toBe('yt-dlp ran\nyt-dlp ran\nPULLWAVE_DOWNLOAD_FAILED\n');
             expect(run.files).toEqual(['nojoin Episode 5.mp4.audio.mp4', 'nojoin Episode 5.mp4.video.mp4']);
         });

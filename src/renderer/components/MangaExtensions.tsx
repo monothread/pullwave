@@ -9,6 +9,7 @@ import { MangaExtensionsAbout } from './MangaExtensionsAbout';
 import { TextField, ToggleField } from './fields';
 import { extensionLanguages, filterExtensions, isListed } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
+import { NotFound } from './NotFound';
 
 // The stores the extensions come from, and the extensions to install, update or remove.
 export function MangaExtensions() {
@@ -123,7 +124,8 @@ export function MangaExtensions() {
                             </button>
                         )}
                     </div>
-                    {status === 'ready' && shown.length === 0 && <p className="empty">{t(onlyInstalledHidesAll ? 'manga.ext.noneInstalled' : 'manga.ext.none')}</p>}
+                    {status === 'ready' && shown.length === 0 && onlyInstalledHidesAll && <p className="empty">{t('manga.ext.noneInstalled')}</p>}
+                    {status === 'ready' && shown.length === 0 && !onlyInstalledHidesAll && <NotFound text={t('manga.ext.none')} />}
                     <ul className="history__list">
                         <IncrementalItems items={shown} listKey="manga-extensions" end="li" renderItem={(extension) => {
                             const working = busy.includes(extension.pkgName);

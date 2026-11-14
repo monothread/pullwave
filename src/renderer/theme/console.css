@@ -449,12 +449,20 @@ body::before {
     border-radius: var(--bp-radius-pill);
 }
 
-.badge {
+.badge,
+.steps__item {
     border-radius: var(--bp-radius-pill);
 }
 
-:root[data-theme-style='neon'] .badge {
+:root[data-theme-style='neon'] .badge,
+:root[data-theme-style='neon'] .steps__item {
     border-radius: 0;
+}
+
+/* --- A search that found nothing (D-197): the lens and its cross glow only in the neon themes ---------------------------------------------------- */
+:root[data-theme-style='flat'] .not-found {
+    --not-found-lens-glow: none;
+    --not-found-cross-glow: none;
 }
 
 /* --- Empty screens: a ring that breathes above the message ----------------------------------------------------------------------

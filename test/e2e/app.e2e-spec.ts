@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import './display';
+import { FINISHED_CARD_TIMEOUT } from './finishedCards';
 import { leaveHome } from './startScreen';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -247,10 +248,12 @@ test('downloads a video, says it is complete for five seconds, removes its card 
 
     const notice = page.locator('.toast--info .toast__message');
     await expect(notice).toHaveText('Download complete: Fake Video');
-    await expect(page.locator('.toast--info')).toHaveAttribute('role', 'status');
-    await expect(page.getByTestId('job-card')).toHaveCount(0);
-    await expect(page.getByText('// NO ACTIVE DOWNLOADS. JACK IN A URL ABOVE.')).toBeVisible();
     const shownAt = Date.now();
+    await expect(page.locator('.toast--info')).toHaveAttribute('role', 'status');
+    // The notice and the card (green) both stay five seconds after the download completed, then go.
+    await expect(page.getByTestId('job-card')).toHaveClass(/job--done/);
+    await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
+    await expect(page.getByText('// NO ACTIVE DOWNLOADS. JACK IN A URL ABOVE.')).toBeVisible();
     await expect(notice).toBeHidden({ timeout: 8000 });
     expect(Date.now() - shownAt).toBeGreaterThan(3500);
 
@@ -333,6 +336,64 @@ test('shows a bar for the video and one for the audio, both in sight from the st
     expect(banner).toEqual(['VIDEO', 'AUDIO']);
 });
 
+test('zips the bars of the video and the audio into one once both are downloaded, shows each step as it starts, and keeps the download green for five seconds before it leaves', async () => {
+    const { page } = session;
+    // Every moment of the zipper of the card, and every state of its trail of steps, in the order they came.
+    await page.evaluate(() => {
+        const zips: string[] = [];
+        const trails: string[] = [];
+        const store = window as unknown as { zipStates: string[]; trailStates: string[] };
+        store.zipStates = zips;
+        store.trailStates = trails;
+        new MutationObserver(() => {
+            const zip = document.querySelector('[data-testid="job-card"] .zipper')?.getAttribute('data-zip');
+            if (zip !== undefined && zip !== null && zips.at(-1) !== zip) {
+                zips.push(zip);
+            }
+            const trail = Array.from(document.querySelectorAll('[data-testid="job-card"] .steps__item'))
+                .map((item) => {
+                    return `${item.textContent ?? ''}:${item.getAttribute('data-state') ?? ''}`;
+                })
+                .join('|');
+            if (trail.length > 0 && trails.at(-1) !== trail) {
+                trails.push(trail);
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-zip', 'data-state'] });
+    });
+    await submitUrl(page, 'https://example.com/twoparts-steps');
+    const card = page.getByTestId('job-card');
+    await expect(card.getByRole('progressbar', { name: 'Download progress: AUDIO' })).toBeVisible();
+
+    // The steps after the download: the joining, then the moving of the file, each lit as it starts, with the bar of the step going on.
+    await expect(card.getByText('Joining video and audio')).toBeVisible();
+    await expect(card.getByRole('progressbar', { name: 'Processing the downloaded file' })).toBeVisible();
+    await expect(card.locator('.zipper')).toHaveCount(0);
+    const banner = page.getByTestId('download-hero');
+    await expect(banner.locator('.download-hero__body > .download-hero__bar')).toHaveClass('download-hero__bar progress progress--processing');
+    await expect(card.getByText('Moving the file to the folder')).toBeVisible();
+
+    // Complete: the card stays green, its bar full, every step ticked, the banner green, and then the card leaves (it stays in the history).
+    await expect(card).toHaveClass(/job--done/);
+    const doneAt = Date.now();
+    await expect(card.locator('.badge')).toHaveText('COMPLETE');
+    await expect(card.getByRole('progressbar', { name: 'Download progress' })).toHaveAttribute('aria-valuenow', '100');
+    await expect(banner).toHaveClass('download-hero download-hero--done');
+    await expect(banner.locator('.hero__eyebrow')).toHaveText('DOWNLOAD COMPLETE');
+    await expect(page.locator('.toast--info .toast__message')).toHaveText('Download complete: Fake Video');
+    await expect(page.getByRole('button', { name: 'CLEAR FINISHED' })).toHaveCount(0);
+    await expect(card).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
+    expect(Date.now() - doneAt).toBeGreaterThan(4000);
+    await expect(banner).toHaveCount(0);
+
+    const { zips, trails } = await page.evaluate(() => {
+        const store = window as unknown as { zipStates: string[]; trailStates: string[] };
+        return { zips: store.zipStates, trails: store.trailStates };
+    });
+    expect(zips).toEqual(['parts', 'split', 'zip', 'settle']);
+    expect(trails).toEqual(['Download:done|Join:now', 'Download:done|Join:done|Move:now', 'Download:done|Join:done|Move:done']);
+    await expectDownloadsComplete(page);
+});
+
 test('stacks the completions, newest on top, each one going away five seconds after it showed up', async () => {
     const { page } = session;
     await page.getByLabel('Link 1', { exact: true }).fill('https://example.com/ok1');
@@ -344,9 +405,9 @@ test('stacks the completions, newest on top, each one going away five seconds af
     await expect(notices.first()).toBeVisible();
     const shownAt = Date.now();
     await expectDownloadsComplete(page, 2);
-    await expect(page.getByTestId('job-card')).toHaveCount(0);
-    // Both are on the screen together, one over the other, and each one goes away five seconds after it showed up.
+    // Both are on the screen together, one over the other, and each one goes away five seconds after it showed up, as the cards do.
     await expect(notices).toHaveCount(2);
+    await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await expect(notices).toHaveCount(0, { timeout: 10000 });
     expect(Date.now() - shownAt).toBeGreaterThan(4000);
     await page.getByRole('button', { name: 'HISTORY' }).click();
@@ -384,10 +445,15 @@ test('shows what yt-dlp is doing to the downloaded file until it is ready', asyn
     await expect(card.getByText('Converting the audio')).toBeVisible();
     await expect(card.getByRole('progressbar', { name: 'Processing the downloaded file' })).toBeVisible();
     await expect(card.getByRole('button')).toHaveCount(0);
+    // A download in one piece has no bars to zip, but shows its steps as they start.
+    await expect(card.locator('.zipper')).toHaveCount(0);
+    const steps = card.getByRole('list', { name: 'Steps of the download' });
+    await expect(steps.getByRole('listitem')).toHaveText(['Download', 'Convert audio']);
     await expect(card.getByText('Moving the file to the folder')).toBeVisible();
+    await expect(steps.getByRole('listitem')).toHaveText(['Download', 'Convert audio', 'Move']);
     await expectDownloadsComplete(page);
     await expect(page.locator('.toast--info .toast__message')).toHaveText('Download complete: Fake Video');
-    await expect(card).toHaveCount(0);
+    await expect(card).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
 
     const args = lastYtdlpCall(logPath, 'convert');
     expect(args).toContain('postprocess:CYBERPP|%(progress.status)s|%(progress.postprocessor)s');
@@ -439,7 +505,7 @@ test('cancels a running download and lets the user remove it', async () => {
 
     await card.getByRole('button', { name: 'REMOVE' }).click();
     await answerConfirm(page, 'Remove this download from the list?', 'REMOVE');
-    await expect(page.getByTestId('job-card')).toHaveCount(0);
+    await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await expect(page.getByText('NO ACTIVE DOWNLOADS')).toBeVisible();
 });
 
@@ -476,7 +542,7 @@ test('pauses a running download, keeps its card as paused and goes on when it is
     await expect(card.locator('.badge')).toHaveText('CANCELLED');
     await card.getByRole('button', { name: 'REMOVE' }).click();
     await answerConfirm(page, 'Remove this download from the list?', 'REMOVE');
-    await expect(page.getByTestId('job-card')).toHaveCount(0);
+    await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
 });
 
 test('a paused download frees its place in the queue for the next one', async () => {
@@ -629,7 +695,7 @@ test('shows the error on the link row for an invalid URL, keeps it for editing a
     await expect(page.getByRole('alert').filter({ hasText: 'Invalid URL. Use an http(s) link.' })).toBeVisible();
     await expect(page.getByLabel('Link 1', { exact: true })).toHaveValue('not-a-url');
     await expect(page.getByLabel('Link 1', { exact: true })).toHaveAttribute('aria-invalid', 'true');
-    await expect(page.getByTestId('job-card')).toHaveCount(0);
+    await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
 
     await page.getByLabel('Link 1', { exact: true }).fill('https://example.com/ok');
     await expect(page.getByRole('alert')).toHaveCount(0);
@@ -654,7 +720,7 @@ test('asks for a link when every row is empty', async () => {
     const { page } = session;
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'Paste at least one video URL.' })).toBeVisible();
-    await expect(page.getByTestId('job-card')).toHaveCount(0);
+    await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
 });
 
 test('adds several links with the add button, queues them all and resets the rows', async () => {
@@ -1025,7 +1091,7 @@ test.describe('partial files', () => {
             await expect(own.page.getByRole('button', { name: 'CLEAR PARTIAL FILES' })).toBeVisible();
             await own.page.getByRole('button', { name: 'REMOVE' }).click();
             await answerConfirm(own.page, 'Remove this download from the list?', 'REMOVE');
-            await expect(own.page.getByTestId('job-card')).toHaveCount(0);
+            await expect(own.page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
             expect(leftovers(own.downloadDir)).toEqual([]);
             expect(existsSync(join(own.downloadDir, 'Finished [fin].mp4'))).toBe(true);
         } finally {
@@ -1061,7 +1127,7 @@ test.describe('partial files', () => {
         await page.getByRole('button', { name: 'REMOVE' }).click();
         await expect(page.getByRole('dialog', { name: 'Remove this download from the list?' })).toContainText('This live recording was not saved. Deleting it cannot be undone. Delete it?');
         await answerConfirm(page, 'Remove this download from the list?', 'REMOVE');
-        await expect(page.getByTestId('job-card')).toHaveCount(0);
+        await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         expect(existsSync(join(downloadDir, 'Live Fail [abc].mp4.part'))).toBe(false);
     });
 
@@ -1071,7 +1137,7 @@ test.describe('partial files', () => {
         await expect(FAILED_BADGE(page)).toBeVisible();
         await page.getByRole('button', { name: 'CLEAR FINISHED' }).click();
         await answerConfirm(page, 'Clear the finished ones?', 'CLEAR FINISHED');
-        await expect(page.getByTestId('job-card')).toHaveCount(0);
+        await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         expect(existsSync(join(downloadDir, 'Live Fail [abc].mp4.part'))).toBe(true);
     });
 
@@ -1839,7 +1905,7 @@ test.describe('options for one download', () => {
         expect(containerOf(plain)).toBe('mp4');
         expect(formatOf(custom)).toBe('bv*[height<=720]+ba/b[height<=720]');
         expect(containerOf(custom)).toBe('mkv');
-        await expect(page.getByTestId('job-card')).toHaveCount(0);
+        await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         expect(readSettings(userData).maxResolution ?? 'best').toBe('best');
         expect(readSettings(userData).videoContainer ?? 'mp4').toBe('mp4');
         expect(readSettings(userData).audioOnly ?? false).toBe(false);
@@ -2319,7 +2385,7 @@ test.describe('live streams', () => {
 
         await card.getByRole('button', { name: 'STOP & SAVE' }).click();
         await expectDownloadsComplete(page);
-        await expect(card).toHaveCount(0);
+        await expect(card).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         expect(existsSync(join(downloadDir, 'Live Show [abc].mp4'))).toBe(true);
         expect(existsSync(join(downloadDir, 'Live Show [abc].mp4.part'))).toBe(false);
 
@@ -2420,7 +2486,7 @@ test.describe('end of live check and waiting for a live stream', () => {
         await submitUrl(page, 'https://example.com/liveend');
         const card = page.getByTestId('job-card');
         await expectDownloadsComplete(page);
-        await expect(card).toHaveCount(0);
+        await expect(card).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         expect(callsFor(logPath, 'liveend')).toHaveLength(1);
     });
 
@@ -2437,7 +2503,7 @@ test.describe('end of live check and waiting for a live stream', () => {
         await expect(card.getByRole('button', { name: 'CANCEL' })).toHaveCount(0);
 
         await expectDownloadsComplete(page, 1, 15000);
-        await expect(card).toHaveCount(0);
+        await expect(card).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         expect(existsSync(join(downloadDir, 'Live End [abc].mp4'))).toBe(true);
         const calls = callsFor(logPath, 'liveend');
         expect(calls.length).toBeGreaterThanOrEqual(2);
@@ -2471,7 +2537,7 @@ test.describe('end of live check and waiting for a live stream', () => {
         await expect(card.getByText('Joining the parts of the recording into one file')).toBeVisible();
         await expect(card.getByRole('button')).toHaveCount(0);
         await expectDownloadsComplete(page);
-        await expect(card).toHaveCount(0);
+        await expect(card).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         expect(readdirSync(downloadDir)).toEqual(['Live Back [abc].mp4']);
         expect(statSync(join(downloadDir, 'Live Back [abc].mp4')).size).toBeGreaterThan(2048);
         await page.getByRole('button', { name: 'HISTORY' }).click();
@@ -2882,7 +2948,7 @@ test.describe('live HLS streams recorded by the app', () => {
 
         await card.getByRole('button', { name: 'STOP & SAVE' }).click();
         await expectDownloadsComplete(page);
-        await expect(card).toHaveCount(0);
+        await expect(card).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
 
         const finalPath = join(downloadDir, 'Live Hls [abc].mp4');
         expect(readdirSync(downloadDir)).toEqual(['Live Hls [abc].mp4']);

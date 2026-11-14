@@ -1,7 +1,9 @@
 import type { Translator } from '@shared/i18n';
 import type { DownloadJob } from '@shared/types';
 import { formatBytes, formatDuration, formatPercent, processingTextKey, type LivePhase } from './jobStatus';
-import { hasParts, PartBars } from './PartBars';
+import { useZipPhase } from '../hooks/useZipPhase';
+import { hasParts } from './PartBars';
+import { PartsZipper } from './PartsZipper';
 
 interface JobProgressProps {
     job: DownloadJob;
@@ -9,9 +11,21 @@ interface JobProgressProps {
     t: Translator;
 }
 
-// The bar of a card: sweeping while the downloaded file is processed, while a stopped recording is saved or its parts of a recording are joined, draining while a live stream's end is checked, sweeping while waiting for one to start,
-// striped while recording it, one bar for each part when the video and the audio are downloaded apart, and a percentage otherwise.
+// A download whose parts are all downloaded: the steps after the download started, or it ended.
+export function isJoined(job: Pick<DownloadJob, 'postProcess' | 'status'>): boolean {
+    return job.postProcess !== null || job.status === 'done';
+}
+
+// The bar of a card: one bar for each part when the video and the audio are downloaded apart (zipped into one once they are downloaded),
+// sweeping while the downloaded file is processed, while a stopped recording is saved or its parts of a recording are joined, draining while a
+// live stream's end is checked, sweeping while waiting for one to start, striped while recording it, and a percentage otherwise.
 export function JobProgress({ job, phase, t }: JobProgressProps) {
+    const zip = useZipPhase(isJoined(job));
+    // The bars of the parts give way to the bar of a phase of a live stream (waiting, recording, checking its end, saving it), and stay while
+    // they are zipped as the steps after the download start.
+    if (hasParts(job.parts) && zip !== 'joined' && (phase === null || phase === 'processing') && !(job.live && job.status === 'running')) {
+        return <PartsZipper parts={job.parts} phase={zip} t={t} />;
+    }
     if (phase === 'verifying' && job.endCheck !== null) {
         return (
             <div
@@ -60,9 +74,6 @@ export function JobProgress({ job, phase, t }: JobProgressProps) {
                 <div className="progress__bar" />
             </div>
         );
-    }
-    if (hasParts(job.parts)) {
-        return <PartBars parts={job.parts} t={t} />;
     }
     return (
         <div

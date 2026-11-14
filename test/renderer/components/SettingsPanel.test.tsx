@@ -926,19 +926,18 @@ describe('SettingsPanel anime section', () => {
                 expect(screen.getByLabelText('Provider')).toHaveValue('openai');
                 expect(screen.getByLabelText('Model')).toHaveValue('');
                 expect(screen.getByLabelText('Address (optional)')).toHaveValue('');
-                expect(screen.getByLabelText('Default language')).toHaveValue('Portuguese (Brazil)');
+                expect(screen.queryByLabelText('Default language')).not.toBeInTheDocument();
                 expect(screen.getByLabelText('Token (API key)')).toHaveValue('');
                 expect(mock.api.getLlmStatus).toHaveBeenCalledTimes(1);
             });
 
             it('shows the stored values', async () => {
-                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateProvider: 'kimi', translateModel: 'moonshot-x', translateBaseUrl: 'http://x/v1', translateLanguage: 'Italian' } });
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateProvider: 'kimi', translateModel: 'moonshot-x', translateBaseUrl: 'http://x/v1' } });
                 render(<SettingsPanel scope="anime" />);
                 await flushPromises();
                 expect(screen.getByLabelText('Provider')).toHaveValue('kimi');
                 expect(screen.getByLabelText('Model')).toHaveValue('moonshot-x');
                 expect(screen.getByLabelText('Address (optional)')).toHaveValue('http://x/v1');
-                expect(screen.getByLabelText('Default language')).toHaveValue('Italian');
             });
 
             it('is not in the settings of the whole app nor in the ones of the video downloader', async () => {
@@ -953,15 +952,12 @@ describe('SettingsPanel anime section', () => {
                 expect(mock.api.getLlmStatus).not.toHaveBeenCalled();
             });
 
-            it('saves the provider and the language right away', async () => {
+            it('saves the provider right away', async () => {
                 render(<SettingsPanel scope="anime" />);
                 await flushPromises();
                 fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'gemini' } });
                 await advance(AUTOSAVE_DELAY_MS);
                 expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, translateProvider: 'gemini' });
-                fireEvent.change(screen.getByLabelText('Default language'), { target: { value: 'Japanese' } });
-                await advance(AUTOSAVE_DELAY_MS);
-                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, translateProvider: 'gemini', translateLanguage: 'Japanese' });
             });
 
             it('saves the model and the address after the user stops typing', async () => {
@@ -1122,7 +1118,7 @@ describe('SettingsPanel anime section', () => {
 
         describe('the switch that translates the subtitles of the new episodes', () => {
             const NAME = 'Translate the subtitles of the new episodes downloaded';
-            const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the translation language below when it is "WHAT ANI-CLI PICKS"), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
+            const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the language of the app when it is "WHAT ANI-CLI PICKS"; Portuguese is translated into Brazilian Portuguese), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
             const NEEDS_SETUP = 'Save the token and the model of the provider in SUBTITLE TRANSLATION to turn this on.';
             const READY = { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'gpt-x' } as const;
 

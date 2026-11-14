@@ -36,6 +36,8 @@ export function makeAnimeJob(overrides: Partial<AnimeJob> = {}): AnimeJob {
         eta: '00:10',
         error: null,
         parts: null,
+        postProcess: null,
+        postProcessSteps: [],
         ...overrides
     };
 }

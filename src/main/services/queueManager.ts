@@ -333,6 +333,7 @@ export class QueueManager {
             merging: false,
             saving: false,
             postProcess: null,
+            postProcessSteps: [],
             thumbnail: null,
             parts: null
         };
@@ -374,7 +375,7 @@ export class QueueManager {
         if (!job || (job.status !== 'error' && job.status !== 'cancelled')) {
             return;
         }
-        Object.assign(job, { status: 'queued', percent: 0, speed: '', eta: '', error: null, filePath: null, live: false, elapsedSeconds: 0, downloadedBytes: 0, hasPartial: false, waitingForLive: false, endCheck: null, merging: false, saving: false, postProcess: null, parts: null });
+        Object.assign(job, { status: 'queued', percent: 0, speed: '', eta: '', error: null, filePath: null, live: false, elapsedSeconds: 0, downloadedBytes: 0, hasPartial: false, waitingForLive: false, endCheck: null, merging: false, saving: false, postProcess: null, postProcessSteps: [], parts: null });
         this.outputPaths.delete(job.id);
         this.parts.delete(job.id);
         this.stopRequested.delete(job.id);
@@ -576,12 +577,13 @@ export class QueueManager {
     }
 
     // yt-dlp prints "[wait]" while it waits for a scheduled live stream; the first recording line ends the wait.
-    // The download is complete and yt-dlp is now converting, merging or tagging the file: the speed no longer means anything.
+    // The download is complete and yt-dlp is now converting, merging or tagging the file: the speed no longer means anything. Every step that
+    // starts is kept, in its order, so the card shows the steps done and the one going on.
     private applyPostProcess(job: DownloadJob, event: PostProcessEvent): void {
         if (event.status !== 'started' || !this.find(job.id)) {
             return;
         }
-        Object.assign(job, { postProcess: event.processor, percent: 100, speed: '', eta: '', waitingForLive: false });
+        Object.assign(job, { postProcess: event.processor, postProcessSteps: [...job.postProcessSteps, event.processor], percent: 100, speed: '', eta: '', waitingForLive: false });
         this.emit(job);
     }
 
@@ -790,6 +792,8 @@ export class QueueManager {
         job.live = job.live || progress.live;
         job.waitingForLive = false;
         job.postProcess = null;
+        // A step that ran before the download (yt-dlp runs some before it) is not a step after it.
+        job.postProcessSteps = [];
         job.downloadedBytes = progress.downloadedBytes ?? job.downloadedBytes;
         if (!this.tickers.has(job.id)) {
             job.elapsedSeconds = progress.elapsedSeconds ?? job.elapsedSeconds;

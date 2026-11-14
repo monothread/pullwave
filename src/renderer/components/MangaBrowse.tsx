@@ -13,6 +13,7 @@ import { isCloudflareError } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { MangaResultCard } from './MangaResultCard';
 import { SETTINGS_ICON } from './TabButton';
+import { NotFound } from './NotFound';
 
 const MODES: ReadonlyArray<{ id: MangaListKind; label: 'manga.browse.mode.popular' | 'manga.browse.mode.latest' | 'manga.browse.mode.search' }> = [
     { id: 'popular', label: 'manga.browse.mode.popular' },
@@ -206,7 +207,7 @@ export function MangaBrowse() {
             )}
             {status === 'error' && error !== null && isCloudflareError(error) && <p className="field__hint">{t('manga.source.cloudflareHint')}</p>}
             {status === 'error' && error?.code === 'API_ERROR' && current.isConfigurable && !isCloudflareError(error) && <p className="field__hint">{t('manga.source.configureHint')}</p>}
-            {status === 'done' && items.length === 0 && <p className="empty">{t('manga.browse.none')}</p>}
+            {status === 'done' && items.length === 0 && <NotFound text={t('manga.browse.none')} />}
             {items.length > 0 && (
                 <>
                     <span className="section-label">{t('manga.browse.results', { count: items.length })}</span>

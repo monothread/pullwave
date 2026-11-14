@@ -163,7 +163,15 @@ export interface AnimeJob {
     error: AniError | null;
     // The parts of an episode whose picture and audio are downloaded apart, each with a bar of its own; null for one that comes whole.
     parts: DownloadPart[] | null;
+    // The step after the download that is going on (ANIME_JOIN_STEP while ffmpeg joins the picture and the audio), null when there is none.
+    postProcess: string | null;
+    // The steps after the download that started, in their order (the one going on is the last); empty while the episode is downloaded.
+    postProcessSteps: string[];
 }
+
+// The step of an episode whose picture and audio came apart, while ffmpeg joins them: named as the step of yt-dlp that does the same, so the
+// screen tells it the same way.
+export const ANIME_JOIN_STEP = 'Merger';
 
 // Which ani-cli is in use: where it is, which version it says it is and where it comes from.
 export interface AniCliInfo {

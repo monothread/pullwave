@@ -32,6 +32,43 @@ function renderCard(job: DownloadJob) {
     return handlers;
 }
 
+describe('JobCard the steps after the download (D-196)', () => {
+    function stepNames(): string[] {
+        return within(screen.getByRole('list', { name: 'Steps of the download' })).getAllByRole('listitem').map((item) => {
+            return `${item.textContent ?? ''}:${item.getAttribute('data-state') ?? ''}`;
+        });
+    }
+
+    it('shows the steps that started under the bar, the last one going on, and the text of the step going on under them', () => {
+        renderCard(makeJob({ percent: 100, speed: '', eta: '', postProcess: 'Metadata', postProcessSteps: ['Merger', 'Metadata'] }));
+        expect(stepNames()).toEqual(['Download:done', 'Join:done', 'Metadata:now']);
+        expect(screen.getByText('Writing the metadata')).toHaveClass('job__processing');
+        const card = screen.getByTestId('job-card');
+        const order = Array.from(card.children).map((child) => {
+            return child.className;
+        });
+        expect(order.indexOf('steps')).toBe(order.findIndex((name) => {
+            return name.startsWith('progress');
+        }) + 1);
+        expect(order.indexOf('job__meta')).toBe(order.indexOf('steps') + 1);
+    });
+
+    it('ticks every step of a download that is complete', () => {
+        renderCard(makeJob({ status: 'done', percent: 100, postProcessSteps: ['Merger', 'MoveFiles'], filePath: '/dl/a.mp4' }));
+        expect(stepNames()).toEqual(['Download:done', 'Join:done', 'Move:done']);
+    });
+
+    it('shows no steps while the file downloads', () => {
+        renderCard(makeJob());
+        expect(screen.queryByRole('list', { name: 'Steps of the download' })).not.toBeInTheDocument();
+    });
+
+    it('shows no steps for a download that failed in one of them', () => {
+        renderCard(makeJob({ status: 'error', error: ERROR, postProcessSteps: ['Merger'] }));
+        expect(screen.queryByRole('list', { name: 'Steps of the download' })).not.toBeInTheDocument();
+    });
+});
+
 describe('JobCard', () => {
     it('shows title, status, progress, speed and ETA for a running job', () => {
         renderCard(makeJob());

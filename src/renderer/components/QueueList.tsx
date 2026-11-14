@@ -44,16 +44,20 @@ export function QueueList() {
     const clearFinished = useAppStore((state) => {
         return state.clearFinished;
     });
+    // A download that is complete stays only a few seconds (green) and leaves by itself: there is nothing to clear for it.
     const hasFinished = jobs.some((job) => {
-        return job.status === 'done' || job.status === 'error' || job.status === 'cancelled';
+        return job.status === 'error' || job.status === 'cancelled';
     });
 
     if (jobs.length === 0) {
         return <p className="empty">{t('queue.empty')}</p>;
     }
 
+    // The banner shows the download going on, or the one that just ended while it stays (green) when nothing else is going on.
     const running = jobs.find((job) => {
         return job.status === 'running' && !job.live;
+    }) ?? jobs.find((job) => {
+        return job.status === 'done' && !job.live;
     });
     const waiting = jobs.filter((job) => {
         return job.status === 'queued';
@@ -68,6 +72,9 @@ export function QueueList() {
                     detail={null}
                     percent={running.percent}
                     parts={running.parts}
+                    postProcess={running.postProcess}
+                    steps={running.postProcessSteps}
+                    done={running.status === 'done'}
                     speed={running.speed}
                     eta={running.eta}
                     kind="downloads"

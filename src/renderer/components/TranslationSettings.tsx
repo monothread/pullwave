@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { TRANSLATION_LANGUAGES } from '@shared/anime';
 import { LLM_PROVIDER_IDS, LLM_PROVIDERS, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechModelOf, speechTokenSlot, type LlmStatus, type LlmTokenSlot, type SpeechProviderId } from '@shared/llm';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
@@ -177,14 +176,6 @@ export function TranslationSettings({ draft, change, edit, changeMany }: Transla
                     hint={t('settings.translate.baseUrl.hint')}
                     onChange={(value) => {
                         edit('translateBaseUrl', value);
-                    }}
-                />
-                <SelectField
-                    label={t('settings.translate.language')}
-                    value={draft.translateLanguage}
-                    options={TRANSLATION_LANGUAGES}
-                    onChange={(value) => {
-                        change('translateLanguage', value);
                     }}
                 />
                 <TokenField

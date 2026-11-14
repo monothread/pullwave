@@ -89,6 +89,17 @@
     border-radius: inherit;
 }
 
+/* The download that just ended stays a few seconds in the banner (D-196): its bar green and still, as the bar of a card that is complete. */
+.download-hero--done .progress .progress__bar {
+    --bar-glow: var(--green);
+    background: var(--green);
+    animation: none;
+}
+
+.download-hero--done .progress__bar::after {
+    display: none;
+}
+
 .download-hero__stats {
     display: flex;
     flex-wrap: wrap;

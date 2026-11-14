@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { createTranslator } from '@shared/i18n';
-import { JobMeta, JobProgress } from '@renderer/components/JobProgress';
+import { isJoined, JobMeta, JobProgress } from '@renderer/components/JobProgress';
+import { ZIP_CLOSE_MS, ZIP_SETTLE_MS, ZIP_SPLIT_MS } from '@renderer/hooks/useZipPhase';
 import type { DownloadPart } from '@shared/types';
 import { makeJob } from '../../helpers/mockApi';
 
@@ -113,6 +114,112 @@ describe('JobProgress', () => {
         render(<JobProgress job={makeJob({ live: true, parts: PARTS })} phase={null} t={t} />);
         expect(screen.getByRole('progressbar', { name: 'Recording a live stream' })).toHaveClass('progress--live');
         expect(screen.queryByTestId('job-parts')).not.toBeInTheDocument();
+    });
+});
+
+describe('JobProgress joining the bars of the parts (D-196)', () => {
+    const DOWNLOADED: DownloadPart[] = [
+        { kind: 'video', percent: 100 },
+        { kind: 'audio', percent: 100 }
+    ];
+
+    function zipState(container: HTMLElement): string | null {
+        return container.querySelector('.zipper')?.getAttribute('data-zip') ?? null;
+    }
+
+    function advance(ms: number): void {
+        act(() => {
+            vi.advanceTimersByTime(ms);
+        });
+    }
+
+    function runJoining(): void {
+        advance(ZIP_SPLIT_MS);
+        advance(ZIP_CLOSE_MS);
+        advance(ZIP_SETTLE_MS);
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('takes a download as joined once a step after the download started or it is complete', () => {
+        expect(isJoined({ postProcess: null, status: 'running' })).toBe(false);
+        expect(isJoined({ postProcess: 'Merger', status: 'running' })).toBe(true);
+        expect(isJoined({ postProcess: null, status: 'done' })).toBe(true);
+        expect(isJoined({ postProcess: null, status: 'error' })).toBe(false);
+    });
+
+    it('keeps the bars of the parts apart, in the zipper, while they download', () => {
+        const { container } = render(<JobProgress job={makeJob({ parts: PARTS })} phase={null} t={t} />);
+        expect(zipState(container)).toBe('parts');
+        expect(screen.getAllByTestId('job-part')).toHaveLength(2);
+    });
+
+    it('zips the bars into one as the first step after the download starts, and then shows the bar of the step going on', () => {
+        const job = makeJob({ parts: DOWNLOADED, percent: 100 });
+        const { container, rerender } = render(<JobProgress job={job} phase={null} t={t} />);
+        const processing = { ...job, postProcess: 'Merger', postProcessSteps: ['Merger'], speed: '', eta: '' };
+        rerender(<JobProgress job={processing} phase="processing" t={t} />);
+        expect(zipState(container)).toBe('split');
+        expect(screen.getAllByTestId('job-part')).toHaveLength(2);
+        expect(screen.queryByRole('progressbar', { name: 'Processing the downloaded file' })).not.toBeInTheDocument();
+        advance(ZIP_SPLIT_MS);
+        expect(zipState(container)).toBe('zip');
+        advance(ZIP_CLOSE_MS);
+        expect(zipState(container)).toBe('settle');
+        advance(ZIP_SETTLE_MS);
+        expect(zipState(container)).toBeNull();
+        expect(screen.queryByTestId('job-parts')).not.toBeInTheDocument();
+        const bar = screen.getByRole('progressbar', { name: 'Processing the downloaded file' });
+        expect(bar.className).toBe('progress progress--processing');
+    });
+
+    it('zips the bars into one when the download completes with no step after it, and leaves one full bar', () => {
+        const job = makeJob({ parts: DOWNLOADED, percent: 100 });
+        const { container, rerender } = render(<JobProgress job={job} phase={null} t={t} />);
+        rerender(<JobProgress job={{ ...job, status: 'done' }} phase={null} t={t} />);
+        expect(zipState(container)).toBe('split');
+        runJoining();
+        expect(zipState(container)).toBeNull();
+        const bar = screen.getByRole('progressbar', { name: 'Download progress' });
+        expect(bar.className).toBe('progress');
+        expect(bar).toHaveAttribute('aria-valuenow', '100');
+        expect(bar.firstElementChild).toHaveStyle({ width: '100%' });
+    });
+
+    it('shows one full bar at once for a download in parts that was already complete when it was shown', () => {
+        const { container } = render(<JobProgress job={makeJob({ status: 'done', parts: DOWNLOADED, percent: 100 })} phase={null} t={t} />);
+        expect(zipState(container)).toBeNull();
+        expect(screen.getByRole('progressbar', { name: 'Download progress' })).toHaveAttribute('aria-valuenow', '100');
+    });
+
+    it('puts the bars apart again for a download tried again after it was joined', () => {
+        const joined = makeJob({ status: 'done', parts: DOWNLOADED, percent: 100 });
+        const { container, rerender } = render(<JobProgress job={joined} phase={null} t={t} />);
+        rerender(<JobProgress job={{ ...joined, status: 'running', percent: 5, parts: [{ kind: 'video', percent: 5 }, { kind: 'audio', percent: 0 }] }} phase={null} t={t} />);
+        expect(zipState(container)).toBe('parts');
+        expect(screen.getAllByRole('progressbar').map((bar) => {
+            return bar.getAttribute('aria-valuenow');
+        })).toEqual(['5', '0']);
+    });
+
+    it('keeps the bars of a failed download apart, as they were when it stopped', () => {
+        const { container } = render(<JobProgress job={makeJob({ status: 'error', parts: PARTS })} phase={null} t={t} />);
+        expect(zipState(container)).toBe('parts');
+        expect(screen.getAllByTestId('job-part')).toHaveLength(2);
+    });
+
+    it('never zips a download that comes in one piece: its bar goes on to the bar of the step going on', () => {
+        const job = makeJob({ percent: 100 });
+        const { container, rerender } = render(<JobProgress job={job} phase={null} t={t} />);
+        rerender(<JobProgress job={{ ...job, postProcess: 'Metadata', postProcessSteps: ['Metadata'] }} phase="processing" t={t} />);
+        expect(zipState(container)).toBeNull();
+        expect(screen.getByRole('progressbar', { name: 'Processing the downloaded file' })).toHaveClass('progress--processing');
     });
 });
 

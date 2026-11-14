@@ -7,6 +7,7 @@ const cyberpunk = readStylesheet('cyberpunk.css');
 const themes = readStylesheet('themes.css');
 const responsive = readStylesheet('responsive.css');
 const consoleLayer = readStylesheet('console.css');
+const downloadsLayer = readStylesheet('bp-downloads.css');
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 const PLAIN_BAR = ".progress:not([class*='progress--']) .progress__bar";
@@ -14,10 +15,14 @@ const SWEEPS = ['.progress--verify::after', '.progress--waiting::after', '.progr
 const PULSING_LAYERS = ['.progress .progress__bar::before', ...SWEEPS];
 const BAND = 'linear-gradient(transparent 30%, #000 30% 70%, transparent 70%)';
 
+// The bars drawn only for the eye, over bars a screen reader already reads: the bar that grows behind the zipper while the bars of the parts
+// (which say how far each part is) are joined.
+const DECORATIVE_BARS = new Set(['PartsZipper.tsx']);
+
 // Every place of the app that draws a progress bar (a `.progress` with a `.progress__bar`, or a range of the player), by the file that
 // draws it: when a bar is added to a file that is not here, this list has to say so, and the CSS below has to cover it.
 const FILES_WITH_BARS: Record<string, string[]> = {
-    'AnimeJobs.tsx': ['progress'],
+    'AnimeJobs.tsx': ['progress', 'progress--processing'],
     'AnimeSubtitleJobs.tsx': ['progress'],
     'AutoNextPanel.tsx': ['progress'],
     'CutPanel.tsx': ['progress', 'progress--waiting'],
@@ -30,6 +35,7 @@ const FILES_WITH_BARS: Record<string, string[]> = {
     'MangaReader.tsx': ['progress'],
     'MangaSetup.tsx': ['progress'],
     'PartBars.tsx': ['progress'],
+    'PartsZipper.tsx': ['progress'],
     'ProgramsSetup.tsx': ['progress'],
     'ProgramsStatusBlock.tsx': ['progress'],
     'ReaderChapterZone.tsx': ['progress'],
@@ -74,7 +80,7 @@ describe('the map of the progress bars of the app', () => {
 
     it('draws every bar with the track and the bar inside it, with the values for a screen reader', () => {
         Object.keys(FILES_WITH_BARS)
-            .filter((file) => { return file !== 'VideoControls.tsx'; })
+            .filter((file) => { return file !== 'VideoControls.tsx' && !DECORATIVE_BARS.has(file); })
             .forEach((file) => {
                 const source = readFileSync(resolve(COMPONENTS_DIRECTORY, file), 'utf-8');
                 expect(source, file).toContain('role="progressbar"');
@@ -104,6 +110,104 @@ describe('the bars of the parts of a download whose video and audio come apart (
     it('draws the bar of each part as the plain bar of a download, so it flows and glows as the one bar does', () => {
         expect(classesUsedBy('PartBars.tsx')).toEqual([]);
         expect(styleOf(cyberpunk, PLAIN_BAR)['animation']).toBe('bar-wave-flow 1.4s linear infinite');
+    });
+});
+
+describe('the zipper that joins the bars of the parts once they are downloaded (D-196)', () => {
+    const ZIPPED = ".zipper[data-zip='zip']";
+
+    it('draws the bar behind the zipper only for the eye, hidden from a screen reader, beside the bars of the parts that say how far they are', () => {
+        const source = readFileSync(resolve(COMPONENTS_DIRECTORY, 'PartsZipper.tsx'), 'utf-8');
+        expect(source).toContain('<PartBars');
+        expect(source).toContain("'zipper__joined progress'} aria-hidden=\"true\"");
+        expect(source).toMatch(/className="zipper__pull"[^>]*aria-hidden="true"/);
+    });
+
+    it('registers the place of the zipper as a percentage, so it is animated from the start to the end of the bars', () => {
+        expect(cyberpunk.atRules).toContainEqual({ prelude: '@property --zip', body: " syntax: '<percentage>'; inherits: true; initial-value: 0%; " });
+        expect(styleOf(cyberpunk, ZIPPED)).toEqual({ animation: 'zipper-close var(--zip-close-ms, 1000ms) cubic-bezier(0.45, 0, 0.55, 1) forwards' });
+        expect(keyframesOf(cyberpunk, 'zipper-close')?.body.replace(/\s+/g, ' ').trim()).toBe('from { --zip: 0%; } to { --zip: 100%; }');
+        expect(styleOf(cyberpunk, ".zipper[data-zip='settle']")).toEqual({ '--zip': '100%' });
+    });
+
+    it('stretches the bars to the whole width while their names and percentages go, from the columns measured as the joining starts', () => {
+        expect(styleOf(cyberpunk, ".zipper[data-measured='true']:not([data-zip='parts']) .job-parts")).toEqual({ animation: 'zipper-split var(--zip-split-ms, 420ms) cubic-bezier(0.6, 0, 0.3, 1) forwards' });
+        expect(keyframesOf(cyberpunk, 'zipper-split')?.body.replace(/\s+/g, ' ').trim()).toBe(
+            'from { grid-template-columns: var(--zip-name-column) minmax(0, 1fr) var(--zip-percent-column); column-gap: var(--zip-gap); } to { grid-template-columns: 0px minmax(0, 1fr) 0px; column-gap: 0px; }'
+        );
+        expect(styleOf(cyberpunk, ".zipper:not([data-zip='parts']) .job-part__name")).toEqual({ opacity: '0', overflow: 'hidden', 'white-space': 'nowrap' });
+        expect(styleOf(cyberpunk, ".zipper:not([data-zip='parts']) .job-part__percent")).toEqual({ opacity: '0', overflow: 'hidden', 'white-space': 'nowrap' });
+        expect(styleOf(cyberpunk, '.zipper .job-part__name')).toEqual({ transition: 'opacity 0.25s ease' });
+    });
+
+    it('shortens the bars of the parts from the start as the zipper passes, and grows the joined bar up to it, with nothing cut or masked', () => {
+        expect(styleOf(cyberpunk, `${ZIPPED} .job-parts .progress`)).toEqual({ 'margin-left': 'calc(var(--zip) + 28px)' });
+        expect(styleOf(cyberpunk, '.zipper__joined')).toEqual({ position: 'absolute', left: '0', top: 'calc(50% - 7px)', width: 'var(--zip)', opacity: '0' });
+        expect(styleOf(cyberpunk, `${ZIPPED} .zipper__joined`)).toEqual({ opacity: '1' });
+        expect(styleOf(cyberpunk, ".zipper[data-zip='settle'] .zipper__joined")).toEqual({ opacity: '1' });
+        cyberpunk.rules
+            .filter((rule) => { return rule.selector.includes('.zipper'); })
+            .forEach((rule) => {
+                expect(rule.declarations['clip-path'], rule.selector).toBeUndefined();
+                expect(rule.declarations['mask-image'], rule.selector).toBeUndefined();
+            });
+    });
+
+    it('draws the pull of the zipper as two lines of light from the bars into it, only while it closes', () => {
+        expect(styleOf(cyberpunk, '.zipper__pull')).toEqual({
+            position: 'absolute',
+            top: '0',
+            left: 'var(--zip)',
+            width: '32px',
+            height: '100%',
+            'margin-left': '-2px',
+            overflow: 'visible',
+            opacity: '0',
+            'pointer-events': 'none',
+            filter: 'drop-shadow(0 0 3px var(--magenta)) drop-shadow(0 0 7px var(--cyan))'
+        });
+        expect(styleOf(cyberpunk, '.zipper__pull path')).toEqual({ fill: 'none', stroke: 'color-mix(in srgb, var(--cyan) 70%, white)', 'stroke-width': '3', 'stroke-linecap': 'round', 'vector-effect': 'non-scaling-stroke' });
+        expect(styleOf(cyberpunk, `${ZIPPED} .zipper__pull`)).toEqual({ opacity: '1' });
+    });
+
+    it('hides the bars of the parts once they are one, and shrinks the box to one bar', () => {
+        expect(styleOf(cyberpunk, ".zipper[data-zip='settle'] .job-parts")).toEqual({ opacity: '0' });
+        expect(styleOf(cyberpunk, '.zipper')).toEqual({ position: 'relative', transition: 'height var(--zip-settle-ms, 350ms) ease' });
+    });
+
+    it('has no version for reduced motion: the joining always plays in full', () => {
+        [cyberpunk, consoleLayer, downloadsLayer].forEach((sheet) => {
+            expect(sheet.rules.some((rule) => { return rule.media?.includes('prefers-reduced-motion') === true && /zipper|steps/.test(rule.selector); })).toBe(false);
+        });
+    });
+});
+
+describe('the trail of the steps after the download (D-196)', () => {
+    it('lays the steps out in a row that wraps, each joined to the one before by a short line', () => {
+        expect(styleOf(cyberpunk, '.steps')).toEqual({ display: 'flex', 'flex-wrap': 'wrap', 'align-items': 'center', gap: '6px 14px', margin: '0', padding: '0', 'list-style': 'none' });
+        expect(styleOf(cyberpunk, '.steps__item + .steps__item::after')).toEqual({ content: "''", position: 'absolute', left: '-12px', top: '50%', width: '10px', 'border-top': '1px solid var(--line)' });
+        expect(keyframesOf(cyberpunk, 'steps-in')).toBeDefined();
+    });
+
+    it('ticks the steps done in green and lights the one going on in the colour of the processing bar, blinking', () => {
+        expect(styleOf(cyberpunk, '.steps__item--done')).toEqual({ color: 'var(--green)', 'border-color': 'color-mix(in srgb, var(--green) 50%, var(--line))' });
+        expect(styleOf(cyberpunk, '.steps__item--done::before')).toMatchObject({ content: "'✓'" });
+        expect(styleOf(cyberpunk, '.steps__item--now')).toEqual({ color: 'var(--magenta)', 'border-color': 'var(--magenta)', 'font-weight': '700', 'box-shadow': 'var(--glow-hot)' });
+        expect(styleOf(cyberpunk, '.steps__item--now::before')).toEqual({ background: 'var(--magenta)', 'border-color': 'var(--magenta)', animation: 'badge-blink 1s ease-in-out infinite' });
+    });
+
+    it('rounds the steps as the badges: pills in the flat themes, square in the neon ones', () => {
+        expect(styleOf(consoleLayer, '.steps__item')).toEqual({ 'border-radius': 'var(--bp-radius-pill)' });
+        expect(styleOf(consoleLayer, ":root[data-theme-style='neon'] .steps__item")).toEqual({ 'border-radius': '0' });
+        expect(styleOf(consoleLayer, '.badge')).toEqual({ 'border-radius': 'var(--bp-radius-pill)' });
+    });
+});
+
+describe('the download that just ended, in the banner (D-196)', () => {
+    it('draws its bar green and still, with no head, as the bar of a card that is complete', () => {
+        expect(styleOf(downloadsLayer, '.download-hero--done .progress .progress__bar')).toEqual({ '--bar-glow': 'var(--green)', background: 'var(--green)', animation: 'none' });
+        expect(styleOf(downloadsLayer, '.download-hero--done .progress__bar::after')).toEqual({ display: 'none' });
+        expect(styleOf(cyberpunk, '.job--done .progress .progress__bar')).toEqual({ background: 'var(--green)', animation: 'none' });
     });
 });
 

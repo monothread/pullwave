@@ -290,7 +290,7 @@ describe('components in another language', () => {
         const { unmount } = render(<QueueList />);
         expect(screen.getByText('// NO HAY DESCARGAS ACTIVAS. PEGA UNA URL ARRIBA.')).toBeInTheDocument();
         unmount();
-        useAppStore.setState({ jobs: [makeJob({ id: 'a', status: 'done' }), makeJob({ id: 'b' })] });
+        useAppStore.setState({ jobs: [makeJob({ id: 'a', status: 'error' }), makeJob({ id: 'b' })] });
         render(<QueueList />);
         expect(screen.getByRole('region', { name: 'Cola de descargas' })).toBeInTheDocument();
         expect(screen.getByText('COLA [2]')).toBeInTheDocument();

@@ -13,6 +13,7 @@ import { migrationSources, RESULTS_PER_SOURCE, sourceLanguages } from './mangaSe
 import { ALL_LANGUAGES, mangaErrorKey } from './mangaText';
 
 import { RowLink } from './RowLink';
+import { NotFound } from './NotFound';
 
 const ALL_SOURCES = 'all';
 
@@ -181,7 +182,7 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
                 )}
                 <div className="manga__migrate-body">
                     {searching !== null && <p className="empty">{t('manga.migrateSource.searching', { name: searching.name, done: searching.done + 1, total: searching.total })}</p>}
-                    {results !== null && searching === null && results.length === 0 && <p className="empty">{t('manga.migrateSource.none')}</p>}
+                    {results !== null && searching === null && results.length === 0 && <NotFound text={t('manga.migrateSource.none')} size="small" />}
                     {results !== null && results.length > 0 && (
                         <ul className="history__list manga__candidates">
                             <IncrementalItems items={results} listKey="manga-migrate-candidates" end="li" renderItem={(candidate) => {

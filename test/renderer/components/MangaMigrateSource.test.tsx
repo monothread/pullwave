@@ -8,6 +8,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapter, makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
+import { expectNotFound } from '../../helpers/notFound';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -152,6 +153,7 @@ describe('MangaMigrateSource', () => {
         expect(await screen.findByText('Searching Third Scans… (2/2)')).toBeInTheDocument();
         answers[1]!({ ok: true, value: { items: [], hasNextPage: false } });
         expect(await screen.findByText('Nothing found in these sources.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('Nothing found in these sources.'), 'small');
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeEnabled();
     });
 

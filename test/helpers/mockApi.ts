@@ -842,6 +842,7 @@ export function makeJob(overrides: Partial<DownloadJob> = {}): DownloadJob {
         merging: false,
         saving: false,
         postProcess: null,
+        postProcessSteps: [],
         thumbnail: null,
         parts: null,
         ...overrides

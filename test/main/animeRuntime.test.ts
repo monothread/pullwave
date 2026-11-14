@@ -112,7 +112,7 @@ describe('createAnimeRuntime', () => {
 
         const runtime = open(given);
         expect(runtime?.queue.list()).toEqual([
-            { episodeId: episode.id, animeId: anime.id, animeTitle: 'Naruto', episode: '1', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null }
+            { episodeId: episode.id, animeId: anime.id, animeTitle: 'Naruto', episode: '1', status: 'paused', percent: 0, speed: '', eta: '', error: null, parts: null, postProcess: null, postProcessSteps: [] }
         ]);
         runtime?.queue.cancel(episode.id);
         expect(runtime?.db.getEpisode(episode.id)?.status).toBe('cancelled');
@@ -293,7 +293,7 @@ describe('createAnimeRuntime', () => {
                 expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Spanish', episodeIds: [] });
             });
 
-            it('follows the anime subtitles of the settings when they change, and the language of the app or of the translation when they say so', () => {
+            it('follows the anime subtitles of the settings when they change, and the language of the app when they follow it or leave it to ani-cli', () => {
                 const settings = { ...DEFAULT_SETTINGS, translateModel: 'model-1', animeSubtitles: 'Spanish' as const };
                 const downloadedFiles = downloaded({ 'Naruto Episode 1.vtt': SOURCE, 'Naruto Episode 1.subtitle-Spanish.vtt': SOURCE });
                 const runtime = open({
@@ -308,11 +308,17 @@ describe('createAnimeRuntime', () => {
                 Object.assign(settings, { animeSubtitles: 'German' });
                 expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'German', episodeIds: [episode.id] });
 
-                Object.assign(settings, { animeSubtitles: 'auto', language: 'pt' });
-                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Portuguese', episodeIds: [episode.id] });
+                Object.assign(settings, { animeSubtitles: 'Portuguese' });
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Portuguese (Brazil)', episodeIds: [episode.id] });
 
-                Object.assign(settings, { animeSubtitles: 'default', translateLanguage: 'Korean' });
-                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Korean', episodeIds: [episode.id] });
+                Object.assign(settings, { animeSubtitles: 'auto', language: 'pt' });
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Portuguese (Brazil)', episodeIds: [episode.id] });
+
+                Object.assign(settings, { animeSubtitles: 'default', language: 'ja' });
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'Japanese', episodeIds: [episode.id] });
+
+                Object.assign(settings, { animeSubtitles: 'default', language: 'en' });
+                expect(runtime?.handlers.subtitles.translatable([episode.id])).toEqual({ language: 'English', episodeIds: [episode.id] });
             });
 
             it('lists the translation while it waits for the provider, and nothing once it ended', async () => {

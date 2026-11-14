@@ -3,6 +3,7 @@ import { useFxStore } from '@renderer/fx/fxStore';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { HistoryEntry } from '@shared/types';
 import { INITIAL_APP_UPDATE, INITIAL_LLM_STATUS, upsertJob, useAppStore } from '@renderer/store/appStore';
+import { DONE_LINGER_MS } from '@renderer/store/doneLinger';
 import { APP_UPDATE_IDLE, installMockApi, makeJob, type MockApiHandle } from '../../helpers/mockApi';
 
 let mock: MockApiHandle;
@@ -173,7 +174,12 @@ describe('the settings being loaded', () => {
 
 describe('the effects of the store', () => {
     beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         useFxStore.setState({ celebrations: 0, failures: 0, dances: 0, rainbow: false });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     it('celebrates a download that is complete, once for each, and not one that is still going', async () => {
@@ -202,7 +208,15 @@ describe('the effects of the store', () => {
 });
 
 describe('a download that is complete', () => {
-    it('says so, with its title, and leaves the queue', async () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('says so, with its title, at once, stays in the queue (green) for five seconds and then leaves it', async () => {
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', title: 'My video', status: 'running', percent: 50 }));
         expect(toastMessages()).toEqual([]);
@@ -212,6 +226,45 @@ describe('a download that is complete', () => {
 
         expect(toastMessages()).toEqual(['Download complete: My video']);
         expect(useAppStore.getState().notice).toBeNull();
+        expect(useAppStore.getState().jobs).toEqual([makeJob({ id: 'a', title: 'My video', status: 'done', percent: 100 })]);
+        vi.advanceTimersByTime(DONE_LINGER_MS - 1);
+        expect(mock.api.removeJob).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(mock.api.removeJob).toHaveBeenCalledTimes(1);
+        expect(mock.api.removeJob).toHaveBeenCalledWith('a');
+    });
+
+    it('takes the card off once the queue says it was removed', async () => {
+        await useAppStore.getState().init();
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'done', percent: 100 }));
+        vi.advanceTimersByTime(DONE_LINGER_MS);
+        mock.emitJobRemoved('a');
+        expect(useAppStore.getState().jobs).toEqual([]);
+    });
+
+    it('does not remove by itself a download removed by hand during its five seconds', async () => {
+        await useAppStore.getState().init();
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'done', percent: 100 }));
+        mock.emitJobRemoved('a');
+        vi.advanceTimersByTime(DONE_LINGER_MS * 2);
+        expect(mock.api.removeJob).not.toHaveBeenCalled();
+        expect(useAppStore.getState().jobs).toEqual([]);
+    });
+
+    it('does not remove by itself a download that went on again (tried again) during its five seconds', async () => {
+        await useAppStore.getState().init();
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'done', percent: 100 }));
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'queued', percent: 0 }));
+        vi.advanceTimersByTime(DONE_LINGER_MS * 2);
+        expect(mock.api.removeJob).not.toHaveBeenCalled();
+        expect(useAppStore.getState().jobs).toEqual([makeJob({ id: 'a', status: 'queued', percent: 0 })]);
+    });
+
+    it('lets a download that was complete when the window opened leave after its five seconds too', async () => {
+        mock.api.listJobs.mockResolvedValueOnce([makeJob({ id: 'a', status: 'done' }), makeJob({ id: 'b', status: 'running' })]);
+        await useAppStore.getState().init();
+        expect(mock.api.removeJob).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(DONE_LINGER_MS);
         expect(mock.api.removeJob).toHaveBeenCalledTimes(1);
         expect(mock.api.removeJob).toHaveBeenCalledWith('a');
     });
@@ -229,25 +282,30 @@ describe('a download that is complete', () => {
         expect(toastMessages()).toEqual(['Download concluído: Meu vídeo']);
     });
 
-    it('stacks the notices when several finish together, each with its own card removed', async () => {
+    it('stacks the notices when several finish together, each with its own card removed after its five seconds', async () => {
         await useAppStore.getState().init();
         mock.emitJobUpdate(makeJob({ id: 'a', title: 'One', status: 'done' }));
         mock.emitJobUpdate(makeJob({ id: 'b', title: 'Two', status: 'done' }));
 
         expect(toastMessages()).toEqual(['Download complete: One', 'Download complete: Two']);
         expect(useAppStore.getState().notice).toBeNull();
+        expect(mock.api.removeJob).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(DONE_LINGER_MS);
         expect(mock.api.removeJob).toHaveBeenCalledTimes(2);
         expect(mock.api.removeJob).toHaveBeenNthCalledWith(1, 'a');
         expect(mock.api.removeJob).toHaveBeenNthCalledWith(2, 'b');
     });
 
-    it('does not say it again for an update of a job that was already complete', async () => {
-        mock.api.listJobs.mockResolvedValueOnce([makeJob({ id: 'a', status: 'done' })]);
+    it('does not say it again, nor start its five seconds again, for an update of a job that was already complete', async () => {
         await useAppStore.getState().init();
+        mock.emitJobUpdate(makeJob({ id: 'a', status: 'done' }));
+        vi.advanceTimersByTime(3000);
         mock.emitJobUpdate(makeJob({ id: 'a', status: 'done', filePath: '/d/a.mp4' }));
         expect(useAppStore.getState().notice).toBeNull();
-        expect(toastMessages()).toEqual([]);
-        expect(mock.api.removeJob).not.toHaveBeenCalled();
+        expect(toastMessages()).toEqual(['Download complete: Some Video']);
+        vi.advanceTimersByTime(2000);
+        expect(mock.api.removeJob).toHaveBeenCalledTimes(1);
+        expect(mock.api.removeJob).toHaveBeenCalledWith('a');
     });
 
     it.each(['error', 'cancelled', 'running', 'queued'] as const)('does not say it, nor remove the card, for a %s download', async (status) => {
@@ -255,6 +313,7 @@ describe('a download that is complete', () => {
         mock.emitJobUpdate(makeJob({ id: 'a', status }));
         expect(useAppStore.getState().notice).toBeNull();
         expect(toastMessages()).toEqual([]);
+        vi.advanceTimersByTime(DONE_LINGER_MS * 2);
         expect(mock.api.removeJob).not.toHaveBeenCalled();
         expect(useAppStore.getState().jobs).toEqual([makeJob({ id: 'a', status })]);
     });

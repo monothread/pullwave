@@ -8,6 +8,7 @@ import {
     type TranslationLanguage
 } from '@shared/anime';
 import { useModalDialog } from '../hooks/useModalDialog';
+import { useTranslationTarget } from '../hooks/useTranslationTarget';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { SelectField } from './fields';
@@ -34,7 +35,7 @@ export function SubtitleTranslateDialog({ episodeId, tracks, onTranslated, onClo
         return state.settings;
     });
     const [source, setSource] = useState(AUTOMATIC);
-    const [target, setTarget] = useState<TranslationLanguage>(settings.translateLanguage);
+    const [target, setTarget] = useState<TranslationLanguage>(useTranslationTarget());
     // The estimate with the subtitle it is for: while the one chosen has none yet it is counting.
     const [counted, setCounted] = useState<{ trackId: string | null; response: SubtitleEstimateResponse } | null>(null);
     const [job, setJob] = useState<SubtitleTranslationJob | null>(null);

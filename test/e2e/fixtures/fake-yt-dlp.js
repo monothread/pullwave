@@ -26,8 +26,27 @@ function progress(percent, formatId = 'NA') {
     process.stdout.write(`CYBERPROG|${percent.toFixed(1).padStart(6)}%|1.00MiB/s|00:01|${Math.round(percent * 1000)}|${percent / 10}|False|${formatId}|${title}\n`);
 }
 
+// The steps after the download as the real yt-dlp reports them (to stderr, since it is quiet because of --print): joining the video and the
+// audio, then moving the file, each taking a moment as with ffmpeg; then the file.
+function runStepsAfterDownload() {
+    const step = (status, processor) => {
+        process.stderr.write(`CYBERPP|${status}|${processor}\n`);
+    };
+    step('started', 'Merger');
+    setTimeout(() => {
+        step('finished', 'Merger');
+        step('started', 'MoveFiles');
+    }, 2500);
+    setTimeout(() => {
+        step('finished', 'MoveFiles');
+        process.stdout.write(`CYBERFILE|${downloadDir}/${title} [abc].mp4\n`);
+        process.exit(0);
+    }, 3700);
+}
+
 // Like a video whose video and audio are apart (taken from a real run of yt-dlp): it announces both formats with their codecs, then
-// downloads the video from 0 to 100% and the audio from 0 to 100% again, and merges them.
+// downloads the video from 0 to 100% and the audio from 0 to 100% again, and merges them (with the steps after the download shown one by
+// one when the address asks for them: "steps").
 function runTwoParts() {
     const parts = [
         { format_id: '137', url: 'https://cdn.test/video.mp4', protocol: 'https', vcodec: 'avc1.640028', acodec: 'none', height: 1080 },
@@ -49,6 +68,10 @@ function runTwoParts() {
         index += 1;
         if (index === steps.length) {
             clearInterval(timer);
+            if (url.includes('steps')) {
+                runStepsAfterDownload();
+                return;
+            }
             process.stdout.write(`CYBERFILE|${downloadDir}/${title} [abc].mp4\n`);
             process.exit(0);
         }

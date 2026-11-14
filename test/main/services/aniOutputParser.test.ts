@@ -3,7 +3,9 @@ import {
     DOWNLOAD_FAILED_MARKER,
     EPISODE_PROMPT,
     isDownloadFailedLine,
+    isJoinLine,
     isSearchMoreLine,
+    JOIN_MARKER,
     MENU_PREFIX,
     mapAniError,
     mapAniSpawnError,
@@ -296,6 +298,25 @@ describe('parsePartLine', () => {
         ['an empty line', '']
     ])('gives null for %s', (_name, line) => {
         expect(parsePartLine(line)).toBeNull();
+    });
+});
+
+describe('isJoinLine', () => {
+    it('names the line the stand-in of ffmpeg prints before it joins the parts', () => {
+        expect(JOIN_MARKER).toBe('PULLWAVE_JOIN');
+    });
+
+    it('takes the line, also with terminal codes and spaces around it', () => {
+        expect(isJoinLine('PULLWAVE_JOIN')).toBe(true);
+        expect(isJoinLine(`${ESC}[0m  PULLWAVE_JOIN  `)).toBe(true);
+    });
+
+    it('does not take a line that only mentions it, the other markers or any other line', () => {
+        expect(isJoinLine('the PULLWAVE_JOIN line')).toBe(false);
+        expect(isJoinLine('PULLWAVE_JOIN\textra')).toBe(false);
+        expect(isJoinLine('PULLWAVE_PART\t1\tvideo,audio')).toBe(false);
+        expect(isJoinLine('PULLWAVE_DOWNLOAD_FAILED')).toBe(false);
+        expect(isJoinLine('')).toBe(false);
     });
 });
 

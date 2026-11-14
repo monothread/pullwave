@@ -35,7 +35,7 @@ function nothingToTranslate(): { language: 'German'; episodeIds: number[] } {
 // The updates of the translations reach the screen through the store, which listens for them from the start of the anime section.
 beforeEach(async () => {
     mock = installMockApi();
-    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, translateLanguage: 'German' } });
+    useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, animeSubtitles: 'German' } });
     useAnimeStore.setState({ ...initialAnime, translationUpdates: {}, subtitleJobs: [], view: 'library', returnView: 'library' });
     mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
     dispose = await useAnimeStore.getState().init();
@@ -314,7 +314,7 @@ describe('SeasonTranslation', () => {
 
             mock.api.listTranslatableEpisodes.mockResolvedValue({ language: 'Spanish', episodeIds: [1] });
             act(() => {
-                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'German', animeSubtitles: 'Spanish' } });
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeSubtitles: 'Spanish' } });
             });
 
             expect(await screen.findByRole('button', { name: BUTTON })).toBeInTheDocument();
@@ -322,13 +322,14 @@ describe('SeasonTranslation', () => {
         });
 
         it.each([
-            ['the language of the app', { language: 'pt' }],
-            ['the language of the translation', { translateLanguage: 'Korean' }]
-        ] as const)('asks again when %s changes (it decides the language when the anime subtitles follow it)', async (_name, change) => {
+            ['the language of the app, when the anime subtitles follow it', { animeSubtitles: 'auto', language: 'pt' }],
+            ['the language of the app, when the anime subtitles leave the choice to ani-cli', { animeSubtitles: 'default', language: 'ja' }],
+            ['the anime subtitles', { animeSubtitles: 'French' }]
+        ] as const)('asks again when %s changes (it decides the language)', async (_name, change) => {
             render(<SeasonTranslation anime={ANIME} />);
             await screen.findByRole('button', { name: BUTTON });
             act(() => {
-                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, translateLanguage: 'German', ...change } });
+                useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, ...change } });
             });
             await vi.waitFor(() => {
                 expect(mock.api.listTranslatableEpisodes).toHaveBeenCalledTimes(2);

@@ -1,6 +1,7 @@
 import { createTranslator } from '@shared/i18n';
 import type { DownloadJob } from '@shared/types';
-import { formatBytes, formatDuration, formatPercent, livePhase, processingTextKey, sortForDisplay, statusLabel } from '@renderer/components/jobStatus';
+import { formatBytes, formatDuration, formatPercent, livePhase, processingTextKey, sortForDisplay, statusLabel, stepItems } from '@renderer/components/jobStatus';
+import { en } from '@shared/i18n/en';
 
 import { makeJob } from '../../helpers/mockApi';
 
@@ -189,6 +190,73 @@ describe('processingTextKey', () => {
     });
 });
 
+describe('stepItems', () => {
+    it('names each step by what it does, in the order they started, the last one going on while the download runs', () => {
+        expect(stepItems(['Merger', 'Metadata', 'EmbedThumbnail', 'MoveFiles'], true)).toEqual([
+            { key: 'job.step.merge', state: 'done' },
+            { key: 'job.step.metadata', state: 'done' },
+            { key: 'job.step.thumbnail', state: 'done' },
+            { key: 'job.step.move', state: 'now' }
+        ]);
+    });
+
+    it('marks every step done once the download is over', () => {
+        expect(stepItems(['Merger', 'MoveFiles'], false)).toEqual([
+            { key: 'job.step.merge', state: 'done' },
+            { key: 'job.step.move', state: 'done' }
+        ]);
+    });
+
+    it('counts once two steps in a row that do the same, and again a step that comes back after another', () => {
+        expect(stepItems(['FixupM3u8', 'FixupM4a', 'Metadata', 'FixupStretched'], true)).toEqual([
+            { key: 'job.step.fixup', state: 'done' },
+            { key: 'job.step.metadata', state: 'done' },
+            { key: 'job.step.fixup', state: 'now' }
+        ]);
+    });
+
+    it.each([
+        ['ExtractAudio', 'job.step.audio'],
+        ['Merger', 'job.step.merge'],
+        ['VideoConvertor', 'job.step.video'],
+        ['VideoRemuxer', 'job.step.video'],
+        ['FixupM3u8', 'job.step.fixup'],
+        ['Metadata', 'job.step.metadata'],
+        ['EmbedThumbnail', 'job.step.thumbnail'],
+        ['ThumbnailsConvertor', 'job.step.thumbnail'],
+        ['EmbedSubtitle', 'job.step.subtitle'],
+        ['SubtitlesConvertor', 'job.step.subtitle'],
+        ['SponsorBlock', 'job.step.chapters'],
+        ['ModifyChapters', 'job.step.chapters'],
+        ['SplitChapters', 'job.step.chapters'],
+        ['MoveFiles', 'job.step.move'],
+        ['SomethingNew', 'job.step.default']
+    ] as const)('names the %s post-processor %s, as its text of the step going on', (processor, key) => {
+        expect(stepItems([processor], true)).toEqual([{ key, state: 'now' }]);
+    });
+
+    it('has no steps when none started', () => {
+        expect(stepItems([], true)).toEqual([]);
+        expect(stepItems([], false)).toEqual([]);
+    });
+
+    it('has a short name in English for every step, and for the download before them', () => {
+        expect([en['job.step.download'], en['job.step.audio'], en['job.step.merge'], en['job.step.video'], en['job.step.fixup'], en['job.step.metadata'], en['job.step.thumbnail'], en['job.step.subtitle'], en['job.step.chapters'], en['job.step.move'], en['job.step.default']]).toEqual([
+            'Download',
+            'Convert audio',
+            'Join',
+            'Convert video',
+            'Fix',
+            'Metadata',
+            'Thumbnail',
+            'Subtitles',
+            'Chapters',
+            'Move',
+            'Process'
+        ]);
+    });
+});
+
 describe('sortForDisplay', () => {
     const ids = (jobs: DownloadJob[]): string[] => {
         return jobs.map((job) => {
@@ -201,7 +269,7 @@ describe('sortForDisplay', () => {
         expect(ids(sortForDisplay(jobs))).toEqual(['c', 'b', 'a']);
     });
 
-    it('lists running jobs, then queued ones, then the finished ones', () => {
+    it('lists running jobs and the one that just completed (it stays a moment, in its place), then queued ones, then the failed ones', () => {
         const jobs = [
             makeJob({ id: 'done', status: 'done' }),
             makeJob({ id: 'queued', status: 'queued' }),
@@ -209,7 +277,7 @@ describe('sortForDisplay', () => {
             makeJob({ id: 'error', status: 'error' }),
             makeJob({ id: 'cancelled', status: 'cancelled' })
         ];
-        expect(ids(sortForDisplay(jobs))).toEqual(['running', 'queued', 'cancelled', 'error', 'done']);
+        expect(ids(sortForDisplay(jobs))).toEqual(['running', 'done', 'queued', 'cancelled', 'error']);
     });
 
     it('keeps the newest first inside each group', () => {
@@ -218,8 +286,8 @@ describe('sortForDisplay', () => {
             makeJob({ id: 'wait-1', status: 'queued' }),
             makeJob({ id: 'run-2', status: 'running' }),
             makeJob({ id: 'wait-2', status: 'queued' }),
-            makeJob({ id: 'end-1', status: 'done' }),
-            makeJob({ id: 'end-2', status: 'error' })
+            makeJob({ id: 'end-1', status: 'error' }),
+            makeJob({ id: 'end-2', status: 'cancelled' })
         ];
         expect(ids(sortForDisplay(jobs))).toEqual(['run-2', 'run-1', 'wait-2', 'wait-1', 'end-2', 'end-1']);
     });
@@ -251,6 +319,6 @@ describe('jobs that are paused', () => {
             sorted.map((entry) => {
                 return entry.id;
             })
-        ).toEqual(['running', 'paused', 'queued', 'error', 'done']);
+        ).toEqual(['running', 'done', 'paused', 'queued', 'error']);
     });
 });

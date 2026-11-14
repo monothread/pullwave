@@ -27,7 +27,7 @@ beforeEach(() => {
             transcribeModel: 'whisper-1',
             translateProvider: 'anthropic',
             translateModel: 'my-model',
-            translateLanguage: 'Spanish'
+            animeSubtitles: 'Spanish'
         }
     });
     mock.api.estimateAnimeSubtitleGeneration.mockResolvedValue(ESTIMATE);
@@ -64,6 +64,15 @@ describe('SubtitleGenerateDialog: the choices', () => {
         expect(screen.getByRole('heading', { name: 'Create a subtitle' })).toBeInTheDocument();
         expect(screen.getByText('Choose the language spoken in the episode and the language you want to read. The subtitle is written from the audio, which is sent to the services you set up in the anime settings.')).toBeInTheDocument();
         await screen.findByText(AUDIO_TEXT);
+    });
+
+    it.each([
+        ['the Brazilian Portuguese for the anime subtitles in Portuguese', { animeSubtitles: 'Portuguese' }, 'Portuguese (Brazil)'],
+        ['the language of the app when the anime subtitles are what ani-cli picks', { animeSubtitles: 'default', language: 'en' }, 'English']
+    ] as const)('starts the language of the subtitle on %s', async (_name, change, expected) => {
+        useAppStore.setState({ settings: { ...useAppStore.getState().settings, ...change } });
+        renderDialog();
+        expect(screen.getByLabelText('Language of the subtitle')).toHaveValue(expected);
     });
 
     it('asks which language is spoken in the audio, starting with Japanese since it is not a setting, and which one the subtitle is wanted in, starting with the one of the settings', async () => {
@@ -217,7 +226,7 @@ describe('SubtitleGenerateDialog: the choices', () => {
         });
 
         it('shows a dash for a model that is not set, and names the service of one\'s own', async () => {
-            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, transcribeProvider: 'custom', transcribeModel: '', translateProvider: 'custom', translateModel: '', translateLanguage: 'Spanish' } });
+            useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, transcribeProvider: 'custom', transcribeModel: '', translateProvider: 'custom', translateModel: '', animeSubtitles: 'Spanish' } });
             await ready();
             expect(within(facts()).getAllByText('Other (OpenAI-compatible) · —')).toHaveLength(2);
         });

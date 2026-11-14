@@ -13,7 +13,7 @@ import {
     THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
-import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS, TRANSLATION_LANGUAGES } from '@shared/anime';
+import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS } from '@shared/anime';
 import { LLM_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from '@shared/llm';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
 import type { DownloadOptions, Settings } from '@shared/types';
@@ -115,7 +115,6 @@ export function sanitizeSettings(input: unknown): Settings {
         translateProvider: pickEnum(raw.translateProvider, LLM_PROVIDER_IDS, defaults.translateProvider),
         translateModel: pickString(raw.translateModel, defaults.translateModel),
         translateBaseUrl: pickString(raw.translateBaseUrl, defaults.translateBaseUrl),
-        translateLanguage: pickEnum(raw.translateLanguage, TRANSLATION_LANGUAGES, defaults.translateLanguage),
         transcribeProvider: pickEnum(raw.transcribeProvider, SPEECH_PROVIDER_IDS, defaults.transcribeProvider),
         transcribeModel: pickString(raw.transcribeModel, defaults.transcribeModel),
         transcribeBaseUrl: pickString(raw.transcribeBaseUrl, defaults.transcribeBaseUrl)

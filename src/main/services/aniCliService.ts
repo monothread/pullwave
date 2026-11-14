@@ -28,6 +28,7 @@ export interface AniDownloadOptions extends AniDownloadRequest {
     downloadDir: string;
     onProgress?: AniRunOptions['onProgress'];
     onPart?: AniRunOptions['onPart'];
+    onJoin?: AniRunOptions['onJoin'];
     onDestination?: AniRunOptions['onDestination'];
 }
 
@@ -226,6 +227,7 @@ export class AniCliService {
             {
                 onProgress: options.onProgress,
                 onPart: options.onPart,
+                onJoin: options.onJoin,
                 onDestination: options.onDestination
             },
             undefined,

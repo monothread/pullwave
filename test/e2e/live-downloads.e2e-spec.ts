@@ -1,5 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import './display';
+import { FINISHED_CARD_TIMEOUT } from './finishedCards';
 import { leaveHome } from './startScreen';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -138,7 +139,7 @@ test.describe('video downloads with the real yt-dlp', () => {
 
         writeSettings({ rateLimit: SLOW, deletePartialsOnFailure: false });
         const again = await open();
-        await expect(again.page.getByTestId('job-card')).toHaveCount(0);
+        await expect(again.page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         await again.app.close();
     });
 
@@ -191,7 +192,7 @@ test.describe('video downloads with the real yt-dlp', () => {
         expect(whileDownloading.length).toBeGreaterThan(0);
         expect(Math.min(...whileDownloading)).toBeGreaterThanOrEqual(sizeWhenPaused);
         expect(sizeOf(join(downloadDir, finishedFileIn(downloadDir)))).toBeGreaterThan(20_000_000);
-        await expect(second.page.getByTestId('job-card')).toHaveCount(0);
+        await expect(second.page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
         await second.app.close();
     });
 

@@ -22,10 +22,10 @@ describe('readPausedDownload', () => {
     it('makes the card a paused one with nothing running, whatever the file says', () => {
         const read = readPausedDownload({
             ...PAUSED,
-            job: { ...PAUSED.job, status: 'running', speed: '1MiB/s', eta: '00:10', live: true, waitingForLive: true, merging: true, saving: true, postProcess: 'Merger', filePath: '/dl/x.mp4', hasPartial: true, downloadedBytes: 5, elapsedSeconds: 9, error: { code: 'NETWORK' } }
+            job: { ...PAUSED.job, status: 'running', speed: '1MiB/s', eta: '00:10', live: true, waitingForLive: true, merging: true, saving: true, postProcess: 'Merger', postProcessSteps: ['Merger'], filePath: '/dl/x.mp4', hasPartial: true, downloadedBytes: 5, elapsedSeconds: 9, error: { code: 'NETWORK' } }
         });
 
-        expect(read?.job).toMatchObject({ status: 'paused', speed: '', eta: '', live: false, waitingForLive: false, merging: false, saving: false, postProcess: null, filePath: null, hasPartial: false, downloadedBytes: 0, elapsedSeconds: 0, error: null, endCheck: null });
+        expect(read?.job).toMatchObject({ status: 'paused', speed: '', eta: '', live: false, waitingForLive: false, merging: false, saving: false, postProcess: null, postProcessSteps: [], filePath: null, hasPartial: false, downloadedBytes: 0, elapsedSeconds: 0, error: null, endCheck: null });
     });
 
     it('brings a paused download back without a picture: the pictures are kept in memory only, so the one of an earlier run is gone', () => {

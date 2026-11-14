@@ -76,7 +76,7 @@ Pieces:
 - **Window of the subtitles (D-165):** the wide window (`modal--wide`) with the title and four buttons, opened from the ⚙ of the player; the backdrop covers the player and blocks the gear until it is closed.
 - **Buttons:** squeeze on press; the main one has a light that runs over it every few seconds. Sizes never change (the e2e tests measure `--control-height`).
 - **Focus:** 3 px ring in the focus colour, 3 px away, with a halo, breathing.
-- **Motion that is fun:** aurora drifting, sound wave, sections that hop, settings and lists that rise one after the other, toasts that spring in with a burst of sparks for a finished download, windows that pop, a ring that pulses on an empty screen, the update banner that shines.
+- **Motion that is fun:** aurora drifting, sound wave, sections that hop, settings and lists that rise one after the other, toasts that spring in with a burst of sparks for a finished download, windows that pop, a ring that pulses on an empty screen and a lens that sweeps, shakes no and shows a red cross when a search or a filter finds nothing (smaller in windows and dropdowns), the update banner that shines.
 - **Always on (D-130):** the animations and the transitions run whatever the system says about motion: no style sheet has a rule for `prefers-reduced-motion` and no code looks at it.
 
 ### Words that repeat the page

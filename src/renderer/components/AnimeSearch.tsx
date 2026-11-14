@@ -8,6 +8,7 @@ import { AnimeDetail } from './AnimeDetail';
 import { TextField } from './fields';
 import { RowLink } from './RowLink';
 import { ErrorNotice } from './ErrorNotice';
+import { NotFound } from './NotFound';
 
 export function AnimeSearch() {
     const t = useTranslator();
@@ -48,6 +49,8 @@ export function AnimeSearch() {
         return <AnimeDetail />;
     }
     const searching = search.status === 'searching';
+    // ani-cli ends a search that found nothing with an error of its own: it is a search that found nothing, not a failure (D-197).
+    const nothingFound = search.error?.code === 'NO_RESULTS';
 
     return (
         <section className="anime__search" aria-label={t('anime.search.aria')}>
@@ -63,12 +66,12 @@ export function AnimeSearch() {
                     {searching ? t('anime.search.searching') : t('anime.search.button')}
                 </button>
             </form>
-            {search.error !== null && (
+            {search.error !== null && !nothingFound && (
                 <p className="field__warning" role="alert">
                     <ErrorNotice report={animeErrorReport(t, search.error)} />
                 </p>
             )}
-            {search.status === 'done' && search.results.length === 0 && <p className="empty">{t('anime.results.none')}</p>}
+            {(nothingFound || (search.status === 'done' && search.results.length === 0)) && <NotFound text={t('anime.results.none')} />}
             {search.status === 'done' && search.results.length > 0 && (
                 <>
                     <span className="section-label">{t('anime.results.label', { count: search.results.length })}</span>

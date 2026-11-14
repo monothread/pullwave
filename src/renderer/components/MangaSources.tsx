@@ -9,6 +9,7 @@ import { TextField } from './fields';
 import { SEVERAL_LANGUAGES, sourceLanguages } from './mangaSearchSources';
 import { ALL_LANGUAGES, listedSources } from './mangaText';
 import { RowLink } from './RowLink';
+import { NotFound } from './NotFound';
 
 
 // The sources whose name has the text in it (no text lists them all), by name.
@@ -114,7 +115,7 @@ export function MangaSources() {
                 <TextField search label={t('manga.sources.search')} value={search} placeholder={t('manga.sources.searchPlaceholder')} onChange={setSearch} />
             </div>
             <span className="section-label">{t('manga.sources.count', { count: shown.length })}</span>
-            {shown.length === 0 && <p className="empty">{t('manga.sources.noMatch')}</p>}
+            {shown.length === 0 && <NotFound text={t('manga.sources.noMatch')} />}
             {groups.map((group) => {
                 return (
                     <div key={group.language} className="manga__source-group" data-testid="manga-source-group">

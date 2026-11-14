@@ -26,6 +26,7 @@ import { WatchedMark } from './WatchedMark';
 import { useAnimeCoverUrl } from '../hooks/useAnimeCoverUrl';
 import { useSeriesCoverTitle } from '../hooks/useSeriesCoverTitle';
 import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
+import { NotFound } from './NotFound';
 
 
 // What says that episodes got into the library today (the check for new episodes put them there).
@@ -861,7 +862,7 @@ export function AnimeLibrary() {
                 onSort={setSort}
             />
             <span className="section-label">{t('anime.library.label', { count: groups.length })}</span>
-            {shown.length === 0 && <p className="empty">{t('anime.library.search.none')}</p>}
+            {shown.length === 0 && <NotFound text={t('anime.library.search.none')} />}
             {shown.length > 0 && groups.length === 0 && <p className="empty">{t(NO_MATCH_MESSAGES[filter])}</p>}
             <div className="cover-grid">
                 <IncrementalItems items={groups} listKey="anime-library" end="div" renderItem={(group) => {

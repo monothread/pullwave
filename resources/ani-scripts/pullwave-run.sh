@@ -50,6 +50,12 @@ pullwave_part() {
     printf 'PULLWAVE_PART\t%s\tvideo,audio\n' "$1"
 }
 
+# Once the two parts are downloaded, before ffmpeg joins them, the app is told so (PULLWAVE_JOIN on stdout): it joins the two bars into one and
+# shows the step that goes on.
+pullwave_join() {
+    printf 'PULLWAVE_JOIN\n'
+}
+
 # $1 = the referer, $2 = the picture, $3 = the audio (empty when it comes with the picture), $4 = the file of the episode.
 pullwave_download() {
     if [ -z "$3" ]; then
@@ -59,7 +65,7 @@ pullwave_download() {
     _pw_joined="$4.joined.mp4"
     if pullwave_part 0 && pullwave_fetch "$1" "$2" "$4.video.mp4" &&
         pullwave_part 1 && pullwave_fetch "$1" "$3" "$4.audio.mp4" &&
-        command ffmpeg -nostdin -y -loglevel error -i "$4.video.mp4" -i "$4.audio.mp4" -map 0:v:0 -map 1:a:0 -c copy -movflags +faststart -f mp4 "$_pw_joined" &&
+        pullwave_join && command ffmpeg -nostdin -y -loglevel error -i "$4.video.mp4" -i "$4.audio.mp4" -map 0:v:0 -map 1:a:0 -c copy -movflags +faststart -f mp4 "$_pw_joined" &&
         mv -f "$_pw_joined" "$4"; then
         rm -f "$4.video.mp4" "$4.audio.mp4"
         return 0

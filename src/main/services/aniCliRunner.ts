@@ -1,6 +1,7 @@
 import type { AniDownloadProgress, AniPartStart, AniRunResult } from '@shared/anime';
 import {
     isDownloadFailedLine,
+    isJoinLine,
     isSearchMoreLine,
     mapAniError,
     mapAniSpawnError,
@@ -40,6 +41,8 @@ export interface AniRunOptions {
     onProgress?: (progress: AniDownloadProgress) => void;
     // A part of an episode whose picture and audio are downloaded apart starts (the progress lines after it are about that part).
     onPart?: (part: AniPartStart) => void;
+    // The parts of an episode whose picture and audio came apart are downloaded and ffmpeg starts joining them.
+    onJoin?: () => void;
     onDestination?: (path: string) => void;
     spawnFn?: SpawnFn;
     platform?: NodeJS.Platform;
@@ -98,6 +101,10 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
         const part = parsePartLine(line);
         if (part) {
             options.onPart?.(part);
+            return;
+        }
+        if (isJoinLine(line)) {
+            options.onJoin?.();
             return;
         }
         const clean = stripAnsi(line);

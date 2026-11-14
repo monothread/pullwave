@@ -187,6 +187,7 @@ describe('QueueManager.add', () => {
             merging: false,
             saving: false,
             postProcess: null,
+            postProcessSteps: [],
             thumbnail: null,
             parts: null
         });
@@ -1974,50 +1975,72 @@ describe('QueueManager post-processing of the downloaded file', () => {
         return context;
     }
 
-    it('starts without a post-processor', () => {
+    it('starts without a post-processor and without steps', () => {
         const { queue } = setup();
         queue.add(URL_A);
-        expect(queue.getJob('job-1')?.postProcess).toBeNull();
+        expect(queue.getJob('job-1')).toMatchObject({ postProcess: null, postProcessSteps: [] });
     });
 
     it('marks the card as processing, with the step name, and drops the speed and eta that no longer apply', () => {
         const { queue, runs, updates } = downloadFinished();
         expect(queue.getJob('job-1')).toMatchObject({ postProcess: null, speed: '6.61MiB/s', eta: '00:01' });
         runs[0]?.onPostProcess?.(started('ExtractAudio'));
-        expect(queue.getJob('job-1')).toMatchObject({ status: 'running', postProcess: 'ExtractAudio', percent: 100, speed: '', eta: '' });
-        expect(updates.at(-1)).toMatchObject({ id: 'job-1', postProcess: 'ExtractAudio', speed: '', eta: '' });
+        expect(queue.getJob('job-1')).toMatchObject({ status: 'running', postProcess: 'ExtractAudio', postProcessSteps: ['ExtractAudio'], percent: 100, speed: '', eta: '' });
+        expect(updates.at(-1)).toMatchObject({ id: 'job-1', postProcess: 'ExtractAudio', postProcessSteps: ['ExtractAudio'], speed: '', eta: '' });
     });
 
-    it('moves from one step to the next', () => {
-        const { queue, runs } = downloadFinished();
+    it('moves from one step to the next, keeping every step that started in its order', () => {
+        const { queue, runs, updates } = downloadFinished();
         runs[0]?.onPostProcess?.(started('Merger'));
         runs[0]?.onPostProcess?.({ status: 'finished', processor: 'Merger' });
-        expect(queue.getJob('job-1')?.postProcess).toBe('Merger');
+        expect(queue.getJob('job-1')).toMatchObject({ postProcess: 'Merger', postProcessSteps: ['Merger'] });
         runs[0]?.onPostProcess?.(started('Metadata'));
-        expect(queue.getJob('job-1')?.postProcess).toBe('Metadata');
+        runs[0]?.onPostProcess?.(started('MoveFiles'));
+        expect(queue.getJob('job-1')).toMatchObject({ postProcess: 'MoveFiles', postProcessSteps: ['Merger', 'Metadata', 'MoveFiles'] });
+        expect(updates.at(-1)).toMatchObject({ id: 'job-1', postProcess: 'MoveFiles', postProcessSteps: ['Merger', 'Metadata', 'MoveFiles'] });
+    });
+
+    it('sends each update with its own list of steps, so an earlier update does not change when a step is added', () => {
+        const { runs, updates } = downloadFinished();
+        runs[0]?.onPostProcess?.(started('Merger'));
+        const first = updates.at(-1);
+        runs[0]?.onPostProcess?.(started('Metadata'));
+        expect(first?.postProcessSteps).toEqual(['Merger']);
+        expect(updates.at(-1)?.postProcessSteps).toEqual(['Merger', 'Metadata']);
     });
 
     it('ignores the end of a step, which is followed by another start or by the end of the run', () => {
         const { queue, runs, updates } = downloadFinished();
         const before = updates.length;
         runs[0]?.onPostProcess?.({ status: 'finished', processor: 'ExtractAudio' });
-        expect(queue.getJob('job-1')?.postProcess).toBeNull();
+        expect(queue.getJob('job-1')).toMatchObject({ postProcess: null, postProcessSteps: [] });
         expect(updates).toHaveLength(before);
     });
 
-    it('stops showing the step when a new download stream reports progress (the next item of a playlist)', () => {
+    it('stops showing the step, and drops the steps, when a new download stream reports progress (the next item of a playlist)', () => {
         const { queue, runs } = downloadFinished();
         runs[0]?.onPostProcess?.(started('ExtractAudio'));
         runs[0]?.onProgress(progress({ percent: 3, speed: '1MiB/s', eta: '00:09', title: 'Next' }));
-        expect(queue.getJob('job-1')).toMatchObject({ postProcess: null, percent: 3, speed: '1MiB/s' });
+        expect(queue.getJob('job-1')).toMatchObject({ postProcess: null, postProcessSteps: [], percent: 3, speed: '1MiB/s' });
     });
 
-    it('clears the step when the download completes', async () => {
+    it('does not count a step yt-dlp runs before the download as a step after it', () => {
+        const { queue, runs } = setup();
+        queue.add(URL_A);
+        runs[0]?.onPostProcess?.(started('MetadataParser'));
+        runs[0]?.onProgress(progress({ percent: 10, speed: '1MiB/s', eta: '00:09', title: 'Video' }));
+        runs[0]?.onProgress(progress({ percent: 100, speed: '1MiB/s', eta: '00:00', title: 'Video' }));
+        runs[0]?.onPostProcess?.(started('Merger'));
+        expect(queue.getJob('job-1')).toMatchObject({ postProcess: 'Merger', postProcessSteps: ['Merger'] });
+    });
+
+    it('clears the step when the download completes, and keeps the steps so the card shows them all done', async () => {
         const { queue, runs, history } = downloadFinished();
+        runs[0]?.onPostProcess?.(started('Merger'));
         runs[0]?.onPostProcess?.(started('MoveFiles'));
         runs[0]?.resolve({ status: 'done', filePath: FILE });
         await flush();
-        expect(queue.getJob('job-1')).toMatchObject({ status: 'done', percent: 100, filePath: FILE, postProcess: null });
+        expect(queue.getJob('job-1')).toMatchObject({ status: 'done', percent: 100, filePath: FILE, postProcess: null, postProcessSteps: ['Merger', 'MoveFiles'] });
         expect(history).toEqual([{ id: 'job-1', url: URL_A, title: 'Video', filePath: FILE, status: 'done', errorTitle: null, finishedAt: expect.any(Number) }]);
     });
 
@@ -2043,7 +2066,7 @@ describe('QueueManager post-processing of the downloaded file', () => {
         runs[0]?.resolve({ status: 'error', error: DOWNLOAD_ERROR });
         await flush();
         queue.retry('job-1');
-        expect(queue.getJob('job-1')).toMatchObject({ status: 'running', postProcess: null });
+        expect(queue.getJob('job-1')).toMatchObject({ status: 'running', postProcess: null, postProcessSteps: [] });
     });
 
     it('does not mark a card as processing after it was removed', async () => {

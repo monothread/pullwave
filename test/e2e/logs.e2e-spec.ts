@@ -214,6 +214,7 @@ test('filters, searches and clears the log of yt-dlp', async () => {
     expect(await shownRows(dialog)).toEqual([['log-line log-line--error', 'stderr', 'ERROR: [youtube] abc: Video unavailable']]);
     await dialog.getByLabel('Search').fill('nothing like this');
     await expect(dialog.getByText('No line matches the filter.')).toBeVisible();
+    await expect(dialog.getByTestId('not-found')).toHaveClass('not-found not-found--small');
     await dialog.getByLabel('Search').fill('');
 
     await dialog.getByRole('button', { name: 'CLEAR', exact: true }).click();

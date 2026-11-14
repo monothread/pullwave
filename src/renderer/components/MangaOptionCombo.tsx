@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { FieldShell } from './fields';
+import { NotFound } from './NotFound';
 
 interface MangaOptionComboProps {
     label: string;
@@ -78,7 +79,9 @@ export function MangaOptionCombo({ label, options, value, onChange }: MangaOptio
                 />
                 {open && (
                     <ul id={listId} className="manga__picker-list" role="listbox" aria-label={label}>
-                        {matches.length === 0 && <li className="manga__picker-empty">{t('manga.filters.noMatch')}</li>}
+                        {matches.length === 0 && <li className="manga__picker-empty">
+                                <NotFound text={t('manga.filters.noMatch')} size="tiny" />
+                            </li>}
                         {matches.map((entry) => {
                             return (
                                 <li key={`${entry.option}-${String(entry.index)}`} role="presentation">

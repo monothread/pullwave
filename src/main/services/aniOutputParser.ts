@@ -142,6 +142,14 @@ export function parsePartLine(line: string): AniPartStart | null {
     };
 }
 
+// What the stand-in of ffmpeg prints once both parts of an episode whose picture and audio come apart are downloaded, right before ffmpeg
+// joins them (see pullwave-run.sh).
+export const JOIN_MARKER = 'PULLWAVE_JOIN';
+
+export function isJoinLine(line: string): boolean {
+    return stripAnsi(line).trim() === JOIN_MARKER;
+}
+
 // What the stand-in of ffmpeg prints when the download of an episode whose audio is a track of its own failed (see pullwave-run.sh): ani-cli
 // ends well whatever its download did, so this line is what tells the app the download did not work.
 export const DOWNLOAD_FAILED_MARKER = 'PULLWAVE_DOWNLOAD_FAILED';

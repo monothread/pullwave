@@ -40,7 +40,6 @@ import type {
     SubtitleTranslateRequest,
     SubtitleTranslateResponse,
     SubtitleTranslationJob,
-    TranslationLanguage,
     AnimeSubtitleTrack,
     AnimeStreamRequest,
     AnimeStreamResponse,
@@ -190,12 +189,12 @@ export interface Settings {
     mangaAutoDownloadNew: boolean;
     // The browser OPEN ON SITE opens the page of a manga in: the one of the system, or one of the browsers found on this computer.
     mangaSiteBrowser: SiteBrowser;
-    // Translating subtitles with a language model: which provider, which model, an address instead of the one of the provider (empty
-    // for the one of the provider) and the language it translates into. The token is not here: it is kept apart, encrypted.
+    // Translating subtitles with a language model: which provider, which model and an address instead of the one of the provider (empty
+    // for the one of the provider). The language it translates into is the one of the anime subtitles (translationTargetOf). The token is not
+    // here: it is kept apart, encrypted.
     translateProvider: LlmProviderId;
     translateModel: string;
     translateBaseUrl: string;
-    translateLanguage: TranslationLanguage;
     // Making the subtitle of an episode that has none from its audio: the service of speech to text (OpenAI's protocol or Gemini), its model and an
     // address instead of the one of the service (empty for the one of the service). Its token is kept apart too. The language that is spoken is
     // not a setting: it is asked for each time, in the window that makes the subtitle.
@@ -260,6 +259,9 @@ export interface DownloadJob {
     saving: boolean;
     // Name of the yt-dlp post-processor (ffmpeg step after the download, such as ExtractAudio or Merger) that is running.
     postProcess: string | null;
+    // The post-processors that started since the download ended, in the order they started (the one running is the last); empty while
+    // the file is still being downloaded. The card shows them as the steps after the download.
+    postProcessSteps: string[];
     // The picture of the video, served by the app from memory (VIDEO_THUMBNAIL_SCHEME); null until it was fetched, or when there is none.
     thumbnail: string | null;
     // The parts of a video whose formats are downloaded one after the other (the video and the audio when they are apart), each with a bar

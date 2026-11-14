@@ -8,6 +8,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeChapterRecord, makeDetails, makeLibraryManga, makeSource, makeSummary } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import * as blockWindow from '@renderer/hooks/useBlockWindow';
+import { expectNotFound } from '../../helpers/notFound';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -155,6 +156,7 @@ describe('MangaBrowse a source', () => {
         render(<MangaBrowse />);
         await openSourceNamed(user, 'Site A');
         expect(await screen.findByText('Nothing found.')).toBeInTheDocument();
+        expectNotFound(screen.getByText('Nothing found.'), 'screen');
         expect(screen.queryByText(/Results:/)).not.toBeInTheDocument();
     });
 

@@ -69,7 +69,9 @@ if [ "$download" = 1 ]; then
     case "$query" in
         *split*)
             # The picture and the audio come apart, as the stand-in of ffmpeg downloads them: it says which part starts before each one,
-            # and each part counts from 0 again. Each part stays half way for three seconds, so a test sees the two bars.
+            # and each part counts from 0 again. Each part stays half way for three seconds, so a test sees the two bars; then it says the
+            # joining starts and ffmpeg joins them for four seconds, longer than the zipper, so a test sees the bars zipped and then the step of
+            # the joining.
             printf 'PULLWAVE_PART\t0\tvideo,audio\n'
             printf '[download] Destination: %s\n' "$file.video.mp4"
             printf '[download]  40.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 2/5)\n'
@@ -80,6 +82,8 @@ if [ "$download" = 1 ]; then
             printf '[download]  30.0%% of ~  10.00B at  1.00MiB/s ETA 00:01 (frag 3/10)\n'
             sleep 3
             printf '[download] 100%% of   10.00B in 00:00:01 at 1.00MiB/s\n'
+            printf 'PULLWAVE_JOIN\n'
+            sleep 4
             printf '[download] Destination: %s\n' "$file"
             ;;
         *)
@@ -104,6 +108,8 @@ if [ "$download" = 1 ]; then
         label="English"
         [ -f "$ANI_CLI_HIST_DIR/download-subtitle-label" ] && label="$(cat "$ANI_CLI_HIST_DIR/download-subtitle-label" | sed 's|[^A-Za-z0-9 ._()-]|_|g')"
         cp "$ANI_CLI_HIST_DIR/download-subtitle" "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.subtitle-$label.vtt"
+        # A test can say this subtitle is also the one ani-cli picked (its own .vtt), as the source marks it as its default.
+        [ -f "$ANI_CLI_HIST_DIR/download-subtitle-is-default" ] && cp "$ANI_CLI_HIST_DIR/download-subtitle" "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.vtt"
     fi
     exit 0
 fi

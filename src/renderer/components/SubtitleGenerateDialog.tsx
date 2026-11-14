@@ -15,6 +15,7 @@ import type { Translator } from '@shared/i18n';
 import { speechModelOf, speechTranslatesTo } from '@shared/llm';
 import type { Settings } from '@shared/types';
 import { useModalDialog } from '../hooks/useModalDialog';
+import { useTranslationTarget } from '../hooks/useTranslationTarget';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { SelectField } from './fields';
@@ -79,7 +80,7 @@ export function SubtitleGenerateDialog({ episodeId, onGenerated, onClose }: Subt
         return state.settings;
     });
     const [audioLanguage, setAudioLanguage] = useState<TranscriptionLanguage>(DEFAULT_TRANSCRIPTION_LANGUAGE);
-    const [language, setLanguage] = useState<TranslationLanguage>(settings.translateLanguage);
+    const [language, setLanguage] = useState<TranslationLanguage>(useTranslationTarget());
     const [estimate, setEstimate] = useState<SubtitleGenerateEstimateResponse | null>(null);
     const [job, setJob] = useState<SubtitleGenerationJob | null>(null);
     const [failure, setFailure] = useState<Extract<SubtitleGenerateResponse, { ok: false }> | null>(null);
