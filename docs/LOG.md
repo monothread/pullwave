@@ -265,3 +265,5 @@
 
 - 2026-11-13 · The fullscreen of the reader takes the whole width on a screen standing up, in the vertical scroll and the webtoon (D-198), the test of two pages no longer clicks a stage that is still growing, and one chip sums up the programs in the top bar of a window narrower than 1280 px, which no longer goes past the window (D-199). Type check and lint OK; unit tests of what changed (reader CSS, chips CSS, BinaryStatus, i18n); e2e of the reader in fullscreen (6, all OK) and of the programs waiting (1, OK), `secondary` in a virtual screen.
 
+
+- Released 0.27.10 (tag `v0.27.10` = `0d50e99`): the fullscreen of the reader takes the whole width on a screen standing up (D-198) and one chip sums up the programs in the top bar of a narrower window (D-199). Release Linux (whole unit suite OK), then Release Windows, then the draft published with its notes; the Test Windows workflow was not run.
