@@ -6,6 +6,7 @@ import { JobCard } from '@renderer/components/JobCard';
 import { useAppStore } from '@renderer/store/appStore';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, makeJob } from '../../helpers/mockApi';
+import { stubCardObserver } from '../../helpers/intersectionObserver';
 
 const ERROR: DownloadError = { code: 'UNAVAILABLE', title: 'Video unavailable', hint: 'Maybe private.', raw: 'ERROR: gone' };
 const FORBIDDEN: DownloadError = { code: 'FORBIDDEN', title: 'Access refused by the server', hint: 'Expired?', raw: 'HTTP Error 403: Forbidden' };
@@ -331,5 +332,22 @@ describe('JobCard', () => {
             expect(screen.queryByRole('button', { name: /FIND/ })).not.toBeInTheDocument();
             expect(screen.queryByRole('region', { name: 'Stream finder' })).not.toBeInTheDocument();
         });
+    });
+});
+
+describe('JobCard out of sight', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('is watched, and is marked while it is out of sight so its animations wait', () => {
+        const watched = stubCardObserver();
+        renderCard(makeJob({ status: 'running', percent: 40 }));
+        const card = screen.getByTestId('job-card');
+        expect(watched.targets).toEqual([card]);
+        watched.report([[card, false]]);
+        expect(card).toHaveAttribute('data-offscreen', '');
+        watched.report([[card, true]]);
+        expect(card).not.toHaveAttribute('data-offscreen');
     });
 });

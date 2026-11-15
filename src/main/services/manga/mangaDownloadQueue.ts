@@ -47,6 +47,8 @@ export interface MangaQueueDependencies {
     countCompletePages: (workDirectory: string) => number;
     onJobUpdate: (job: MangaJob) => void;
     onLibraryChanged: () => void;
+    // Only this manga changed (a chapter of it started or ended): the screen asks for it alone, not for the whole library again.
+    onLibraryEntryChanged: (mangaId: number) => void;
     // The queue was held (by PAUSE ALL) or let go (by RESUME ALL).
     onHeldChange: (held: boolean) => void;
     // The limits of the downloads at the same time; the fixed ones by default (the tests give others).
@@ -183,7 +185,8 @@ export class MangaDownloadQueue {
         }
         this.tries.delete(chapterId);
         this.queueChapter(manga, chapter);
-        this.deps.onLibraryChanged();
+        // Only its manga changed: RESUME ALL retries every paused chapter, and the whole library read again for each one flooded the screen.
+        this.deps.onLibraryEntryChanged(manga.id);
         this.pump();
     }
 
@@ -305,7 +308,8 @@ export class MangaDownloadQueue {
         this.startsWhileHeld.delete(chapterId);
         this.deps.db.markFailed(chapterId, 'cancelled', null);
         this.update(job, { status: 'cancelled' });
-        this.deps.onLibraryChanged();
+        // Only its manga changed (cancelling a manga cancels each of its waiting chapters).
+        this.deps.onLibraryEntryChanged(job.mangaId);
     }
 
     // A paused chapter is not finished: it stays, so it can still go on or be cancelled.
@@ -589,14 +593,14 @@ export class MangaDownloadQueue {
             this.deps.ensureDirectory(join(outputPath, '..'));
         } catch (error) {
             this.finishWithError(job, { code: 'DISK', message: error instanceof Error ? error.message : String(error) });
-            this.deps.onLibraryChanged();
+            this.deps.onLibraryEntryChanged(job.mangaId);
             return false;
         }
         this.outputPaths.set(chapter.id, outputPath);
         db.markDownloading(chapter.id, outputPath);
         this.lastReported.delete(chapter.id);
         this.update(job, { status: 'running', error: null });
-        this.deps.onLibraryChanged();
+        this.deps.onLibraryEntryChanged(job.mangaId);
         const handle = this.deps.download({
             chapterRemoteId: chapter.remoteId,
             seriesTitle: manga.title,
@@ -645,7 +649,7 @@ export class MangaDownloadQueue {
             if (job.status !== 'queued') {
                 this.startsWhileHeld.delete(chapter.id);
             }
-            this.deps.onLibraryChanged();
+            this.deps.onLibraryEntryChanged(job.mangaId);
             this.pump();
         });
         return true;

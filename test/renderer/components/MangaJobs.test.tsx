@@ -9,7 +9,7 @@ import { useMangaStore } from '@renderer/store/mangaStore';
 import { makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
-import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
+import { seeEnd, stubCardObserver, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -474,5 +474,26 @@ describe('MangaJobs with a long queue', () => {
             })
         );
         expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
+    });
+});
+
+describe('MangaJobs cards out of sight', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('watches every card and marks only the ones out of sight, so their animations wait', () => {
+        const watched = stubCardObserver();
+        useMangaStore.setState({
+            jobs: [makeMangaJob({ chapterId: 1, chapterName: 'Chapter 1', status: 'running' }), makeMangaJob({ chapterId: 2, chapterName: 'Chapter 2', status: 'queued' })]
+        });
+        render(<MangaJobs />);
+        const cards = screen.getAllByTestId('manga-job');
+        expect(watched.targets.filter((target) => {
+            return cards.includes(target as HTMLElement);
+        })).toEqual(cards);
+        watched.report([[cards[0]!, true], [cards[1]!, false]]);
+        expect(cards[0]).not.toHaveAttribute('data-offscreen');
+        expect(cards[1]).toHaveAttribute('data-offscreen', '');
     });
 });

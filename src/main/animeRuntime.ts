@@ -265,6 +265,9 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         onLibraryChanged: () => {
             options.send(IPC.eventAnimeLibrary);
         },
+        onLibraryEntryChanged: (animeId) => {
+            options.send(IPC.eventAnimeLibraryEntry, animeId);
+        },
         onHeldChange: (held) => {
             options.send(IPC.eventAnimeQueueHeld, held);
         }

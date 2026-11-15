@@ -38,7 +38,7 @@ function setup(
     const downloads: Download[] = [];
     const updates: AnimeJob[] = [];
     const heldChanges: boolean[] = [];
-    const state = { settings: { ...DEFAULT_SETTINGS, ...settings }, libraryChanges: 0, directories: [] as string[], files: { ...files }, downloaded: [] as number[] };
+    const state = { settings: { ...DEFAULT_SETTINGS, ...settings }, libraryChanges: 0, entryChanges: [] as number[], directories: [] as string[], files: { ...files }, downloaded: [] as number[] };
     const ensureDirectory = vi.fn((path: string) => {
         state.directories.push(path);
     });
@@ -91,6 +91,9 @@ function setup(
         },
         onLibraryChanged: () => {
             state.libraryChanges += 1;
+        },
+        onLibraryEntryChanged: (animeId) => {
+            state.entryChanges.push(animeId);
         },
         onHeldChange: (held) => {
             heldChanges.push(held);
@@ -479,6 +482,7 @@ describe('AnimeDownloadQueue results', () => {
         const { queue, db, downloads, updates, state } = setup({ maxConcurrent: 1 }, { '/a/Naruto Episode 1.mp4': 4096 });
         queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
         const changesBefore = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
         downloads[0]?.finish(doneAt('/a/Naruto Episode 1.mp4'));
         await settleResults();
 
@@ -488,7 +492,9 @@ describe('AnimeDownloadQueue results', () => {
         }).at(-1)).toMatchObject({ status: 'done', percent: 100, speed: '', eta: '' });
         expect(downloads).toHaveLength(2);
         expect(downloads[1]?.options.episode).toBe('2');
-        expect(state.libraryChanges).toBeGreaterThan(changesBefore);
+        // The end of the episode and the start of the next tell the screen their anime only, not the whole library.
+        expect(state.libraryChanges).toBe(changesBefore);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([1, 1]);
     });
 
     it('looks for the file where ani-cli names it when yt-dlp did not say where it wrote', async () => {
@@ -593,12 +599,14 @@ describe('AnimeDownloadQueue.cancel', () => {
         const { queue, downloads, db, updates, state, removeDirectory } = setup({ maxConcurrent: 1 });
         queue.enqueue({ ...REQUEST, episodes: ['1', '2'] });
         const changesBefore = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
         queue.cancel(2);
 
         expect(db.getEpisode(2)).toMatchObject({ status: 'cancelled', error: null });
         expect(updates.at(-1)).toMatchObject({ episodeId: 2, status: 'cancelled' });
         expect(downloads).toHaveLength(1);
-        expect(state.libraryChanges).toBe(changesBefore + 1);
+        expect(state.libraryChanges).toBe(changesBefore);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([1]);
         expect(removeDirectory.mock.calls).toEqual([[join(DOWNLOADS, DEFAULT_ANIME_FOLDER, 'Naruto', 'Episode 2')]]);
     });
 
@@ -705,6 +713,7 @@ describe('AnimeDownloadQueue.redownload', () => {
         const { queue, downloads, db, state } = await withDownloadedEpisode();
         delete state.files[FILE];
         const libraryChanges = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
 
         queue.redownload(1);
 
@@ -718,7 +727,9 @@ describe('AnimeDownloadQueue.redownload', () => {
         });
         expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, error: null });
         expect(queue.list()).toEqual([{ episodeId: 1, animeId: 1, animeTitle: 'Naruto', episode: '1', status: 'running', percent: 0, speed: '', eta: '', error: null, parts: null, postProcess: null, postProcessSteps: [] }]);
-        expect(state.libraryChanges).toBe(libraryChanges + 2);
+        // Queued again and started: its anime only, each time.
+        expect(state.libraryChanges).toBe(libraryChanges);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([1, 1]);
     });
 
     it('puts the episode back in the library as downloaded once the new download finishes', async () => {
@@ -760,6 +771,7 @@ describe('AnimeDownloadQueue.redownload', () => {
     it('does nothing for an episode whose file is on the disk, so a video that exists is never downloaded over', async () => {
         const { queue, downloads, db, updates, state } = await withDownloadedEpisode();
         const libraryChanges = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
         const updatesBefore = updates.length;
 
         queue.redownload(1);
@@ -768,6 +780,7 @@ describe('AnimeDownloadQueue.redownload', () => {
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096 });
         expect(updates).toHaveLength(updatesBefore);
         expect(state.libraryChanges).toBe(libraryChanges);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([]);
     });
 
     it('does nothing for an episode that is not downloaded', async () => {
@@ -776,6 +789,7 @@ describe('AnimeDownloadQueue.redownload', () => {
         downloads[0]?.finish({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked by cloudflare.' } });
         await settleResults();
         const libraryChanges = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
 
         queue.redownload(1);
         queue.redownload(2);
@@ -784,6 +798,7 @@ describe('AnimeDownloadQueue.redownload', () => {
         expect(db.getEpisode(1)).toMatchObject({ status: 'error', error: { code: 'NO_SOURCES', raw: 'Blocked by cloudflare.' } });
         expect(db.getEpisode(2)).toMatchObject({ status: 'downloading' });
         expect(state.libraryChanges).toBe(libraryChanges);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([]);
     });
 
     it('does nothing for an episode that does not exist', async () => {
@@ -882,8 +897,9 @@ describe('AnimeDownloadQueue looks at the audio of a video that was downloaded',
         expect(hasAudio).toHaveBeenCalledWith(FILE);
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: true });
         expect(db.episodesToCheckAudio()).toEqual([]);
-        // Queueing, starting and finishing the download, and then what the check found.
-        expect(state.libraryChanges).toBe(4);
+        // The whole library once for the queueing; the start, the end and what the check found for the anime only.
+        expect(state.libraryChanges).toBe(1);
+        expect(state.entryChanges).toEqual([1, 1, 1]);
     });
 
     it('records that the video has audio, without marking the episode', async () => {
@@ -899,7 +915,9 @@ describe('AnimeDownloadQueue looks at the audio of a video that was downloaded',
 
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', noAudio: false });
         expect(db.episodesToCheckAudio()).toMatchObject([{ id: 1 }]);
-        expect(state.libraryChanges).toBe(3);
+        // The whole library once for the queueing; the start and the end for the anime only.
+        expect(state.libraryChanges).toBe(1);
+        expect(state.entryChanges).toEqual([1, 1]);
     });
 
     it('leaves the episode as it is when the check fails', async () => {
@@ -912,7 +930,9 @@ describe('AnimeDownloadQueue looks at the audio of a video that was downloaded',
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: false });
         expect(db.episodesToCheckAudio()).toMatchObject([{ id: 1 }]);
         expect(queue.list()).toEqual([]);
-        expect(state.libraryChanges).toBe(3);
+        // The whole library once for the queueing; the start and the end for the anime only.
+        expect(state.libraryChanges).toBe(1);
+        expect(state.entryChanges).toEqual([1, 1]);
     });
 
     it('does not look at anything when the queue was not given a way to', async () => {
@@ -973,8 +993,9 @@ describe('AnimeDownloadQueue repairs a video that was hidden behind a picture', 
         expect(repairVideo).toHaveBeenCalledTimes(1);
         expect(repairVideo).toHaveBeenCalledWith(FILE);
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 3000 });
-        // Queueing, starting and finishing the download, and then the new size.
-        expect(state.libraryChanges).toBe(4);
+        // The whole library once for the queueing; the start, the end and the new size for the anime only.
+        expect(state.libraryChanges).toBe(1);
+        expect(state.entryChanges).toEqual([1, 1, 1]);
     });
 
     it('looks at the audio of the file after the repair, and not before: the file the check sees is the repaired one', async () => {
@@ -1008,8 +1029,9 @@ describe('AnimeDownloadQueue repairs a video that was hidden behind a picture', 
 
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 4096, noAudio: true });
         expect(hasAudio).toHaveBeenCalledWith(FILE);
-        // The same three changes as with no repair, and what the check found.
-        expect(state.libraryChanges).toBe(4);
+        // The same changes as with no repair, and what the check found (for the anime only).
+        expect(state.libraryChanges).toBe(1);
+        expect(state.entryChanges).toEqual([1, 1, 1]);
     });
 
     it('leaves the episode as it is when the repair throws, and still looks at its audio', async () => {
@@ -1080,6 +1102,7 @@ describe('AnimeDownloadQueue.redownload of an episode whose video has no audio',
     it('deletes the video, and only the video, and downloads the episode again', async () => {
         const { queue, downloads, db, removeFile, removeDirectory, state } = await withSilentEpisode();
         const libraryChanges = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
 
         queue.redownload(1);
 
@@ -1089,7 +1112,9 @@ describe('AnimeDownloadQueue.redownload of an episode whose video has no audio',
         expect(downloads).toHaveLength(2);
         expect(downloads[1]?.options).toMatchObject({ query: 'naruto', index: 2, episode: '1' });
         expect(db.getEpisode(1)).toMatchObject({ status: 'downloading', filePath: null, sizeBytes: null, noAudio: false });
-        expect(state.libraryChanges).toBe(libraryChanges + 2);
+        // Queued again and started: its anime only, each time.
+        expect(state.libraryChanges).toBe(libraryChanges);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([1, 1]);
     });
 
     it('looks at the new video when it finishes', async () => {
@@ -1129,12 +1154,14 @@ describe('AnimeDownloadQueue.redownload of an episode whose video has no audio',
             }
         });
         const libraryChanges = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
 
         queue.redownload(1);
 
         expect(downloads).toHaveLength(1);
         expect(db.getEpisode(1)).toMatchObject({ status: 'done', filePath: FILE, noAudio: true });
         expect(state.libraryChanges).toBe(libraryChanges);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([]);
     });
 
     it('leaves the video as it is when the queue has no way to delete a file', async () => {
@@ -1202,11 +1229,13 @@ describe('AnimeDownloadQueue.redownloadEpisodes', () => {
     it('does nothing for an empty list', async () => {
         const { queue, downloads, state } = setup({ maxConcurrent: 1 });
         const libraryChanges = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
 
         queue.redownloadEpisodes([]);
 
         expect(downloads).toEqual([]);
         expect(state.libraryChanges).toBe(libraryChanges);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([]);
     });
 });
 
@@ -1480,17 +1509,19 @@ describe('AnimeDownloadQueue pause and resume', () => {
             expect(db.getEpisode(1)).toMatchObject({ status: 'paused', error: null });
         });
 
-        it('tells the screen that the job is paused, and that the library changed', async () => {
+        it('tells the screen that the job is paused, and that its anime changed', async () => {
             const result = setup({ maxConcurrent: 1 });
             result.queue.enqueue({ ...REQUEST, episodes: ['1'] });
             const changes = result.state.libraryChanges;
+            const entriesBefore = result.state.entryChanges.length;
 
             result.queue.pause(1);
             result.downloads[0]?.finish({ status: 'cancelled' });
             await settleResults();
 
             expect(result.updates.at(-1)).toMatchObject({ episodeId: 1, status: 'paused' });
-            expect(result.state.libraryChanges).toBeGreaterThan(changes);
+            expect(result.state.libraryChanges).toBe(changes);
+            expect(result.state.entryChanges.slice(entriesBefore)).toEqual([1]);
         });
 
         it('frees its place for the next episode', async () => {
@@ -1659,13 +1690,15 @@ describe('AnimeDownloadQueue pause and resume', () => {
         it('cancels it on the spot, in the job and in the library', async () => {
             const { queue, db, updates, state } = await pausedEpisode();
             const changes = state.libraryChanges;
+            const entriesBefore = state.entryChanges.length;
 
             queue.cancel(1);
 
             expect(queue.list()[0]).toMatchObject({ episodeId: 1, status: 'cancelled' });
             expect(db.getEpisode(1)).toMatchObject({ status: 'cancelled', error: null });
             expect(updates.at(-1)).toMatchObject({ episodeId: 1, status: 'cancelled' });
-            expect(state.libraryChanges).toBe(changes + 1);
+            expect(state.libraryChanges).toBe(changes);
+            expect(state.entryChanges.slice(entriesBefore)).toEqual([1]);
         });
 
         it('can be retried after it was cancelled', async () => {
@@ -2330,6 +2363,7 @@ describe('AnimeDownloadQueue.downloadEpisodes', () => {
     it('queues only the episodes given, and starts as many as the limit allows', () => {
         const { queue, downloads, updates, state } = library({ maxConcurrent: 1 });
         const changes = state.libraryChanges;
+        const entriesBefore = state.entryChanges.length;
 
         queue.downloadEpisodes(1, ['3', '4']);
 
@@ -2351,8 +2385,9 @@ describe('AnimeDownloadQueue.downloadEpisodes', () => {
                 return job.status === 'queued';
             })
         ).toHaveLength(2);
-        // Once for the episodes that were queued and once more when the first one starts.
-        expect(state.libraryChanges).toBe(changes + 2);
+        // The whole library once for the episodes that were queued; the start of the first one for its anime only.
+        expect(state.libraryChanges).toBe(changes + 1);
+        expect(state.entryChanges.slice(entriesBefore)).toEqual([1]);
     });
 
     it('tells the library it changed once, when nothing starts', () => {

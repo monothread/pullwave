@@ -601,6 +601,69 @@ test('a paused download frees its place in the queue for the next one', async ()
     await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'DOWNLOADING', 'PAUSED']);
 });
 
+// The CSS animations of a card that are running and that wait (see useOffscreenPause): the bar, the glow and the badge of the card.
+async function cardAnimations(card: Locator): Promise<{ running: number; paused: number }> {
+    return card.evaluate((element) => {
+        const animations = element.getAnimations({ subtree: true });
+        return {
+            running: animations.filter((animation) => {
+                return animation.playState === 'running';
+            }).length,
+            paused: animations.filter((animation) => {
+                return animation.playState === 'paused';
+            }).length
+        };
+    });
+}
+
+test('pauses the animations of the cards out of sight and runs them again before a card comes into sight', async () => {
+    const { page } = session;
+    const cards = page.getByTestId('job-card');
+    // Twelve downloads queued at once through the bridge of the page (filling the field twelve times in a row raced with its clearing).
+    await page.evaluate(async () => {
+        const api = (window as unknown as { api: { addDownload: (url: string) => Promise<unknown> } }).api;
+        for (let index = 1; index <= 12; index += 1) {
+            await api.addDownload(`https://example.com/slow-${String(index)}`);
+        }
+    });
+    await expect(cards).toHaveCount(12, { timeout: 15000 });
+    const first = cards.first();
+    const last = cards.last();
+    // The first card is in sight: it is not marked and its animations run.
+    await expect(first).not.toHaveAttribute('data-offscreen');
+    await expect.poll(async () => {
+        return (await cardAnimations(first)).running;
+    }).toBeGreaterThan(0);
+    expect((await cardAnimations(first)).paused).toBe(0);
+    // The last one is far below the visible part of the list: marked, every animation of it waiting.
+    await expect(last).toHaveAttribute('data-offscreen', '');
+    await expect.poll(async () => {
+        return (await cardAnimations(last)).running;
+    }).toBe(0);
+    expect((await cardAnimations(last)).paused).toBeGreaterThan(0);
+
+    // A little below the visible part of the list (the list scrolls inside the main area), it is animating already, before it is seen.
+    await page.locator('.app__main').evaluate((main, card) => {
+        const bottom = main.getBoundingClientRect().bottom;
+        main.scrollTop += (card as HTMLElement).getBoundingClientRect().top - bottom - 100;
+    }, await last.elementHandle());
+    expect(await last.evaluate((card) => {
+        return card.getBoundingClientRect().top - (document.querySelector('.app__main') as HTMLElement).getBoundingClientRect().bottom;
+    })).toBeGreaterThan(50);
+    await expect(last).not.toHaveAttribute('data-offscreen');
+    await expect.poll(async () => {
+        return (await cardAnimations(last)).paused;
+    }).toBe(0);
+
+    // Brought into sight, it animates still.
+    await last.scrollIntoViewIfNeeded();
+    await expect(last).not.toHaveAttribute('data-offscreen');
+    await expect.poll(async () => {
+        return (await cardAnimations(last)).paused;
+    }).toBe(0);
+    expect((await cardAnimations(last)).running).toBeGreaterThan(0);
+});
+
 test('a paused download is still there when the app is opened again, and goes on from it when it is resumed', async () => {
     const { page, userData, logPath, downloadDir } = session;
     await submitUrl(page, 'https://example.com/slow-restart');
@@ -1776,6 +1839,46 @@ test.describe('languages', () => {
             rmSync(workDir, { recursive: true, force: true });
         }
     });
+});
+
+// A minimized window is not drawn, but Chromium does not tell the page so on Linux: the main process does, and every animation waits until
+// the window comes back. Needs a window manager (the fullscreen tests run with metacity): without one the window cannot be minimized.
+test('@resize stops every animation while the window is minimized and runs them again when it comes back', async () => {
+    const { app, page } = session;
+    const running = async (): Promise<number> => {
+        return page.evaluate(() => {
+            return document.getAnimations().filter((animation) => {
+                return animation.playState === 'running';
+            }).length;
+        });
+    };
+    expect(await running()).toBeGreaterThan(0);
+    await expect(page.locator('html')).not.toHaveAttribute('data-window-minimized');
+    await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.minimize();
+    });
+    const minimized = await expect
+        .poll(async () => {
+            return app.evaluate(({ BrowserWindow }) => {
+                return BrowserWindow.getAllWindows()[0]?.isMinimized() ?? false;
+            });
+        }, { timeout: 5000 })
+        .toBe(true)
+        .then(() => {
+            return true;
+        })
+        .catch(() => {
+            return false;
+        });
+    test.skip(!minimized, 'the window cannot be minimized without a window manager');
+    await expect(page.locator('html')).toHaveAttribute('data-window-minimized', '');
+    await expect.poll(running).toBe(0);
+
+    await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.restore();
+    });
+    await expect(page.locator('html')).not.toHaveAttribute('data-window-minimized');
+    await expect.poll(running).toBeGreaterThan(0);
 });
 
 test.describe('settings layout @resize', () => {

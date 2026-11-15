@@ -548,6 +548,8 @@ export interface MangaApi {
     download: (request: MangaDownloadRequest) => Promise<LibraryManga | null>;
     downloadMissing: (mangaIds: number[]) => Promise<void>;
     library: () => Promise<LibraryManga[]>;
+    // One manga of the library as it is now (null when it is no longer in it).
+    libraryEntry: (mangaId: number) => Promise<LibraryManga | null>;
     jobs: () => Promise<MangaJob[]>;
     cancel: (chapterId: number) => Promise<void>;
     retry: (chapterId: number) => Promise<void>;
@@ -617,6 +619,8 @@ export interface MangaApi {
     // The queue was held by PAUSE ALL (true) or let go by RESUME ALL (false).
     onQueueHeld: (listener: (held: boolean) => void) => () => void;
     onLibraryChanged: (listener: () => void) => () => void;
+    // Only this manga of the library changed (a chapter of it started or ended): the rest of the library is as it was.
+    onLibraryEntryChanged: (listener: (mangaId: number) => void) => () => void;
 }
 
 // Where the manga section exists.

@@ -151,3 +151,13 @@ describe('two pages side by side in the reader', () => {
         expect(order.indexOf('.reader__stage--height .reader__spread--pair .reader__img')).toBeGreaterThan(order.indexOf('.reader__stage--height .reader__img'));
     });
 });
+
+describe('the pages of the reader at their own size', () => {
+    it('stand in the middle of the room, and a page wider than the room starts at its left edge so the scroll reaches all of it', () => {
+        expect(styleOf(cyberpunk, '.reader__stage--original')).toEqual({ overflow: 'auto', 'align-items': 'safe center' });
+    });
+
+    it('are not held to the room nor made larger', () => {
+        expect(styleOf(cyberpunk, '.reader__stage--original .reader__img')).toEqual({ 'max-width': 'none', width: 'auto', height: 'auto' });
+    });
+});

@@ -40,7 +40,7 @@ import {
 } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { cleanSeasonName, cleanSeriesName, isValidSeason, sameSeries } from '@shared/series';
-import type { AnimeAddResponse, AnimeRenameSeriesResponse, AnimeStatus } from '@shared/anime';
+import type { AnimeAddResponse, AnimeRenameSeriesResponse, AnimeStatus, LibraryAnime } from '@shared/anime';
 import type { AnimeDb } from '../services/animeDb';
 import { animeFolderOf, animeFoldersToRemove, episodeFolderOf, filesOfEpisode, foldersWithoutOthers, seriesFolderOf } from '../services/animeFiles';
 import type { AnimeDownloadQueue } from '../services/animeDownloadQueue';
@@ -338,6 +338,9 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
     ipcMain.handle(IPC.animeLibrary, () => {
         return [];
     });
+    ipcMain.handle(IPC.animeLibraryEntry, () => {
+        return null;
+    });
     ipcMain.handle(IPC.animeJobs, () => {
         return [];
     });
@@ -407,7 +410,7 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         registerUnsupported(ipcMain);
         return;
     }
-    const { service, queue, db } = deps;
+    const { service, queue, db, fileExists } = deps;
     let migrating = false;
 
     ipcMain.handle(IPC.animeStatus, (): AnimeStatus => {
@@ -518,15 +521,22 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         }
         queue.downloadMissing(validIds(ids));
     });
+    // An anime as the screen gets it: each downloaded episode says whether its file is still there.
+    function present(anime: LibraryAnime): LibraryAnime {
+        return {
+            ...anime,
+            episodes: anime.episodes.map((episode) => {
+                return { ...episode, fileMissing: episode.status === 'done' && (episode.filePath === null || !fileExists(episode.filePath)) };
+            })
+        };
+    }
     ipcMain.handle(IPC.animeLibrary, () => {
-        return db.list().map((anime) => {
-            return {
-                ...anime,
-                episodes: anime.episodes.map((episode) => {
-                    return { ...episode, fileMissing: episode.status === 'done' && (episode.filePath === null || !deps.fileExists(episode.filePath)) };
-                })
-            };
-        });
+        return db.list().map(present);
+    });
+    ipcMain.handle(IPC.animeLibraryEntry, (_event, animeId: unknown): LibraryAnime | null => {
+        const id = asId(animeId);
+        const anime = id === null ? null : db.getLibraryAnime(id);
+        return anime === null ? null : present(anime);
     });
     ipcMain.handle(IPC.animeCheckAudio, async (): Promise<AnimeAudioCheckResponse> => {
         const result = await deps.checkAudio();

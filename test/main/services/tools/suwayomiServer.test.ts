@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { findFreePort, HEALTH_QUERY, SuwayomiServer, WEBVIEW_LEFTOVER, SuwayomiServerError, type SuwayomiServerDependencies, type SuwayomiServerStatus } from '@main/services/tools/suwayomiServer';
+import { findFreePort, HEALTH_QUERY, SERVER_JVM_ARGS, SuwayomiServer, WEBVIEW_LEFTOVER, SuwayomiServerError, type SuwayomiServerDependencies, type SuwayomiServerStatus } from '@main/services/tools/suwayomiServer';
 import { suwayomiSpec } from '@main/services/tools/suwayomiRelease';
 import { LogHub, processLogs } from '@main/services/logHub';
 import { createFakeLogWriter } from '../../../helpers/fakeLogWriter';
@@ -73,11 +73,16 @@ function setup(overrides: Partial<SuwayomiServerDependencies> & { answers?: Arra
     return { server, dir, installDirectory, dataDirectory, launches, processes, statuses, requests, fetchImpl, killGroup };
 }
 
-// The arguments of the JVM of every start: IPv4 only, native access for the jar, the data folder and the jar.
+// The arguments of the JVM of every start: IPv4 only, native access for the jar, the memory it no longer uses given back, the data folder and
+// the jar.
 function expectedArgs(installDirectory: string, dataDirectory: string): string[] {
     return [
         '-Djava.net.preferIPv4Stack=true',
         '--enable-native-access=ALL-UNNAMED',
+        '-XX:G1PeriodicGCInterval=30000',
+        '-XX:MinHeapFreeRatio=10',
+        '-XX:MaxHeapFreeRatio=30',
+        '-XX:TieredStopAtLevel=1',
         `-Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory}`,
         '-jar',
         join(installDirectory, 'bin', 'Suwayomi-Server.jar')
@@ -87,6 +92,15 @@ function expectedArgs(installDirectory: string, dataDirectory: string): string[]
 afterEach(() => {
     vi.restoreAllMocks();
     cleanTempDirs();
+});
+
+describe('SERVER_JVM_ARGS', () => {
+    it('returns the free memory every 30 s with nothing going on, keeping free at most 30% of what is used, compiles with the quick compiler only, without a limit on the heap', () => {
+        expect(SERVER_JVM_ARGS).toEqual(['-XX:G1PeriodicGCInterval=30000', '-XX:MinHeapFreeRatio=10', '-XX:MaxHeapFreeRatio=30', '-XX:TieredStopAtLevel=1']);
+        expect(SERVER_JVM_ARGS.some((arg) => {
+            return arg.startsWith('-Xmx');
+        })).toBe(false);
+    });
 });
 
 describe('SuwayomiServer', () => {
@@ -528,7 +542,7 @@ describe('SuwayomiServer log', () => {
                 return [line.stream, line.text];
             })
         ).toEqual([
-            ['command', `${join(installDirectory, 'jre', 'bin', 'java')} -Djava.net.preferIPv4Stack=true --enable-native-access=ALL-UNNAMED -Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory} -jar ${join(installDirectory, 'bin', 'Suwayomi-Server.jar')}`],
+            ['command', `${join(installDirectory, 'jre', 'bin', 'java')} -Djava.net.preferIPv4Stack=true --enable-native-access=ALL-UNNAMED -XX:G1PeriodicGCInterval=30000 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30 -XX:TieredStopAtLevel=1 -Dsuwayomi.tachidesk.config.server.rootDir=${dataDirectory} -jar ${join(installDirectory, 'bin', 'Suwayomi-Server.jar')}`],
             ['stdout', 'ready']
         ]);
         await server.stop();

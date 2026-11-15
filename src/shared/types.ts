@@ -463,6 +463,8 @@ export interface CyberApi {
     listAnimeEpisodes: (query: string, index: number) => Promise<AnimeEpisodesResponse>;
     downloadAnime: (request: AnimeDownloadRequest) => Promise<AnimeDownloadResponse>;
     listAnimeLibrary: () => Promise<LibraryAnime[]>;
+    // One anime of the library as it is now (null when it is no longer in it).
+    getAnimeLibraryEntry: (animeId: number) => Promise<LibraryAnime | null>;
     listAnimeHistory: () => Promise<AnimeHistoryEntry[]>;
     recordAnimeHistory: (request: AnimeHistoryRequest) => Promise<void>;
     removeAnimeHistory: (id: number) => Promise<void>;
@@ -555,6 +557,8 @@ export interface CyberApi {
     // The queue was held by PAUSE ALL (true) or let go by RESUME ALL (false).
     onAnimeQueueHeld: (listener: (held: boolean) => void) => () => void;
     onAnimeLibraryChanged: (listener: () => void) => () => void;
+    // Only this anime of the library changed (an episode of it started, ended or was checked): the rest of the library is as it was.
+    onAnimeLibraryEntryChanged: (listener: (animeId: number) => void) => () => void;
     onAnimeMigrationProgress: (listener: (progress: AnimeMigrationProgress) => void) => () => void;
     // A cover that was checked again and changed.
     onAnimeCoverUpdate: (listener: (update: AnimeCoverUpdate) => void) => () => void;
@@ -568,4 +572,6 @@ export interface CyberApi {
     onJobRemoved: (listener: (id: string) => void) => () => void;
     onHistoryChanged: (listener: () => void) => () => void;
     onAppUpdateState: (listener: (state: AppUpdateState) => void) => () => void;
+    // The window was minimized (true) or came back (false). A minimized window is not drawn, but on Linux the page is not told so.
+    onWindowMinimized: (listener: (minimized: boolean) => void) => () => void;
 }

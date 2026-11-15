@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { DownloadJob } from '@shared/types';
 import { useTranslator } from '../i18n/useTranslator';
+import { useOffscreenPause } from '../hooks/useOffscreenPause';
 import { ConfirmButton } from './ConfirmButton';
 import { ErrorBanner } from './ErrorBanner';
 import { livePhase, statusLabel } from './jobStatus';
@@ -21,6 +22,7 @@ interface JobCardProps {
 
 function JobCardView({ job, onCancel, onPause, onResume, onStop, onRetry, onRemove, onClearPartials, onShowFile }: JobCardProps) {
     const t = useTranslator();
+    const card = useOffscreenPause<HTMLElement>();
     const isActive = job.status === 'queued' || job.status === 'running' || job.status === 'paused';
     const phase = livePhase(job);
     const isRecording = job.live && job.status === 'running' && phase === null;
@@ -31,7 +33,7 @@ function JobCardView({ job, onCancel, onPause, onResume, onStop, onRetry, onRemo
     const livePartialKept = job.live && job.hasPartial;
     const partialMessage = livePartialKept ? t('job.confirmLivePartial') : undefined;
     return (
-        <article className={`job job--${job.status}${phase === null ? '' : ` job--${phase}`}`} data-testid="job-card">
+        <article ref={card} className={`job job--${job.status}${phase === null ? '' : ` job--${phase}`}`} data-testid="job-card">
             <header className="job__head">
                 <h3 className="job__title" title={job.title ?? job.url}>
                     {job.title ?? job.url}

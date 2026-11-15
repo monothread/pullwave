@@ -13,6 +13,7 @@ import { MangaErrorNotice } from './MangaErrorNotice';
 import { MangaCover } from './MangaCover';
 import { MangaManageDownloads } from './MangaManageDownloads';
 import { useShownJobs } from '../hooks/useShownManga';
+import { useOffscreenPause } from '../hooks/useOffscreenPause';
 
 const ORDER: Record<MangaJob['status'], number> = { running: 0, paused: 1, queued: 2, error: 3, cancelled: 4, done: 5 };
 
@@ -73,9 +74,10 @@ function etaText(job: MangaJob): string {
 // Its actions ask the store as it is when they are used.
 const MangaJobRow = memo(function MangaJobRow({ job }: { job: MangaJob }) {
     const t = useTranslator();
+    const card = useOffscreenPause<HTMLElement>();
     const title = `${job.mangaTitle} · ${job.chapterName}`;
     return (
-        <article className={`job job--${job.status}`} data-testid="manga-job">
+        <article ref={card} className={`job job--${job.status}`} data-testid="manga-job">
             <header className="job__head">
                 <h3 className="job__title" title={title}>
                     {title}

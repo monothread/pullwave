@@ -66,6 +66,7 @@ const ANIME_CHANNELS = [
     IPC.animeImportLibrary,
     IPC.animeJobs,
     IPC.animeLibrary,
+    IPC.animeLibraryEntry,
     IPC.animeMigrateFolder,
     IPC.animeOpenFolder,
     IPC.animeOpenSeriesFolder,
@@ -1645,6 +1646,43 @@ describe('registerAnimeHandlers', () => {
                 ['4', false]
             ]);
         });
+
+        it('gives one anime as the library lists it, with which of its downloaded episodes lost their file', () => {
+            const { call, db, missing } = setup();
+            const naruto = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
+            const bleach = db.upsertAnime({ title: 'Bleach', query: 'bleach', searchIndex: 1 });
+            db.markDone(db.ensureEpisode(naruto.id, '1').id, '/lib/Naruto/a.mp4', 1);
+            db.markDone(db.ensureEpisode(naruto.id, '2').id, '/lib/Naruto/b.mp4', 1);
+            db.ensureEpisode(bleach.id, '1');
+            missing.add('/lib/Naruto/b.mp4');
+
+            const listed = (call(IPC.animeLibrary) as LibraryAnime[]).find((anime) => {
+                return anime.id === naruto.id;
+            });
+            const entry = call(IPC.animeLibraryEntry, naruto.id) as LibraryAnime;
+            expect(entry).toEqual(listed);
+            expect(
+                entry.episodes.map((episode) => {
+                    return [episode.number, episode.fileMissing];
+                })
+            ).toEqual([
+                ['1', false],
+                ['2', true]
+            ]);
+        });
+
+        it('gives null for an anime that is not in the library, and for an id that is not a whole positive number', () => {
+            const { call, db } = setup();
+            const anime = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
+            const read = vi.spyOn(db, 'getLibraryAnime');
+            expect(call(IPC.animeLibraryEntry, anime.id + 100)).toBeNull();
+            expect(read).toHaveBeenCalledWith(anime.id + 100);
+            read.mockClear();
+            [0, -1, 1.5, '1', null, undefined].forEach((value) => {
+                expect(call(IPC.animeLibraryEntry, value)).toBeNull();
+            });
+            expect(read).not.toHaveBeenCalled();
+        });
     });
 
     describe('importLibrary', () => {
@@ -2098,6 +2136,7 @@ describe('registerAnimeHandlers where the section does not exist', () => {
         expect(ipc.call(IPC.animeCheckState)).toEqual({ running: false, origin: null, done: 0, total: 0, current: null });
         expect(ipc.call(IPC.animeCheckNew, null)).toEqual({ ok: false, error: { code: 'UNKNOWN', message: unsupported.raw } });
         expect(ipc.call(IPC.animeLibrary)).toEqual([]);
+        expect(ipc.call(IPC.animeLibraryEntry, 1)).toBeNull();
         expect(ipc.call(IPC.animeJobs)).toEqual([]);
         expect(ipc.call(IPC.animeQueueHeld)).toBe(false);
         expect(ipc.call(IPC.animeHistoryList)).toEqual([]);

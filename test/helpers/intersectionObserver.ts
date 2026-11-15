@@ -20,6 +20,10 @@ export function stubIntersectionObserver(): ObservedEnd[] {
             observe(target: Element): void {
                 this.record.target = target;
             }
+            // The cards of a list are watched too (see useOffscreenPause): one that goes away is let go.
+            unobserve(): void {
+                return undefined;
+            }
             disconnect(): void {
                 this.record.disconnected = true;
             }
@@ -44,4 +48,50 @@ export function seeEnd(observers: readonly ObservedEnd[]): void {
     act(() => {
         observer.callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
     });
+}
+
+export interface WatchedCards {
+    targets: Element[];
+    // The browser says each of these cards is (true) or is not (false) near the part of the list that is seen.
+    report: (entries: Array<[Element, boolean]>) => void;
+}
+
+// An IntersectionObserver that records every element it watches (the cards of a list, see useOffscreenPause) and lets the test say which
+// of them are in sight.
+export function stubCardObserver(): WatchedCards {
+    const watched: WatchedCards = {
+        targets: [],
+        report: () => {
+            return undefined;
+        }
+    };
+    vi.stubGlobal(
+        'IntersectionObserver',
+        class {
+            constructor(callback: IntersectionObserverCallback) {
+                watched.report = (entries) => {
+                    act(() => {
+                        callback(
+                            entries.map(([target, isIntersecting]) => {
+                                return { target, isIntersecting } as IntersectionObserverEntry;
+                            }),
+                            {} as IntersectionObserver
+                        );
+                    });
+                };
+            }
+            observe(target: Element): void {
+                watched.targets.push(target);
+            }
+            unobserve(target: Element): void {
+                watched.targets = watched.targets.filter((element) => {
+                    return element !== target;
+                });
+            }
+            disconnect(): void {
+                watched.targets = [];
+            }
+        }
+    );
+    return watched;
 }

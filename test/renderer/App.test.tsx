@@ -106,11 +106,26 @@ describe('App', () => {
         expect(screen.getByRole('button', { name: 'UPDATE TO 0.2.0' })).toBeInTheDocument();
     });
 
+    it('marks the page while the window is minimized, and unmarks it when it comes back', async () => {
+        render(<App />);
+        await openDownloader();
+        expect(document.documentElement.hasAttribute('data-window-minimized')).toBe(false);
+        act(() => {
+            mock.emitWindowMinimized(true);
+        });
+        expect(document.documentElement.getAttribute('data-window-minimized')).toBe('');
+        act(() => {
+            mock.emitWindowMinimized(false);
+        });
+        expect(document.documentElement.hasAttribute('data-window-minimized')).toBe(false);
+    });
+
     it('unsubscribes from events on unmount', async () => {
         const { unmount } = render(<App />);
         await openDownloader();
         unmount();
-        expect(mock.unsubscribers).toHaveLength(6);
+        // The events of the app, the minimizing of the window among them.
+        expect(mock.unsubscribers).toHaveLength(7);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
@@ -134,7 +149,7 @@ describe('App', () => {
         unmount();
         release();
         await waitFor(() => {
-            expect(mock.unsubscribers).toHaveLength(6);
+            expect(mock.unsubscribers).toHaveLength(7);
         });
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -485,7 +500,7 @@ describe('App anime section', () => {
         const { unmount } = render(<App />);
         await screen.findByRole('button', { name: 'ANIME' });
         unmount();
-        expect(mock.unsubscribers).toHaveLength(16);
+        expect(mock.unsubscribers).toHaveLength(18);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
@@ -574,8 +589,9 @@ describe('App manga section', () => {
         await screen.findByRole('button', { name: 'MANGA' });
         const before = mock.unsubscribers.length;
         unmount();
-        // Every event of the app and of the manga section, now without the download of a newer manga server (it is not updated from the app).
-        expect(before).toBe(15);
+        // Every event of the app (the minimizing of the window among them) and of the manga section (one manga of the library that changed
+        // among them), now without the download of a newer manga server (it is not updated from the app).
+        expect(before).toBe(17);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });

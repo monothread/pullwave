@@ -46,6 +46,7 @@ import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources, 
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
 import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
 import { useAppStore } from './appStore';
+import { libraryEntryRefresh, withEntry } from './libraryEntryRefresh';
 import { mangaListKey, useSortPrefsStore } from './sortPrefsStore';
 
 export type MangaView = 'browse' | 'search' | 'updates' | 'library' | 'history' | 'extensions' | 'settings' | 'downloads';
@@ -432,6 +433,24 @@ function summaryOf(selection: MangaSelection): MangaSummary {
 }
 
 export const useMangaStore = create<MangaState>((set, get) => {
+    // One manga of the library read alone when only it changed (a chapter of it started or ended), see libraryEntryRefresh.
+    const refreshLibraryEntry = libraryEntryRefresh<LibraryManga>({
+        read: (mangaId) => {
+            return window.api.manga.libraryEntry(mangaId);
+        },
+        current: () => {
+            return get().library;
+        },
+        put: (entry) => {
+            set((state) => {
+                return { library: withEntry(state.library, entry) };
+            });
+        },
+        refreshAll: () => {
+            return get().refreshLibrary();
+        }
+    });
+
     function patchBrowse(patch: Partial<MangaBrowseState>): void {
         set((state) => {
             return { browse: { ...state.browse, ...patch } };
@@ -567,6 +586,12 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 }),
                 api.onLibraryChanged(() => {
                     void get().refreshLibrary();
+                    if (get().view === 'updates') {
+                        void get().loadUpdates();
+                    }
+                }),
+                api.onLibraryEntryChanged((mangaId) => {
+                    void refreshLibraryEntry(mangaId);
                     if (get().view === 'updates') {
                         void get().loadUpdates();
                     }

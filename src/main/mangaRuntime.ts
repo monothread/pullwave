@@ -233,6 +233,13 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         fetchImage: createImageFetcher({ baseUrl, fetchImpl: options.fetchImpl })
     });
     const send = options.send;
+    // The screen reads the whole library again, or only the manga that changed.
+    const notifyLibraryChanged = (): void => {
+        send(IPC.eventMangaLibrary);
+    };
+    const notifyLibraryEntryChanged = (mangaId: number): void => {
+        send(IPC.eventMangaLibraryEntry, mangaId);
+    };
     const queue = new MangaDownloadQueue({
         db,
         download: (downloadOptions) => {
@@ -255,9 +262,8 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         onJobUpdate: (job) => {
             send(IPC.eventMangaJob, job);
         },
-        onLibraryChanged: () => {
-            send(IPC.eventMangaLibrary);
-        },
+        onLibraryChanged: notifyLibraryChanged,
+        onLibraryEntryChanged: notifyLibraryEntryChanged,
         onHeldChange: (held) => {
             send(IPC.eventMangaQueueHeld, held);
         }
@@ -306,9 +312,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             return downloader.repair(repairOptions, signal);
         },
         pathExists: existsSync,
-        onLibraryChanged: () => {
-            send(IPC.eventMangaLibrary);
-        }
+        onLibraryEntryChanged: notifyLibraryEntryChanged
     });
     const updates = new MangaToolUpdates({
         flaresolverrFile,
@@ -373,9 +377,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             });
             return outcome.ok ? { ...outcome, destination: chosen } : outcome;
         },
-        onLibraryChanged: () => {
-            send(IPC.eventMangaLibrary);
-        }
+        onLibraryChanged: notifyLibraryChanged
     };
     // Looks, once an hour, for chapters the sources have published for the mangas of the library, and puts them in the library.
     const checker = new MangaUpdateChecker({
@@ -411,9 +413,7 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         onNewChapters: (news) => {
             send(IPC.eventMangaNewChapters, news);
         },
-        onLibraryChanged: () => {
-            send(IPC.eventMangaLibrary);
-        },
+        onLibraryChanged: notifyLibraryChanged,
         onProgress: (state) => {
             send(IPC.eventMangaCheckState, state);
         }

@@ -37,6 +37,9 @@ export interface AnimeQueueDependencies {
     repairVideo?: (path: string) => Promise<RepairResult>;
     onJobUpdate: (job: AnimeJob) => void;
     onLibraryChanged: () => void;
+    // Only this anime changed (an episode of it started, ended, was repaired or had its audio checked): the screen asks for it alone, not for
+    // the whole library again (every anime with every episode, a look at the disk for each downloaded one).
+    onLibraryEntryChanged: (animeId: number) => void;
     // The queue was held (by PAUSE ALL) or let go (by RESUME ALL).
     onHeldChange?: (held: boolean) => void;
     // Deletes a folder with what is in it (the folder of an episode whose download was cancelled, removed or cut short by closing the app).
@@ -164,7 +167,8 @@ export class AnimeDownloadQueue {
         }
         this.tries.delete(episodeId);
         this.queueEpisode(anime, this.deps.db.ensureEpisode(anime.id, episode.number));
-        this.deps.onLibraryChanged();
+        // Only its anime changed: RESUME ALL retries every paused episode, one whole library each was a flood.
+        this.deps.onLibraryEntryChanged(anime.id);
         this.pump();
     }
 
@@ -179,7 +183,8 @@ export class AnimeDownloadQueue {
         }
         this.deps.db.markForRedownload(episodeId);
         this.queueEpisode(anime, this.deps.db.ensureEpisode(anime.id, episode.number));
-        this.deps.onLibraryChanged();
+        // Only its anime changed (DOWNLOAD ALL AGAIN queues one episode after the other).
+        this.deps.onLibraryEntryChanged(anime.id);
         this.pump();
     }
 
@@ -299,7 +304,8 @@ export class AnimeDownloadQueue {
         this.tries.delete(episodeId);
         this.deps.db.markFailed(episodeId, 'cancelled', null);
         this.update(job, { status: 'cancelled' });
-        this.deps.onLibraryChanged();
+        // Only its anime changed (cancelling an anime cancels each of its waiting episodes).
+        this.deps.onLibraryEntryChanged(job.animeId);
     }
 
     // A paused episode is not finished: it stays, so it can still go on or be cancelled.
@@ -510,14 +516,14 @@ export class AnimeDownloadQueue {
             this.deps.ensureDirectory(downloadDir);
         } catch (error) {
             this.finishWithError(job, { code: 'UNKNOWN', raw: error instanceof Error ? error.message : String(error) });
-            this.deps.onLibraryChanged();
+            this.deps.onLibraryEntryChanged(job.animeId);
             return false;
         }
         db.markDownloading(job.episodeId);
         this.lastReported.delete(job.episodeId);
         this.currentParts.delete(job.episodeId);
         this.update(job, { status: 'running', postProcess: null, postProcessSteps: [] });
-        this.deps.onLibraryChanged();
+        this.deps.onLibraryEntryChanged(job.animeId);
         const handle = this.deps.download({
             query: anime.query,
             index: anime.searchIndex,
@@ -568,7 +574,7 @@ export class AnimeDownloadQueue {
             if (job.status !== 'queued') {
                 this.startsWhileHeld.delete(job.episodeId);
             }
-            this.deps.onLibraryChanged();
+            this.deps.onLibraryEntryChanged(job.animeId);
             this.pump();
         });
         return true;
@@ -665,18 +671,18 @@ export class AnimeDownloadQueue {
         this.update(job, { status: 'done', percent: 100, speed: '', eta: '', postProcess: null });
         // The screen of the downloads is for what is going on or went wrong: a download that is complete is in the library.
         this.jobs.delete(job.episodeId);
-        void this.afterDownload(job.episodeId, path);
+        void this.afterDownload(job.animeId, job.episodeId, path);
     }
 
     // What is done with a video once it is in the library, one thing after the other (the audio is looked at in the file that is left).
-    private async afterDownload(episodeId: number, path: string): Promise<void> {
-        await this.repairVideo(episodeId, path);
-        await this.checkAudio(episodeId, path);
+    private async afterDownload(animeId: number, episodeId: number, path: string): Promise<void> {
+        await this.repairVideo(animeId, episodeId, path);
+        await this.checkAudio(animeId, episodeId, path);
     }
 
     // A video that is hidden behind a picture is repaired in place, and the library gets the new size. It does not wait for the repair, and one
     // that cannot be made leaves the episode as it is (the check of the library lists it as one that cannot be read).
-    private async repairVideo(episodeId: number, path: string): Promise<void> {
+    private async repairVideo(animeId: number, episodeId: number, path: string): Promise<void> {
         if (!this.deps.repairVideo) {
             return;
         }
@@ -684,7 +690,7 @@ export class AnimeDownloadQueue {
             const result = await this.deps.repairVideo(path);
             if (result.status === 'repaired') {
                 this.deps.db.updateFileSize(episodeId, path, result.sizeBytes);
-                this.deps.onLibraryChanged();
+                this.deps.onLibraryEntryChanged(animeId);
             }
         } catch {
             // The repair is only a help: when it fails the episode is as it was.
@@ -694,7 +700,7 @@ export class AnimeDownloadQueue {
     // Looks for the audio of a video that was downloaded, once, after the episode is in the library (it does not wait for the check, and a
     // check that cannot be made leaves the episode as it is, to be looked at when the user asks). A video with no audio is marked, which the
     // library shows on its row.
-    private async checkAudio(episodeId: number, path: string): Promise<void> {
+    private async checkAudio(animeId: number, episodeId: number, path: string): Promise<void> {
         if (!this.deps.hasAudio) {
             return;
         }
@@ -702,7 +708,7 @@ export class AnimeDownloadQueue {
             const hasAudio = await this.deps.hasAudio(path);
             if (hasAudio !== null) {
                 this.deps.db.markAudioChecked(episodeId, path, hasAudio);
-                this.deps.onLibraryChanged();
+                this.deps.onLibraryEntryChanged(animeId);
             }
         } catch {
             // The check is only a help: when it fails (ffmpeg is not there, the database was closed with the app) the episode is as it was.

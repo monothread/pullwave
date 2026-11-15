@@ -11,6 +11,7 @@ import { createTranslator } from '../i18n/catalogs';
 import { resolveAppLanguage } from '../i18n/language';
 import { downloadedEpisodeCount, groupLibrary, isRepairable, libraryEntry, libraryProblems, nextListedEpisode, type AudioReport } from '../components/animeText';
 import { useAppStore } from './appStore';
+import { libraryEntryRefresh, withEntry } from './libraryEntryRefresh';
 import { createDoneLinger } from './doneLinger';
 import { animeListKey, useSortPrefsStore } from './sortPrefsStore';
 import { activitiesOf, updatesOf, upsertSubtitleActivity, type SubtitleActivity } from './subtitleActivity';
@@ -333,6 +334,24 @@ function initialSchedule(): AnimeScheduleState {
 }
 
 export const useAnimeStore = create<AnimeState>((set, get) => {
+    // One anime of the library read alone when only it changed (an episode of it started, ended or was checked), see libraryEntryRefresh.
+    const refreshLibraryEntry = libraryEntryRefresh<LibraryAnime>({
+        read: (animeId) => {
+            return window.api.getAnimeLibraryEntry(animeId);
+        },
+        current: () => {
+            return get().library;
+        },
+        put: (entry) => {
+            set((state) => {
+                return { library: withEntry(state.library, entry) };
+            });
+        },
+        refreshAll: () => {
+            return get().refreshLibrary();
+        }
+    });
+
     return {
         status: UNSUPPORTED_STATUS,
         migration: null,
@@ -418,6 +437,12 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 }),
                 api.onAnimeLibraryChanged(() => {
                     void get().refreshLibrary();
+                    if (get().view === 'updates') {
+                        void get().loadUpdates();
+                    }
+                }),
+                api.onAnimeLibraryEntryChanged((animeId) => {
+                    void refreshLibraryEntry(animeId);
                     if (get().view === 'updates') {
                         void get().loadUpdates();
                     }

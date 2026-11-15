@@ -52,6 +52,7 @@ import { TrayManager } from './services/trayManager';
 import { createMediaHandler, defaultMediaFileSystem } from './services/mediaProtocol';
 import { createQuitRequester, decideCloseAction, describePending } from './services/windowClose';
 import { runYtdlpLiveAware } from './services/liveHlsRunner';
+import { watchMinimized } from './services/windowMinimized';
 
 const APP_ID = 'dev.lucas.pullwave';
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
@@ -207,9 +208,16 @@ function createWindow(options: { hidden: boolean }): BrowserWindow {
         maximizeUnlessTesting(window);
     }
     window.on('close', handleWindowClose);
+    const minimizedWatch = watchMinimized(window, (minimized) => {
+        if (!window.isDestroyed()) {
+            window.webContents.send(IPC.eventWindowMinimized, minimized);
+        }
+    });
     // A page loaded again has no window of the logs open: nothing is sent to it until it asks.
     window.webContents.on('did-finish-load', () => {
         logWatchers?.stopAll();
+        // A page loaded (again) while the window is minimized starts as if it were not: it is told the state as it is.
+        minimizedWatch.resend();
     });
     if (diagnosticLog) {
         attachWindowDiagnostics(window.webContents, diagnosticLog, { onBridgeMissing: warnAboutMissingBridge });

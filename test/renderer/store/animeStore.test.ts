@@ -90,7 +90,8 @@ describe('init', () => {
         });
 
         dispose();
-        expect(mock.unsubscribers).toHaveLength(10);
+        // Every event of the section, one anime of the library that changed among them.
+        expect(mock.unsubscribers).toHaveLength(11);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
@@ -2432,6 +2433,24 @@ describe('the schedule', () => {
                 dispose();
             });
 
+            it('reloads the list of updates when one anime changes while the updates are on the screen, and not on another screen', async () => {
+                mock.api.listAnimeUpdates.mockResolvedValue([ENTRY]);
+                mock.api.getAnimeLibraryEntry.mockResolvedValue(null);
+                const dispose = await useAnimeStore.getState().init();
+                mock.api.listAnimeUpdates.mockClear();
+                mock.emitAnimeLibraryEntryChanged(1);
+                await vi.waitFor(() => {
+                    expect(mock.api.listAnimeUpdates).toHaveBeenCalledTimes(1);
+                });
+                useAnimeStore.setState({ view: 'library' });
+                mock.emitAnimeLibraryEntryChanged(1);
+                await vi.waitFor(() => {
+                    expect(mock.api.getAnimeLibraryEntry).toHaveBeenCalledTimes(2);
+                });
+                expect(mock.api.listAnimeUpdates).toHaveBeenCalledTimes(1);
+                dispose();
+            });
+
             it('does not reload the list of updates when the library changes on another screen', async () => {
                 useAnimeStore.setState({ view: 'library' });
                 const dispose = await useAnimeStore.getState().init();
@@ -2627,5 +2646,61 @@ describe('the schedule refresh', () => {
         expect(mock.api.listAnimeSchedule.mock.calls.map((call) => {
             return (call[0] as { refresh: boolean }).refresh;
         })).toEqual([false, false, true]);
+    });
+});
+
+describe('one anime of the library that changed', () => {
+    const NARUTO = makeAnime([makeEpisode({ id: 1, number: '1', status: 'queued' })], { id: 1, title: 'Naruto' });
+    const BLEACH = makeAnime([makeEpisode({ id: 2, number: '1', status: 'done' })], { id: 2, title: 'Bleach' });
+    const NARUTO_DONE = makeAnime([makeEpisode({ id: 1, number: '1', status: 'done' })], { id: 1, title: 'Naruto' });
+
+    async function started(): Promise<() => void> {
+        mock.api.getAnimeStatus.mockResolvedValue(makeStatus());
+        mock.api.listAnimeLibrary.mockResolvedValue([NARUTO, BLEACH]);
+        const dispose = await useAnimeStore.getState().init();
+        await vi.waitFor(() => {
+            expect(useAnimeStore.getState().library).toEqual([NARUTO, BLEACH]);
+        });
+        mock.api.listAnimeLibrary.mockClear();
+        return dispose;
+    }
+
+    it('reads that anime alone and puts it in its place, the others as they were, without reading the whole library', async () => {
+        const dispose = await started();
+        const before = useAnimeStore.getState().library;
+        mock.api.getAnimeLibraryEntry.mockResolvedValue(NARUTO_DONE);
+        mock.emitAnimeLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(useAnimeStore.getState().library).toEqual([NARUTO_DONE, BLEACH]);
+        });
+        expect(mock.api.getAnimeLibraryEntry.mock.calls).toEqual([[1]]);
+        expect(mock.api.listAnimeLibrary).not.toHaveBeenCalled();
+        expect(useAnimeStore.getState().library[1]).toBe(before[1]);
+        dispose();
+    });
+
+    it('reads the whole library when the anime is no longer in it', async () => {
+        const dispose = await started();
+        mock.api.getAnimeLibraryEntry.mockResolvedValue(null);
+        mock.api.listAnimeLibrary.mockResolvedValue([BLEACH]);
+        mock.emitAnimeLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(useAnimeStore.getState().library).toEqual([BLEACH]);
+        });
+        expect(mock.api.getAnimeLibraryEntry.mock.calls).toEqual([[1]]);
+        expect(mock.api.listAnimeLibrary).toHaveBeenCalledTimes(1);
+        dispose();
+    });
+
+    it('reads the whole library when the anime cannot be read alone', async () => {
+        const dispose = await started();
+        mock.api.getAnimeLibraryEntry.mockRejectedValueOnce(new Error('gone'));
+        mock.api.listAnimeLibrary.mockResolvedValue([NARUTO_DONE, BLEACH]);
+        mock.emitAnimeLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(useAnimeStore.getState().library).toEqual([NARUTO_DONE, BLEACH]);
+        });
+        expect(mock.api.listAnimeLibrary).toHaveBeenCalledTimes(1);
+        dispose();
     });
 });

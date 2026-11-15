@@ -10,7 +10,7 @@ import { makeAnimeJob } from '../../helpers/animeFixtures';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openErrorDialog } from '../../helpers/errorDialog';
-import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
+import { seeEnd, stubCardObserver, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
 
 let mock: MockApiHandle;
 const initialApp = useAppStore.getState();
@@ -531,5 +531,26 @@ describe('AnimeJobs with a long queue', () => {
         seeEnd(observers);
         expect(headings()).toEqual(titles(70));
         expect(screen.queryByTestId('list-more')).not.toBeInTheDocument();
+    });
+});
+
+describe('AnimeJobs cards out of sight', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('watches every card and marks only the ones out of sight, so their animations wait', () => {
+        const watched = stubCardObserver();
+        useAnimeStore.setState({
+            jobs: [makeAnimeJob({ episodeId: 1, episode: '1', status: 'running' }), makeAnimeJob({ episodeId: 2, episode: '2', status: 'queued' })]
+        });
+        render(<AnimeJobs />);
+        const cards = screen.getAllByTestId('anime-job');
+        expect(watched.targets.filter((target) => {
+            return cards.includes(target as HTMLElement);
+        })).toEqual(cards);
+        watched.report([[cards[0]!, true], [cards[1]!, false]]);
+        expect(cards[0]).not.toHaveAttribute('data-offscreen');
+        expect(cards[1]).toHaveAttribute('data-offscreen', '');
     });
 });

@@ -1721,7 +1721,9 @@ body::after {
 .reader__stage--height .reader__img { height: calc(100vh / var(--ui-zoom, 1) - 160px); width: auto; max-width: 100%; object-fit: contain; }
 .reader__stage--screen .reader__img { max-width: 100%; max-height: calc(100vh / var(--ui-zoom, 1) - 160px); width: auto; height: auto; object-fit: contain; }
 .reader__stage--original .reader__img { max-width: none; width: auto; height: auto; }
-.reader__stage--original { overflow: auto; align-items: flex-start; }
+/* The page at its own size in the middle of the room; a page wider than the room starts at its left edge instead (`safe`), so the scroll reaches
+   all of it (centred, its left part would be cut where no scroll goes). */
+.reader__stage--original { overflow: auto; align-items: safe center; }
 /* Two pages side by side (the option of the reader, single page mode): the pair is a row as wide as the stage, the first page on the side the
    reading starts from (the other way round when it goes from the right: a manga). Each page takes half of the row, whatever the scale; a page
    that is alone (a wide one, or the last) is like the pages of the single page mode. */

@@ -24,6 +24,7 @@ Desktop app for Linux and Windows (Electron + React + TypeScript) with a cyberpu
 | `DESIGN.md` | Map of every feature, the console design system, keyboard and gamepad navigation, how the design is verified |
 | `RELEASING.md` | How to publish a version and how the app updates itself |
 | `screenshots/` | The images of the README, made by `npm run screenshots` (D-144) |
+| `PERFORMANCE.md` | The memory and GPU review: how it was measured, what was proved and fixed, what was not (D-200) |
 | `LOG.md` | Chronological session diary (append-only) |
 
 ## Golden rule

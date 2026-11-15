@@ -132,7 +132,7 @@ function registerUnsupported(ipcMain: IpcMainLike): void {
             return unsupported;
         });
     });
-    [IPC.mangaAddToLibrary, IPC.mangaDownload].forEach((channel) => {
+    [IPC.mangaAddToLibrary, IPC.mangaDownload, IPC.mangaLibraryEntry].forEach((channel) => {
         ipcMain.handle(channel, () => {
             return null;
         });
@@ -357,6 +357,11 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             });
         }
         return library.map(present);
+    });
+    ipcMain.handle(IPC.mangaLibraryEntry, (_event, mangaId: unknown): LibraryManga | null => {
+        const id = asId(mangaId);
+        const manga = id === null ? null : db.getLibraryManga(id);
+        return manga === null ? null : present(manga);
     });
     ipcMain.handle(IPC.mangaJobs, (): MangaJob[] => {
         return queue.list();

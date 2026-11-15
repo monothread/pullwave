@@ -20,6 +20,7 @@ import { useSearchShortcuts } from './hooks/useSearchShortcuts';
 import { useSectionTabShortcuts } from './hooks/useSectionTabShortcuts';
 import { useSpatialNavigation } from './hooks/useSpatialNavigation';
 import { useUiSounds } from './hooks/useUiSounds';
+import { useWindowMinimized } from './hooks/useWindowMinimized';
 import { withViewTransition } from './navigation/viewTransition';
 import { playUiSound } from './sound/uiSound';
 import { useUiPrefsStore } from './store/uiPrefsStore';
@@ -39,6 +40,7 @@ export function App() {
     useMouseNavigation();
     useSpatialNavigation();
     useUiSounds();
+    useWindowMinimized();
     useSearchShortcuts();
     useSectionTabShortcuts();
     useMainSectionShortcuts();

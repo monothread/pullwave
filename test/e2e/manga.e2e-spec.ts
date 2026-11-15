@@ -44,6 +44,8 @@ class FakeSuwayomi {
     imageDelayMs = 0;
     // The pages are real pictures a page can show (the reader needs them; the downloads only look at the bytes).
     pagesArePicture = false;
+    // The pages are pictures this many pixels wide (and 300 high) instead of one pixel, to see where a page stands in the reader.
+    pageWidth: number | null = null;
     // How many pages the chapters have.
     pageTotal = 3;
     // Addresses that answer with an error, and how many times they do before they answer well (the next pages are asked for ahead of time too).
@@ -275,6 +277,11 @@ class FakeSuwayomi {
             return;
         }
         const isCover = path.endsWith('/thumbnail') || path.endsWith('/icon');
+        if (!isCover && this.pagesArePicture && this.pageWidth !== null) {
+            response.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+            response.end(`<svg xmlns="http://www.w3.org/2000/svg" width="${String(this.pageWidth)}" height="300"><rect width="100%" height="100%" fill="#888"/></svg>`);
+            return;
+        }
         const picture = isCover || this.pagesArePicture;
         response.writeHead(200, { 'Content-Type': picture ? 'image/png' : 'image/jpeg' });
         response.end(picture ? COVER : JPEG);
@@ -3211,6 +3218,69 @@ test.describe('manga section', () => {
                 expect(picture).toEqual({ width: 1, height: 1 });
             });
             await expect(reader.locator('.reader__loading-page')).toHaveCount(0, { timeout: 15000 });
+        });
+    }
+
+    for (const mode of ['single', 'vertical'] as const) {
+        // Where the first page stands in the room of the pages at their own size: its left and right edges against the inner edges of the room
+        // (inside the padding and the border), and how far the room scrolls sideways.
+        const placeOfFirstPage = async (page: Page): Promise<{ leftGap: number; rightGap: number; scrollable: number }> => {
+            return page.evaluate(() => {
+                const room = document.querySelector<HTMLElement>('.reader__stage--original')!;
+                const picture = room.querySelector('.reader__img')!.getBoundingClientRect();
+                const box = room.getBoundingClientRect();
+                const style = getComputedStyle(room);
+                const inner = (side: 'left' | 'right'): number => {
+                    return parseFloat(style.getPropertyValue(`border-${side}-width`)) + parseFloat(style.getPropertyValue(`padding-${side}`));
+                };
+                return {
+                    leftGap: Math.round(picture.left - (box.left + inner('left'))),
+                    rightGap: Math.round(box.right - inner('right') - (room.offsetWidth - room.clientWidth - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth)) - picture.right),
+                    scrollable: room.scrollWidth - room.clientWidth
+                };
+            });
+        };
+
+        const openAtOwnSize = async (pageWidth: number): Promise<Page> => {
+            fake.pagesArePicture = true;
+            fake.pageWidth = pageWidth;
+            session = await launch();
+            await openManga(session.page);
+            await installExtension(session.page);
+            await openOnePiece(session.page);
+            await session.page.evaluate((chosenMode) => {
+                window.localStorage.setItem('pullwave.manga.reader', JSON.stringify({ mode: chosenMode, scale: 'original' }));
+            }, mode);
+            await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+            const picture = session.page.getByRole('region', { name: 'Reader' }).getByRole('img').first();
+            await expect.poll(() => {
+                return picture.evaluate((element: HTMLImageElement) => {
+                    return element.complete ? element.naturalWidth : 0;
+                });
+            }).toBe(pageWidth);
+            return session.page;
+        };
+
+        test(`puts a page at its own size narrower than the room in the middle of it (${mode})`, async () => {
+            const page = await openAtOwnSize(400);
+            const place = await placeOfFirstPage(page);
+            expect(place.scrollable).toBe(0);
+            expect(place.leftGap).toBeGreaterThan(100);
+            expect(Math.abs(place.leftGap - place.rightGap)).toBeLessThanOrEqual(1);
+        });
+
+        test(`starts a page at its own size wider than the room at its left edge, and scrolls sideways to its right edge (${mode})`, async () => {
+            const page = await openAtOwnSize(4000);
+            const start = await placeOfFirstPage(page);
+            expect(start.leftGap).toBe(0);
+            expect(start.scrollable).toBeGreaterThan(2000);
+            await page.evaluate(() => {
+                const room = document.querySelector<HTMLElement>('.reader__stage--original')!;
+                room.scrollLeft = room.scrollWidth;
+            });
+            await expect.poll(async () => {
+                return (await placeOfFirstPage(page)).rightGap;
+            }).toBe(0);
         });
     }
 

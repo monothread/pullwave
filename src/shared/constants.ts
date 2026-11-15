@@ -46,6 +46,7 @@ export const IPC = {
     animeAddToLibrary: 'anime:add-to-library',
     animeDownloadMissing: 'anime:download-missing',
     animeLibrary: 'anime:library',
+    animeLibraryEntry: 'anime:library-entry',
     animeJobs: 'anime:jobs',
     animeCancel: 'anime:cancel',
     animeRetry: 'anime:retry',
@@ -124,6 +125,7 @@ export const IPC = {
     mangaDownload: 'manga:download',
     mangaDownloadMissing: 'manga:download-missing',
     mangaLibrary: 'manga:library',
+    mangaLibraryEntry: 'manga:library-entry',
     mangaJobs: 'manga:jobs',
     mangaCancel: 'manga:cancel',
     mangaRetry: 'manga:retry',
@@ -172,9 +174,11 @@ export const IPC = {
     eventMangaJob: 'event:manga-job',
     eventMangaQueueHeld: 'event:manga-queue-held',
     eventMangaLibrary: 'event:manga-library',
+    eventMangaLibraryEntry: 'event:manga-library-entry',
     eventAnimeJob: 'event:anime-job',
     eventAnimeQueueHeld: 'event:anime-queue-held',
     eventAnimeLibrary: 'event:anime-library',
+    eventAnimeLibraryEntry: 'event:anime-library-entry',
     eventAnimeMigration: 'event:anime-migration',
     eventSubtitleTranslation: 'event:subtitle-translation',
     eventSubtitleGeneration: 'event:subtitle-generation',
@@ -189,7 +193,8 @@ export const IPC = {
     eventProgramUpdate: 'event:program-update',
     eventJobRemoved: 'event:job-removed',
     eventHistoryChanged: 'event:history-changed',
-    eventAppUpdateState: 'event:app-update-state'
+    eventAppUpdateState: 'event:app-update-state',
+    eventWindowMinimized: 'event:window-minimized'
 } as const;
 
 // The scheme the pictures of the videos being downloaded are served on, from memory: `pullwave-thumb://job/<id>?v=<n>`.

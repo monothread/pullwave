@@ -17,6 +17,13 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
     };
 }
 
+// Whether the window is minimized, as the main process last said. It is kept from before the page listens: the main process tells it as soon
+// as the page is loaded, which can be before the page subscribes.
+let windowMinimized = false;
+ipcRenderer.on(IPC.eventWindowMinimized, (_event: IpcRendererEvent, minimized: boolean) => {
+    windowMinimized = minimized;
+});
+
 const manga: CyberApi['manga'] = {
     status: () => {
         return ipcRenderer.invoke(IPC.mangaStatus);
@@ -80,6 +87,9 @@ const manga: CyberApi['manga'] = {
     },
     library: () => {
         return ipcRenderer.invoke(IPC.mangaLibrary);
+    },
+    libraryEntry: (mangaId) => {
+        return ipcRenderer.invoke(IPC.mangaLibraryEntry, mangaId);
     },
     jobs: () => {
         return ipcRenderer.invoke(IPC.mangaJobs);
@@ -226,6 +236,9 @@ const manga: CyberApi['manga'] = {
         return subscribe<undefined>(IPC.eventMangaLibrary, () => {
             listener();
         });
+    },
+    onLibraryEntryChanged: (listener) => {
+        return subscribe<number>(IPC.eventMangaLibraryEntry, listener);
     }
 };
 
@@ -401,6 +414,9 @@ const api: CyberApi = {
     },
     listAnimeLibrary: () => {
         return ipcRenderer.invoke(IPC.animeLibrary);
+    },
+    getAnimeLibraryEntry: (animeId) => {
+        return ipcRenderer.invoke(IPC.animeLibraryEntry, animeId);
     },
     listAnimeHistory: () => {
         return ipcRenderer.invoke(IPC.animeHistoryList);
@@ -584,6 +600,9 @@ const api: CyberApi = {
             listener();
         });
     },
+    onAnimeLibraryEntryChanged: (listener) => {
+        return subscribe<number>(IPC.eventAnimeLibraryEntry, listener);
+    },
     onAnimeMigrationProgress: (listener) => {
         return subscribe<AnimeMigrationProgress>(IPC.eventAnimeMigration, listener);
     },
@@ -612,6 +631,13 @@ const api: CyberApi = {
         return subscribe<undefined>(IPC.eventHistoryChanged, () => {
             listener();
         });
+    },
+    onWindowMinimized: (listener) => {
+        // A page that subscribes while the window is already minimized learns it at once.
+        if (windowMinimized) {
+            listener(true);
+        }
+        return subscribe<boolean>(IPC.eventWindowMinimized, listener);
     }
 };
 

@@ -59,6 +59,7 @@ const MANGA_CHANNELS = [
     IPC.mangaRenameSeries,
     IPC.mangaSetSeries,
     IPC.mangaLibrary,
+    IPC.mangaLibraryEntry,
     IPC.mangaList,
     IPC.mangaOpenFolder,
     IPC.mangaPause,
@@ -118,6 +119,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     const opened: string[] = [];
     const sites: string[] = [];
     const libraryChanges = { count: 0 };
+    const entryChanges: number[] = [];
     const queue = new MangaDownloadQueue({
         db,
         download: (downloadOptions): ChapterDownloadHandle => {
@@ -140,6 +142,9 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         onJobUpdate: () => {return undefined},
         onLibraryChanged: () => {
             libraryChanges.count += 1;
+        },
+        onLibraryEntryChanged: (mangaId) => {
+            entryChanges.push(mangaId);
         },
         onHeldChange: () => {
             return undefined;
@@ -283,7 +288,7 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
     };
     const ipc = makeIpc();
     registerMangaHandlers(ipc.ipcMain, deps);
-    return { ...ipc, db, queue, service, reader, repair, downloads, removedFiles, opened, sites, libraryChanges, updates, covers, coverRequests, checks, presented };
+    return { ...ipc, db, queue, service, reader, repair, downloads, removedFiles, opened, sites, libraryChanges, entryChanges, updates, covers, coverRequests, checks, presented };
 }
 
 afterEach(() => {
@@ -332,6 +337,7 @@ describe('registerMangaHandlers', () => {
         expect(ipc.call(IPC.mangaHelperRemove)).toBeUndefined();
         expect(ipc.call(IPC.mangaAddToLibrary)).toBeNull();
         expect(ipc.call(IPC.mangaDownload)).toBeNull();
+        expect(ipc.call(IPC.mangaLibraryEntry, 1)).toBeNull();
         expect(ipc.call(IPC.mangaLibrary)).toEqual([]);
         expect(ipc.call(IPC.mangaJobs)).toEqual([]);
         expect(ipc.call(IPC.mangaQueueHeld)).toBe(false);
@@ -599,6 +605,34 @@ describe('the library channels', () => {
         db.upsertManga({ remoteId: 9, sourceId: '123', title: 'No cover', thumbnailUrl: null });
         call(IPC.mangaLibrary);
         expect(service.warmUp).not.toHaveBeenCalled();
+    });
+
+    it('gives one manga of the library with its cover completed with the server of the moment, and null for one that is not in it', () => {
+        const { call, db } = setup();
+        call(IPC.mangaAddToLibrary, REQUEST);
+        const [manga] = call(IPC.mangaLibrary) as LibraryManga[];
+        expect(call(IPC.mangaLibraryEntry, manga!.id)).toEqual(manga);
+        expect((call(IPC.mangaLibraryEntry, manga!.id) as LibraryManga).thumbnailUrl).toBe(`${BASE}/api/v1/manga/7/thumbnail`);
+        expect(call(IPC.mangaLibraryEntry, manga!.id + 100)).toBeNull();
+        expect(db.getLibraryManga(manga!.id + 100)).toBeNull();
+    });
+
+    it('gives null for a manga id that is not a whole positive number, without reading the library', () => {
+        const { call, db } = setup();
+        call(IPC.mangaAddToLibrary, REQUEST);
+        const read = vi.spyOn(db, 'getLibraryManga');
+        [0, -1, 1.5, '1', null, undefined, Number.NaN].forEach((value) => {
+            expect(call(IPC.mangaLibraryEntry, value)).toBeNull();
+        });
+        expect(read).not.toHaveBeenCalled();
+    });
+
+    it('tells the whole library once for the chapters queued, and only the manga of the chapter that started', () => {
+        const { call, entryChanges, libraryChanges } = setup();
+        call(IPC.mangaDownload, REQUEST);
+        const [manga] = call(IPC.mangaLibrary) as LibraryManga[];
+        expect(libraryChanges.count).toBe(1);
+        expect(entryChanges).toEqual([manga!.id]);
     });
 
     it('lists the jobs', () => {

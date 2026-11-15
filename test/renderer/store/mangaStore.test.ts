@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useFxStore } from '@renderer/fx/fxStore';
 import { DEFAULT_SETTINGS } from '@shared/constants';
-import type { MangaError, MangaFilter } from '@shared/manga';
+import type { LibraryManga, MangaError, MangaFilter } from '@shared/manga';
 import { useAppStore } from '@renderer/store/appStore';
 import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { DONE_JOB_LINGER_MS, UPDATE_ALL_KEY, upsertMangaJob, useMangaStore } from '@renderer/store/mangaStore';
@@ -71,7 +71,7 @@ describe('mangaStore init', () => {
         expect(mock.api.manga.status).toHaveBeenCalledTimes(2);
         unsubscribe();
         // Every event of the section but the download of a newer server, which is gone (the server is not updated from the app).
-        expect(mock.unsubscribers).toHaveLength(9);
+        expect(mock.unsubscribers).toHaveLength(10);
         mock.unsubscribers.forEach((fn) => {
             expect(fn).toHaveBeenCalledTimes(1);
         });
@@ -2076,6 +2076,182 @@ describe('mangaStore the list of new chapters', () => {
         expect(mock.api.manga.updates).not.toHaveBeenCalled();
         useMangaStore.setState({ view: 'updates' });
         mock.emitMangaLibraryChanged();
+        await vi.waitFor(() => {
+            expect(mock.api.manga.updates).toHaveBeenCalledTimes(1);
+        });
+    });
+});
+
+describe('mangaStore one manga of the library that changed', () => {
+    const ONE = makeLibraryManga([makeChapterRecord({ id: 11, status: 'queued' })], { id: 1, title: 'One Piece' });
+    const TWO = makeLibraryManga([makeChapterRecord({ id: 21, status: 'done' })], { id: 2, title: 'Bleach' });
+    const ONE_DONE = makeLibraryManga([makeChapterRecord({ id: 11, status: 'done' })], { id: 1, title: 'One Piece' });
+
+    async function started(): Promise<void> {
+        mock.api.manga.status.mockResolvedValue(makeMangaStatus());
+        mock.api.manga.library.mockResolvedValue([ONE, TWO]);
+        await state().init();
+        mock.api.manga.library.mockClear();
+        mock.api.manga.groups.mockClear();
+    }
+
+    it('reads that manga alone and puts it in its place, the others as they were, without reading the whole library', async () => {
+        await started();
+        const before = state().library;
+        mock.api.manga.libraryEntry.mockResolvedValue(ONE_DONE);
+        mock.emitMangaLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE_DONE, TWO]);
+        });
+        expect(mock.api.manga.libraryEntry).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.libraryEntry).toHaveBeenCalledWith(1);
+        expect(mock.api.manga.library).not.toHaveBeenCalled();
+        expect(mock.api.manga.groups).not.toHaveBeenCalled();
+        // The manga that did not change is the very same object, so what shows it is not drawn again.
+        expect(state().library[1]).toBe(before[1]);
+    });
+
+    it('reads the whole library when the manga is no longer in it', async () => {
+        await started();
+        mock.api.manga.libraryEntry.mockResolvedValue(null);
+        mock.api.manga.library.mockResolvedValue([TWO]);
+        mock.emitMangaLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([TWO]);
+        });
+        expect(mock.api.manga.libraryEntry).toHaveBeenCalledWith(1);
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.groups).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads the whole library when the manga is not in the library the screen has yet', async () => {
+        await started();
+        const THREE = makeLibraryManga([], { id: 3, title: 'Naruto' });
+        mock.api.manga.libraryEntry.mockResolvedValue(THREE);
+        mock.api.manga.library.mockResolvedValue([ONE, TWO, THREE]);
+        mock.emitMangaLibraryEntryChanged(3);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE, TWO, THREE]);
+        });
+        expect(mock.api.manga.libraryEntry).toHaveBeenCalledWith(3);
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads a manga once at a time: the changes told while it is read make one more read after it, not one each', async () => {
+        await started();
+        let answer: (value: LibraryManga | null) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.libraryEntry.mockImplementation(() => {
+            return new Promise((resolve) => {
+                answer = resolve;
+            });
+        });
+        mock.emitMangaLibraryEntryChanged(1);
+        mock.emitMangaLibraryEntryChanged(1);
+        mock.emitMangaLibraryEntryChanged(1);
+        expect(mock.api.manga.libraryEntry).toHaveBeenCalledTimes(1);
+        answer(ONE);
+        await vi.waitFor(() => {
+            expect(mock.api.manga.libraryEntry).toHaveBeenCalledTimes(2);
+        });
+        answer(ONE_DONE);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE_DONE, TWO]);
+        });
+        // Nothing more is read once the last change was read, however long it is waited for.
+        await new Promise((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(mock.api.manga.libraryEntry).toHaveBeenCalledTimes(2);
+    });
+
+    it('reads two mangas side by side and puts each in its place', async () => {
+        await started();
+        const TWO_DONE = makeLibraryManga([makeChapterRecord({ id: 21, status: 'done', sizeBytes: 9 })], { id: 2, title: 'Bleach' });
+        mock.api.manga.libraryEntry.mockImplementation(async (mangaId: number) => {
+            return mangaId === 1 ? ONE_DONE : TWO_DONE;
+        });
+        mock.emitMangaLibraryEntryChanged(1);
+        mock.emitMangaLibraryEntryChanged(2);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE_DONE, TWO_DONE]);
+        });
+        expect(mock.api.manga.libraryEntry.mock.calls).toEqual([[1], [2]]);
+        expect(mock.api.manga.library).not.toHaveBeenCalled();
+    });
+
+    it('reads the whole library when the manga was taken out of it while it was read', async () => {
+        await started();
+        let answer: (value: LibraryManga | null) => void = () => {
+            return undefined;
+        };
+        mock.api.manga.libraryEntry.mockImplementation(() => {
+            return new Promise((resolve) => {
+                answer = resolve;
+            });
+        });
+        mock.api.manga.library.mockResolvedValue([TWO]);
+        mock.emitMangaLibraryEntryChanged(1);
+        // The manga leaves the library before its answer comes.
+        useMangaStore.setState({ library: [TWO] });
+        answer(ONE_DONE);
+        await vi.waitFor(() => {
+            expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        });
+        expect(state().library).toEqual([TWO]);
+    });
+
+    it('reads the whole library when the manga cannot be read alone, and reads it alone again at the next change', async () => {
+        await started();
+        mock.api.manga.libraryEntry.mockRejectedValueOnce(new Error('gone'));
+        mock.api.manga.library.mockResolvedValue([ONE_DONE, TWO]);
+        mock.emitMangaLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE_DONE, TWO]);
+        });
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        const ONE_AGAIN = makeLibraryManga([makeChapterRecord({ id: 11, status: 'error' })], { id: 1, title: 'One Piece' });
+        mock.api.manga.libraryEntry.mockResolvedValue(ONE_AGAIN);
+        mock.emitMangaLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE_AGAIN, TWO]);
+        });
+        expect(mock.api.manga.libraryEntry.mock.calls).toEqual([[1], [1]]);
+        expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the library as it was when neither the manga nor the whole library can be read, and goes on at the next change', async () => {
+        await started();
+        const before = state().library;
+        mock.api.manga.libraryEntry.mockRejectedValueOnce(new Error('gone'));
+        mock.api.manga.library.mockRejectedValueOnce(new Error('down'));
+        mock.emitMangaLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+        });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 20);
+        });
+        expect(state().library).toBe(before);
+        mock.api.manga.libraryEntry.mockResolvedValue(ONE_DONE);
+        mock.emitMangaLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE_DONE, TWO]);
+        });
+    });
+
+    it('reads the list again when the screen is the list, and not otherwise', async () => {
+        await started();
+        mock.api.manga.libraryEntry.mockResolvedValue(ONE_DONE);
+        mock.api.manga.updates.mockClear();
+        mock.emitMangaLibraryEntryChanged(1);
+        await vi.waitFor(() => {
+            expect(state().library).toEqual([ONE_DONE, TWO]);
+        });
+        expect(mock.api.manga.updates).not.toHaveBeenCalled();
+        useMangaStore.setState({ view: 'updates' });
+        mock.emitMangaLibraryEntryChanged(1);
         await vi.waitFor(() => {
             expect(mock.api.manga.updates).toHaveBeenCalledTimes(1);
         });

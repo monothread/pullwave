@@ -108,6 +108,10 @@ Last updated: 2026-11-09 · **v0.25.17 published** (UPDATES and HISTORY as the c
 - yt-dlp args validated manually against the real yt-dlp (short download of the test video `jNQXAC9IVRw`).
 
 ## Pending / follow-ups
+- Performance (D-200, `PERFORMANCE.md`): not done because each changes the look and needs the owner's choice — the neon bars that are on
+  screen (the biggest cost left while downloads show), the light of the main button (measured not pixel-identical), the notices and
+  confetti while minimized. To watch: `-XX:TieredStopAtLevel=1` with sources that work the processor hard (not measured). Not measured on
+  Windows.
 - Manga (D-066 to D-079, released in 0.21.0): verified with a stand-in server and, for the filters and the 403 of the sites behind Cloudflare, against the real Suwayomi (MangaDex, Weeb Central, Mangakakalot, HentaiRead, ManhwaRead). Known limits: the pages of a HentaiRead chapter cannot be read (its pictures are `blob:` made by the page's scripts); the move to another source, the hourly check and the update of every extension were not run against the real Suwayomi; the program (Suwayomi) stays at the release the app pins (`SUWAYOMI_VERSION`, not updated from the settings since D-177) and a server left running when the app is killed is not looked for at the next start; the browser chosen for OPEN ON SITE was not tried on Windows; no `pullwave.json` for the manga (see D-079); the translations of the new texts were written by the assistant and should be read by a person who speaks each language.
 - Next, on its own branch, as asked: yt-dlp, ffmpeg and ani-cli downloaded when the app opens, with the app blocked until they are there (reverses D-013); `ToolInstaller` is written for it.
 - Anime (series, D-041): by default every download is now `<title>/Season 1/Episode M` (the series field is pre-filled), so a new anime and its later seasons end up side by side; what was downloaded before stays where it is. Nothing is grouped by itself; the 3rd season of Frieren must be joined by hand.

@@ -353,6 +353,13 @@ describe('createMangaRuntime downloading a chapter', () => {
         expect(sent.some((item) => {
             return item.channel === IPC.eventMangaLibrary;
         })).toBe(true);
+        // The start and the end of the chapter are told for its manga only.
+        expect(sent.filter((item) => {
+            return item.channel === IPC.eventMangaLibraryEntry;
+        })).toEqual([
+            { channel: IPC.eventMangaLibraryEntry, payload: library.id },
+            { channel: IPC.eventMangaLibraryEntry, payload: library.id }
+        ]);
     });
 
     it('tells the screen when the queue is held and let go', () => {
@@ -432,12 +439,19 @@ describe('createMangaRuntime downloading a chapter', () => {
         const libraryChanges = sent.filter((item) => {
             return item.channel === IPC.eventMangaLibrary;
         }).length;
+        const entriesBefore = sent.filter((item) => {
+            return item.channel === IPC.eventMangaLibraryEntry;
+        }).length;
         await expect(runtime!.handlers.repair.repair(chapter.id, 1)).resolves.toEqual({ ok: true, value: { missing: [] } });
         expect(requests.at(-1)).toBe(`${EXTERNAL}/api/v1/manga/7/chapter/1/page/1`);
         expect(runtime!.db.getChapter(chapter.id)).toMatchObject({ status: 'done', filePath: chapter.filePath, pageCount: 2 });
+        // The repair tells the screen the manga of the chapter only, not the whole library.
         expect(sent.filter((item) => {
             return item.channel === IPC.eventMangaLibrary;
-        }).length).toBeGreaterThan(libraryChanges);
+        }).length).toBe(libraryChanges);
+        expect(sent.filter((item) => {
+            return item.channel === IPC.eventMangaLibraryEntry;
+        }).slice(entriesBefore)).toEqual([{ channel: IPC.eventMangaLibraryEntry, payload: chapter.mangaId }]);
         const after = await runtime!.handlers.reader.pages({ chapterRemoteId: 1, libraryChapterId: chapter.id });
         expect(after).toEqual({ ok: true, value: { pages: [pageUrl(0), pageUrl(1)], local: true, missing: [] } });
         const second = await runtime!.pageHandler(new Request(pageUrl(1)));

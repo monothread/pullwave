@@ -35,13 +35,14 @@ function setup(options: { status?: 'incomplete' | 'done' | 'idle'; filePath?: st
     const pathExists = vi.fn(() => {
         return options.exists ?? true;
     });
-    const changes = { count: 0 };
+    // The mangas the screen was told changed, one per repaired chapter.
+    const changes: number[] = [];
     const service = new MangaRepair({
         db,
         repair,
         pathExists,
-        onLibraryChanged: () => {
-            changes.count += 1;
+        onLibraryEntryChanged: (mangaId) => {
+            changes.push(mangaId);
         }
     });
     return { service, db, manga, chapter, repair, repairs, signals, pathExists, changes };
@@ -49,7 +50,7 @@ function setup(options: { status?: 'incomplete' | 'done' | 'idle'; filePath?: st
 
 describe('MangaRepair', () => {
     it('downloads again the missing pages with what the chapter and its manga are, and makes the chapter whole when none is lacking', async () => {
-        const { service, db, chapter, repairs, pathExists, changes } = setup();
+        const { service, db, manga, chapter, repairs, pathExists, changes } = setup();
         const before = db.getChapter(chapter.id);
         await expect(service.repair(chapter.id, null)).resolves.toEqual({ ok: true, value: { missing: [] } });
         expect(pathExists).toHaveBeenCalledWith(FILE);
@@ -65,7 +66,8 @@ describe('MangaRepair', () => {
             }
         ]);
         expect(db.getChapter(chapter.id)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 300, pageCount: 5, error: null });
-        expect(changes.count).toBe(1);
+        // Only the manga of the chapter is told to the screen.
+        expect(changes).toEqual([manga.id]);
     });
 
     it('asks for the one page the reader is on', async () => {
@@ -75,10 +77,11 @@ describe('MangaRepair', () => {
     });
 
     it('keeps the chapter incomplete, with its new size, when some pages are still lacking', async () => {
-        const { service, db, chapter, changes } = setup({ result: { status: 'done', value: { filePath: FILE, sizeBytes: 250, pageCount: 5, missingPages: [1, 4] } } });
+        const { service, db, manga, chapter, changes } = setup({ result: { status: 'done', value: { filePath: FILE, sizeBytes: 250, pageCount: 5, missingPages: [1, 4] } } });
         await expect(service.repair(chapter.id, null)).resolves.toEqual({ ok: true, value: { missing: [1, 4] } });
         expect(db.getChapter(chapter.id)).toMatchObject({ status: 'incomplete', filePath: FILE, sizeBytes: 250, pageCount: 5 });
-        expect(changes.count).toBe(1);
+        // Only the manga of the chapter is told to the screen.
+        expect(changes).toEqual([manga.id]);
     });
 
     it('gives the error when the pages could not be downloaded, and leaves the chapter as it was', async () => {
@@ -86,13 +89,13 @@ describe('MangaRepair', () => {
         const { service, db, chapter, changes } = setup({ result: { status: 'error', error } });
         await expect(service.repair(chapter.id, 2)).resolves.toEqual({ ok: false, error });
         expect(db.getChapter(chapter.id)).toMatchObject({ status: 'incomplete', sizeBytes: 100 });
-        expect(changes.count).toBe(0);
+        expect(changes).toEqual([]);
     });
 
     it('reports a run that was cancelled as an error', async () => {
         const { service, chapter, changes } = setup({ result: { status: 'cancelled' } });
         await expect(service.repair(chapter.id, null)).resolves.toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'The pages were not downloaded.' } });
-        expect(changes.count).toBe(0);
+        expect(changes).toEqual([]);
     });
 
     it.each([
@@ -104,7 +107,7 @@ describe('MangaRepair', () => {
         const { service, chapter, repair, changes } = setup(options);
         await expect(service.repair(chapter.id, null)).resolves.toEqual({ ok: false, error: { code: 'INVALID_REQUEST', message: 'The chapter has no pages to download again.' } });
         expect(repair).not.toHaveBeenCalled();
-        expect(changes.count).toBe(0);
+        expect(changes).toEqual([]);
     });
 
     it('refuses a chapter that is not in the library', async () => {
@@ -161,15 +164,15 @@ describe('MangaRepair the pages of every incomplete chapter', () => {
             signals.push(signal);
             return Promise.resolve(results[repairOptions.chapterRemoteId] ?? { status: 'done', value: { filePath: repairOptions.filePath, sizeBytes: 300, pageCount: 5, missingPages: [] } });
         });
-        const changes = { count: 0 };
+        const changes: number[] = [];
         const service = new MangaRepair({
             db,
             repair,
             pathExists: () => {
                 return true;
             },
-            onLibraryChanged: () => {
-                changes.count += 1;
+            onLibraryEntryChanged: (mangaId) => {
+                changes.push(mangaId);
             }
         });
         return { service, db, onePiece, bleach, chapters, other, order, signals, repair, changes };
@@ -183,7 +186,8 @@ describe('MangaRepair the pages of every incomplete chapter', () => {
         expect(db.getChapter(chapters[1]!.id)).toMatchObject({ status: 'done', filePath: '/m/Chapter 2.cbz', sizeBytes: 100 });
         expect(db.getChapter(chapters[4]!.id)).toMatchObject({ status: 'idle', filePath: null });
         expect(db.getChapter(other.id)).toMatchObject({ status: 'done' });
-        expect(changes.count).toBe(4);
+        // Each repaired chapter tells the screen its own manga only.
+        expect(changes).toEqual([onePiece.id, onePiece.id, onePiece.id, bleach.id]);
     });
 
     it('does one chapter at a time', async () => {
@@ -254,7 +258,7 @@ describe('MangaRepair when the app closes', () => {
         finish({ status: 'cancelled' });
         await closing;
         await expect(running).resolves.toEqual({ ok: false, error: { code: 'UNKNOWN', message: 'The pages were not downloaded.' } });
-        expect(changes.count).toBe(0);
+        expect(changes).toEqual([]);
         await expect(service.repair(chapter.id, null)).resolves.toEqual({ ok: false, error: { code: 'INVALID_REQUEST', message: 'The app is closing.' } });
         expect(repair).toHaveBeenCalledTimes(1);
     });
@@ -284,7 +288,7 @@ describe('MangaRepair when the app closes', () => {
             pathExists: () => {
                 return true;
             },
-            onLibraryChanged: () => {
+            onLibraryEntryChanged: () => {
                 return undefined;
             }
         });

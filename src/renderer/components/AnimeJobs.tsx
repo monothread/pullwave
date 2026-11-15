@@ -4,6 +4,7 @@ import type { AnimeJob } from '@shared/anime';
 import { DownloadHero } from '../downloads/DownloadHero';
 import { AnimeCover } from './AnimeCover';
 import { useTranslator } from '../i18n/useTranslator';
+import { useOffscreenPause } from '../hooks/useOffscreenPause';
 import { useAnimeStore } from '../store/animeStore';
 import { ConfirmButton } from './ConfirmButton';
 import { animeErrorReport, animeStatusKey } from './animeText';
@@ -100,9 +101,10 @@ function AnimeJobMeta({ job }: { job: AnimeJob }) {
 
 const AnimeJobRow = memo(function AnimeJobRow({ job }: { job: AnimeJob }) {
     const t = useTranslator();
+    const card = useOffscreenPause<HTMLElement>();
     const title = t('anime.job.title', { title: job.animeTitle, episode: job.episode });
     return (
-        <article className={`job job--${job.status}`} data-testid="anime-job">
+        <article ref={card} className={`job job--${job.status}`} data-testid="anime-job">
             <header className="job__head">
                 <h3 className="job__title" title={title}>
                     {title}

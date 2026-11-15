@@ -7,7 +7,8 @@ export interface MangaRepairDependencies {
     // Downloads again the missing pages into the file of the chapter.
     repair: (options: ChapterRepairOptions, signal: AbortSignal) => Promise<ChapterRunResult<ChapterDownloadResult>>;
     pathExists: (path: string) => boolean;
-    onLibraryChanged: () => void;
+    // Only the manga of the repaired chapter changed: the pages missing after "download missing" are repaired one chapter after another.
+    onLibraryEntryChanged: (mangaId: number) => void;
 }
 
 function invalid(message: string): MangaResult<never> {
@@ -92,7 +93,7 @@ export class MangaRepair {
             } else {
                 db.markIncomplete(chapterId, filePath, sizeBytes, pageCount);
             }
-            this.deps.onLibraryChanged();
+            this.deps.onLibraryEntryChanged(chapter.mangaId);
             return { ok: true, value: { missing: missingPages } };
         } finally {
             this.running.delete(chapterId);

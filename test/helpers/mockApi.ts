@@ -3,7 +3,7 @@ import type { AnimeAddResponse, AnimeAudioCheckResponse, AnimeRepairResponse, An
 import type { CutChooseResponse, CutPreviewResponse, CutRun, CutStartResponse } from '@shared/cut';
 import type { LlmStatus } from '@shared/llm';
 import type { LogLine, LogSource } from '@shared/logs';
-import type { MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
+import type { LibraryManga, MangaApi, MangaCheckState, MangaCloudflareActivity, MangaJob, MangaMigrationProgress, MangaNewChapters, MangaServerStatus } from '@shared/manga';
 import type { ProgramInfo, ProgramResetResult, ProgramUpdateResult, ProgramVersions, ProgramsStatus } from '@shared/programs';
 import { PROGRAM_IDS, type ProgramId, type ToolState } from '@shared/tools';
 import type { AppUpdateState, CyberApi, DownloadJob } from '@shared/types';
@@ -49,6 +49,7 @@ export interface MockApiHandle {
     emitMangaJob: (job: MangaJob) => void;
     emitMangaQueueHeld: (held: boolean) => void;
     emitMangaLibraryChanged: () => void;
+    emitMangaLibraryEntryChanged: (mangaId: number) => void;
     emitMangaMigration: (progress: MangaMigrationProgress) => void;
     emitMangaNewChapters: (news: MangaNewChapters) => void;
     emitMangaCheckState: (state: MangaCheckState) => void;
@@ -56,9 +57,11 @@ export interface MockApiHandle {
     emitJobRemoved: (id: string) => void;
     emitHistoryChanged: () => void;
     emitAppUpdateState: (state: AppUpdateState) => void;
+    emitWindowMinimized: (minimized: boolean) => void;
     emitAnimeJob: (job: AnimeJob) => void;
     emitAnimeQueueHeld: (held: boolean) => void;
     emitAnimeLibraryChanged: () => void;
+    emitAnimeLibraryEntryChanged: (animeId: number) => void;
     emitAnimeMigrationProgress: (progress: AnimeMigrationProgress) => void;
     emitAnimeCover: (update: AnimeCoverUpdate) => void;
     emitAnimeNewEpisodes: (news: AnimeNewEpisodes) => void;
@@ -76,9 +79,11 @@ export function createMockApi(): MockApiHandle {
     const removedListeners: Array<(id: string) => void> = [];
     const historyListeners: Array<() => void> = [];
     const appUpdateListeners: Array<(state: AppUpdateState) => void> = [];
+    const minimizedListeners: Array<(minimized: boolean) => void> = [];
     const animeJobListeners: Array<(job: AnimeJob) => void> = [];
     const animeQueueHeldListeners: Array<(held: boolean) => void> = [];
     const animeLibraryListeners: Array<() => void> = [];
+    const animeLibraryEntryListeners: Array<(animeId: number) => void> = [];
     const animeMigrationListeners: Array<(progress: AnimeMigrationProgress) => void> = [];
     const animeCoverListeners: Array<(update: AnimeCoverUpdate) => void> = [];
     const animeNewEpisodesListeners: Array<(news: AnimeNewEpisodes) => void> = [];
@@ -96,6 +101,7 @@ export function createMockApi(): MockApiHandle {
     const mangaJobListeners: Array<(job: MangaJob) => void> = [];
     const mangaQueueHeldListeners: Array<(held: boolean) => void> = [];
     const mangaLibraryListeners: Array<() => void> = [];
+    const mangaLibraryEntryListeners: Array<(mangaId: number) => void> = [];
     const mangaMigrationListeners: Array<(progress: MangaMigrationProgress) => void> = [];
     const mangaNewChaptersListeners: Array<(news: MangaNewChapters) => void> = [];
     const mangaCheckStateListeners: Array<(state: MangaCheckState) => void> = [];
@@ -249,6 +255,9 @@ export function createMockApi(): MockApiHandle {
         library: vi.fn(async () => {
             return [];
         }),
+        libraryEntry: vi.fn(async (): Promise<LibraryManga | null> => {
+            return null;
+        }),
         jobs: vi.fn(async () => {
             return [];
         }),
@@ -360,6 +369,9 @@ export function createMockApi(): MockApiHandle {
         }),
         onLibraryChanged: vi.fn((listener: () => void) => {
             return subscribe(mangaLibraryListeners, listener);
+        }),
+        onLibraryEntryChanged: vi.fn((listener: (mangaId: number) => void) => {
+            return subscribe(mangaLibraryEntryListeners, listener);
         })
     };
 
@@ -457,6 +469,9 @@ export function createMockApi(): MockApiHandle {
         }),
         listAnimeLibrary: vi.fn(async (): Promise<LibraryAnime[]> => {
             return [];
+        }),
+        getAnimeLibraryEntry: vi.fn(async (): Promise<LibraryAnime | null> => {
+            return null;
         }),
         listAnimeHistory: vi.fn(async (): Promise<AnimeHistoryEntry[]> => {
             return [];
@@ -642,6 +657,9 @@ export function createMockApi(): MockApiHandle {
         onAnimeLibraryChanged: vi.fn((listener: () => void) => {
             return subscribe(animeLibraryListeners, listener);
         }),
+        onAnimeLibraryEntryChanged: vi.fn((listener: (animeId: number) => void) => {
+            return subscribe(animeLibraryEntryListeners, listener);
+        }),
         onAnimeMigrationProgress: vi.fn((listener: (progress: AnimeMigrationProgress) => void) => {
             return subscribe(animeMigrationListeners, listener);
         }),
@@ -665,6 +683,9 @@ export function createMockApi(): MockApiHandle {
         }),
         onHistoryChanged: vi.fn((listener: () => void) => {
             return subscribe(historyListeners, listener);
+        }),
+        onWindowMinimized: vi.fn((listener: (minimized: boolean) => void) => {
+            return subscribe(minimizedListeners, listener);
         })
     };
 
@@ -718,6 +739,11 @@ export function createMockApi(): MockApiHandle {
         emitMangaJob: (job) => {
             mangaJobListeners.forEach((listener) => {
                 listener(job);
+            });
+        },
+        emitMangaLibraryEntryChanged: (mangaId: number) => {
+            mangaLibraryEntryListeners.forEach((listener) => {
+                listener(mangaId);
             });
         },
         emitMangaLibraryChanged: () => {
@@ -795,9 +821,19 @@ export function createMockApi(): MockApiHandle {
                 listener(update);
             });
         },
+        emitAnimeLibraryEntryChanged: (animeId: number) => {
+            animeLibraryEntryListeners.forEach((listener) => {
+                listener(animeId);
+            });
+        },
         emitAnimeLibraryChanged: () => {
             animeLibraryListeners.forEach((listener) => {
                 listener();
+            });
+        },
+        emitWindowMinimized: (minimized) => {
+            minimizedListeners.forEach((listener) => {
+                listener(minimized);
             });
         },
         emitAppUpdateState: (state) => {
