@@ -181,6 +181,8 @@ export const es: Messages = {
     'error.LOGIN_REQUIRED.hint': 'Activa las cookies del navegador en los ajustes y comprueba que has iniciado sesión.',
     'error.UNAVAILABLE.title': 'Vídeo no disponible',
     'error.UNAVAILABLE.hint': 'Puede que el vídeo sea privado, se haya eliminado o esté bloqueado en tu región.',
+    'error.FORMAT_UNAVAILABLE.title': 'Formato no disponible',
+    'error.FORMAT_UNAVAILABLE.hint': 'El vídeo no tiene un formato dentro de la Calidad de vídeo elegida (o del formato indicado en los Argumentos adicionales de yt-dlp). Elige una Calidad de vídeo mayor en los ajustes o en las OPCIONES de esta descarga.',
     'error.OUTDATED.title': 'Puede que yt-dlp esté desactualizado',
     'error.OUTDATED.hint': 'Usa el botón de actualización para obtener la última versión de yt-dlp.',
     'error.FORBIDDEN.title': 'Acceso rechazado por el servidor',

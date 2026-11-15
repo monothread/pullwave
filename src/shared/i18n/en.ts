@@ -179,6 +179,8 @@ export const en = {
     'error.LOGIN_REQUIRED.hint': 'Enable browser cookies in the settings and make sure you are logged in.',
     'error.UNAVAILABLE.title': 'Video unavailable',
     'error.UNAVAILABLE.hint': 'The video may be private, removed or blocked in your region.',
+    'error.FORMAT_UNAVAILABLE.title': 'Format not available',
+    'error.FORMAT_UNAVAILABLE.hint': 'The video has no format within the Video quality chosen (or the format given in the Extra yt-dlp arguments). Choose a higher Video quality in the settings or in the OPTIONS of this download.',
     'error.OUTDATED.title': 'yt-dlp may be outdated',
     'error.OUTDATED.hint': 'Use the update button to get the latest yt-dlp.',
     'error.FORBIDDEN.title': 'Access refused by the server',

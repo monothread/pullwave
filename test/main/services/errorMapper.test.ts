@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@shared/types';
+import type { ErrorCode, LanguageCode } from '@shared/types';
 import { mapDownloadError, mapSpawnError } from '@main/services/errorMapper';
 import { applyLanguage } from '@main/services/language';
 
@@ -27,6 +27,9 @@ describe('mapDownloadError', () => {
         ['LOGIN_REQUIRED', "ERROR: Private video. Sign in if you've been granted access", 'Login required'],
         ['UNAVAILABLE', 'ERROR: Private video', 'Video unavailable'],
         ['UNAVAILABLE', 'ERROR: This video has been removed by the uploader', 'Video unavailable'],
+        ['UNAVAILABLE', 'ERROR: This video is not available', 'Video unavailable'],
+        ['FORMAT_UNAVAILABLE', 'ERROR: [generic] clip: Requested format is not available. Use --list-formats for a list of available formats', 'Format not available'],
+        ['FORMAT_UNAVAILABLE', 'ERROR: [youtube] jNQXAC9IVRw: requested format is NOT available', 'Format not available'],
         ['OUTDATED', 'ERROR: Unable to extract initial data; please report this issue', 'yt-dlp may be outdated'],
         ['OUTDATED', 'ERROR: Unsupported URL: https://x.com', 'yt-dlp may be outdated'],
         ['NETWORK', 'ERROR: Unable to download webpage: <urlopen error timed out>', 'Network failure'],
@@ -141,6 +144,28 @@ describe('mapDownloadError for refused requests', () => {
 });
 
 
+describe('mapDownloadError for a format the video does not have', () => {
+    const FORMAT_STDERR = 'ERROR: [generic] clip: Requested format is not available. Use --list-formats for a list of available formats';
+
+    it('maps the format error of yt-dlp to FORMAT_UNAVAILABLE instead of an unavailable video', () => {
+        expect(mapDownloadError(FORMAT_STDERR, 1)).toEqual({
+            code: 'FORMAT_UNAVAILABLE',
+            title: 'Format not available',
+            hint: 'The video has no format within the Video quality chosen (or the format given in the Extra yt-dlp arguments). Choose a higher Video quality in the settings or in the OPTIONS of this download.',
+            raw: FORMAT_STDERR,
+            details: { occurredAt: NOW, exitCode: 1 }
+        });
+    });
+
+    it('prefers a missing ffmpeg over the format error when both appear', () => {
+        expect(mapDownloadError(`ERROR: ffmpeg not found\n${FORMAT_STDERR}`, 1).code).toBe('FFMPEG_MISSING');
+    });
+
+    it('still maps an unavailable video that mentions no format to UNAVAILABLE', () => {
+        expect(mapDownloadError('ERROR: [youtube] abc: This content is not available in your country', 1).code).toBe('UNAVAILABLE');
+    });
+});
+
 describe('error messages in other languages', () => {
     afterEach(() => {
         applyLanguage('en', 'en-US');
@@ -154,6 +179,25 @@ describe('error messages in other languages', () => {
             hint: 'O vídeo pode ser privado, ter sido removido ou estar bloqueado na sua região.',
             raw: 'ERROR: Video unavailable',
             details: { occurredAt: NOW, exitCode: 1 }
+        });
+    });
+
+    it('translates the format error in every language', () => {
+        const expected: Array<[LanguageCode, string, string]> = [
+            ['pt', 'Formato indisponível', 'O vídeo não tem um formato dentro da Qualidade do vídeo escolhida (ou do formato dado nos Argumentos extras do yt-dlp). Escolha uma Qualidade do vídeo maior nas configurações ou nas OPÇÕES deste download.'],
+            ['es', 'Formato no disponible', 'El vídeo no tiene un formato dentro de la Calidad de vídeo elegida (o del formato indicado en los Argumentos adicionales de yt-dlp). Elige una Calidad de vídeo mayor en los ajustes o en las OPCIONES de esta descarga.'],
+            ['zh', '格式不可用', '该视频没有符合所选“视频画质”（或“yt-dlp 额外参数”中指定的格式）的格式。请在设置或此下载的“选项”中选择更高的“视频画质”。'],
+            ['ja', 'フォーマットを利用できません', 'この動画には、選択した「動画の画質」（または「yt-dlp の追加引数」で指定したフォーマット）に合うフォーマットがありません。設定またはこのダウンロードの「オプション」で、より高い「動画の画質」を選んでください。']
+        ];
+        expected.forEach(([language, title, hint]) => {
+            applyLanguage(language, 'en-US');
+            expect(mapDownloadError('ERROR: Requested format is not available', 1)).toEqual({
+                code: 'FORMAT_UNAVAILABLE',
+                title,
+                hint,
+                raw: 'ERROR: Requested format is not available',
+                details: { occurredAt: NOW, exitCode: 1 }
+            });
         });
     });
 

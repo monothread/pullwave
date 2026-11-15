@@ -177,6 +177,7 @@ export interface Settings {
 export type ErrorCode =
     | 'NETWORK'
     | 'UNAVAILABLE'
+    | 'FORMAT_UNAVAILABLE'
     | 'LOGIN_REQUIRED'
     | 'FFMPEG_MISSING'
     | 'FILENAME_TOO_LONG'

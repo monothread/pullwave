@@ -82,6 +82,11 @@ if (url.includes('unsupported')) {
     process.exit(1);
 }
 
+if (url.includes('noformat')) {
+    process.stderr.write('ERROR: [generic] clip: Requested format is not available. Use --list-formats for a list of available formats\n');
+    process.exit(1);
+}
+
 if (url.includes('fail') && !url.includes('partialfail') && !url.includes('livefail')) {
     process.stderr.write('ERROR: [youtube] abc: Video unavailable\n');
     process.exit(1);

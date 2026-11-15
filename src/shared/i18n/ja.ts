@@ -181,6 +181,8 @@ export const ja: Messages = {
     'error.LOGIN_REQUIRED.hint': '設定でブラウザの Cookie を有効にし、ログインしていることを確認してください。',
     'error.UNAVAILABLE.title': '動画を利用できません',
     'error.UNAVAILABLE.hint': '動画が非公開、削除済み、またはお住まいの地域でブロックされている可能性があります。',
+    'error.FORMAT_UNAVAILABLE.title': 'フォーマットを利用できません',
+    'error.FORMAT_UNAVAILABLE.hint': 'この動画には、選択した「動画の画質」（または「yt-dlp の追加引数」で指定したフォーマット）に合うフォーマットがありません。設定またはこのダウンロードの「オプション」で、より高い「動画の画質」を選んでください。',
     'error.OUTDATED.title': 'yt-dlp が古い可能性があります',
     'error.OUTDATED.hint': '更新ボタンで最新の yt-dlp を取得してください。',
     'error.FORBIDDEN.title': 'サーバーにアクセスを拒否されました',

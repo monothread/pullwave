@@ -14,7 +14,7 @@ src/
       ytdlpRunner.ts            # spawn, progress, cancellation
       progressParser.ts         # parses the --progress-template output
       errorMapper.ts            # stderr -> { code, title, hint, raw }
-      queueManager.ts           # queue + concurrency
+      queueManager.ts           # queue + concurrency (`maxConcurrent`, which the sanitizer always sets to `CONCURRENT_DOWNLOADS`, 3: no screen changes it)
       jsonStore.ts / settingsSanitizer.ts / settingsStore.ts / historyStore.ts
       appUpdateService.ts       # app self-update state machine (electron-updater)
       electronUpdater.ts        # thin adapter around electron-updater's autoUpdater

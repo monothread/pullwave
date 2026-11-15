@@ -181,6 +181,8 @@ export const zh: Messages = {
     'error.LOGIN_REQUIRED.hint': '请在设置中启用浏览器 Cookie，并确认已登录。',
     'error.UNAVAILABLE.title': '视频不可用',
     'error.UNAVAILABLE.hint': '该视频可能是私密的、已被删除，或在你所在的地区被屏蔽。',
+    'error.FORMAT_UNAVAILABLE.title': '格式不可用',
+    'error.FORMAT_UNAVAILABLE.hint': '该视频没有符合所选“视频画质”（或“yt-dlp 额外参数”中指定的格式）的格式。请在设置或此下载的“选项”中选择更高的“视频画质”。',
     'error.OUTDATED.title': 'yt-dlp 可能已过期',
     'error.OUTDATED.hint': '请使用更新按钮获取最新版 yt-dlp。',
     'error.FORBIDDEN.title': '服务器拒绝访问',

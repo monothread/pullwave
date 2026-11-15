@@ -35,6 +35,10 @@ const ERROR_RULES: ErrorRule[] = [
         patterns: [/sign in/i, /log ?in (is )?required/i, /age[- ]restricted/i, /confirm you.{1,3}re not a bot/i, /members[- ]only/i]
     },
     {
+        code: 'FORMAT_UNAVAILABLE',
+        patterns: [/requested format is not available/i]
+    },
+    {
         code: 'UNAVAILABLE',
         patterns: [/video unavailable/i, /private video/i, /has been removed/i, /not available/i, /does not exist/i, /is private/i]
     },

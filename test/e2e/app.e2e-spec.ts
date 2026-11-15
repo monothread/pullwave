@@ -771,6 +771,27 @@ test('explains an HTTP 403 in plain words, keeps the raw error on demand and doe
     await expect(page.getByRole('dialog', { name: 'ERROR DETAILS' }).getByTestId('error-message')).toContainText('HTTP Error 403: Forbidden');
 });
 
+test('explains a format the video does not have instead of calling the video unavailable', async () => {
+    const { page } = session;
+    await submitUrl(page, 'https://example.com/noformat');
+    const banner = page.getByRole('alert').filter({ hasText: 'Format not available' });
+    await expect(banner).toBeVisible();
+    await expect(banner.locator('.error-banner__code')).toHaveText('FORMAT_UNAVAILABLE');
+    await expect(banner.locator('.error-banner__hint')).toHaveText(
+        'The video has no format within the Video quality chosen (or the format given in the Extra yt-dlp arguments). Choose a higher Video quality in the settings or in the OPTIONS of this download.'
+    );
+    await expect(page.getByRole('alert').filter({ hasText: 'Video unavailable' })).toHaveCount(0);
+    await expect(page.getByTestId('job-card').locator('.badge')).toHaveText('FAILED');
+    await banner.getByRole('button', { name: 'SHOW DETAILS' }).click();
+    const dialog = page.getByRole('dialog', { name: 'ERROR DETAILS' });
+    await expect(dialog.getByTestId('error-message')).toHaveText('ERROR: [generic] clip: Requested format is not available. Use --list-formats for a list of available formats');
+    await expect(dialog.locator('.error-details__row').filter({ hasText: /^Code/ }).locator('dd')).toHaveText('FORMAT_UNAVAILABLE');
+    await expect(dialog.locator('.error-details__row').filter({ hasText: 'Exit code' }).locator('dd')).toHaveText('1');
+    await expect(dialog.locator('.error-details__row').filter({ hasText: 'Command' }).locator('dd')).toContainText('https://example.com/noformat');
+    await dialog.getByRole('button', { name: 'CLOSE' }).click();
+    await expect(dialog).toHaveCount(0);
+});
+
 test('asks for a link when every row is empty', async () => {
     const { page } = session;
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
