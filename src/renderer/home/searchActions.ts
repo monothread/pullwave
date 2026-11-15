@@ -28,7 +28,6 @@ function searchManga(query: string): void {
     void store.runSearch();
 }
 
-// Goes where a suggestion of the search of the top bar leads, as one page for the buttons of the mouse.
 export function runSuggestion(suggestion: SearchSuggestion): void {
     batchNavigation(() => {
         goTo(suggestion);

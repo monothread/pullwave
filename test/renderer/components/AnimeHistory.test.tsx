@@ -41,7 +41,6 @@ describe('AnimeHistory', () => {
         expect(items).toHaveLength(2);
         expect(within(items[0] as HTMLElement).getByRole('button', { name: 'OPEN: Bleach' })).toHaveAttribute('title', 'Bleach');
         expect(within(items[0] as HTMLElement).getByText(/^EP 12 · /)).toBeInTheDocument();
-        // The anime are the subtitled ones: the card says no audio.
         expect(within(items[0] as HTMLElement).queryByText(/SUB|DUB/)).not.toBeInTheDocument();
         expect(within(items[0] as HTMLElement).getByText(new RegExp(new Date(WATCHED.openedAt).toLocaleString('en').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument();
         expect(within(items[1] as HTMLElement).getByText('Naruto')).toBeInTheDocument();

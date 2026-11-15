@@ -36,7 +36,6 @@ export function AnimeSearch() {
     const showInLibrary = useAnimeStore((state) => {
         return state.showInLibrary;
     });
-    // The next results come when the end of the list is reached.
     const endOfList = useInfiniteScroll(
         () => {
             void loadMoreSearch();
@@ -49,7 +48,6 @@ export function AnimeSearch() {
         return <AnimeDetail />;
     }
     const searching = search.status === 'searching';
-    // ani-cli ends a search that found nothing with an error of its own: it is a search that found nothing, not a failure (D-197).
     const nothingFound = search.error?.code === 'NO_RESULTS';
 
     return (
@@ -81,7 +79,6 @@ export function AnimeSearch() {
                         items={search.results}
                         listKey={`anime-search:${search.searchedQuery}`}
                         renderItem={(result, back) => {
-                            // An anime is in the library from the moment it is added, whether or not an episode of it was downloaded.
                             const saved = libraryEntry(library, result.title);
                             const joined = saved;
                             const inSeries = joined?.series != null && joined.season !== null;

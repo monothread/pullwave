@@ -11,7 +11,6 @@ const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
 
-// How long the change from one slide to the next lasts (SPOTLIGHT_SLIDE_MS) and how far the slides travel (--slide-from in bp-home.css).
 const SLIDE_MS = 700;
 const MIDDLE_OF_THE_CHANGE_MS = 350;
 const SLIDE_TRAVEL_PX = 48;
@@ -66,8 +65,6 @@ test.afterAll(async () => {
     await app.close();
 });
 
-// The home of a fresh library has no highlights to rotate, so the carousel is drawn the way Spotlight.tsx draws it while it changes (the
-// same classes, the same stylesheet): the slide that leaves under the one that comes, in the cell they share.
 async function drawChange(direction: SlideDirection): Promise<void> {
     await page.evaluate((way) => {
         document.querySelector('[data-e2e="spotlight"]')?.remove();
@@ -85,7 +82,6 @@ async function drawChange(direction: SlideDirection): Promise<void> {
     }, direction);
 }
 
-// Stops every animation of the carousel at this moment of the change, so what is measured does not depend on the speed of the machine.
 async function freezeChangeAt(milliseconds: number): Promise<ChangeSnapshot> {
     return page.evaluate((at) => {
         const stage = document.querySelector<HTMLElement>('[data-e2e="spotlight"] .spotlight__stage');
@@ -105,7 +101,6 @@ async function freezeChangeAt(milliseconds: number): Promise<ChangeSnapshot> {
             return { left: rect.left, width: rect.width, opacity: Number(style.opacity), transform: style.transform };
         };
         const overflowing: OverflowingBox[] = [];
-        // The stage itself still reports what it cuts (a clip keeps the size of its content); what matters is that nothing around it grows.
         for (let box: HTMLElement | null = stage.parentElement; box !== null; box = box.parentElement) {
             const hidden = box.scrollWidth - box.clientWidth;
             if (hidden > 0) {
@@ -122,7 +117,6 @@ async function freezeChangeAt(milliseconds: number): Promise<ChangeSnapshot> {
             entering: snapshotOf(entering),
             leaving: snapshotOf(leaving),
             enteringBoxShadow: getComputedStyle(entering).boxShadow,
-            // The hero also has an animation of its own, the slow drift of the blurred cover: only the ones of the change count.
             animations: animations
                 .map((animation) => {
                     return (animation as CSSAnimation).animationName;
@@ -184,7 +178,6 @@ async function freezeChangeAt(milliseconds: number): Promise<ChangeSnapshot> {
 
 test.describe('the stage of the carousel', () => {
     test('cuts only what goes out to the sides, so the glow and the shadow of the slide above and below it stay', async () => {
-        // A neon theme: its slides have a glow around them.
         await page.evaluate(() => {
             document.documentElement.dataset.theme = 'cyberpunk';
         });

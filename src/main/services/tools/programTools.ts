@@ -30,22 +30,14 @@ import {
 import type { downloadFile } from './toolDownload';
 import { ToolInstaller, type InstallVerifier } from './toolInstaller';
 
-// The programs the app downloads for itself: the video downloader's (yt-dlp, deno, ffmpeg) and the anime section's (ani-cli, busybox, curl).
-// Each one is installed once, on the first run, in a folder of its own inside the data folder of the app (so none of the user's own programs
-// is ever picked up by mistake), and can be moved to the latest version from the settings. The version chosen is remembered in a small file;
-// what the file says is checked before it is used, and the address of the download is always built here from it.
-
 export const SELECTED_SUFFIX = '-selected.json';
-// How many programs are downloaded at the same time.
 export const PREPARE_CONCURRENCY = 2;
 const RUN_TIMEOUT_MS = 20_000;
 
 export type RunProgram = (file: string, args: string[]) => Promise<{ ok: boolean; output: string }>;
 
-// Tries a new script of ani-cli for real (see aniUpdateProbe.ts), telling each step as it starts; throws when the script does not work.
 export type AniCliCheck = (scriptPath: string, onStep: (step: AniCliUpdateStep) => void) => Promise<void>;
 
-// Where the script of ani-cli is written with the changes of the app, beside the one unpacked, for the shell to check it (removed after).
 export const PATCHED_CHECK_FILE = 'ani-cli.patched-check';
 
 export function defaultRunProgram(file: string, args: string[]): Promise<{ ok: boolean; output: string }> {
@@ -57,30 +49,23 @@ export function defaultRunProgram(file: string, args: string[]): Promise<{ ok: b
 }
 
 export interface ProgramToolsDependencies {
-    // <data folder>/tools
     rootDirectory: string;
     platform?: NodeJS.Platform;
     arch?: string;
-    // The path the user chose for a program in the settings ('' for none): nothing is downloaded for a program that has one.
     customPath?: (id: ProgramId) => string;
-    // Told every time what the install of a program the app runs is doing.
     onState?: (state: ToolState) => void;
-    // Told what the download of an update is doing (kept apart: while it goes on, the program that is installed still works).
     onUpdateState?: (state: ToolState) => void;
     download?: typeof downloadFile;
     extract?: typeof extractArchive;
     latest?: LatestDependencies;
     run?: RunProgram;
-    // What tries a new ani-cli before an update makes it the one in use; without it the update only checks the script itself.
     checkAniCli?: () => AniCliCheck | null;
 }
 
-// What is written about the version that was chosen: enough to build its spec again.
 export interface Selected {
     version: string;
     sha256: string;
     sizeBytes: number;
-    // The name of the file of the release (ffmpeg on Linux).
     asset?: string;
 }
 
@@ -115,10 +100,8 @@ function runWithLimit<T>(items: readonly T[], limit: number, task: (item: T) => 
 export class ProgramTools {
     private readonly installer: ToolInstaller;
     private readonly updater: ToolInstaller;
-    // Why a program that has no version to install yet (ffmpeg, before its first look for the latest) could not be installed.
     private readonly failures = new Map<ProgramId, ToolError>();
     private readonly updating = new Set<ProgramId>();
-    // The step each update of ani-cli is at, added to what its download tells (see ANICLI_UPDATE_STEPS).
     private readonly updateSteps = new Map<ProgramId, AniCliUpdateStep>();
     private readonly platform: NodeJS.Platform;
     private readonly arch: string;
@@ -136,7 +119,6 @@ export class ProgramTools {
         });
     }
 
-    // The system the programs are made for, or null.
     get system(): ProgramPlatform | null {
         return programPlatform(this.platform, this.arch);
     }
@@ -144,8 +126,6 @@ export class ProgramTools {
     get rootDirectory(): string {
         return this.deps.rootDirectory;
     }
-
-    // ----- the version that was chosen -----
 
     private selectedPath(id: ProgramId): string {
         return join(this.deps.rootDirectory, `${id}${SELECTED_SUFFIX}`);
@@ -211,14 +191,11 @@ export class ProgramTools {
         }
     }
 
-    // The version the app uses: the one that was chosen, otherwise the one the app was made with (ffmpeg has none until it is installed).
     chosenSpec(id: ProgramId): ToolSpec | null {
         const selected = this.readSelected(id);
         const spec = selected === null ? null : this.fromSelected(id, selected);
         return spec ?? pinnedSpec(id, this.platform, this.arch);
     }
-
-    // ----- what is installed -----
 
     private custom(id: ProgramId): boolean {
         return (this.deps.customPath?.(id) ?? '') !== '';
@@ -240,20 +217,16 @@ export class ProgramTools {
         return this.installer.stateOf(spec);
     }
 
-    // The folder of the version that is installed, null while it is not.
     directoryOf(id: ProgramId): string | null {
         const spec = this.chosenSpec(id);
         return spec !== null && this.installer.isReady(spec) ? this.installer.directoryOf(spec) : null;
     }
 
-    // The file of the program (or another one of the same install, like ffprobe) when it is installed, otherwise null.
     pathOf(id: ProgramId, relativePath?: string): string | null {
         const spec = this.chosenSpec(id);
         return spec !== null && this.installer.isReady(spec) ? this.installer.pathOf(spec, relativePath ?? spec.entry) : null;
     }
 
-    // Where the file will be once the program is installed (the version that is chosen), whether or not it is there; null for ffmpeg before
-    // its version is known.
     expectedPathOf(id: ProgramId, relativePath?: string): string | null {
         const spec = this.chosenSpec(id);
         return spec === null ? null : this.installer.pathOf(spec, relativePath ?? spec.entry);
@@ -270,10 +243,6 @@ export class ProgramTools {
         return { supported: this.system !== null, programs };
     }
 
-    // ----- installing -----
-
-    // What looks at a program once it is unpacked, before it is put in its place: it has to run (a script has to be one the shell accepts, as it
-    // is and with the changes of the app; on an update it is also tried for real).
     private verifierFor(spec: ToolSpec, forUpdate = false): InstallVerifier {
         const run = this.deps.run ?? defaultRunProgram;
         return async (directory) => {
@@ -294,7 +263,6 @@ export class ProgramTools {
         if (forUpdate) {
             this.setUpdateStep('anicli', 'syntax');
         }
-        // The shell is the one that is installed; without it there is nothing to check with (the script was looked at already).
         const shell = this.pathOf('busybox');
         if (shell !== null) {
             if (!(await run(shell, ['sh', '-n', file])).ok) {
@@ -310,7 +278,6 @@ export class ProgramTools {
         }
     }
 
-    // The script as the app runs it (with its changes) has to be one the shell accepts too.
     private async checkPatchedSyntax(directory: string, file: string, shell: string, run: RunProgram): Promise<void> {
         const patched = patchAniCli(readFileSync(file, 'utf-8'));
         if (patched === null) {
@@ -327,9 +294,6 @@ export class ProgramTools {
         }
     }
 
-    // ----- the steps of an update of ani-cli -----
-
-    // What the download of an update tells, with the step it is at.
     private publishUpdate(state: ToolState): void {
         const step = this.isProgram(state.id) ? this.updateSteps.get(state.id) : undefined;
         this.deps.onUpdateState?.(step === undefined ? state : { ...state, step });
@@ -339,7 +303,6 @@ export class ProgramTools {
         return (PROGRAM_IDS as readonly string[]).includes(id);
     }
 
-    // Moves the update to the step, and tells it (it is checking: what it downloaded is there already, or nothing is downloaded yet).
     private setUpdateStep(id: ProgramId, step: AniCliUpdateStep, version: string | null = null): void {
         this.updateSteps.set(id, step);
         if (step !== 'download') {
@@ -347,7 +310,6 @@ export class ProgramTools {
         }
     }
 
-    // The version of ffmpeg to install the first time: the latest one (there is no other: the builds are rolling).
     private async firstSpec(id: ProgramId): Promise<ToolSpec | null> {
         const system = this.system;
         if (id !== 'ffmpeg' || system === null) {
@@ -370,13 +332,11 @@ export class ProgramTools {
         }
     }
 
-    // Installs the version that is chosen (nothing happens when it is there). It is also what TRY AGAIN does after a failure.
     async install(id: ProgramId): Promise<ToolState> {
         if (this.system === null) {
             return this.stateOf(id);
         }
         let spec = this.chosenSpec(id);
-        // The builds of ffmpeg are rolling: what a failure left chosen may be gone, so it is looked up again.
         if (id === 'ffmpeg' && (spec === null || !this.installer.isReady(spec))) {
             spec = (await this.firstSpec(id)) ?? spec;
         }
@@ -387,7 +347,6 @@ export class ProgramTools {
         return this.installer.install(spec, undefined, true, this.verifierFor(spec));
     }
 
-    // Takes away what is installed of the program and installs it again (for a program that no longer runs, or is damaged).
     async reinstall(id: ProgramId): Promise<ToolState> {
         const spec = this.chosenSpec(id);
         if (spec !== null) {
@@ -396,7 +355,6 @@ export class ProgramTools {
         return this.install(id);
     }
 
-    // Takes the other versions away (best effort: one that is in use cannot be deleted on Windows, and goes at the next start).
     private tidy(id: ProgramId): void {
         const spec = this.chosenSpec(id);
         if (spec !== null && this.installer.isReady(spec)) {
@@ -408,7 +366,6 @@ export class ProgramTools {
         }
     }
 
-    // Installs what is missing, two at a time (the ones the user gave a path for are left out), when the app opens.
     async prepare(ids: readonly ProgramId[] = PROGRAM_IDS): Promise<void> {
         if (this.system === null) {
             return;
@@ -423,8 +380,6 @@ export class ProgramTools {
             }
         });
     }
-
-    // ----- the latest version -----
 
     private async lookup(id: ProgramId): Promise<{ spec: ToolSpec }> {
         const system = this.system as ProgramPlatform;
@@ -470,7 +425,6 @@ export class ProgramTools {
         return info;
     }
 
-    // Looks, for every program, at the latest version the publisher has.
     async check(): Promise<ProgramVersions> {
         const infos = await Promise.all(
             PROGRAM_IDS.map((id) => {
@@ -484,8 +438,6 @@ export class ProgramTools {
         ) as ProgramVersions;
     }
 
-    // Downloads the latest version beside the one that is installed (which keeps working), checks that it runs, and only then makes it the one
-    // that is used. When anything fails the one that was there stays.
     async update(id: ProgramId): Promise<ProgramUpdateResult> {
         if (this.system === null || !UPDATABLE.includes(id)) {
             return { ok: false, reason: 'unsupported', message: 'This program has no newer version to move to' };
@@ -540,12 +492,10 @@ export class ProgramTools {
         }
     }
 
-    // Tells that the update stopped at the step it was at (before anything was downloaded: the download tells its own failures).
     private failUpdateStep(id: ProgramId, message: string): void {
         this.publishUpdate({ id, status: 'error', version: null, bytesDone: 0, bytesTotal: 0, percent: 0, error: { code: 'INVALID', message } });
     }
 
-    // Goes back to the version the app was made with: what the update chose is forgotten (and that version is installed if it is not there).
     async reset(id: ProgramId): Promise<ProgramResetResult> {
         if (this.system === null) {
             return { ok: false, reason: 'unsupported', message: 'The programs are not made for this system' };

@@ -2,7 +2,6 @@ import type { LibraryAnime } from '@shared/anime';
 import type { LibraryManga } from '@shared/manga';
 import { groupLibrary, matchesSearch } from '../components/animeText';
 
-// How many titles of the library the search of the top bar suggests at most.
 export const SEARCH_SUGGESTION_LIMIT = 6;
 
 export type SearchSuggestion =
@@ -11,8 +10,6 @@ export type SearchSuggestion =
     | { kind: 'search-anime'; key: string; query: string }
     | { kind: 'search-manga'; key: string; query: string };
 
-// What the search of the top bar offers for a text: the anime and the mangas of the library whose names have it, then a search of it in the
-// sections that exist here. Nothing for an empty text.
 export function searchSuggestions(query: string, anime: readonly LibraryAnime[], manga: readonly LibraryManga[], animeSupported: boolean, mangaSupported: boolean, limit: number = SEARCH_SUGGESTION_LIMIT): SearchSuggestion[] {
     const text = query.trim();
     if (text === '') {

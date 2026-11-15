@@ -5,7 +5,6 @@ import { SOURCE_ID_MARKER } from './aniMenuIds';
 import { SEARCH_MORE_MARKER } from './aniSearchPages';
 import { describeError } from './errorDetails';
 
-// Prefix of every choice that `pullwave_menu` (the stand-in for fzf, see pullwave-run.sh) reports on stderr: PULLWAVE_MENU<TAB>prompt<TAB>line.
 export const MENU_PREFIX = 'PULLWAVE_MENU';
 export const ANIME_PROMPT = 'Select anime:';
 export const EPISODE_PROMPT = 'Select episode:';
@@ -27,7 +26,6 @@ interface ErrorRule {
     patterns: RegExp[];
 }
 
-// ani-cli ends with `die "<message>"`; the first rule that matches wins.
 const ERROR_RULES: ErrorRule[] = [
     { code: 'NO_RESULTS', patterns: [/no results found/i] },
     { code: 'BLOCKED', patterns: [/blocked by cloudflare/i] },
@@ -68,12 +66,10 @@ export function mapAniSpawnError(error: NodeJS.ErrnoException, known: Partial<Er
     return { code: error.code === 'ENOENT' ? 'BINARY_MISSING' : 'UNKNOWN', raw: error.message, details: describeError(error, known) };
 }
 
-// Whether the line is the one the search of the app prints when the source has a page after the last one it read (see aniSearchPages.ts).
 export function isSearchMoreLine(line: string): boolean {
     return stripAnsi(line).trim() === SEARCH_MORE_MARKER;
 }
 
-// One choice reported by `pullwave-menu`, or null when the line is anything else ani-cli printed.
 export function parseMenuLine(line: string): { prompt: string; choice: string } | null {
     const [prefix, prompt, ...rest] = line.split('\t');
     if (prefix !== MENU_PREFIX || prompt === undefined || rest.length === 0) {
@@ -82,8 +78,6 @@ export function parseMenuLine(line: string): { prompt: string; choice: string } 
     return { prompt: prompt.trim(), choice: rest.join('\t') };
 }
 
-// A search result is shown as "<index> <title>", or "<index> pwid:<id> <title>" when the script lets the id of the source through (see
-// aniMenuIds.ts): the marker tells the id from the first word of a title, whatever the id looks like.
 export function parseAnimeChoice(choice: string): AnimeSearchResult | null {
     const match = /^(\d+) (.+)$/.exec(choice.trim());
     if (!match) {
@@ -112,8 +106,6 @@ export function parseProgressLine(line: string): AniDownloadProgress | null {
     };
 }
 
-// What the stand-in of ffmpeg prints before it downloads each part of an episode whose picture and audio come apart (see pullwave-run.sh):
-// PULLWAVE_PART<TAB>the part that starts (from 0)<TAB>the parts of the episode, in their order, apart by commas.
 export const PART_MARKER = 'PULLWAVE_PART';
 const PART_KINDS: readonly DownloadPartKind[] = ['video', 'audio', 'other'];
 
@@ -123,7 +115,6 @@ function toPartKind(value: string): DownloadPartKind | null {
     }) ?? null;
 }
 
-// The part that starts and the parts of the episode, or null when the line is another one or says something the app does not know.
 export function parsePartLine(line: string): AniPartStart | null {
     const [marker, indexText = '', kindsText = '', ...rest] = stripAnsi(line).trim().split('\t');
     if (marker !== PART_MARKER || rest.length > 0 || !/^\d+$/.test(indexText)) {
@@ -142,16 +133,12 @@ export function parsePartLine(line: string): AniPartStart | null {
     };
 }
 
-// What the stand-in of ffmpeg prints once both parts of an episode whose picture and audio come apart are downloaded, right before ffmpeg
-// joins them (see pullwave-run.sh).
 export const JOIN_MARKER = 'PULLWAVE_JOIN';
 
 export function isJoinLine(line: string): boolean {
     return stripAnsi(line).trim() === JOIN_MARKER;
 }
 
-// What the stand-in of ffmpeg prints when the download of an episode whose audio is a track of its own failed (see pullwave-run.sh): ani-cli
-// ends well whatever its download did, so this line is what tells the app the download did not work.
 export const DOWNLOAD_FAILED_MARKER = 'PULLWAVE_DOWNLOAD_FAILED';
 
 export function isDownloadFailedLine(line: string): boolean {

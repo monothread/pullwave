@@ -16,7 +16,6 @@ import {
     type MangaTriState
 } from '@shared/manga';
 
-// What the server answers is data that came from a site through an extension: it is checked and cut to size before the app uses it.
 export class ParseError extends Error {}
 
 export const MAX_TEXT_LENGTH = 500;
@@ -61,13 +60,11 @@ function integer(value: unknown, what: string): number {
     return value;
 }
 
-// A number the server sends as text because it does not fit in 32 bits ("LongString").
 function longNumber(value: unknown): number | null {
     const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
     return Number.isFinite(parsed) ? parsed : null;
 }
 
-// An address from the server: one of its own paths (relative to it) or an http(s) address; anything else is dropped.
 export function resolveAddress(value: unknown, baseUrl: string): string | null {
     const text = optionalText(value, MAX_URL_LENGTH);
     if (text === null) {
@@ -81,7 +78,6 @@ export function resolveAddress(value: unknown, baseUrl: string): string | null {
     }
 }
 
-// An address of a site (not of the server): it has to be complete and http(s); anything else is dropped.
 export function siteAddress(value: unknown): string | null {
     const text = optionalText(value, MAX_URL_LENGTH);
     if (text === null) {
@@ -207,7 +203,6 @@ export function parseChapter(value: unknown): MangaChapter {
     };
 }
 
-// The chapters of a manga, the newest first (the server gives them in the order its source does, which is not always the same).
 export function parseChapters(value: unknown): MangaChapter[] {
     return list(value, 'The chapters', MAX_CHAPTERS)
         .map(parseChapter)
@@ -216,7 +211,6 @@ export function parseChapters(value: unknown): MangaChapter[] {
         });
 }
 
-// The addresses of the pages of a chapter, as the server serves them.
 export function parsePageAddresses(value: unknown, baseUrl: string): string[] {
     return list(value, 'The pages', MAX_PAGES).map((page) => {
         const address = resolveAddress(page, baseUrl);
@@ -257,8 +251,6 @@ function parsePreference(raw: Raw, position: number): MangaSourcePreference | nu
     }
 }
 
-// The settings of a source that are shown to the user: the hidden ones and the kinds this app does not know are left out (their place in
-// the list is kept by the others, since a change names a setting by its place).
 export function parsePreferences(value: unknown): MangaSourcePreference[] {
     const preferences: MangaSourcePreference[] = [];
     list(value, 'The settings', MAX_ITEMS).forEach((entry, position) => {
@@ -313,12 +305,10 @@ function parseFilter(raw: Raw, depth: number): MangaFilter {
         case 'GroupFilter':
             return { type: 'group', name, filters: depth >= MAX_FILTER_DEPTH ? [] : parseFilters(raw['filters'], depth + 1) };
         default:
-            // Separators, and the kinds this app does not know: the place they take in the list is kept, since a change names a filter by it.
             return { type: 'separator', name };
     }
 }
 
-// The filters a source offers for its search. Every entry is kept, so that the place of a filter in the list is the one the server knows.
 export function parseFilters(value: unknown, depth = 1): MangaFilter[] {
     return list(value, 'The filters', MAX_ITEMS).map((entry) => {
         return parseFilter(record(entry, 'A filter'), depth);

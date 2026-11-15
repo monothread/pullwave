@@ -7,10 +7,8 @@ const MAIN_SOURCE = readFileSync(resolve(__dirname, '../../../src/renderer/main.
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 const VERY_NARROW = '(max-width: 520px)';
 
-// The boxes that can hold a window fixed to the screen: a transform that stays on them would move the window into the box.
 const BOXES = ['.panel', '.url-input', '.job', '.history__item', '.cover-card', '.app__main > *', '.settings > .panel', '.history__list > .history__item', '.cover-grid > .cover-card', '.series-menu__panel', '.toast'];
 
-// What sizes a control: the layer must not change it (the e2e tests measure a field and the buttons beside it at --control-height).
 const SIZE_PROPERTIES = ['height', 'min-height', 'max-height', 'padding', 'padding-block', 'padding-top', 'padding-bottom', 'font-size', 'line-height', 'border', 'border-width', '--control-height'];
 
 function topLevel(): CssRule[] {
@@ -154,7 +152,6 @@ describe('the console layer: the top bar and the navigation', () => {
 
 describe('the console layer: what it must not do', () => {
     it.each(BOXES)('never leaves a transform on %s, a box that can hold a window', (selector) => {
-        // The box itself, alone or with a state (:hover), but not what is inside it nor its pseudo-elements.
         sheet.rules
             .filter((rule) => {
                 const rest = rule.selector.slice(selector.length);

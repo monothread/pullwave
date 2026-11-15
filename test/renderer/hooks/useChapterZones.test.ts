@@ -8,14 +8,10 @@ interface Scene {
     bar: HTMLElement;
     startZone: HTMLElement;
     endZone: HTMLElement;
-    // How far the content is scrolled: moves the zones the way the real scroll does.
     scrollTo: (top: number) => void;
-    // Puts the scroll somewhere without telling anyone (how the page is when the zones start to be watched).
     place: (top: number) => void;
 }
 
-// An area 700 tall at the top of the window, with a bar 90 tall on it; the zone of the start is 400 tall above the pages, and the one of the end
-// is 400 tall below pages that are 2000 tall. With no scroll the start zone is at 90 and the end zone at 2490 (below the area).
 function makeScene(): Scene {
     const area = document.createElement('div');
     const bar = document.createElement('div');
@@ -93,14 +89,12 @@ function setup(patch: Partial<ChapterZonesOptions> = {}, initialScroll = 0) {
     const endZone = createRef<HTMLElement>();
     (startZone as { current: HTMLElement | null }).current = scene.startZone;
     (endZone as { current: HTMLElement | null }).current = scene.endZone;
-    // The functions are the same at every render, as the ones of the reader are.
     const area = (): HTMLElement => {
         return scene.area;
     };
     const bar = (): HTMLElement => {
         return scene.bar;
     };
-    // What every render of the hook was given, in order.
     const renders: Array<{ start: number; end: number }> = [];
     const hook = renderHook(
         (options: Partial<ChapterZonesOptions>) => {
@@ -126,11 +120,8 @@ function setup(patch: Partial<ChapterZonesOptions> = {}, initialScroll = 0) {
     return { ...scene, ...hook, onPrevious, onNext, renders };
 }
 
-// The scroll that puts the end zone all in view (the area ends at 700): zone top at 700 - 400.
 const END_ALL_IN_VIEW = 2490 - 300;
-// The scroll that puts the start zone all in view under the bar (its top at the bottom of the bar).
 const START_ALL_IN_VIEW = 0;
-// A scroll in the middle of the pages.
 const MIDDLE = 900;
 
 describe('useChapterZones how much of each zone is in view', () => {
@@ -165,7 +156,6 @@ describe('useChapterZones how much of each zone is in view', () => {
         scrollTo(END_ALL_IN_VIEW + 100);
         expect(result.current).toEqual({ start: 0, end: 1 });
         const before = renders.length;
-        // The new chapter comes: until it is measured the zones count as out of view, though the area is where it was.
         rerender({ chapterKey: 'One Piece|2' });
         expect(renders[before]).toEqual({ start: 0, end: 0 });
     });
@@ -177,7 +167,6 @@ describe('useChapterZones how much of each zone is in view', () => {
         const before = renders.length;
         rerender({ chapterKey: 'One Piece|2' });
         expect(renders[before]).toEqual({ start: 0, end: 0 });
-        // The area is still all the way down: the new chapter is measured as it is.
         expect(result.current).toEqual({ start: 0, end: 1 });
         scrollTo(MIDDLE);
         expect(result.current).toEqual({ start: 0, end: 0 });

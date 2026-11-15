@@ -2,12 +2,9 @@ import { VIDEO_THUMBNAIL_SCHEME } from '@shared/constants';
 import { processLogs, type LogHub } from './logHub';
 import { STREAM_USER_AGENT } from './streamProxy';
 
-// The largest picture that is kept, and how long its address has to answer.
 export const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
 export const THUMBNAIL_TIMEOUT_MS = 15_000;
-// The most pictures kept at once: one per download of the queue; past it the oldest goes.
 export const MAX_THUMBNAILS = 50;
-// The kinds of picture the window can show.
 const PICTURE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
 
 interface Picture {
@@ -17,7 +14,6 @@ interface Picture {
 
 export interface VideoThumbnailsDependencies {
     fetchImpl?: typeof fetch;
-    // Where a picture that could not be fetched is told (the log of yt-dlp by default).
     log?: Pick<LogHub, 'write'>;
     timeoutMs?: number;
     maxBytes?: number;
@@ -26,12 +22,10 @@ export interface VideoThumbnailsDependencies {
 
 class PictureError extends Error {}
 
-// The kind of the picture as the server says it, without its parameters (`image/jpeg; charset=…`).
 function pictureType(response: Response): string {
     return (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
-// The body of the answer, stopped as soon as it is larger than the limit (the size the server announces is not trusted).
 async function readLimited(response: Response, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
     const announced = Number(response.headers.get('content-length') ?? '');
     if (Number.isFinite(announced) && announced > maxBytes) {
@@ -64,7 +58,6 @@ async function readLimited(response: Response, maxBytes: number): Promise<Uint8A
     return bytes;
 }
 
-// The address of a picture as the window asks for it: `pullwave-thumb://job/<id>?v=<n>`; null when it is not one.
 export function parseThumbnailAddress(address: string): string | null {
     try {
         const url = new URL(address);
@@ -78,16 +71,12 @@ export function parseThumbnailAddress(address: string): string | null {
     }
 }
 
-// The pictures of the videos of the queue, fetched by the app from the address yt-dlp gives and kept in memory only: the window shows them
-// from here, so it never asks a site itself (sites refuse pictures asked from another page, and their addresses expire). A picture goes
-// when its download leaves the queue, and nothing is written to the disk.
 export class VideoThumbnails {
     private readonly pictures = new Map<string, Picture>();
     private version = 0;
 
     constructor(private readonly deps: VideoThumbnailsDependencies = {}) {}
 
-    // Fetches the picture of a download and gives the address the window shows it at, or null when it could not be fetched.
     async load(jobId: string, address: string): Promise<string | null> {
         try {
             const picture = await this.fetchPicture(address);
@@ -105,7 +94,6 @@ export class VideoThumbnails {
         this.pictures.delete(jobId);
     }
 
-    // The answer to the window for an address of a picture: the picture, or 404 when it is not there (any more).
     respond(address: string): Response {
         const id = parseThumbnailAddress(address);
         const picture = id === null ? undefined : this.pictures.get(id);

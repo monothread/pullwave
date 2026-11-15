@@ -9,7 +9,6 @@ afterEach(() => {
     cleanTempDirs();
 });
 
-// Answers the latest release of FlareSolverr; every address it is asked is kept.
 function fakeFetch(options: { flaresolverr?: string; fail?: boolean } = {}): { impl: typeof fetch; urls: string[] } {
     const urls: string[] = [];
     const impl = vi.fn((input: string | URL | Request) => {

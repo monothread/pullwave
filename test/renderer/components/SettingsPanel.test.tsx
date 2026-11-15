@@ -1417,7 +1417,6 @@ describe('SettingsPanel manga section', () => {
         expect(screen.queryByRole('group', { name: 'Updates of the programs' })).not.toBeInTheDocument();
         await flushPromises();
         expect(screen.getByRole('button', { name: 'CHECK NOW' })).toBeInTheDocument();
-        // The app runs no helper here (the answer of the mock): there is nothing to look for an update of.
         expect(screen.queryByRole('button', { name: 'CHECK FOR UPDATES' })).not.toBeInTheDocument();
         expect(mock.api.manga.health).toHaveBeenCalledWith(false);
     });
@@ -1933,9 +1932,6 @@ describe('SettingsPanel disk space', () => {
             useMangaStore.setState({ migration: null });
         });
 
-        // The migration ends (the disk is read, with the folder the settings say now) and the new folder is saved (the disk is read once
-        // more, because the folder of the settings changed): two readings after the one made when the screen opened.
-
         it('does not read the anime disk during the migration of the anime folder, and reads it when it ends', async () => {
             useAnimeStore.setState({ migration: { done: 3, total: 8 } });
             render(<SettingsPanel scope="anime" />);
@@ -2026,7 +2022,6 @@ describe('SettingsPanel: the volume of the sounds', () => {
     });
 });
 
-// The titles of the blocks of a scope, in the order they are on the page (the order the columns are filled in).
 function blockTitles(): Array<string | null> {
     return Array.from(document.querySelectorAll('.settings > fieldset > legend')).map((legend) => {
         return legend.textContent;

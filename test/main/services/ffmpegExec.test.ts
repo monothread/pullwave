@@ -4,7 +4,6 @@ import { LogHub, processLogs } from '@main/services/logHub';
 import { createFakeLogWriter } from '../../helpers/fakeLogWriter';
 import { makeTempDir } from '../../helpers/tempDir';
 
-// Node stands in for ffmpeg: what it is given to run says what it writes and how it ends.
 const NODE = process.execPath;
 
 describe('openFfmpegLog', () => {

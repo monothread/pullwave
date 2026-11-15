@@ -27,9 +27,7 @@ function JobCardView({ job, onCancel, onPause, onResume, onStop, onRetry, onRemo
     const phase = livePhase(job);
     const isRecording = job.live && job.status === 'running' && phase === null;
     const canRetry = job.status === 'error' || job.status === 'cancelled';
-    // A plain download that is running (not a live recording, nor one closing its file) can be paused.
     const canPause = job.status === 'running' && !job.live && phase === null;
-    // A live recording left behind may still be playable, so its window warns about that.
     const livePartialKept = job.live && job.hasPartial;
     const partialMessage = livePartialKept ? t('job.confirmLivePartial') : undefined;
     return (
@@ -160,5 +158,4 @@ function JobCardView({ job, onCancel, onPause, onResume, onStop, onRetry, onRemo
     );
 }
 
-// A card is drawn again only when its download or its actions change: the progress of one download does not draw the others again.
 export const JobCard = memo(JobCardView);

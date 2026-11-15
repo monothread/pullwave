@@ -4,14 +4,11 @@ import { mergeLogLines } from '../components/logView';
 
 interface LogLines {
     lines: LogLine[];
-    // Whether what the log held when the window opened has arrived.
     loaded: boolean;
-    // Empties the log of the program (in the app too).
     clear: () => Promise<void>;
 }
 
 interface LogState {
-    // The program the lines are of: lines of another program (the one shown before) are not shown.
     source: LogSource;
     lines: LogLine[];
     loaded: boolean;
@@ -21,8 +18,6 @@ function emptyState(source: LogSource): LogState {
     return { source, lines: [], loaded: false };
 }
 
-// The lines of a program's log while the window shows it: what it holds, then the new ones as they come. The new lines are watched before
-// what it holds is asked, so none is lost in between; the ones that came twice are left out by their id.
 export function useLogLines(source: LogSource): LogLines {
     const [state, setState] = useState<LogState>(() => {
         return emptyState(source);

@@ -28,15 +28,12 @@ import {
     type ReadingRecord
 } from '@shared/manga';
 
-// How many chapters the history of new chapters keeps (the oldest go first).
 export const MAX_UPDATES_KEPT = 1000;
 
-// How many mangas the history of reading keeps (the one read longest ago goes first).
 export const MAX_READING_KEPT = 500;
 
 export const INTERRUPTED_MESSAGE = 'The app was closed before the download finished.';
 
-// Each entry is one schema version, applied in order; `PRAGMA user_version` remembers how many were applied.
 const MIGRATIONS: readonly string[] = [
     `CREATE TABLE manga (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,16 +62,12 @@ const MIGRATIONS: readonly string[] = [
         downloaded_at INTEGER,
         UNIQUE (manga_id, remote_id)
     );`,
-    // What the source says about a manga, kept so the chapters downloaded later (or after a restart) carry it too.
     `ALTER TABLE manga ADD COLUMN author TEXT;
     ALTER TABLE manga ADD COLUMN artist TEXT;
     ALTER TABLE manga ADD COLUMN description TEXT;
     ALTER TABLE manga ADD COLUMN genres TEXT;
     ALTER TABLE manga ADD COLUMN status TEXT;`,
-    // The page of the manga on the site of its source.
     `ALTER TABLE manga ADD COLUMN url TEXT;`,
-    // The seasons of a manga are separate entries in the source: the user joins them under a series with a season number. And the groups
-    // (Mangas, Manhwas...) the user makes to keep the library in order: a manga can be in several.
     `ALTER TABLE manga ADD COLUMN series TEXT;
     ALTER TABLE manga ADD COLUMN season INTEGER;
     ALTER TABLE manga ADD COLUMN season_name TEXT;
@@ -88,12 +81,8 @@ const MIGRATIONS: readonly string[] = [
         manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE,
         PRIMARY KEY (group_id, manga_id)
     );`,
-    // When a chapter that was not one of those the manga came with arrived in the library (to say which ones are new).
     `ALTER TABLE chapter ADD COLUMN added_at INTEGER;`,
-    // The fingerprint (SHA-256) of the cover kept in the data folder; null while there is none (see mangaCovers.ts).
     `ALTER TABLE manga ADD COLUMN cover_hash TEXT;`,
-    // The history of the chapters that arrived in the library after the manga was in it (what the updates screen lists), and where the user
-    // was in each manga they read (the history of reading), which also covers the mangas that are not in the library.
     `CREATE TABLE chapter_update (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         manga_id INTEGER NOT NULL REFERENCES manga (id) ON DELETE CASCADE,
@@ -116,20 +105,14 @@ const MIGRATIONS: readonly string[] = [
         read_at INTEGER NOT NULL,
         UNIQUE (source_id, manga_remote_id)
     );`,
-    // The order of the groups, which is the order of the tabs of the library (the first is the one on the left). The groups that were there
-    // keep the alphabetical order they had.
     `ALTER TABLE manga_group ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
     UPDATE manga_group SET position = (
         SELECT COUNT(*) FROM manga_group other
         WHERE other.name COLLATE NOCASE < manga_group.name COLLATE NOCASE
             OR (other.name COLLATE NOCASE = manga_group.name COLLATE NOCASE AND other.id < manga_group.id)
     );`,
-    // Where a chapter that was started is being made (its pages are kept beside it), so a pause survives the app being closed.
     `ALTER TABLE chapter ADD COLUMN output_path TEXT;`,
-    // Everything known about the error of a chapter (what was being done, the address, the HTTP status, the stack...), as JSON.
     `ALTER TABLE chapter ADD COLUMN error_details TEXT;`,
-    // Whether the place a chapter is being made in is taken by another is asked each time a chapter starts: without an index every
-    // chapter of the library is read for it. Only the chapters being made have the place, so only they are in the index.
     `CREATE INDEX chapter_output_path ON chapter (output_path) WHERE output_path IS NOT NULL;`
 ];
 
@@ -233,7 +216,6 @@ function toChapter(row: Row): MangaChapterRecord {
     };
 }
 
-// The newest chapters first (the newest has the highest `sourceOrder`).
 function compareChapters(first: MangaChapterRecord, second: MangaChapterRecord): number {
     return second.sourceOrder - first.sourceOrder || first.id - second.id;
 }
@@ -255,7 +237,6 @@ export class MangaDb {
             this.db.exec(JOURNAL_PRAGMAS);
             this.migrate();
         } catch (error) {
-            // The file must not stay open (and locked, on Windows) when the library cannot be used.
             this.db.close();
             throw error;
         }
@@ -276,7 +257,6 @@ export class MangaDb {
         });
     }
 
-    // Each query is prepared once and used again: the queries are fixed texts, so there are only as many as the class has.
     private statement(sql: string): StatementSync {
         let prepared = this.statements.get(sql);
         if (prepared === undefined) {
@@ -298,8 +278,6 @@ export class MangaDb {
         this.statement(sql).run(...params);
     }
 
-    // Writes what the journal holds into the database file and empties it (the app does it when it quits): a database file that is
-    // deleted or copied then is whole on its own.
     checkpoint(): void {
         this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
     }
@@ -312,13 +290,11 @@ export class MangaDb {
         this.db.close();
     }
 
-    // Whether the user has used the manga section: a manga is in the library or something was read.
     get wasUsed(): boolean {
         const row = this.one('SELECT EXISTS (SELECT 1 FROM manga) OR EXISTS (SELECT 1 FROM reading_history) AS used');
         return row !== null && numeric(row, 'used') === 1;
     }
 
-    // The same manga of the same source is the same entry: its title and cover are refreshed.
     upsertManga(manga: MangaSummary): MangaRecord {
         const row = this.one(
             `INSERT INTO manga (source_id, remote_id, title, thumbnail_url, created_at) VALUES (?, ?, ?, ?, ?)
@@ -333,7 +309,6 @@ export class MangaDb {
         return toManga(row ?? {});
     }
 
-    // What the source says about the manga (its people, its description, its genres and whether it is still going).
     saveDetails(mangaId: number, details: Pick<MangaDetails, 'url' | 'author' | 'artist' | 'description' | 'genres' | 'status'>): void {
         this.run(
             'UPDATE manga SET url = ?, author = ?, artist = ?, description = ?, genres = ?, status = ? WHERE id = ?',
@@ -347,7 +322,6 @@ export class MangaDb {
         );
     }
 
-    // The cover kept in the data folder: the fingerprint of the image (null when none is kept).
     coverHash(mangaId: number): string | null {
         return nullableText(this.one('SELECT cover_hash FROM manga WHERE id = ?', mangaId) ?? {}, 'cover_hash');
     }
@@ -356,13 +330,10 @@ export class MangaDb {
         this.run('UPDATE manga SET cover_hash = ? WHERE id = ?', hash, mangaId);
     }
 
-    // The mangas that have no cover kept yet: the ones whose source gives one, and the ones whose source gives none (their cover is looked
-    // for in other services, see MangaCovers).
     coverless(): MangaRecord[] {
         return this.all('SELECT * FROM manga WHERE cover_hash IS NULL ORDER BY id').map(toManga);
     }
 
-    // Where the cover is on the source now (the source can change it).
     setThumbnail(mangaId: number, thumbnailUrl: string | null): void {
         this.run('UPDATE manga SET thumbnail_url = ? WHERE id = ?', thumbnailUrl, mangaId);
     }
@@ -403,9 +374,6 @@ export class MangaDb {
         return row === null ? null : toChapter(row);
     }
 
-    // Puts the chapters of the source in the library: the new ones are `idle`, the ones it has already keep their state and get the
-    // data the source gives now (a title or a number can be corrected). The chapters a manga comes with are not new; the ones that come
-    // later (`arrived`: true, or how they came) are, keep the time they came and are written in the history of new chapters.
     registerChapters(mangaId: number, chapters: readonly MangaChapter[], arrived: boolean | ArrivalOrigin = false): void {
         const origin: ArrivalOrigin | null = arrived === false ? null : arrived === true ? 'manual' : arrived;
         this.db.exec('BEGIN');
@@ -442,7 +410,6 @@ export class MangaDb {
         }
     }
 
-    // The chapter in the library, put there as `idle` first if it was not.
     ensureChapter(mangaId: number, chapter: MangaChapter, arrived = false): MangaChapterRecord {
         this.registerChapters(mangaId, [chapter], arrived);
         return toChapter(this.one('SELECT * FROM chapter WHERE manga_id = ? AND remote_id = ?', mangaId, chapter.remoteId) ?? {});
@@ -452,7 +419,6 @@ export class MangaDb {
         this.run(`UPDATE chapter SET status = 'queued', error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, chapterId);
     }
 
-    // The chapter starts a run that makes it at this place (remembered until it is downloaded, fails or is cancelled).
     markDownloading(chapterId: number, outputPath: string): void {
         this.run(`UPDATE chapter SET status = 'downloading', output_path = ?, error_code = NULL, error_raw = NULL, error_details = NULL WHERE id = ?`, outputPath, chapterId);
     }
@@ -469,7 +435,6 @@ export class MangaDb {
         this.markDownloaded('done', chapterId, filePath, sizeBytes, pageCount);
     }
 
-    // The chapter was made, but without some pages the source would not give: it can be read, and the pages can be downloaded again.
     markIncomplete(chapterId: number, filePath: string, sizeBytes: number | null, pageCount: number): void {
         this.markDownloaded('incomplete', chapterId, filePath, sizeBytes, pageCount);
     }
@@ -496,7 +461,6 @@ export class MangaDb {
         );
     }
 
-    // Where the chapter was being made when it was started before; null when it was not, or its pages were deleted.
     outputPathOf(chapterId: number): string | null {
         const row = this.one('SELECT output_path FROM chapter WHERE id = ?', chapterId);
         return row === null ? null : nullableText(row, 'output_path');
@@ -506,22 +470,18 @@ export class MangaDb {
         this.run('UPDATE chapter SET output_path = ? WHERE id = ?', outputPath, chapterId);
     }
 
-    // Whether another chapter is (or was, before it was interrupted) being made at this place.
     isOutputPathClaimed(outputPath: string, exceptChapterId: number): boolean {
         return this.one('SELECT 1 AS claimed FROM chapter WHERE output_path = ? AND id != ? LIMIT 1', outputPath, exceptChapterId) !== null;
     }
 
-    // The chapters that are paused, manga by manga, the oldest chapter first.
     pausedChapters(): MangaChapterRecord[] {
         return this.all(`SELECT * FROM chapter WHERE status = 'paused' ORDER BY manga_id, source_order, id`).map(toChapter);
     }
 
-    // A download that was going on when the app closed did not finish: it is an error that can be retried.
     failInterrupted(): void {
         this.run(`UPDATE chapter SET status = 'error', error_code = 'UNKNOWN', error_raw = ?, error_details = NULL WHERE status IN ('queued', 'downloading')`, INTERRUPTED_MESSAGE);
     }
 
-    // Points chapters at the files they were moved to (the folder of the library changed).
     relinkChapters(updates: ReadonlyArray<{ chapterId: number; filePath: string; sizeBytes: number | null }>): void {
         this.db.exec('BEGIN');
         try {
@@ -535,13 +495,6 @@ export class MangaDb {
         }
     }
 
-    // ----- Moving to another source -----
-
-    // Makes the manga of the library the same manga in another source. It keeps its title (the folder of its chapters is named after it),
-    // its series and its groups; the cover, the page on the site and what the source says come from the other one. The chapters the
-    // other source has are matched with the ones of the library: those keep their state and their files and take the data of the new
-    // ones; the downloaded chapters the other source lacks stay as they are; the others go; and the chapters that are new are added,
-    // not downloaded.
     moveToSource(mangaId: number, target: { manga: MangaSummary; details: MangaDetails | null; chapters: readonly MangaChapter[] }): { ok: true; matched: number; added: number; dropped: number } | { ok: false; reason: 'not-found' | 'same' | 'exists' } {
         const current = this.getManga(mangaId);
         if (current === null) {
@@ -557,7 +510,6 @@ export class MangaDb {
         const dropped = droppedChapters(matching);
         this.db.exec('BEGIN');
         try {
-            // The history of reading of the old source is about chapters the other source numbers differently: it goes.
             this.run('DELETE FROM reading_history WHERE source_id = ? AND manga_remote_id = ?', current.sourceId, current.remoteId);
             this.run('UPDATE manga SET source_id = ?, remote_id = ?, thumbnail_url = ? WHERE id = ?', target.manga.sourceId, target.manga.remoteId, target.manga.thumbnailUrl, mangaId);
             if (target.details !== null) {
@@ -587,17 +539,12 @@ export class MangaDb {
         return { ok: true, matched: matching.matched.length, added: matching.added.length, dropped: dropped.length };
     }
 
-    // ----- Series -----
-
-    // Whether another manga (not the one with this id) already has this season of the series.
     seasonTaken(series: string, season: number, exceptMangaId: number): boolean {
         return this.all('SELECT * FROM manga WHERE series IS NOT NULL AND season = ? AND id != ?', season, exceptMangaId).some((row) => {
             return sameSeries(text(row, 'series'), series);
         });
     }
 
-    // The name a series goes by: the spelling the library already has for it (the same name in another case, with other accents or extra
-    // spaces is the same series), otherwise the name as it is. The manga that is being joined does not count.
     canonicalSeries(series: string, exceptMangaIds: readonly number[] = []): string {
         const known = this.all('SELECT id, series FROM manga WHERE series IS NOT NULL ORDER BY id').find((row) => {
             return !exceptMangaIds.includes(numeric(row, 'id')) && sameSeries(text(row, 'series'), series);
@@ -605,7 +552,6 @@ export class MangaDb {
         return known ? text(known, 'series') : series;
     }
 
-    // The seasons a series has, without counting the mangas in `exceptMangaIds`.
     seasonsOfSeries(series: string, exceptMangaIds: readonly number[] = []): number[] {
         return this.all('SELECT * FROM manga WHERE series IS NOT NULL AND season IS NOT NULL')
             .filter((row) => {
@@ -616,13 +562,10 @@ export class MangaDb {
             });
     }
 
-    // The first season number a series does not have: the last one plus one (1 for a series that has none).
     firstFreeSeason(series: string, exceptMangaIds: readonly number[] = []): number {
         return Math.max(0, ...this.seasonsOfSeries(series, exceptMangaIds)) + 1;
     }
 
-    // Joins a manga to a series with its place in it (and, if wanted, the name it is shown with), or takes it out of one. It enters the
-    // groups the other seasons of the series are in. False when the manga is not there, or when the season is taken.
     setSeries(mangaId: number, series: string | null, season: number | null, seasonName: string | null = null): boolean {
         if (this.getManga(mangaId) === null) {
             return false;
@@ -638,9 +581,6 @@ export class MangaDb {
         return true;
     }
 
-    // Gives every manga of the list the name of a series, keeping the season each one has (a manga that was on its own is the first
-    // season). The spelling is the one another manga of the library already has for that series, if any. When that series has a season
-    // one of them has too, nothing changes and the manga that clashes is told.
     renameSeries(mangaIds: readonly number[], series: string): { ok: true } | { ok: false; manga: string; season: number; suggested: number } {
         const mangas = mangaIds.flatMap((id) => {
             const manga = this.getManga(id);
@@ -670,8 +610,6 @@ export class MangaDb {
         return { ok: true };
     }
 
-    // ----- Groups -----
-
     listGroups(): MangaGroup[] {
         return this.all('SELECT * FROM manga_group ORDER BY position, id').map(toGroup);
     }
@@ -687,19 +625,15 @@ export class MangaDb {
         });
     }
 
-    // Makes a group. Null when another group has the name (the same name in another case, with other accents or extra spaces is the same).
     createGroup(name: string): MangaGroup | null {
         if (this.groupNameTaken(name, 0)) {
             return null;
         }
-        // At the end of the others.
         return toGroup(
             this.one('INSERT INTO manga_group (name, created_at, position) VALUES (?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM manga_group)) RETURNING *', name, this.now()) ?? {}
         );
     }
 
-    // Moves the group one place up (towards the first) or down, by changing places with the one next to it. False when it is not there or is
-    // already at that end.
     moveGroup(id: number, direction: MangaGroupDirection): boolean {
         const groups = this.all('SELECT id, position FROM manga_group ORDER BY position, id');
         const index = groups.findIndex((row) => {
@@ -715,7 +649,6 @@ export class MangaDb {
         return true;
     }
 
-    // Null when the group is not there or another group has the name.
     renameGroup(id: number, name: string): MangaGroup | null {
         if (this.getGroup(id) === null || this.groupNameTaken(name, id)) {
             return null;
@@ -724,7 +657,6 @@ export class MangaDb {
         return this.getGroup(id);
     }
 
-    // The mangas stay in the library: only the group goes.
     deleteGroup(id: number): void {
         this.run('DELETE FROM manga_group WHERE id = ?', id);
     }
@@ -735,7 +667,6 @@ export class MangaDb {
         });
     }
 
-    // Puts mangas in a group, or takes them out of it. Mangas that are not there are ignored.
     setGroupMembers(groupId: number, mangaIds: readonly number[], member: boolean): void {
         if (this.getGroup(groupId) === null) {
             return;
@@ -756,7 +687,6 @@ export class MangaDb {
         }
     }
 
-    // A manga that joins a series is in the groups the series is already in.
     private joinGroupsOfSeries(mangaId: number, series: string): void {
         this.all('SELECT id, series FROM manga WHERE series IS NOT NULL AND id != ?', mangaId)
             .filter((row) => {
@@ -767,8 +697,6 @@ export class MangaDb {
             });
     }
 
-    // The chapter stays in the library, as one that is not downloaded; the file it had is for the caller to delete. Gives nothing (and
-    // changes nothing) for a chapter that is not downloaded.
     removeDownload(chapterId: number): string | null {
         const chapter = this.getChapter(chapterId);
         if (chapter === null || !hasChapterFile(chapter.status)) {
@@ -778,10 +706,6 @@ export class MangaDb {
         return chapter.filePath;
     }
 
-    // ----- History of new chapters -----
-
-    // The chapters that arrived in the library after their manga was in it, the newest first. The cover is the one of the source; the
-    // caller gives the one the app keeps when there is one.
     updates(limit = 200): MangaUpdateEntry[] {
         return this.all(
             `SELECT u.id AS id, u.manga_id AS manga_id, u.chapter_id AS chapter_id, u.found_at AS found_at, u.origin AS origin,
@@ -814,9 +738,6 @@ export class MangaDb {
         this.run('DELETE FROM chapter_update');
     }
 
-    // ----- History of reading -----
-
-    // Where the user is in a manga: one line for each manga (of the library or not), with the chapter and the page they are on.
     recordReading(record: ReadingRecord): void {
         this.run(
             `INSERT INTO reading_history (source_id, manga_remote_id, title, thumbnail_url, chapter_remote_id, chapter_name, chapter_number, page, page_count, read_at)
@@ -839,7 +760,6 @@ export class MangaDb {
         this.run('DELETE FROM reading_history WHERE id NOT IN (SELECT id FROM reading_history ORDER BY read_at DESC, id DESC LIMIT ?)', MAX_READING_KEPT);
     }
 
-    // The history of reading, the last manga read first; each line says whether the manga is in the library now.
     readingHistory(limit = 200): ReadingEntry[] {
         return this.all(
             `SELECT r.*, (SELECT m.id FROM manga m WHERE m.source_id = r.source_id AND m.remote_id = r.manga_remote_id) AS library_id
@@ -871,7 +791,6 @@ export class MangaDb {
         this.run('DELETE FROM reading_history');
     }
 
-    // The manga and its chapters are no longer in the library; the files they had are for the caller to delete.
     removeManga(mangaId: number): string[] {
         const paths = this.chaptersOf(mangaId).flatMap((chapter) => {
             return chapter.filePath === null ? [] : [chapter.filePath];

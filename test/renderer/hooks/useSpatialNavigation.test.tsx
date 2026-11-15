@@ -29,7 +29,6 @@ function placeAll(spots: readonly Spot[]): void {
     });
 }
 
-// A small grid of buttons in the app: A B on the first row, C under A, and a field under C.
 const SPOTS: readonly Spot[] = [
     { label: 'A', left: 0, top: 0 },
     { label: 'B', left: 100, top: 0 },

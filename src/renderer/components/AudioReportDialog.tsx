@@ -16,9 +16,6 @@ interface AudioReportWindowProps {
     report: AudioReport;
 }
 
-// The window that opens when the check of the downloaded episodes ends: how it went, every episode that has a problem (its video has no
-// audio, its file is not on the disk, or it could not be read), a button that downloads again the ones that a new download can fix and a
-// button that repairs the ones that could not be read. It is put in the body of the page, over the screen.
 function AudioReportWindow({ report }: AudioReportWindowProps) {
     const t = useTranslator();
     const titleId = useId();
@@ -110,7 +107,6 @@ function AudioReportWindow({ report }: AudioReportWindowProps) {
     );
 }
 
-// Shows the window while there is a report of the check of the audio of the library (it is mounted only then, so the focus goes into it).
 export function AudioReportDialog() {
     const report = useAnimeStore((state) => {
         return state.audioReport;

@@ -5,6 +5,8 @@
 - Arrow functions always use a block body with an explicit `return` (no implicit returns).
 - Conditionals always use `{}` (avoid `if (x) return y;`).
 - Small, focused functions; extract when one takes on too many responsibilities; no duplication.
+- No comments in the code (any file type): names, types and small functions carry the meaning. Only these are allowed: legal/license headers, documentation comments of a public API, tool directives (`// prettier-ignore`, `eslint-disable-*`, `@ts-expect-error`, `// @vitest-environment`, `/// <reference>`, shebangs), links to issues/RFCs that explain a constraint the code cannot express, and non-obvious behavior forced by an external dependency. A comment-only body that exists only to satisfy a lint rule (an empty `catch {}`) is tolerated.
+- The code is the source of truth: every check is made in the code; the documentation is only a pointer, and is fixed when it disagrees with the code.
 - Modify only what the task requires; out-of-scope observations go in notes, untouched.
 - No two files in a folder may differ only in casing (`MangaSearch.tsx` and `mangaSearch.ts`): it is fine on Linux and breaks the build on Windows (found in 0.21.3).
 

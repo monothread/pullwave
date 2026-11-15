@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// A stand-in for `ffmpeg -i a -i b -c copy out`: puts the inputs, in order, in the last argument.
 const fs = require('node:fs');
 
 const args = process.argv.slice(2);

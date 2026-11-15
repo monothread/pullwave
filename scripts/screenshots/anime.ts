@@ -1,17 +1,13 @@
 import { expect, type Page } from '@playwright/test';
 import { snap, snapElement, snapFullscreen, type Shot } from './session';
 
-// The screens of the anime section.
-
 export interface AnimeToAdd {
     title: string;
     series?: string;
     order?: number;
-    // How many episodes are downloaded (the first ones): the whole season when it is 'season'.
     downloaded: number | 'season';
 }
 
-// The anime that fill the library, and what is downloaded of each.
 export const LIBRARY: readonly AnimeToAdd[] = [
     { title: 'Neon Harbor Nights', series: 'Neon Harbor Nights', order: 1, downloaded: 'season' },
     { title: 'Neon Harbor Nights 2', series: 'Neon Harbor Nights', order: 2, downloaded: 5 },
@@ -40,7 +36,6 @@ export async function searchAnime(page: Page, words: string): Promise<void> {
     await page.getByLabel('Anime name').fill(words);
     await page.getByLabel('Anime name').press('Enter');
     await expect(page.getByRole('button', { name: 'OPEN: Neon Harbor Nights', exact: true })).toBeVisible({ timeout: 30000 });
-    // The covers come a moment after the names.
     await page.waitForTimeout(2500);
 }
 
@@ -75,7 +70,6 @@ async function downloadEpisodes(page: Page, anime: AnimeToAdd): Promise<void> {
     await waitForDownloads(page);
 }
 
-// Puts the anime in the library from the search and downloads the episodes it says.
 export async function addAnime(page: Page, anime: AnimeToAdd): Promise<void> {
     await searchAnime(page, anime.title);
     await page.getByRole('button', { name: `OPEN: ${anime.title}`, exact: true }).click();
@@ -122,7 +116,6 @@ export async function shootSeries(shot: Shot): Promise<void> {
     await snap(page, 'anime-series');
 }
 
-// The episodes of a season as cards: the first two watched, so the seal of what was watched is seen next to the ones still to watch.
 export async function shootEpisodes(shot: Shot): Promise<void> {
     const { page } = shot;
     for (const episode of [1, 2]) {

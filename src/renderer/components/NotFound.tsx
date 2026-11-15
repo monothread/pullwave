@@ -1,5 +1,3 @@
-// How big the search that found nothing is drawn: on a screen (the lens sweeps the rows above the words), in a window (the same, small, beside
-// the words) or in a dropdown (only the lens shaking no, in one line).
 export type NotFoundSize = 'screen' | 'small' | 'tiny';
 
 interface NotFoundProps {
@@ -7,9 +5,6 @@ interface NotFoundProps {
     size?: NotFoundSize;
 }
 
-// A search or a filter that found nothing (D-197): a lens sweeps the rows it looks through, stops, shakes "no", a red cross pops inside it and
-// the words come in as a broken signal; then the lens floats and the cross breathes. Loading and the lists that are empty by nature keep the
-// ring of the empty screens.
 export function NotFound({ text, size = 'screen' }: NotFoundProps) {
     return (
         <div className={`not-found not-found--${size}`} data-testid="not-found">

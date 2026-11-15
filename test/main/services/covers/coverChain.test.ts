@@ -2,7 +2,6 @@ import { CoverChain, FALLBACK_INTERVAL_MS, FALLBACK_TIMEOUT_MS, coverSearchNames
 import { AniListCoverProvider, KitsuCoverProvider, MangaDexCoverProvider, type CoverKind, type CoverProvider } from '@main/services/covers/coverProviders';
 import { CoverFetchError } from '@main/services/covers/politeClient';
 
-// A service that answers each name with what it is given for it (null for the names it does not know), or fails.
 function provider(name: string, answers: Record<string, string | Error>) {
     const asked: Array<[string, CoverKind]> = [];
     const service: CoverProvider = {

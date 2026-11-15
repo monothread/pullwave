@@ -1,16 +1,12 @@
 import { expect, type Page } from '@playwright/test';
 import { snap, type Shot } from './session';
 
-// The screens of the manga section.
-
 const STORE_ADDRESS = 'https://store.example/index.min.json';
 const SOURCE = 'Lantern Scans';
 
 export interface MangaToAdd {
     title: string;
-    // The source the manga is browsed in (the second one has its own mangas).
     source: 'Lantern Scans' | 'Paperwind';
-    // Whether its chapters are downloaded.
     downloaded: boolean;
 }
 
@@ -36,7 +32,6 @@ export async function goToMangaTab(page: Page, tab: 'BROWSE' | 'SEARCH' | 'UPDAT
     await mangaNav(page).getByRole('button', { name: tab, exact: true }).click();
 }
 
-// Adds the store of extensions and installs the one of the sources, which is what makes the sources appear.
 export async function installExtension(page: Page): Promise<void> {
     await goToMangaTab(page, 'SETTINGS');
     await page.getByLabel('Address of a store (index.min.json)').fill(STORE_ADDRESS);
@@ -48,7 +43,6 @@ export async function installExtension(page: Page): Promise<void> {
     await expect(page.getByText('INSTALLED', { exact: true })).toBeVisible();
 }
 
-// The browse opens where it was left (the page of a manga, a source): it goes back until the list of sources shows.
 async function openSourceOf(page: Page, source: string): Promise<void> {
     await goToMangaTab(page, 'BROWSE');
     const popular = page.getByRole('button', { name: `POPULAR: ${source}`, exact: true });
@@ -87,7 +81,6 @@ export async function fillMangaLibrary(page: Page): Promise<void> {
     }
 }
 
-// A tab opens where it was left (the page of a manga): the list is reached by going back.
 async function backToList(page: Page): Promise<void> {
     const back = page.getByRole('button', { name: '← BACK', exact: true });
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -136,7 +129,6 @@ export async function shootMangaReader(shot: Shot): Promise<void> {
 }
 
 export async function shootMangaSettings(shot: Shot): Promise<void> {
-    // The reader covers the section while it is open.
     const close = shot.page.getByRole('button', { name: '← CLOSE', exact: true });
     if (await close.isVisible()) {
         await close.click();
@@ -147,7 +139,6 @@ export async function shootMangaSettings(shot: Shot): Promise<void> {
     await snap(shot.page, 'manga-settings');
 }
 
-// The reader with two pages side by side (a setting of the reader), then back to one page for the screens that come next.
 export async function shootMangaTwoPages(shot: Shot): Promise<void> {
     const { page } = shot;
     const reader = page.getByRole('region', { name: 'Reader' });

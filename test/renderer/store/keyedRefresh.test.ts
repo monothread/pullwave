@@ -16,7 +16,6 @@ function setup() {
     return { refresh: keyedRefresh(run), run, pending };
 }
 
-// Lets every promise that can settle now settle, whatever the length of the chain.
 async function settled(): Promise<void> {
     await new Promise((resolve) => {
         setTimeout(resolve, 0);

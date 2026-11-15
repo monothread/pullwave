@@ -4,8 +4,6 @@ import { hiddenSourceIds, withoutHiddenSources, withoutHiddenUpdates } from '../
 import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 
-// The sources whose mangas are not shown now: the ones for adults while the setting that lists them is off. The sources are read when they
-// are needed and the server is up; until then nothing is hidden, and neither is what comes from a source that is not there any more.
 export function useHiddenSourceIds(): ReadonlySet<string> {
     const showAdult = useAppStore((state) => {
         return state.settings.mangaShowAdult;
@@ -23,7 +21,6 @@ export function useHiddenSourceIds(): ReadonlySet<string> {
         return state.loadSources;
     });
     useEffect(() => {
-        // Asked of the store as it is now: another part of the screen may have started to read them in the same moment.
         if (!showAdult && serverRunning && !sourcesRead && useMangaStore.getState().browse.sourcesStatus === 'idle') {
             void loadSources();
         }
@@ -33,7 +30,6 @@ export function useHiddenSourceIds(): ReadonlySet<string> {
     }, [sources, showAdult]);
 }
 
-// The library as the user sees it: without the mangas of the hidden sources. They are still kept, checked and downloaded.
 export function useShownLibrary(): LibraryManga[] {
     const hidden = useHiddenSourceIds();
     const library = useMangaStore((state) => {
@@ -44,7 +40,6 @@ export function useShownLibrary(): LibraryManga[] {
     }, [library, hidden]);
 }
 
-// The history of reading without the readings of the hidden sources.
 export function useShownHistory(): ReadingEntry[] {
     const hidden = useHiddenSourceIds();
     const history = useMangaStore((state) => {
@@ -55,7 +50,6 @@ export function useShownHistory(): ReadingEntry[] {
     }, [history, hidden]);
 }
 
-// The new chapters without the ones of the mangas of the hidden sources.
 export function useShownUpdates(): MangaUpdateEntry[] {
     const hidden = useHiddenSourceIds();
     const updates = useMangaStore((state) => {
@@ -69,7 +63,6 @@ export function useShownUpdates(): MangaUpdateEntry[] {
     }, [updates, library, hidden]);
 }
 
-// The downloads without the ones of the hidden sources.
 export function useShownJobs(): MangaJob[] {
     const hidden = useHiddenSourceIds();
     const jobs = useMangaStore((state) => {

@@ -43,7 +43,6 @@ function SwitchOption({ label, hint, value, fallback, t, onChange }: SwitchOptio
     );
 }
 
-// Settings for one download only: every field starts on "use the setting" and only what is changed here is kept.
 export function DownloadOptionsDialog({ linkNumber, options, settings, onApply, onClose }: DownloadOptionsDialogProps) {
     const t = useTranslator();
     const [draft, setDraft] = useState<DownloadOptions>(options);
@@ -64,7 +63,6 @@ export function DownloadOptionsDialog({ linkNumber, options, settings, onApply, 
         });
     }
 
-    // Esc closes the window and Tab stays inside it.
     function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
         if (event.key === 'Escape') {
             event.stopPropagation();

@@ -9,7 +9,6 @@ import { installedProgramsEnv } from './programs';
 
 const ROOT = resolve(__dirname, '../..');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
-// The address of a download that fails, with a secret in it that the log must hide.
 const FAILING_URL = 'https://example.com/fail?token=s3cr3t';
 const EMPTY_TEXT = 'Nothing recorded yet. The lines show up here as soon as the program runs.';
 
@@ -34,7 +33,6 @@ async function launch(): Promise<Session> {
     writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', checkUpdatesOnStart: false, verifyLiveEnd: false, ytdlpPath: FAKE_YTDLP, downloadDir }));
     const app = await electron.launch({
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-        // The manga section is pointed at a server nobody answers: it downloads and starts nothing (no Suwayomi, no FlareSolverr).
         env: { ...process.env, ...installedProgramsEnv(workDir), FAKE_YTDLP_LOG: callsLog, PULLWAVE_MANGA_URL: 'http://127.0.0.1:9', PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9' }
     });
     const page = await app.firstWindow();
@@ -43,7 +41,6 @@ async function launch(): Promise<Session> {
     return { app, page, workDir, userData, downloadDir, callsLog };
 }
 
-// The arguments the fake yt-dlp got in each of its runs, as it wrote them down.
 function ytdlpCalls(): string[][] {
     return readFileSync(session.callsLog, 'utf-8')
         .split('\n')
@@ -55,7 +52,6 @@ function ytdlpCalls(): string[][] {
         });
 }
 
-// The command as the log writes it: an argument with a space between quotes.
 function commandText(program: string, args: string[]): string {
     return [program, ...args]
         .map((part) => {
@@ -102,7 +98,6 @@ function rowsOf(dialog: Locator): Locator {
     return dialog.locator('.log-line');
 }
 
-// What each line shows: how serious it is (its class), where it came from and its text.
 async function shownRows(dialog: Locator): Promise<Array<[string | null, string | null, string]>> {
     return rowsOf(dialog).evaluateAll((rows) => {
         return rows.map((row): [string | null, string | null, string] => {
@@ -140,7 +135,6 @@ test('keeps the command and the output of a failed yt-dlp run in memory, with th
     expect(args.at(-1)).toBe(FAILING_URL);
     const command = commandText(FAKE_YTDLP, args).replace('token=s3cr3t', 'token=***');
 
-    // What the main process keeps: the command, the error and how it ended, in that order, and no secret.
     const lines = await snapshot(page, 'yt-dlp');
     expectLineShapes(lines);
     expect(
@@ -168,7 +162,6 @@ test('keeps the command and the output of a failed yt-dlp run in memory, with th
     await expect(dialog.locator('.log-token--tag')).toHaveText(['[youtube]']);
     await expect(dialog.locator('.log-token--level')).toHaveText(['ERROR:']);
     await expect(dialog.locator('.log-line__time').first()).toHaveText(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
-    // A dark terminal in every theme, with the color of the errors.
     expect(await dialog.locator('.logs__screen').evaluate((element) => {
         return getComputedStyle(element).backgroundColor;
     })).toBe('rgb(13, 17, 23)');
@@ -261,7 +254,6 @@ test('opens the logs of Suwayomi and FlareSolverr in the manga settings, one tab
     const tabs = dialog.getByRole('tablist', { name: 'Programs' }).getByRole('tab');
     await expect(tabs).toHaveText(['Suwayomi', 'FlareSolverr']);
     await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
-    // With the server of the section given, neither program is run: both logs are empty, in the app and in the window.
     await expect(dialog.getByText(EMPTY_TEXT)).toBeVisible();
     expect(await snapshot(page, 'suwayomi')).toEqual([]);
     await tabs.nth(1).click();

@@ -1,26 +1,9 @@
 #!/bin/sh
 version_number="0.0.0-fake"
-# Stands in for ani-cli in the end-to-end tests. It is run by the busybox that ships with the app, with the same PATH,
-# menu program and environment ani-cli would get.
-#   search:    <words>                       lists "1 Fake Anime" and "2 Fake Anime 2" (words with "zzz": nothing found; with "turtle": two seconds before it answers, here and in the episodes;
-#                                            with "twin": two anime with the same title that only differ by the id the source gives them, as the patched ani-cli lists them,
-#                                            "1 pwid:twin-anime-10 Twin Anime" and "2 pwid:twin-anime-season-2-11 Twin Anime", the first with 3 episodes and the second with 2)
-#                                            with "many": 70 results and with "endless": 300, "Many Anime 1" and so on, as the source gives them: 30 to a page, and as many pages as
-#                                            PULLWAVE_SEARCH_MIN asks for (the number of results to read at least); when there are more pages it says so on stderr
-#   episodes:  -S <n> <words>                lists episodes 1 to 3, or 1 to 4 once a test wrote more-episodes in the history folder (words with "single": the one episode is picked silently)
-#   stream:    -S <n> -e <ep> -q <q> ...     (with the debug player) prints the address of the episode, the subtitle and the list of subtitles
-#   download:  -d -S <n> -e <ep> -q <q> ...  writes "<title> Episode <ep>.mp4" and ".vtt" (words with "fail": no sources, "slow": five seconds before the file exists,
-#                                            "split": the picture and then the audio, each announced as a part and three seconds half way, as the stand-in of ffmpeg does,
-#                                            "flaky": a connection error the first time each episode is asked for, and the video the next time;
-#                                            when a test wrote download-subtitle in the history folder, its text is also saved as a subtitle of the source,
-#                                            English unless download-subtitle-label holds another label, written in the file name as the patch writes it)
-# Every call is appended to $ANI_CLI_HIST_DIR/calls.log as "<mode> | <arguments>", and the subtitle languages it was
-# asked to try to subtitle-labels.log.
 mkdir -p "$ANI_CLI_HIST_DIR"
 printf '%s | %s\n' "$ANI_CLI_MODE" "$*" >> "$ANI_CLI_HIST_DIR/calls.log"
 printf '%s\n' "$PULLWAVE_SUB_LABELS" >> "$ANI_CLI_HIST_DIR/subtitle-labels.log"
 printf '%s\n' "$ANI_CLI_PLAYER" >> "$ANI_CLI_HIST_DIR/players.log"
-# The least number of results it was asked to read (PULLWAVE_SEARCH_MIN, "-" when none), with the arguments of the call.
 printf '%s | %s\n' "${PULLWAVE_SEARCH_MIN:--}" "$*" >> "$ANI_CLI_HIST_DIR/search-min.log"
 
 download=0
@@ -54,7 +37,6 @@ if [ "$download" = 1 ]; then
     esac
     case "$query" in
         *flaky*)
-            # The first call of each episode fails like a connection that dropped; the next ones work.
             marker="$ANI_CLI_HIST_DIR/flaky-$index-$episode"
             if [ ! -f "$marker" ]; then
                 : > "$marker"
@@ -68,10 +50,6 @@ if [ "$download" = 1 ]; then
     file="$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.mp4"
     case "$query" in
         *split*)
-            # The picture and the audio come apart, as the stand-in of ffmpeg downloads them: it says which part starts before each one,
-            # and each part counts from 0 again. Each part stays half way for three seconds, so a test sees the two bars; then it says the
-            # joining starts and ffmpeg joins them for four seconds, longer than the zipper, so a test sees the bars zipped and then the step of
-            # the joining.
             printf 'PULLWAVE_PART\t0\tvideo,audio\n'
             printf '[download] Destination: %s\n' "$file.video.mp4"
             printf '[download]  40.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 2/5)\n'
@@ -89,14 +67,12 @@ if [ "$download" = 1 ]; then
         *)
             printf '[download] Destination: %s\n' "$file"
             printf '[download]  25.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 1/4)\n'
-            # A "slow" download takes long enough to be cancelled; its file only exists if nobody ended it.
             case "$query" in
                 *slow*) printf 'unfinished' > "$file.part"; sleep 5 ;;
             esac
             printf '[download] 100%% of   19.00B in 00:00:01 at 1.00MiB/s\n'
             ;;
     esac
-    # A test can give the file the source would write: the one named in hidden-video is copied as the episode (a video behind pictures).
     if [ -f "$ANI_CLI_HIST_DIR/hidden-video" ]; then
         cp "$(cat "$ANI_CLI_HIST_DIR/hidden-video")" "$file"
     else
@@ -108,14 +84,11 @@ if [ "$download" = 1 ]; then
         label="English"
         [ -f "$ANI_CLI_HIST_DIR/download-subtitle-label" ] && label="$(cat "$ANI_CLI_HIST_DIR/download-subtitle-label" | sed 's|[^A-Za-z0-9 ._()-]|_|g')"
         cp "$ANI_CLI_HIST_DIR/download-subtitle" "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.subtitle-$label.vtt"
-        # A test can say this subtitle is also the one ani-cli picked (its own .vtt), as the source marks it as its default.
         [ -f "$ANI_CLI_HIST_DIR/download-subtitle-is-default" ] && cp "$ANI_CLI_HIST_DIR/download-subtitle" "$ANI_CLI_DOWNLOAD_DIR/$title Episode $episode.vtt"
     fi
     exit 0
 fi
 
-# With the debug player ani-cli prints the address of the episode instead of playing it. The address (and the subtitles) are
-# the ones the test wrote to stream-url and stream-subtitles in the history folder.
 if [ "$ANI_CLI_PLAYER" = debug ] && [ -n "$index" ] && [ -n "$episode" ]; then
     case "$query" in
         *nosource*)
@@ -125,13 +98,11 @@ if [ "$ANI_CLI_PLAYER" = debug ] && [ -n "$index" ] && [ -n "$episode" ]; then
     esac
     url="$(cat "$ANI_CLI_HIST_DIR/stream-url")"
     subtitles="$(cat "$ANI_CLI_HIST_DIR/stream-subtitles" 2>/dev/null)"
-    # Every subtitle the source offers, one per line as it writes them (the patched ani-cli prints them after the referer).
     list="$(cat "$ANI_CLI_HIST_DIR/stream-subtitle-list" 2>/dev/null)"
     printf 'All links:\n1080 >%s\nSelected link:\n%s\nSubtitles:\n%s\nReferer:\nhttps://embed.example/\nSubtitle list:\n%s\n' "$url" "$url" "$subtitles" "$list"
     exit 0
 fi
 
-# A "turtle" search and a "turtle" list of episodes take two seconds to answer (to have a look for new episodes that lasts).
 case "$query" in
     *turtle*) sleep 2 ;;
 esac
@@ -166,12 +137,10 @@ case "$query" in
         [ "$listed" -lt "$total" ] && printf 'PULLWAVE_SEARCH_MORE\n' >&2
         exit 1
         ;;
-    # The source has only one anime for the words searched: the script of the app lists it, with its own title (the title is not the words).
     *loneshown*)
         printf '1 pwid:picked-anime-12 Picked Anime\n' | "$ANI_CLI_MENU" 'Select anime: '
         exit 1
         ;;
-    # The same, with a script the change of the app does not fit: ani-cli picks the anime itself and lists only its episodes.
     *loneunlisted*)
         printf '1\n2\n3\n' | "$ANI_CLI_MENU" 'Select episode: '
         exit 1

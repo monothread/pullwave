@@ -5,7 +5,6 @@ import { useMangaStore } from '../store/mangaStore';
 import { TextField } from './fields';
 import { MangaRemove } from './MangaRemove';
 
-// Where the groups of the library are made, renamed and deleted (the mangas in a deleted group stay in the library).
 export function MangaGroupsPanel() {
     const t = useTranslator();
     const groups = useMangaStore((state) => {

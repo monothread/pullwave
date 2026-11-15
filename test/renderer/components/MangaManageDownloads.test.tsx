@@ -123,7 +123,6 @@ describe('MangaManageDownloads', () => {
         expect(mock.api.manga.pauseMangas.mock.calls).toEqual([[[1]]]);
         expect(mock.api.manga.resumeMangas).not.toHaveBeenCalled();
         expect(mock.api.manga.cancelMangas).not.toHaveBeenCalled();
-        // The window stays open, so more can be done.
         expect(dialog()).toBeInTheDocument();
     });
 

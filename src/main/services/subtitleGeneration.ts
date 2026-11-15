@@ -19,15 +19,9 @@ import type { LlmAccess } from './subtitleTranslation';
 import { defaultSleep, MAX_RATE_LIMIT_WAITS, translateTexts, waitSecondsOf, type TranslatedBatches } from './subtitleTranslator';
 import { formatVttTime, parseVtt, serializeVtt, shiftCues, type VttCue } from './vttCues';
 
-// The pieces cut at the pauses go in this many streams at once, each one taking the pieces of its stretch of the audio in order, so each piece
-// can be sent with what was said in the CONTEXT_PIECES before it (measured: 79% to 84% of the lines heard right, D-138). An episode of 24
-// minutes took 83 seconds.
 export const PIECE_STREAMS = 6;
 export const CONTEXT_PIECES = 2;
 
-// What a part of the audio is sent with: what to do with it, the audio, a name for the file, the language that is spoken (its two letters and its
-// name) and the one of the subtitle (its name), and the signal. `prompt` only goes with the pieces cut at the pauses: the name of the series
-// and what was said just before the piece.
 export interface SpeechInput {
     task: SpeechTask;
     audio: Uint8Array;
@@ -39,37 +33,26 @@ export interface SpeechInput {
     signal?: AbortSignal;
 }
 
-// What the service of speech to text is asked with: where it is, which model, and the token. `reason` says what the settings lack when it
-// cannot be asked. `ask` writes what is said in a part of the audio (`transcribe`) or writes it at once in the language that is wanted
-// (`translate`: only in English for another service of the protocol of OpenAI, in any language for Gemini, never for OpenAI, which
-// `translatesTo` says). With `cutsAtPauses` (OpenAI) the audio is cut at its pauses and `ask` gives the text of a piece with no times;
-// otherwise it gives the WebVTT subtitle of a part, with its times.
 export type SpeechAccess =
     | { ok: true; translatesTo: SpeechTranslatesTo; cutsAtPauses: boolean; ask: (input: SpeechInput) => Promise<LlmCompletionResult> }
     | { ok: false; reason: 'no-token' | 'no-model' | 'no-address' };
 
 export interface SubtitleGenerationDependencies {
     speech: () => SpeechAccess;
-    // What translates the text, for the plans that need it: the language model of the settings.
     translation: () => LlmAccess;
     ffmpeg: FfmpegRunner;
     audio?: AudioFiles;
     files?: SubtitleFileSystem;
     sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
-    // Where the batches already translated are kept, to go on after a translation that failed (see subtitleTranslator).
     batches?: TranslatedBatches;
 }
 
-// The subtitle that is wanted: the language that is spoken, the one of the subtitle, and the name of the series (null when not known), which
-// helps the service hear names and the language model see through words heard wrongly.
 export interface GenerationRequest {
     audioLanguage: TranscriptionLanguage;
     language: TranslationLanguage;
     title: string | null;
 }
 
-// What a report of progress says besides how far it is: the phase, the plan (which can change while it goes) and, while the parts are sent,
-// how many bytes of audio were sent out of all of them.
 export interface GenerationProgressExtra {
     phase: SubtitleGenerationPhase;
     plan: SubtitleGeneratePlan;
@@ -79,7 +62,6 @@ export interface GenerationProgressExtra {
 
 export type GenerationProgress = (done: number, total: number, extra: GenerationProgressExtra) => void;
 
-// Read again every time: the signal can be aborted while an await is going on.
 function isAborted(signal?: AbortSignal): boolean {
     return signal?.aborted === true;
 }
@@ -96,7 +78,6 @@ const CANCELLED_ERROR: FailedRequest = { ok: false, error: { code: 'CANCELLED', 
 
 type SpeechPieces = { ok: true; pieces: SpeechPiece[] } | { ok: false; reason: 'no-audio' | 'extract-failed' };
 
-// Where the audio is cut at its pauses, from the audio in the band of the voice (decoded in the folder).
 async function speechPiecesOf(videoPath: string, directory: string, ffmpeg: FfmpegRunner, audio: AudioFiles, signal?: AbortSignal): Promise<SpeechPieces> {
     const decoded = await decodeSpeechAudio(videoPath, directory, ffmpeg, audio, signal);
     if (!decoded.ok) {
@@ -105,8 +86,6 @@ async function speechPiecesOf(videoPath: string, directory: string, ffmpeg: Ffmp
     return { ok: true, pieces: piecesOf(findSpeech(loudnessOf(decoded.pcm)), pcmSeconds(decoded.pcm)) };
 }
 
-// How long the audio of the video is, in how many parts (requests) it goes and about how many bytes that is, without asking the service
-// anything. When the audio is cut at its pauses (`cutsAtPauses`) it is decoded to find them, since there is one request for each piece.
 export async function estimateSubtitleGeneration(
     videoPath: string,
     ffmpeg: FfmpegRunner,
@@ -130,7 +109,6 @@ export async function estimateSubtitleGeneration(
     }
 }
 
-// Asks for the subtitle of one part. When the service asks to slow down the request waits and goes on, up to a few times.
 async function askPart(input: Omit<SpeechInput, 'signal'>, access: Extract<SpeechAccess, { ok: true }>, dependencies: SubtitleGenerationDependencies, signal?: AbortSignal): Promise<LlmCompletionResult> {
     const sleep = dependencies.sleep ?? defaultSleep;
     let waits = 0;
@@ -149,7 +127,6 @@ async function askPart(input: Omit<SpeechInput, 'signal'>, access: Extract<Speec
 
 type PartsResult =
     | { ok: true; cues: VttCue[] }
-    // `refused` is set when the very first part was answered with something that is not a subtitle: the service does not do what was asked.
     | { ok: false; response: SubtitleGenerateResponse; refused: boolean };
 
 interface SendContext {
@@ -163,12 +140,10 @@ interface SendContext {
     signal?: AbortSignal;
 }
 
-// What a failed request makes of the subtitle: cancelled, or failed with the error of the service.
 function responseOf(result: FailedRequest): SubtitleGenerateResponse {
     return result.error.code === 'CANCELLED' ? { ok: false, reason: 'cancelled' } : { ok: false, reason: 'failed', error: result.error };
 }
 
-// What every request about a part of the audio is sent with, besides the part itself.
 function inputOf(context: SendContext, audio: Uint8Array, fileName: string): Omit<SpeechInput, 'signal'> {
     return {
         task: context.task,
@@ -180,7 +155,6 @@ function inputOf(context: SendContext, audio: Uint8Array, fileName: string): Omi
     };
 }
 
-// Sends the parts one after the other, and puts what comes back together: the times of each part are moved to where it starts.
 async function sendParts(paths: readonly string[], context: SendContext): Promise<PartsResult> {
     const cues: VttCue[] = [];
     let sentBytes = 0;
@@ -201,13 +175,10 @@ function isNotEmpty(text: string): boolean {
     return text.length > 0;
 }
 
-// What helps the service hear a piece: the name of the series, then what was said in the pieces just before it (the ones where nothing was
-// said are left out).
 export function piecePromptOf(title: string | null, previous: readonly string[]): string {
     return [title ?? '', previous.filter(isNotEmpty).join(' ')].filter(isNotEmpty).join('\n');
 }
 
-// The cues of the pieces that something was said in, with the times of their speech.
 function cuesOfPieces(pieces: readonly SpeechPiece[], texts: readonly string[]): VttCue[] {
     return pieces.flatMap((piece, index) => {
         const text = texts[index] ?? '';
@@ -215,8 +186,6 @@ function cuesOfPieces(pieces: readonly SpeechPiece[], texts: readonly string[]):
     });
 }
 
-// Sends the pieces cut at the pauses in PIECE_STREAMS streams, each one over its stretch of the audio in order, every piece with what was said
-// in the CONTEXT_PIECES before it in its stream. When one fails the others stop, and the first failure is what is told.
 async function sendPieces(pieces: readonly SpeechPiece[], paths: readonly string[], context: SendContext & { title: string | null }): Promise<PartsResult> {
     const texts = paths.map(() => {
         return '';
@@ -224,7 +193,6 @@ async function sendPieces(pieces: readonly SpeechPiece[], paths: readonly string
     const stop = new AbortController();
     const signal = context.signal === undefined ? stop.signal : AbortSignal.any([context.signal, stop.signal]);
     const stretch = Math.ceil(paths.length / PIECE_STREAMS);
-    // Asserted so it is not taken as always null: the streams set it.
     let failure = null as FailedRequest | null;
     let done = 0;
     let sentBytes = 0;
@@ -258,8 +226,6 @@ async function sendPieces(pieces: readonly SpeechPiece[], paths: readonly string
 
 type Translated = { ok: true; cues: VttCue[] } | { ok: false; response: SubtitleGenerateResponse };
 
-// Translates what is said in the cues into a language, keeping their times. The model is told the lines were written from the audio of the
-// series, so it can see through words heard wrongly.
 async function translateCues(
     cues: readonly VttCue[],
     request: GenerationRequest,
@@ -295,7 +261,6 @@ async function translateCues(
     };
 }
 
-// What the plan needs before anything is sent: the service of speech to text, and the language model when the text has to be translated.
 type Access = { ok: true; speech: Extract<SpeechAccess, { ok: true }>; translation: LlmAccess | null } | { ok: false; reason: SubtitleGenerateFailure };
 
 function accessFor(request: GenerationRequest, dependencies: SubtitleGenerationDependencies): Access & { plan: SubtitleGeneratePlan } {
@@ -311,8 +276,6 @@ function accessFor(request: GenerationRequest, dependencies: SubtitleGenerationD
     return translation.ok ? { ok: true, speech, translation, plan } : { ok: false, reason: TRANSLATION_FAILURES[translation.reason], plan };
 }
 
-// What came out of the audio: the cues, the plan they were made with (it changes when the direct translation is refused) and what translates
-// them when the plan needs it; or why there is no subtitle.
 type Transcribed =
     | { ok: true; cues: VttCue[]; plan: SubtitleGeneratePlan; translation: LlmAccess | null }
     | { ok: false; response: SubtitleGenerateResponse };
@@ -350,8 +313,6 @@ function sendContextOf(context: TranscribeContext, task: SpeechTask, plan: () =>
     };
 }
 
-// The audio in parts of SPEECH_PART_SECONDS, each one sent for its WebVTT subtitle (Gemini and the other services of the protocol of OpenAI).
-// When the direct translation into English is refused by the service, the audio goes again as a transcription, to be translated afterwards.
 async function transcribeInParts(context: TranscribeContext): Promise<Transcribed> {
     const { audio, signal } = context;
     const parts = await extractAudioParts(context.videoPath, context.directory, context.dependencies.ffmpeg, audio, signal);
@@ -390,8 +351,6 @@ async function transcribeInParts(context: TranscribeContext): Promise<Transcribe
     return sent.ok ? { ok: true, cues: sent.cues, plan, translation } : { ok: false, response: sent.response };
 }
 
-// The audio cut at its pauses, each piece sent for its text (OpenAI): the times of the lines come from the cuts. Never translated by the
-// service, which cannot.
 async function transcribeAtPauses(context: TranscribeContext): Promise<Transcribed> {
     const { audio, signal } = context;
     const found = await speechPiecesOf(context.videoPath, context.directory, context.dependencies.ffmpeg, audio, signal);
@@ -424,7 +383,6 @@ async function transcribeAtPauses(context: TranscribeContext): Promise<Transcrib
     return sent.ok ? { ok: true, cues: sent.cues, plan, translation: context.access.translation } : { ok: false, response: sent.response };
 }
 
-// Saves the subtitle next to the video, as a subtitle of its own in the language that is wanted, and says which subtitles the episode has now.
 function saveSubtitle(videoPath: string, language: TranslationLanguage, cues: VttCue[], files: SubtitleFileSystem): SubtitleGenerateResponse {
     const target = generatedSubtitlePath(videoPath, language);
     try {
@@ -448,11 +406,6 @@ function saveSubtitle(videoPath: string, language: TranslationLanguage, cues: Vt
     };
 }
 
-// Makes the subtitle of an episode from its audio, in the language that is wanted: the audio is taken out of the video (in parts, or cut at
-// its pauses for a service whose model gives no times), each part goes to the service of speech to text (which writes what is said, or writes
-// it in English at once), the text is translated when the plan needs it (never when the audio is spoken in the language that is wanted), and
-// the result is saved next to the video as a subtitle of its own, in the language that is wanted. What was there for that language is
-// replaced. Nothing is checked or sent before everything the plan needs is in the settings.
 export async function generateEpisodeSubtitle(
     videoPath: string,
     request: GenerationRequest,

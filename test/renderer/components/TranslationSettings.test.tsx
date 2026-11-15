@@ -62,7 +62,6 @@ describe('TranslationSettings', () => {
         expect(screen.getByLabelText('Provider')).toHaveValue('gemini');
         expect(screen.getByLabelText('Model')).toHaveValue('my-model');
         expect(screen.getByLabelText('Address (optional)')).toHaveValue('http://x/v1');
-        // The language it translates into is the one of the anime subtitles: the block has no language of its own.
         expect(screen.queryByLabelText('Default language')).not.toBeInTheDocument();
         expect(screen.getByText('The name the provider gives the model, as written on its model list.')).toBeInTheDocument();
         expect(screen.getByText('Only to use another address than the one of the provider. Required for "Other".')).toBeInTheDocument();

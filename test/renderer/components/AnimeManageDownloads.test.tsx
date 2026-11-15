@@ -97,7 +97,6 @@ describe('AnimeManageDownloads', () => {
         expect(mock.api.pauseAnimes.mock.calls).toEqual([[[1]]]);
         expect(mock.api.resumeAnimes).not.toHaveBeenCalled();
         expect(mock.api.cancelAnimes).not.toHaveBeenCalled();
-        // The window stays open, so more can be done.
         expect(dialog()).toBeInTheDocument();
     });
 

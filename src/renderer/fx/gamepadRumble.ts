@@ -1,6 +1,3 @@
-// A short buzz on the gamepads that can do it (a download that ends, the end of a list). Where the browser cannot vibrate a gamepad, or none
-// is connected, nothing happens.
-
 export interface RumbleActuator {
     playEffect: (type: 'dual-rumble', params: { duration: number; strongMagnitude: number; weakMagnitude: number }) => Promise<unknown>;
 }

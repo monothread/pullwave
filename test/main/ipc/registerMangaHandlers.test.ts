@@ -149,7 +149,6 @@ function setup(options: { baseUrl?: string | null; folder?: string | null; migra
         onHeldChange: () => {
             return undefined;
         },
-        // One chapter at a time for each source: the handlers are tested here, the limits with the queue.
         limits: { sources: 2, perSource: 1 }
     });
     const service = {
@@ -573,7 +572,6 @@ describe('the library channels', () => {
         call(IPC.mangaDownloadMissing, [id, id, 'x', 0, 999]);
         expect(repair.repairMissing).toHaveBeenCalledTimes(1);
         expect(repair.repairMissing).toHaveBeenCalledWith([id, 999]);
-        // The oldest chapter goes first, and a source gives one chapter at a time.
         expect(downloads.map((item) => {
             return item.chapterRemoteId;
         })).toEqual([1]);
@@ -829,7 +827,6 @@ describe('the site and the folder of the mangas', () => {
         });
         const first = call(IPC.mangaMigrateFolder);
         await expect(call(IPC.mangaMigrateFolder)).resolves.toEqual({ ok: false, reason: 'busy' });
-        // Downloads, retries, resumes and removals wait.
         expect(call(IPC.mangaDownload, REQUEST)).toBeNull();
         call(IPC.mangaDownloadMissing, [1]);
         expect(repair.repairMissing).not.toHaveBeenCalled();
@@ -842,7 +839,6 @@ describe('the site and the folder of the mangas', () => {
         expect(db.list()).toEqual([]);
         finish({ ok: true, chapters: 0, files: 0, destination: '/new' });
         await first;
-        // Once it is over, the downloads work again.
         expect(call(IPC.mangaDownload, REQUEST)).not.toBeNull();
     });
 
@@ -1235,7 +1231,6 @@ describe('the covers that the app keeps', () => {
     it('leaves the library as it was when the cover does not come', async () => {
         const context = setup();
         const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
-        // Adding to the library tells the screen once, by itself; the cover that does not come adds nothing.
         const afterAdding = context.libraryChanges.count;
         await vi.waitFor(() => {
             expect(context.coverRequests).toHaveLength(1);
@@ -1322,7 +1317,6 @@ describe('the covers that the app keeps', () => {
             });
             const added = context.call(IPC.mangaAddToLibrary, REQUEST) as LibraryManga;
             await untilCoverKept(context, added.id);
-            // Once for the manga that was added, once for its cover.
             await vi.waitFor(() => {
                 expect(context.libraryChanges.count).toBe(2);
             });

@@ -3,13 +3,9 @@ import { isLogoFlurry } from './konami';
 import { useActivityLevel } from './useActivityLevel';
 import { useFxStore } from './fxStore';
 
-// The bars beside the name of the app, which rise and fall like a sound wave.
 export const BRAND_WAVE_BARS = 5;
-// How long the wave dances after something finished.
 export const DANCE_MS = 1400;
 
-// The wave of the name follows what the app is doing: it lies almost flat when nothing goes on, rises with the downloads, dances when
-// something finishes or when the name is clicked, and runs through every colour in the secret mode.
 export function BrandWave() {
     const level = useActivityLevel();
     const dances = useFxStore((state) => {
@@ -18,7 +14,6 @@ export function BrandWave() {
     const rainbow = useFxStore((state) => {
         return state.rainbow;
     });
-    // The dance lasts a little after each new one; `settled` is the last one that was over by then.
     const [settled, setSettled] = useState(0);
     useEffect(() => {
         if (dances === 0) {
@@ -42,7 +37,6 @@ export function BrandWave() {
     );
 }
 
-// The clicks on the name: five close ones make the wave dance.
 export function useLogoClicks(): () => void {
     const times = useRef<number[]>([]);
     return () => {

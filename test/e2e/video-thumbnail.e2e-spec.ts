@@ -13,9 +13,7 @@ import { installedProgramsEnv } from './programs';
 
 const ROOT = resolve(__dirname, '../..');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
-// A PNG of 1x1 pixel: the picture the site gives for the video.
 const PICTURE = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da6364f8cf500f00038601805a347d6b0000000049454e44ae426082', 'hex');
-// A download that goes on until it is cancelled, so the banner of the download going on stays.
 const VIDEO_URL = 'https://example.com/slow';
 
 interface Session {
@@ -33,7 +31,6 @@ interface Site {
 let site: Site;
 let session: Session | null = null;
 
-// The site of the pictures: /picture.png is the picture, anything else is not found.
 async function startSite(): Promise<Site> {
     const requests: Site['requests'] = [];
     const server = createServer((request, response) => {
@@ -80,7 +77,6 @@ async function jobs(page: Page): Promise<DownloadJob[]> {
     });
 }
 
-// What the app answers for an address of a picture (asked in the main process: the window may show these pictures, not fetch them).
 async function ask(app: ElectronApplication, address: string): Promise<{ status: number; type: string | null; cache: string | null; bytes: number[] }> {
     return app.evaluate(async ({ net }, target) => {
         const response = await net.fetch(target);
@@ -116,7 +112,6 @@ test('shows the picture of the video in a wide box of the download going on, fet
     const picture = hero.locator('.download-hero__art img');
     await expect(picture).toHaveAttribute('src', address);
     await expect(picture).toHaveAttribute('class', 'cover download-hero__thumbnail');
-    // The picture is there, as the site gave it (1x1), in a box of 16:9.
     await expect.poll(async () => {
         return picture.evaluate((element) => {
             const image = element as HTMLImageElement;
@@ -128,18 +123,14 @@ test('shows the picture of the video in a wide box of the download going on, fet
     expect(Math.round(box?.height ?? 0)).toBe(110);
     await expect(hero.locator('.tile__generated')).toHaveCount(0);
 
-    // The download carries the address of the app, never the one of the site.
     expect((await jobs(page))[0]?.thumbnail).toBe(address);
-    // The app asked the site once, as a browser does.
     expect(
         site.requests.map((request) => {
             return [request.path, request.headers['user-agent'], request.headers['accept']];
         })
     ).toEqual([['/picture.png', STREAM_USER_AGENT, 'image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8']]);
-    // What the app answers for the address: the picture, its kind, and no cache.
     expect(await ask(app, address)).toEqual({ status: 200, type: 'image/png', cache: 'no-store', bytes: Array.from(PICTURE) });
 
-    // Once the download leaves the queue its picture is gone from the memory of the app.
     await page.evaluate((id) => {
         return (window as unknown as { api: { cancelJob: (id: string) => Promise<void> } }).api.cancelJob(id);
     }, job.id);
@@ -192,7 +183,6 @@ test('shows the picture of the section when the site gives no picture (NA), and 
     const hero = page.getByTestId('download-hero');
     await expect(hero).toHaveAttribute('class', 'download-hero');
     await expect(hero.locator('.download-hero__art .tile__generated svg')).toHaveClass(/section-icon--downloads/);
-    // Long enough for a picture that was asked for to have arrived.
     await page.waitForTimeout(1000);
     expect((await jobs(page)).map((entry) => {
         return [entry.id, entry.thumbnail];

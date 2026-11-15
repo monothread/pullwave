@@ -73,8 +73,6 @@ function setup(overrides: Partial<SuwayomiServerDependencies> & { answers?: Arra
     return { server, dir, installDirectory, dataDirectory, launches, processes, statuses, requests, fetchImpl, killGroup };
 }
 
-// The arguments of the JVM of every start: IPv4 only, native access for the jar, the memory it no longer uses given back, the data folder and
-// the jar.
 function expectedArgs(installDirectory: string, dataDirectory: string): string[] {
     return [
         '-Djava.net.preferIPv4Stack=true',

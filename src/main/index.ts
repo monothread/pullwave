@@ -56,14 +56,9 @@ import { watchMinimized } from './services/windowMinimized';
 
 const APP_ID = 'dev.lucas.pullwave';
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5000;
-// The covers of the manga section are served by the manga server of the app, on this machine and on a port that changes (hence the
-// wildcard); only images may come from there. The covers of the anime come from AniList and, when it has none, from the posters of Kitsu.
-// The pictures of the videos being downloaded are served by the app from memory.
 const PRODUCTION_CSP =
     `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.anilist.co https://media.kitsu.app http://127.0.0.1:* ${MANGA_PAGE_SCHEME}: ${CUT_MEDIA_SCHEME}: ${VIDEO_THUMBNAIL_SCHEME}:; connect-src 'self' ${ANIME_STREAM_SCHEME}:; media-src 'self' blob: ${ANIME_MEDIA_SCHEME}: ${ANIME_STREAM_SCHEME}: ${CUT_MEDIA_SCHEME}:`;
 
-// Declared once (Electron takes the list in a single call): the pages of the chapters the manga library has, the files of the cutter (on
-// every system, like the cutter), and, where the anime section exists, the video files and the streams of its player.
 protocol.registerSchemesAsPrivileged([
     { scheme: MANGA_PAGE_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     { scheme: CUT_MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
@@ -77,7 +72,6 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 ignoreStdioErrors();
-// Must run before the single-instance lock below, which is what creates the data folder.
 migrateLegacyUserData(app.getPath('appData'), app.getPath('userData'));
 
 let mainWindow: BrowserWindow | null = null;
@@ -110,9 +104,6 @@ function applyContentSecurityPolicy(): void {
     });
 }
 
-// The app opens maximized. maximize() also shows a window that is out of sight, so a start at login that stays in the tray leaves it
-// for the moment the window is brought back. The end-to-end tests keep the size set when the window is created, which the layout ones
-// depend on.
 function maximizeUnlessTesting(window: BrowserWindow): void {
     if (e2eDisplay() === null && !window.isMaximized()) {
         window.maximize();
@@ -152,10 +143,6 @@ function handleWindowClose(event: Electron.Event): void {
     void requestQuit?.();
 }
 
-// PULLWAVE_E2E_DISPLAY opens the window, centred, on the primary monitor ('primary') or on the first one that is not the primary
-// ('secondary'; the primary again when there is only one). The end-to-end tests set it, so the ones that resize the window run where
-// they have room and the others where they do not get in the way of the person using the computer, and not on whichever monitor the
-// system picks. Without it the system decides.
 function e2eDisplay(): Display | null {
     const wanted = process.env.PULLWAVE_E2E_DISPLAY;
     const primary = screen.getPrimaryDisplay();
@@ -172,7 +159,6 @@ function e2eDisplay(): Display | null {
     return null;
 }
 
-// The app opens on the primary monitor, wherever the system would have put it.
 function startupDisplay(): Display {
     return e2eDisplay() ?? screen.getPrimaryDisplay();
 }
@@ -213,10 +199,8 @@ function createWindow(options: { hidden: boolean }): BrowserWindow {
             window.webContents.send(IPC.eventWindowMinimized, minimized);
         }
     });
-    // A page loaded again has no window of the logs open: nothing is sent to it until it asks.
     window.webContents.on('did-finish-load', () => {
         logWatchers?.stopAll();
-        // A page loaded (again) while the window is minimized starts as if it were not: it is told the state as it is.
         minimizedWatch.resend();
     });
     if (diagnosticLog) {
@@ -261,9 +245,6 @@ function scheduleStartupUpdateCheck(appUpdates: AppUpdateService, enabled: boole
     }, STARTUP_UPDATE_CHECK_DELAY_MS);
 }
 
-// The system keyring keeps the tokens of the language models. A Linux without one makes Electron fall back to a key kept in the open
-// ("basic_text"), which protects nothing, so then no token is saved. PULLWAVE_FAKE_SECRETS=1 keeps them as plain text (used by the end-to-end
-// tests, which cannot depend on the keyring of the machine).
 function createSecretCipher(): SecretCipher {
     if (process.env.PULLWAVE_FAKE_SECRETS === '1') {
         return {
@@ -291,8 +272,6 @@ function createSecretCipher(): SecretCipher {
     };
 }
 
-// The login entry is written for the app as it is installed; PULLWAVE_AUTOSTART_DIR points it at another folder and makes it work in a
-// development run (used by the end-to-end tests).
 function createAutostart(): Autostart {
     const customDir = process.env.PULLWAVE_AUTOSTART_DIR;
     return new Autostart({
@@ -309,7 +288,6 @@ function createAutostart(): Autostart {
 
 interface BootstrapResult {
     startMinimized: boolean;
-    // Resolves once the tray is known to exist or not, which is what tells whether the window can start out of sight.
     trayReady: Promise<void>;
 }
 
@@ -320,9 +298,6 @@ function bootstrap(): BootstrapResult {
     const pausedStore = new PausedStore(join(dataDir, 'paused.json'));
     const llmTokens = new LlmTokenStore(new JsonStore(join(dataDir, 'llm-tokens.json'), {}), createSecretCipher());
     applyLanguage(settingsStore.get().language, app.getLocale());
-    // yt-dlp, deno, ffmpeg, ani-cli and the shell and curl it runs on are downloaded on the first run into a folder of their own inside the
-    // data folder (PULLWAVE_TOOLS_DIR is another folder for them, used by the end-to-end tests). A program the user gave a path for in the
-    // settings is not downloaded.
     const programs = new ProgramTools({
         rootDirectory: process.env.PULLWAVE_TOOLS_DIR ?? join(dataDir, 'tools'),
         customPath: (id) => {
@@ -345,13 +320,11 @@ function bootstrap(): BootstrapResult {
         onUpdateState: (state) => {
             sendToRenderer(IPC.eventProgramUpdate, state);
         },
-        // An update of ani-cli is tried for real by the anime section before it is used (none where the section does not exist).
         checkAniCli: () => {
             return anime?.checkScript ?? null;
         }
     });
     const resolver = new BinaryResolver(programs);
-    // The pictures of the videos of the queue, kept in memory and served to the window (D-182).
     const videoThumbnails = new VideoThumbnails();
     protocol.handle(VIDEO_THUMBNAIL_SCHEME, (request) => {
         return videoThumbnails.respond(request.url);
@@ -411,19 +384,12 @@ function bootstrap(): BootstrapResult {
         getLlmToken: (provider) => {
             return llmTokens.get(provider);
         },
-        // PULLWAVE_ANI_CLI replaces the ani-cli script that ships with the app (used by the end-to-end tests).
         customScriptPath: () => {
             return process.env.PULLWAVE_ANI_CLI ?? '';
         },
-        // PULLWAVE_ANILIST_URL replaces the address of the schedule of the day (used by the end-to-end tests).
         scheduleUrl: process.env.PULLWAVE_ANILIST_URL,
-        // PULLWAVE_COVER_FALLBACK_URL replaces the addresses of the services of covers asked when AniList has none (used by the end-to-end
-        // tests).
         coverFallbackUrl: process.env.PULLWAVE_COVER_FALLBACK_URL,
-        // PULLWAVE_ANIME_CHECK_MS makes the look for new episodes happen that many milliseconds after the app opens, and again that often
-        // (used by the end-to-end tests).
         checkTimes: Number(process.env.PULLWAVE_ANIME_CHECK_MS) > 0 ? { firstMs: Number(process.env.PULLWAVE_ANIME_CHECK_MS), everyMs: Number(process.env.PULLWAVE_ANIME_CHECK_MS) } : undefined,
-        // PULLWAVE_IMPORT_DIR answers the question of which folder to import (used by the end-to-end tests).
         chooseLibraryFolder: async (startAt) => {
             if (process.env.PULLWAVE_IMPORT_DIR) {
                 return process.env.PULLWAVE_IMPORT_DIR;
@@ -432,7 +398,6 @@ function bootstrap(): BootstrapResult {
             const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
             return result.canceled ? null : (result.filePaths[0] ?? null);
         },
-        // PULLWAVE_MIGRATE_DIR answers the question of which folder to migrate the anime to (used by the end-to-end tests).
         chooseMigrationFolder: async (startAt) => {
             if (process.env.PULLWAVE_MIGRATE_DIR) {
                 return process.env.PULLWAVE_MIGRATE_DIR;
@@ -460,8 +425,6 @@ function bootstrap(): BootstrapResult {
         },
         send: sendToRenderer
     });
-    // PULLWAVE_MANGA_URL points the manga section at a server that is already running instead of the one it downloads (used by the
-    // end-to-end tests).
     const manga = createMangaRuntime({
         platform: process.platform,
         arch: process.arch,
@@ -474,7 +437,6 @@ function bootstrap(): BootstrapResult {
         openFolder: (path) => {
             void shell.openPath(path);
         },
-        // PULLWAVE_MANGA_OPEN_LOG is a file the addresses are written to instead of being opened (used by the end-to-end tests).
         openSite: (url, browser) => {
             if (process.env.PULLWAVE_MANGA_OPEN_LOG) {
                 appendFileSync(process.env.PULLWAVE_MANGA_OPEN_LOG, `${browser} ${url}\n`);
@@ -490,7 +452,6 @@ function bootstrap(): BootstrapResult {
                 }
             });
         },
-        // PULLWAVE_MANGA_MIGRATE_DIR answers the question of which folder to migrate the mangas to (used by the end-to-end tests).
         chooseMigrationFolder: async (startAt) => {
             if (process.env.PULLWAVE_MANGA_MIGRATE_DIR) {
                 return process.env.PULLWAVE_MANGA_MIGRATE_DIR;
@@ -502,12 +463,8 @@ function bootstrap(): BootstrapResult {
         saveMangaDirectory: (directory) => {
             settingsStore.save({ ...settingsStore.get(), mangaDirectory: directory });
         },
-        // PULLWAVE_MANGA_CHECK_MS makes the look for new chapters happen that many milliseconds after the app opens, and again that often
-        // (used by the end-to-end tests).
         checkTimes: Number(process.env.PULLWAVE_MANGA_CHECK_MS) > 0 ? { firstMs: Number(process.env.PULLWAVE_MANGA_CHECK_MS), everyMs: Number(process.env.PULLWAVE_MANGA_CHECK_MS) } : undefined,
         externalBaseUrl: process.env.PULLWAVE_MANGA_URL ?? null,
-        // PULLWAVE_COVER_FALLBACK_URL replaces the addresses of the services of covers asked when the source gives none (used by the
-        // end-to-end tests).
         coverFallbackUrl: process.env.PULLWAVE_COVER_FALLBACK_URL
     });
     if (manga) {
@@ -587,7 +544,6 @@ function bootstrap(): BootstrapResult {
     });
     const browserCatalog = new BrowserCatalog(async () => {
         const environment: DetectionEnvironment = { platform: process.platform, homeDir: app.getPath('home'), env: process.env };
-        // PULLWAVE_APPLICATION_DIRS replaces the folders holding the .desktop entries (used by the end-to-end tests).
         const applicationDirs = process.env.PULLWAVE_APPLICATION_DIRS?.split(delimiter);
         const registered = await listRegisteredBrowsers(
             { ...environment, applicationDirs },
@@ -600,7 +556,6 @@ function bootstrap(): BootstrapResult {
     const autostart = createAutostart();
     autostart.sync(settingsStore.get().launchAtLogin);
 
-    // Quitting asks live recordings to finish and gives them a moment to save their file before the app really exits.
     let shutdownDone = false;
     let shuttingDown = false;
     app.on('before-quit', (event) => {
@@ -618,7 +573,6 @@ function bootstrap(): BootstrapResult {
             return Promise.all([queue.shutdown(), anime?.queue.shutdown(), manga?.shutdown()]);
         };
         if (queue.hasRunsToEnd() || anime?.queue.hasRunsToEnd() || manga?.queue.hasRunsToEnd() || manga?.hasProcessesToEnd()) {
-            // Downloads that are running are cancelled and what they left behind is deleted before the app exits.
             event.preventDefault();
             shuttingDown = true;
             void endAll().finally(() => {
@@ -633,10 +587,8 @@ function bootstrap(): BootstrapResult {
 
     registerAnimeHandlers(ipcMain, anime ? anime.handlers : null);
     registerMangaHandlers(ipcMain, manga ? manga.handlers : null);
-    // The yt-dlp and ani-cli that updates of older versions saved are not used any more.
     removeLegacyBinaries(dataDir, [settingsStore.get().ytdlpPath, settingsStore.get().ffmpegPath, process.env.PULLWAVE_ANI_CLI ?? '']);
     registerProgramHandlers(ipcMain, { programs });
-    // The cutter of the video downloader. PULLWAVE_CUT_FILE answers the question of which file to cut (used by the end-to-end tests).
     const cutter = new CutService({
         runFfmpeg: () => {
             return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
@@ -665,8 +617,6 @@ function bootstrap(): BootstrapResult {
             sendToRenderer(IPC.eventCutProgress, run);
         }
     });
-    // What the cutter shows before it cuts: the file chosen in the player, a part converted for it when needed, and a picture of the file
-    // (D-131). Its files are in a folder of the app, removed when it ends.
     const cutPreview = new CutPreview({
         runFfmpeg: () => {
             return createFfmpegRunner(resolver.ffmpeg(settingsStore.get()).path);
@@ -679,8 +629,6 @@ function bootstrap(): BootstrapResult {
     });
     app.on('will-quit', () => {
         cutPreview.dispose();
-        // The journal of each database is written into its file, so the file is whole on its own once the app is closed. A database that
-        // cannot be written now keeps its journal, which it reads again the next time it opens: the app quits all the same.
         [manga?.db, anime?.db].forEach((db) => {
             try {
                 db?.checkpoint();
@@ -691,21 +639,16 @@ function bootstrap(): BootstrapResult {
     });
     registerCutHandlers(ipcMain, cutter, cutPreview);
     logWatchers = registerLogHandlers(ipcMain, { hub: processLogs, send: sendToRenderer });
-    // The programs are downloaded when the app opens (nothing happens for the ones that are there already). PULLWAVE_NO_TOOLS leaves it for
-    // later (used by the end-to-end tests that need none of them).
     if (process.env.PULLWAVE_NO_TOOLS !== '1') {
         void programs.prepare();
     }
-    // The program that runs the manga extensions is downloaded when the app opens (nothing happens when it is there already).
     manga?.prepare();
     registerLlmHandlers(ipcMain, {
         tokens: llmTokens,
-        // Without the token the automatic translation of the new episodes cannot work: it is turned off.
         onChanged: () => {
             anime?.enforceAutoTranslateSetup();
         }
     });
-    // The look for new episodes of the anime of the library starts a while after the app opens (unless it was made in the last 3 hours) and goes on every 3 hours.
     anime?.startBackgroundChecks();
     registerHandlers({
         ipcMain,
@@ -724,9 +667,7 @@ function bootstrap(): BootstrapResult {
             void manager.sync(settings.closeToTray).then(() => {
                 return manager.rebuild();
             });
-            // A new address of the user's own FlareSolverr is used by the manga server that is running already.
             void manga?.service.applyHelper();
-            // The automatic translation of the new episodes is turned off when the settings no longer have what it needs.
             anime?.enforceAutoTranslateSetup();
         },
         animeFolderLocked: () => {
@@ -762,7 +703,6 @@ if (!app.requestSingleInstanceLock()) {
         const { startMinimized, trayReady } = bootstrap();
         const hidden = shouldStartHidden({ autostart, startMinimized });
         mainWindow = createWindow({ hidden });
-        // Out of sight only when there is a tray icon to bring the window back from; otherwise it opens like any other start.
         void trayReady.then(() => {
             if (hidden && !trayManager?.canHideToTray()) {
                 showWindow();

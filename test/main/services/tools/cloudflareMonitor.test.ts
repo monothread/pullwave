@@ -10,7 +10,6 @@ interface Received {
     body: string;
 }
 
-// A stand-in FlareSolverr: it answers like the real one, after the delay it is given, and keeps what it received.
 class FakeFlareSolverr {
     readonly received: Received[] = [];
     delayMs = 0;

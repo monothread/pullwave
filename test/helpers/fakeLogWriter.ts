@@ -1,6 +1,5 @@
 import type { LogWriter, OutputStream } from '@main/services/logHub';
 
-// One call made to a log writer, in the order it was made.
 export type LogCall =
     | { method: 'command'; program: string; args: string[] }
     | { method: 'line'; stream: OutputStream; text: string }
@@ -14,7 +13,6 @@ export interface FakeLogWriter {
     calls: LogCall[];
 }
 
-// A log writer that keeps every call it gets, so a test can check exactly what a run wrote.
 export function createFakeLogWriter(): FakeLogWriter {
     const calls: LogCall[] = [];
     const writer: LogWriter = {

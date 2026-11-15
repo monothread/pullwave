@@ -6,22 +6,16 @@ import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { detectImageType } from './imageType';
 import { fromStoredAddress, toStoredAddress } from './serverAddress';
 
-// The icons of the sources are kept in the data folder, so the list of sources shows them with no wait. An icon that is not kept yet is shown
-// from the server and taken in the background; one that is kept is shown from the folder and asked for once more in each run of the app, in
-// case the source changed it (the new one is shown the next time).
-
 export const ICON_TIMEOUT_MS = 15_000;
 export const MAX_ICON_BYTES = 1024 * 1024;
 export const ICON_KEY_LENGTH = 24;
 
 export interface MangaIconsDependencies {
     directory: string;
-    // The address of the server of the moment (null while it is not running).
     baseUrl: () => string | null;
     fetchImpl?: typeof fetch;
 }
 
-// `pullwave-manga://icon/<key>`; null for anything else.
 export function parseIconUrl(url: string): { key: string } | null {
     let parsed: URL;
     try {
@@ -35,17 +29,13 @@ export function parseIconUrl(url: string): { key: string } | null {
 
 export class MangaIcons {
     private readonly fetchImpl: typeof fetch;
-    // The icons that were asked for in this run (once each).
     private readonly asked = new Set<string>();
-    // Whether the file of each icon is there (by its path), looked at once: after that this class knows it from what it writes and fails
-    // to read.
     private readonly onDisk = new Map<string, boolean>();
 
     constructor(private readonly deps: MangaIconsDependencies) {
         this.fetchImpl = deps.fetchImpl ?? fetch;
     }
 
-    // The name an icon is kept under: it comes from where the server has it (the port left out), so it is the same in every run.
     keyOf(stored: string): string {
         return createHash('sha256').update(stored).digest('hex').slice(0, ICON_KEY_LENGTH);
     }
@@ -60,8 +50,6 @@ export class MangaIcons {
         return found ? path : null;
     }
 
-    // Read without stopping the main process, which also answers the window while the sources show their icons. A file that is gone is
-    // known as gone: the icon is shown from the server again.
     async read(path: string): Promise<Buffer> {
         try {
             return await readFile(path);
@@ -71,8 +59,6 @@ export class MangaIcons {
         }
     }
 
-    // The address to show an icon with: the one that is kept when there is one, otherwise the one the server gives. Either way the icon is
-    // asked for in the background once in each run.
     present(address: string | null): string | null {
         if (address === null) {
             return null;

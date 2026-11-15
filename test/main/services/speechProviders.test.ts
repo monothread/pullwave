@@ -47,7 +47,6 @@ describe('transcribeWithSpeechService: the request', () => {
         expect(calls).toHaveLength(1);
         expect(calls[0]?.url).toBe('https://api.openai.com/v1/audio/transcriptions');
         expect(calls[0]?.init.method).toBe('POST');
-        // The type of the body (with its boundary) is the one the form brings: it is not set by hand.
         expect(calls[0]?.init.headers).toEqual({ Authorization: 'Bearer sk-secret' });
     });
 

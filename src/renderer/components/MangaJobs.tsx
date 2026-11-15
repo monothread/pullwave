@@ -45,13 +45,11 @@ function isFinished(job: MangaJob): boolean {
     return job.status === 'done' || job.status === 'error' || job.status === 'cancelled';
 }
 
-// The list on the downloads screen: the running ones first, then the waiting ones, then the ones that are over.
 interface MangaJobBarProps {
     percent: number;
     title: string;
 }
 
-// The bar of a chapter being downloaded: it glides to each new value (the pages arrive one at a time) with the neon of the app.
 function MangaJobBar({ percent, title }: MangaJobBarProps) {
     const shown = useSmoothPercent(percent);
     return (
@@ -61,7 +59,6 @@ function MangaJobBar({ percent, title }: MangaJobBarProps) {
     );
 }
 
-// The speed and the time left of the chapter being downloaded, as the big card shows them ("" while they are not known).
 function speedText(job: MangaJob): string {
     return job.bytesPerSecond === null ? '' : formatSpeed(job.bytesPerSecond);
 }
@@ -70,8 +67,6 @@ function etaText(job: MangaJob): string {
     return job.etaSeconds === null ? '' : formatDuration(job.etaSeconds);
 }
 
-// One chapter of the queue. It is drawn again only when its download changes: the progress of one chapter does not draw the others again.
-// Its actions ask the store as it is when they are used.
 const MangaJobRow = memo(function MangaJobRow({ job }: { job: MangaJob }) {
     const t = useTranslator();
     const card = useOffscreenPause<HTMLElement>();
@@ -171,7 +166,6 @@ export function MangaJobs() {
         return <p className="empty">{t('manga.jobs.empty')}</p>;
     }
     const failed = jobs.filter(isFailed).length;
-    // A held queue has nothing more to pause than the chapters resumed one by one; what waits there goes on with RESUME ALL.
     const canPauseAll = queueHeld ? jobs.some(isRunning) : jobs.some(isPausable);
     const canResumeAll = queueHeld || jobs.some(isPaused);
     const sorted = [...jobs].sort((first, second) => {

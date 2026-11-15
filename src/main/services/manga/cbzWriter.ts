@@ -3,13 +3,10 @@ import { pipeline } from 'node:stream/promises';
 import { ZipFile } from 'yazl';
 
 export interface CbzEntry {
-    // The name inside the archive.
     name: string;
-    // The file it is read from.
     path: string;
 }
 
-// ZIP cannot hold a date before 1980; a fixed one makes the same pages give the same archive.
 const ENTRY_DATE = new Date(Date.UTC(1980, 0, 1));
 const TEXT_ENTRY = /\.xml$/i;
 
@@ -25,9 +22,6 @@ const DEFAULT_DEPENDENCIES: CbzDependencies = {
     }
 };
 
-// Writes the pages (already in reading order) and, when given, the ComicInfo text into a CBZ (a ZIP). The archive is written
-// beside its final place and only renamed into it when complete, so a chapter is never half there. Images are stored as they are
-// (they are compressed already); the XML is deflated.
 export async function writeCbz(
     outputPath: string,
     entries: readonly CbzEntry[],
@@ -42,7 +36,6 @@ export async function writeCbz(
     extraFiles.forEach((file) => {
         zip.addBuffer(Buffer.from(file.content, 'utf-8'), file.name, { mtime: ENTRY_DATE, compress: true });
     });
-    // A page that cannot be read is reported by the archive, not by the stream the bytes go through.
     const unreadable = new Promise<never>((_resolve, reject) => {
         zip.once('error', reject);
     });
@@ -52,7 +45,6 @@ export async function writeCbz(
         await Promise.race([pipeline(zip.outputStream, file), unreadable]);
         dependencies.rename(temporaryPath, outputPath);
     } catch (error) {
-        // The file is removed once the stream is closed: a stream that was still opening would create it again after it was removed.
         if (!file.closed) {
             await new Promise<void>((resolve) => {
                 file.once('close', () => {

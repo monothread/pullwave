@@ -2,8 +2,6 @@ import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { isNavigable } from '../navigation/spatialNavigation';
 
-// A soft halo that slides from the control that had the focus to the one that has it now, as the cursor of a console (the ring of each
-// control stays: the halo only trails it). It does not take the mouse and is hidden from the screen readers.
 export interface HaloBox {
     x: number;
     y: number;

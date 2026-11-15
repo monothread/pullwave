@@ -2,7 +2,6 @@ import { HlsUnsupportedError, parseHlsPlaylist } from '@main/services/hlsPlaylis
 
 const URL = 'https://edge.test/v1/edge/streams/origin.room/chunklist_4_video.m3u8?session=abc';
 
-// A playlist of the low latency HLS, like the ones the sites give: parts, a hint and the reports of the other renditions come with the segments.
 const LOW_LATENCY = [
     '#EXTM3U',
     '#EXT-X-VERSION:6',

@@ -2,14 +2,10 @@ import { create } from 'zustand';
 import type { CutChooseFailure, CutChooseResponse, CutMedia, CutPreviewFailure, CutRun, CutSegment, CutStartFailure } from '@shared/cut';
 import { checkRow, segmentsToCut, type SegmentRow } from '../components/cutText';
 
-// The picture of the file chosen: being made, made (its address), or none (an audio with no cover, or it could not be made).
 export type CutThumbnail = { status: 'loading' } | { status: 'ready'; url: string } | { status: 'none' };
 
-// A part seen in the player before it is cut (D-131). `loading`: asking where to play it. `converting`: the player could not play the file as
-// it is, and the part is being made into a file it plays. `ready`: playing `url` from `start` to `end`. `failed`: it cannot be played.
 export interface CutPreviewState {
     rowId: number;
-    // The number of the part on the screen (from 1).
     number: number;
     segment: CutSegment;
     status: 'loading' | 'converting' | 'ready' | 'failed';
@@ -22,25 +18,19 @@ export interface CutPreviewState {
 
 export interface CutState {
     media: CutMedia | null;
-    // The window of the files is open, or the file is being read.
     choosing: boolean;
     chooseError: Exclude<CutChooseFailure, 'cancelled'> | 'dropped' | null;
     rows: SegmentRow[];
     audioOnly: boolean;
-    // The cut was asked for and has not begun yet.
     starting: boolean;
     startError: CutStartFailure | null;
-    // The cut was ended by the user and the part being made is still stopping.
     cancelling: boolean;
     run: CutRun | null;
     thumbnail: CutThumbnail | null;
     preview: CutPreviewState | null;
-    // Follows the cut that goes on, also when the screen opens in the middle of it; gives what stops it.
     init: () => Promise<() => void>;
     choose: () => Promise<void>;
-    // Reads a file that was dropped on the screen, by its path (nothing happens while a file is being read or a cut goes on).
     openPath: (path: string) => Promise<void>;
-    // Tells that a file could not be taken from what was dropped.
     rejectDrop: () => void;
     addRow: () => void;
     updateRow: (id: number, changes: Partial<Pick<SegmentRow, 'start' | 'end'>>) => void;
@@ -48,12 +38,9 @@ export interface CutState {
     setAudioOnly: (value: boolean) => void;
     start: () => Promise<void>;
     cancel: () => Promise<void>;
-    // Opens the player on a part (a row that is a part), to see it before it is cut.
     openPreview: (rowId: number) => Promise<void>;
-    // The player could not play the file as it is: the part is made into a file it plays (once).
     convertPreview: () => Promise<void>;
     closePreview: () => void;
-    // Takes the file away and clears the parts and the options (the file stays where it is); not while a cut goes on.
     clear: () => Promise<void>;
 }
 
@@ -66,7 +53,6 @@ function newRow(): SegmentRow {
 }
 
 export const useCutStore = create<CutState>((set, get) => {
-    // Takes the file an answer gives (the one chosen in the window, or the one dropped): the screen shows that it is reading until then.
     async function readFile(read: () => Promise<CutChooseResponse>): Promise<void> {
         if (get().choosing) {
             return;
@@ -89,13 +75,11 @@ export const useCutStore = create<CutState>((set, get) => {
             thumbnail: { status: 'loading' }
         });
         const url = await window.api.cut.thumbnail();
-        // Another file may have been chosen while the picture was made.
         if (get().media === response.media) {
             set({ thumbnail: url === null ? { status: 'none' } : { status: 'ready', url } });
         }
     }
 
-    // Asks where to play the part, as it is or converted, and shows it (unless the player was closed or opened on another part meanwhile).
     async function loadPreview(preview: CutPreviewState, convert: boolean): Promise<void> {
         const response = await window.api.cut.preview({ segment: preview.segment, convert });
         if (get().preview?.rowId !== preview.rowId || get().preview?.status === 'ready') {

@@ -15,12 +15,8 @@ const SWEEPS = ['.progress--verify::after', '.progress--waiting::after', '.progr
 const PULSING_LAYERS = ['.progress .progress__bar::before', ...SWEEPS];
 const BAND = 'linear-gradient(transparent 30%, #000 30% 70%, transparent 70%)';
 
-// The bars drawn only for the eye, over bars a screen reader already reads: the bar that grows behind the zipper while the bars of the parts
-// (which say how far each part is) are joined.
 const DECORATIVE_BARS = new Set(['PartsZipper.tsx']);
 
-// Every place of the app that draws a progress bar (a `.progress` with a `.progress__bar`, or a range of the player), by the file that
-// draws it: when a bar is added to a file that is not here, this list has to say so, and the CSS below has to cover it.
 const FILES_WITH_BARS: Record<string, string[]> = {
     'AnimeJobs.tsx': ['progress', 'progress--processing'],
     'AnimeSubtitleJobs.tsx': ['progress'],
@@ -85,7 +81,6 @@ describe('the map of the progress bars of the app', () => {
                 const source = readFileSync(resolve(COMPONENTS_DIRECTORY, file), 'utf-8');
                 expect(source, file).toContain('role="progressbar"');
                 expect(source, file).toContain('progress__bar');
-                // Every bar has a name for a screen reader; the ones that know how far they are also say it.
                 expect(source, file).toMatch(/aria-label=/);
             });
     });
@@ -234,7 +229,6 @@ describe('the neon of every bar', () => {
             'drop-shadow(0 0 1px rgba(255, 255, 255, 0.85)) drop-shadow(0 0 3px var(--bar-glow)) drop-shadow(0 0 7px var(--bar-glow)) drop-shadow(0 0 14px color-mix(in srgb, var(--bar-glow) 65%, transparent))'
         );
         expect(bar['filter']).toBe('var(--bar-neon)');
-        // A box shadow would glow around the box of the bar, not around the wave.
         expect(bar['box-shadow']).toBe('none');
     });
 
@@ -281,7 +275,6 @@ describe('the pulses that run along every bar', () => {
     const bar = styleOf(cyberpunk, '.progress .progress__bar');
     const COUNTS = [1, 2, 3, 4];
     const ROUNDS = [2, 4, 1, 3, 2, 1, 4, 3, 1, 2, 4, 3];
-    // The points of the outline of a train: the top edge from the left to the right, then the bottom edge back.
     const outlineOf = (count: number): Array<[number, number]> => {
         return [...(track[`--bar-pulses-${String(count)}`] ?? '').matchAll(/[ML]([\d.]+) ([\d.]+)/g)].map((match) => {
             return [Number(match[1]), Number(match[2])];
@@ -290,7 +283,6 @@ describe('the pulses that run along every bar', () => {
     const topEdgeOf = (count: number): Array<[number, number]> => {
         return outlineOf(count).slice(0, 81);
     };
-    // The middles of the swells: the points of the top edge higher than the band and than the points around them.
     const crestsOf = (count: number): Array<[number, number]> => {
         const top = topEdgeOf(count);
         return top.filter(([, y], index) => {
@@ -394,7 +386,6 @@ describe('the pulses that run along every bar', () => {
         ROUNDS.forEach((round, index) => {
             expect(round).not.toBe(ROUNDS[(index + 1) % ROUNDS.length]);
         });
-        // Twelve rounds of the pulse in one loop of the number, so a round and its number start together.
         expect(1.6 * ROUNDS.length).toBeCloseTo(19.2, 5);
     });
 
@@ -448,7 +439,6 @@ describe('the movement of the neon inside each bar', () => {
     ])('sweeps a bright line over the bar with %s, as a band that slides inside a box as wide as the track', (selector, background, animation) => {
         const sweep = styleOf(cyberpunk, selector);
         expect(sweep).toMatchObject({ content: "''", position: 'absolute', inset: '0', background, animation });
-        // The box does not move (the wave that cuts it is in the place of the one of the bar): the band moves inside it.
         expect(sweep['width']).toBeUndefined();
         expect(sweep['left']).toBeUndefined();
     });
@@ -483,7 +473,6 @@ describe('the movement of the neon inside each bar', () => {
         expect(wave).toBeGreaterThan(-1);
         expect(order.indexOf('.job--done .progress .progress__bar')).toBeGreaterThan(wave);
         expect(order.indexOf('.job--error .progress .progress__bar')).toBeGreaterThan(wave);
-        // .progress:not([class*='progress--']) .progress__bar: a class, an attribute and a class.
         expect(PLAIN_BAR.match(/\.[a-z_-]+|\[[^\]]+\]/g)).toHaveLength(3);
     });
 

@@ -7,8 +7,6 @@ interface ModalDialog {
     handleKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }
 
-// What a window over the screen needs: the focus goes into it and comes back to what had it when it closes, Esc closes it (unless it cannot
-// be closed now) without the screen behind hearing it, and Tab stays inside it.
 export function useModalDialog(onClose: () => void, canClose: boolean): ModalDialog {
     const dialogRef = useRef<HTMLDivElement>(null);
 

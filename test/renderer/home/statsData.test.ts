@@ -4,7 +4,6 @@ import type { HistoryEntry } from '@shared/types';
 import { makeReading } from '../../helpers/homeFixtures';
 import { dayNumber, DAY_MS, greetingPeriod, streakDays, weekStats } from '@renderer/home/statsData';
 
-// Noon on the 7th of November 2026, in the local time of the machine, so the days below never depend on the time zone.
 const NOW = new Date(2026, 10, 7, 12, 0, 0).getTime();
 
 function daysAgo(days: number, hour = 12): number {

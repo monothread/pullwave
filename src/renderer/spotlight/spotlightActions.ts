@@ -5,9 +5,6 @@ import { useAppStore } from '../store/appStore';
 import { useMangaStore } from '../store/mangaStore';
 import type { SpotlightItem } from './spotlightData';
 
-// Where the buttons of a highlight lead, through what the stores already do. They go to the section first, so they work from the home screen
-// as well as from the library.
-
 function openMangaGroup(group: MangaLibraryGroup): void {
     const store = useMangaStore.getState();
     store.setView('library');
@@ -19,7 +16,6 @@ function openMangaGroup(group: MangaLibraryGroup): void {
     store.openSeries(group.key);
 }
 
-// The main button: play the episode, open the manga being read, or open the title with news. One page for the buttons of the mouse.
 export function runPrimary(item: SpotlightItem): void {
     batchNavigation(() => {
         openItem(item);
@@ -45,7 +41,6 @@ function openItem(item: SpotlightItem): void {
     openMangaGroup(item.group);
 }
 
-// DETAILS of an episode to go on with: the series of the anime in the library.
 export function showAnimeDetails(animeId: number): void {
     batchNavigation(() => {
         useAppStore.getState().setTab('anime');

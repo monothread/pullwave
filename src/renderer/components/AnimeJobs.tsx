@@ -16,7 +16,6 @@ import { useZipPhase } from '../hooks/useZipPhase';
 import { ErrorNotice } from './ErrorNotice';
 import { AnimeManageDownloads } from './AnimeManageDownloads';
 
-// An episode that just finished stays a few seconds in its place, green, before it leaves for the library.
 const ORDER: Record<AnimeJob['status'], number> = { running: 0, done: 0, paused: 1, queued: 2, error: 3, cancelled: 4 };
 
 function isFailed(job: AnimeJob): boolean {
@@ -47,13 +46,10 @@ function isManageable(job: AnimeJob): boolean {
     return job.status === 'running' || job.status === 'queued' || job.status === 'paused';
 }
 
-// One episode of the queue. It is drawn again only when its download changes: the progress of one episode does not draw the others again.
-// Its actions ask the store as it is when they are used.
 function isProcessing(job: AnimeJob): boolean {
     return job.status === 'running' && job.postProcess !== null;
 }
 
-// The bar of an episode: the bars of its parts (zipped into one once they are downloaded), the bar of the step going on, or how far it is.
 function AnimeJobBar({ job }: { job: AnimeJob }) {
     const t = useTranslator();
     const zip = useZipPhase(job.postProcess !== null || job.status === 'done');
@@ -171,7 +167,6 @@ const AnimeJobRow = memo(function AnimeJobRow({ job }: { job: AnimeJob }) {
     );
 });
 
-// The list on the downloads screen: the running ones first, then the waiting ones, then the ones that are over.
 export function AnimeJobs() {
     const t = useTranslator();
     const [managing, setManaging] = useState(false);
@@ -198,14 +193,12 @@ export function AnimeJobs() {
         return <p className="empty">{t('anime.jobs.empty')}</p>;
     }
     const failed = jobs.filter(isFailed).length;
-    // A held queue has nothing more to pause than the episodes resumed one by one; what waits there goes on with RESUME ALL.
     const canPauseAll = queueHeld ? jobs.some(isRunning) : jobs.some(isPausable);
     const canResumeAll = queueHeld || jobs.some(isPaused);
     const sorted = [...jobs].sort((first, second) => {
         return ORDER[first.status] - ORDER[second.status];
     });
 
-    // The banner shows the episode going on, or the one that just ended while it stays (green) when nothing else is going on.
     const running = jobs.find(isRunning) ?? jobs.find(isDone);
     const waiting = jobs.filter(isQueued).length;
 

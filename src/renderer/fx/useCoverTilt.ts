@@ -1,8 +1,6 @@
 import { useEffect } from 'react';
 
-// The tiles of the libraries lean toward the pointer, with a light that follows it.
 export const TILT_SELECTOR = '.cover-grid > .cover-card';
-// The most a tile leans, in degrees.
 export const MAX_TILT_DEGREES = 9;
 
 export interface TiltValues {
@@ -12,7 +10,6 @@ export interface TiltValues {
     glareY: string;
 }
 
-// How a tile leans for a pointer at a place of its box: a pointer to the right leans the right side away, one above leans the top away.
 export function tiltOf(clientX: number, clientY: number, box: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>): TiltValues {
     const across = box.width > 0 ? (clientX - box.left) / box.width : 0.5;
     const down = box.height > 0 ? (clientY - box.top) / box.height : 0.5;

@@ -10,9 +10,7 @@ interface LinkRow {
     id: number;
     value: string;
     error: string | null;
-    // Folder chosen for this link only; null uses the folder from the settings.
     directory: string | null;
-    // Settings chosen for this link only.
     options: DownloadOptions;
 }
 

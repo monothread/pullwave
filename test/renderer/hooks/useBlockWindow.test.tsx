@@ -2,9 +2,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { columnsOf, layoutBox, layoutForColumns, MAX_CHAINED_UPDATES, scrollParentOf, useBlockWindow, WINDOW_KEEP_MARGIN, WINDOW_ROWS_PER_BLOCK, WINDOW_SCREENS_AROUND, windowSlots, withoutChangedBlocks, type BlockWindowSlot } from '@renderer/hooks/useBlockWindow';
 
-// A fake layout, as jsdom lays nothing out: the scroll area is 300px tall, every row of items is 100px tall (300px when an item of it is
-// a tall one, numbered from 100; the items of a row side by side, `columns` of them) and a spacer is a row as tall as its style says. The
-// container starts at the top of the scroll area.
 const VIEW_HEIGHT = 300;
 const ROW_HEIGHT = 100;
 const TALL_ROW_HEIGHT = 300;
@@ -21,7 +18,6 @@ function rect(top: number, bottom: number): DOMRect {
     return { top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON: () => { return {}; } } as DOMRect;
 }
 
-// The children of the container in rows: a spacer is a row of its own, the items fill rows of `columns`.
 function rowsOf(container: Element): Element[][] {
     const rows: Element[][] = [];
     let row: Element[] = [];
@@ -58,7 +54,6 @@ function rowHeight(row: readonly Element[]): number {
         : ROW_HEIGHT;
 }
 
-// The top and bottom of each child of the container, and the bottom of the container.
 function layoutOf(container: Element): { boxes: Map<Element, DOMRect>; bottom: number } {
     const boxes = new Map<Element, DOMRect>();
     let rowTop = -scrollTop;
@@ -72,8 +67,6 @@ function layoutOf(container: Element): { boxes: Map<Element, DOMRect>; bottom: n
     return { boxes, bottom: rowTop };
 }
 
-// What the layout gives as offsets: an item and a spacer are placed from the top of the container (their offset parent), the container is
-// as tall as its rows. A transform moves the box of an item (shift) but not its place in the layout.
 function isContainer(element: Element): boolean {
     return element.getAttribute('data-testid') === 'container';
 }
@@ -106,9 +99,7 @@ function fakeOffsetHeight(this: HTMLElement): number {
     return container === null ? 0 : (layoutOf(container).boxes.get(this)?.height ?? 0);
 }
 
-// How far the items are moved by a transform (the animation of a card that comes in): the box moves, the layout does not.
 let itemShift = 0;
-// The zoom of the interface (an ultrawide screen magnifies it): the boxes on the screen are magnified by it, the offsets of the layout are not.
 let zoom = 1;
 
 function zoomed(box: DOMRect): DOMRect {
@@ -190,8 +181,6 @@ function numbers(length: number): number[] {
     });
 }
 
-// Draws the list with one screen around the one in view (the geometry of the tests is written for it), unless told otherwise. An item drawn
-// again after its block left says so in data-back.
 function Probe({ items, listKey, rowsPerBlock, onDraw, screensAround = 1 }: { items: readonly number[]; listKey: string; rowsPerBlock?: number; onDraw?: () => void; screensAround?: number }) {
     const { containerRef, slots, isBack } = useBlockWindow(items, listKey, rowsPerBlock, screensAround);
     onDraw?.();
@@ -324,7 +313,6 @@ describe('layoutForColumns', () => {
     });
 
     it('drops the heights and splits the height the list had among the blocks of the new columns', () => {
-        // 8 items, 2 rows a block: 4 blocks of 200px with one column, 2 blocks with two columns, so 400px each.
         expect(layoutForColumns(layout, 2, 8, 2)).toEqual({ columns: 2, heights: [], fallback: 400 });
     });
 
@@ -418,7 +406,6 @@ describe('scrollParentOf', () => {
 
 describe('useBlockWindow', () => {
     it('draws only the blocks on the screen and one screen around it, the others being spacers as tall as they were', () => {
-        // 20 items in blocks of 2 rows (200px): the screen (0 to 300) and the screen below it (to 600) reach the blocks 0 to 3.
         render(<Probe items={numbers(20)} listKey="list" rowsPerBlock={2} />);
         expect(drawnItems()).toEqual(range(1, 8));
         expect(spacers()).toEqual(
@@ -431,7 +418,6 @@ describe('useBlockWindow', () => {
     it('draws the blocks near where the list is scrolled to, and leaves out the ones that went far', () => {
         render(<Probe items={numbers(20)} listKey="list" rowsPerBlock={2} />);
         scrollTo(1000);
-        // The screen is 1000 to 1300, with 700 to 1600 around it: the blocks 3 (600 to 800) to 8 (1600 to 1800).
         expect(drawnItems()).toEqual(range(7, 18));
         expect(spacers()).toEqual([
             { block: 0, height: '200px' },
@@ -445,7 +431,6 @@ describe('useBlockWindow', () => {
 
     it('places the blocks where the layout puts them, not where a transform of their items moves them for a moment', () => {
         render(<Probe items={numbers(20)} listKey="moved" rowsPerBlock={2} />);
-        // The cards that come in are moved 80px down by their animation: further than the margin a drawn block is kept with.
         itemShift = 80;
         scrollTo(1000);
         expect(drawnItems()).toEqual(range(7, 18));
@@ -458,11 +443,9 @@ describe('useBlockWindow', () => {
     });
 
     it('places the blocks on the screen of an interface that is zoomed, whose layout is not measured in the pixels of the screen', () => {
-        // The interface is magnified a fifth: a block of 200px of the layout takes 240px of the screen.
         zoom = 1.2;
         render(<Probe items={numbers(20)} listKey="zoomed" rowsPerBlock={2} />);
         scrollTo(1000);
-        // The block k is at (200k - 1000) x 1.2 on the screen: the part to draw is -300 to 600, so the blocks 3 (-480 to -240) to 7 (480 to 720).
         expect(drawnItems()).toEqual(range(7, 16));
         expect(spacers()).toEqual([
             { block: 0, height: '200px' },
@@ -477,14 +460,11 @@ describe('useBlockWindow', () => {
         render(<Probe items={numbers(20)} listKey="edge" rowsPerBlock={2} />);
         scrollTo(1000);
         expect(drawnItems()).toEqual(range(7, 18));
-        // The part to draw is 840 to 1740: the block 3 (600 to 800) is 40px above it and stays; the block 9 (1800 to 2000), 60px below it and
-        // not drawn, does not come in.
         scrollTo(1140);
         expect(drawnItems()).toEqual(range(7, 18));
         expect(spacers().map((spacer) => {
             return spacer.block;
         })).toEqual([0, 1, 2, 9]);
-        // The part to draw is 900 to 1800: the block 3 is 100px above it and goes, the block 9 is in it.
         scrollTo(1200);
         expect(drawnItems()).toEqual(range(9, 20));
     });
@@ -495,7 +475,6 @@ describe('useBlockWindow', () => {
             frames.push(callback);
             return frames.length;
         });
-        // A measure that never settles: each look finds the items 1000px lower or higher than the look before.
         let looks = 0;
         const realOffsetTop = fakeOffsetTop;
         vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function wobble(this: HTMLElement) {
@@ -531,7 +510,6 @@ describe('useBlockWindow', () => {
                 return [Number(item.textContent), item.dataset['back']];
             });
         };
-        // Drawn for the first time: none is back, and none becomes back while it stays drawn.
         expect(backOf()).toEqual(range(1, 8).map((item) => {
             return [item, 'false'];
         }));
@@ -539,8 +517,6 @@ describe('useBlockWindow', () => {
         expect(backOf().filter(([, back]) => {
             return back === 'true';
         })).toEqual([]);
-        // Far down: the first blocks leave. The block 3 never left; the blocks 4 to 8 were drawn once when the list was first measured (their
-        // height was not known), as all the cards of a list were drawn before, so they are back: their entrance was played then.
         scrollTo(1000);
         expect(backOf()).toEqual([
             [7, 'false'],
@@ -549,7 +525,6 @@ describe('useBlockWindow', () => {
                 return [item, 'true'];
             })
         ]);
-        // Back up: the blocks 0 to 2 come back (their items are back), the block 3 never left.
         scrollTo(0);
         expect(backOf()).toEqual([
             ...range(1, 6).map((item): [number, string] => {
@@ -596,13 +571,11 @@ describe('useBlockWindow', () => {
         }
         render(<DefaultAround />);
         scrollTo(1500);
-        // The screen is 1500 to 1800, with 900 to 2400 around it: the blocks 4 (800 to 1000) to 12 (2400 to 2600).
         expect(drawnItems()).toEqual(range(9, 26));
     });
 
     it('makes the blocks of whole rows of the grid', () => {
         columns = 2;
-        // 20 items, 2 a row, 2 rows a block: blocks of 4 items, 200px tall; the blocks 0 to 3 are near the screen.
         render(<Probe items={numbers(20)} listKey="grid" rowsPerBlock={2} />);
         expect(drawnItems()).toEqual(range(1, 16));
         expect(spacers()).toEqual([{ block: 4, height: '200px' }]);
@@ -629,7 +602,6 @@ describe('useBlockWindow', () => {
         const total = spacers().reduce((sum, spacer) => {
             return sum + Number.parseFloat(spacer.height);
         }, 0);
-        // 4 spacers of 200px and 6 blocks of 200px drawn: the 2000px the list had.
         expect(total + 6 * 200).toBe(2000);
     });
 
@@ -661,8 +633,6 @@ describe('useBlockWindow', () => {
                 callback([], {} as ResizeObserver);
             });
         });
-        // Blocks of 4 items (2 rows of 2), 10 of them: each is given an equal part (400px) of the 4000px the list had, so it stays as
-        // tall and the blocks near where it was scrolled are drawn, then measured (200px each).
         expect(drawnItems()).toEqual(range(29, 40));
         expect(spacers()).toEqual([
             ...range(0, 5).map((block) => {
@@ -683,7 +653,6 @@ describe('useBlockWindow', () => {
         const { rerender } = render(<Probe items={numbers(20)} listKey="list" rowsPerBlock={2} />);
         scrollTo(1000);
         expect(spacers()[0]).toEqual({ block: 0, height: '200px' });
-        // The first two items are now tall ones: the block is drawn to be measured again (600px), and left out with its new height.
         rerender(<Probe items={[100, 101, ...range(3, 20)]} listKey="list" rowsPerBlock={2} />);
         expect(spacers()[0]).toEqual({ block: 0, height: '600px' });
         expect(drawnItems()).not.toContain(100);

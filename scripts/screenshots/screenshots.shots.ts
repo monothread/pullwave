@@ -6,13 +6,8 @@ import { fillMangaLibrary, shootMangaLibrary, shootMangaPage, shootMangaReader, 
 import { launch, prepareAssets, releaseAssets, type Assets } from './session';
 import { historyOf, shootCut, shootError, shootHistory, shootQueue, shootVideoSettings } from './video';
 
-// Takes every screenshot of the README and of docs/screenshots on the real application, with invented titles, fake programs and fake
-// servers, in a new temporary folder: nothing of an installed Pullwave is read or changed. Run it with `npm run screenshots`.
-
 const FAKE_FOLDERS = { downloadDir: '/home/user/Videos', animeDownloadDir: '/home/user/Anime', mangaDirectory: '/home/user/Manga' };
 
-// The folder of the manga is fixed once the library has a manga, so the screen of its settings is taken in the first run, with a folder that
-// says nothing about this machine.
 const DEMO_MANGA_FOLDER = '/tmp/pullwave-demo/Manga';
 
 let assets: Assets;

@@ -20,28 +20,18 @@ export interface MangaHandlerDependencies {
         readonly baseUrl: string | null;
     };
     queue: MangaDownloadQueue;
-    // Looks for newer versions of the server and of the helper, and moves to them.
     updates: Pick<MangaToolUpdates, 'check' | 'updateHelper'>;
-    // Looks for new chapters, in one manga of the library or in all of them (null).
     checkNewChapters: (mangaId: number | null) => Promise<MangaCheckResponse>;
-    // Whether a check of all the mangas is going on and how far it is.
     checkState: () => MangaCheckState;
-    // The icons of the sources that are kept in the data folder.
     icons: Pick<MangaIcons, 'present'>;
-    // The covers of the library that are kept in the data folder.
     covers: Pick<MangaCovers, 'urlOf' | 'refresh' | 'backfill' | 'remove' | 'needsServer' | 'pending'>;
     db: MangaDb;
     reader: Pick<MangaReader, 'pages'>;
-    // Downloads again the pages an incomplete chapter lacks.
     repair: Pick<MangaRepair, 'repair' | 'repairMissing'>;
-    // Deletes the files (CBZ files and folders of images) of chapters; only what the app made is deleted.
     removeChapterFiles: (paths: string[]) => void;
-    // The folder the chapters of a manga are in, or null when none is known.
     folderOf: (mangaId: number) => string | null;
     openFolder: (path: string) => void;
-    // Opens an address in the browser of the system (the handler only gives it http and https addresses).
     openSite: (url: string) => void;
-    // Asks for the folder the chapters are moved to and moves them there (see mangaMigration.ts).
     migrateFolder: () => Promise<MangaMigrationResponse>;
     onLibraryChanged: () => void;
 }
@@ -57,7 +47,6 @@ function invalid(message: string): MangaResult<never> {
     return failure('INVALID_REQUEST', message);
 }
 
-// The channels of a system where the manga section does not exist answer that it does not.
 function registerUnsupported(ipcMain: IpcMainLike): void {
     const unsupported = failure('UNKNOWN', UNSUPPORTED_MESSAGE);
     ipcMain.handle(IPC.mangaStatus, (): MangaStatusInfo => {
@@ -175,14 +164,10 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     const { service, queue, db, reader, repair, removeChapterFiles, covers, icons, onLibraryChanged, checkNewChapters, checkState } = deps;
     let migrating = false;
 
-    // The cover the app keeps is shown when there is one. Otherwise it is the one of the source, kept as a path of the server (its port
-    // changes) and given with the server of the moment.
     function present(manga: LibraryManga): LibraryManga {
         return { ...manga, thumbnailUrl: covers.urlOf(manga.id) ?? fromStoredAddress(manga.thumbnailUrl, service.baseUrl) };
     }
 
-    // What the window sends back goes to the library: the address of a cover the app keeps is not where the source has it, so the
-    // address the library already has stays.
     function store<T extends { thumbnailUrl: string | null }>(value: T): T {
         const kept = value.thumbnailUrl === null ? null : parseCoverUrl(value.thumbnailUrl);
         if (kept !== null) {
@@ -191,7 +176,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         return { ...value, thumbnailUrl: toStoredAddress(value.thumbnailUrl, service.baseUrl) };
     }
 
-    // Takes the cover from the source in the background; the window is told when what is kept changed.
     function refreshCover(mangaId: number): void {
         void covers.refresh(mangaId).then((changed) => {
             if (changed) {
@@ -244,7 +228,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaSources, async () => {
         const result = await service.sources();
-        // The icons the app keeps are shown from the data folder; the others are taken in the background.
         return result.ok
             ? {
                   ...result,
@@ -283,7 +266,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         if (checked === null) {
             return invalid('The request for the list is not valid.');
         }
-        // A search can have no text when it has filters (genres, tags, status...).
         if (checked.kind === 'search' && checked.query.length === 0 && (checked.filters ?? []).length === 0) {
             return invalid('The search is empty.');
         }
@@ -296,7 +278,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         }
         const result = await service.details(id);
         if (result.ok) {
-            // The source was visited: a manga of the library takes the cover the source has now, when it is another one.
             const saved = db.findManga(result.value.details.sourceId, result.value.details.remoteId);
             if (saved !== null) {
                 db.setThumbnail(saved.id, toStoredAddress(result.value.details.thumbnailUrl, service.baseUrl));
@@ -339,14 +320,12 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         if (!migrating) {
             const ids = asIds(mangaIds);
             queue.downloadMissing(ids);
-            // The chapters that lack pages are not downloaded again: the pages they lack are, in the background.
             void repair.repairMissing(ids);
         }
     });
     ipcMain.handle(IPC.mangaLibrary, (): LibraryManga[] => {
         const library = db.list();
         if (service.baseUrl === null && covers.needsServer) {
-            // The covers the app does not keep yet need the server: it is started now, and the screen is told when it is ready.
             service.warmUp();
         }
         if (covers.pending(service.baseUrl !== null)) {
@@ -379,7 +358,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         queue.pauseAll();
     });
     ipcMain.handle(IPC.mangaResumeAll, (): void => {
-        // Nothing is started while the files are being moved.
         if (!migrating) {
             queue.resumeAll();
         }
@@ -388,7 +366,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         queue.pauseMangas(asIds(mangaIds));
     });
     ipcMain.handle(IPC.mangaResumeMangas, (_event, mangaIds): void => {
-        // Nothing is started while the files are being moved.
         if (!migrating) {
             queue.resumeMangas(asIds(mangaIds));
         }
@@ -399,7 +376,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     byChapter.forEach(([channel, action]) => {
         ipcMain.handle(channel, (_event, chapterId) => {
             const id = asId(chapterId);
-            // Nothing is started while the files are being moved.
             if (id !== null && (!migrating || action === 'cancel' || action === 'pause')) {
                 queue[action](id);
             }
@@ -410,7 +386,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
     });
     ipcMain.handle(IPC.mangaRemoveDownload, (_event, chapterId) => {
         const id = asId(chapterId);
-        // Only a chapter that is downloaded has a download to remove: it stays in the library as one that is not downloaded.
         if (id === null || migrating || !hasChapterFile(db.getChapter(id)?.status ?? 'idle')) {
             return;
         }
@@ -511,7 +486,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
         if (checked === null) {
             return { ok: false, reason: 'invalid' };
         }
-        // Not while the files are being moved, or while the manga is being downloaded.
         const downloading = queue.list().some((job) => {
             return job.mangaId === checked.mangaId && (job.status === 'queued' || job.status === 'running' || job.status === 'paused');
         });
@@ -527,7 +501,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             return { ok: false, reason: outcome.reason };
         }
         deps.onLibraryChanged();
-        // The cover is the one of the other source now.
         refreshCover(checked.mangaId);
         const manga = db.getLibraryManga(checked.mangaId);
         return manga === null ? { ok: false, reason: 'not-found' } : { ok: true, manga: present(manga), matched: outcome.matched, added: outcome.added, dropped: outcome.dropped };
@@ -590,7 +563,6 @@ export function registerMangaHandlers(ipcMain: IpcMainLike, deps: MangaHandlerDe
             deps.openSite(address);
         }
     });
-    // The files are moved one migration at a time, and never while a chapter is being downloaded (nor is one started meanwhile).
     ipcMain.handle(IPC.mangaMigrateFolder, async (): Promise<MangaMigrationResponse> => {
         if (migrating || queue.pendingCount() > 0) {
             return { ok: false, reason: 'busy' };

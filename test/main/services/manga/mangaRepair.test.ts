@@ -35,7 +35,6 @@ function setup(options: { status?: 'incomplete' | 'done' | 'idle'; filePath?: st
     const pathExists = vi.fn(() => {
         return options.exists ?? true;
     });
-    // The mangas the screen was told changed, one per repaired chapter.
     const changes: number[] = [];
     const service = new MangaRepair({
         db,
@@ -66,7 +65,6 @@ describe('MangaRepair', () => {
             }
         ]);
         expect(db.getChapter(chapter.id)).toMatchObject({ status: 'done', filePath: FILE, sizeBytes: 300, pageCount: 5, error: null });
-        // Only the manga of the chapter is told to the screen.
         expect(changes).toEqual([manga.id]);
     });
 
@@ -80,7 +78,6 @@ describe('MangaRepair', () => {
         const { service, db, manga, chapter, changes } = setup({ result: { status: 'done', value: { filePath: FILE, sizeBytes: 250, pageCount: 5, missingPages: [1, 4] } } });
         await expect(service.repair(chapter.id, null)).resolves.toEqual({ ok: true, value: { missing: [1, 4] } });
         expect(db.getChapter(chapter.id)).toMatchObject({ status: 'incomplete', filePath: FILE, sizeBytes: 250, pageCount: 5 });
-        // Only the manga of the chapter is told to the screen.
         expect(changes).toEqual([manga.id]);
     });
 
@@ -141,8 +138,6 @@ describe('MangaRepair', () => {
 });
 
 describe('MangaRepair the pages of every incomplete chapter', () => {
-    // One Piece with chapters 1 to 5 (the oldest has the lowest order) and Bleach with chapter 1; chapters 1, 3 and 4 of One Piece and the
-    // one of Bleach are incomplete, 2 is whole and 5 is not downloaded.
     function library(results: Record<number, RepairResult> = {}) {
         const db = new MangaDb(':memory:', () => {
             return 5000;
@@ -186,7 +181,6 @@ describe('MangaRepair the pages of every incomplete chapter', () => {
         expect(db.getChapter(chapters[1]!.id)).toMatchObject({ status: 'done', filePath: '/m/Chapter 2.cbz', sizeBytes: 100 });
         expect(db.getChapter(chapters[4]!.id)).toMatchObject({ status: 'idle', filePath: null });
         expect(db.getChapter(other.id)).toMatchObject({ status: 'done' });
-        // Each repaired chapter tells the screen its own manga only.
         expect(changes).toEqual([onePiece.id, onePiece.id, onePiece.id, bleach.id]);
     });
 

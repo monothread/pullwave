@@ -1,5 +1,4 @@
 export interface HlsSegment {
-    // The place of the segment in the stream (the media sequence of the playlist plus its position).
     sequence: number;
     url: string;
     durationSeconds: number;
@@ -7,10 +6,8 @@ export interface HlsSegment {
 
 export interface HlsPlaylist {
     targetDurationSeconds: number;
-    // The initialization segment of fragmented MP4 streams (null for streams of MPEG-TS segments).
     initUrl: string | null;
     segments: HlsSegment[];
-    // The stream is over: no segment will be added any more.
     ended: boolean;
 }
 
@@ -18,7 +15,6 @@ export class HlsUnsupportedError extends Error {}
 
 const DEFAULT_TARGET_DURATION_SECONDS = 6;
 
-// The value of an attribute of a tag (`URI="..."` or `METHOD=AES-128`), quoted or not.
 function attribute(line: string, name: string): string | null {
     const match = new RegExp(`(?:^|[:,])${name}=("([^"]*)"|[^,]*)`).exec(line);
     if (match === null) {
@@ -36,9 +32,6 @@ function numberAfter(line: string, prefix: string): number | null {
     return Number.isFinite(value) ? value : null;
 }
 
-// Reads the media playlist of a live stream. What this recorder cannot follow (a master playlist, encrypted segments, parts of
-// segments addressed by byte ranges) is refused with an HlsUnsupportedError so the caller can use another way to record it.
-// The parts of the low latency HLS are ignored: the segments they make up are listed whole as soon as they are complete.
 export function parseHlsPlaylist(text: string, playlistUrl: string): HlsPlaylist {
     const lines = text
         .split(/\r\n|\r|\n/)

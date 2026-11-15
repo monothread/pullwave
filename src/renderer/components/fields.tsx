@@ -22,7 +22,6 @@ interface TextFieldProps {
     hint?: string;
     placeholder?: string;
     disabled?: boolean;
-    // The field searches what the screen shows: Ctrl+F goes to it.
     search?: boolean;
     onChange: (value: string) => void;
 }
@@ -117,13 +116,11 @@ export function SelectField<T extends string>({ label, value, options, hint, dis
 interface SwitchInputProps {
     label: string;
     checked: boolean;
-    // The text beside the switch (the label when omitted).
     children?: ReactNode;
     disabled?: boolean;
     onChange: (checked: boolean) => void;
 }
 
-// An on/off setting: a switch that reads as one to assistive technology and changes with a click or the space bar.
 export function SwitchInput({ label, checked, children, disabled = false, onChange }: SwitchInputProps) {
     return (
         <span className="toggle">

@@ -10,7 +10,6 @@ const PARTS: DownloadPart[] = [
     { kind: 'audio', percent: 100 }
 ];
 
-// The sizes the browser would give: jsdom lays nothing out, so the sizes the zipper measures are set by hand.
 function giveSizes(container: HTMLElement, sizes: { height: number; name: number; percent: number; gap: string }): void {
     const box = container.querySelector<HTMLElement>('.zipper') as HTMLElement;
     Object.defineProperty(box, 'offsetHeight', { configurable: true, value: sizes.height });

@@ -380,7 +380,6 @@ describe('MangaService restart of the programs', () => {
         expect(order.sort()).toEqual(['helper stop', 'server stop']);
         expect(server.stop).toHaveBeenCalledTimes(1);
         expect(helper.stop).toHaveBeenCalledTimes(1);
-        // The check that follows the restart starts what was stopped (here the server answers its version at once).
         expect(serverVersion).toHaveBeenCalledTimes(1);
         expect(health.server).toEqual({ state: 'healthy', version: 'v2.4.2366', message: null, external: false });
         expect(health.helper?.state).toBe('healthy');

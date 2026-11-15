@@ -1,18 +1,13 @@
 import type { DiskUsage } from '@shared/types';
 
-// Smallest part of the ring a folder with files in it gets, so that a small folder on a big disk can still be seen.
 export const MIN_FOLDER_PERCENT = 1;
 
 export interface DiskShares {
-    // What the folder takes, what the folder of the other section takes, what other files take and what is free, as percentages of the
-    // whole disk (the four add up to 100). The folder of the other section has a part only when it is on the same disk and apart.
     folderPercent: number;
     siblingPercent: number;
     othersPercent: number;
     freePercent: number;
-    // What is in use on the whole disk (the folder, the folder of the other section and the other files).
     usedPercent: number;
-    // The bytes of the other files, which do not include the folder of the other section when that one has a part of its own.
     othersBytes: number;
 }
 
@@ -20,8 +15,6 @@ function clampPercent(value: number): number {
     return Math.min(100, Math.max(0, value));
 }
 
-// The part of the ring a folder gets: its real share, but never less than the smallest one that can be seen and never more than there is
-// room for.
 function visiblePercent(bytes: number, totalBytes: number, room: number): number {
     if (bytes <= 0) {
         return 0;

@@ -3,7 +3,6 @@ import { playUiSound } from '../sound/uiSound';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
 import { useFxStore } from './fxStore';
 
-// The cover of an anime or a manga that is added to the library flies to the library in the menu.
 export const FLY_MS = 0.75;
 export const NAV_PULSE_CLASS = 'tab--pulse';
 
@@ -19,7 +18,6 @@ export function findNavButton(section: LibrarySection, root: ParentNode = docume
     return root.querySelector<HTMLElement>(`.sidenav [data-section-id="${section}"]`);
 }
 
-// The movement of the flight, from the box of the cover to the box of the menu item (a point at its middle).
 export function flightOf(from: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>, to: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>): { x: number; y: number; scale: number } {
     const targetSize = Math.min(to.width, to.height) * 0.5;
     return {
@@ -42,8 +40,6 @@ function pulse(button: HTMLElement): void {
     }, 900);
 }
 
-// Sends a copy of the cover to the item of the menu and makes the item pulse when it gets there. Without a cover on the screen (or
-// without the menu) there is nothing to fly, and only the sound plays.
 export function flyCoverToLibrary(section: LibrarySection, cover: HTMLElement | null = findCover()): void {
     playAddSound();
     useFxStore.getState().dance();

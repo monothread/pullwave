@@ -15,7 +15,6 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 let mock: MockApiHandle;
 
-// Saturday, October 3, 2026, 15:30 UTC. Its day in UTC runs from 1_790_985_600 to 1_791_072_000.
 const NOW = new Date('2026-10-03T15:30:00Z');
 const DAY_START = 1_790_985_600;
 
@@ -115,10 +114,8 @@ describe('AnimeSchedule', () => {
 
         await screen.findByText('Dandadan');
 
-        // Tokyo is 9 hours ahead: at 15:30 UTC it is already October 4 there, and that day starts at 15:00 UTC of October 3.
         expect(mock.api.listAnimeSchedule).toHaveBeenCalledWith({ from: DAY_START + 15 * 3600, to: DAY_START + 39 * 3600, refresh: false });
         expect(within(dayOf('Sunday, Oct 4')).getByText(`EP 3 · ${timeOf(NIGHT, 'Asia/Tokyo')}`)).toBeInTheDocument();
-        // What airs before that day starts in Tokyo is not part of it.
         expect(screen.queryByText('Sousou no Frieren')).not.toBeInTheDocument();
     });
 
@@ -356,7 +353,6 @@ describe('AnimeSchedule', () => {
             await screen.findByText('Sousou no Frieren');
 
             const field = screen.getByRole('textbox', { name: 'Search the schedule' });
-            // Ctrl+F goes to this field.
             expect(field).toHaveAttribute('data-search-field', '');
             expect(field).toHaveValue('');
             expect(field).toHaveAttribute('placeholder', 'Anime name…');

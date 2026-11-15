@@ -41,7 +41,6 @@ describe('constants and paths', () => {
     it('names the file and puts it in the folder of the video', () => {
         expect(METADATA_FILE_NAME).toBe('pullwave.json');
         expect(METADATA_VERSION).toBe(1);
-        // Still written, so the versions of the app that refused a file without it can import the library.
         expect(METADATA_AUDIO).toBe('sub');
         expect(metadataPathFor(join('/lib', 'Naruto', 'Episode 1', 'Naruto Episode 1.mp4'))).toBe(join('/lib', 'Naruto', 'Episode 1', 'pullwave.json'));
     });

@@ -30,37 +30,28 @@ import {
 } from './suwayomiParsers';
 
 export const REQUEST_TIMEOUT_MS = 60_000;
-// Asking a site for its chapters can take a while.
 export const SOURCE_TIMEOUT_MS = 180_000;
 
 export class SuwayomiApiError extends Error {
     constructor(
         readonly code: MangaErrorCode,
         message: string,
-        // What the place that failed knows about it (the operation, the address, the HTTP status).
         readonly known: Partial<ErrorDetails> = {}
     ) {
         super(message);
     }
 }
 
-// What a request asks for, to tell the user which one failed: the first field of the query (`{ extensionStores { ... } }`, or
-// `mutation ($id: Int!) { updateExtension(...) { ... } }`).
 export function operationOf(query: string): string {
     return /\{\s*(\w+)/.exec(query)?.[1] ?? 'unnamed request';
 }
 
 export interface SuwayomiClientDependencies {
-    // The address of the server, starting it if it does not run.
     baseUrl: () => Promise<string>;
     fetchImpl?: typeof fetch;
-    // How long to wait before asking again when a site refused the request (see `CHALLENGE_RETRIES`).
     retryDelayMs?: number;
 }
 
-// A site behind Cloudflare is read through FlareSolverr, which needs a while to solve the challenge the first time: the request that waited
-// for it is refused (HTTP 403) and the ones after it are answered, since the solved check is kept for a while. So a refused request is
-// asked again, a couple of times, before the user is told.
 export const CHALLENGE_RETRIES = 2;
 export const CHALLENGE_RETRY_DELAY_MS = 1000;
 const REFUSED = /HTTP error 403\b/;
@@ -69,14 +60,12 @@ const EXTENSION_FIELDS = 'pkgName name lang versionName isInstalled hasUpdate is
 const SOURCE_FIELDS = 'id name displayName lang iconUrl supportsLatest isConfigurable contentWarning extension { pkgName storeIndexUrl }';
 const MANGA_FIELDS = 'id sourceId title thumbnailUrl';
 const MANGA_DETAIL_FIELDS = `${MANGA_FIELDS} realUrl author artist description genre status`;
-// The kinds of setting have fields of the same name with different types: each is asked for under a name of its own.
 const PREFERENCE_FIELDS = `__typename
     ... on EditTextPreference { key title summary visible enabled editValue: currentValue }
     ... on ListPreference { key title summary visible enabled listValue: currentValue entries entryValues }
     ... on SwitchPreference { key title summary visible enabled switchValue: currentValue }
     ... on CheckBoxPreference { key title summary visible enabled checkValue: currentValue }
     ... on MultiSelectListPreference { key title summary visible enabled multiValue: currentValue entries entryValues }`;
-// One level of groups is asked for (a group holds filters of the other kinds).
 const FILTER_LEAF = `__typename
     ... on HeaderFilter { name }
     ... on SeparatorFilter { name }
@@ -114,13 +103,11 @@ export const QUERIES = {
     chapterPages: 'mutation ($chapterId: Int!) { fetchChapterPages(input: { chapterId: $chapterId }) { pages } }'
 } as const;
 
-// The change as the server wants it: the value goes in the field of its kind.
 function preferenceChange(change: MangaPreferenceChange): Record<string, unknown> {
     const FIELDS = { text: 'editTextState', list: 'listState', switch: 'switchState', checkbox: 'checkBoxState', multiselect: 'multiSelectState' } as const;
     return { position: change.position, [FIELDS[change.type]]: change.value };
 }
 
-// The filters as the server wants them: each one that has a value, named by its place in its list (a group carries its own).
 export function filterChanges(filters: MangaFilter[]): Array<Record<string, unknown>> {
     const changes: Array<Record<string, unknown>> = [];
     filters.forEach((filter, position) => {
@@ -159,17 +146,13 @@ interface GraphqlAnswer {
     errors?: Array<{ message?: unknown }>;
 }
 
-// Talks to the server in its own language. Every method throws a SuwayomiApiError the caller turns into an answer.
 export class SuwayomiClient {
     constructor(private readonly deps: SuwayomiClientDependencies) {}
 
-    // Points the server at a FlareSolverr (or turns the bypass off when there is none), on a server that is running already: a server
-    // started before the helper was ready would otherwise keep answering that the bypass is disabled.
     async setFlareSolverr(address: string | null): Promise<void> {
         await this.request(QUERIES.setFlareSolverr, { settings: address === null ? { flareSolverrEnabled: false } : { flareSolverrEnabled: true, flareSolverrUrl: address, flareSolverrAsResponseFallback: true } });
     }
 
-    // Asks the server who it is: it answers, and with which version (the server is started if it does not run).
     async serverVersion(): Promise<string | null> {
         const data = await this.request(QUERIES.about, {});
         return this.parsed(() => {
@@ -196,7 +179,6 @@ export class SuwayomiClient {
         await this.request(QUERIES.removeStore, { indexUrl });
     }
 
-    // Asks the stores for their lists again, then gives what they offer.
     async refreshExtensions(): Promise<MangaExtension[]> {
         const data = await this.request(QUERIES.refreshExtensions, {}, SOURCE_TIMEOUT_MS);
         const baseUrl = await this.deps.baseUrl();
@@ -221,7 +203,6 @@ export class SuwayomiClient {
         await this.request(QUERIES.updateExtension, { id: pkgName, patch: { [action]: true } }, SOURCE_TIMEOUT_MS);
     }
 
-    // Updates the extensions given (the ones that have no update are left as they are).
     async updateExtensions(pkgNames: string[]): Promise<void> {
         await this.request(QUERIES.updateExtensions, { ids: pkgNames }, SOURCE_TIMEOUT_MS * 3);
     }
@@ -250,7 +231,6 @@ export class SuwayomiClient {
         });
     }
 
-    // Changes one setting of a source and gives the settings as they are now.
     async setSourcePreference(change: MangaPreferenceChange): Promise<MangaSourcePreference[]> {
         const data = await this.request(QUERIES.setSourcePreference, { source: change.sourceId, change: preferenceChange(change) });
         return this.parsed(() => {
@@ -288,7 +268,6 @@ export class SuwayomiClient {
         });
     }
 
-    // The addresses (on the server) of the pages of a chapter, in reading order.
     async chapterPages(chapterId: number): Promise<string[]> {
         const data = await this.request(QUERIES.chapterPages, { chapterId }, SOURCE_TIMEOUT_MS);
         const baseUrl = await this.deps.baseUrl();

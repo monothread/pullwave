@@ -1,15 +1,5 @@
 name: Test Windows
 
-# Runs what is specific to the anime section on a real Windows runner: the unit tests that do not assume POSIX paths, the
-# end-to-end tests with a fake ani-cli (BusyBox for Windows runs the shell script, the tools are found through Path, cancelling
-# ends the process tree, the protocols serve files, the folders and the disks are told apart) and, on request, a run against the
-# real source ani-cli reads.
-# Run it manually from the Actions tab. The inputs:
-#   scope   windows (default): only the end-to-end tests tagged @windows, the ones that depend on the system;
-#           all: every end-to-end test of the anime section and of the buttons, as before.
-#   workers how many tests run side by side on the machine (it has 4 cores; lower it if tests run out of time).
-#   live    also runs the tests that use the real source (needs the network; the source can change or block).
-# The type check, the lint and the unit tests that do not depend on the system run on Linux (Release Linux), not here.
 on:
   workflow_dispatch:
     inputs:
@@ -59,8 +49,6 @@ jobs:
 
       - name: End-to-end tests of the anime section, side by side
         shell: bash
-        # Everything but the tests that resize the window or put it in fullscreen (@resize): another window that opens takes the
-        # fullscreen from them (D-133), so those run alone in the next step. With scope windows only the tests tagged @windows run.
         run: |
           grep_args=()
           if [ "$SCOPE" = "windows" ]; then

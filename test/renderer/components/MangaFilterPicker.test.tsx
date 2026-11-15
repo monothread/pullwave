@@ -136,7 +136,6 @@ describe('MangaFilterPicker', () => {
         });
         render(<Harness initial={many} />);
         const field = screen.getByRole('combobox', { name: 'Genre' });
-        // A click lists the first of all the options at once, and says how many more there are.
         await user.click(field);
         expect(screen.getAllByRole('option')).toHaveLength(MAX_SUGGESTIONS);
         expect(screen.getByText('1970 more: type to narrow down.')).toBeInTheDocument();

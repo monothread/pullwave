@@ -14,16 +14,12 @@ import {
     seriesFolderOf
 } from './animeFiles';
 
-// What the migration does to the disk (the tests replace it).
 export interface MigrationFileSystem {
-    // The size of a file, or null when it is not there.
     size: (path: string) => number | null;
     exists: (path: string) => boolean;
     makeDirectory: (path: string) => void;
-    // Copies a file; it fails when the destination is already there.
     copy: (from: string, to: string) => Promise<void>;
     removeFile: (path: string) => void;
-    // Removes a folder only when nothing is left in it (it fails otherwise).
     removeEmptyDirectory: (path: string) => void;
 }
 
@@ -43,7 +39,6 @@ export const defaultMigrationFileSystem: MigrationFileSystem = {
         mkdirSync(path, { recursive: true });
     },
     copy: (from, to) => {
-        // Large videos are copied without holding the rest of the app: the copy runs in a thread of the system.
         return new Promise((resolve, reject) => {
             setImmediate(() => {
                 try {
@@ -65,14 +60,11 @@ export const defaultMigrationFileSystem: MigrationFileSystem = {
 
 export interface MigrationDependencies {
     db: Pick<AnimeDb, 'list' | 'relinkEpisodes'>;
-    // The files of an episode (see filesOfEpisode); only the ones that are on the disk are moved.
     filesOf?: (videoPath: string) => string[];
     files?: MigrationFileSystem;
     platform: NodeJS.Platform;
-    // The folder the anime are in now, and the one they are moved to.
     currentDirectory: string;
     newDirectory: string;
-    // Saves the new folder in the settings.
     saveDirectory: (directory: string) => void;
     onProgress: (progress: AnimeMigrationProgress) => void;
 }
@@ -97,8 +89,6 @@ function pathFor(platform: NodeJS.Platform): typeof posix {
     return platform === 'win32' ? win32 : posix;
 }
 
-// The folder of an episode inside the new folder: the same layout downloads use ("<series>/Season N/Episode M" for a season of a
-// series, "<anime>/Episode M" for an anime on its own), wherever the episode was before.
 function newEpisodeFolder(anime: LibraryAnime, number: string, newDirectory: string, platform: NodeJS.Platform): string {
     const folder =
         anime.series !== null && anime.season !== null
@@ -107,8 +97,6 @@ function newEpisodeFolder(anime: LibraryAnime, number: string, newDirectory: str
     return episodeDownloadDirectory(folder, number, platform);
 }
 
-// The files of an episode are all in one folder, so two with the same destination are the same file written two ways (the video can
-// be given with slashes and the subtitles found with backslashes, and Windows does not tell capitals apart): it is moved once.
 function withoutRepeats(planned: readonly PlannedFile[], platform: NodeJS.Platform): PlannedFile[] {
     const seen = new Set<string>();
     return planned.filter((file) => {
@@ -121,8 +109,6 @@ function withoutRepeats(planned: readonly PlannedFile[], platform: NodeJS.Platfo
     });
 }
 
-// What has to be moved: every downloaded episode whose video is on the disk, with its files. An episode whose video is gone has
-// nothing to move and stays as it is.
 function planEpisodes(library: readonly LibraryAnime[], dependencies: MigrationDependencies, files: MigrationFileSystem): PlannedEpisode[] {
     const { platform, newDirectory } = dependencies;
     const path = pathFor(platform);
@@ -157,7 +143,6 @@ function planEpisodes(library: readonly LibraryAnime[], dependencies: MigrationD
     });
 }
 
-// A file that is already in the new folder, or that two episodes would be copied to, is in the way: nothing is overwritten.
 function hasConflict(episodes: readonly PlannedEpisode[], files: MigrationFileSystem): boolean {
     const destinations = new Set<string>();
     return episodes
@@ -173,7 +158,6 @@ function hasConflict(episodes: readonly PlannedEpisode[], files: MigrationFileSy
         });
 }
 
-// The folders a new file needs that are not there yet, the deepest first.
 function missingFolders(directory: string, files: MigrationFileSystem, platform: NodeJS.Platform): string[] {
     const missing: string[] = [];
     let current = directory;
@@ -191,7 +175,6 @@ function byDepth(folders: Iterable<string>): string[] {
     });
 }
 
-// What was copied is removed again, and so are the folders that were made for it.
 function undoCopy(copied: readonly string[], created: ReadonlySet<string>, files: MigrationFileSystem): void {
     copied.forEach((file) => {
         try {
@@ -209,7 +192,6 @@ function undoCopy(copied: readonly string[], created: ReadonlySet<string>, files
     });
 }
 
-// Every copy has to be there with the size of the original.
 function copiesAreComplete(episodes: readonly PlannedEpisode[], files: MigrationFileSystem): boolean {
     return episodes
         .flatMap((episode) => {
@@ -221,8 +203,6 @@ function copiesAreComplete(episodes: readonly PlannedEpisode[], files: Migration
         });
 }
 
-// The folders of the old files that nothing is left in once the files are gone: the folder of each episode, the one of its anime
-// or season and the one of its series, and the old folder of the anime itself. Only empty folders are ever removed.
 function foldersToClean(episodes: readonly PlannedEpisode[], dependencies: MigrationDependencies): string[] {
     const { platform, currentDirectory } = dependencies;
     const folders = new Set<string>();
@@ -230,8 +210,6 @@ function foldersToClean(episodes: readonly PlannedEpisode[], dependencies: Migra
         const episodeFolder = episodeFolderOf(episode.oldVideoPath, episode.number, platform);
         const animeFolder = animeFolderOf(episode.oldVideoPath, episode.number, platform);
         const seriesFolder = seriesFolderOf(animeFolder, platform);
-        // A video that is not in a folder of its own episode is in a folder the user chose: it is only removed when it is in the
-        // folder of the library.
         const ownFolders = episodeFolder === null && !isInsideDirectory(animeFolder, currentDirectory, platform) ? [] : [animeFolder, seriesFolder];
         [episodeFolder, ...ownFolders].forEach((folder) => {
             if (folder !== null) {
@@ -239,7 +217,6 @@ function foldersToClean(episodes: readonly PlannedEpisode[], dependencies: Migra
             }
         });
     });
-    // The folder the anime were in goes too, but only when it is the one of the library and has nothing left.
     const path = pathFor(platform);
     return [
         ...byDepth(folders).filter((folder) => {
@@ -249,9 +226,6 @@ function foldersToClean(episodes: readonly PlannedEpisode[], dependencies: Migra
     ];
 }
 
-// Moves what the library has to a new folder, safely: the files are copied, each copy is checked against the original, the library
-// and the settings are pointed to the copies and only then are the old files removed (and the folders left empty). If anything fails
-// before that, the copies are removed and nothing changes.
 export async function migrateAnimeFolder(dependencies: MigrationDependencies): Promise<MigrationOutcome> {
     const { db, platform, currentDirectory, newDirectory } = dependencies;
     const files = dependencies.files ?? defaultMigrationFileSystem;
@@ -310,7 +284,6 @@ export async function migrateAnimeFolder(dependencies: MigrationDependencies): P
     return { ok: true, episodes: episodes.length, files: plan.length };
 }
 
-// The old files go, one by one (one that cannot be removed is left where it is), then the folders that have nothing left in them.
 function removeOldFiles(plan: readonly PlannedFile[], folders: readonly string[], files: MigrationFileSystem): void {
     plan.forEach((file) => {
         try {

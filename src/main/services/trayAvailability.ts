@@ -16,8 +16,6 @@ export const WATCHER_CHECK_ARGS = [
     WATCHER_NAME
 ];
 
-// Electron shows the tray icon through the StatusNotifierItem (SNI) D-Bus protocol, which is what KDE Plasma,
-// Cinnamon, XFCE and the GNOME AppIndicator extension implement. Returns null when the check itself failed.
 export async function hasStatusNotifierWatcher(exec: ExecFileFn = defaultExecFile): Promise<boolean | null> {
     try {
         const output = await exec('gdbus', WATCHER_CHECK_ARGS);
@@ -34,15 +32,11 @@ export function isGnomeDesktop(desktop: string | undefined): boolean {
         .includes('gnome');
 }
 
-// Stock GNOME has no tray at all: hiding the window there would leave the app unreachable, so it is only
-// considered available when the SNI watcher is running. Every other desktop (KDE, XFCE, Cinnamon, MATE,
-// LXQt, ...) ships a tray, so it is assumed to work even when the watcher check is inconclusive.
 export async function checkTraySupport(
     env: NodeJS.ProcessEnv = process.env,
     exec: ExecFileFn = defaultExecFile,
     platform: NodeJS.Platform = process.platform
 ): Promise<TraySupport> {
-    // Windows (and macOS) always provide a notification area; the D-Bus check is Linux-only.
     if (platform !== 'linux') {
         return { available: true, reason: null };
     }

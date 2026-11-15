@@ -18,8 +18,6 @@ interface SeriesRenameProps {
     onRenamed: (name: string) => void;
 }
 
-// The name of the series, changed for all the mangas in it: when the name is one another series has, the seasons of both join, and a
-// season they both have is refused with the one the other series could give.
 function SeriesRename({ group, onClose, onRenamed }: SeriesRenameProps) {
     const t = useTranslator();
     const renameSeries = useMangaStore((state) => {
@@ -79,7 +77,6 @@ interface MangaSeriesViewProps {
     onRenamed: (name: string) => void;
 }
 
-// The screen of one series: its seasons, the groups it is in, and the way back.
 export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewProps) {
     const t = useTranslator();
     const removeManga = useMangaStore((state) => {
@@ -101,8 +98,6 @@ export function MangaSeriesView({ group, onBack, onRenamed }: MangaSeriesViewPro
         return manga.id;
     });
 
-    // The manga leaves the series and stays in the library, with its chapters and files. When it was the only one the series has no more
-    // mangas, so there is no series: the screen goes back to the library.
     async function takeOutOfSeries(manga: LibraryManga): Promise<void> {
         const response = await setSeries({ mangaId: manga.id, series: null, season: null, seasonName: null });
         if (response.ok && group.entries.length === 1) {

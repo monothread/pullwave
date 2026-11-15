@@ -11,7 +11,6 @@ function makeLibrary() {
     paths.forEach((path, index) => {
         db.markDone(db.ensureEpisode(anime.id, String(index + 1)).id, path, 100);
     });
-    // The fourth is queued: it has no file.
     db.ensureEpisode(anime.id, '4');
     return { db, paths };
 }
@@ -75,7 +74,6 @@ describe('repairLibraryEpisodes', () => {
 
         expect(db.getEpisode(1)).toMatchObject({ sizeBytes: 5000 });
         expect(db.getEpisode(2)).toMatchObject({ sizeBytes: 6000 });
-        // Neither was marked: both are still to be looked at when the user asks.
         expect(
             db.episodesToCheckAudio().map((episode) => {
                 return episode.id;

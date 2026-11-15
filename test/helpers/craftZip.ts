@@ -3,12 +3,9 @@ import { crc32 } from 'node:zlib';
 export interface CraftedEntry {
     name: string;
     data?: string;
-    // The Unix mode kept in the external attributes (for executables, links and folders).
     mode?: number;
 }
 
-// A ZIP with stored entries and whatever names and modes are asked for, including the ones a careful writer refuses to make
-// (a path that goes up, an absolute path, a link).
 export function craftZip(entries: readonly CraftedEntry[]): Buffer {
     const locals: Buffer[] = [];
     const centrals: Buffer[] = [];

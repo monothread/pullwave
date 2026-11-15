@@ -32,15 +32,11 @@ interface LaunchOptions {
     useFakeYtdlp?: boolean;
     settings?: Record<string, unknown>;
     env?: Record<string, string>;
-    // Command line arguments after the ones every launch has (the flag of the start at login, for one).
     args?: string[];
-    // Runs before the app starts, with the folder of its data (to leave files there, as an earlier run would have).
     prepare?: (userData: string) => void;
-    // Leaves the app on the home screen it opens on, instead of going to the video downloader as the other tests do.
     stayHome?: boolean;
 }
 
-// Answers the window that asks before something is taken away (a cancel, a removal, a clear).
 async function answerConfirm(page: Page, title: string, answer: string): Promise<void> {
     await page.getByRole('dialog', { name: title }).getByRole('button', { name: answer, exact: true }).click();
 }
@@ -96,8 +92,6 @@ async function submitUrl(page: Page, url: string): Promise<void> {
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
 }
 
-// A download that is complete says so for a few seconds and leaves the queue (it stays in the history): the history is what tells
-// how many have finished.
 async function expectDownloadsComplete(page: Page, count = 1, timeout = 20000): Promise<void> {
     await expect
         .poll(
@@ -118,8 +112,6 @@ function readSettings(userData: string): Record<string, unknown> {
     return JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf-8')) as Record<string, unknown>;
 }
 
-// The settings are on three screens: the ones of the whole app (a tab), and the ones of the video downloader and of the anime section
-// (a screen of each).
 async function openGlobalSettings(page: Page): Promise<void> {
     await page.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true }).click();
 }
@@ -140,7 +132,6 @@ test.afterEach(async () => {
 
 test('has no chip at the top once the programs are installed and run, and shows the yt-dlp of the custom path as one chosen by the user in the settings', async () => {
     const { page } = session;
-    // Everything is in place: the header has nothing to say about the programs.
     await expect(page.locator('.logo')).toBeVisible();
     await expect(page.locator('.binary-status .chip')).toHaveCount(0);
     await expect(page.locator('.binary-status')).toBeHidden();
@@ -150,7 +141,6 @@ test('has no chip at the top once the programs are installed and run, and shows 
     await expect(page.locator('.binary-status .chip')).toHaveCount(0);
 });
 
-// The folder where the app keeps the programs it installed (see programs.ts): the tests start it with them in place.
 function toolsDirOf(userData: string): string {
     return join(dirname(userData), 'tools');
 }
@@ -177,7 +167,6 @@ test.describe('the programs the app installs', () => {
         await expect(ytdlp.locator('.badge')).toHaveText('YOURS');
         await expect(ytdlp).toContainText(`Using the one you chose in the settings: ${FAKE_YTDLP}`);
         await expect(ytdlp.getByRole('button')).toHaveCount(0);
-        // deno is for the yt-dlp of the app: it is not downloaded when the user chose their own.
         await expect(block.getByTestId('program-deno')).toContainText('Not downloaded: you chose your own yt-dlp in the settings.');
         await expect(page.getByTestId('programs-block-global')).toHaveCount(0);
     });
@@ -229,8 +218,6 @@ test.describe('the programs the app installs', () => {
                 expect(fit.end, `${String(width)}: the end of the bar is inside the window`).toBeLessThanOrEqual(width);
             };
 
-            // Narrower than 1280 (down to the 1000 of the bar on one line, and the screen standing up): the summary in place of the chips, and the
-            // bar inside the window (the whole window scrolled sideways when the three chips were there).
             for (const width of [1000, 1080, 1100, 1279]) {
                 await page.setViewportSize({ width, height: 800 });
                 await expect(summary, `${String(width)}: the summary is shown`).toBeVisible();
@@ -240,7 +227,6 @@ test.describe('the programs the app installs', () => {
                 await expectTheBarInside(width);
             }
 
-            // 1280 and wider: each chip, no summary, and the bar still inside the window.
             for (const width of [1280, 1366]) {
                 await page.setViewportSize({ width, height: 800 });
                 await expect(summary, `${String(width)}: the summary is hidden`).toBeHidden();
@@ -284,7 +270,6 @@ test('downloads a video, says it is complete for five seconds, removes its card 
     await expect(notice).toHaveText('Download complete: Fake Video');
     const shownAt = Date.now();
     await expect(page.locator('.toast--info')).toHaveAttribute('role', 'status');
-    // The notice and the card (green) both stay five seconds after the download completed, then go.
     await expect(page.getByTestId('job-card')).toHaveClass(/job--done/);
     await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await expect(page.getByText('// NO ACTIVE DOWNLOADS. JACK IN A URL ABOVE.')).toBeVisible();
@@ -309,7 +294,6 @@ test('downloads a video, says it is complete for five seconds, removes its card 
 
 test('shows a bar for the video and one for the audio, both in sight from the start, the video filling first and the audio after it', async () => {
     const { page } = session;
-    // Every state the bars of the parts of the card show, as "NAME:value" for each bar in order, and the names the banner draws.
     await page.evaluate(() => {
         const seen: string[] = [];
         const banner: string[] = [];
@@ -346,12 +330,10 @@ test('shows a bar for the video and one for the audio, both in sight from the st
             return { name, value: Number(value) };
         });
     });
-    // Both bars are there from the first moment, the video over the audio, and they start empty.
     parsed.forEach((bars) => {
         expect(bars.map((bar) => { return bar.name; }), JSON.stringify(states)).toEqual(['VIDEO', 'AUDIO']);
     });
     expect(states[0]).toBe('VIDEO:0|AUDIO:0');
-    // Neither bar ever goes back, and the audio only moves once the video is full.
     parsed.slice(1).forEach((bars, index) => {
         const previous = parsed[index] ?? [];
         expect(bars[0]?.value ?? 0, JSON.stringify(states)).toBeGreaterThanOrEqual(previous[0]?.value ?? 0);
@@ -362,17 +344,14 @@ test('shows a bar for the video and one for the audio, both in sight from the st
             expect(bars[0]?.value, JSON.stringify(states)).toBe(100);
         }
     });
-    // The video was seen filling on its own, the audio filling after it, and both full at the end.
     expect(parsed.some((bars) => { return (bars[0]?.value ?? 0) > 0 && (bars[0]?.value ?? 0) < 100 && bars[1]?.value === 0; }), JSON.stringify(states)).toBe(true);
     expect(parsed.some((bars) => { return bars[0]?.value === 100 && (bars[1]?.value ?? 0) > 0 && (bars[1]?.value ?? 0) < 100; }), JSON.stringify(states)).toBe(true);
     expect(states.at(-1)).toBe('VIDEO:100|AUDIO:100');
-    // The banner of the download going on shows the same two bars.
     expect(banner).toEqual(['VIDEO', 'AUDIO']);
 });
 
 test('zips the bars of the video and the audio into one once both are downloaded, shows each step as it starts, and keeps the download green for five seconds before it leaves', async () => {
     const { page } = session;
-    // Every moment of the zipper of the card, and every state of its trail of steps, in the order they came.
     await page.evaluate(() => {
         const zips: string[] = [];
         const trails: string[] = [];
@@ -398,7 +377,6 @@ test('zips the bars of the video and the audio into one once both are downloaded
     const card = page.getByTestId('job-card');
     await expect(card.getByRole('progressbar', { name: 'Download progress: AUDIO' })).toBeVisible();
 
-    // The steps after the download: the joining, then the moving of the file, each lit as it starts, with the bar of the step going on.
     await expect(card.getByText('Joining video and audio')).toBeVisible();
     await expect(card.getByRole('progressbar', { name: 'Processing the downloaded file' })).toBeVisible();
     await expect(card.locator('.zipper')).toHaveCount(0);
@@ -406,7 +384,6 @@ test('zips the bars of the video and the audio into one once both are downloaded
     await expect(banner.locator('.download-hero__body > .download-hero__bar')).toHaveClass('download-hero__bar progress progress--processing');
     await expect(card.getByText('Moving the file to the folder')).toBeVisible();
 
-    // Complete: the card stays green, its bar full, every step ticked, the banner green, and then the card leaves (it stays in the history).
     await expect(card).toHaveClass(/job--done/);
     const doneAt = Date.now();
     await expect(card.locator('.badge')).toHaveText('COMPLETE');
@@ -439,7 +416,6 @@ test('stacks the completions, newest on top, each one going away five seconds af
     await expect(notices.first()).toBeVisible();
     const shownAt = Date.now();
     await expectDownloadsComplete(page, 2);
-    // Both are on the screen together, one over the other, and each one goes away five seconds after it showed up, as the cards do.
     await expect(notices).toHaveCount(2);
     await expect(page.getByTestId('job-card')).toHaveCount(0, { timeout: FINISHED_CARD_TIMEOUT });
     await expect(notices).toHaveCount(0, { timeout: 10000 });
@@ -457,7 +433,6 @@ test('does not offer simultaneous downloads in the settings and always runs thre
         await expect(page.getByLabel('Simultaneous downloads')).toHaveCount(0);
         await expect(page.getByText('Simultaneous downloads')).toHaveCount(0);
 
-        // Saving anything writes the fixed value, whatever the file had.
         await page.getByLabel('Speed limit').fill('2M');
         await expect.poll(() => {
             return readSettings(userData).rateLimit;
@@ -479,7 +454,6 @@ test('shows what yt-dlp is doing to the downloaded file until it is ready', asyn
     await expect(card.getByText('Converting the audio')).toBeVisible();
     await expect(card.getByRole('progressbar', { name: 'Processing the downloaded file' })).toBeVisible();
     await expect(card.getByRole('button')).toHaveCount(0);
-    // A download in one piece has no bars to zip, but shows its steps as they start.
     await expect(card.locator('.zipper')).toHaveCount(0);
     const steps = card.getByRole('list', { name: 'Steps of the download' });
     await expect(steps.getByRole('listitem')).toHaveText(['Download', 'Convert audio']);
@@ -560,7 +534,6 @@ test('pauses a running download, keeps its card as paused and goes on when it is
     await expect(card.getByRole('button', { name: 'PAUSE' })).toHaveCount(0);
     await expect(card.getByRole('button', { name: 'RESUME' })).toBeVisible();
     await expect(card.getByRole('button', { name: 'CANCEL' })).toBeVisible();
-    // A paused download is not over: it is not in the history, and the card stays where it is.
     await page.getByRole('button', { name: 'HISTORY' }).click();
     await expect(page.locator('.history__item')).toHaveCount(0);
     await page.getByRole('button', { name: 'QUEUE' }).click();
@@ -583,8 +556,6 @@ test('a paused download frees its place in the queue for the next one', async ()
     const { page } = session;
     await submitUrl(page, 'https://example.com/slow-first');
     await expect(page.getByTestId('job-card').locator('.badge')).toHaveText('DOWNLOADING');
-    // Each link is sent once the card of the one before is there, so none is lost while the field is being cleared.
-    // The cards can take a moment to come while other tests run beside this one.
     await submitUrl(page, 'https://example.com/slow-second');
     await expect(page.getByTestId('job-card')).toHaveCount(2, { timeout: 15000 });
     await submitUrl(page, 'https://example.com/slow-third');
@@ -592,16 +563,13 @@ test('a paused download frees its place in the queue for the next one', async ()
     await submitUrl(page, 'https://example.com/slow-fourth');
     await expect(page.getByTestId('job-card')).toHaveCount(4);
     const badges = page.getByTestId('job-card').locator('.badge');
-    // The queue runs three downloads at a time: the fourth waits.
     await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'DOWNLOADING', 'QUEUED']);
 
     await page.getByTestId('job-card').first().getByRole('button', { name: 'PAUSE' }).click();
 
-    // The paused one gives its place to the fourth, and is shown after the three that run now.
     await expect(badges).toHaveText(['DOWNLOADING', 'DOWNLOADING', 'DOWNLOADING', 'PAUSED']);
 });
 
-// The CSS animations of a card that are running and that wait (see useOffscreenPause): the bar, the glow and the badge of the card.
 async function cardAnimations(card: Locator): Promise<{ running: number; paused: number }> {
     return card.evaluate((element) => {
         const animations = element.getAnimations({ subtree: true });
@@ -619,7 +587,6 @@ async function cardAnimations(card: Locator): Promise<{ running: number; paused:
 test('pauses the animations of the cards out of sight and runs them again before a card comes into sight', async () => {
     const { page } = session;
     const cards = page.getByTestId('job-card');
-    // Twelve downloads queued at once through the bridge of the page (filling the field twelve times in a row raced with its clearing).
     await page.evaluate(async () => {
         const api = (window as unknown as { api: { addDownload: (url: string) => Promise<unknown> } }).api;
         for (let index = 1; index <= 12; index += 1) {
@@ -629,20 +596,17 @@ test('pauses the animations of the cards out of sight and runs them again before
     await expect(cards).toHaveCount(12, { timeout: 15000 });
     const first = cards.first();
     const last = cards.last();
-    // The first card is in sight: it is not marked and its animations run.
     await expect(first).not.toHaveAttribute('data-offscreen');
     await expect.poll(async () => {
         return (await cardAnimations(first)).running;
     }).toBeGreaterThan(0);
     expect((await cardAnimations(first)).paused).toBe(0);
-    // The last one is far below the visible part of the list: marked, every animation of it waiting.
     await expect(last).toHaveAttribute('data-offscreen', '');
     await expect.poll(async () => {
         return (await cardAnimations(last)).running;
     }).toBe(0);
     expect((await cardAnimations(last)).paused).toBeGreaterThan(0);
 
-    // A little below the visible part of the list (the list scrolls inside the main area), it is animating already, before it is seen.
     await page.locator('.app__main').evaluate((main, card) => {
         const bottom = main.getBoundingClientRect().bottom;
         main.scrollTop += (card as HTMLElement).getBoundingClientRect().top - bottom - 100;
@@ -655,7 +619,6 @@ test('pauses the animations of the cards out of sight and runs them again before
         return (await cardAnimations(last)).paused;
     }).toBe(0);
 
-    // Brought into sight, it animates still.
     await last.scrollIntoViewIfNeeded();
     await expect(last).not.toHaveAttribute('data-offscreen');
     await expect.poll(async () => {
@@ -696,7 +659,6 @@ test('a paused download is still there when the app is opened again, and goes on
         await expect(reopenedCard.getByText('50.0%')).toBeVisible();
         await expect(reopenedCard.getByRole('heading')).toBeVisible();
         await expect(reopenedCard.getByRole('button', { name: 'RESUME' })).toBeVisible();
-        // Nothing was started by opening the app: the download waits for the user.
         expect(downloadsOf()).toHaveLength(1);
 
         await reopenedCard.getByRole('button', { name: 'RESUME' }).click();
@@ -705,7 +667,6 @@ test('a paused download is still there when the app is opened again, and goes on
         await expect.poll(() => {
             return downloadsOf().length;
         }).toBe(2);
-        // The same address and the same folder: yt-dlp finds the partial file and goes on from it.
         const [first, second] = downloadsOf();
         expect(second).toEqual(first);
         expect(second).toContain('https://example.com/slow-restart');
@@ -716,7 +677,6 @@ test('a paused download is still there when the app is opened again, and goes on
     } finally {
         await reopened.close();
     }
-    // The first session is closed already: the afterEach closes it again without failing.
     session = { ...session, app: { close: async () => {return undefined} } as unknown as ElectronApplication };
 });
 
@@ -755,7 +715,6 @@ test.describe('closing the app with downloads going on', () => {
 
             expect(present(own.downloadDir, PARTIAL_NAMES)).toEqual([]);
             expect(readFileSync(join(own.downloadDir, 'Other Video [xyz].mp4.part'), 'utf-8')).toBe('belongs to another download');
-            // A download that was cut short by closing the app is not kept for the next run.
             expect(existsSync(join(own.userData, 'paused.json'))).toBe(false);
         } finally {
             rmSync(resolve(own.userData, '..'), { recursive: true, force: true });
@@ -775,7 +734,6 @@ test.describe('closing the app with downloads going on', () => {
 
             await own.app.close();
 
-            // The process of the download that runs is ended as the app closes, and its files go a moment later on a busy machine.
             await expect.poll(() => { return present(own.downloadDir, PARTIAL_NAMES); }, { timeout: 10000 }).toEqual([]);
             const kept = JSON.parse(readFileSync(join(own.userData, 'paused.json'), 'utf-8')) as Array<{ job: { url: string; status: string } }>;
             expect(kept).toHaveLength(1);
@@ -830,8 +788,6 @@ test('adds several links with the add button, queues them all and resets the row
     await page.getByLabel('Link 3', { exact: true }).fill('https://example.com/ok3');
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
 
-    // The downloads of the fake end at once and a finished one leaves the queue, so the cards cannot be counted without a race: what is seen is that the
-    // three links were downloaded, each one once.
     await expectDownloadsComplete(page, 3);
     const downloaded = await page.evaluate(async () => {
         const history = await (window as unknown as { api: { listHistory: () => Promise<Array<{ url: string; status: string }>> } }).api.listHistory();
@@ -899,7 +855,6 @@ test('handles a very long link without resizing the field or overflowing the pag
 
 test('the back and forward buttons of the mouse move through the tabs that were visited', async () => {
     const { page } = session;
-    // Playwright cannot press the side buttons, so the events the browser sends for them are dispatched.
     const pressSideButton = async (button: 3 | 4): Promise<boolean> => {
         return page.evaluate((which) => {
             const event = new MouseEvent('mouseup', { button: which, bubbles: true, cancelable: true });
@@ -957,7 +912,6 @@ test('the back and forward buttons of the mouse put back how far the page was sc
     expect(reach.target).toBeGreaterThan(0);
     expect(await scrollTopOfMain()).toBe(reach.target);
 
-    // The tab is dispatched a click instead of being clicked: Playwright would scroll the page to reach it first.
     await page.getByRole('button', { name: 'HISTORY', exact: true }).dispatchEvent('click');
     await expect(page.getByText('// HISTORY IS EMPTY.')).toBeVisible();
     expect(await scrollTopOfMain()).toBe(0);
@@ -976,8 +930,6 @@ test('the gear of the settings is at the bottom of the menu of the sections, and
     const sections = page.getByRole('navigation', { name: 'Sections' });
     const gear = sections.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true });
     await expect(gear.locator('svg.section-icon--settings')).toHaveCount(1);
-    // The gear is drawn like the pictures of the sections, on the same vertical line as them.
-    // Measured on the layout (the box of each picture in its tab), not on the screen: the picture of the active section hops when it is chosen.
     const centres = await sections.locator('.tab__decoration').evaluateAll((pictures) => {
         return pictures.map((picture) => {
             const box = picture as HTMLElement;
@@ -994,7 +946,6 @@ test('the gear of the settings is at the bottom of the menu of the sections, and
             return Math.round(button.getBoundingClientRect().bottom);
         });
     });
-    // The gear sits low in the rail, under every section.
     expect(Math.round((railBox?.y ?? 0) + (railBox?.height ?? 0)) - Math.round((gearBox?.y ?? 0) + (gearBox?.height ?? 0))).toBeLessThanOrEqual(16);
     expect(Math.max(...bottoms.slice(0, -1))).toBeLessThan(Math.round(gearBox?.y ?? 0));
 
@@ -1287,7 +1238,6 @@ test.describe('browser detection', () => {
     let fakeApps: string;
     let own: Session;
 
-    // The .desktop entries of the real system are replaced by the ones in fakeApps, so the result does not depend on what is installed.
     function launchOnFakeHome(settings: Record<string, unknown> = {}): Promise<Session> {
         return launch({ env: { HOME: fakeHome, PULLWAVE_APPLICATION_DIRS: fakeApps }, settings });
     }
@@ -1520,8 +1470,6 @@ test.describe('themes', () => {
         }).toBe('dark');
     });
 
-    // The layer that used to draw a neon glow after the mouse is gone: nothing marks the page. body::before is now the aurora of the
-    // console layer (D-126), which drifts by itself and never follows the mouse.
     async function glowOf(page: Page): Promise<{ attribute: string | null; x: string; y: string; layer: string; image: string }> {
         return page.evaluate(() => {
             const root = document.documentElement;
@@ -1536,8 +1484,6 @@ test.describe('themes', () => {
         });
     }
 
-    // A theme change draws as a circle and the colours of the aurora go to the new ones in 0.9 s (`transition` of `--bp-aurora-*`): the colours are read
-    // once nothing of that is going on, or they would be read half way.
     async function waitForTheThemeToSettle(page: Page): Promise<void> {
         await page.waitForFunction(() => {
             const running = document.getAnimations().filter((animation) => {
@@ -1564,7 +1510,6 @@ test.describe('themes', () => {
         }
     });
 
-    // The background each theme paints (the --bg of its block in themes.css, or of the :root of cyberpunk.css), as the browser writes it.
     const THEME_BACKGROUNDS: Array<[string, string, 'neon' | 'flat']> = [
         ['cyberpunk', 'rgb(7, 6, 15)', 'neon'],
         ['synthwave', 'rgb(18, 12, 42)', 'neon'],
@@ -1805,7 +1750,6 @@ test.describe('languages', () => {
             const reopenedPage = await reopened.firstWindow();
             await reopenedPage.waitForSelector('.logo');
             await expect(reopenedPage.locator('html')).toHaveAttribute('lang', 'ja');
-            // The app opens on its home screen, in Japanese.
             await expect(reopenedPage.getByRole('navigation', { name: 'セクション' }).getByRole('button', { name: 'ホーム', exact: true })).toHaveAttribute('aria-current', 'page');
             await expect(reopenedPage.getByRole('region', { name: 'ホーム' })).toBeVisible();
             await reopenedPage.getByRole('button', { name: '設定（全体）' }).click();
@@ -1841,8 +1785,6 @@ test.describe('languages', () => {
     });
 });
 
-// A minimized window is not drawn, but Chromium does not tell the page so on Linux: the main process does, and every animation waits until
-// the window comes back. Needs a window manager (the fullscreen tests run with metacity): without one the window cannot be minimized.
 test('@resize stops every animation while the window is minimized and runs them again when it comes back', async () => {
     const { app, page } = session;
     const running = async (): Promise<number> => {
@@ -1899,7 +1841,6 @@ test.describe('settings layout @resize', () => {
         });
     }
 
-    // The panels of the settings of the video downloader (the ones of the whole app and of the anime section are on screens of their own).
     const LEGENDS = ['OUTPUT', 'PLAYLISTS & SUBTITLES', 'Status of the programs', 'QUALITY & FORMAT', 'ADVANCED', 'LIVE STREAMS', 'BROWSER COOKIES', 'DIAGNOSTICS'];
 
     test('the panels have all the same width and flow in two even columns, with no panel on a row of its own', async () => {
@@ -1919,7 +1860,6 @@ test.describe('settings layout @resize', () => {
             columns.set(box.left, [...(columns.get(box.left) ?? []), box]);
         });
         expect(columns.size).toBe(2);
-        // Both columns start at the same height and end close to each other (no more than one panel apart).
         const bottoms = [...columns.values()].map((panels) => {
             return Math.max(...panels.map((box) => {
                 return box.top + box.height;
@@ -1934,14 +1874,12 @@ test.describe('settings layout @resize', () => {
         expect(Math.abs((bottoms[0] ?? 0) - (bottoms[1] ?? 0))).toBeLessThan(Math.max(...boxes.map((box) => {
             return box.height;
         })));
-        // Inside a column the panels are one under the other, with the same gap, and never overlap.
         columns.forEach((panels) => {
             const ordered = [...panels].sort((first, second) => {
                 return first.top - second.top;
             });
             ordered.slice(1).forEach((box, index) => {
                 const previous = ordered[index];
-                // 18 px, give or take the rounding of each box.
                 expect(Math.abs(box.top - ((previous?.top ?? 0) + (previous?.height ?? 0)) - 18)).toBeLessThanOrEqual(1);
             });
         });
@@ -2581,7 +2519,6 @@ test.describe('live streams', () => {
 });
 
 test.describe('end of live check and waiting for a live stream', () => {
-    // Starts the app again with other settings; the session of the test is replaced.
     async function relaunchWith(settings: Record<string, unknown>): Promise<Session> {
         await session.app.close();
         rmSync(resolve(session.userData, '..'), { recursive: true, force: true });
@@ -2991,10 +2928,8 @@ test.describe('start at login', () => {
     });
 });
 
-// A live HLS stream that moves on every 300 ms: a segment is the text "<v or a><number>;", and a playlist lists the last four.
 class FakeHlsSite {
     readonly requests: string[] = [];
-    // The playlists answer 403, like a site that does not let the app in.
     refuse = false;
     private server: Server | null = null;
     private readonly startedAt = Date.now();
@@ -3042,7 +2977,6 @@ class FakeHlsSite {
     }
 }
 
-// The numbers of the segments of one rendition in a recording made by the fake ffmpeg (the video, then the audio).
 function segmentsInRecording(content: string, prefix: 'v' | 'a'): number[] {
     return [...content.matchAll(new RegExp(`${prefix}(\\d+);`, 'g'))].map((match) => {
         return Number(match[1]);
@@ -3075,7 +3009,6 @@ test.describe('live HLS streams recorded by the app', () => {
         const card = page.getByTestId('job-card');
         await expect(card.locator('.badge')).toHaveText('RECORDING');
         await expect(card.getByText('● LIVE')).toBeVisible();
-        // The fake segments are a few bytes each.
         await expect(card.getByText(/\d+(\.\d)? (B|KiB)$/)).toBeVisible();
         await expect.poll(() => {
             return site.requests.filter((path) => {
@@ -3089,7 +3022,6 @@ test.describe('live HLS streams recorded by the app', () => {
 
         const finalPath = join(downloadDir, 'Live Hls [abc].mp4');
         expect(readdirSync(downloadDir)).toEqual(['Live Hls [abc].mp4']);
-        // The file is what the app recorded (the fake ffmpeg puts the video and then the audio in it), not what the fake yt-dlp writes.
         const content = readFileSync(finalPath, 'utf-8');
         expect(content.startsWith('vinit;v')).toBe(true);
         expect(content).toContain('ainit;a');
@@ -3102,7 +3034,6 @@ test.describe('live HLS streams recorded by the app', () => {
                 expect(number).toBe((numbers[0] ?? 0) + index);
             });
         });
-        // yt-dlp announced the stream (the app asks for it in every download) and was run once: it was ended before it recorded.
         const calls = readCalls(logPath).filter((call) => {
             return call.at(-1)?.includes('livehls');
         });
@@ -3148,7 +3079,6 @@ test.describe('live HLS streams recorded by the app', () => {
         }).length).toBeGreaterThan(0);
         await card.getByRole('button', { name: 'STOP & SAVE' }).click();
         await expectDownloadsComplete(page);
-        // What the fake yt-dlp wrote, not what the app records.
         const content = readFileSync(join(downloadDir, 'Live Hls [abc].mp4'));
         expect(content.byteLength).toBeGreaterThan(0);
         expect(content.every((byte) => {

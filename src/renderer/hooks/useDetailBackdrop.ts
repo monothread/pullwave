@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useBackdropStore } from '../store/backdropStore';
 
-// The screen of one anime or manga puts its cover behind the whole screen while it is open, as the page of a game on a console does.
 export function useDetailBackdrop(url: string | null): void {
     const show = useBackdropStore((state) => {
         return state.show;

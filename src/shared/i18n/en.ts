@@ -1,5 +1,4 @@
 export const en = {
-    // Navigation and shell
     'tab.downloads': 'VIDEO DOWNLOADER',
     'tab.settings': 'SETTINGS (GLOBAL)',
     'downloads.aria': 'Video downloader',
@@ -172,7 +171,6 @@ export const en = {
         'The buttons cannot work until this is fixed. Close the app and open it again; if it keeps happening, reinstall it and send the file diagnostic.log from the app data folder (on Windows: %APPDATA%\\pullwave).',
     'binary.missing': 'MISSING',
 
-    // Download errors
     'error.FILENAME_TOO_LONG.title': 'Title too long',
     'error.FILENAME_TOO_LONG.hint': 'Reduce the maximum title length in the settings.',
     'error.FFMPEG_MISSING.title': 'ffmpeg not found',
@@ -220,7 +218,6 @@ export const en = {
     'errorDialog.field.appVersion': 'App version',
     'errorDialog.field.system': 'System',
 
-    // Jobs and queue
     'job.status.queued': 'QUEUED',
     'job.status.running': 'DOWNLOADING',
     'job.status.done': 'COMPLETE',
@@ -288,7 +285,6 @@ export const en = {
     'queue.label': 'QUEUE [{count}]',
     'queue.clearFinished': 'CLEAR FINISHED',
 
-    // History
     'history.aria': 'Download history',
     'history.empty': '// HISTORY IS EMPTY.',
     'history.label': 'HISTORY [{count}]',
@@ -298,11 +294,9 @@ export const en = {
     'history.unknownError': 'Unknown error',
     'history.showFile': 'SHOW FILE',
 
-    // Notifications
     'toast.dismiss': 'Dismiss notification',
     'notice.downloadDone': 'Download complete: {title}',
 
-    // App updates
     'update.checking': 'Checking for updates…',
     'update.available': 'Version {version} is available.',
     'update.downloading': 'Downloading version {version}… {percent}%',
@@ -314,9 +308,6 @@ export const en = {
     'update.updateTo': 'UPDATE TO {version}',
     'update.restartInstall': 'RESTART & INSTALL',
 
-    // yt-dlp updates
-
-    // Link input
     'url.targetLinks': 'TARGET LINKS',
     'url.link': 'Link {n}',
     'url.chooseFolder': 'Choose folder for link {n}',
@@ -332,7 +323,6 @@ export const en = {
     'url.addFailed': 'Could not add the download.',
     'url.invalid': 'Invalid URL. Use an http(s) link.',
 
-    // Settings: general
     'settings.aria': 'Settings',
     'settings.save.idle': 'Changes are saved automatically.',
     'settings.save.pending': 'Unsaved changes…',
@@ -340,7 +330,6 @@ export const en = {
     'settings.save.saved': 'All changes saved.',
     'settings.save.error': 'Could not save the settings.',
 
-    // Settings: appearance
     'settings.appearance': 'APPEARANCE & WINDOW',
     'settings.theme': 'Theme',
     'settings.theme.hint': 'Device follows the light or dark mode of your system. Saved and restored the next time the app opens.',
@@ -382,7 +371,6 @@ export const en = {
     'tray.restart': 'Restart Pullwave',
     'tray.quit': 'Quit',
 
-    // Settings: output
     'settings.output': 'OUTPUT',
     'settings.downloadDir': 'Download folder',
     'settings.downloadDir.placeholder': 'Default: system Downloads folder',
@@ -394,7 +382,6 @@ export const en = {
     'settings.deletePartials.hint':
         'Live recordings are always kept, because they can still be saved. A retry starts over once the partial file is gone.',
 
-    // Settings: quality
     'settings.quality': 'QUALITY & FORMAT',
     'settings.maxResolution': 'Video quality',
     'settings.maxResolution.hint': 'Always picks the best video + best audio within the limit.',
@@ -404,7 +391,6 @@ export const en = {
     'settings.audioOnly': 'Audio only',
     'settings.audioFormat': 'Audio format',
 
-    // Settings: playlists and subtitles
     'settings.subtitles': 'PLAYLISTS & SUBTITLES',
     'settings.playlist': 'Download whole playlist',
     'settings.writeSubtitles': 'Download subtitles',
@@ -417,7 +403,6 @@ export const en = {
         'Auto-generated subtitles need a language. Fill in "Subtitle languages" in Settings (e.g. ja), or turn off "Include auto-generated subtitles".',
     'settings.embedSubtitles': 'Embed subtitles in the video',
 
-    // Settings: live streams
     'settings.live': 'LIVE STREAMS',
     'settings.liveFromStart': 'Record live streams from the start',
     'settings.liveFromStart.hint':
@@ -429,7 +414,6 @@ export const en = {
     'settings.verifyLiveEndSeconds': 'Seconds to keep checking',
     'settings.verifyLiveEndSeconds.hint': 'How long to look for the stream again after it stops (1 to 120).',
 
-    // Settings: browser cookies
     'settings.cookies': 'BROWSER COOKIES',
     'settings.useCookies': 'Use cookies from my browser',
     'settings.useCookies.hint': 'Needed for age-restricted, private or members-only videos.',
@@ -443,12 +427,10 @@ export const en = {
     'browser.noneFound': 'No browser with saved cookies was found on this system.',
     'browser.savedNotFound': 'The saved browser ({browser}) was not found on this system. Choose one of the detected browsers.',
 
-    // Settings: yt-dlp and updates
     'settings.appUpdates': 'APP UPDATES',
     'settings.checkUpdates': 'CHECK FOR UPDATES',
     'settings.checkOnStart': 'Check for updates on startup',
 
-    // Settings: advanced
     'settings.advanced': 'ADVANCED',
     'settings.rateLimit': 'Speed limit',
     'settings.rateLimit.placeholder': 'e.g. 2M or 500K',
@@ -463,7 +445,6 @@ export const en = {
     'settings.extraArgs.hint':
         'Passed as-is to yt-dlp, including options that run commands (e.g. --exec). Only use arguments you trust.',
 
-    // Native dialogs
     'options.button': 'OPTIONS',
     'options.buttonAria': 'Options for link {n}',
     'options.title': 'Options for link {n}',
@@ -930,7 +911,6 @@ export const en = {
     'anime.subtitleJobs.unknown': 'Episode no longer in the library',
     'anime.stream.loading': 'FINDING THE VIDEO…',
 
-    // Manga section
     'tab.manga': 'MANGA',
     'manga.aria': 'Manga',
     'manga.nav.browse': 'BROWSE',

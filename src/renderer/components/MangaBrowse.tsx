@@ -21,8 +21,6 @@ const MODES: ReadonlyArray<{ id: MangaListKind; label: 'manga.browse.mode.popula
     { id: 'search', label: 'manga.browse.mode.search' }
 ];
 
-// Where a manga is looked for. First the sources (the sites the installed extensions read) are listed; a source opens on its own page,
-// with its popular and latest mangas, a search and, when it has them, its settings.
 export function MangaBrowse() {
     const t = useTranslator();
     const browse = useMangaStore((state) => {
@@ -78,21 +76,18 @@ export function MangaBrowse() {
         }
     }, [sourcesStatus, loadSources]);
 
-    // The popular and the latest are listed as soon as the source is open; a search waits for its button.
     useEffect(() => {
         if (sourceId !== null && mode !== 'search' && status === 'idle' && !settingsOpen) {
             void runList();
         }
     }, [sourceId, mode, status, settingsOpen, runList]);
 
-    // The filters belong to the search: they are asked of the source when its search is opened.
     useEffect(() => {
         if (sourceId !== null && mode === 'search' && !settingsOpen) {
             void loadFilters();
         }
     }, [sourceId, mode, settingsOpen, loadFilters]);
 
-    // The next page comes when the end of the list is reached.
     const endOfList = useInfiniteScroll(
         () => {
             void loadMore();
@@ -112,7 +107,6 @@ export function MangaBrowse() {
         return source.id === sourceId;
     });
 
-    // No source is open: the list of the sources.
     if (sourceId === null || current === undefined) {
         return (
             <section className="manga__browse" aria-label={t('manga.nav.browse')}>
@@ -126,7 +120,6 @@ export function MangaBrowse() {
         );
     }
 
-    // The settings of the source are a screen of their own.
     if (settingsOpen) {
         return (
             <section className="manga__browse" aria-label={current.name}>

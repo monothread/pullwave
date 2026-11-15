@@ -6,7 +6,6 @@ import type { SubtitleOption } from './VideoControls';
 
 const STORAGE_PREFIX = 'pullwave-subtitle-';
 const OFF = 'off';
-// The id the player gives the subtitles ani-cli picked (their own id is empty, which a <track> cannot have).
 export const DEFAULT_OPTION_ID = 'default';
 
 export type SubtitleImportFailure = Exclude<Extract<AnimeSubtitleImportResponse, { ok: false }>['reason'], 'cancelled'>;
@@ -26,8 +25,6 @@ export function optionIdOf(track: AnimeSubtitleTrack): string {
     return track.id.length > 0 ? track.id : DEFAULT_OPTION_ID;
 }
 
-// The options of the menu of subtitles. With a language, the names of the subtitles of the source are written in it (see
-// subtitleName.ts); the ones the user loaded keep the name of their file.
 export function optionsOf(tracks: readonly AnimeSubtitleTrack[], language?: LanguageCode): SubtitleOption[] {
     const labels = language === undefined ? tracks.map((track) => {
         return track.label;
@@ -42,11 +39,8 @@ export function optionsOf(tracks: readonly AnimeSubtitleTrack[], language?: Lang
     });
 }
 
-// The id of the only subtitle a stream has when the source does not list them (the one ani-cli picked).
 export const STREAM_SUBTITLE_ID = 'stream';
 
-// The subtitles of a stream, the one ani-cli picked first (it is the one shown at first). Without a list from the source, the one that
-// was picked is all there is.
 export function streamTracks(stream: AnimeStream): AnimeStreamSubtitle[] {
     if (stream.subtitles.length === 0) {
         return stream.subtitleUrl === null ? [] : [{ id: STREAM_SUBTITLE_ID, label: 'Subtitles', url: stream.subtitleUrl }];
@@ -59,8 +53,6 @@ export function streamTracks(stream: AnimeStream): AnimeStreamSubtitle[] {
     })] : stream.subtitles;
 }
 
-// The options of the menu of subtitles of a stream, written in the language of the screen (see subtitleName.ts). A stream whose
-// subtitles the source does not list keeps its one generic name.
 export function streamOptionsOf(tracks: readonly AnimeStreamSubtitle[], language: LanguageCode): SubtitleOption[] {
     const listed = tracks.some((track) => {
         return track.id !== STREAM_SUBTITLE_ID;
@@ -80,7 +72,6 @@ export function streamOptionsOf(tracks: readonly AnimeStreamSubtitle[], language
     });
 }
 
-// What the viewer chose the last time they watched the episode: an id, null for "off", undefined when they never chose.
 export function readSubtitleChoice(episodeId: number): string | null | undefined {
     try {
         const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${episodeId}`);
@@ -101,7 +92,6 @@ export function saveSubtitleChoice(episodeId: number, choice: string | null): vo
     }
 }
 
-// The subtitle to show: the one chosen before when it is still there, otherwise the first (the one ani-cli picked).
 export function initialSubtitle(options: readonly SubtitleOption[], stored: string | null | undefined): string | null {
     if (stored === null) {
         return null;

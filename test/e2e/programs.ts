@@ -4,11 +4,6 @@ import { PROGRAM_IDS, type ProgramId } from '../../src/shared/tools';
 import { ffmpegSpec, ffmpegVersionOf, pinnedSpec, programPlatform } from '../../src/main/services/tools/programSpecs';
 import { MARKER_FILE } from '../../src/main/services/tools/toolInstaller';
 
-// The app downloads yt-dlp, deno, ffmpeg, ani-cli, busybox and curl the first time it opens. The end-to-end tests do not download anything:
-// they start the app with PULLWAVE_NO_TOOLS=1 (it does not go looking for them) and PULLWAVE_TOOLS_DIR pointing at a folder where the
-// programs are already "installed" (linked, or copied on Windows, from resources/bin, which `node scripts/fetch-binaries.mjs` fills for the
-// tests that need the real ones; what is not there is a script that does nothing).
-
 const ROOT = resolve(__dirname, '../..');
 const SOURCE_DIR = join(ROOT, 'resources', 'bin');
 const FFMPEG_ASSETS = { linux: 'ffmpeg-n9.0-latest-linux64-gpl-shared-9.0.tar.xz', win32: 'ffmpeg-n9.0-latest-win64-gpl-shared-9.0.zip' } as const;
@@ -16,7 +11,6 @@ const FFMPEG_SHA256 = 'f'.repeat(64);
 const WIN32 = process.platform === 'win32';
 const EXE = WIN32 ? '.exe' : '';
 
-// Where the real file of each file of a program is, when the tests have it.
 function sourceOf(file: string): string {
     const names: Record<string, string> = {
         'yt-dlp': join(SOURCE_DIR, `yt-dlp${EXE}`),
@@ -63,11 +57,9 @@ function putFile(source: string, destination: string): void {
 }
 
 export interface ProgramsDirectory {
-    // Where the folder of the programs is (PULLWAVE_TOOLS_DIR).
     directory: string;
 }
 
-// Puts every program (or only `only`) into `directory` as if the app had downloaded it.
 export function installPrograms(directory: string, only: readonly ProgramId[] = PROGRAM_IDS): ProgramsDirectory {
     const system = programPlatform(process.platform, process.arch);
     mkdirSync(directory, { recursive: true });
@@ -94,18 +86,15 @@ export function installPrograms(directory: string, only: readonly ProgramId[] = 
     return { directory };
 }
 
-// The environment that makes the app use the programs of `directory` and not go looking for others.
 export function programsEnv(directory: string): Record<string, string> {
     return { PULLWAVE_TOOLS_DIR: directory, PULLWAVE_NO_TOOLS: '1' };
 }
 
-// Installs every program in a new folder inside `workDir` and gives the environment for it.
 export function installedProgramsEnv(workDir: string): Record<string, string> {
     const { directory } = installPrograms(join(workDir, 'tools'));
     return programsEnv(directory);
 }
 
-// The environment of the app for a test that gives it no other variable: the one of the test, with the programs installed.
 export function appEnv(workDir: string): Record<string, string> {
     const env: Record<string, string> = {};
     for (const [name, value] of Object.entries(process.env)) {

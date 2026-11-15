@@ -1,6 +1,3 @@
-// What the reader remembers: how the user likes to read (it is kept for every manga) and where they stopped in each chapter. It lives
-// in the storage of the window, which can be empty or refuse to be read: the reader then starts from its defaults.
-
 export const READER_MODES = ['single', 'vertical', 'webtoon'] as const;
 export const READER_DIRECTIONS = ['ltr', 'rtl'] as const;
 export const READER_SCALES = ['width', 'height', 'screen', 'original'] as const;
@@ -11,11 +8,9 @@ export type ReaderDirection = (typeof READER_DIRECTIONS)[number];
 export type ReaderScale = (typeof READER_SCALES)[number];
 export type ReaderBackground = (typeof READER_BACKGROUNDS)[number];
 
-// How fast the scroll goes by itself, in pixels per second.
 export const MIN_AUTO_SCROLL_SPEED = 10;
 export const MAX_AUTO_SCROLL_SPEED = 600;
 export const AUTO_SCROLL_STEP = 10;
-// The space between the pages in the vertical scroll, in pixels (0 joins them).
 export const MIN_PAGE_GAP = 0;
 export const MAX_PAGE_GAP = 100;
 export const PAGE_GAP_STEP = 4;
@@ -27,9 +22,7 @@ export interface ReaderPrefs {
     background: ReaderBackground;
     autoScrollSpeed: number;
     pageGap: number;
-    // In the scroll modes the next (or previous) chapter opens by itself when the user scrolls through the zone between chapters.
     chapterSwitch: boolean;
-    // In the single page mode two pages are shown side by side (the first one on the side the reading starts from, see `direction`).
     twoPages: boolean;
 }
 
@@ -65,7 +58,6 @@ function parsePrefs(raw: Record<string, unknown>): ReaderPrefs {
     };
 }
 
-// The preferences each manga was given (by its title, as the progress is kept), read once.
 function readPrefsByManga(): Record<string, Record<string, unknown>> {
     try {
         const raw = JSON.parse(window.localStorage.getItem(PREFS_BY_MANGA_KEY) ?? '{}') as unknown;
@@ -82,8 +74,6 @@ function readPrefsByManga(): Record<string, Record<string, unknown>> {
     }
 }
 
-// How a manga is read: the preferences it was given, and for a manga that has none yet, the ones chosen last in any manga (they were the only
-// preferences before each manga had its own, so a reader that is updated keeps reading the way it did).
 export function loadReaderPrefs(mangaTitle?: string): ReaderPrefs {
     try {
         const own = mangaTitle === undefined ? undefined : readPrefsByManga()[mangaTitle];
@@ -96,15 +86,12 @@ export function loadReaderPrefs(mangaTitle?: string): ReaderPrefs {
     }
 }
 
-// Keeps the preferences for the manga (what it was set to stays with it, whatever another manga is set to) and as the ones chosen last, which
-// a manga that was never set starts with. Without a manga only the last ones are kept.
 export function saveReaderPrefs(prefs: ReaderPrefs, mangaTitle?: string): void {
     try {
         window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
         if (mangaTitle !== undefined) {
             const all = readPrefsByManga();
             delete all[mangaTitle];
-            // The latest are kept last: the oldest go first when there are too many.
             const entries = [...Object.entries(all), [mangaTitle, prefs] as [string, unknown]].slice(-MAX_REMEMBERED_MANGAS);
             window.localStorage.setItem(PREFS_BY_MANGA_KEY, JSON.stringify(Object.fromEntries(entries)));
         }
@@ -129,7 +116,6 @@ function readProgress(): Record<string, number> {
     }
 }
 
-// The page (from 0) a chapter was left on; 0 when it was not read.
 export function loadProgress(key: string): number {
     return readProgress()[key] ?? 0;
 }
@@ -138,7 +124,6 @@ export function saveProgress(key: string, page: number): void {
     try {
         const all = readProgress();
         delete all[key];
-        // The latest are kept last: the oldest go first when there are too many.
         const entries = [...Object.entries(all), [key, page] as [string, number]].slice(-MAX_REMEMBERED_CHAPTERS);
         window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(Object.fromEntries(entries)));
     } catch {
@@ -150,20 +135,16 @@ export function progressKey(mangaTitle: string, chapterRemoteId: number): string
     return `${mangaTitle}|${String(chapterRemoteId)}`;
 }
 
-// ----- Chapters read, and the chapter each manga was left on -----
-
 export const READ_KEY = 'pullwave.manga.read';
 export const LAST_CHAPTER_KEY = 'pullwave.manga.last';
 export const LAST_PAGE_KEY = 'pullwave.manga.lastPage';
 export const MAX_READ_CHAPTERS = 50000;
 export const MAX_REMEMBERED_MANGAS = 500;
 
-// Every page left on, by chapter, read once (the list of chapters of a manga asks for many).
 export function loadAllProgress(): Record<string, number> {
     return readProgress();
 }
 
-// The chapters that were read to the end or marked as read, by the key of the chapter (see `progressKey`).
 export function loadReadKeys(): string[] {
     try {
         const raw = JSON.parse(window.localStorage.getItem(READ_KEY) ?? '[]') as unknown;
@@ -201,7 +182,6 @@ function readLastChapters(): Record<string, number> {
     }
 }
 
-// The chapter a manga (by its title) was last read in; null when none.
 export function loadLastChapter(mangaTitle: string): number | null {
     return readLastChapters()[mangaTitle] ?? null;
 }
@@ -219,7 +199,6 @@ export function saveLastChapter(mangaTitle: string, chapterRemoteId: number): vo
 
 export interface LastPosition {
     chapterRemoteId: number;
-    // The page (from 0) the user was last on in that chapter, the last page of it included.
     page: number;
 }
 
@@ -240,8 +219,6 @@ function readLastPositions(): Record<string, LastPosition> {
     }
 }
 
-// Where a manga (by its title) was last read: the chapter and the page, kept as they were even when the chapter was read to its last page
-// (the page kept for a chapter, see `saveProgress`, goes back to the first one then, so the chapter starts over when it is opened).
 export function loadLastPosition(mangaTitle: string): LastPosition | null {
     return readLastPositions()[mangaTitle] ?? null;
 }

@@ -21,9 +21,7 @@ export interface SectionCardModel {
     section: HomeSection;
     title: MessageKey;
     picture: SectionIconName;
-    // What goes on in the section, a line each.
     lines: string[];
-    // Whether something calls for attention (a download going on, something new): the card lights up.
     busy: boolean;
     actions: CardAction[];
 }
@@ -32,7 +30,6 @@ function isSection(id: string): id is HomeSection {
     return id === 'downloads' || id === 'anime' || id === 'manga';
 }
 
-// The sections in the order of the menu on the left (top to bottom is left to right here), without the ones that do not exist here.
 export function sectionOrder(animeSupported: boolean, mangaSupported: boolean): HomeSection[] {
     return SECTION_TABS.map((tab) => {
         return tab.id;
@@ -43,7 +40,6 @@ export function sectionOrder(animeSupported: boolean, mangaSupported: boolean): 
         });
 }
 
-// The first button of the block of the anime: the updates of the library, or the search while the library is empty.
 export function animeFirstAction(libraryEmpty: boolean): CardAction {
     if (libraryEmpty) {
         return {
@@ -61,8 +57,6 @@ export function animeFirstAction(libraryEmpty: boolean): CardAction {
     };
 }
 
-// The first button of the block of the manga: the updates of the library; while the library is empty, the browse when an extension gives a
-// source, else the extensions to install one.
 export function mangaFirstAction(libraryEmpty: boolean, hasSources: boolean): CardAction {
     if (!libraryEmpty) {
         return {
@@ -116,8 +110,6 @@ function SectionCard({ card }: { card: SectionCardModel }) {
     );
 }
 
-// The three big blocks under the highlights of the home screen, one per section in the order of the menu, with what goes on in it and its
-// quick actions.
 export function SectionCards() {
     const t = useTranslator();
     const [openedAt] = useState(() => {
@@ -134,7 +126,6 @@ export function SectionCards() {
         return state.status.supported;
     });
     const mangaLibrary = useShownLibrary();
-    // Whether an extension gives a source to browse (known once the sources were read).
     const hasSources = useMangaStore((state) => {
         return state.browse.sourcesStatus === 'ready' && state.browse.sources.length > 0;
     });

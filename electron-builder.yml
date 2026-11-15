@@ -13,14 +13,11 @@ files:
   - resources/icon.png
 icon: resources/icon.png
 linux:
-  # yt-dlp, deno, ffmpeg, ani-cli, busybox and curl are not in the package: the app downloads them the first time it opens (see ProgramTools).
   extraResources:
-    # The anime section (ani-cli): the script that wraps it with stand-ins for the menu, the player and tput.
     - from: resources/ani-scripts
       to: ani-scripts
     - from: resources/THIRD_PARTY_NOTICES.md
       to: THIRD_PARTY_NOTICES.md
-  # The AppImage is the only Linux package: latest-linux.yml lists it, which is what the in-app updater looks for.
   target:
     - AppImage
   category: Network

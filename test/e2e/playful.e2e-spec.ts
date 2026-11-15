@@ -6,10 +6,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
 
-// The playful layer on the real app (D-147): the week in numbers on the home screen, the wave of the name, the colour of the aurora, the
-// ripple of a press, the pill and the halo that follow the focus, the pictures of the empty screens, the clock that flips, the confetti and
-// the notice with its timer, the circle that opens when the theme changes and the volume of the sounds.
-
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
@@ -36,7 +32,6 @@ async function launch(): Promise<Session> {
         JSON.stringify({ language: 'en', checkUpdatesOnStart: false, verifyLiveEnd: false, ytdlpPath: FAKE_YTDLP, downloadDir: join(work, 'd'), animeDownloadDir: join(work, 'anime') })
     );
     const now = Date.now();
-    // Three downloads on three days in a row, and one that failed: the week has three downloads and a streak of three days.
     writeFileSync(
         join(userData, 'history.json'),
         JSON.stringify([
@@ -75,7 +70,6 @@ async function typeKonami(page: Page): Promise<void> {
 async function goHome(page: Page): Promise<void> {
     await page.locator('#side-nav > button').first().click();
     await page.locator('section.home').waitFor({ state: 'visible' });
-    // The change of page is a view transition: until it ends, a press falls on the transition and not on the page.
     await page.waitForFunction(() => {
         return !document.documentElement.classList.contains('vt-active');
     });
@@ -89,12 +83,10 @@ test('the home screen shows the week in numbers, with a greeting', async () => {
     await expect(stats.locator('.stats__greeting')).toHaveText(/^(Good morning|Good afternoon|Good evening|Still up\? The wave never sleeps)$/);
     await expect(stats.locator('.stats__title')).toHaveText('LAST 7 DAYS');
     await expect(stats.locator('dt')).toHaveText(['Downloads', 'Episodes watched', 'Chapters read', 'Days in a row']);
-    // The numbers count up from zero, so they are read once the count is over.
     await expect(stats.locator('[data-stat="downloads"] .count-up')).toHaveText('3', { timeout: 10000 });
     await expect(stats.locator('[data-stat="watched"] .count-up')).toHaveText('0');
     await expect(stats.locator('[data-stat="read"] .count-up')).toHaveText('0');
     await expect(stats.locator('[data-stat="streak"] .count-up')).toHaveText('3');
-    // There are no achievements: only the greeting and the four numbers.
     await expect(stats.locator('ul')).toHaveCount(0);
 });
 
@@ -111,7 +103,6 @@ test('the wave of the name lies flat when nothing goes on, dances after five cli
     await typeKonami(page);
     await expect(wave).toHaveClass(/brand__wave--rainbow/);
     expect(await wave.locator('.brand__bar').first().evaluate((bar) => { return getComputedStyle(bar).animationName; })).toBe('bp-wave-bar, bp-hue');
-    // The code again puts it back.
     await typeKonami(page);
     await expect(wave).not.toHaveClass(/brand__wave--rainbow/);
 });
@@ -119,7 +110,6 @@ test('the wave of the name lies flat when nothing goes on, dances after five cli
 test('the code shows a notice with a timer that drains, and throws confetti over the window', async () => {
     const { page } = session;
     await goHome(page);
-    // The notice of the code of the test before this one has to be gone, or there are two.
     await expect(page.locator('.toast--info')).toHaveCount(0, { timeout: 10000 });
     await typeKonami(page);
     const toast = page.locator('.toast--info', { hasText: 'Rainbow wave unlocked!' });
@@ -132,7 +122,6 @@ test('the code shows a notice with a timer that drains, and throws confetti over
     await page.waitForFunction(() => {
         return document.querySelector('body > canvas') !== null;
     });
-    // Turn the mode off again for the next tests.
     await typeKonami(page);
     await expect(page.locator('.brand__wave')).not.toHaveClass(/brand__wave--rainbow/);
 });
@@ -154,8 +143,6 @@ test('the aurora takes the colour of the section the user is in, and a pill slid
     await nav.locator('[data-section-id="anime"]').click();
     await page.locator('section.anime').waitFor({ state: 'visible' });
     expect(await page.evaluate(() => { return document.documentElement.dataset.section; })).toBe('anime');
-    // The light of the aurora is the one of the section (it is blended slowly, so wait for it to arrive). Both colours are worked out by the
-    // browser the same way: a box painted with the light, and a box painted with what the section asks for.
     await expect
         .poll(async () => {
             return page.evaluate(() => {
@@ -178,7 +165,6 @@ test('a press sends a ripple from the point where the button was pressed, which 
     await goHome(page);
     const button = page.locator('.downloads-indicator__button');
     const box = (await button.boundingBox()) as { x: number; y: number; width: number; height: number };
-    // A press during the change of page falls on the transition, not on the button: wait for it to end.
     await page.waitForFunction(() => {
         return !document.documentElement.classList.contains('vt-active');
     });
@@ -190,7 +176,6 @@ test('a press sends a ripple from the point where the button was pressed, which 
     });
     expect(point).toEqual({ x: '10px', y: '8px' });
     expect(await button.evaluate((element) => { return getComputedStyle(element).animationName; })).toBe('bp-ripple');
-    // Let go away from the button, so it is not clicked.
     await page.mouse.move(box.x + 400, box.y + 400);
     await page.mouse.up();
     await expect(button).not.toHaveClass(/is-rippling/, { timeout: 3000 });
@@ -217,7 +202,6 @@ test('a halo slides to the control that has the focus when it is moved with the 
         )
         .toEqual([6, 6, 12, 12]);
     expect(await halo.evaluate((element) => { return getComputedStyle(element).pointerEvents; })).toBe('none');
-    // Blur it: the halo goes out of sight.
     await anime.evaluate((element) => { (element as HTMLElement).blur(); });
     await expect(halo).toHaveAttribute('data-visible', 'false');
 });
@@ -283,7 +267,6 @@ test('the pointer: the arrow everywhere, the hand on what can be pressed, the fo
     await expect(toggle).toBeVisible();
     expect(await toggle.evaluate((element) => { return getComputedStyle(element).cursor; })).toBe('pointer');
     expect(await toggle.locator('.field__hint, .field__label, span').first().evaluate((element) => { return getComputedStyle(element).cursor; })).toBe('pointer');
-    // Nothing typed to search for: the button cannot be pressed, and says so with the forbidden sign (not the busy one).
     await page.locator('#side-nav [data-section-id="anime"]').click();
     await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SEARCH', exact: true }).click();
     const search = page.locator('section.anime').getByRole('button', { name: 'SEARCH', exact: true }).last();

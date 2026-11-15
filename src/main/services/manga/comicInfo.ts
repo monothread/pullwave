@@ -7,7 +7,6 @@ function escapeXml(value: string): string {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;')
-        // Characters XML 1.0 does not allow at all.
         // eslint-disable-next-line no-control-regex
         .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
 }
@@ -26,7 +25,6 @@ export interface ComicInfoInput {
     pageCount: number;
 }
 
-// The ComicInfo.xml readers understand: the series, the chapter, the people and the pages.
 export function buildComicInfo(input: ComicInfoInput): string {
     const { seriesTitle, chapter, details, pageCount } = input;
     return (

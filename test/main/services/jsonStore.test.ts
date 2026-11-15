@@ -74,7 +74,6 @@ describe('JsonStore', () => {
 
     it('keeps the value it had when a write fails', () => {
         const path = join(makeTempDir(), 'x.json');
-        // A folder with something inside where the file should be: the file cannot take its place.
         mkdirSync(path);
         writeFileSync(join(path, 'inside'), '');
         const store = new JsonStore<{ a: number }>(path, { a: 0 });

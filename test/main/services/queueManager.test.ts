@@ -3050,7 +3050,6 @@ describe('QueueManager closing the app with downloads going on', () => {
     const FILE = '/dl/Video A [abc].mp4';
     const PARTIALS = [`${FILE}.part`, `${FILE}.ytdl`];
 
-    // The unfinished files are there until they are deleted, as on a disk.
     function setupClosing(settings: Partial<Settings> = {}, initial: PausedDownload[] = []) {
         let present = true;
         const findPartialFiles = vi.fn((finalPath: string) => {

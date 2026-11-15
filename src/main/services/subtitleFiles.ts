@@ -2,13 +2,6 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'n
 import { basename, dirname, extname, join } from 'node:path';
 import { MAX_SUBTITLE_BYTES, type AnimeSubtitleImportResponse, type AnimeSubtitleTrack } from '@shared/anime';
 
-// The subtitles of an episode sit next to its video, named after it:
-//   "<name>.vtt"                    the one ani-cli picked
-//   "<name>.subtitle-<language>.vtt" the ones the source offered (saved by the patch of ani-cli, see aniSubtitles.ts)
-//   "<name>.import-<name>.vtt"      the ones the user loaded
-//   "<name>.generated-<language>.vtt" the one made from the audio of the episode
-//   "<name>.translated-<language>.vtt" the ones a language model translated from another
-// The prefixes keep them apart from the subtitles of another episode whose name starts the same way ("... 1" and "... 1.5").
 export const SOURCE_SUBTITLE_PREFIX = 'subtitle-';
 export const IMPORTED_SUBTITLE_PREFIX = 'import-';
 export const GENERATED_SUBTITLE_PREFIX = 'generated-';
@@ -21,11 +14,8 @@ const SRT_STAMP = /(\d{1,2}:\d{2}:\d{2}),(\d{1,3})/g;
 const UNSAFE_LABEL_CHARACTERS = /[^\p{L}\p{N} ._()-]/gu;
 
 export interface SubtitleFileSystem {
-    // The names of the files in a folder; none when it cannot be read.
     list: (directory: string) => string[];
-    // The text of a file, or null when it cannot be read.
     read: (path: string) => string | null;
-    // The size of a file, or null when it is not there.
     size: (path: string) => number | null;
     write: (path: string, content: string) => void;
 }
@@ -88,8 +78,6 @@ function trackOf(middle: string): AnimeSubtitleTrack | null {
 
 const KIND_ORDER = { default: 0, source: 1, imported: 2, generated: 3, translated: 4 } as const;
 
-// Every subtitle file the episode has: the default one first, then the ones of the source, then the imported ones. When one of
-// the others is the same text as the default (the source offers it too), it is the default that stays, with its name.
 export function listSubtitleFiles(videoPath: string, files: SubtitleFileSystem = defaultSubtitleFileSystem): SubtitleFile[] {
     const directory = dirname(videoPath);
     const base = baseNameOf(videoPath);
@@ -129,8 +117,6 @@ export function listSubtitleTracks(videoPath: string, files: SubtitleFileSystem 
     });
 }
 
-// The file of a subtitle of the episode, or null when it has none with that id. The id is looked up among the files of the
-// episode, never turned into a path, so nothing outside them can be asked for.
 export function resolveSubtitlePath(videoPath: string, trackId: string, files: SubtitleFileSystem = defaultSubtitleFileSystem): string | null {
     const found = listSubtitleFiles(videoPath, files).find((file) => {
         return file.track.id === trackId;
@@ -141,7 +127,6 @@ export function resolveSubtitlePath(videoPath: string, trackId: string, files: S
     return trackId === '' ? join(dirname(videoPath), `${baseNameOf(videoPath)}.vtt`) : null;
 }
 
-// Every file that goes away with the video: the subtitles it has, the one ani-cli picked included.
 export function subtitleFilesOf(videoPath: string, files: SubtitleFileSystem = defaultSubtitleFileSystem): string[] {
     const directory = dirname(videoPath);
     const base = baseNameOf(videoPath);
@@ -152,7 +137,6 @@ export function subtitleFilesOf(videoPath: string, files: SubtitleFileSystem = d
     });
 }
 
-// The label of a loaded subtitle: the name of its file, without what a file name does not accept.
 export function importedLabel(fileName: string): string {
     const extension = extname(fileName);
     const name = extension.length > 0 ? fileName.slice(0, -extension.length) : fileName;
@@ -160,14 +144,10 @@ export function importedLabel(fileName: string): string {
     return cleaned.length > 0 ? cleaned : 'subtitle';
 }
 
-// The label of a subtitle of the source as the patch of ani-cli writes it in a file name (see aniSubtitles.ts): what a file name
-// does not accept becomes "_", and the spaces at the end go.
 export function sourceLabelOf(label: string): string {
     return label.replace(/[^A-Za-z0-9 ._()-]/g, '_').replace(/ +$/, '');
 }
 
-// What tells two labels of the same language apart or together: where the source writes the same name with other characters a
-// run of "_" can have another length, so it counts as one.
 export function sourceLabelKey(label: string): string {
     return sourceLabelOf(label).replace(/_+/g, '_').toLowerCase();
 }
@@ -180,24 +160,19 @@ export function importedSubtitlePath(videoPath: string, fileName: string): strin
     return join(dirname(videoPath), `${baseNameOf(videoPath)}.${IMPORTED_SUBTITLE_PREFIX}${importedLabel(fileName)}.vtt`);
 }
 
-// Where the subtitle made from the audio, in the language that is spoken, goes.
 export function generatedSubtitlePath(videoPath: string, language: string): string {
     return join(dirname(videoPath), `${baseNameOf(videoPath)}.${GENERATED_SUBTITLE_PREFIX}${importedLabel(language)}.vtt`);
 }
 
-// Where the translation of a subtitle into a language goes; the language is cleaned the way the label of a loaded file is.
 export function translatedSubtitlePath(videoPath: string, language: string): string {
     return join(dirname(videoPath), `${baseNameOf(videoPath)}.${TRANSLATED_SUBTITLE_PREFIX}${importedLabel(language)}.vtt`);
 }
 
-// Whether the episode has the translation into a language already: the file the translation would be saved in is there.
 export function hasTranslatedSubtitle(videoPath: string, language: string, files: SubtitleFileSystem = defaultSubtitleFileSystem): boolean {
     const target = translatedSubtitlePath(videoPath, language);
     return files.list(dirname(target)).includes(basename(target));
 }
 
-// The text as WebVTT, or null when it is neither WebVTT nor SubRip (the player only understands the first; the second is the
-// usual format of subtitles found online and only differs in a few details).
 export function toWebVtt(text: string): string | null {
     const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
     if (/^WEBVTT(\s|$)/.test(normalized)) {
@@ -218,12 +193,10 @@ export function toWebVtt(text: string): string | null {
 }
 
 export interface SubtitleImportDependencies {
-    // Asks the user for a file; null when they gave up.
     chooseFile: () => Promise<string | null>;
     files?: SubtitleFileSystem;
 }
 
-// Copies a subtitle file the user chose next to the video, as WebVTT.
 export async function importSubtitle(videoPath: string, dependencies: SubtitleImportDependencies): Promise<AnimeSubtitleImportResponse> {
     const files = dependencies.files ?? defaultSubtitleFileSystem;
     const chosen = await dependencies.chooseFile();

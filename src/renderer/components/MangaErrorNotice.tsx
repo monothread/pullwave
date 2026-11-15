@@ -7,7 +7,6 @@ interface MangaErrorNoticeProps {
     error: MangaError;
 }
 
-// An error of the manga section, in words for the user. Clicking it opens the window with everything known about the error.
 export function MangaErrorNotice({ error }: MangaErrorNoticeProps) {
     const t = useTranslator();
     return (

@@ -12,7 +12,6 @@ import { ConfirmButton } from './ConfirmButton';
 
 const STEP_MARKS: Record<UpdateStepState, string> = { done: '✓', running: '›', failed: '✗', pending: '·' };
 
-// The steps of an update of ani-cli as it goes (see ANICLI_UPDATE_STEPS): each one with whether it is done, going on, where it stopped, or to come.
 function UpdateSteps({ state }: { state: ToolState }) {
     const t = useTranslator();
     return (
@@ -34,7 +33,6 @@ const HINTS: Record<ProgramPlace, MessageKey> = {
     anime: 'tools.hint.anime'
 };
 
-// The programs that stay at the version the app was made with: there is nothing newer to look for.
 const PINNED: readonly ProgramId[] = ['busybox', 'curl'];
 
 function badgeOf(program: ProgramInfo): { className: string; key: MessageKey } {
@@ -55,7 +53,6 @@ function badgeOf(program: ProgramInfo): { className: string; key: MessageKey } {
 
 interface ProgramRowProps {
     program: ProgramInfo;
-    // The version the program says it is (what it was asked with), and whether it runs at all (null: not known).
     version: string | null;
     runs: boolean | null;
     customPath: string;
@@ -63,7 +60,6 @@ interface ProgramRowProps {
     result: ProgramResult | null;
 }
 
-// The version is shown as everywhere else on the card (the commit of ani-cli by its first digits).
 function resultText(id: ProgramId, result: ProgramResult, t: ReturnType<typeof useTranslator>): string {
     if (result.ok) {
         return result.action === 'reset' ? t('tools.result.reset') : t('tools.result.updated', { version: result.version === null ? '' : displayVersion(id, result.version) });
@@ -155,7 +151,6 @@ function ProgramRow({ program, version, runs, customPath, info, result }: Progra
                 {download !== undefined && program.id === 'anicli' && (
                     <>
                         <UpdateSteps state={download} />
-                        {/* Refused at the look at the script, nothing was downloaded: the result below says why. */}
                         {download.status === 'error' && download.error && download.step !== 'compatibility' && (
                             <span className="field__warning" role="alert">
                                 <ErrorNotice report={programErrorReport(t, download.error)} />
@@ -244,9 +239,6 @@ interface ProgramsStatusBlockProps {
     place: ProgramPlace;
 }
 
-// The status of the programs that belong to a place in the settings (ffmpeg in the settings of the app, yt-dlp and deno in the ones of the video
-// downloader, ani-cli with busybox and curl in the ones of the anime): whether each is installed, its version, the latest one, and the buttons that
-// try again, install again, update, or go back to the version the app was made with.
 export function ProgramsStatusBlock({ place }: ProgramsStatusBlockProps) {
     const t = useTranslator();
     const status = useProgramsStore((state) => {
@@ -293,7 +285,6 @@ export function ProgramsStatusBlock({ place }: ProgramsStatusBlockProps) {
         .filter((program): program is ProgramInfo => {
             return program !== undefined;
         });
-    // What each program says of itself, when it is run to find out (yt-dlp and ffmpeg) or read (ani-cli).
     const probe = (id: ProgramId): { version: string | null; runs: boolean | null; customPath: string } => {
         switch (id) {
             case 'ytdlp':

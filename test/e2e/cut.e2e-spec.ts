@@ -33,7 +33,6 @@ function ffmpeg(args: string[]): string {
     }
 }
 
-// What ffmpeg says about a file when it is given only the input: the length, and whether it has a picture.
 function probe(path: string): { seconds: number; hasVideo: boolean; hasAudio: boolean } {
     let output = '';
     try {
@@ -65,7 +64,6 @@ async function launch(file: string, audioFormat = 'mp3'): Promise<void> {
     await page.getByRole('navigation', { name: 'Video downloader' }).getByRole('button', { name: 'CUT' }).click();
 }
 
-// The button that makes the cut, which is named like the tab (the tab is outside the region).
 function cutButton() {
     return page.getByRole('region', { name: 'Cut a file' }).getByRole('button', { name: 'CUT', exact: true });
 }
@@ -92,7 +90,6 @@ test.beforeAll(() => {
     ffmpeg(['-f', 'lavfi', '-i', 'testsrc=duration=12:size=320x240:rate=15', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', video]);
     ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=duration=90:size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=90', '-shortest', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', longVideo]);
     ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=523:duration=20', '-c:a', 'libmp3lame', song]);
-    // An audio that carries its cover, and a video in a container the player of the app cannot open (it is converted for the preview).
     coverSong = join(workDir, 'Cover.mp3');
     oldVideo = join(workDir, 'Old.avi');
     const cover = join(workDir, 'cover.png');
@@ -136,12 +133,10 @@ test('cuts a video into the parts that were marked, each one a video of the same
     const second = probe(join(folder, 'Talk - 02 (0m05s-0m08s).mp4'));
     expect(first.hasVideo && first.hasAudio).toBe(true);
     expect(second.hasVideo && second.hasAudio).toBe(true);
-    // The cut is exact (the parts are encoded again), not on the keyframe before the start.
     expect(first.seconds).toBeGreaterThan(1.8);
     expect(first.seconds).toBeLessThan(2.3);
     expect(second.seconds).toBeGreaterThan(3.2);
     expect(second.seconds).toBeLessThan(3.8);
-    // The original is not touched.
     expect(probe(video).seconds).toBeGreaterThan(11.5);
 });
 
@@ -188,7 +183,6 @@ test('does not write over the files of an earlier cut: the next free name is use
     await cutButton().click();
     await expect(page.getByText('Done: 1 file(s) saved.')).toBeVisible({ timeout: 60000 });
     await cutButton().click();
-    // The result of the first cut is still on the screen: the second one is over when its file is there.
     await expect.poll(() => { return readdirSync(join(downloads, 'Talk - cuts')).length; }, { timeout: 60000 }).toBe(2);
     await expect(cutButton()).toBeEnabled();
     expect(readdirSync(join(downloads, 'Talk - cuts')).sort()).toEqual(['Talk - 01 (0m01s-0m03s) (2).mp4', 'Talk - 01 (0m01s-0m03s).mp4']);
@@ -226,7 +220,6 @@ test('shows that it is working, part by part, and ends the cut when it is cancel
     }
     await cutButton().click();
 
-    // There is always a sign that it is working: the parts waiting have a bar of their own and the one being cut has its bar and its badge.
     await expect(page.getByText('CUTTING', { exact: true }).first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('progressbar', { name: 'Part 5 is waiting' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'CANCEL' })).toBeVisible();
@@ -251,7 +244,6 @@ test('keeps the window alive while it cuts: the interface answers and the ring a
     await fill(1, '0:00', '0:45');
     await cutButton().click();
     await expect(page.getByText('CUTTING', { exact: true })).toBeVisible({ timeout: 20000 });
-    // The page answers a question while ffmpeg works on another process.
     const answered = await page.evaluate(() => {
         return new Promise<boolean>((resolve) => {
             const started = performance.now();
@@ -261,7 +253,6 @@ test('keeps the window alive while it cuts: the interface answers and the ring a
         });
     });
     expect(answered).toBe(true);
-    // The bar of the part is the neon wave that flows, turned by the style sheet.
     const bar = page.getByRole('progressbar', { name: 'Cutting part 1' }).locator('.progress__bar');
     const animation = await bar.evaluate((element) => {
         return getComputedStyle(element).animationName;
@@ -270,8 +261,6 @@ test('keeps the window alive while it cuts: the interface answers and the ring a
     await expect(page.getByText(/^Done: 1 file\(s\) saved\.$/)).toBeVisible({ timeout: 120000 });
 });
 
-// A drag from the file manager, as the system makes it: Chromium is told the paths of the files that are dragged (a File made in the page
-// would have no path).
 async function dragFile(path: string, type: 'dragEnter' | 'dragOver' | 'drop' | 'dragCancel', x: number, y: number): Promise<void> {
     const session = await page.context().newCDPSession(page);
     await session.send('Input.dispatchDragEvent', { type, x, y, data: { items: [], files: [path], dragOperationsMask: 1 } });
@@ -313,7 +302,6 @@ test('takes the dropped file in place of the one that was chosen, and says when 
     await dragFile(notes, 'dragEnter', x, y);
     await dragFile(notes, 'drop', x, y);
     await expect(page.getByRole('alert')).toHaveText('That file has no video or audio that can be read.');
-    // The file that was chosen stays while the dropped one is refused.
     await expect(page.getByText('Talk.mp4')).toBeVisible();
     await dragFile(song, 'dragEnter', x, y);
     await dragFile(song, 'drop', x, y);
@@ -327,13 +315,11 @@ test('turns the light off when the drag leaves without dropping, and does not ta
     const { x, y } = await panelCentre();
     await dragFile(song, 'dragEnter', x, y);
     await expect(page.getByTestId('cut-drop')).toBeVisible();
-    // The drag goes on to the logo, outside the panel.
     const logo = (await page.locator('.logo').boundingBox())!;
     await dragFile(song, 'dragEnter', logo.x + 5, logo.y + 5);
     await dragFile(song, 'dragOver', logo.x + 5, logo.y + 5);
     await expect(page.getByTestId('cut-drop')).toHaveCount(0);
     await dragFile(song, 'dragCancel', logo.x + 5, logo.y + 5);
-    // And it comes back.
     await dragFile(song, 'dragEnter', x, y);
     await expect(page.getByTestId('cut-drop')).toBeVisible();
     await dragFile(song, 'dragEnter', logo.x + 5, logo.y + 5);
@@ -351,7 +337,6 @@ test('turns the light off when the drag leaves without dropping, and does not ta
     await expect(page.getByText(/^Done: 1 file\(s\) saved\.$/)).toBeVisible({ timeout: 120000 });
 });
 
-// The <video> of the preview of a cut, as the page sees it.
 async function previewState(): Promise<{ src: string; currentTime: number; paused: boolean; poster: string; error: boolean }> {
     return page.getByTestId('cut-preview-video').evaluate((element) => {
         const media = element as HTMLVideoElement;
@@ -359,7 +344,6 @@ async function previewState(): Promise<{ src: string; currentTime: number; pause
     });
 }
 
-// The folder of the files the preview and the picture are made in.
 function previewFolder(): string {
     return join(workDir, 'user-data', 'cut-preview');
 }
@@ -403,13 +387,11 @@ test('plays only the part of a video in the player of the app, from its start to
     await expect(player.getByRole('slider', { name: 'Seek' })).toHaveAttribute('max', '2');
     await expect.poll(async () => { return (await previewState()).src; }).toMatch(/^pullwave-cut:\/\/media\/\d+$/);
     await expect.poll(async () => { return (await previewState()).currentTime; }, { timeout: 10000 }).toBeGreaterThanOrEqual(2);
-    // It stops at the end of the part by itself.
     await expect.poll(async () => { return previewState(); }, { timeout: 15000 }).toMatchObject({ paused: true, error: false });
     const ended = await previewState();
     expect(ended.currentTime).toBeGreaterThanOrEqual(3.9);
     expect(ended.currentTime).toBeLessThanOrEqual(4.1);
     await expect(player.getByText('PREVIEW')).toHaveCount(0);
-    // Nothing was saved: it is only seen.
     expect(existsSync(join(downloads, 'Talk - cuts'))).toBe(false);
 
     await page.keyboard.press('Escape');

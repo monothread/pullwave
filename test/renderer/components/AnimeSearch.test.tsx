@@ -38,7 +38,6 @@ describe('AnimeSearch form', () => {
     it('starts with an empty form and a disabled button', () => {
         render(<AnimeSearch />);
         expect(screen.getByLabelText('Anime name')).toHaveValue('');
-        // Ctrl+F goes to this field.
         expect(screen.getByLabelText('Anime name')).toHaveAttribute('data-search-field', '');
         expect(screen.getByLabelText('Anime name')).toHaveAttribute('placeholder', 'Search an anime…');
         expect(screen.queryByLabelText('Audio')).not.toBeInTheDocument();
@@ -198,7 +197,6 @@ describe('AnimeSearch results', () => {
         useAnimeStore.setState({ search: { ...INITIAL_SEARCH, status: 'error', error: { code: 'BLOCKED', raw: 'Blocked by cloudflare.' } } });
         render(<AnimeSearch />);
         const alert = screen.getByRole('alert');
-        // A failure of the source is an error, with no lens of a search that found nothing.
         expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
         expect(alert).toHaveTextContent('The source blocked the request. Try again later.');
         expect(alert).not.toHaveAttribute('title');
@@ -902,7 +900,6 @@ describe('AnimeDetail', () => {
                     })
             ).toEqual(['Bleach', 'Frieren']);
             await user.type(field, 'fri');
-            // Only the series of the list (the field of the order of the episodes has options of its own).
             expect(within(screen.getByRole('listbox', { name: 'In the library' })).getAllByRole('option')).toHaveLength(1);
         });
 
@@ -951,7 +948,6 @@ describe('AnimeDetail', () => {
             await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
             await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '3');
             await user.type(dialog.getByRole('textbox', { name: 'Name shown' }), 'The Third');
-            // Nothing is added until the window is confirmed.
             expect(mock.api.addAnimeToLibrary).not.toHaveBeenCalled();
             await user.click(dialog.getByRole('button', { name: 'CONFIRM' }));
 
@@ -969,7 +965,6 @@ describe('AnimeDetail', () => {
             expect(await screen.findByRole('button', { name: 'VIEW IN LIBRARY' })).toBeInTheDocument();
             expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
             expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'Added to the library: Cyberpunk: Edgerunners (2 episodes).' });
-            // Once it is in the library its series cannot be changed from here: the page shows what it has.
             expect(screen.queryByRole('textbox', { name: 'Series' })).not.toBeInTheDocument();
             expect(screen.getByTestId('anime-series-info')).toHaveTextContent('In the series "Cyberpunk", order 3.');
             expect(screen.queryByRole('button', { name: 'ADD TO LIBRARY' })).not.toBeInTheDocument();
@@ -1050,7 +1045,6 @@ describe('AnimeDetail', () => {
                 await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Frieren');
                 await user.clear(dialog.getByRole('spinbutton', { name: 'Order' }));
                 await user.type(dialog.getByRole('spinbutton', { name: 'Order' }), '7');
-                // 7 is used by an anime of another series only.
                 expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
 
                 await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
@@ -1073,7 +1067,6 @@ describe('AnimeDetail', () => {
                 await user.clear(dialog.getByRole('textbox', { name: 'Series' }));
                 await user.type(dialog.getByRole('textbox', { name: 'Series' }), 'Frieren');
 
-                // The series uses 1 and 3 (the 7 is of the dubbed one): the next is 4.
                 expect(dialog.getByRole('spinbutton', { name: 'Order' })).toHaveValue(4);
                 expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
                 expect(dialog.getByRole('button', { name: 'CONFIRM' })).toBeEnabled();
@@ -1286,7 +1279,6 @@ describe('AnimeSearch cards with a cover', () => {
         expect(footer.firstElementChild).toHaveTextContent('Cyberpunk · SEASON 1');
         expect(footer.firstElementChild).toHaveClass('history__meta');
         expect(footer.lastElementChild).toBe(within(footer).getByRole('button', { name: 'VIEW IN LIBRARY: Cyberpunk: Edgerunners' }));
-        // The title is above all of it.
         expect(main.firstElementChild).toHaveClass('history__title');
     });
 

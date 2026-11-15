@@ -31,7 +31,6 @@ function failed<T>(error: AniError): AniRunResult<T> {
 interface Setup {
     db: AnimeDb;
     checker: AnimeUpdateChecker;
-    // What the source lists: the results of a search by its text, and the episodes of a result by "<text>:<place>".
     results: Record<string, AnimeSearchResult[]>;
     lists: Record<string, string[]>;
     search: ReturnType<typeof vi.fn<AnimeUpdateCheckerDependencies['search']>>;
@@ -93,7 +92,6 @@ function setup(overrides: Partial<AnimeUpdateCheckerDependencies> = {}): Setup {
     };
 }
 
-// An anime of the library whose episodes were read once: `known` are the ones the library has, the source lists `listed`.
 function readOnce(context: Setup, title: string, query: string, searchIndex: number, known: string[], listed: string[]): number {
     const id = context.addAnime(title, query, searchIndex);
     context.results[query] = [{ index: searchIndex, title }, { index: searchIndex + 10, title: `${title} Movie` }];
@@ -421,7 +419,6 @@ describe('AnimeUpdateChecker.checkNow', () => {
                     return done(context.lists[`${query}:${index}`] ?? []);
                 });
 
-                // No timer is moved: a look that waited for one would never end here.
                 await context.checker.checkNow('auto');
 
                 expect(order).toEqual(['search bleach', 'episodes bleach', 'search gintama', 'episodes gintama', 'search naruto', 'episodes naruto']);
@@ -504,7 +501,6 @@ describe('AnimeUpdateChecker.checkNow', () => {
             const second = context.db.upsertAnime({ title: 'Nisekoi: False Love (season 2)', query: 'nisekoi', searchIndex: 2, sourceId: 'nisekoi-false-love-season-2-605' }).id;
             context.db.registerEpisodesBaseline(first, ['1']);
             context.db.registerEpisodesBaseline(second, ['1']);
-            // A new anime was listed first: both moved down by one, and the two of them still have the same title.
             context.results.nisekoi = [
                 { index: 1, title: 'Nisekoi (new)', sourceId: 'nisekoi-new-1' },
                 { index: 2, title: 'Nisekoi: False Love', sourceId: 'nisekoi-false-love-603' },
@@ -813,7 +809,6 @@ describe('AnimeUpdateChecker schedule', () => {
         return context;
     }
 
-    // The place where the time of the last look is kept: what it says, and every time it was written.
     function lastCheckAt(read: () => number | null) {
         const written: number[] = [];
         return {
@@ -1413,7 +1408,6 @@ describe('AnimeUpdateChecker a check that takes longer than the interval', () =>
         vi.useRealTimers();
     });
 
-    // A look whose first search waits until the test lets it go.
     function slow() {
         const context = setup();
         readOnce(context, 'Naruto', 'naruto', 1, ['1'], ['1']);

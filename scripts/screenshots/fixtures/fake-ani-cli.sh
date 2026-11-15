@@ -1,8 +1,5 @@
 #!/bin/sh
 version_number="0.0.0-screenshots"
-# Stands in for ani-cli in the screenshots, run by the busybox that comes with the app. The anime it knows are the lines "<n> <title>" of
-# the file @ANIME_LIST@, every one with @EPISODES@ episodes; a download copies the file @VIDEO@ as the episode, and the stream is the
-# address the file stream-url (in the history folder) holds.
 mkdir -p "$ANI_CLI_HIST_DIR"
 
 download=0
@@ -49,6 +46,5 @@ if [ -n "$index" ]; then
     exit 1
 fi
 
-# The source lists the anime it has, whatever the words are.
 "$ANI_CLI_MENU" 'Select anime: ' < "@ANIME_LIST@"
 exit 1

@@ -143,7 +143,6 @@ describe('AnimePanel', () => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
         ).toEqual(['SCHEDULE', 'UPDATES', 'SEARCH', 'LIBRARY', 'HISTORY', 'DOWNLOADS (0)', 'SETTINGS']);
-        // The settings are a gear at the right end of the bar, not a word.
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');
         expect(settings).toHaveTextContent(SETTINGS_ICON);
@@ -333,7 +332,6 @@ describe('AnimePanel', () => {
         const user = userEvent.setup();
         useAnimeStore.setState({ streaming: { title: 'Naruto', episode: '2', status: 'loading', stream: null, error: null, nextEpisode: null } });
         render(<AnimePanel />);
-        // The player is loaded the first time a stream is opened.
         expect(await screen.findByRole('dialog', { name: 'Naruto · EP 2' })).toBeInTheDocument();
         act(() => {
             useAnimeStore.getState().closeStream();

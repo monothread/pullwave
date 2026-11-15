@@ -14,8 +14,6 @@ function soundsOn(): boolean {
     return useUiPrefsStore.getState().sounds;
 }
 
-// What makes the interface play, mounted once at the root: confetti, a chord and a buzz of the gamepad when something finishes, the sound of
-// an error, the secret mode of the Konami code, the ripple of the presses and the lean of the tiles.
 export function FxLayer() {
     const t = useTranslator();
     const celebrations = useFxStore((state) => {

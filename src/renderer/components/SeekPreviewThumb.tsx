@@ -4,7 +4,6 @@ interface SeekPreviewThumbProps {
     frame: HTMLCanvasElement;
 }
 
-// The frame of the preview of the timeline, copied into a canvas of the tooltip (the frame itself stays in the cache, to be shown again).
 export function SeekPreviewThumb({ frame }: SeekPreviewThumbProps) {
     const canvas = useRef<HTMLCanvasElement | null>(null);
 

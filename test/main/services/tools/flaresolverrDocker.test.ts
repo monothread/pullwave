@@ -19,7 +19,6 @@ import { LogHub, processLogs } from '@main/services/logHub';
 import { fakeDocker, type FakeDockerOptions } from '../../../helpers/fakeDocker';
 import { createFakeLogWriter } from '../../../helpers/fakeLogWriter';
 
-// No test runs the real docker: a helper built without a follower of the logs of its container would start `docker logs --follow`.
 const childProcess = vi.hoisted(() => {
     return { spawn: vi.fn() };
 });
@@ -449,7 +448,6 @@ describe('FlareSolverrDocker container', () => {
         expect(helper.status).toBe('error');
         expect(helper.error).toBe('docker: port is already allocated');
         expect(helper.failure).toEqual({ code: 'start-failed', message: 'docker: port is already allocated' });
-        // There was no container to read the log of or to stop.
         expect(
             docker.calls.filter((call) => {
                 return call[0] === 'logs' || call[0] === 'stop';

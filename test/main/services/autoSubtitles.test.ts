@@ -31,7 +31,6 @@ interface SetupOptions {
     tracks?: AnimeSubtitleTrack[] | null;
 }
 
-// A translator whose translations end when the test says so; the setting is turned off by `turnOff`, as the runtime does.
 function setup(given: SetupOptions = {}) {
     const state = { enabled: given.enabled ?? true, gap: given.gap ?? null, target: given.target ?? 'Spanish', tracks: given.tracks === undefined ? [ENGLISH_SOURCE] : given.tracks };
     const pending: Pending[] = [];
@@ -386,8 +385,6 @@ describe('AutoSubtitleTranslator', () => {
     });
 });
 
-// The whole way, with the files next to the video and the translation of the app: the provider is never asked when the episode has the
-// subtitle in the language already, since that spends the user's token for nothing.
 describe('AutoSubtitleTranslator with the files of the episode', () => {
     const VIDEO = '/anime/Fake/Fake Episode 4.mp4';
     const ENGLISH = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n';
@@ -471,7 +468,6 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
         expect(turnOff).not.toHaveBeenCalled();
     });
 
-    // The language that is wanted can be any of the ones the app translates into, not only Brazilian Portuguese.
     describe.each(TRANSLATION_LANGUAGES.filter((language) => {
         return language !== 'English';
     }))('into %s', (language) => {

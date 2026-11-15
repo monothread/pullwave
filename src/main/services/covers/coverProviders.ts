@@ -1,9 +1,5 @@
 import { PoliteClient, readJson } from './politeClient';
 
-// The services the cover of an anime or a manga is looked for in, by its name. Each one answers with the address of the picture, or null
-// when it does not know the title; a failure to ask rejects with a CoverFetchError (see PoliteClient). Jikan (MyAnimeList) was left out: its
-// server refused the connections (it reset them or let them time out), so every title it was asked for waited for nothing.
-
 export type CoverKind = 'anime' | 'manga';
 
 export interface CoverProvider {
@@ -15,16 +11,11 @@ export const ANILIST_COVER_URL = 'https://graphql.anilist.co';
 export const KITSU_URL = 'https://kitsu.io/api/edge';
 export const MANGADEX_URL = 'https://api.mangadex.org';
 export const MANGADEX_UPLOADS_URL = 'https://uploads.mangadex.org';
-// How many results of a search are looked at for one whose name is the title (the services search loosely, the first is not always it).
 export const SEARCH_RESULTS = 5;
 
-// AniList answers 30 requests a minute (90 normally): the names asked for together go in one request, this many at most. A name it does not
-// know is an empty page, not an error, so it does not spoil the others (with Media, one unknown name made the whole request a 404).
 export const ANILIST_BATCH_SIZE = 25;
-// How long the names asked for are gathered before the request goes (the covers of a screen are asked for together).
 export const ANILIST_BATCH_WINDOW_MS = 50;
 
-// The covers of anime or mangas, found by their names (`$s0`, `$s1`...): AniList gives its best match for each, under `a0`, `a1`...
 export function coverQuery(kind: CoverKind, count: number): string {
     const type = kind === 'anime' ? 'ANIME' : 'MANGA';
     const variables = Array.from({ length: count }, (_, index) => {
@@ -52,7 +43,6 @@ function at(value: unknown, ...path: string[]): unknown {
     }, value);
 }
 
-// The first of these that is a text that is not empty, trimmed.
 function firstText(...values: unknown[]): string | null {
     for (const value of values) {
         if (typeof value === 'string' && value.trim().length > 0) {
@@ -68,8 +58,6 @@ function texts(values: unknown[]): string[] {
     });
 }
 
-// A name as it is compared: without accents, signs or spaces, in lowercase ("Kaguya-sama: Love Is War" and "kaguya sama love is war" are
-// the same).
 export function comparableTitle(title: string): string {
     return title
         .normalize('NFKD')
@@ -78,7 +66,6 @@ export function comparableTitle(title: string): string {
         .replace(/[^\p{L}\p{N}]/gu, '');
 }
 
-// The first result that has the title among its names, and what is taken from it; null when none has it.
 export function pickByTitle<T>(results: readonly T[], title: string, namesOf: (result: T) => string[], pick: (result: T) => string | null): string | null {
     const wanted = comparableTitle(title);
     if (wanted.length === 0) {
@@ -104,7 +91,6 @@ interface PendingSearch {
     reject: (error: unknown) => void;
 }
 
-// The names asked for are gathered a moment and asked for together, in one request (see ANILIST_BATCH_SIZE); each name gets its own answer.
 export class AniListCoverProvider implements CoverProvider {
     readonly name = 'AniList';
     private readonly pending: Record<CoverKind, PendingSearch[]> = { anime: [], manga: [] };
@@ -135,7 +121,6 @@ export class AniListCoverProvider implements CoverProvider {
         }
     }
 
-    // Sends the names gathered (as many as a request takes); the ones left wait for the next.
     private flush(kind: CoverKind): void {
         const timer = this.timers[kind];
         if (timer !== null) {
@@ -209,8 +194,6 @@ export class KitsuCoverProvider implements CoverProvider {
     }
 }
 
-// Only mangas. Its pictures cannot be shown from its own address (it refuses them to other sites): the app downloads them, as it does with
-// every cover of a manga.
 export class MangaDexCoverProvider implements CoverProvider {
     readonly name = 'MangaDex';
 

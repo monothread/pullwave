@@ -1,10 +1,3 @@
-/* One layout for every window, from a phone-sized one to an ultrawide screen: the page grows with the window, the lists take more columns
-   when there is room, and the controls stack when there is not. Nothing here depends on a theme: it only moves and sizes. */
-
-/* --- The page grows with the window ---------------------------------------------------------------------------------------------
-   The page stops growing at --app-max and stays in the middle: 1400 px for a 1920x1080 screen, 2400 px for an ultrawide one (2200 px and wider,
-   like 3440x1440). --ui-zoom is how much the interface is magnified (see below): the units of the screen (vh, vw) are magnified with it, so
-   whoever uses them divides by it. */
 :root {
     --app-max: 1000px;
     --ui-zoom: 1;
@@ -22,8 +15,6 @@
     :root { --app-max: 2400px; }
 }
 
-/* --- An ultrawide screen with 1440 lines or more: the interface is magnified a fifth (the text and the controls look small from there) ----
-   Only where the screen is wide and tall enough: a 2560x1080 screen has the room of the page but not the height for a bigger interface. */
 @media (min-width: 2200px) and (min-height: 1300px) {
     :root {
         --ui-zoom: 1.2;
@@ -34,9 +25,6 @@
     }
 }
 
-/* The page is as wide as the window, so the mouse wheel scrolls it anywhere under the header, and the scrollbar is at the edge of the window.
-   What is shown stays inside --app-max, in the middle: the sides are the margin of the header and the tabs and the padding of the page.
-   The container of the page (below) is measured without its padding, so the columns of the lists do not change. */
 .app {
     --gutter: max(20px, calc((100% - var(--app-max)) / 2 + 20px));
     max-width: none;
@@ -51,7 +39,6 @@
     padding-inline: calc(var(--gutter) + 4px);
 }
 
-/* --- More columns when there is room (measured on the page, not on the window) ---------------------------------------------- */
 .app__main {
     container: main / inline-size;
 }
@@ -63,7 +50,6 @@
         align-items: start;
     }
 
-    /* The bars and the messages of a list use its whole width; the cards share it. */
     .queue > :not(article) {
         grid-column: 1 / -1;
     }
@@ -76,7 +62,6 @@
     }
 }
 
-/* The cover cards are four to a row; they drop to three, two and then one only when the page is too narrow for them. */
 @container main (max-width: 1199px) {
     .cover-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -101,7 +86,6 @@
     }
 }
 
-/* An ultrawide page: three columns, the cards of the lists and the panels of the settings. */
 @container main (min-width: 1700px) {
     .queue {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -117,14 +101,11 @@
     }
 }
 
-/* A season of a series is a row that wraps when the card is narrow (a card in a column is): the title takes what is
-   left and the buttons go to the next line, on the right, when they do not fit. */
 .season__row {
     flex-wrap: wrap;
     row-gap: 8px;
 }
 
-/* The name given to a season can be long: it is cut instead of making the row taller. */
 .season__chip {
     max-width: 100%;
     overflow: hidden;
@@ -141,9 +122,6 @@
     margin-left: auto;
 }
 
-/* --- The cards of the library are slim and all the same size ------------------------------------------------------------------
-   An anime on its own and a series have the same card: the name with how many seasons it has, and the two buttons. What is long (the
-   seasons, the episodes, the editor of a series) is on the screen of the series. */
 .library .library__card {
     margin: 0;
 }
@@ -162,7 +140,6 @@
     gap: 12px;
 }
 
-/* --- Less room: the controls stack ------------------------------------------------------------------------------------------- */
 @media (max-width: 760px) {
     .app {
         --gutter: 12px;
@@ -189,7 +166,6 @@
         letter-spacing: 1px;
     }
 
-    /* The gear keeps its small room above and below here too, so the bar does not grow. */
     .tab--icon {
         padding: 4px 12px;
         letter-spacing: 0;
@@ -221,7 +197,6 @@
         flex-wrap: wrap;
     }
 
-    /* The text keeps a width of its own; the buttons go to the next line instead of squeezing it. */
     .history__main {
         flex: 1 1 160px;
     }
@@ -236,13 +211,11 @@
         flex-wrap: wrap;
     }
 
-    /* A season of a series: the chip and the progress on the first line, the buttons on the second. */
     .season__row {
         flex-wrap: wrap;
         gap: 8px;
     }
 
-    /* There is no hover on a narrow (or touch) window and no room for the title: it stays for screen readers and as a tooltip. */
     .season__title {
         position: absolute;
         width: 1px;
@@ -323,7 +296,6 @@
     }
 }
 
-/* In the series of the manga section the title of a season is what opens the manga, so it stays on a narrow window too (it is the way in). */
 @media (max-width: 760px) {
     .manga__series-view .season__title {
         position: static;

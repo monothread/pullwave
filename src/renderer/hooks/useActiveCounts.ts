@@ -9,8 +9,6 @@ import { useHiddenSourceIds } from './useShownManga';
 
 export type ActiveCounts = Record<ActiveDownloadKind, StatusCounts>;
 
-// How many downloads of each section are running, waiting and paused. Only the numbers are watched: the progress of a download changes
-// its list many times a second, and what shows the numbers is drawn again only when one of them changes.
 export function useActiveCounts(): ActiveCounts {
     const hidden = useHiddenSourceIds();
     const video = useAppStore(

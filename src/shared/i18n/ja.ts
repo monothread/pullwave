@@ -909,7 +909,6 @@ export const ja: Messages = {
     'anime.subtitleJobs.unknown': 'ライブラリにないエピソード',
     'anime.stream.loading': '動画を探しています…',
 
-    // Manga section
     'tab.manga': 'マンガ',
     'manga.aria': 'マンガ',
     'manga.nav.browse': '探す',

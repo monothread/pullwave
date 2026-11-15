@@ -12,7 +12,6 @@ export interface FetchedImage {
 export type ImageFetcher = (url: string, signal: AbortSignal) => Promise<FetchedImage>;
 
 export interface ImageFetcherDependencies {
-    // The address of the server the pages come from: nothing else is fetched.
     baseUrl: () => Promise<string>;
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
@@ -40,8 +39,6 @@ async function readLimited(response: Response): Promise<Uint8Array> {
     return Buffer.concat(chunks);
 }
 
-// Fetches the pages from the server of the app, and only from it: the address of a page comes from a site through an extension, so
-// it is not trusted to name any other machine.
 export function createImageFetcher(dependencies: ImageFetcherDependencies): ImageFetcher {
     return async (url, signal) => {
         const base = new URL(await dependencies.baseUrl());

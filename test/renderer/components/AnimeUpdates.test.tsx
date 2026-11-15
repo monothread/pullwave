@@ -15,7 +15,6 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 let mock: MockApiHandle;
 
-// A Wednesday, noon in the time zone of the machine.
 const NOON = new Date(2026, 9, 7, 12, 0, 0).getTime();
 const HOUR = 60 * 60 * 1000;
 
@@ -352,7 +351,6 @@ describe('AnimeUpdates with a long list', () => {
         vi.unstubAllGlobals();
     });
 
-    // 35 episodes found today and 35 yesterday, the newest first.
     const LONG = Array.from({ length: 70 }, (_unused, index) => {
         return entry({ id: index + 1, episodeId: index + 1, episodeNumber: String(index + 1), foundAt: NOON - (index < 35 ? HOUR : 24 * HOUR) - index * 1000 });
     });

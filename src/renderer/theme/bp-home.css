@@ -1,7 +1,3 @@
-/* The home screen, the carousel of the highlights (also at the top of the libraries), the blocks of the sections and the chips of the
-   libraries (D-128). */
-
-/* --- The home screen ---------------------------------------------------------------------------------------------------------------- */
 .home {
     display: flex;
     flex-direction: column;
@@ -9,7 +5,6 @@
     padding-bottom: 12px;
 }
 
-/* --- The hero: a title over its own cover blurred (the slides of the carousel and the welcome) ------------------------------------- */
 .hero {
     position: relative;
     isolation: isolate;
@@ -126,7 +121,6 @@
     letter-spacing: 3px;
 }
 
-/* The welcome: no cover, a sky of the colours of the theme. */
 .hero--welcome {
     grid-template-columns: minmax(0, 1fr);
     background:
@@ -140,7 +134,6 @@
     content: none;
 }
 
-/* --- The carousel of the highlights ------------------------------------------------------------------------------------------------- */
 .spotlight {
     position: relative;
     display: flex;
@@ -148,22 +141,16 @@
     gap: 12px;
 }
 
-/* The slide that leaves and the one that comes are in the same cell, one over the other, while they change. */
 .spotlight__stage {
     display: grid;
-    /* The slides travel 48px to the sides while they change: what goes out of the stage is cut, so it never makes the screen scroll
-       sideways. Only the sides: above and below, the shadow and the glow of the slide stay (a clip, unlike hidden, does not scroll). */
     overflow-x: clip;
 }
 
 .spotlight__stage > .spotlight__slide {
     grid-area: 1 / 1;
-    /* The room left by the minimum height is shared between the top and the bottom, so the margin above is not bigger than the one below. */
     align-items: center;
 }
 
-/* The change: the new slide comes in from the side it is on while the old one fades and slides away under it. Both moves end with no transform
-   left on the boxes (the new one is a normal box again; the old one goes away when it ends). */
 .spotlight__slide--entering {
     z-index: 1;
     animation: bp-slide-in 0.7s var(--bp-ease-out) backwards;
@@ -240,7 +227,6 @@
     transition: width 0.3s var(--bp-ease-spring), background 0.2s;
 }
 
-/* The dot of the highlight shown is a long pill in the colours of the theme. */
 .spotlight__dot--current {
     width: 28px;
     background: var(--bp-accent-gradient);
@@ -253,7 +239,6 @@
     outline-offset: 3px;
 }
 
-/* --- The blocks of the sections ------------------------------------------------------------------------------------------------- */
 .section-cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -290,7 +275,6 @@
     box-shadow: var(--bp-shadow-hover), var(--glow-inset);
 }
 
-/* Something goes on in the section: its block glows on its edge. */
 .section-card--busy {
     border-color: color-mix(in srgb, var(--magenta) 55%, var(--line));
 }
@@ -342,7 +326,6 @@
     margin-top: auto;
 }
 
-/* --- The chips and the order of a library ------------------------------------------------------------------------------------- */
 .library-controls {
     display: flex;
     align-items: flex-end;
@@ -400,7 +383,6 @@
     min-width: 200px;
 }
 
-/* --- Less room --------------------------------------------------------------------------------------------------------------------- */
 @media (max-width: 760px) {
     .hero {
         grid-template-columns: minmax(0, 1fr);
@@ -423,9 +405,6 @@
     }
 }
 
-/* --- A screen turned to stand up (1080x1920) ------------------------------------------------------------------------------------
-   The window is narrow and very tall: the hero grows with the height, the blocks of the sections are one on each row (wide, with room for
-   their lines) and the screen breathes, so the home does not end in the first third of the window and leave the rest empty. */
 @media (orientation: portrait) and (min-height: 1200px) {
     .home {
         gap: 40px;
@@ -454,7 +433,6 @@
     }
 }
 
-/* --- The order of a list of chapters or episodes, at the right over the list --------------------------------------------------- */
 .list-order-bar {
     display: flex;
     justify-content: flex-end;

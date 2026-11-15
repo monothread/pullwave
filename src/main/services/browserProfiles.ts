@@ -7,7 +7,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-// The names people gave their profiles ("Work", "Personal") live in the browser's Local State file.
 export function parseChromiumProfileNames(localStateText: string | null): Record<string, string> {
     if (localStateText === null) {
         return {};
@@ -28,7 +27,6 @@ export function parseChromiumProfileNames(localStateText: string | null): Record
     }
 }
 
-// Reads the [ProfileN] sections of profiles.ini. Profiles outside the Firefox folder (IsRelative=0) are left out.
 export function parseFirefoxProfiles(iniText: string | null): FirefoxProfileEntry[] {
     if (iniText === null) {
         return [];

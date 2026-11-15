@@ -2,8 +2,6 @@ import { TRANSLATION_LANGUAGES, type TranslationLanguage } from '@shared/anime';
 import { labelIsInLanguage } from '@main/services/subtitleLanguage';
 import { sourceLabelOf } from '@main/services/subtitleFiles';
 
-// Labels a subtitle in each language can have: as the source names it, as the patch of ani-cli writes it in the file name (sourceLabelOf), as
-// the app names a translation or a subtitle made from the audio, and codes.
 const LABELS: Record<TranslationLanguage, readonly string[]> = {
     'Portuguese (Brazil)': ['Portuguese (Brazil)', 'Portuguese - Brazilian Portuguese', 'Brazilian', 'Português (Brasil)', 'Portugu_s (Brasil)', 'pt-BR', 'pt', 'por', 'PORTUGUESE'],
     Portuguese: ['Portuguese', 'Portuguese (Brazil)', 'Português', 'Portugu_s', 'pt-PT', 'pt'],
@@ -21,7 +19,6 @@ const LABELS: Record<TranslationLanguage, readonly string[]> = {
     Indonesian: ['Indonesian', 'Bahasa Indonesia', 'id', 'ind']
 };
 
-// Labels that say nothing about a language.
 const NEUTRAL = ['Default', 'subtitle', 'Signs & Songs', 'Full', 'Forced', '_______', '', '   ', 'CC', 'SDH', 'v2'];
 
 function otherLanguages(language: TranslationLanguage): TranslationLanguage[] {
@@ -41,7 +38,6 @@ describe('labelIsInLanguage', () => {
 
         it.each(otherLanguages(language).flatMap((other) => {
             return LABELS[other].filter((label) => {
-                // The labels of both kinds of Portuguese are the same language.
                 return !(language.startsWith('Portuguese') && label.toLowerCase().includes('portugu'));
             });
         }))('does not find it in the label of another language %j', (label) => {

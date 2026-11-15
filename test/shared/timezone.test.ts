@@ -67,7 +67,6 @@ describe('zoneOffsetMs', () => {
 
 describe('startOfZonedDay', () => {
     it('is the midnight of the day the moment is in, in the time zone', () => {
-        // 15:30 UTC is already the next day in Tokyo and still the same day in Brazil.
         expect(startOfZonedDay(MOMENT, 'UTC')).toBe(Date.UTC(2026, 9, 3));
         expect(startOfZonedDay(MOMENT, 'Asia/Tokyo')).toBe(Date.UTC(2026, 9, 3, 15));
         expect(startOfZonedDay(MOMENT, 'America/Sao_Paulo')).toBe(Date.UTC(2026, 9, 3, 3));
@@ -82,7 +81,6 @@ describe('startOfZonedDay', () => {
     });
 
     it('is the midnight of the time zone even on the day the clock changes', () => {
-        // New York: March 8, 2026 has 23 hours and November 1, 2026 has 25.
         expect(startOfZonedDay(Date.UTC(2026, 2, 8, 18), 'America/New_York')).toBe(Date.UTC(2026, 2, 8, 5));
         expect(startOfZonedDay(Date.UTC(2026, 10, 1, 18), 'America/New_York')).toBe(Date.UTC(2026, 10, 1, 4));
     });

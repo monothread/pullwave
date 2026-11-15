@@ -4,8 +4,6 @@ import type { RequestExtras } from './ytdlpArgsBuilder';
 import { JsonStore } from './jsonStore';
 import { sanitizeDownloadOptions } from './settingsSanitizer';
 
-// What is kept of a download that was paused, so it is still there (and can go on from its partial files) after the app is closed:
-// the card, how it was asked for (without the cookie of the page: nothing of a session goes to the disk) and where its files are.
 export interface PausedDownload {
     job: DownloadJob;
     extras: Omit<RequestExtras, 'cookie' | 'resumedPart'>;
@@ -21,7 +19,6 @@ function isText(value: unknown): value is string {
     return typeof value === 'string' && value.length > 0;
 }
 
-// What a text kept for a download may weigh: far more than any address or name, so only a file that was not written by the app is cut.
 const MAX_TEXT_LENGTH = 4096;
 
 function isShortText(value: unknown): value is string {
@@ -45,8 +42,6 @@ function readPart(raw: unknown): DownloadPart | null {
     return { kind, percent: Math.min(100, Math.max(0, part.percent)) };
 }
 
-// The bars of the parts of a paused download (the video and the audio that are apart), or null when it has none or what the file says of
-// them is not a list of two parts or more that can all be read.
 export function readParts(raw: unknown): DownloadPart[] | null {
     if (!Array.isArray(raw) || raw.length < 2) {
         return null;
@@ -57,8 +52,6 @@ export function readParts(raw: unknown): DownloadPart[] | null {
     }) ? parts : null;
 }
 
-// How a download was asked for, keeping only the fields it can have and with values it can have: the file may be edited, or from another
-// version, and what is read here ends in the arguments of yt-dlp. The cookie and the part number are never read, even if they are there.
 export function readExtras(raw: unknown): PausedDownload['extras'] {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         return {};
@@ -76,8 +69,6 @@ export function readExtras(raw: unknown): PausedDownload['extras'] {
     };
 }
 
-// The files that are inside the folder the download goes to: what the file says is not trusted to point anywhere else, because what is
-// kept of them is deleted when the download is cancelled.
 export function keepInside(paths: readonly string[], directory: string): string[] {
     const root = resolve(directory);
     return paths.filter((path) => {
@@ -86,7 +77,6 @@ export function keepInside(paths: readonly string[], directory: string): string[
     });
 }
 
-// A download read from the file, or null when it is not one (the file may be edited, or from another version).
 export function readPausedDownload(raw: unknown): PausedDownload | null {
     const entry = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
     const job = (typeof entry.job === 'object' && entry.job !== null ? entry.job : {}) as Record<string, unknown>;
@@ -119,7 +109,6 @@ export function readPausedDownload(raw: unknown): PausedDownload | null {
             saving: false,
             postProcess: null,
             postProcessSteps: [],
-            // The pictures are kept in memory only: a download paused in an earlier run of the app gets its picture again when it goes on.
             thumbnail: null,
             parts: readParts(job.parts)
         },
@@ -128,8 +117,6 @@ export function readPausedDownload(raw: unknown): PausedDownload | null {
     };
 }
 
-// The paused downloads in a file. A file that cannot be read or written is not a reason to stop: a pause then only lasts while the app
-// is open, as it did before.
 export class PausedStore implements PausedStorage {
     private readonly store: JsonStore<unknown[]>;
 

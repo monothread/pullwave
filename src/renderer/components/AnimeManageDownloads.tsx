@@ -16,7 +16,6 @@ const LABELS: ManageDownloadsLabels = {
     cancelMessage: 'confirm.animeManageCancel.message'
 };
 
-// The anime with a download to manage (running, waiting or paused), in the order their first episode appears in the list.
 export function groupActiveAnimeJobs(jobs: readonly AnimeJob[]): DownloadGroup[] {
     return groupActiveDownloads(
         jobs,
@@ -33,7 +32,6 @@ interface AnimeManageDownloadsProps {
     onClose: () => void;
 }
 
-// The window to pause, resume and cancel the downloads of the anime picked.
 export function AnimeManageDownloads({ onClose }: AnimeManageDownloadsProps) {
     const jobs = useAnimeStore((state) => {
         return state.jobs;

@@ -3,5 +3,4 @@ import { SubtitleJobQueue, type SubtitleJobQueueDependencies } from './subtitleJ
 
 export type SubtitleGenerationQueueDependencies = SubtitleJobQueueDependencies<SubtitleGenerateRequest, SubtitleGenerateResponse>;
 
-// The episodes whose subtitle is waiting to be made from the audio or being made (see `SubtitleJobQueue`).
 export class SubtitleGenerationQueue extends SubtitleJobQueue<SubtitleGenerateRequest, SubtitleGenerateResponse> {}

@@ -5,11 +5,9 @@ import { ConfirmDialog } from './ConfirmDialog';
 interface ConfirmButtonProps {
     className: string;
     children: ReactNode;
-    // What the button says to the screen readers, when its text is not enough (it also names what the action is about).
     ariaLabel?: string;
     title?: string;
     disabled?: boolean;
-    // What the window asks and warns about, and what its buttons say. The way back is "keep" unless another word is given.
     dialog: {
         title: string;
         message: string;
@@ -19,7 +17,6 @@ interface ConfirmButtonProps {
     onConfirm: () => void;
 }
 
-// A button for what takes something away (a removal, a clear, a cancel, a reset): it opens a window to confirm instead of acting at once.
 export function ConfirmButton({ className, children, ariaLabel, title, disabled, dialog, onConfirm }: ConfirmButtonProps) {
     const t = useTranslator();
     const [asking, setAsking] = useState(false);

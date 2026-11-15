@@ -1,7 +1,6 @@
 import { buildConcatList, mergeParts } from '@main/services/partsMerger';
 import { runFfmpegQuietly } from '@main/services/ffmpegExec';
 
-// The default runner of ffmpeg (which writes to the log of ffmpeg) is a stand-in here: no test runs ffmpeg.
 vi.mock('@main/services/ffmpegExec', () => {
     return { runFfmpegQuietly: vi.fn() };
 });

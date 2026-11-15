@@ -7,16 +7,11 @@ import { resolveAppLanguage } from '../i18n/language';
 import { useAnimeStore } from './animeStore';
 import { useAppStore } from './appStore';
 
-// The programs the app downloads on its first run (yt-dlp, deno, ffmpeg, ani-cli, busybox and curl): how each one stands, the latest versions,
-// and what the user does about them (try again, install again, update, go back to the version of the app).
-
 export type ProgramWork = 'retrying' | 'reinstalling' | 'updating' | 'resetting';
 
-// How the last update, or the last going back, of a program ended (shown beside it until the next one).
 export interface ProgramResult {
     action: 'update' | 'reset';
     ok: boolean;
-    // The words are made by the screen from this: why it did not work, or the version it moved to.
     reason: 'current' | 'busy' | 'custom' | 'unsupported' | 'lookup' | 'failed' | 'none' | null;
     lookup: ProgramLookupReason | null;
     version: string | null;
@@ -24,18 +19,14 @@ export interface ProgramResult {
 }
 
 interface ProgramsState {
-    // Null until it is read.
     status: ProgramsStatus | null;
-    // The download of an update, kept apart from the status: while it goes on, the program that is installed still works.
     updates: Partial<Record<ProgramId, ToolState>>;
     versions: ProgramVersions | null;
     checking: boolean;
     working: Partial<Record<ProgramId, ProgramWork>>;
     results: Partial<Record<ProgramId, ProgramResult>>;
-    // Reads the status and follows the programs while they are downloaded; gives what stops it.
     init: () => Promise<() => void>;
     refresh: () => Promise<void>;
-    // TRY AGAIN after a failure.
     retry: (id: ProgramId) => Promise<void>;
     reinstall: (id: ProgramId) => Promise<void>;
     check: () => Promise<void>;
@@ -43,7 +34,6 @@ interface ProgramsState {
     reset: (id: ProgramId) => Promise<void>;
 }
 
-// The names of the programs, as they are called (they are not translated).
 export const PROGRAM_NAMES: Record<ProgramId, string> = {
     ytdlp: 'yt-dlp',
     deno: 'deno',
@@ -73,8 +63,6 @@ function patchState(status: ProgramsStatus | null, state: ToolState): ProgramsSt
     };
 }
 
-// What the screens that show the version of a program depend on changes when one is installed or fails: the chips of the header and the
-// anime section (whether ani-cli is there) are read again.
 function refreshDependents(): void {
     void useAppStore.getState().refreshBinaries();
     void useAnimeStore.getState().refreshStatus();

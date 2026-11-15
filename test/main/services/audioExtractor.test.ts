@@ -209,7 +209,6 @@ describe('cutting the audio at its pauses', () => {
 
 describe('createFfmpegRunner', () => {
     const NODE = process.execPath;
-    // Runs once with the runner of the audio, which takes the arguments and the signal.
     const RUN = (run: FfmpegRunner, args: string[], signal?: AbortSignal): Promise<FfmpegResult> => {
         return run(args, signal);
     };

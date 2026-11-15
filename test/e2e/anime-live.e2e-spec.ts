@@ -7,8 +7,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { appEnv } from './programs';
 
-// Runs against the real source ani-cli reads, so it needs the network and can fail because of the source (it can change or
-// block requests). It is left out unless PULLWAVE_LIVE=1, and run on demand by the "Test Windows" workflow.
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const EXE = process.platform === 'win32' ? '.exe' : '';
@@ -64,13 +62,10 @@ test('downloads an episode at the lowest quality, with its subtitles, and plays 
     await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
     await page.getByRole('button', { name: 'SHOW EPISODES: Cyberpunk: Edgerunners', exact: true }).click();
     await page.getByRole('button', { name: 'DOWNLOAD: Cyberpunk: Edgerunners EP 1', exact: true }).click();
-    // A finished download leaves the downloads screen and is told by a toast.
     await expect(page.locator('.toast').filter({ hasText: 'Download complete: Cyberpunk: Edgerunners · EP 1' })).toBeVisible({ timeout: 240000 });
 
     const folder = join(workDir, 'anime', 'Cyberpunk_ Edgerunners', 'Season 1', 'Episode 1');
     const files = readdirSync(folder).sort();
-    // The video, the subtitle ani-cli picked, the metadata, and a file for every language the source offers (which ones it
-    // offers is the source's to decide).
     expect(files).toEqual(expect.arrayContaining(['Cyberpunk_ Edgerunners Episode 1.mp4', 'Cyberpunk_ Edgerunners Episode 1.vtt', 'pullwave.json']));
     expect(files).toContain('Cyberpunk_ Edgerunners Episode 1.subtitle-English.vtt');
     expect(

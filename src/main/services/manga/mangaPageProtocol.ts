@@ -6,12 +6,10 @@ import { parseIconUrl } from './mangaIcons';
 export { MANGA_PAGE_SCHEME };
 
 export interface PageSource {
-    // The file of a chapter of the library that was downloaded (null: there is none to read).
     fileOf: (chapterId: number) => string | null;
     read: (path: string, index: number) => Promise<Buffer>;
 }
 
-// `pullwave-manga://page/<chapter id>/<page number>`; null for anything else.
 export function parsePageUrl(url: string): { chapterId: number; index: number } | null {
     let parsed: URL;
     try {
@@ -31,8 +29,6 @@ function plain(status: number): Response {
     return new Response(null, { status });
 }
 
-// Serves one page of a chapter of the library. The address carries an id, never a path: only files of chapters the app downloaded can be
-// reached.
 export function createPageHandler(source: PageSource): (request: Request) => Promise<Response> {
     return async (request) => {
         const page = parsePageUrl(request.url);
@@ -57,12 +53,10 @@ export function createPageHandler(source: PageSource): (request: Request) => Pro
 }
 
 export interface CoverSource {
-    // The file with the cover of a manga of the library (null: none is kept).
     fileOf: (mangaId: number) => string | null;
     read: (path: string) => Promise<Buffer>;
 }
 
-// `pullwave-manga://cover/<manga id>`; null for anything else.
 export function parseCoverUrl(url: string): { mangaId: number } | null {
     let parsed: URL;
     try {
@@ -77,8 +71,6 @@ export function parseCoverUrl(url: string): { mangaId: number } | null {
     return { mangaId: Number(match[1]) };
 }
 
-// Serves the cover of a manga of the library. The address carries an id, never a path. It carries a fingerprint too, so a cover that
-// changes has another address and the one served can be kept for good.
 export function createCoverHandler(source: CoverSource): (request: Request) => Promise<Response> {
     return async (request) => {
         const cover = parseCoverUrl(request.url);
@@ -106,12 +98,10 @@ export function createCoverHandler(source: CoverSource): (request: Request) => P
 }
 
 export interface IconSource {
-    // The file with the icon of a source (null: none is kept).
     fileOf: (key: string) => string | null;
     read: (path: string) => Promise<Buffer>;
 }
 
-// Serves the icon of a source. The address carries a key, never a path.
 export function createIconHandler(source: IconSource): (request: Request) => Promise<Response> {
     return async (request) => {
         const icon = parseIconUrl(request.url);
@@ -138,7 +128,6 @@ export function createIconHandler(source: IconSource): (request: Request) => Pro
     };
 }
 
-// The one handler of the scheme: the covers, the icons of the sources and the pages of the chapters each go to their own place.
 export function createMangaProtocolHandler(pages: PageSource, covers: CoverSource, icons: IconSource): (request: Request) => Promise<Response> {
     const pageHandler = createPageHandler(pages);
     const coverHandler = createCoverHandler(covers);

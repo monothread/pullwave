@@ -90,7 +90,6 @@ describe('init', () => {
         });
 
         dispose();
-        // Every event of the section, one anime of the library that changed among them.
         expect(mock.unsubscribers).toHaveLength(11);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -1955,7 +1954,6 @@ describe('the schedule', () => {
 
             await useAnimeStore.getState().loadSchedule();
 
-            // 15:30 UTC is still October 3 in Brazil, which starts at 03:00 UTC.
             expect(mock.api.listAnimeSchedule).toHaveBeenCalledWith({ from: 1_790_996_400, to: 1_791_082_800, refresh: false });
         });
 

@@ -11,11 +11,7 @@ import { SuwayomiApiError } from './suwayomiClient';
 import { extractCbzPages as defaultExtractCbzPages } from './cbzExtractor';
 import { chapterWorkDirectory, COMIC_INFO_FILE, formatOfPath, isCompletePage, missingPageIndexes, pageFileName, TEMPORARY_EXTENSION } from './mangaFiles';
 
-// How many times a page is asked for again after it fails, and how long to wait before each.
 export const PAGE_RETRY_DELAYS_MS: readonly number[] = [500, 1500];
-// How many pages in a row may fail because the server or the connection does not answer before the chapter gives up (a server that is
-// down would otherwise make every page of a long chapter wait for its retries). A page the app refuses, or that is not an image, fails
-// at once and does not count.
 export const MAX_CONSECUTIVE_SERVER_FAILURES = 5;
 
 export type ChapterRunResult<T> = { status: 'done'; value: T } | { status: 'error'; error: MangaError } | { status: 'cancelled' };
@@ -24,42 +20,32 @@ export interface ChapterDownloadResult {
     filePath: string;
     sizeBytes: number;
     pageCount: number;
-    // The places (from 0) of the pages the source would not give: the chapter was made without them.
     missingPages: number[];
 }
 
 export interface ChapterDownloadOptions {
-    // The chapter on the server.
     chapterRemoteId: number;
     seriesTitle: string;
     chapter: Pick<MangaChapter, 'name' | 'number' | 'scanlator'>;
     details: Pick<MangaDetails, 'author' | 'artist' | 'description' | 'genres'> | null;
     format: MangaOutputFormat;
-    // Where the finished chapter goes (a .cbz file or a folder); nothing is there yet.
     outputPath: string;
-    // The number of pages is known.
     onPageCount: (pageCount: number) => void;
-    // A page was asked of the server (not one already on the disk): the bytes it brought, 0 when it could not be downloaded.
     onPageFetched: (bytes: number) => void;
     onProgress: (pagesDone: number, pageCount: number) => void;
 }
 
-// What asking for one page gave: the failure when it could not be downloaded, and the bytes it brought (0 then).
 interface PageAttempt {
     failure: ChapterFailure | null;
     bytes: number;
 }
 
-// What identifies a chapter in its ComicInfo.
 type ChapterIdentity = Pick<ChapterDownloadOptions, 'seriesTitle' | 'chapter' | 'details'>;
 
 export interface ChapterRepairOptions extends ChapterIdentity {
     chapterRemoteId: number;
-    // The file (a .cbz) or the folder the chapter was made at.
     filePath: string;
-    // How many pages the chapter has.
     pageCount: number;
-    // The place (from 0) of the only page to download again; null for every page the chapter lacks.
     pageIndex: number | null;
 }
 
@@ -69,7 +55,6 @@ export interface ChapterDownloadHandle {
 }
 
 export interface ChapterDownloaderDependencies {
-    // The addresses of the pages of a chapter, in reading order.
     pages: (chapterRemoteId: number) => Promise<string[]>;
     fetchImage: ImageFetcher;
     writeCbz?: typeof defaultWriteCbz;
@@ -84,9 +69,7 @@ class ChapterFailure extends Error {
     constructor(
         readonly code: MangaErrorCode,
         message: string,
-        // A failure that asking again will not fix.
         readonly final = false,
-        // What the place that failed knows about it (the page that was asked, the HTTP status).
         readonly known: Partial<ErrorDetails> = {}
     ) {
         super(message);
@@ -99,16 +82,13 @@ function defaultSleep(milliseconds: number): Promise<void> {
     });
 }
 
-// Whether a failure says the server or the connection is not answering (asking for the next page is likely to fail too).
 function isServerFailure(failure: ChapterFailure): boolean {
     return failure.code === 'SERVER_UNAVAILABLE' || failure.code === 'REQUEST_FAILED';
 }
 
-// Counts the pages that failed one after the other because of the server; a page that arrives starts the count again.
 class FailureStreak {
     private count = 0;
 
-    // Gives the failure when it is the one that makes the chapter give up.
     add(failure: ChapterFailure | null): ChapterFailure | null {
         this.count = failure !== null && isServerFailure(failure) ? this.count + 1 : 0;
         return failure !== null && this.count >= MAX_CONSECUTIVE_SERVER_FAILURES ? failure : null;
@@ -120,7 +100,6 @@ function messageOf(error: unknown): string {
 }
 
 function isAbort(error: unknown): boolean {
-    // A timeout (`TimeoutError`) is a failure of the site, not a cancellation.
     return error instanceof Error && error.name === 'AbortError';
 }
 
@@ -145,8 +124,6 @@ function toError(error: unknown): MangaError {
     return { code: 'UNKNOWN', message: messageOf(error), details: describeError(error, known) };
 }
 
-// The names (without the extension, which is only known once a page is downloaded) of the pages already there complete. The folder
-// is read once per chapter, not once per page.
 async function existingPageNames(workDirectory: string): Promise<Set<string>> {
     const files = await readdir(workDirectory);
     return new Set(files.flatMap((file) => {
@@ -164,9 +141,6 @@ async function pathExists(path: string): Promise<boolean> {
     }
 }
 
-// Downloads the pages of a chapter one at a time into a folder beside the final place (a page that is there already is not asked
-// for again, so a chapter that was paused, or that failed, goes on from where it was), then makes the CBZ or the folder in a
-// single step: a chapter is never half there.
 export class MangaChapterDownloader {
     constructor(private readonly deps: ChapterDownloaderDependencies) {}
 
@@ -224,15 +198,12 @@ export class MangaChapterDownloader {
             options.onProgress(done, addresses.length);
         }
         signal.throwIfAborted();
-        // A chapter with no page at all is a failure of the source or of the connection, not a chapter that lacks some pages.
         if (lastFailure !== null && missingPages.length === addresses.length) {
             throw lastFailure;
         }
         return this.finish(options, workDirectory, addresses.length, missingPages);
     }
 
-    // Downloads again the pages a chapter that was made without some lacks, into its file (or folder). Pages that fail again stay
-    // missing; when none of the ones asked for could be downloaded, it is a failure.
     async repair(options: ChapterRepairOptions, signal: AbortSignal = new AbortController().signal): Promise<ChapterRunResult<ChapterDownloadResult>> {
         try {
             return { status: 'done', value: await this.repairChapter(options, signal) };
@@ -250,7 +221,6 @@ export class MangaChapterDownloader {
             throw new ChapterFailure('INVALID_RESPONSE', 'The source has another number of pages now', true);
         }
         const isArchive = formatOfPath(options.filePath) === 'cbz';
-        // A CBZ is opened into a folder beside it, and made again once the pages are there; a folder of images is worked in place.
         const directory = isArchive ? chapterWorkDirectory(options.filePath) : options.filePath;
         if (isArchive) {
             await rm(directory, { recursive: true, force: true });
@@ -289,8 +259,6 @@ export class MangaChapterDownloader {
         }
     }
 
-    // One page that is asked for with its retries: the failure when the site would not give it (the chapter goes on without it), or
-    // the bytes it brought when it is there. A cancellation or a full disk is not a failure of the page and goes up.
     private async tryPage(address: string, basePath: string, signal: AbortSignal): Promise<PageAttempt> {
         try {
             return { failure: null, bytes: await this.downloadPage(address, basePath, signal) };
@@ -302,8 +270,6 @@ export class MangaChapterDownloader {
         }
     }
 
-    // One page, asked for again a couple of times when the site fails; written under a temporary name and only given its final name
-    // (and extension) once it is whole. Returns the bytes of the page.
     private async downloadPage(address: string, basePath: string, signal: AbortSignal): Promise<number> {
         const sleep = this.deps.sleep ?? defaultSleep;
         let lastFailure: ChapterFailure | null = null;
@@ -371,7 +337,6 @@ export class MangaChapterDownloader {
         return { filePath: options.outputPath, sizeBytes: await folderSize(options.outputPath), pageCount, missingPages };
     }
 
-    // Makes the CBZ of the pages in the folder (in the place of the one there, when there is one).
     private async finishCbz(identity: ChapterIdentity, outputPath: string, directory: string, pageCount: number): Promise<ChapterDownloadResult> {
         const pages = (await readdir(directory)).filter(isCompletePage).sort();
         const entries: CbzEntry[] = pages.map((file) => {
@@ -382,7 +347,6 @@ export class MangaChapterDownloader {
         return { filePath: outputPath, sizeBytes: (await stat(outputPath)).size, pageCount, missingPages: missingPageIndexes(pages, pageCount) };
     }
 
-    // A folder of images that got pages back: its ComicInfo is written again.
     private async finishFolderInPlace(identity: ChapterIdentity, directory: string, pageCount: number): Promise<ChapterDownloadResult> {
         const pages = (await readdir(directory)).filter(isCompletePage);
         await writeFile(join(directory, COMIC_INFO_FILE), this.comicInfoOf(identity, pages.length, pageCount), 'utf-8');

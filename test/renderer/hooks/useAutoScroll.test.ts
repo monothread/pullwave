@@ -201,10 +201,8 @@ describe('useAutoScroll with a ramp', () => {
         tick(0);
         expect(element.scrollTop).toBe(0);
         tick(500);
-        // Half of the ramp: a quarter of the speed over the half second that went by.
         expect(element.scrollTop).toBe(125);
         tick(1000);
-        // The end of the ramp: the full speed over the last half second.
         expect(element.scrollTop).toBe(125 + 500);
         tick(1500);
         expect(element.scrollTop).toBe(125 + 500 + 500);

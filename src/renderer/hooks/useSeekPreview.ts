@@ -6,8 +6,6 @@ function createCanvas(): HTMLCanvasElement {
     return document.createElement('canvas');
 }
 
-// The frame of the second under the mouse on the timeline (see seekPreview.ts); null while there is none to show. A second of null leaves
-// the last frame where it is, and a source left out shows nothing. The hidden video goes with the source, or when the player closes.
 export function useSeekPreview(source: SeekPreviewSource | undefined, second: number | null): HTMLCanvasElement | null {
     const [frame, setFrame] = useState<HTMLCanvasElement | null>(null);
     const grabber = useRef<SeekPreviewGrabber | null>(null);

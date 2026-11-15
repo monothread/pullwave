@@ -2,7 +2,6 @@ import type { AnimeHistoryEntry, AnimeUpdateEntry } from '@shared/anime';
 import type { MangaUpdateEntry, ReadingEntry } from '@shared/manga';
 import type { HistoryEntry } from '@shared/types';
 
-// By default an entry that has an episode was watched when it was opened, and one that has none was only opened.
 export function makeAnimeHistory(overrides: Partial<AnimeHistoryEntry> = {}): AnimeHistoryEntry {
     const entry = { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, audio: 'sub' as const, episode: '1' as string | null, openedAt: 1000, ...overrides };
     return { watchedAt: entry.episode === null ? null : entry.openedAt, ...entry };

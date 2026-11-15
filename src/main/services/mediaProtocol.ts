@@ -31,18 +31,14 @@ export interface ByteRange {
 }
 
 export interface MediaFileSystem {
-    // The size of a file, or null when it is not there.
     size: (path: string) => number | null;
-    // The bytes from `start` to `end` (both included).
     read: (path: string, range: ByteRange) => ReadableStream<Uint8Array>;
 }
 
 export interface MediaSource {
-    // The file of an episode (its video or its subtitles), or null when there is none to serve.
     resolve: (kind: AnimeMediaKind, episodeId: number, trackId: string) => string | null;
 }
 
-// A single "bytes=start-end" range. null: no range was asked. 'invalid': it cannot be satisfied (HTTP 416).
 export function parseRange(header: string | null, size: number): ByteRange | 'invalid' | null {
     if (header === null) {
         return null;
@@ -52,7 +48,6 @@ export function parseRange(header: string | null, size: number): ByteRange | 'in
         return 'invalid';
     }
     if (match[1] === '') {
-        // "bytes=-500": the last 500 bytes.
         const suffix = Number(match[2]);
         return suffix === 0 ? 'invalid' : { start: Math.max(0, size - suffix), end: size - 1 };
     }
@@ -65,7 +60,6 @@ export function contentTypeOf(path: string): string {
     return CONTENT_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
 }
 
-// The id of a subtitle as it came in the address (none means the one ani-cli picked); null when it is not valid text.
 function decodeTrackId(encoded: string | undefined): string | null {
     try {
         return encoded === undefined ? '' : decodeURIComponent(encoded);
@@ -74,8 +68,6 @@ function decodeTrackId(encoded: string | undefined): string | null {
     }
 }
 
-// The player asks for `pullwave-media://episode/<id>` (the video), `pullwave-media://subtitle/<id>` (the subtitles ani-cli
-// picked) and `pullwave-media://subtitle/<id>/<track>` (another subtitle of the episode).
 export function parseMediaUrl(url: string): { kind: AnimeMediaKind; episodeId: number; trackId: string } | null {
     let parsed: URL;
     try {
@@ -101,7 +93,6 @@ function plain(status: number, headers: Record<string, string> = {}): Response {
     return new Response(null, { status, headers: { 'Access-Control-Allow-Origin': '*', ...headers } });
 }
 
-// Serves a file with support for ranges, which is what lets the player seek; 404 when there is no file (null, or not on the disk).
 export function serveFile(request: Request, path: string | null, files: MediaFileSystem): Response {
     const size = path === null ? null : files.size(path);
     if (path === null || size === null) {
@@ -124,8 +115,6 @@ export function serveFile(request: Request, path: string | null, files: MediaFil
     });
 }
 
-// Serves a downloaded file of the anime library. Only files that belong to an episode of the library are reachable: the address carries an
-// id, never a path.
 export function createMediaHandler(source: MediaSource, files: MediaFileSystem): (request: Request) => Response {
     return (request) => {
         const media = parseMediaUrl(request.url);

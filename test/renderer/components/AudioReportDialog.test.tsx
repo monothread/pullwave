@@ -20,7 +20,6 @@ const WITH_PROBLEMS: AudioReport = {
         { animeId: 10, animeTitle: 'Naruto', episodeId: 3, episode: '3', kind: 'file-missing' }
     ]
 };
-// Episodes the check could not read, with one that has no audio.
 const WITH_UNREADABLE: AudioReport = {
     summary: { checked: 5, withoutAudio: 1, unreadable: 2, unreadableIds: [4, 5], missing: 0 },
     downloaded: 9,

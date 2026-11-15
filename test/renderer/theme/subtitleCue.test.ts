@@ -28,7 +28,6 @@ function readDeclarations(rule: string): Record<string, string> {
     return declarations;
 }
 
-// The layers of the shadow, split by the commas that are not inside a color like rgba(...).
 function splitLayers(shadow: string): string[] {
     return shadow.split(/,\s*(?![^(]*\))/);
 }

@@ -1,7 +1,5 @@
 import { ORIGINAL_SEARCH } from '@main/services/aniSearchPages';
 
-// Scripts that look like ani-cli to the changes of Pullwave (see aniPatches.ts) and to the checks of an update (see aniCompatibility.ts): each
-// constant is the part of the script one change or one check looks for.
 export const SELECTION_LINE = `    sub_link="$(printf "%s" "$_json" | sed 's|.*"subtitles":\\[||; s|}\\].*||; s|},{|}\\n{|g' | grep -m 1 '"default":true' | sed -nE 's|.*"src":"([^"]*)".*|\\1|p')"`;
 export const SELECTION_PART = ['hianime_m3u8() {', '    _json="$(hianime_curl x)"', SELECTION_LINE, '}'].join('\n');
 export const LIST_LINE = '    # quality variants are relative to the master playlist';
@@ -16,7 +14,6 @@ export const SINGLE_RESULT_PART = '    [ "$_line_count" -eq 1 ] && printf "%s" "
 export const SEARCH_PART = ORIGINAL_SEARCH;
 export const DEBUG_PART =
     '        debug) printf "All links:\\n%s\\nSelected link:\\n%s\\nAudio:\\n%s\\nSubtitles:\\n%s\\n" "$links" "$video_link" "$audio_link" "$sub_link" ;;';
-// What the code the changes add reads from the script (see the `needs` of each change in aniPatches.ts), set the way ani-cli sets it.
 export const NEEDS_PART = [
     'menu() {',
     '    true',
@@ -41,7 +38,6 @@ export const NEEDS_PART = [
     'curl_exe=$(dep_ch_failover "curl") || die "Program curl not found"'
 ].join('\n');
 export const PROVIDER_LINE = 'base_api="https://hianime.at"';
-// What the app hands ani-cli and reads from it: the variables of the environment, the options, the menus, the messages.
 export const ENVIRONMENT_PART = [
     'mode="${ANI_CLI_MODE:-sub}"',
     'download_dir="${ANI_CLI_DOWNLOAD_DIR:-.}"',
@@ -68,8 +64,6 @@ export const OPTIONS_PART = [
 export const PROMPTS_PART = ['result=$(printf x | nth "Select anime: ")', 'ep_no=$(printf x | nth "Select episode: ")'].join('\n');
 export const MESSAGES_PART = ['die "No results found!"', 'die "Episode not released!"', 'die "Blocked by cloudflare."'].join('\n');
 
-// A script every change of Pullwave fits and every check of an update accepts, with the version it says; `extra` tells two scripts of the
-// same version apart.
 export function aniCliScript(version: string, extra = ''): string {
     return [
         '#!/bin/sh',
@@ -90,7 +84,6 @@ export function aniCliScript(version: string, extra = ''): string {
     ].join('\n');
 }
 
-// The same without some of its parts (whole parts, or single lines of them), as a script that ani-cli changed under them would be.
 export function aniCliScriptWithout(version: string, ...parts: string[]): string {
     return parts.reduce((text, part) => {
         return text.replace(part, '# changed upstream');

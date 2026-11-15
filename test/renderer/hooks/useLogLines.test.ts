@@ -10,7 +10,6 @@ function line(id: number, text: string): LogLine {
     return { id, at: AT, stream: 'stdout', text };
 }
 
-// A snapshot that answers only when the test says so, to send lines before it arrives.
 function deferredSnapshot(mock: MockApiHandle): (lines: LogLine[]) => Promise<void> {
     let answer: (lines: LogLine[]) => void = () => {
         return undefined;

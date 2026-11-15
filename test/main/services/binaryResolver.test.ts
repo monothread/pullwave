@@ -5,7 +5,6 @@ import { BinaryResolver, executableName, type InstalledPrograms } from '@main/se
 
 const TOOLS = '/data/tools';
 
-// The programs that are installed, by the file of each; the others are "not installed", with the place they will have once they are.
 function makePrograms(installed: Partial<Record<ProgramId, string>>, expected: Partial<Record<ProgramId, string>> = {}): InstalledPrograms {
     return {
         pathOf: (id) => {

@@ -5,7 +5,6 @@ import { useModalDialog } from '../hooks/useModalDialog';
 import { useTranslator } from '../i18n/useTranslator';
 import { ConfirmButton } from './ConfirmButton';
 
-// What one manga or anime has going on: how many of its chapters or episodes are downloading, waiting and paused.
 export interface DownloadGroup {
     id: number;
     title: string;
@@ -20,7 +19,6 @@ function isActiveStatus(status: string): status is ActiveStatus {
     return status === 'running' || status === 'queued' || status === 'paused';
 }
 
-// The mangas or anime with a download to manage (running, waiting or paused), in the order their first job appears in the list.
 export function groupActiveDownloads<T extends { status: string }>(jobs: readonly T[], idOf: (job: T) => number, titleOf: (job: T) => string): DownloadGroup[] {
     const groups = new Map<number, DownloadGroup>();
     jobs.forEach((job) => {
@@ -35,7 +33,6 @@ export function groupActiveDownloads<T extends { status: string }>(jobs: readonl
     return [...groups.values()];
 }
 
-// The words of the window (it is the same for the manga and for the anime, with the words of each).
 export interface ManageDownloadsLabels {
     title: MessageKey;
     hint: MessageKey;
@@ -59,15 +56,12 @@ interface ManageDownloadsDialogProps {
     onClose: () => void;
 }
 
-// A window to pick mangas or anime and pause, resume or cancel all their downloads at once (picking all of them is how everything is
-// paused or cancelled). Pausing leaves the rest of the queue as it is.
 export function ManageDownloadsDialog({ groups, labels, onPause, onResume, onCancel, onClose }: ManageDownloadsDialogProps) {
     const t = useTranslator();
     const titleId = useId();
     const { dialogRef, handleKeyDown } = useModalDialog(onClose, true);
     const [picked, setPicked] = useState<ReadonlySet<number>>(new Set());
 
-    // One whose downloads all ended while the window was open is no longer on the list, so it is no longer picked.
     const selected = groups.filter((group) => {
         return picked.has(group.id);
     });

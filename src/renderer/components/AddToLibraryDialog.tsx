@@ -8,27 +8,19 @@ import type { SeriesChoice } from '@shared/series';
 const FOCUSABLE = 'button:not([disabled]), select:not([disabled]), input:not([disabled])';
 
 interface AddToLibraryDialogProps {
-    // What the anime suggests for its series and order.
     initial: SeriesChoice;
-    // The names of the series the library already has.
     suggestions: readonly string[];
-    // The orders the library already uses in a series (for the audio of the anime): one of them cannot be chosen again.
     usedOrders: (series: string) => readonly number[];
-    // Asks for the anime to be added with the choice (null: on its own); true when it was, so the window can close.
     onConfirm: (choice: SeriesChoice | null) => Promise<boolean>;
     onClose: () => void;
 }
 
-// Before an anime goes to the library: what the series and the order are, what they do and that the series cannot change afterwards, with the
-// fields to fill in, and the way to confirm or to give up.
 export function AddToLibraryDialog({ initial, suggestions, usedOrders, onConfirm, onClose }: AddToLibraryDialogProps) {
     const t = useTranslator();
-    // The orders a series already uses (none for a name that is empty).
     const usedIn = (name: string): readonly number[] => {
         return name.trim().length > 0 ? usedOrders(name) : [];
     };
     const [series, setSeries] = useState(initial.series);
-    // The order the title suggests, or the next one when the series it suggests already uses it.
     const [season, setSeason] = useState(() => {
         return orderFor(usedIn(initial.series), initial.season);
     });
@@ -47,7 +39,6 @@ export function AddToLibraryDialog({ initial, suggestions, usedOrders, onConfirm
         };
     }, []);
 
-    // Choosing a series that uses the order in the field already puts the next one there.
     function changeSeries(value: string): void {
         setSeries(value);
         setSeason(orderFor(usedIn(value), season));
@@ -66,7 +57,6 @@ export function AddToLibraryDialog({ initial, suggestions, usedOrders, onConfirm
         }
     }
 
-    // Esc closes the window and Tab stays inside it.
     function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
         if (event.key === 'Escape') {
             event.stopPropagation();

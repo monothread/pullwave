@@ -22,14 +22,8 @@ function downloadedIdsOf(anime: LibraryAnime): number[] {
         });
 }
 
-// Translates the subtitles of the downloaded episodes of a season that do not have the subtitle in the language that is wanted yet (the one of
-// the anime subtitles of the settings, as the main process says), one after the other. It asks first, in a window, because every episode is a
-// request that costs the user's token; while they are translated it has only a button to the screen of the subtitles being translated. What it
-// follows is kept in the store, so it is the same when the screen is left and opened again. When no episode needs the translation it shows
-// nothing, and the button comes back when one does (another language chosen, a new episode).
 export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const t = useTranslator();
-    // What decides the language that is wanted: when one of them changes the main process is asked again.
     const animeSubtitles = useAppStore((state) => {
         return state.settings.animeSubtitles;
     });
@@ -46,14 +40,12 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const openSubtitleJobs = useAnimeStore((state) => {
         return state.openSubtitleJobs;
     });
-    // The language that is wanted and the episodes that can be translated into it, as the main process says; null while it is asked.
     const [translatable, setTranslatable] = useState<SubtitleTranslatableResponse | null>(null);
     const episodeKey = downloadedIdsOf(anime).join(',');
     const episodeIds = useMemo(() => {
         return episodeKey.length === 0 ? [] : episodeKey.split(',').map(Number);
     }, [episodeKey]);
 
-    // The updates of every episode are kept; the ones of this season are the ones that count.
     const all = episodeIds.flatMap((episodeId) => {
         const update = updates[episodeId];
         return update === undefined ? [] : [update];
@@ -67,14 +59,11 @@ export function SeasonTranslation({ anime }: SeasonTranslationProps) {
     const failedCount = finished.filter((job) => {
         return job.status === 'error';
     }).length;
-    // The episodes that had the subtitle in the language already are left as they were (nothing was asked of the provider for them).
     const skipped = finished.filter((job) => {
         return job.status === 'skipped';
     });
     const skippedLanguage = skipped[0]?.language ?? translatable?.language ?? translationTarget;
 
-    // Asked again when the episodes or the settings that decide the language change, and each time a translation of the season ends (it may
-    // have added the subtitle).
     useEffect(() => {
         let current = true;
         if (episodeIds.length === 0) {

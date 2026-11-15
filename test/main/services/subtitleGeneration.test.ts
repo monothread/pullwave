@@ -110,7 +110,6 @@ function speaking(...answers: Array<string | LlmCompletionResult>): ReturnType<t
     });
 }
 
-// A model that translates by putting the text between brackets.
 function translating(): ReturnType<typeof vi.fn<Translate>> {
     return vi.fn<Translate>(async (_system, user): Promise<LlmCompletionResult> => {
         return { ok: true, text: JSON.stringify((JSON.parse(user) as string[]).map((text) => {
@@ -758,7 +757,6 @@ describe('piecePromptOf', () => {
     });
 });
 
-// The audio as decodeSpeechAudio gives it, for the cutting at the pauses: lines of LINE_SECONDS separated by a second of silence.
 const LINE_SECONDS = 1.5;
 
 function linesPcm(count: number): Uint8Array {
@@ -769,7 +767,6 @@ function linesPcm(count: number): Uint8Array {
     return pcmOf(stretches);
 }
 
-// Two lines: from 1 s to 3 s and from 4 s to 6 s, in 7 seconds; cut at 3.5 s.
 const TWO_LINES = pcmOf([silence(1), tone(2), silence(1), tone(2), silence(1)]);
 const TWO_LINES_VTT = 'WEBVTT\n\n00:00:00.750 --> 00:00:03.000\nこんにちは\n\n00:00:03.750 --> 00:00:06.000\nまたね\n';
 const DECODE_ARGS = ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', VIDEO, '-vn', '-af', 'highpass=f=250,lowpass=f=3500', '-ac', '1', '-ar', '16000', '-f', 's16le', join(WORK, 'speech.pcm')];
@@ -781,7 +778,6 @@ function pieceNames(count: number): string[] {
     });
 }
 
-// The folder of the work: the decoded audio and the pieces ffmpeg cut it in (`pcm` null when the decoded file is not there).
 function piecesFolder(pcm: Uint8Array | null, pieces: number): AudioFiles & { removed: string[] } {
     const removed: string[] = [];
     return {
@@ -804,7 +800,6 @@ function piecesFolder(pcm: Uint8Array | null, pieces: number): AudioFiles & { re
     };
 }
 
-// The service answering the text of each piece from the name of its file: piece-N.mp3 gets texts[N].
 function hearing(texts: readonly string[]): ReturnType<typeof vi.fn<Ask>> {
     return vi.fn<Ask>(async (input): Promise<LlmCompletionResult> => {
         const index = Number(/piece-(\d+)\.mp3/.exec(input.fileName)?.[1]);
@@ -923,7 +918,6 @@ describe('generateEpisodeSubtitle: cutting the audio at its pauses', () => {
                 signal: expect.any(AbortSignal)
             };
         }));
-        // The audio is spoken in the language of the subtitle: nothing is translated.
         expect(translation).not.toHaveBeenCalled();
         expect(audio.removed).toEqual([WORK]);
     });
@@ -964,7 +958,6 @@ describe('generateEpisodeSubtitle: cutting the audio at its pauses', () => {
         const ask = hearing(texts);
         const { files, dependencies } = cuttingSetup(ask, { pcm: linesPcm(count), pieces: count });
         await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
-        // 13 pieces in streams of 3: [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11] and [12].
         expect(askedInputs(ask).map((input) => {
             return [input.fileName, input.prompt];
         })).toEqual([
@@ -982,7 +975,6 @@ describe('generateEpisodeSubtitle: cutting the audio at its pauses', () => {
             ['piece-11.mp3', 'Naruto\nline 9 line 10'],
             ['piece-12.mp3', 'Naruto']
         ]);
-        // The first ones of the streams go out at once, before any answer.
         expect(ask.mock.calls.slice(0, 5).map((call) => {
             return call[0].fileName;
         })).toEqual(['piece-0.mp3', 'piece-3.mp3', 'piece-6.mp3', 'piece-9.mp3', 'piece-12.mp3']);
@@ -1001,7 +993,6 @@ describe('generateEpisodeSubtitle: cutting the audio at its pauses', () => {
     });
 
     it('leaves out the pieces where nothing was said, in the subtitle and in what goes with the next ones', async () => {
-        // 7 pieces in streams of 2: [0, 1], [2, 3], [4, 5] and [6].
         const ask = hearing(['', '  ', 'c', 'd', 'e', 'f', 'g']);
         const { files, dependencies } = cuttingSetup(ask, { pcm: linesPcm(7), pieces: 7 });
         await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
@@ -1058,7 +1049,6 @@ describe('generateEpisodeSubtitle: cutting the audio at its pauses', () => {
         });
         const { files, audio, dependencies } = cuttingSetup(ask, { pcm: linesPcm(count), pieces: count });
         expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'failed', error });
-        // Only the first piece of each of the 5 streams went out: none asked for another after the failure.
         expect(ask).toHaveBeenCalledTimes(5);
         expect((ask.mock.calls[1]?.[0].signal as AbortSignal).aborted).toBe(true);
         expect(files.written).toEqual({});

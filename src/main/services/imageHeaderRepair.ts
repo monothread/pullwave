@@ -4,16 +4,11 @@ import { pipeline } from 'node:stream/promises';
 import { probeAudio, type FfmpegRunner } from './audioExtractor';
 import { imageHeaderLength, MAX_IMAGE_HEADER_BYTES } from './hidingImage';
 
-// Some sources hide the video of each segment behind a small picture (see hidingImage.ts). yt-dlp joins the segments as they are, so the file
-// that was downloaded is a picture followed by video, then the same picture and more video, and so on: no player opens it. This takes every copy of
-// the picture out and puts what is left in an MP4 (nothing is encoded again), and the new file takes the place of the old one only when it reads.
-
 export type RepairResult = { status: 'repaired'; sizeBytes: number } | { status: 'not-needed' } | { status: 'failed' };
 
 const TEMP_VIDEO = '.pullwave-repair.ts';
 const TEMP_RESULT = '.pullwave-repair.mp4';
 
-// Takes every copy of the header out of what goes through it. A copy that is cut by the end of a piece is kept back until the next one.
 export class HeaderRemover extends Transform {
     private carry: Buffer = Buffer.alloc(0);
     removed = 0;
@@ -44,7 +39,6 @@ export class HeaderRemover extends Transform {
     }
 }
 
-// The picture at the start of the file when it is followed by data, or null (the file is not hidden behind one, or cannot be read).
 export function readImageHeader(path: string): Buffer | null {
     let descriptor: number | null = null;
     try {
@@ -62,8 +56,6 @@ export function readImageHeader(path: string): Buffer | null {
     }
 }
 
-// Repairs a video that starts with a picture. The file is left as it was when it does not (not needed) or when the repair does not work (the
-// new file has to read as a video before it replaces the old one; the temporary files always go).
 export async function repairImageHeader(path: string, run: FfmpegRunner): Promise<RepairResult> {
     const header = readImageHeader(path);
     if (header === null) {
@@ -77,7 +69,6 @@ export async function repairImageHeader(path: string, run: FfmpegRunner): Promis
         if (remux.code !== 0) {
             return { status: 'failed' };
         }
-        // Readable is what counts: a video with no audio is still a video that was got back.
         const probe = await probeAudio(result, run);
         if (!probe.ok && probe.reason !== 'no-audio') {
             return { status: 'failed' };

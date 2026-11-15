@@ -7,8 +7,6 @@ import { sortForDisplay } from './jobStatus';
 import { DownloadHero } from '../downloads/DownloadHero';
 import { VideoThumbnail } from '../downloads/VideoThumbnail';
 
-// The actions of the cards, the same for every card and every drawing (so a card whose download did not change is not drawn again). They
-// ask the store as it is when they are used.
 const JOB_ACTIONS = {
     onCancel: (id: string): void => {
         void useAppStore.getState().cancelJob(id);
@@ -44,7 +42,6 @@ export function QueueList() {
     const clearFinished = useAppStore((state) => {
         return state.clearFinished;
     });
-    // A download that is complete stays only a few seconds (green) and leaves by itself: there is nothing to clear for it.
     const hasFinished = jobs.some((job) => {
         return job.status === 'error' || job.status === 'cancelled';
     });
@@ -53,7 +50,6 @@ export function QueueList() {
         return <p className="empty">{t('queue.empty')}</p>;
     }
 
-    // The banner shows the download going on, or the one that just ended while it stays (green) when nothing else is going on.
     const running = jobs.find((job) => {
         return job.status === 'running' && !job.live;
     }) ?? jobs.find((job) => {

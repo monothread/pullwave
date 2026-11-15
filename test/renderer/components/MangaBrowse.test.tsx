@@ -26,7 +26,6 @@ beforeEach(() => {
     mock.api.manga.list.mockResolvedValue({ ok: true, value: { items: ITEMS, hasNextPage: false } });
 });
 
-// Opens the source named, from the list.
 async function openSourceNamed(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
     await user.click(await screen.findByRole('button', { name: `POPULAR: ${name}` }));
 }
@@ -132,7 +131,6 @@ describe('MangaBrowse a source', () => {
             return button.getAttribute('type') === 'submit';
         })!;
         expect(submit).toBeDisabled();
-        // Ctrl+F goes to this field.
         expect(screen.getByLabelText('Manga name')).toHaveAttribute('data-search-field', '');
         await user.type(screen.getByLabelText('Manga name'), '  one piece ');
         expect(mock.api.manga.list).not.toHaveBeenCalled();
@@ -279,7 +277,6 @@ describe('MangaBrowse a source', () => {
                 await screen.findByText('Naruto', { selector: '.row-link__text' });
                 const before = observers.length;
                 await openAMangaAndComeBack(user);
-                // The end of the list that came back is another element, and it is watched.
                 const live = observers.filter((observer) => {
                     return !observer.disconnected && observer.target !== null;
                 });

@@ -5,9 +5,7 @@ interface MangaCoverProps {
     url: string | null;
 }
 
-// The cover of a manga, served by the manga server. When there is none, or it does not load, there is a plain block.
 export function MangaCover({ url }: MangaCoverProps) {
-    // The address that failed to load, if any: a cover that does not load is shown like one that is not there.
     const [failedUrl, setFailedUrl] = useState<string | null>(null);
     const reveal = useImageReveal();
     if (url !== null && url !== failedUrl) {

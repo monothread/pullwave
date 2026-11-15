@@ -10,9 +10,6 @@ interface ErrorDetailsDialogProps {
     onClose: () => void;
 }
 
-// A window over the screen with everything known about an error. It has a button that copies the text of the error; copying does not close
-// it, the user closes it (the button, Esc, or a click outside the window). It is put in the body of the page, not where the error is: inside
-// a row it took the text style of the row.
 export function ErrorDetailsDialog({ report, onClose }: ErrorDetailsDialogProps) {
     const t = useTranslator();
     const language = useAppLanguage();

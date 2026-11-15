@@ -1,7 +1,6 @@
 import { useTranslator } from '../i18n/useTranslator';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
 
-// The button of the top bar that turns the sounds of the navigation on and off.
 export function SoundToggle() {
     const t = useTranslator();
     const sounds = useUiPrefsStore((state) => {

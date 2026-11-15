@@ -79,7 +79,6 @@ describe('continueWatching', () => {
 });
 
 describe('continueReading', () => {
-    // One Piece in the library: chapters 1 to 3 (remote ids 11 to 13), listed out of order.
     const chapter = (number: number, overrides: Parameters<typeof makeChapterRecord>[0] = {}) => {
         return makeChapterRecord({ id: number, remoteId: 10 + number, number, name: `Chapter ${String(number)}`, pageCount: 10 + number, ...overrides });
     };

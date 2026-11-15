@@ -14,8 +14,6 @@ function asProgramId(value: unknown): ProgramId | null {
 
 const INVALID = 'The program is not one the app knows';
 
-// What the screens ask about the programs the app downloads (see ProgramTools): how each one stands, TRY AGAIN and REINSTALL, the latest
-// versions, and moving to the latest or back to the version of the app.
 export function registerProgramHandlers(ipcMain: IpcMainLike, deps: ProgramHandlerDependencies): void {
     const { programs } = deps;
     ipcMain.handle(IPC.programsStatus, (): ProgramsStatus => {

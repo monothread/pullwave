@@ -30,7 +30,6 @@ interface Calls {
     verified: Array<[string, string]>;
 }
 
-// Answers by address; an address that is not in the table fails like a request that does not go through.
 function deps(table: Record<string, string | Buffer | number>, options: { signatureGood?: boolean } = {}): { deps: LatestDependencies; calls: Calls } {
     const calls: Calls = { texts: [], buffers: [], sizes: [], verified: [] };
     const answer = (url: string): string | Buffer | number => {

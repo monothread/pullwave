@@ -13,7 +13,6 @@ const initialManga = useMangaStore.getState();
 
 const CHECK: MangaCloudflareActivity = { id: 1, host: 'manganato.com', startedAt: 1 };
 
-// The user is in the source 123, which is being asked for something.
 function browsing(sourceId = '123', status: 'idle' | 'loading' | 'done' = 'loading'): void {
     useMangaStore.setState({ view: 'browse', browse: { ...initialManga.browse, sourceId, status } });
 }

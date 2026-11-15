@@ -26,7 +26,6 @@ import { generateEstimateFailureText, generateFailureText, providerName, speechP
 
 interface SubtitleGenerateDialogProps {
     episodeId: number;
-    // The subtitle was made and saved: the subtitles the episode has now, and the new one.
     onGenerated: (tracks: AnimeSubtitleTrack[], generated: AnimeSubtitleTrack) => void;
     onClose: () => void;
 }
@@ -38,8 +37,6 @@ interface FactsProps {
     t: Translator;
 }
 
-// What will leave the computer and where it goes: only the audio (never the video), how much of it, to which service and, when the text has to
-// be translated afterwards, to which other one.
 function SentFacts({ estimate, translating, settings, t }: FactsProps) {
     const speechModel = speechModelOf(settings.transcribeProvider, settings.transcribeModel);
     return (
@@ -72,8 +69,6 @@ function SentFacts({ estimate, translating, settings, t }: FactsProps) {
     );
 }
 
-// Before the token of the user is spent: the language spoken in the episode and the one of the subtitle, how it will be made, what leaves the
-// computer and where it goes, with the way to confirm and, once it started, to follow it step by step and to stop it.
 export function SubtitleGenerateDialog({ episodeId, onGenerated, onClose }: SubtitleGenerateDialogProps) {
     const t = useTranslator();
     const settings = useAppStore((state) => {

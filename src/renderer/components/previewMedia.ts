@@ -2,7 +2,6 @@ import Hls from 'hls.js';
 import { lowestLevelIndex } from './streamLevel';
 import type { PreviewMedia, SeekPreviewSource } from './seekPreview';
 
-// How much of the stream the preview loads past the second it shows: the segment of that second, and little more.
 export const PREVIEW_BUFFER_SECONDS = 4;
 
 function hiddenVideo(): HTMLVideoElement {
@@ -25,7 +24,6 @@ function openFile(element: HTMLVideoElement, url: string): () => void {
     };
 }
 
-// The playlist goes through hls.js, as the player's own does, at the lightest quality of the source: the preview is a small picture.
 function openPlaylist(element: HTMLVideoElement, url: string, startAt: number, onFailure: () => void): () => void {
     const hls = new Hls({ enableWorker: false, maxBufferLength: PREVIEW_BUFFER_SECONDS, maxMaxBufferLength: PREVIEW_BUFFER_SECONDS, startPosition: startAt });
     hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -47,7 +45,6 @@ function openPlaylist(element: HTMLVideoElement, url: string, startAt: number, o
     };
 }
 
-// Opens the hidden video the frames of the preview are taken from. It is muted, never played and never put in the page.
 export function openPreviewMedia(source: SeekPreviewSource, startAt: number, onFailure: () => void): PreviewMedia {
     const element = hiddenVideo();
     element.addEventListener('error', onFailure);

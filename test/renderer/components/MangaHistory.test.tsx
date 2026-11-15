@@ -192,7 +192,6 @@ describe('MangaHistory with a long list', () => {
         vi.unstubAllGlobals();
     });
 
-    // 35 mangas read today and 35 yesterday, the last read first.
     const LONG = Array.from({ length: 70 }, (_unused, index) => {
         return line({ id: index + 1, mangaRemoteId: index + 1, title: `Manga ${String(index + 1)}`, readAt: at(index < 35 ? 0 : 1, 10) - index * 1000 });
     });

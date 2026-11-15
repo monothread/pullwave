@@ -4,10 +4,6 @@ import { join } from 'node:path';
 import { isJoinLine, parsePartLine } from '@main/services/aniOutputParser';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
-// The script that runs ani-cli with its stand-ins (resources/ani-scripts/pullwave-run.sh), run for real by the shell of the system and by the
-// busybox the app installs (when the tests have it), with a fake ani-cli that calls what the test asks and fake ffmpeg and ffprobe that tell
-// how they were called.
-
 const ROOT = process.cwd();
 const RUNNER = join(ROOT, 'resources', 'ani-scripts', 'pullwave-run.sh');
 const BUSYBOX = join(ROOT, 'resources', 'bin', 'ani', 'busybox');
@@ -16,14 +12,11 @@ interface Run {
     status: number | null;
     stdout: string;
     stderr: string;
-    // Every call of the fake yt-dlp and ffmpeg, one line per argument, the calls apart by a blank line.
     ytdlpCalls: string[][];
     ffmpegCalls: string[][];
     files: string[];
 }
 
-// A fake program that writes how it was called, makes the file it was asked to make (the argument after -o for yt-dlp, the last one for
-// ffmpeg) and fails when an argument has the word given in it.
 function fakeProgram(directory: string, name: string, makes: 'after-o' | 'last', failWord: string): void {
     const file = join(directory, name);
     const target = makes === 'after-o' ? 'prev=""; for a; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done' : makes === 'last' ? 'for a; do out="$a"; done' : 'out=""';

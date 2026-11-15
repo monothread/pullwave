@@ -43,7 +43,6 @@ describe('useWindowMinimized', () => {
         expect(mock.api.onWindowMinimized).toHaveBeenCalledTimes(1);
         expect(document.documentElement.hasAttribute(MINIMIZED_ATTRIBUTE)).toBe(false);
         expect(loopPause.calls).toEqual([]);
-        // The animations that start in the page are watched from the start, once.
         expect(loopPause.watching).toBe(1);
         expect(loopPause.stopped).toBe(0);
     });

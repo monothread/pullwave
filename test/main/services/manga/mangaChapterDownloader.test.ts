@@ -26,7 +26,6 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-// What the downloader gives when it fails: the code and the text, and everything it knows about the failure.
 function failed(code: MangaErrorCode, message: string, operation: string, known: Partial<ErrorDetails>) {
     return {
         status: 'error',
@@ -200,7 +199,6 @@ describe('MangaChapterDownloader into a CBZ', () => {
             return entry.name;
         })).toEqual(['001.jpg', '002.jpg', '003.jpg', 'ComicInfo.xml']);
         expect(context.progress).toEqual([[1, 3], [2, 3], [3, 3]]);
-        // The page that was there already brought nothing now: only the two asked for have bytes.
         expect(context.fetchedBytes).toEqual([JPEG.byteLength, JPEG.byteLength]);
     });
 });
@@ -224,11 +222,9 @@ describe('MangaChapterDownloader a server that does not answer', () => {
         const context = setup({ pages: MANY, fetchImage: failing([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) });
         const result = await context.downloader.download(context.options()).result;
         expect(result).toEqual(pageFailed('REQUEST_FAILED', 'The server answered 503 for a page', { httpStatus: 503, url: MANY[6] }));
-        // Two pages that arrived, then five pages with their three tries each; none of the other five was asked for.
         expect(context.fetched).toHaveLength(2 + 5 * (1 + PAGE_RETRY_DELAYS_MS.length));
         expect(context.fetched.at(-1)).toBe(MANY[6]);
         expect(context.progress).toEqual([[1, 12], [2, 12], [3, 12], [4, 12], [5, 12], [6, 12]]);
-        // The page that ended the chapter was asked for too, and brought nothing.
         expect(context.fetchedBytes).toEqual([JPEG.byteLength, JPEG.byteLength, 0, 0, 0, 0, 0]);
         expect(readdirSync(`${context.outputPath}.part`).sort()).toEqual(['001.jpg', '002.jpg']);
         expect(existsSync(context.outputPath)).toBe(false);
@@ -535,13 +531,11 @@ describe('MangaChapterDownloader downloading again the missing pages', () => {
     interface Repairing {
         context: Setup;
         failing: Set<string>;
-        // Whether the pages in `failing` fail because the server does not answer (otherwise because they are not images).
         serverDown: { value: boolean };
         repairOptions: (overrides?: Partial<ChapterRepairOptions>) => ChapterRepairOptions;
         fetchedBefore: () => number;
     }
 
-    // A chapter that was downloaded while the pages in `failing` failed; those pages answer from then on only when `failing` is emptied.
     async function incompleteChapter(failingUrls: string[], format: 'cbz' | 'folder' = 'cbz', pages: string[] = PAGES, serverDownAtFirst = true): Promise<Repairing> {
         const failing = new Set(failingUrls);
         const serverDown = { value: serverDownAtFirst };
@@ -591,7 +585,6 @@ describe('MangaChapterDownloader downloading again the missing pages', () => {
         const result = await context.downloader.repair(repairOptions());
         expect(result).toEqual({ status: 'done', value: { filePath: context.outputPath, sizeBytes: readFileSync(context.outputPath).length, pageCount: 3, missingPages: [] } });
         expect(context.fetched.slice(fetchedBefore())).toEqual([PAGES[1]]);
-        // Only the first download told the bytes of its pages; the repair has no one to tell them to.
         expect(context.fetchedBytes).toEqual([PNG.byteLength, 0, PNG.byteLength]);
         const entries = readZipEntries(readFileSync(context.outputPath));
         expect(entries.map((entry) => {

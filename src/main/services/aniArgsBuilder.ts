@@ -1,16 +1,11 @@
-// Builds the arguments for ani-cli. Whatever ends up in them comes from the user or from a website, and ani-cli reads
-// any word that looks like a flag as one (-d, -U, -D delete the history...), so every value is checked first.
-
 const EPISODE_PATTERN = /^\d+(\.\d+)?$/;
 const QUALITY_PATTERN = /^(best|worst|\d{3,4}p?)$/i;
-// Letters, digits and a little punctuation: ani-cli pastes the query into the address it searches, unencoded.
 const QUERY_FORBIDDEN = /[^\p{L}\p{N} '.:!,-]/gu;
 
 export const DEFAULT_ANIME_QUALITY = 'best';
 
 export interface AniDownloadRequest {
     query: string;
-    // Position of the anime in the results of a search for `query`.
     index: number;
     episode: string;
     quality: string;
@@ -53,7 +48,6 @@ export function buildDownloadArgs(request: AniDownloadRequest): string[] {
     return ['-d', '-S', String(request.index), '-e', request.episode, '-q', request.quality, sanitizeQuery(request.query)];
 }
 
-// Null when the request is fine, otherwise what is wrong with it.
 export function validateDownloadRequest(request: AniDownloadRequest): string | null {
     if (sanitizeQuery(request.query).length === 0) {
         return 'The anime name is empty.';

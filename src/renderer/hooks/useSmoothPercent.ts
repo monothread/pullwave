@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
-// How long the bar takes to cover most of the way to a new value (an exponential approach: it starts fast and settles gently).
 export const SMOOTH_MS = 280;
-// Closer than this to the target, the bar is there.
 const SETTLED = 0.05;
 
-// A percentage that glides to the value it is given instead of jumping to it, frame by frame (a download reports a page at a time, so its
-// bar would otherwise grow in steps). It starts at the value it first gets, and goes straight back down when the value goes down (a new
-// try). It glides whatever the system says about motion (D-130).
 export function useSmoothPercent(target: number): number {
     const [shown, setShown] = useState(target);
     const current = useRef(target);

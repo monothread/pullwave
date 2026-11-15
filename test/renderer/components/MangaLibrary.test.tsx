@@ -48,7 +48,6 @@ describe('MangaLibrary', () => {
         render(<MangaLibrary />);
         const entries = screen.getAllByTestId('manga-entry');
         expect(entries).toHaveLength(2);
-        // Alphabetical, whatever the order the library comes in.
         expect(within(entries[0]!).getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
         expect(within(entries[0]!).getByText('0 of 0 downloaded')).toBeInTheDocument();
         expect(within(entries[0]!).queryByRole('button', { name: 'DOWNLOAD SEASON' })).not.toBeInTheDocument();
@@ -84,7 +83,6 @@ describe('MangaLibrary', () => {
         const footer = card.querySelector('.cover-card__footer')!;
         expect(footer.lastElementChild).toHaveClass('job__actions', 'library__footer');
         expect(within(footer as HTMLElement).getByRole('button', { name: 'REMOVE: One Piece' })).toBeInTheDocument();
-        // Nothing to say about seasons or new chapters for a manga on its own with no new chapter: no badges.
         expect(footer.querySelector('.job__badges')).toBeNull();
     });
 
@@ -162,7 +160,6 @@ describe('MangaLibrary series, groups and search', () => {
     const FRIEREN = makeLibraryManga([makeChapterRecord({ id: 20, status: 'done' })], { id: 20, remoteId: 21, title: 'Frieren', series: 'Sousou no Frieren', season: 1, groupIds: [] });
     const FRIEREN_2 = makeLibraryManga([makeChapterRecord({ id: 21, status: 'idle' })], { id: 21, remoteId: 22, title: 'Frieren 2', series: 'Sousou no Frieren', season: 2, groupIds: [] });
     const BLEACH = makeLibraryManga([], { id: 22, remoteId: 23, title: 'Bleach', groupIds: [] });
-    // The same mangas, in groups.
     const FRIEREN_IN_MANGAS = { ...FRIEREN, groupIds: [1] };
     const FRIEREN_2_IN_MANGAS = { ...FRIEREN_2, groupIds: [1] };
     const BLEACH_IN_MANHWAS = { ...BLEACH, groupIds: [2] };
@@ -235,7 +232,6 @@ describe('MangaLibrary series, groups and search', () => {
         const user = userEvent.setup();
         render(<MangaLibrary />);
         const field = screen.getByLabelText('Search the library');
-        // Ctrl+F goes to this field.
         expect(field).toHaveAttribute('data-search-field', '');
         await user.type(field, 'SOUSOU');
         expect(screen.queryByTestId('manga-entry')).not.toBeInTheDocument();
@@ -264,7 +260,6 @@ describe('MangaLibrary series, groups and search', () => {
                 })
         ).toEqual(['ALL', 'Mangas', 'Manhwas']);
         expect(within(nav).getByRole('button', { name: 'ALL' })).toHaveAttribute('aria-current', 'page');
-        // A manga that is in a group is not in the tab of all.
         expect(screen.getAllByTestId('manga-entry')).toHaveLength(1);
         expect(within(screen.getByTestId('manga-entry')).getByRole('heading', { name: 'Naruto' })).toBeInTheDocument();
         expect(screen.queryByTestId('manga-series')).not.toBeInTheDocument();
@@ -562,7 +557,6 @@ describe('MangaLibrary series, groups and search', () => {
         useMangaStore.setState({ library: [FRIEREN_IN_MANGAS, FRIEREN_2_IN_MANGAS], libraryGroup: 2 });
         render(<MangaLibrary />);
         expect(screen.getByText('// NO MANGA IN THIS GROUP YET. OPEN A MANGA OR A SERIES TO PUT IT HERE.')).toBeInTheDocument();
-        // A group that is empty is not a search that found nothing: it keeps the ring of the empty screens.
         expect(screen.getByText('// NO MANGA IN THIS GROUP YET. OPEN A MANGA OR A SERIES TO PUT IT HERE.')).toHaveClass('empty');
         expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
     });
@@ -933,7 +927,6 @@ describe('MangaLibrary with a big library', () => {
         vi.unstubAllGlobals();
     });
 
-    // 70 mangas, named so that their order by name is their order here.
     const BIG = Array.from({ length: 70 }, (_unused, index) => {
         const number = String(index + 1).padStart(2, '0');
         return makeLibraryManga([], { id: 100 + index, remoteId: 100 + index, title: `Manga ${number}`, thumbnailUrl: null });

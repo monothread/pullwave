@@ -8,7 +8,6 @@ const t = createTranslator('en');
 const VIDEO: DownloadPart = { kind: 'video', percent: 100 };
 const AUDIO: DownloadPart = { kind: 'audio', percent: 34.25 };
 
-// What a row of a part shows: its classes, its name and percentage, and the classes, the accessible values and the fill of its bar.
 interface PartRow {
     className: string;
     name: string;

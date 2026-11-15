@@ -113,7 +113,6 @@ describe('App in another language', () => {
         fireEvent.click(screen.getByRole('button', { name: downloads }));
         expect(screen.getByRole('button', { name: downloads })).toHaveAttribute('aria-current', 'page');
         expect(await screen.findByText(targetLinks)).toBeInTheDocument();
-        // The history is a screen of the video downloader, not a tab of its own.
         expect(within(screen.getByRole('navigation', { name: sections })).queryByRole('button', { name: history })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: history })).toBeInTheDocument();
     });

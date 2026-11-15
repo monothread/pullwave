@@ -8,11 +8,8 @@ export interface ToolUpdatesHelper {
 }
 
 export interface ToolUpdatesDependencies {
-    // The file that keeps which version of the helper is used from the next time the app opens.
     flaresolverrFile: string;
-    // The helper for Cloudflare when the app runs one (null: none, or the user runs their own).
     helper: () => ToolUpdatesHelper | null;
-    // Called once the helper runs another version (the server that runs is told to use it).
     helperChanged: () => Promise<void>;
     fetchImpl?: typeof fetch;
 }
@@ -21,9 +18,6 @@ function messageOf(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-// Looks for a newer helper for Cloudflare (the latest release of FlareSolverr) and moves to it when the user asks: it is switched at once. The
-// manga server is not updated from the app: it stays at the version the app ships with (see suwayomiRelease.ts), which a release of the app
-// moves after it was tried.
 export class MangaToolUpdates {
     private updating = false;
 

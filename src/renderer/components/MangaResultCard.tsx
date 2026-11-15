@@ -9,12 +9,9 @@ interface MangaResultCardProps {
     item: MangaSummary;
     library: readonly LibraryManga[];
     onOpen: (item: MangaSummary) => void;
-    // The card is drawn again after it left the screen with its block (see WindowedList): it shows as it was, with no entrance.
     back?: boolean;
 }
 
-// A manga found in a source: its cover and title (a click opens it), and a mark when it is in the library, or when the same title is there
-// from another source.
 export function MangaResultCard({ item, library, onOpen, back = false }: MangaResultCardProps) {
     const t = useTranslator();
     const saved = libraryEntry(library, item.sourceId, item.remoteId);

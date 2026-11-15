@@ -1,16 +1,11 @@
 import type { AniError, AnimeScheduleEntry, AnimeScheduleRequest, AnimeScheduleResponse } from '@shared/anime';
 
-// The episodes that air in a stretch of time, as AniList lists them (its GraphQL API needs no key).
-
 export const ANILIST_URL = 'https://graphql.anilist.co';
 export const SCHEDULE_PAGE_SIZE = 50;
-// A week has a few hundred episodes at most: this only keeps a broken answer (that always says there is another page) from looping.
 export const SCHEDULE_MAX_PAGES = 20;
 export const SCHEDULE_TIMEOUT_MS = 15000;
-// What is a series of episodes: films and specials are left out.
 export const SCHEDULE_FORMATS: readonly string[] = ['TV', 'TV_SHORT', 'ONA', 'OVA'];
 export const SCHEDULE_COUNTRY = 'JP';
-// The names an anime is looked for by, besides its own: the first ones are the most likely to be the one the source uses.
 export const MAX_SYNONYMS = 4;
 
 export const SCHEDULE_QUERY = `query ($start: Int!, $end: Int!, $page: Int!, $perPage: Int!) {
@@ -32,10 +27,8 @@ export const SCHEDULE_QUERY = `query ($start: Int!, $end: Int!, $page: Int!, $pe
   }
 }`;
 
-// How long what AniList said is trusted: a day.
 export const SCHEDULE_CACHE_MS = 24 * 60 * 60 * 1000;
 
-// Where the listings are kept (see AnimeDb): the episodes of a stretch if one that covers it is still fresh, and a new listing.
 export interface ScheduleCache {
     find: (from: number, to: number) => AnimeScheduleEntry[] | null;
     save: (from: number, to: number, entries: AnimeScheduleEntry[]) => void;
@@ -47,7 +40,6 @@ export interface ScheduleFetchOptions {
     timeoutMs?: number;
 }
 
-// The answer could not be had: the network failed, AniList refused, or what came back was not what was asked for.
 export class ScheduleFetchError extends Error {}
 
 type Json = Record<string, unknown>;
@@ -76,7 +68,6 @@ function uniqueNames(names: ReadonlyArray<string | null>): string[] {
     return unique;
 }
 
-// One item of `airingSchedules`; null when it is not an episode of a series made in Japan (or it is not shaped as expected).
 export function parseScheduleEntry(raw: unknown): AnimeScheduleEntry | null {
     const item = asRecord(raw);
     const media = asRecord(item?.media);
@@ -99,7 +90,6 @@ export function parseScheduleEntry(raw: unknown): AnimeScheduleEntry | null {
             return synonym !== null;
         })
         .slice(0, MAX_SYNONYMS);
-    // The title shown is the english one when there is one, and it is the first name the search tries.
     const title = english ?? romaji;
     const names = uniqueNames([title, romaji, english, ...synonyms]);
     if (title === null) {
@@ -151,7 +141,6 @@ async function fetchPage(startOfDay: number, endOfDay: number, page: number, opt
     return parsePage(body);
 }
 
-// The episodes that air between the two moments (seconds since the epoch, both left out), in the order they air.
 export async function fetchAiringSchedule(startOfDay: number, endOfDay: number, options: ScheduleFetchOptions = {}): Promise<AnimeScheduleEntry[]> {
     const episodes: AnimeScheduleEntry[] = [];
     for (let page = 1; page <= SCHEDULE_MAX_PAGES; page += 1) {
@@ -166,8 +155,6 @@ export async function fetchAiringSchedule(startOfDay: number, endOfDay: number, 
 
 const FETCH_FAILED: AniError['code'] = 'NETWORK';
 
-// The episodes that air in the stretch of the request (its first moment included), in the order they air, or what went wrong. What was
-// listed in the last day is answered from the cache; `refresh` asks AniList again (and keeps the new answer).
 export async function loadSchedule(request: AnimeScheduleRequest, options: ScheduleFetchOptions & { cache?: ScheduleCache } = {}): Promise<AnimeScheduleResponse> {
     if (!request.refresh) {
         const cached = options.cache?.find(request.from, request.to) ?? null;
@@ -176,7 +163,6 @@ export async function loadSchedule(request: AnimeScheduleRequest, options: Sched
         }
     }
     try {
-        // The limits of AniList are exclusive: the first moment of the stretch is asked from one second before.
         const entries = await fetchAiringSchedule(request.from - 1, request.to, options);
         options.cache?.save(request.from, request.to, entries);
         return { ok: true, entries };

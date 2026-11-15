@@ -18,7 +18,6 @@ const MAIN_SOURCE = readFileSync(resolve(__dirname, '../../../src/renderer/main.
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 const DOCK = '(max-width: 760px)';
 
-// Boxes that can hold a window fixed to the screen (a card, a page, a panel): no transform may stay on them.
 const BOXES = ['.app__main', '.home', '.hero', '.spotlight', '.spotlight__slide', '.section-cards', '.section-card', '.library-controls', '.series.detail', '.manga__head.detail-hero', '.download-hero', '.cover-grid > .cover-card', '.sidenav'];
 
 function keyframesNamed(name: string): boolean {

@@ -2,14 +2,10 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 
 interface MangaGroupChipsProps {
-    // The mangas the chips are about: one manga, or every season of a series.
     mangaIds: readonly number[];
-    // What the mangas are called, to tell what the chips are about.
     title: string;
 }
 
-// The groups of the library as buttons that put the mangas in them or take them out: a group is on when all the mangas are in it. A group
-// that has only some of them (some seasons of a series) is half on, and a click puts the rest in.
 export function MangaGroupChips({ mangaIds, title }: MangaGroupChipsProps) {
     const t = useTranslator();
     const groups = useMangaStore((state) => {

@@ -1,17 +1,8 @@
-// ani-cli reads only the first page of the search of the source (about thirty results); the ones after it never show. This lets the search go
-// on to the next pages: with PULLWAVE_SEARCH_MIN=N in the environment it reads page after page until it has N results, until a page has no
-// result, or until there is no page after it (at most MAX_SEARCH_PAGES, whatever N is). The results of every page are one list, so the
-// position of a result (which is what `-S` takes) is the same in the search that lists them and in the ones that open one of them. Without the
-// variable it reads the first page only, as before. When there is a page after the last one it read, it says so on stderr
-// (SEARCH_MORE_MARKER), which is how the app knows the list can grow.
 export const SEARCH_MIN_VARIABLE = 'PULLWAVE_SEARCH_MIN';
 export const SEARCH_MORE_MARKER = 'PULLWAVE_SEARCH_MORE';
-// A search that matches almost everything ("a") never makes ani-cli read more pages than this.
 export const MAX_SEARCH_PAGES = 20;
-// What the code the change adds reads from the script: each has to be set by it (see aniCompatibility.ts).
 export const SEARCH_PAGES_NEEDS = ['hianime_curl', 'search_api', 'curl_exe', 'die'] as const;
 
-// The search of the script as ani-cli has it: the part the change looks for.
 export const ORIGINAL_SEARCH = `hianime_search() {
     #shellcheck disable=SC2059
     _page="$(hianime_curl "$(printf "$search_api" "$1")")" || return 1
@@ -71,7 +62,6 @@ hianime_search() {
     done
 }`;
 
-// The script with the search that goes on to the next pages, or null when this is not a version it knows how to change.
 export function patchSearchPages(source: string): string | null {
     return source.includes(ORIGINAL_SEARCH) ? source.replace(ORIGINAL_SEARCH, () => {
         return PATCHED_SEARCH;

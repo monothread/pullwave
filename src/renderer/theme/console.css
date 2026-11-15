@@ -1,14 +1,3 @@
-/* The console layer: the look of the interface of a console on top of the themes. It is loaded after cyberpunk.css, themes.css and
-   responsive.css and only uses their variables, so every theme (neon or flat, dark or light) keeps its colours, its font and its style; this
-   file gives them the same shapes, the big navigation at the top, the focus that is seen from the sofa and the animations.
-   Rules that it keeps on purpose:
-   - Sizes of the controls are not changed (the height of a field and of the buttons beside it is --control-height): only colours, corners,
-     shadows and movement.
-   - Boxes that can hold a window (a card, a panel, a page) never get a transform that stays: a transform would make a fixed window inside
-     them be placed in the box instead of the screen. Only the controls (buttons, tabs, chips, covers) move.
-   - The animations are always on, whatever the system says about motion (D-130). */
-
-/* --- Tokens --------------------------------------------------------------------------------------------------------------------- */
 :root {
     --bp-radius: 14px;
     --bp-radius-small: 10px;
@@ -28,14 +17,12 @@
     --bp-sheen: rgba(255, 255, 255, 0.14);
 }
 
-/* The neon themes keep their cut corners: the boxes are only barely rounded. */
 :root[data-theme-style='neon'] {
     --bp-radius: 3px;
     --bp-radius-small: 2px;
     --bp-aurora-opacity: 0.8;
 }
 
-/* The light themes have soft shadows and a pale aurora. */
 :root[data-theme='light'],
 :root[data-theme='sakura'],
 :root[data-theme='neon-tokyo-light'] {
@@ -45,7 +32,6 @@
     --bp-sheen: rgba(255, 255, 255, 0.5);
 }
 
-/* High contrast and AMOLED keep a plain black screen: no aurora, no soft shadows, and a focus that cannot be missed. */
 :root[data-theme='high-contrast'],
 :root[data-theme='amoled'] {
     --bp-aurora-opacity: 0;
@@ -57,9 +43,6 @@
     --bp-ring: 0 0 0 2px var(--text);
 }
 
-/* --- The aurora behind the screen ------------------------------------------------------------------------------------------------
-   Big soft lights in the colours of the theme that drift slowly, under everything (the background of the body is still the one of the
-   theme, and the scanlines of the neon themes stay in body::after, above). */
 body::before {
     content: '';
     position: fixed;
@@ -80,7 +63,6 @@ body::before {
     100% { transform: translate3d(-3%, 4%, 0) rotate(-4deg); }
 }
 
-/* --- The top bar ----------------------------------------------------------------------------------------------------------------- */
 .app__header {
     padding: 4px 0 2px;
     min-height: 48px;
@@ -93,7 +75,6 @@ body::before {
     min-width: 0;
 }
 
-/* The bars beside the name rise and fall like a sound wave, each a little after the one before. */
 .brand__wave {
     display: inline-flex;
     align-items: center;
@@ -129,7 +110,6 @@ body::before {
     line-height: 1.1;
 }
 
-/* The flat themes paint the name with the two colours of the theme. */
 :root[data-theme-style='flat'] .logo {
     background: var(--bp-accent-gradient);
     background-clip: text;
@@ -161,7 +141,6 @@ body::before {
     padding: 2px 10px;
 }
 
-/* The pictures of the sections (the menu of the sections is in bp-shell.css). */
 .tab__decoration {
     display: inline-flex;
     flex: none;
@@ -179,7 +158,6 @@ body::before {
     100% { transform: translateY(0) scale(1); }
 }
 
-/* The tabs of a section: the line under the active one grows from the middle too. */
 .tabs:not(.tabs--main) .tab {
     position: relative;
     transition: color 0.2s;
@@ -214,8 +192,6 @@ body::before {
     border-bottom-color: var(--magenta);
 }
 
-/* --- The page comes in when a section or a screen is shown ---------------------------------------------------------------------
-   Only the opacity: the page can hold windows that are fixed to the screen, which a transform would move into the page. */
 .app__main > * {
     animation: bp-fade-in 0.35s var(--bp-ease-out) backwards;
 }
@@ -225,7 +201,6 @@ body::before {
     to { opacity: 1; }
 }
 
-/* --- Boxes ------------------------------------------------------------------------------------------------------------------------ */
 .panel,
 .url-input,
 .job,
@@ -249,7 +224,6 @@ body::before {
     transition: border-color 0.25s, box-shadow 0.3s var(--bp-ease-out), background 0.25s;
 }
 
-/* The cards light up under the mouse (the color of their left edge, which says their state, is kept). */
 .job:hover,
 .history__item:hover {
     border-top-color: color-mix(in srgb, var(--cyan) 45%, var(--line));
@@ -262,7 +236,6 @@ body::before {
     font-weight: 700;
 }
 
-/* The settings come one after the other when the screen opens. */
 .settings > .panel {
     animation: bp-rise 0.45s var(--bp-ease-out) backwards;
 }
@@ -274,7 +247,6 @@ body::before {
 .settings > .panel:nth-of-type(6) { animation-delay: 0.2s; }
 .settings > .panel:nth-of-type(n + 7) { animation-delay: 0.24s; }
 
-/* The rows of a history and the tiles of the covers come in one after the other. */
 .history__list > .history__item,
 .cover-grid > .cover-card {
     animation: bp-rise 0.4s var(--bp-ease-out) backwards;
@@ -286,7 +258,6 @@ body::before {
 .history__list > .history__item:nth-child(5), .cover-grid > .cover-card:nth-child(5) { animation-delay: 0.12s; }
 .history__list > .history__item:nth-child(n + 6), .cover-grid > .cover-card:nth-child(n + 6) { animation-delay: 0.15s; }
 
-/* A rise that ends with no transform at all (backwards fill): the box is a normal box once it is in place. */
 @keyframes bp-rise {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: none; }
@@ -296,7 +267,6 @@ body::before {
     font-weight: 700;
 }
 
-/* --- The tiles of the covers: the library of a console ------------------------------------------------------------------------- */
 .cover-card {
     position: relative;
     border-radius: var(--bp-radius);
@@ -314,7 +284,6 @@ body::before {
     box-shadow: var(--bp-shadow-hover), 0 0 0 2px var(--cyan);
 }
 
-/* A light that sweeps over the tile when it is pointed at, inside the tile (it moves its background, not itself). */
 .cover-card::before {
     content: '';
     position: absolute;
@@ -348,7 +317,6 @@ body::before {
     box-shadow: 0 0 0 6px color-mix(in srgb, var(--bp-focus) 25%, transparent), var(--bp-shadow-hover);
 }
 
-/* --- Buttons --------------------------------------------------------------------------------------------------------------------- */
 .btn {
     transition: background 0.18s, color 0.18s, box-shadow 0.25s, border-color 0.18s, transform 0.25s var(--bp-ease-spring);
 }
@@ -357,7 +325,6 @@ body::before {
     border-radius: var(--bp-radius-small);
 }
 
-/* A press squeezes the button, which springs back when it is let go. */
 .btn:active:not(:disabled) {
     transform: scale(0.95);
     transition-duration: 0.08s;
@@ -370,7 +337,6 @@ body::before {
     box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--yellow) 80%, transparent);
 }
 
-/* A light runs over the main button of a screen every few seconds, so it is found at once. */
 .btn--primary::after {
     content: '';
     position: absolute;
@@ -386,7 +352,6 @@ body::before {
     animation: none;
 }
 
-/* --- Focus: what has it is seen from the other side of the room ----------------------------------------------------------------- */
 .btn:focus-visible,
 .tab:focus-visible,
 .episode-chip:focus-visible,
@@ -418,7 +383,6 @@ body::before {
     box-shadow: 0 0 0 1px var(--cyan), 0 0 0 5px color-mix(in srgb, var(--cyan) 18%, transparent), var(--glow);
 }
 
-/* The switches bounce into place. */
 .toggle input.switch::after {
     transition: transform 0.4s var(--bp-ease-spring), background 0.2s;
 }
@@ -427,7 +391,6 @@ body::before {
     background: color-mix(in srgb, var(--magenta) 22%, var(--panel));
 }
 
-/* --- The chips of the episodes and of the chapters --------------------------------------------------------------------------------- */
 .episode-chip {
     border-radius: var(--bp-radius-small);
     transition: border-color 0.2s, color 0.2s, background 0.2s, box-shadow 0.25s, transform 0.3s var(--bp-ease-spring);
@@ -443,7 +406,6 @@ body::before {
     transition-duration: 0.08s;
 }
 
-/* --- Bars --------------------------------------------------------------------------------------------------------------------- */
 :root[data-theme-style='flat'] .progress,
 :root[data-theme-style='flat'] .progress__bar {
     border-radius: var(--bp-radius-pill);
@@ -459,14 +421,11 @@ body::before {
     border-radius: 0;
 }
 
-/* --- A search that found nothing (D-197): the lens and its cross glow only in the neon themes ---------------------------------------------------- */
 :root[data-theme-style='flat'] .not-found {
     --not-found-lens-glow: none;
     --not-found-cross-glow: none;
 }
 
-/* --- Empty screens: a ring that breathes above the message ----------------------------------------------------------------------
-   Only on the screens themselves: inside a player, the reader or a window the message stays a plain line. */
 .empty:not(:is(.player, .reader, .modal) .empty)::before {
     content: '';
     display: block;
@@ -479,13 +438,11 @@ body::before {
     animation: bp-ping 2.4s var(--bp-ease-out) infinite;
 }
 
-/* A slow breath, never fading out: a ring that went almost away and back looked like a screen that flickers. */
 @keyframes bp-ping {
     0%, 100% { transform: scale(0.92); opacity: 1; }
     50% { transform: scale(1.08); opacity: 0.7; }
 }
 
-/* --- Notices ----------------------------------------------------------------------------------------------------------------------- */
 .toast {
     position: relative;
     backdrop-filter: blur(8px);
@@ -497,7 +454,6 @@ body::before {
     to { opacity: 1; transform: none; }
 }
 
-/* A finished download is celebrated with a small burst of sparks in the corner of its notice. */
 .toast--info::after {
     content: '';
     position: absolute;
@@ -531,7 +487,6 @@ body::before {
     to { background-position: -50% 0; }
 }
 
-/* --- Windows ------------------------------------------------------------------------------------------------------------------------ */
 .modal-backdrop {
     backdrop-filter: blur(6px);
     animation: bp-fade-in 0.25s ease-out backwards;
@@ -564,7 +519,6 @@ body::before {
     transition-duration: 0.08s;
 }
 
-/* --- Scrollbar ------------------------------------------------------------------------------------------------------------------ */
 ::-webkit-scrollbar-thumb {
     border-radius: var(--bp-radius-pill);
     background: color-mix(in srgb, var(--cyan) 35%, var(--line));
@@ -575,7 +529,6 @@ body::before {
     background: var(--cyan);
 }
 
-/* --- Less room ------------------------------------------------------------------------------------------------------------------- */
 @media (max-width: 760px) {
     .logo {
         font-size: 22px;
@@ -606,11 +559,6 @@ body::before {
 }
 
 
-/* --- Disk space ----------------------------------------------------------------------------------------------------------------- */
-/* The ring of the disk space in the settings of the anime and of the manga. The segments are drawn by the component (they grow with the
-   numbers), so only the colours, the glow and the entrance of the panel are set here. The folder of the other section is warm (red and
-   yellow of the theme), which no theme uses in its cyan and magenta; the themes whose cyan or magenta is warm too (synthwave, sakura,
-   sakura-dark, amber-city, pink-noir and cyber-gold) use their green for it. */
 .disk {
     --disk-sibling: color-mix(in srgb, var(--red) 45%, var(--yellow));
 }
@@ -652,7 +600,6 @@ body::before {
     stroke-width: 12;
 }
 
-/* Pointing at a line of the legend lights its part of the ring and dims the others (the free space dims all of them). */
 .disk__segment {
     transition: opacity 0.25s ease, stroke-width 0.25s ease;
 }
@@ -768,7 +715,6 @@ body::before {
     color: var(--muted);
 }
 
-/* What is said about the folder of the other section when it is not a part of the ring of its own, under its line. */
 .disk__note {
     grid-column: 2 / -1;
     font-size: 0.75rem;

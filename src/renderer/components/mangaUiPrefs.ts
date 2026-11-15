@@ -1,7 +1,3 @@
-// What the manga section remembers of the choices made on its screens: whether only the installed extensions are listed (the language is
-// a setting of the app, see `mangaLanguage`). It lives in the storage of the window, which can be empty or refuse to be read: the section
-// then starts from its defaults.
-
 export interface MangaUiPrefs {
     onlyInstalled: boolean;
 }
@@ -21,7 +17,6 @@ export function loadMangaUiPrefs(): MangaUiPrefs {
     }
 }
 
-// Keeps the choices that were given; the others stay as they were.
 export function saveMangaUiPrefs(changes: Partial<MangaUiPrefs>): void {
     try {
         window.localStorage.setItem(MANGA_UI_PREFS_KEY, JSON.stringify({ ...loadMangaUiPrefs(), ...changes }));

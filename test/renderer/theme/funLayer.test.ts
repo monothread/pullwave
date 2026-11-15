@@ -51,7 +51,6 @@ describe('bp-fun.css: the rules of the project', () => {
     it('keeps every animation on whatever the system says about motion: no rule for less motion (D-130)', () => {
         expect(sheet.text).not.toContain('prefers-reduced-motion');
         expect(sheet.rules.filter((rule) => { return rule.media?.includes('prefers-reduced-motion') === true; })).toEqual([]);
-        // The sheet has no rule of a media query at all.
         expect(
             sheet.rules.filter((rule) => { return rule.media !== null; }).map((rule) => { return rule.media; })
         ).toEqual([]);
@@ -152,13 +151,11 @@ describe('bp-fun.css: the bars and the notices', () => {
 
     it('has no comet on the timeline of the player, which would stick out of it at its end, and has it on the bar of the reader', () => {
         expect(styleOf(sheet, ".player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after")).toEqual({ display: 'none' });
-        // The rule of the timeline comes after the rule of the comet, with more weight, so it wins.
         const selectors = sheet.rules.map((rule) => {
             return rule.selector;
         });
         const comet = selectors.indexOf(".progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after");
         expect(selectors.indexOf(".player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after")).toBeGreaterThan(comet);
-        // Nothing hides the head of the bar of the reader.
         expect(
             selectors.filter((selector) => {
                 return selector.includes('reader__progress');
@@ -167,7 +164,6 @@ describe('bp-fun.css: the bars and the notices', () => {
     });
 
     it('flashes the bar of a download that is done and stamps its badge', () => {
-        // The flash comes on top of the pulses of the bar, which go on.
         expect(styleOf(sheet, '.job--done .progress')).toEqual({ animation: 'bp-bar-flash 0.8s ease-out, bar-pulse 1.6s linear infinite, bar-pulse-count 19.2s linear infinite' });
         expect(styleOf(sheet, '.badge--done')).toEqual({ animation: 'bp-stamp 0.55s var(--bp-ease-spring) backwards' });
     });
@@ -327,7 +323,6 @@ describe('bp-fun.css: the player', () => {
 
     it('draws what is loaded as a lighter stretch under the part watched, which the mouse goes through', () => {
         expect(styleOf(sheet, '.player__timeline .progress')).toEqual({ position: 'relative' });
-        // From the top to the bottom of the track, so it fills its whole height.
         expect(styleOf(sheet, '.player__buffered')).toEqual({
             position: 'absolute',
             top: '0',
@@ -402,7 +397,6 @@ describe('bp-fun.css: the reader', () => {
             'animation-direction': 'normal, alternate',
             'animation-timing-function': 'linear, ease-in-out'
         });
-        // The shine is a filter, like the neon of the bar: it keeps the neon in both of its ends.
         expect(keyframesOf(sheet, 'bp-zone-full')?.body.replace(/\s+/g, ' ').trim()).toBe('from { filter: brightness(1) var(--bar-neon); } to { filter: brightness(1.5) var(--bar-neon); }');
     });
 

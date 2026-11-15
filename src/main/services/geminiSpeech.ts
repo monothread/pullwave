@@ -3,22 +3,17 @@ import { errorOf, failureOf, type LlmFetch } from './llmProviders';
 import type { SpeechTask } from './speechProviders';
 import { formatVttTime } from './vttCues';
 
-// A part of the audio is a few megabytes and the model writes what is said in it, which takes a while.
 const REQUEST_TIMEOUT_MS = 300_000;
 const AUDIO_TYPE = 'audio/mp3';
 
 export interface GeminiSpeechRequest {
-    // Empty to use the address of Gemini.
     baseUrl: string;
     model: string;
     token: string;
-    // Writes what is said in the language it is said (`transcribe`) or in the language that is wanted (`translate`).
     task: SpeechTask;
-    // The language that is spoken and the language of the subtitle, by name ("Japanese", "Portuguese (Brazil)").
     audioLanguage: string;
     language: string;
     audio: Uint8Array;
-    // Aborted when the user cancels.
     signal?: AbortSignal;
     timeoutMs?: number;
 }
@@ -29,8 +24,6 @@ interface Segment {
     text: string;
 }
 
-// What the model is asked: the subtitle of the audio as a list of lines with their times, in the language that is wanted. The times are asked in
-// seconds from the start of the part, since that is what the parts are put together with.
 export function promptFor(task: SpeechTask, audioLanguage: string, language: string): string {
     const writing = task === 'translate' ? `translated into ${language}` : `in ${audioLanguage}, the language it is said in`;
     return [
@@ -47,7 +40,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
 }
 
-// The text the model answered with: the texts of the parts of its first answer, put together.
 function answerText(body: unknown): string | null {
     if (!isRecord(body) || !Array.isArray(body.candidates) || !isRecord(body.candidates[0]) || !isRecord(body.candidates[0].content)) {
         return null;
@@ -66,7 +58,6 @@ function answerText(body: unknown): string | null {
     return texts.length > 0 ? texts.join('') : null;
 }
 
-// The lines of the answer, or null when it is not a list of lines with times (the model can wrap it in a code fence).
 export function parseSegments(answer: string): Segment[] | null {
     const unfenced = answer.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     let parsed: unknown;
@@ -101,8 +92,6 @@ export function segmentsToVtt(segments: readonly Segment[]): string {
     return ['WEBVTT\n', ...cues].join('\n');
 }
 
-// Asks Gemini (`POST <address>/models/<model>:generateContent`, with the audio inline and the instructions as text) for the subtitle of a part
-// of the audio, and gives it as WebVTT with the times from the start of that part. Never throws: what went wrong comes back as an error.
 export async function transcribeWithGemini(request: GeminiSpeechRequest, fetchImpl: LlmFetch = fetch): Promise<LlmCompletionResult> {
     const base = (request.baseUrl.length > 0 ? request.baseUrl : SPEECH_PROVIDERS.gemini.defaultBaseUrl).replace(/\/+$/, '');
     const timeout = AbortSignal.timeout(request.timeoutMs ?? REQUEST_TIMEOUT_MS);

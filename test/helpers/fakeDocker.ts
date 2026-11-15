@@ -1,13 +1,11 @@
 import type { ContainerLogFollower, DockerResult, DockerRunner } from '@main/services/tools/flaresolverrDocker';
 
 export interface FakeDockerOptions {
-    // `docker` cannot be run, or its daemon does not answer.
     dockerMissing?: boolean;
     imagePresent?: boolean;
     pullFails?: boolean;
     runFails?: boolean;
     containerId?: string;
-    // What `docker pull` writes, line by line (the pull of two layers when not given).
     pullLines?: readonly string[];
 }
 
@@ -27,13 +25,11 @@ function result(code: number | null, stdout = '', stderr = ''): Promise<DockerRe
 export interface FakeDocker {
     runner: DockerRunner;
     calls: string[][];
-    // Follows the logs of a container without running docker: it keeps the containers it was asked to follow, and the ones it stopped.
     follower: ContainerLogFollower;
     followed: string[];
     unfollowed: string[];
 }
 
-// A `docker` that answers the way the real one does for the commands the app uses, and keeps every call.
 export function fakeDocker(options: FakeDockerOptions = {}): FakeDocker {
     const calls: string[][] = [];
     const followed: string[] = [];

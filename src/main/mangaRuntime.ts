@@ -31,29 +31,18 @@ import { ToolInstaller, type ToolInstallerDependencies } from './services/tools/
 export interface MangaRuntimeOptions {
     platform: NodeJS.Platform;
     arch: string;
-    // userData: the library lives in <dataDir>/manga.
     dataDir: string;
     defaultDownloadDir: string;
     getSettings: () => Settings;
     send: (channel: string, payload?: unknown) => void;
-    // Opens a folder in the file manager of the system (the tests replace it).
     openFolder: (path: string) => void;
-    // When the first look for new chapters is made after the app opens, and how often after that, when not the usual (the end-to-end tests).
     checkTimes?: { firstMs: number; everyMs: number };
-    // Opens an address in the browser of the system (the tests replace it).
     openSite?: (url: string, browser: SiteBrowser) => void;
-    // Asks the user for the folder the mangas are migrated to, starting at the given folder; null when they gave up (the tests replace it).
     chooseMigrationFolder?: (startAt: string) => Promise<string | null>;
-    // Saves the folder the mangas are in now in the settings (once a migration has moved them).
     saveMangaDirectory?: (directory: string) => void;
-    // How the files are copied and removed by a migration (the tests replace it).
     migrationFiles?: MangaMigrationFileSystem;
-    // A server that is already running: nothing is downloaded and nothing is started (used by the end-to-end tests).
     externalBaseUrl?: string | null;
-    // The address that stands in for the services of covers asked when the source gives none (used by the end-to-end tests; see
-    // FallbackOptions).
     coverFallbackUrl?: string;
-    // How the program is downloaded and how the server is started (the tests replace them).
     toolDependencies?: Partial<ToolInstallerDependencies>;
     serverDependencies?: Partial<SuwayomiServerDependencies>;
     helperDependencies?: FlareSolverrDockerDependencies;
@@ -65,21 +54,14 @@ export interface MangaRuntime {
     queue: MangaDownloadQueue;
     db: MangaDb;
     handlers: MangaHandlerDependencies;
-    // Looks for new chapters in the mangas of the library, once an hour.
     checker: MangaUpdateChecker;
-    // Looks for newer versions of the server and of the helper and moves to them.
     updates: MangaToolUpdates;
-    // Serves the pages of the chapters of the library to the screen (registered for the scheme of the pages).
     pageHandler: (request: Request) => Promise<Response>;
-    // Downloads the program in the background when it is not there (done when the app opens).
     prepare: () => void;
-    // Whether the server or the container of the helper is up, which the app ends before it quits.
     hasProcessesToEnd: () => boolean;
-    // Ends the downloads and the server (done when the app closes).
     shutdown: () => Promise<void>;
 }
 
-// The pages of a chapter are made by the app, so only what it made is deleted: a CBZ file, or a folder that has the ComicInfo.
 function removeChapterPath(path: string): void {
     let stats;
     try {
@@ -91,7 +73,6 @@ function removeChapterPath(path: string): void {
     const isOwnFolder = stats.isDirectory() && existsSync(join(path, COMIC_INFO_FILE));
     if (isArchive || isOwnFolder) {
         rmSync(path, { recursive: true, force: true });
-        // The folder of the manga goes too when nothing else is in it.
         try {
             if (readdirSync(dirname(path)).length === 0) {
                 rmdirSync(dirname(path));
@@ -102,7 +83,6 @@ function removeChapterPath(path: string): void {
     }
 }
 
-// How many pages are complete in the folder of a chapter being downloaded (0 when the folder cannot be read).
 function countCompletePages(workDirectory: string): number {
     try {
         return readdirSync(workDirectory).filter(isCompletePage).length;
@@ -111,8 +91,6 @@ function countCompletePages(workDirectory: string): number {
     }
 }
 
-// Removes what an earlier version of the app kept of an update of the server the user made (and the half-written copy an interrupted save left).
-// It is only a cleanup: a file that cannot be removed (no permission, in use, a folder of that name) is left, and the section starts anyway.
 export function forgetSelectedServer(toolsDirectory: string, remove: (path: string) => void = (path) => {
     rmSync(path, { force: true });
 }): void {
@@ -125,20 +103,16 @@ export function forgetSelectedServer(toolsDirectory: string, remove: (path: stri
     });
 }
 
-// Wires the manga section, or null where it does not exist.
 export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime | null {
     const external = options.externalBaseUrl ?? null;
     if (!isMangaSupported(options.platform, options.arch) && external === null) {
         return null;
     }
     const root = join(options.dataDir, 'manga');
-    // The server is always the release the app ships with: it is not updated from the app. What an earlier version of the app kept of an
-    // update the user made is forgotten (the folder of that release goes once the one of the app is installed, see `prepare`).
     forgetSelectedServer(join(root, 'tools'));
     const flaresolverrFile = join(root, 'tools', 'flaresolverr-selected.json');
     const spec = suwayomiSpec(options.platform, options.arch);
     const db = new MangaDb(join(root, 'manga.db'));
-    // What was going on when the app last closed did not finish.
     db.failInterrupted();
     const installer = new ToolInstaller({
         rootDirectory: join(root, 'tools'),
@@ -147,9 +121,6 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         ...options.toolDependencies
     });
-    // FlareSolverr gets the server past the check of Cloudflare that some sites have. It runs in Docker (nothing to install besides Docker),
-    // its image is pulled when the app opens and the container is started when the server starts; without it those sites answer that the
-    // bypass is disabled. The user can give the address of a FlareSolverr of their own instead.
     const helper =
         isMangaSupported(options.platform, options.arch) && external === null
             ? new FlareSolverrDocker({
@@ -163,7 +134,6 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
     const externalHelper = (): string => {
         return options.getSettings().mangaFlaresolverrUrl;
     };
-    // The server reaches FlareSolverr through a monitor, which tells the screen when a check of Cloudflare is going on.
     const monitor =
         helper === null
             ? null
@@ -180,11 +150,9 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         if (helper === null || monitor === null) {
             return null;
         }
-        // The helper is not installed by itself: it is used when the user installed it, or gave the address of one of their own.
         if (externalHelper().length === 0 && !options.getSettings().mangaFlaresolverrEnabled) {
             return null;
         }
-        // The container is started first, so one that cannot start is told now and not at the first check.
         if (externalHelper().length === 0) {
             if (!helper.isReady) {
                 return null;
@@ -204,7 +172,6 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         helperUrl,
         ...options.serverDependencies
     });
-    // The client and the service need each other: the client asks the service for the address of the server.
     const holder: { service: MangaService | null } = { service: null };
     const baseUrl = (): Promise<string> => {
         return holder.service!.requireServer();
@@ -233,7 +200,6 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         fetchImage: createImageFetcher({ baseUrl, fetchImpl: options.fetchImpl })
     });
     const send = options.send;
-    // The screen reads the whole library again, or only the manga that changed.
     const notifyLibraryChanged = (): void => {
         send(IPC.eventMangaLibrary);
     };
@@ -268,7 +234,6 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             send(IPC.eventMangaQueueHeld, held);
         }
     });
-    // The chapters that were paused when the app closed are shown again, ready to go on or be cancelled.
     queue.restore();
     const baseDirectory = (): string => {
         const configured = options.getSettings().mangaDirectory;
@@ -379,7 +344,6 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
         },
         onLibraryChanged: notifyLibraryChanged
     };
-    // Looks, once an hour, for chapters the sources have published for the mangas of the library, and puts them in the library.
     const checker = new MangaUpdateChecker({
         db,
         fetchManga: async (remoteId) => {
@@ -453,8 +417,6 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
             return service.hasProcessesToEnd;
         },
         prepare: () => {
-            // Once the program that runs is there, the versions that were left from before (other releases) go, and the server starts when the
-            // user has used the section (otherwise it starts when the section is first opened).
             void service.install().then(() => {
                 if (spec !== null && installer.isReady(spec)) {
                     installer.removeOthers(spec);

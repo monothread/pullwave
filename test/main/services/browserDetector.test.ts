@@ -6,7 +6,6 @@ interface DiskOptions {
     contents?: Record<string, string>;
 }
 
-// A virtual disk: directories are listed by name, files only need to exist. Paths are split on `separator`.
 function fakeDisk(files: string[], { separator = '/', contents = {} }: DiskOptions = {}): FileProbe {
     const fileSet = new Set(files);
     const directories = new Map<string, Set<string>>();
@@ -42,7 +41,6 @@ interface ChromiumLayout {
     cookiesFile?: string;
 }
 
-// The files of a Chromium-based browser folder; `separator` is the path separator of the system being imitated.
 function chromiumFiles(dir: string, { profiles = ['Default'], firstRun = true, cookiesFile = 'Cookies' }: ChromiumLayout = {}, separator = '/'): string[] {
     return [
         `${dir}${separator}Local State`,

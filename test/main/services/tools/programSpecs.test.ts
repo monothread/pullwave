@@ -196,7 +196,6 @@ describe('the versions the app is made with', () => {
         expect(spec.sizeBytes).toBeGreaterThan(0);
         expect(isProgramVersion(id, spec.version)).toBe(true);
         expect(spec.executables).toContain(spec.entry);
-        // A script has no .exe even on Windows (it runs on the busybox).
         expect(spec.entry.endsWith('.exe')).toBe(platform === 'win32' && id !== 'anicli');
     });
 });

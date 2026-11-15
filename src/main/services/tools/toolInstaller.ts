@@ -7,20 +7,16 @@ import { extractArchive } from './archiveExtract';
 import { downloadFile, ToolDownloadError } from './toolDownload';
 
 export const MARKER_FILE = '.pullwave-tool.json';
-// How much of the whole job the download is (the rest is the check and the unpacking).
 export const DOWNLOAD_SHARE = 85;
 const EXTRACT_PERCENT = 90;
 
 export interface ToolInstallerDependencies {
-    // <userData>/tools
     rootDirectory: string;
     download?: typeof downloadFile;
     extract?: typeof extractArchive;
     onState?: (state: ToolState) => void;
 }
 
-// Looks at what was unpacked before it takes its place (it runs the program, reads the script...) and throws, with the reason, when it is not
-// what it should be.
 export type InstallVerifier = (directory: string) => Promise<void>;
 
 interface Marker {
@@ -47,8 +43,6 @@ function isDiskError(error: unknown): boolean {
     return code === 'ENOSPC' || code === 'EACCES' || code === 'EPERM' || code === 'EROFS' || code === 'EDQUOT';
 }
 
-// Puts a program the app needs on the disk: downloads the archive the publisher lists, checks it against the checksum that is
-// pinned in the app, unpacks it beside its place and only then moves it in, so what is there is whole or not there at all.
 export class ToolInstaller {
     private readonly states = new Map<ToolId, ToolState>();
     private readonly running = new Map<ToolId, Promise<ToolState>>();
@@ -68,7 +62,6 @@ export class ToolInstaller {
         return marker !== null && marker.version === spec.version && marker.sha256 === spec.sha256 && existsSync(this.pathOf(spec, spec.entry));
     }
 
-    // What is known about a program right now: what its install is doing, otherwise whether it is there.
     stateOf(spec: ToolSpec): ToolState {
         const current = this.states.get(spec.id);
         if (current !== undefined && current.status !== 'ready' && current.status !== 'missing') {
@@ -77,9 +70,6 @@ export class ToolInstaller {
         return this.isReady(spec) ? this.baseState(spec, 'ready', 100) : (current ?? this.baseState(spec, 'missing', 0));
     }
 
-    // Installs the program (nothing happens when it is there). Asking again while it goes on waits for the same install.
-    // `keepOthers` leaves the versions that are there (the one that runs is not taken away while it runs; `removeOthers` does it later).
-    // `verify` looks at the unpacked program before it is put in its place: when it throws, nothing is installed.
     install(spec: ToolSpec, signal?: AbortSignal, keepOthers = false, verify?: InstallVerifier): Promise<ToolState> {
         const existing = this.running.get(spec.id);
         if (existing !== undefined) {
@@ -137,7 +127,6 @@ export class ToolInstaller {
         this.publish(spec, 'extracting', EXTRACT_PERCENT);
         rmSync(staging, { recursive: true, force: true });
         if (spec.format === 'raw') {
-            // Nothing to unpack: the file is the program, and it goes where the spec says.
             const target = join(staging, spec.entry);
             mkdirSync(dirname(target), { recursive: true });
             copyFileSync(archive, target);
@@ -168,7 +157,6 @@ export class ToolInstaller {
         writeFileSync(join(staging, MARKER_FILE), JSON.stringify(marker), 'utf-8');
     }
 
-    // The staged folder takes the place of the final one in a single rename, and the other versions go.
     private complete(spec: ToolSpec, staging: string, folder: string, keepOthers: boolean): void {
         const final = this.directoryOf(spec);
         rmSync(final, { recursive: true, force: true });
@@ -179,7 +167,6 @@ export class ToolInstaller {
         }
     }
 
-    // Takes away the versions of the program that are not this one (the folders of the other versions, nothing else).
     removeOthers(spec: ToolSpec): void {
         const folder = join(this.deps.rootDirectory, spec.id);
         let entries;

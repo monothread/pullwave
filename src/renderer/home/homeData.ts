@@ -5,36 +5,27 @@ import { libraryEntry, nextDownloadedEpisode } from '../components/animeText';
 import { adjacentSeason, compareChaptersAscending } from '../components/mangaText';
 import { progressKey } from '../components/readerPrefs';
 
-// What the home screen and the highlights read from the stores: what to go on with and the downloads going on. Nothing here asks the main
-// process for anything.
-
-// How many titles to go on with are read at most.
 export const CONTINUE_LIMIT = 12;
 
-// An episode to go on watching: the one left half way, or the next downloaded one after the last watched.
 export interface ContinueWatchingItem {
     animeId: number;
     episodeId: number;
     title: string;
     episode: string;
-    // How much of the episode was watched, from 0 to 1.
     progress: number;
 }
 
 export interface ContinueReadingItem {
     entry: ReadingEntry;
-    // How far the chapter was read, from 0 to 1.
     progress: number;
 }
 
 export type ActiveDownloadKind = 'video' | 'anime' | 'manga';
 
-// A download that is running, waiting or paused, from any section.
 export interface ActiveDownloadItem {
     key: string;
     kind: ActiveDownloadKind;
     title: string;
-    // The episode or the chapter; null for a video.
     detail: string | null;
     percent: number;
     status: 'queued' | 'running' | 'paused';
@@ -49,7 +40,6 @@ function progressOf(position: number, duration: number): number {
     return Math.min(1, Math.max(0, position / duration));
 }
 
-// The episode of an entry of the history to go on with: the one it stopped on when it was left half way, else the next downloaded one.
 function episodeToContinue(library: readonly LibraryAnime[], anime: LibraryAnime, entry: AnimeHistoryEntry): ContinueWatchingItem | null {
     const current = anime.episodes.find((episode) => {
         return episode.number === entry.episode;
@@ -67,7 +57,6 @@ function episodeToContinue(library: readonly LibraryAnime[], anime: LibraryAnime
     return { animeId: next.anime.id, episodeId: next.episode.id, title: next.anime.title, episode: next.episode.number, progress: progressOf(next.episode.positionSeconds, next.episode.durationSeconds) };
 }
 
-// The episodes to go on watching, from the anime watched most recently, one per anime.
 export function continueWatching(library: readonly LibraryAnime[], history: readonly AnimeHistoryEntry[], limit: number = CONTINUE_LIMIT): ContinueWatchingItem[] {
     const items: ContinueWatchingItem[] = [];
     const seen = new Set<number>();
@@ -85,16 +74,12 @@ export function continueWatching(library: readonly LibraryAnime[], history: read
     return items;
 }
 
-// Whether a chapter of a manga was marked as read (the keys are the ones the reader and the page of the manga write).
 type ChapterReadCheck = (mangaTitle: string, chapterRemoteId: number) => boolean;
 
-// Whether the chapter of an entry of the history was read to the end: left on its last page, or marked as read.
 function finishedReading(entry: ReadingEntry, isRead: ChapterReadCheck): boolean {
     return (entry.pageCount > 0 && entry.page >= entry.pageCount - 1) || isRead(entry.title, entry.chapterRemoteId);
 }
 
-// The first chapter of a manga that is not read, after the one given (from the first when none is given), in the order of its list. Null
-// when there is none, or when the chapter given is not in the manga any more.
 function firstUnreadAfter(manga: LibraryManga, afterRemoteId: number | null, isRead: ChapterReadCheck): MangaChapterRecord | null {
     const ordered = [...manga.chapters].sort(compareChaptersAscending);
     const place = afterRemoteId === null ? -1 : ordered.findIndex((chapter) => {
@@ -110,7 +95,6 @@ function firstUnreadAfter(manga: LibraryManga, afterRemoteId: number | null, isR
     );
 }
 
-// The entry pointed at another chapter (of the same manga or of its next season), not started yet.
 function atChapter(entry: ReadingEntry, manga: LibraryManga, chapter: MangaChapterRecord): ReadingEntry {
     return {
         ...entry,
@@ -127,8 +111,6 @@ function atChapter(entry: ReadingEntry, manga: LibraryManga, chapter: MangaChapt
     };
 }
 
-// What to go on with after a chapter read to the end: the next chapter not read of the manga, else the first one not read of its next
-// season. Null when there is none (the manga is up to date, or finished) or the manga is not in the library.
 function nextChapterEntry(entry: ReadingEntry, library: readonly LibraryManga[], isRead: ChapterReadCheck): ReadingEntry | null {
     const manga = library.find((candidate) => {
         return candidate.id === entry.libraryMangaId;
@@ -149,9 +131,6 @@ function readingProgress(entry: ReadingEntry): number {
     return entry.pageCount > 0 ? Math.min(1, (entry.page + 1) / entry.pageCount) : 0;
 }
 
-// The mangas read most recently, with how far their chapter was read. A chapter read to the end (to its last page, or marked as read) is not
-// one to go on with: its place goes to the next chapter not read (not started yet), or the manga is left out when there is none. A manga
-// shows once, where it was read last.
 export function continueReading(history: readonly ReadingEntry[], library: readonly LibraryManga[], readKeys: readonly string[], limit: number = CONTINUE_LIMIT): ContinueReadingItem[] {
     const read = new Set(readKeys);
     const isRead: ChapterReadCheck = (mangaTitle, chapterRemoteId) => {
@@ -180,7 +159,6 @@ function isActive(status: string): status is ActiveDownloadItem['status'] {
     return ACTIVE_STATUSES.has(status);
 }
 
-// How many downloads of a section are running, waiting and paused.
 export interface StatusCounts {
     running: number;
     queued: number;
@@ -201,7 +179,6 @@ export function activeTotal(counts: StatusCounts): number {
     return counts.running + counts.queued + counts.paused;
 }
 
-// Every download that is not over, of the three sections: the running ones first, then the waiting ones, then the paused ones.
 export function activeDownloads(videos: readonly DownloadJob[], episodes: readonly AnimeJob[], chapters: readonly MangaJob[]): ActiveDownloadItem[] {
     const items: ActiveDownloadItem[] = [];
     videos.forEach((job) => {

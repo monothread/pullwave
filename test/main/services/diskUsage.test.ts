@@ -7,7 +7,6 @@ import type { ConcurrencyLimit } from '@main/services/concurrencyLimit';
 import { folderSize, readDiskUsage, readSectionDiskUsage, sectionDirectory, siblingSection } from '@main/services/diskUsage';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
-// The functions that tell the disk are wrapped so that a test can say that a folder is on another disk, or that the disk cannot be read.
 vi.mock('node:fs/promises', async (importOriginal) => {
     const actual = await importOriginal<typeof import('node:fs/promises')>();
     return { ...actual, stat: vi.fn(actual.stat), statfs: vi.fn(actual.statfs) };
@@ -21,7 +20,6 @@ afterEach(() => {
     vi.mocked(statfs).mockImplementation(realFs.statfs);
 });
 
-// Every folder whose path starts with `prefix` is told to be on the disk `disk`, or (null) to fail when the disk is asked.
 function placeOnDisk(prefix: string, disk: number | null): void {
     vi.mocked(stat).mockImplementation(async (path) => {
         if (String(path).startsWith(prefix) && disk === null) {
@@ -82,7 +80,6 @@ describe('folderSize', () => {
                 writeSized(join(root, `folder-${folder}`, 'inner', `file-${file}.bin`), folder + file + 1);
             }
         }
-        // For each folder: 5 files with (folder + 1) ... (folder + 5) bytes.
         const expected = Array.from({ length: 20 }, (_unused, folder) => {
             return 5 * folder + 15;
         }).reduce((total, size) => {
@@ -124,7 +121,6 @@ describe('folderSize', () => {
             return task();
         });
         await expect(folderSize(root, limit as ConcurrencyLimit)).resolves.toBe(30);
-        // Reads the root, the file in it, the folder `a` and the file in it.
         expect(limit).toHaveBeenCalledTimes(4);
     });
 });

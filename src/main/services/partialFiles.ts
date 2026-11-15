@@ -8,7 +8,6 @@ export interface DirectoryEntry {
 
 export type ListDirectory = (dir: string) => DirectoryEntry[];
 
-// What yt-dlp leaves behind for an unfinished download: the .part file, its .ytdl resume record and fragment pieces.
 const LEFTOVER_SUFFIX = '(?:\\.part|\\.ytdl|\\.part-Frag\\d+(?:\\.part)?)';
 
 function escapeForPattern(text: string): string {
@@ -25,8 +24,6 @@ function defaultListDirectory(dir: string): DirectoryEntry[] {
     }
 }
 
-// The unfinished files of ONE download, found from the final name yt-dlp reported for it: `<name>.part` and, when video and
-// audio are downloaded apart, `<stem>.f<format>.<ext>.part`. Finished files, including complete per-format ones, are never listed.
 export function findPartialFiles(finalPath: string, listDirectory: ListDirectory = defaultListDirectory): string[] {
     const name = basename(finalPath);
     const extension = extname(name);
@@ -46,7 +43,6 @@ export function findPartialFiles(finalPath: string, listDirectory: ListDirectory
         });
 }
 
-// A file that cannot be deleted (still open on Windows, for instance) is left alone; the others are still removed.
 export function removeFiles(paths: readonly string[], remove: (path: string) => void = defaultRemove): void {
     paths.forEach((path) => {
         try {

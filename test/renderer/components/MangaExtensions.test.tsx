@@ -162,7 +162,6 @@ describe('MangaExtensions', () => {
         const user = userEvent.setup();
         render(<MangaExtensions />);
         await screen.findByText('Alpha');
-        // Ctrl+F goes to this field.
         expect(screen.getByLabelText('Filter extensions')).toHaveAttribute('data-search-field', '');
         await user.type(screen.getByLabelText('Filter extensions'), 'ta');
         expect(names()).toEqual(['Beta', 'Delta']);
@@ -302,7 +301,6 @@ describe('MangaExtensions', () => {
             const user = userEvent.setup();
             render(<MangaExtensions />);
             expect(await screen.findByText('No extension is installed. Turn off "Installed only" to see the ones you can install.')).toBeInTheDocument();
-            // Nothing installed is not a search that found nothing: it keeps the ring of the empty screens.
             expect(screen.getByText('No extension is installed. Turn off "Installed only" to see the ones you can install.')).toHaveClass('empty');
             expect(screen.queryByTestId('not-found')).not.toBeInTheDocument();
             expect(screen.queryByText('No extension found.')).not.toBeInTheDocument();
@@ -362,7 +360,6 @@ describe('MangaExtensions with a long catalog', () => {
         vi.unstubAllGlobals();
     });
 
-    // 70 extensions, named so that their order by name is their order here.
     const CATALOG = Array.from({ length: 70 }, (_unused, index) => {
         const number = String(index + 1).padStart(2, '0');
         return makeExtension({ pkgName: `ext.${number}`, name: `Extension ${number}`, lang: 'en' });

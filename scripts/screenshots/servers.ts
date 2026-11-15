@@ -4,10 +4,6 @@ import { readFileSync } from 'node:fs';
 import { ANIME_TITLES, CHAPTERS, MANGA_TITLES } from './catalog';
 import { fileNameOf } from './media';
 
-// Two servers on this machine stand in for the services the app talks to, so the screenshots never reach the network:
-//   - FakeAniList answers the schedule, the covers and the status of the anime (PULLWAVE_ANILIST_URL);
-//   - FakeSuwayomi answers like the server of the manga (PULLWAVE_MANGA_URL).
-
 type Json = Record<string, unknown>;
 
 const SECONDS_PER_DAY = 86400;
@@ -66,7 +62,6 @@ function sendPicture(response: ServerResponse, file: string): void {
 }
 
 export interface AniListFiles {
-    // The folder with the cover of every anime (see makeCover).
     coversDirectory: string;
 }
 
@@ -151,7 +146,6 @@ export class FakeAniList extends LocalServer {
 }
 
 export interface SuwayomiFiles {
-    // The folder with the cover of every manga (makeCover) and the page that every chapter shows (makePage, page-1.png and so on).
     coversDirectory: string;
     pagesDirectory: string;
 }

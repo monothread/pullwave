@@ -10,10 +10,6 @@ import { SectionCards } from './SectionCards';
 import { StatsCard } from './StatsCard';
 import { useShownHistory, useShownLibrary } from '../hooks/useShownManga';
 
-// The history of reading is read from the library of the app, which does not need the manga server: the home screen asks for it as soon as
-// it opens, so the numbers of the week are right at once. The sources of the manga (which tell what to hide, and send the block of the manga
-// to the browse once an extension gives one) need the server: they are asked for once it runs, and the screens of the section keep them up
-// to date.
 function useMangaHomeData(mangaSupported: boolean, mangaReady: boolean): void {
     const loadHistory = useMangaStore((state) => {
         return state.loadHistory;
@@ -33,7 +29,6 @@ function useMangaHomeData(mangaSupported: boolean, mangaReady: boolean): void {
     }, [mangaReady, loadSources]);
 }
 
-// The highlights of both sections, the anime first.
 function useHomeSpotlight() {
     const [openedAt] = useState(() => {
         return Date.now();
@@ -63,7 +58,6 @@ function useHomeSpotlight() {
     return useSpotlightSlides(items);
 }
 
-// The home screen: the highlights (or a welcome when there are none yet), then a big block for each section.
 export function HomePanel() {
     const t = useTranslator();
     const mangaSupported = useMangaStore((state) => {

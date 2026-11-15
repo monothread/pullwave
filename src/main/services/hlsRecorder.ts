@@ -5,7 +5,6 @@ import { runFfmpegQuietly } from './ffmpegExec';
 import { parseHlsPlaylist, HlsUnsupportedError, type HlsPlaylist, type HlsSegment } from './hlsPlaylist';
 
 export interface HlsSource {
-    // The media playlist of one rendition (video, audio, or both together).
     url: string;
     headers: Record<string, string>;
 }
@@ -14,13 +13,11 @@ export interface HlsRecordingProgress {
     downloadedBytes: number;
     bytesPerSecond: number;
     elapsedSeconds: number;
-    // Segments that expired from the playlist, or could not be downloaded, before they were saved.
     lostSegments: number;
 }
 
 export interface HlsRecordingOptions {
     sources: HlsSource[];
-    // The finished file; the renditions are kept beside it while the stream is recorded.
     filePath: string;
     ffmpegBinary: string;
     onProgress?: (progress: HlsRecordingProgress) => void;
@@ -32,28 +29,20 @@ export type HlsRecordingResult =
     | { status: 'cancelled' };
 
 export interface HlsRecording {
-    // Settles once the recording is under way. Rejects with an HlsUnsupportedError (or the error of the first requests) when this
-    // way of recording cannot follow the stream, before anything was kept: the caller then records it another way.
     started: Promise<void>;
     result: Promise<HlsRecordingResult>;
-    // Ends the recording keeping what was recorded.
     stop: () => void;
-    // Ends the recording and deletes what was recorded.
     cancel: () => void;
 }
 
 export interface HlsRecorderTuning {
-    // Segments of a rendition downloaded at the same time: one connection of the site gives less than the stream needs.
     concurrency: number;
-    // The recording starts this many segments before the end of the playlist (what a player does too).
     startSegmentsBack: number;
     segmentAttempts: number;
     retryDelayMs: number;
     requestTimeoutMs: number;
     minReloadMs: number;
-    // How long the playlist can fail, or have nothing new, before the stream is taken as over.
     stallMs: number;
-    // How long a recording that was stopped waits for the segments it was downloading.
     drainMs: number;
     progressMs: number;
 }
@@ -72,9 +61,7 @@ export const DEFAULT_HLS_TUNING: HlsRecorderTuning = {
 
 export interface HlsRecorderDependencies {
     fetchImpl?: typeof fetch;
-    // Copies the renditions into the finished file; true when it worked.
     mux?: (binary: string, args: string[]) => Promise<boolean>;
-    // Waits; ends sooner when the signal is aborted.
     sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
     now?: () => number;
     tuning?: Partial<HlsRecorderTuning>;
@@ -106,8 +93,6 @@ function messageOf(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-// Where a rendition is kept while the stream is recorded: the first one is `<file>.part` (what the queue measures to show how much is
-// recorded), the others are named like the pieces yt-dlp leaves, which the queue knows how to delete.
 export function partPathFor(filePath: string, index: number): string {
     if (index === 0) {
         return `${filePath}.part`;
@@ -117,13 +102,11 @@ export function partPathFor(filePath: string, index: number): string {
     return `${stem}.f${index}${extension}.part`;
 }
 
-// One rendition of the stream: follows its playlist, downloads the new segments several at a time and writes them in order.
 class HlsTrack {
     bytes = 0;
     lost = 0;
     private file: FileHandle | null = null;
     private initUrl: string | null = null;
-    // The highest segment handed to the downloads, and the next one to write.
     private lastQueued = 0;
     private nextWrite = 0;
     private readonly waiting: HlsSegment[] = [];
@@ -165,7 +148,6 @@ class HlsTrack {
         return parseHlsPlaylist(await response.text(), this.source.url);
     }
 
-    // Opens the file and saves the first segments: anything that goes wrong here means this way of recording cannot follow the stream.
     async prepare(): Promise<void> {
         const playlist = await this.loadPlaylist();
         if (playlist.segments.length === 0 || playlist.ended) {
@@ -194,11 +176,9 @@ class HlsTrack {
         this.bytes += data.byteLength;
     }
 
-    // Hands the segments that were not seen yet to the downloads. Returns how many.
     private enqueueNew(playlist: HlsPlaylist): number {
         const first = playlist.segments[0];
         if (first !== undefined && first.sequence > this.lastQueued + 1) {
-            // Segments that left the playlist before they were asked for.
             for (let sequence = this.lastQueued + 1; sequence < first.sequence; sequence += 1) {
                 this.done.set(sequence, null);
             }
@@ -234,7 +214,6 @@ class HlsTrack {
         }
     }
 
-    // The segment, or null when it is gone (it left the playlist) or the server would not give it.
     private async download(segment: HlsSegment): Promise<Buffer | null> {
         const { tuning, sleep } = this.environment;
         for (let attempt = 1; attempt <= tuning.segmentAttempts; attempt += 1) {
@@ -288,7 +267,6 @@ class HlsTrack {
         }
     }
 
-    // Follows the playlist until the stream is over, or until the recording is told to stop.
     async follow(): Promise<void> {
         const { tuning, sleep, now } = this.environment;
         let lastNewAt = now();
@@ -321,7 +299,6 @@ class HlsTrack {
         }
     }
 
-    // The stream started over (its numbers went back, or its initialization segment changed): what comes next is another recording.
     private streamChanged(playlist: HlsPlaylist): boolean {
         const last = playlist.segments.at(-1);
         const restarted = last !== undefined && last.sequence + playlist.segments.length < this.lastQueued;
@@ -329,7 +306,6 @@ class HlsTrack {
         return restarted || newInit;
     }
 
-    // Waits for the segments that are being downloaded to be written (for a limited time when the recording was stopped).
     async drain(limitMs: number | null): Promise<void> {
         this.halted = true;
         const finished = new Promise<void>((resolve) => {
@@ -340,7 +316,6 @@ class HlsTrack {
             await finished;
             return;
         }
-        // A real timer, whatever the way the recording waits between playlists: this is the time the user waits for the file.
         let timer: ReturnType<typeof setTimeout> | undefined;
         const limit = new Promise<void>((resolve) => {
             timer = setTimeout(resolve, limitMs);
@@ -358,9 +333,6 @@ class HlsTrack {
     }
 }
 
-// Records a live HLS stream: every rendition is followed on its own, the new segments are downloaded several at a time (a single
-// connection to the site is slower than the stream, which is what makes ffmpeg skip segments) and written in order, and when the
-// stream is over the renditions are copied into the finished file.
 export function startHlsRecording(options: HlsRecordingOptions, dependencies: HlsRecorderDependencies = {}): HlsRecording {
     const tuning: HlsRecorderTuning = { ...DEFAULT_HLS_TUNING, ...dependencies.tuning };
     const now = dependencies.now ?? Date.now;
@@ -405,13 +377,10 @@ export function startHlsRecording(options: HlsRecordingOptions, dependencies: Hl
     }, tuning.progressMs);
     reporter.unref();
 
-    // The other renditions are told to stop as soon as one fails, and everything is waited for before anything is cleaned up: a rendition
-    // that is still opening its file would otherwise create it after the cleanup.
     const failure: { error: unknown } | { error?: undefined } = {};
     const started = Promise.allSettled(
         tracks.map((track) => {
             return track.prepare().catch((error: unknown) => {
-                // The first failure is the one that tells why; the others are the renditions that were stopped because of it.
                 if (!('error' in failure) || failure.error === undefined) {
                     Object.assign(failure, { error });
                 }
@@ -443,7 +412,6 @@ export function startHlsRecording(options: HlsRecordingOptions, dependencies: Hl
             await removeParts();
             return cancelled ? { status: 'cancelled' } : { status: 'error', message: messageOf(error) };
         }
-        // The stream is over for all the renditions as soon as it is for one of them.
         await Promise.race(
             tracks.map((track) => {
                 return track.follow();
@@ -488,7 +456,6 @@ export function startHlsRecording(options: HlsRecordingOptions, dependencies: Hl
         return { status: 'done', filePath: options.filePath, lostSegments: lost };
     })();
 
-    // A rejection of `started` is handled by `result`; callers that wait for it get it too.
     started.catch(() => {
         return undefined;
     });

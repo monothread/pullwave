@@ -30,7 +30,6 @@ afterEach(() => {
     useMangaStore.setState(initialManga, true);
 });
 
-// The title of the highlight shown.
 function titles(): Array<string | null> {
     return [screen.getByRole('heading', { level: 2 }).textContent];
 }

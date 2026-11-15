@@ -1,5 +1,3 @@
-// The invented titles of the screenshots: none of them is a real work, and nothing comes from the data of an installed app.
-
 export interface CoverStyle {
     title: string;
     from: string;

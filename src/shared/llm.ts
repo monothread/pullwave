@@ -1,5 +1,3 @@
-// How the app talks to a language model. Three protocols cover the providers: the one OpenAI made (which most of the others copy),
-// the one of Anthropic and the one of Gemini.
 export type LlmProtocol = 'openai' | 'anthropic' | 'gemini';
 
 export const LLM_PROVIDER_IDS = ['openai', 'anthropic', 'gemini', 'deepseek', 'glm', 'kimi', 'custom'] as const;
@@ -7,7 +5,6 @@ export type LlmProviderId = (typeof LLM_PROVIDER_IDS)[number];
 
 export interface LlmProviderInfo {
     protocol: LlmProtocol;
-    // The address the requests go to, up to the part the protocol adds; the user can change it (it is the only one for "custom").
     defaultBaseUrl: string;
 }
 
@@ -25,9 +22,6 @@ export function isLlmProviderId(value: unknown): value is LlmProviderId {
     return typeof value === 'string' && (LLM_PROVIDER_IDS as readonly string[]).includes(value);
 }
 
-// The services that turn speech into text (to create the subtitle of an episode that has none). Two protocols are spoken: the one of OpenAI,
-// `POST <address>/audio/transcriptions` (which the ones that copy it accept too: the address is the user's for "custom"), and the one of
-// Gemini, which is asked in a prompt to write what is said and can write it in any language, not only English.
 export const SPEECH_PROVIDER_IDS = ['openai', 'gemini', 'custom'] as const;
 export type SpeechProviderId = (typeof SPEECH_PROVIDER_IDS)[number];
 
@@ -37,9 +31,6 @@ export const SPEECH_PROVIDERS: Record<SpeechProviderId, { defaultBaseUrl: string
     custom: { defaultBaseUrl: '' }
 };
 
-// Which languages a service can write the audio in at once, without the text being translated afterwards: any language for Gemini, only
-// English for another service of the protocol of OpenAI (its endpoint of translations), none for OpenAI itself, whose gpt-transcribe has no
-// endpoint of translations.
 export type SpeechTranslatesTo = 'english' | 'any' | 'none';
 
 export function speechTranslatesTo(provider: SpeechProviderId): SpeechTranslatesTo {
@@ -49,23 +40,16 @@ export function speechTranslatesTo(provider: SpeechProviderId): SpeechTranslates
     return provider === 'openai' ? 'none' : 'english';
 }
 
-// The only model of speech to text used with OpenAI: it writes the text better than whisper-1 (which OpenAI turns off on February 26, 2027)
-// but not the times of the lines, so the audio is cut at its pauses and each piece is transcribed on its own (see subtitleGeneration).
 export const OPENAI_SPEECH_MODEL = 'gpt-transcribe';
 
-// The model a service of speech to text is asked with: always gpt-transcribe for OpenAI, the one of the settings for the others.
 export function speechModelOf(provider: SpeechProviderId, model: string): string {
     return provider === 'openai' ? OPENAI_SPEECH_MODEL : model;
 }
 
-// Whether the subtitle is made by cutting the audio at its pauses and having each piece transcribed (OpenAI, whose model gives no times),
-// instead of having the service write the subtitle with its times (Gemini and the other services of the protocol of OpenAI).
 export function speechCutsAtPauses(provider: SpeechProviderId): boolean {
     return provider === 'openai';
 }
 
-// Where a token is kept: one for each provider of the language models and one for each service of speech to text, so the same kind of
-// provider can be used for both with two different tokens.
 export const LLM_TOKEN_SLOTS = [...LLM_PROVIDER_IDS, 'speech-openai', 'speech-gemini', 'speech-custom'] as const;
 export type LlmTokenSlot = (typeof LLM_TOKEN_SLOTS)[number];
 
@@ -77,30 +61,20 @@ export function speechTokenSlot(provider: SpeechProviderId): LlmTokenSlot {
     return `speech-${provider}`;
 }
 
-// Why a request to a language model did not give a text: the token is not accepted, the provider asks to wait or has no more
-// credit, the model is not there, the answer did not come in time or could not be read, or the user cancelled. `NO_TIMESTAMPS` is only of
-// the other services of the protocol of OpenAI: the model writes the text but not the times of the lines, which a subtitle asked in WebVTT
-// needs (gpt-transcribe and the gpt-4o models of transcription answer only in JSON or text; with OpenAI itself the audio is cut at its pauses
-// instead).
 export type LlmErrorCode = 'INVALID_TOKEN' | 'RATE_LIMITED' | 'QUOTA_EXCEEDED' | 'MODEL_NOT_FOUND' | 'TIMEOUT' | 'NETWORK' | 'BAD_RESPONSE' | 'CANCELLED' | 'NO_TIMESTAMPS';
 
 export interface LlmError {
     code: LlmErrorCode;
-    // What the provider said, or the reason it could not be reached; it never holds the token.
     raw: string;
-    // How long the provider asked to wait, when it said.
     retryAfterSeconds?: number;
 }
 
-// The language model that translates subtitles, as the settings choose it.
 export interface TranslationSetup {
     provider: LlmProviderId;
     model: string;
     baseUrl: string;
 }
 
-// What the settings lack for the subtitles to be translated: the token of the provider, the model, or (for a provider that has no address of
-// its own) the address. Null when nothing is missing.
 export type TranslationSetupGap = 'no-token' | 'no-model' | 'no-address';
 
 export function translationSetupGap(setup: TranslationSetup, hasToken: boolean): TranslationSetupGap | null {
@@ -118,7 +92,6 @@ export function translationSetupGap(setup: TranslationSetup, hasToken: boolean):
 
 export type LlmCompletionResult ={ ok: true; text: string } | { ok: false; error: LlmError };
 
-// What the window may know about the tokens: which slots (providers) have one, and whether the system can keep one at all.
 export interface LlmStatus {
     canStore: boolean;
     providers: LlmTokenSlot[];

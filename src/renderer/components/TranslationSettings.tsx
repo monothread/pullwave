@@ -31,8 +31,6 @@ interface TokenFieldProps {
     onChanged: () => Promise<void>;
 }
 
-// The token of one slot (a provider, or a service of speech to text): it is created again for each slot (see `key` below), so what was typed
-// for one never carries over.
 function TokenField({ slot, inputId, texts, status, onChanged }: TokenFieldProps) {
     const t = useTranslator();
     const [token, setToken] = useState('');
@@ -105,12 +103,8 @@ function TokenField({ slot, inputId, texts, status, onChanged }: TokenFieldProps
     );
 }
 
-// The language models that translate subtitles and the service of speech to text that makes them: the provider, the model, the address and
-// the token of each. The tokens are only sent to the main process, which keeps them encrypted; this screen learns whether there is one,
-// never what it is. They are two blocks of the settings, one for each.
 export function TranslationSettings({ draft, change, edit, changeMany }: TranslationSettingsProps) {
     const t = useTranslator();
-    // Kept in the store: the setting of the automatic translation of the anime settings is only allowed when the token is there.
     const status = useAppStore((state) => {
         return state.llmStatus;
     });
@@ -120,8 +114,6 @@ export function TranslationSettings({ draft, change, edit, changeMany }: Transla
     const provider = draft.translateProvider;
     const speech = draft.transcribeProvider;
 
-    // The model of one service means nothing to another: the one of OpenAI that is there by default is taken away when Gemini is chosen (its
-    // models have other names), and put back when the field is empty and a service of the protocol of OpenAI is chosen again.
     function chooseSpeech(next: SpeechProviderId): void {
         const patch: Partial<Settings> = { transcribeProvider: next };
         if (next === 'gemini' && draft.transcribeModel === DEFAULT_SETTINGS.transcribeModel) {

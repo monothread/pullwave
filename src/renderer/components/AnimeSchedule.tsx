@@ -29,9 +29,6 @@ function airingTime(entry: AnimeScheduleEntry, timeZone: string, language: strin
     return new Date(entry.airingAt * 1000).toLocaleTimeString(language, { timeZone, hour: '2-digit', minute: '2-digit' });
 }
 
-// The episodes that air today or this week, one section for each day of the time zone that is set, in the order they air. Clicking one
-// goes to the search, which looks the anime up by its names. A name typed in the search narrows the list to the anime that match it, each
-// with the date and the time its episode airs.
 export function AnimeSchedule() {
     const t = useTranslator();
     const language = useAppLanguage();
@@ -77,7 +74,6 @@ export function AnimeSchedule() {
         };
     });
 
-    // While searching, the days where nothing matches are left out: they would be a column of empty days.
     const visibleDays = searching
         ? days.filter((day) => {
               return day.entries.length > 0;

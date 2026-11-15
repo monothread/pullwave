@@ -24,11 +24,8 @@ import { AutoNextPanel } from './AutoNextPanel';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
 import { animeErrorKey, isWatched, nextDownloadedEpisode, previousDownloadedEpisode, resumePosition, type PlayableEpisode } from './animeText';
 
-// How often the position is saved while watching.
 export const SAVE_INTERVAL_SECONDS = 5;
 
-// What the app says about the check for new subtitles: good news (it goes away by itself), or what went wrong (it stays until it is
-// dismissed), as the other notices of the app do.
 function noticeOfCheck(response: AnimeSubtitleCheckResponse, t: Translator, language: LanguageCode): Notice {
     if (response.ok) {
         const message =
@@ -47,14 +44,10 @@ interface PlayerViewProps {
     anime: LibraryAnime;
     episode: AnimeEpisodeRecord;
     title: string;
-    // Where the header and the stage of the player are drawn: they belong to AnimePlayer and stay while the episodes change.
     headSlot: HTMLElement | null;
     stageSlot: HTMLElement | null;
 }
 
-// One episode being watched. It is created again for each episode (see `key` below), so nothing carries over. What it shows goes into the
-// two slots of AnimePlayer, so the stage (the element that goes to fullscreen) is not removed from the page when the episode changes: the
-// browser leaves fullscreen when its element is removed, and the next episode must come up in fullscreen as the one before.
 function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewProps) {
     const t = useTranslator();
     const language = useAppLanguage();
@@ -74,22 +67,18 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
         return state.refreshLibrary;
     });
     const video = useRef<HTMLVideoElement | null>(null);
-    // This opening of the player (see episodeVideoUrl): the video has an address of its own each time it is opened.
     const [opening] = useState(() => {
         return Date.now();
     });
     const lastSaved = useRef(0);
     const [failed, setFailed] = useState(false);
-    // Until the list arrives only the subtitle ani-cli picked is known.
     const [tracks, setTracks] = useState<AnimeSubtitleTrack[]>([{ id: '', label: 'Subtitles', kind: 'default' }]);
     const [subtitle, setSubtitle] = useState<string | null>(DEFAULT_OPTION_ID);
     const [importFailure, setImportFailure] = useState<SubtitleImportFailure | null>(null);
     const [checking, setChecking] = useState(false);
     const [translating, setTranslating] = useState(false);
     const [generating, setGenerating] = useState(false);
-    // Whether the list of the subtitles of the episode has arrived: until then it is not known whether it has any.
     const [tracksLoaded, setTracksLoaded] = useState(false);
-    // The episode ended and the next one is counted down to (see AutoNextPanel).
     const [upNext, setUpNext] = useState(false);
     const autoNext = useUiPrefsStore((state) => {
         return state.autoNext;
@@ -131,7 +120,6 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
         }
     }
 
-    // Asks the source for the subtitles the episode does not have yet; the ones that come show up in the list of the player.
     async function checkSubtitles(): Promise<void> {
         setChecking(true);
         try {
@@ -155,12 +143,10 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
             episodeId: episode.id,
             positionSeconds: element.currentTime,
             durationSeconds: element.duration,
-            // Once an episode counts as watched it stays so, however far into it the viewer goes when they watch it again.
             watched: episode.watched || isWatched(element.currentTime, element.duration)
         });
     }
 
-    // Another episode (the one before or the next): where this one was is saved first.
     function goTo(target: PlayableEpisode): void {
         save();
         play(target.anime.id, target.episode.id);
@@ -186,7 +172,6 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
 
     const previous = previousDownloadedEpisode(library, anime, episode);
     const next = nextDownloadedEpisode(library, anime, episode);
-    // Where an episode that was left half way picks up again: said for a moment when it opens.
     const resumedAt = resumePosition(episode);
 
     const head = (
@@ -256,7 +241,6 @@ function PlayerView({ anime, episode, title, headSlot, stageSlot }: PlayerViewPr
                 }}
                 onPause={save}
                 onPlay={() => {
-                    // Played again after it ended: the user stays on this episode.
                     setUpNext(false);
                 }}
                 onEnded={() => {

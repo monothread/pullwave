@@ -316,7 +316,6 @@ describe('runYtdlpLiveAware a live HLS stream', () => {
         await settle();
         expect(runner).toHaveBeenCalledTimes(2);
         expect(runs[1]?.options).toMatchObject({ binary: '/bin/yt-dlp', args: ['--newline', 'https://x.test/live'], env: { PATH: '/bundled' } });
-        // The second run does not hand the stream over again.
         expect(runs[1]?.options.onStream).toBeUndefined();
         runs[1]?.options.onInfo?.(INFO);
         runs[1]?.finish({ status: 'done', filePath: '/d/Live [room].mp4' });

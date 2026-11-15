@@ -17,8 +17,6 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
     };
 }
 
-// Whether the window is minimized, as the main process last said. It is kept from before the page listens: the main process tells it as soon
-// as the page is loaded, which can be before the page subscribes.
 let windowMinimized = false;
 ipcRenderer.on(IPC.eventWindowMinimized, (_event: IpcRendererEvent, minimized: boolean) => {
     windowMinimized = minimized;
@@ -633,7 +631,6 @@ const api: CyberApi = {
         });
     },
     onWindowMinimized: (listener) => {
-        // A page that subscribes while the window is already minimized learns it at once.
         if (windowMinimized) {
             listener(true);
         }

@@ -13,7 +13,6 @@ export function useAppLanguage(): LanguageCode {
     return resolveAppLanguage(setting);
 }
 
-// The texts of the language of the window: the English ones until it is loaded, then its own (the components are drawn again).
 export function useTranslator(): Translator {
     const language = useAppLanguage();
     const messages = useCatalogStore((state) => {
@@ -24,7 +23,6 @@ export function useTranslator(): Translator {
     }, [messages]);
 }
 
-// Used once, by the app: loads the texts of the language each time it changes.
 export function useLanguageCatalog(): void {
     const language = useAppLanguage();
     useEffect(() => {

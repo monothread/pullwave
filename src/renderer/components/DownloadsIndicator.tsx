@@ -14,7 +14,6 @@ interface IndicatorRowProps {
     onOpen: () => void;
 }
 
-// A line of the list of the arrow: the name of what it leads to and how many are going on there.
 function IndicatorRow({ section, count, onOpen }: IndicatorRowProps) {
     const t = useTranslator();
     return (
@@ -25,8 +24,6 @@ function IndicatorRow({ section, count, onOpen }: IndicatorRowProps) {
     );
 }
 
-// The arrow of the top bar with how many downloads are going on in the whole app; it opens a list with one line per section, which leads
-// to the downloads of that section.
 export function DownloadsIndicator() {
     const t = useTranslator();
     const [open, setOpen] = useState(false);
@@ -34,7 +31,6 @@ export function DownloadsIndicator() {
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
-    // The subtitles being translated or made: they have a line of their own, and count with the downloads.
     const subtitleJobs = useAnimeStore((state) => {
         return state.subtitleJobs.length;
     });

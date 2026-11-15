@@ -4,7 +4,6 @@ import { DEFAULT_SETTINGS } from '@shared/constants';
 import { CATALOGS } from '@shared/i18n';
 import { en } from '@shared/i18n/en';
 
-// Each test takes fresh modules: the setup of the tests loads every language into the modules the other tests share.
 async function freshCatalogs() {
     vi.resetModules();
     return import('@renderer/i18n/catalogs');

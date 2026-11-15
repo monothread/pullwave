@@ -7,8 +7,6 @@ interface SubtitleManagerDialogProps {
     onClose: () => void;
 }
 
-// The window of the ways to get more subtitles for the episode, opened from the gear of the player: load a file, translate one or create
-// it from the audio, and look for the ones the source has. Which subtitle is shown and how big stay in the gear.
 export function SubtitleManagerDialog({ manager, onClose }: SubtitleManagerDialogProps) {
     const t = useTranslator();
     const { dialogRef, handleKeyDown } = useModalDialog(onClose, true);
@@ -23,7 +21,6 @@ export function SubtitleManagerDialog({ manager, onClose }: SubtitleManagerDialo
                 aria-labelledby="manage-subtitles-title"
                 onKeyDown={(event) => {
                     handleKeyDown(event);
-                    // The keys are for the window: they do not pause, seek or change the volume of the video behind it.
                     event.stopPropagation();
                 }}
             >

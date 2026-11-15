@@ -1,6 +1,5 @@
 import { useTranslator } from '../i18n/useTranslator';
 
-// The banner of the home screen when there is nothing to highlight yet: a welcome. The ways into the sections are the blocks under it.
 export function HomeWelcome() {
     const t = useTranslator();
     return (

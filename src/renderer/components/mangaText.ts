@@ -6,8 +6,6 @@ import type { ToolError, ToolErrorCode } from '@shared/tools';
 import type { MangaReaderState, ReaderChapter } from '../store/mangaStore';
 import { codedErrorReport, type ErrorReport } from './errorReport';
 
-// The store the app suggests: the one most extensions for Mihon and Tachiyomi come from.
-// Shown in the field of the address of a store, as an example of one (the user is the one who adds stores).
 export const STORE_PLACEHOLDER = 'https://example.com/extensions/index.min.json';
 
 const ERROR_KEYS: Record<MangaErrorCode, MessageKey> = {
@@ -66,8 +64,6 @@ export function mangaErrorKey(code: MangaErrorCode): MessageKey {
     return ERROR_KEYS[code];
 }
 
-// The text of an error for the user: the one of its code, except where the source is known to hand over no pages (the extension could not
-// find the list of pages of the chapter).
 export function mangaErrorTextKey(error: MangaError): MessageKey {
     if (error.code === 'API_ERROR' && /Failed to find page list/i.test(error.message)) {
         return 'manga.error.noPageList';
@@ -79,17 +75,14 @@ export function toolErrorKey(code: ToolErrorCode): MessageKey {
     return TOOL_ERROR_KEYS[code];
 }
 
-// The failure of a program of the manga section (the server, the helper) to be installed, in words for the user and with what the app knows.
 export function toolErrorReport(t: Translator, error: ToolError): ErrorReport {
     return codedErrorReport(t(toolErrorKey(error.code)), error, error.message);
 }
 
-// An error of the manga section, in words for the user and with what the backend said about it.
 export function mangaErrorReport(t: Translator, error: MangaError, summary: string = t(mangaErrorTextKey(error))): ErrorReport {
     return codedErrorReport(summary, error, error.message);
 }
 
-// Whether the server says the site is behind Cloudflare (what it answers when its bypass is off, or when the bypass does not get through).
 export function isCloudflareError(error: { message: string }): boolean {
     return /cloudflare/i.test(error.message);
 }
@@ -106,9 +99,6 @@ export function mangaStatusKey(status: MangaStatus): MessageKey {
     return MANGA_STATUS_KEYS[status];
 }
 
-// The manga of the library that is this one of a source (null when it is not there).
-// What the library knows of a manga, in the shape of what the source answers: the page of a manga of the library opens with it, with no
-// need for the source.
 export function localDetails(manga: LibraryManga): MangaDetailsWithChapters {
     return {
         details: {
@@ -131,8 +121,6 @@ function toSourceChapter(chapter: MangaChapterRecord): MangaChapter {
     return { remoteId: chapter.remoteId, name: chapter.name, number: chapter.number, dateUploaded: chapter.dateUploaded, scanlator: chapter.scanlator, sourceOrder: chapter.sourceOrder };
 }
 
-// What the source lists now, plus the chapters of the library that it no longer lists (a source can renumber its chapters; the ones that
-// were downloaded stay in the library and on the disk, so the page of the manga keeps showing them).
 export function withLibraryChapters(chapters: readonly MangaChapter[], saved: Pick<LibraryManga, 'chapters'> | null): MangaChapter[] {
     if (saved === null) {
         return [...chapters];
@@ -158,12 +146,10 @@ export function libraryEntry(library: readonly LibraryManga[], sourceId: string,
     );
 }
 
-// A title as it is compared between sources: no case, no accents, and nothing but letters and numbers ("Re:Zero" and "Re Zero" are one).
 function foldTitle(title: string): string {
     return title.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 }
 
-// The mangas of the library that have this title but come from another source (the same manga, added from somewhere else).
 export function libraryEntriesByTitle(library: readonly LibraryManga[], title: string, sourceId: string): LibraryManga[] {
     const wanted = foldTitle(title);
     if (wanted.length === 0) {
@@ -174,7 +160,6 @@ export function libraryEntriesByTitle(library: readonly LibraryManga[], title: s
     });
 }
 
-// The names of the sources of those mangas, once each, in the order they come (the id of a source that is not listed stands for its name).
 export function otherSourceNames(entries: readonly LibraryManga[], sources: readonly MangaSource[]): string[] {
     const names = entries.map((entry) => {
         return sources.find((source) => {
@@ -184,8 +169,6 @@ export function otherSourceNames(entries: readonly LibraryManga[], sources: read
     return [...new Set(names)];
 }
 
-// Whether the extension of the source of a manga is known not to be installed: only when the list of the sources was read (the local source,
-// which is not listed, is always there).
 export function sourceIsMissing(sources: readonly MangaSource[], sourcesStatus: 'idle' | 'loading' | 'ready' | 'error', sourceId: string): boolean {
     return (
         sourcesStatus === 'ready' &&
@@ -196,8 +179,6 @@ export function sourceIsMissing(sources: readonly MangaSource[], sourcesStatus: 
     );
 }
 
-// The name and the language of the sources of these mangas ("MangaDex · EN"), once each, in the order the mangas come. A source the list does not
-// have (its extension is gone, or the list was not read) is left out: there is no name to show.
 export function sourceLabelsOf(sources: readonly MangaSource[], mangas: readonly Pick<LibraryManga, 'sourceId'>[]): string[] {
     const labels = mangas.flatMap((manga) => {
         const source = sources.find((candidate) => {
@@ -208,14 +189,12 @@ export function sourceLabelsOf(sources: readonly MangaSource[], mangas: readonly
     return [...new Set(labels)];
 }
 
-// How many chapters of a manga of the library are downloaded.
 export function downloadedCount(manga: Pick<LibraryManga, 'chapters'>): number {
     return manga.chapters.filter((chapter) => {
         return chapter.status === 'done';
     }).length;
 }
 
-// What a chapter is called in a list: its name, or its number when it has none.
 export function chapterLabel(name: string, number: number | null): string {
     if (name.length > 0) {
         return name;
@@ -223,8 +202,6 @@ export function chapterLabel(name: string, number: number | null): string {
     return number === null ? '' : `#${String(number)}`;
 }
 
-// The entries of a list in the order they come, split by the day (of the computer) of the time each one has: `day` is the start of that
-// day, in milliseconds.
 export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number): Array<{ day: number; entries: T[] }> {
     const groups: Array<{ day: number; entries: T[] }> = [];
     entries.forEach((entry) => {
@@ -240,7 +217,6 @@ export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => numbe
     return groups;
 }
 
-// The state of a chapter of the source in the library (idle when the library does not have it).
 export function chapterState(manga: LibraryManga | null, remoteId: number): MangaChapterRecord | null {
     return (
         manga?.chapters.find((chapter) => {
@@ -249,19 +225,16 @@ export function chapterState(manga: LibraryManga | null, remoteId: number): Mang
     );
 }
 
-// Whether picking a chapter of the library for a download makes sense: not when it is downloaded already, or waiting or going on.
 export function canDownload(chapter: Pick<MangaChapterRecord, 'status'> | null): boolean {
     return chapter === null || (!hasChapterFile(chapter.status) && chapter.status !== 'queued' && chapter.status !== 'downloading' && chapter.status !== 'paused');
 }
 
-// Of the chapters picked, the ones that a download would do something for.
 export function downloadablePicks(manga: LibraryManga | null, picked: readonly number[]): number[] {
     return picked.filter((remoteId) => {
         return canDownload(chapterState(manga, remoteId));
     });
 }
 
-// The downloads that are waiting or going on.
 export function activeJobCount(jobs: readonly MangaJob[]): number {
     return jobs.filter((job) => {
         return job.status === 'queued' || job.status === 'running';
@@ -276,7 +249,6 @@ export interface ExtensionFilter {
 
 export const ALL_LANGUAGES = 'all-languages';
 
-// The code among `available` that stands for `wanted`: the same code, or the same language in another form ("pt" for "pt-BR" and the other way).
 function matchLanguage(wanted: string, available: readonly string[]): string | null {
     const lowered = wanted.toLowerCase();
     const primaryOf = (code: string): string => {
@@ -296,9 +268,6 @@ function matchLanguage(wanted: string, available: readonly string[]): string | n
     );
 }
 
-// The language the manga section works in. The choice of the settings is used when something is in it ("all-languages" is every language);
-// when the settings follow the computer (empty), it is the language of the computer, then English. When nothing is in the language (the
-// sources are not loaded yet, or there is none in it) it is every language.
 export function resolveMangaLanguage(setting: string, available: readonly string[], locale: string): string {
     if (setting === ALL_LANGUAGES) {
         return ALL_LANGUAGES;
@@ -309,23 +278,18 @@ export function resolveMangaLanguage(setting: string, available: readonly string
     return (locale === '' ? null : matchLanguage(locale, available)) ?? matchLanguage('en', available) ?? ALL_LANGUAGES;
 }
 
-// The id of the local source of the server, which is not an extension and is not listed.
 const LOCAL_SOURCE_ID = '0';
 
-// Whether something with this content warning is listed: the ones for adults only when the user asked for them.
 export function isListed(contentWarning: MangaSource['contentWarning'], showAdult: boolean): boolean {
     return showAdult || contentWarning !== 'NSFW';
 }
 
-// The sources that are listed (the ones for adults only when the user asked for them).
 export function listedSources(sources: readonly MangaSource[], showAdult: boolean): MangaSource[] {
     return sources.filter((source) => {
         return isListed(source.contentWarning, showAdult);
     });
 }
 
-// The ids of the sources whose mangas are not shown: the ones for adults, unless the user asked for them. A source that is not known (its
-// extension was removed) is not in the set, so what comes from it is still shown.
 export function hiddenSourceIds(sources: readonly MangaSource[], showAdult: boolean): ReadonlySet<string> {
     return new Set(
         sources
@@ -338,7 +302,6 @@ export function hiddenSourceIds(sources: readonly MangaSource[], showAdult: bool
     );
 }
 
-// The items (mangas, jobs, readings) that do not come from a hidden source; the same list when nothing is hidden.
 export function withoutHiddenSources<T extends { sourceId: string }>(items: T[], hidden: ReadonlySet<string>): T[] {
     if (hidden.size === 0) {
         return items;
@@ -348,8 +311,6 @@ export function withoutHiddenSources<T extends { sourceId: string }>(items: T[],
     });
 }
 
-// The chapters that arrived, without the ones of the mangas of the library that come from a hidden source (an entry knows its manga, not
-// its source).
 export function withoutHiddenUpdates(updates: MangaUpdateEntry[], library: readonly LibraryManga[], hidden: ReadonlySet<string>): MangaUpdateEntry[] {
     if (hidden.size === 0) {
         return updates;
@@ -368,8 +329,6 @@ export function withoutHiddenUpdates(updates: MangaUpdateEntry[], library: reado
     });
 }
 
-// The extensions that match the text, the language and the installed-only choice (the ones for adults only when the user asked for them),
-// the installed ones first and then by name.
 export function filterExtensions(extensions: readonly MangaExtension[], filter: ExtensionFilter, showAdult: boolean): MangaExtension[] {
     const query = filter.query.trim().toLowerCase();
     return extensions
@@ -386,29 +345,22 @@ export function filterExtensions(extensions: readonly MangaExtension[], filter: 
         });
 }
 
-// The languages the extensions are in, sorted.
 export function extensionLanguages(extensions: readonly MangaExtension[]): string[] {
     return [...new Set(extensions.map((extension) => {
         return extension.lang;
     }))].sort();
 }
 
-// One card of the library: a series with its seasons in order. Every manga is in one: a manga that was never joined to a series is the
-// only season of a series with its own title.
 export interface MangaLibraryGroup {
     key: string;
-    // The name of the series.
     series: string;
     entries: LibraryManga[];
 }
 
-// Alphabetical order for names: no matter the case or the accents, and numbers by their value ("Naruto 2" before "Naruto 10").
 export function compareNames(first: string, second: string): number {
     return first.localeCompare(second, undefined, { sensitivity: 'base', numeric: true });
 }
 
-// Joins the mangas of the library that are seasons of one series (the same name, whatever the case or the accents); a manga that has no
-// series is a series of its own. The cards are in alphabetical order and the seasons of a series by their place in it.
 export function groupLibrary(library: readonly LibraryManga[]): MangaLibraryGroup[] {
     const groups: MangaLibraryGroup[] = [];
     const bySeries = new Map<string, MangaLibraryGroup>();
@@ -437,7 +389,6 @@ export function groupLibrary(library: readonly LibraryManga[]): MangaLibraryGrou
     });
 }
 
-// The label of a manga inside its series: the name the user gave it, otherwise "SEASON N" from its place in the series.
 export function seasonLabel(manga: Pick<LibraryManga, 'season' | 'seasonName'>, t: Translator): string {
     return manga.seasonName ?? t('anime.series.season', { number: manga.season ?? 1 });
 }
@@ -446,27 +397,21 @@ function foldText(text: string): string {
     return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
 
-// Whether a text matches what was typed in the search of the library: no matter the case or the accents; an empty search matches all.
 export function matchesSearch(text: string, search: string): boolean {
     const wanted = foldText(search.trim());
     return wanted.length === 0 || foldText(text).includes(wanted);
 }
 
-// Whether a manga of the library matches what was typed in the search: by its title or by the name of its series.
 export function matchesManga(manga: Pick<LibraryManga, 'title' | 'series'>, search: string): boolean {
     return matchesSearch(manga.title, search) || (manga.series !== null && matchesSearch(manga.series, search));
 }
 
-// The mangas of the library that are in the group; with no group chosen (the tab of all), the ones that are in no group: a manga that is
-// put in a group leaves that tab.
 export function inGroup(library: readonly LibraryManga[], groupId: number | null): LibraryManga[] {
     return library.filter((manga) => {
         return groupId === null ? manga.groupIds.length === 0 : manga.groupIds.includes(groupId);
     });
 }
 
-// How many cards of each tab (the group id; null for the tab of all) match the search. Only the tabs that have a match are there, and none
-// when nothing was typed.
 export function searchMatchesByTab(library: readonly LibraryManga[], groupIds: ReadonlyArray<number | null>, search: string): Map<number | null, number> {
     const counts = new Map<number | null, number>();
     if (search.trim().length === 0) {
@@ -485,7 +430,6 @@ export function searchMatchesByTab(library: readonly LibraryManga[], groupIds: R
     return counts;
 }
 
-// The group the library is limited to: the one chosen, and when the tab of all is not there (every manga is in a group) the first group.
 export function activeGroup(library: readonly LibraryManga[], groups: ReadonlyArray<{ id: number }>, chosen: number | null): number | null {
     if (chosen !== null || inGroup(library, null).length > 0) {
         return chosen;
@@ -493,7 +437,6 @@ export function activeGroup(library: readonly LibraryManga[], groups: ReadonlyAr
     return groups[0]?.id ?? null;
 }
 
-// How many chapters of the mangas are downloaded, and how many there are.
 export function downloadedTotals(mangas: readonly LibraryManga[]): { done: number; total: number } {
     return mangas.reduce(
         (totals, manga) => {
@@ -503,7 +446,6 @@ export function downloadedTotals(mangas: readonly LibraryManga[]): { done: numbe
     );
 }
 
-// The names of the series the library has, once each.
 export function seriesNames(library: readonly LibraryManga[]): string[] {
     const seen = new Map<string, string>();
     library.forEach((manga) => {
@@ -514,7 +456,6 @@ export function seriesNames(library: readonly LibraryManga[]): string[] {
     return [...seen.values()].sort(compareNames);
 }
 
-// The orders the other mangas of a series have (the manga being edited is left out).
 export function takenSeasons(library: readonly LibraryManga[], series: string, exceptMangaId: number): number[] {
     const wanted = foldSeries(series);
     return library.flatMap((manga) => {
@@ -522,14 +463,10 @@ export function takenSeasons(library: readonly LibraryManga[], series: string, e
     });
 }
 
-// The order after the last one the series has (the one the library offers when the order wanted is taken).
 export function nextSeason(taken: readonly number[]): number {
     return Math.max(0, ...taken) + 1;
 }
 
-// Which chapter "continue reading" opens, among the chapters in reading order: always the one the manga was last read in, read or not. When
-// there is none (or it is not in the list any more), the first that is not read, otherwise the first (everything is read: it starts again).
-// Gives -1 for no chapters.
 export function continueIndex(chapters: ReadonlyArray<{ remoteId: number }>, isRead: (remoteId: number) => boolean, lastRemoteId: number | null): number {
     if (chapters.length === 0) {
         return -1;
@@ -546,14 +483,11 @@ export function continueIndex(chapters: ReadonlyArray<{ remoteId: number }>, isR
     return firstUnread === -1 ? 0 : firstUnread;
 }
 
-// Whether a chapter is new today: the day the source published it when the source says so, else the day it arrived in the library (the
-// chapters a manga comes with have no day of arrival, so they are not new then).
 export function isNewChapter(chapter: Pick<MangaChapterRecord, 'addedAt' | 'dateUploaded'>, now: number = Date.now()): boolean {
     const day = chapter.dateUploaded ?? chapter.addedAt;
     return day !== null && new Date(day).toDateString() === new Date(now).toDateString();
 }
 
-// How many chapters of the mangas are new today.
 export function newChapterCount(mangas: readonly LibraryManga[], now: number = Date.now()): number {
     return mangas.reduce((total, manga) => {
         return (
@@ -565,9 +499,6 @@ export function newChapterCount(mangas: readonly LibraryManga[], now: number = D
     }, 0);
 }
 
-// ---- The check of Cloudflare, for the source the user is in ----
-
-// A site name as it is compared: without the "www." in front.
 function siteOf(host: string): string {
     return host.toLowerCase().replace(/^www\./, '');
 }
@@ -583,8 +514,6 @@ function hostOfAddress(address: string | null): string | null {
     }
 }
 
-// Where the user is, as far as the sources go: the source of the manga being read or open, or else the one being browsed; and whether
-// something of it is being asked for now. Nothing in the other screens (the library, the history, the settings...).
 export interface SourceScope {
     sourceId: string | null;
     loading: boolean;
@@ -612,9 +541,6 @@ export function sourceScope(state: SourceScopeState): SourceScope {
     return { sourceId: null, loading: false };
 }
 
-// The checks of Cloudflare that are about the source the user is in. The site of a check says which source it is for when the library has a
-// manga of that site (its page on the site is kept); when the site is not known, the check is taken for the one of the source that is being
-// asked for (nothing else asks the sources for what is not in the library). Never a check that is about another source.
 export function checksForSource(checks: readonly MangaCloudflareActivity[], scope: SourceScope, library: readonly LibraryManga[], openPage: string | null): MangaCloudflareActivity[] {
     if (scope.sourceId === null) {
         return [];
@@ -636,8 +562,6 @@ export function checksForSource(checks: readonly MangaCloudflareActivity[], scop
     });
 }
 
-// The order of the list of chapters: the ones with no number first (by the order of their source, then by their id), then the
-// numbered ones by number. The order of the source is not trusted for them, because a source that lists a collection numbers them its own way.
 export function compareChaptersAscending(first: Pick<MangaChapter, 'remoteId' | 'number' | 'sourceOrder'>, second: Pick<MangaChapter, 'remoteId' | 'number' | 'sourceOrder'>): number {
     if (first.number !== null && second.number !== null && first.number !== second.number) {
         return first.number - second.number;
@@ -648,7 +572,6 @@ export function compareChaptersAscending(first: Pick<MangaChapter, 'remoteId' | 
     return first.sourceOrder - second.sourceOrder || first.remoteId - second.remoteId;
 }
 
-// The chapters of a manga of the library in reading order (the oldest first), as the reader takes them.
 export function readerChapters(manga: Pick<LibraryManga, 'chapters'>): ReaderChapter[] {
     return [...manga.chapters]
         .sort((first, second) => {
@@ -659,8 +582,6 @@ export function readerChapters(manga: Pick<LibraryManga, 'chapters'>): ReaderCha
         });
 }
 
-// The season of the series that is read after (1) or before (-1) the one being read: the closest one in that direction that has chapters.
-// Null when the manga is on its own, is the last (or first) season, or is not in the library.
 export function adjacentSeason(library: readonly LibraryManga[], current: Pick<LibraryManga, 'sourceId' | 'remoteId'> | null | undefined, step: 1 | -1): LibraryManga | null {
     const manga = current
         ? library.find((candidate) => {
@@ -689,8 +610,6 @@ export function adjacentSeason(library: readonly LibraryManga[], current: Pick<L
     );
 }
 
-// The chapter after (1) or before (-1) the one being read: in the same season, and at its edge the first (or last) one of the neighbour
-// season. Undefined when there is none.
 export function neighbourChapter(library: readonly LibraryManga[], reader: Pick<MangaReaderState, 'chapters' | 'index' | 'manga'>, step: 1 | -1): ReaderChapter | undefined {
     const inSeason = reader.chapters[reader.index + step];
     if (inSeason !== undefined) {

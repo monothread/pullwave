@@ -39,8 +39,6 @@ function Probe({ onReach, enabled, version }: { onReach: () => void; enabled: bo
     return <div ref={ref} data-testid="end" />;
 }
 
-// A list whose end can be taken away and put back, as when the page of a manga covers the list and the user comes back: the end that comes
-// back is another element, with the same `enabled` and `version`. `identity` changes the key, so React makes a new element.
 function Replaceable({ onReach, shown, identity }: { onReach: () => void; shown: boolean; identity: string }) {
     const ref = useInfiniteScroll(onReach, true, 1);
     return shown ? <div key={identity} ref={ref} data-testid="end" /> : null;

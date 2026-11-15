@@ -4,7 +4,6 @@ import { useTranslator } from '../i18n/useTranslator';
 import { PlayerIcon } from './PlayerIcon';
 import { SubtitleSizeControl } from './SubtitleSizeControl';
 
-// A subtitle the viewer can choose. The id is also the id of its <track>, which is how the control finds it.
 export interface SubtitleOption {
     id: string;
     label: string;
@@ -16,36 +15,24 @@ interface PlayerSettingsProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     subtitles: readonly SubtitleOption[];
-    // The id of the subtitle being shown; null when they are off.
     selectedSubtitle: string | null;
     onSelectSubtitle: (id: string | null) => void;
     subtitleStyle: SubtitleStyle;
-    // The switch of the next episode that starts by itself; left out, the player has none (the stream of the search has no next episode).
     autoNext?: AutoNextSetting;
-    // Opens the window of the subtitles; left out, the settings have no way into it (the stream of the search has no files to manage).
     onManageSubtitles?: () => void;
 }
 
-// Whether the next episode starts by itself at the end of one, and the way to change it.
 export interface AutoNextSetting {
     enabled: boolean;
     onToggle: () => void;
 }
 
-// What the window of the subtitles needs from the screen that has the subtitles of an episode: what it can do about them, and what it
-// says went wrong. The window is opened from the gear of the player.
 export interface SubtitleManagerSetting {
-    // Whether the list of the subtitles of the episode has arrived: until then it is not known whether it has any, so nothing is offered to
-    // translate or to create.
     loaded: boolean;
-    // The episode has a subtitle to translate; otherwise the way to get one is to create it from the audio.
     hasSubtitles: boolean;
-    // The check for the subtitles the source offers is going on.
     checking: boolean;
-    // Why a subtitle could not be loaded, when it could not.
     failure: string | null;
     onLoad: () => void;
-    // Opens the translation of a subtitle, or the creation of one when the episode has none.
     onCreate: () => void;
     onCheck: () => void;
 }
@@ -64,17 +51,14 @@ function SettingRow({ label, children }: SettingRowProps) {
     );
 }
 
-// Whether the player has anything to set. The gear only shows up when it does, so a setting added later only has to be added here.
 export function hasPlayerSettings(subtitles: readonly SubtitleOption[], autoNext?: AutoNextSetting, subtitleManager?: SubtitleManagerSetting): boolean {
     return subtitles.length > 0 || autoNext !== undefined || subtitleManager !== undefined;
 }
 
-// The gear of the player and the panel it opens with every setting that is not on the bar (the sound stays there).
 export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle, onSelectSubtitle, subtitleStyle, autoNext, onManageSubtitles }: PlayerSettingsProps) {
     const t = useTranslator();
     const root = useRef<HTMLSpanElement>(null);
 
-    // The panel closes with Escape (before the browser leaves fullscreen with it) and with a click anywhere else.
     useEffect(() => {
         if (!open) {
             return undefined;
@@ -118,7 +102,6 @@ export function PlayerSettings({ open, onOpenChange, subtitles, selectedSubtitle
                     role="dialog"
                     aria-label={t('anime.player.settings')}
                     onKeyDown={(event) => {
-                        // The arrows move around the panel, they do not seek the video.
                         event.stopPropagation();
                     }}
                 >

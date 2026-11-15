@@ -36,7 +36,6 @@ import { TranslationSettings } from './TranslationSettings';
 import { UpdateActions } from './UpdateActions';
 import { updateSummary } from './updateText';
 
-// The volume of the short sounds (a choice of the window, not a setting: it is kept in its storage, like the button of the sounds).
 function SoundVolumeField() {
     const t = useTranslator();
     const volume = useUiPrefsStore((state) => {
@@ -97,8 +96,6 @@ function findBrowserByDir(browsers: readonly DetectedBrowser[], dataDir: string)
     });
 }
 
-// The browsers the pages of the mangas can be opened in: the one of the system and the kinds of browser found (one entry for each, even if it
-// has several profiles), with the one that is saved even when it is no longer found, so the field never shows something that is not saved.
 function siteBrowserOptions(browsers: readonly DetectedBrowser[], saved: SiteBrowser): SiteBrowser[] {
     const found = browsers
         .map((browser) => {
@@ -123,7 +120,6 @@ function formatSiteBrowser(browsers: readonly DetectedBrowser[], browser: SiteBr
 
 const AUTOMATIC_PROFILE = '';
 
-// The profiles with cookies, plus the saved one when it is gone, so the menu never shows a value that is not in it.
 function profileOptions(browser: DetectedBrowser, saved: string): string[] {
     const ids = browser.profiles.map((profile) => {
         return profile.id;
@@ -148,8 +144,6 @@ function formatBrowser(browsers: readonly DetectedBrowser[], dataDir: string, t:
     return findBrowserByDir(browsers, dataDir)?.label ?? t('settings.browser.choose');
 }
 
-// Where the settings are shown: the ones of the whole app, and the ones of the video downloader, of the anime section and of the manga
-// section.
 export type SettingsScope = 'global' | 'downloads' | 'anime' | 'manga';
 
 interface SettingsPanelProps {
@@ -216,7 +210,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
         return state.llmStatus;
     });
     const { draft, status, change, edit, changeMany, sync } = useAutoSaveSettings(stored, saveSettings);
-    // The automatic translation of the new episodes can only be turned on when the provider of the translation has its token and its model.
     const translationGap = translationSetupGap(
         { provider: draft.translateProvider, model: draft.translateModel, baseUrl: draft.translateBaseUrl },
         llmStatus.providers.includes(draft.translateProvider)
@@ -233,7 +226,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
     const unboundedAutoSubtitles = hasUnboundedAutoSubtitles(draft);
     const trayWarning = draft.closeToTray && traySupport !== null && !traySupport.available ? traySupport.reason : null;
 
-    // The main process turns the automatic translation off by itself (the provider refused): the switch follows it.
     useEffect(() => {
         if (previousAutoTranslate.current && !storedAutoTranslate) {
             sync({ animeAutoTranslateNew: false });
@@ -241,7 +233,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
         previousAutoTranslate.current = storedAutoTranslate;
     }, [storedAutoTranslate, sync]);
 
-    // The browsers are for the cookies of the video downloader and for the pages of the mangas; the tray is a setting of the whole app.
     useEffect(() => {
         if (scope === 'downloads' || scope === 'manga') {
             void loadBrowsers();
@@ -276,11 +267,9 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
         }
     }
 
-    // With anime in the library the folder changes only by a migration, which moves the files too.
     const animeFolderLocked = library.length > 0;
     const migrating = migration !== null;
 
-    // With manga in the library the folder changes only by a migration, which moves the files too.
     const mangaFolderLocked = mangaLibraryCount > 0;
     const mangaMigrating = mangaMigration !== null;
 
@@ -397,7 +386,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
 
             {scope === 'downloads' && (
                 <>
-                    {/* The blocks go in the order that keeps the columns closest in height (two and three columns). */}
                     <fieldset className="panel">
                         <legend>{t('settings.output')}</legend>
                         <div className="field-row">
@@ -685,7 +673,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
 
             {scope === 'manga' && (
                 <>
-                    {/* The blocks go in the order that keeps the columns closest in height (two and three columns), the disk space last. */}
                     <fieldset className="panel">
                         <legend>{t('settings.manga.folder')}</legend>
                         <div className="field-row">
@@ -809,7 +796,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
 
             {scope === 'anime' && animeSupported && (
                 <>
-                    {/* The blocks go in the order that keeps the columns closest in height (two and three columns), the disk space last. */}
                     <fieldset className="panel">
                         <legend>{t('settings.anime.library')}</legend>
                         <div className="field-row">
@@ -931,7 +917,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
 
             <LogsSettings scope={scope} />
 
-            {/* Last: it takes a while to measure the disk, and the blocks after it would move when it grows. */}
             {scope === 'manga' && (
                 <DiskUsageChart
                     section="manga"

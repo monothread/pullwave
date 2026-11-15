@@ -46,7 +46,6 @@ async function launch(theme: string): Promise<void> {
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1100, height: 780 });
     await page.waitForSelector('.logo');
-    // The screens only show up once yt-dlp and ffmpeg were probed, which can take a while the first time on Windows.
     await expect(page.getByText('// BOOTING SYSTEMS…')).toBeHidden({ timeout: 60000 });
     await leaveHome(page);
 }
@@ -101,7 +100,6 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-r
                 await height(page.getByRole('navigation', { name: 'Anime' }).getByRole('button').first())
             ];
             expect(new Set(heights)).toEqual(new Set([39]));
-            // DOWNLOADS is 8 px shorter than the tabs and floats in the middle of the bar, so it does not sit on the line under them.
             const downloads = await page.getByRole('button', { name: /^DOWNLOADS \(\d+\)$/ }).boundingBox();
             const bar = await page.locator('.anime__bar').boundingBox();
             expect(downloads?.height).toBe(31);
@@ -117,7 +115,6 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-r
             await page.setViewportSize({ width: 1100, height: 900 });
             await page.getByRole('button', { name: 'ANIME', exact: true }).click();
             await page.getByRole('navigation', { name: 'Anime' }).getByRole('button', { name: 'SETTINGS', exact: true }).click();
-            // The panels rise into place when the screen opens: the boxes are measured once they are where they stay.
             await page.evaluate(async () => {
                 const entrances = document.getAnimations().filter((animation) => {
                     return animation.effect?.getTiming().iterations !== Infinity;
@@ -136,14 +133,10 @@ for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-r
             };
             const quality = await box('Anime quality');
             const subtitles = await box('Anime subtitles');
-            // One under the other, on the same left edge and with the same width.
             expect(new Set([quality.x, subtitles.x]).size).toBe(1);
-            // The page beside the rail of the menu has a width with a fraction of a pixel: the fields may round one pixel apart.
             expect(Math.abs(quality.width - subtitles.width)).toBeLessThanOrEqual(1);
             expect(quality.y).toBeLessThan(subtitles.y);
             expect(new Set([quality.height, subtitles.height]).size).toBe(1);
-            // The folder is in a block of its own (FOLDER & LIBRARY), as tall as the fields, with BROWSE on its row, MIGRATE FOLDER on the row
-            // below and CHECK DOWNLOADED EPISODES under it, on the same left edge.
             const folder = await box('Anime download folder');
             expect(folder.height).toBe(quality.height);
             const library = page.locator('.settings .panel', { hasText: 'Anime download folder' });

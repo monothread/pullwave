@@ -31,7 +31,6 @@
     --body-bg: radial-gradient(1200px 600px at 80% -10%, #2a0a3d 0%, transparent 60%), radial-gradient(900px 500px at -10% 110%, #04283a 0%, transparent 55%), var(--bg);
     --scanlines: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px);
     --cut: 8px;
-    /* The height of a text field and of every button that sits beside one. */
     --control-height: 39px;
     color-scheme: dark;
 }
@@ -82,7 +81,6 @@ body::after {
 }
 
 .app__main {
-    /* The room above the page, which the bar of the reader reaches up over (see .reader__bar). */
     --main-pad-top: 16px;
     flex: 1;
     overflow-y: auto;
@@ -142,11 +140,8 @@ body::after {
     gap: 8px;
 }
 
-/* No chip to show: the programs are all installed and running. */
 .binary-status:empty { display: none; }
 
-/* Two or three chips of the programs and the clock do not fit on the line of the top bar of a window narrower than 1280 pixels (the bar went past
-   the window and the whole window scrolled sideways): there one chip sums them up, with each program on hover. A wider window shows each one. */
 .binary-status__summary { display: none; }
 
 @media (max-width: 1279px) {
@@ -185,8 +180,6 @@ body::after {
 .tab:hover { color: var(--cyan); }
 .tab .badge { margin-left: 8px; }
 
-/* The settings tabs are a gear at the right end of their bar. */
-/* The gear is bigger than the words, and takes less room above and below, so the bar is no taller than with only words. */
 .tab--icon { margin-left: auto; padding: 4px 14px; font-size: 24px; line-height: 1; letter-spacing: 0; }
 
 .tab--active {
@@ -273,7 +266,6 @@ body::after {
     height: 16px;
 }
 
-/* An on/off setting: a track with a knob that slides, lit with the neon of the theme when it is on. */
 .toggle input.switch {
     appearance: none;
     flex-shrink: 0;
@@ -390,8 +382,6 @@ body::after {
     transition: width 0.25s ease;
 }
 
-/* The part of a download that has grown is a wave that flows: the two colours of the theme melt into each other with a bright crest, and the
-   tile is the same at both ends so the flow has no seam. The other kinds of bar (done, error, waiting, processing...) keep their own looks. */
 .progress:not([class*='progress--']) .progress__bar {
     background: linear-gradient(90deg, var(--cyan), var(--magenta) 35%, color-mix(in srgb, var(--magenta) 80%, white) 50%, var(--magenta) 65%, var(--cyan));
     background-size: 160px 100%;
@@ -399,25 +389,16 @@ body::after {
 }
 @keyframes bar-wave-flow { from { background-position: 0 0; } to { background-position: 160px 0; } }
 
-/* A finished or failed download keeps its colour and stands still. The rule is as specific as the one of the wave above (and comes after it),
-   or the wave would win and the bar would go on flowing in the colours of the theme; the glow is the one of every bar, in the colour of the state. */
 .job--done .progress .progress__bar { background: var(--green); animation: none; }
 .job--error .progress .progress__bar { background: var(--red); animation: none; }
 
 .job__meta { display: flex; gap: 16px; color: var(--muted); font-size: 12px; }
 
-/* A download whose video and audio come apart has a bar for each part, one under the other: the name of the part, its bar and its percentage
-   (D-194). The bars are the plain ones of a download, so they flow and glow as the one bar would. The rows share the columns, so the bars start
-   and end at the same place whatever the names are. */
 .job-parts { display: grid; grid-template-columns: max-content minmax(0, 1fr) 52px; align-items: center; gap: 6px 10px; }
 .job-part { display: contents; }
 .job-part__name { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 2px; }
 .job-part__percent { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 
-/* The joining of the bars of the parts once they are downloaded (PartsZipper, D-196): the bars stretch to the whole width while their names and
-   percentages go, a zipper closes them from the start to the end (behind it the bar that is already one, its head on the zipper; ahead of it the
-   two bars, each going into the zipper by a line of light) and the box shrinks to the one bar. Nothing is cut or masked: the bars only grow and
-   shrink, so their flow, pulses and neon stay whole. The times come from useZipPhase. */
 @property --zip { syntax: '<percentage>'; inherits: true; initial-value: 0%; }
 .zipper { position: relative; transition: height var(--zip-settle-ms, 350ms) ease; }
 .zipper .job-part__name, .zipper .job-part__percent { transition: opacity 0.25s ease; }
@@ -449,8 +430,6 @@ body::after {
 .zipper__pull path { fill: none; stroke: color-mix(in srgb, var(--cyan) 70%, white); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .zipper[data-zip='zip'] .zipper__pull { opacity: 1; }
 
-/* The steps after the download (StepTrail, D-196): the download, then each step as it starts, one after the other, joined by a short line;
-   the steps done are ticked in green and the one going on is lit in the colour of the processing bar. */
 .steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0; padding: 0; list-style: none; }
 .steps__item {
     position: relative;
@@ -488,9 +467,6 @@ body::after {
 
 .empty { color: var(--muted); text-align: center; padding: 32px 0; letter-spacing: 2px; }
 
-/* A search or a filter that found nothing (NotFound, D-197): a lens sweeps the rows it looks through, stops, shakes "no", a red cross pops in it
-   with a ring of red leaving it, and the words come in as a broken signal; then the lens floats and the cross breathes. Smaller in a window,
-   only the lens shaking no in a dropdown. The neon of the lens and of the cross is only in the neon themes (console.css). */
 .not-found {
     --not-found-lens-glow: drop-shadow(0 0 4px var(--cyan)) drop-shadow(0 0 10px color-mix(in srgb, var(--cyan) 60%, transparent));
     --not-found-cross-glow: drop-shadow(0 0 5px var(--red));
@@ -563,8 +539,6 @@ body::after {
 .not-found--tiny .not-found__cross { animation-delay: 0.45s, 1s; }
 .not-found--tiny .not-found__text { animation-delay: 0.5s; }
 
-/* The panels of the settings flow in columns (one, two or three, see responsive.css): each panel is as tall as what is in it and the
-   columns fill up evenly, so there are no empty cells and no panel of another width. */
 .settings { column-count: 1; column-gap: 18px; }
 .settings > .panel { break-inside: avoid; margin: 0 0 18px; }
 .settings > .save-status { column-span: all; margin-bottom: 14px; }
@@ -582,12 +556,10 @@ body::after {
 }
 
 .panel legend { color: var(--magenta); letter-spacing: 2px; font-size: 12px; padding: 0 6px; }
-/* Every block of the settings is named the same way, in capitals, whatever the text of its title. */
 .settings > .panel > legend { text-transform: uppercase; }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field-row .field { flex: 1; }
-/* A switch has no label above it: its row is as tall as the controls beside it and the switch is in the middle, level with them. */
 .field-row .field--toggle { flex: 0 0 auto; justify-content: center; min-height: var(--control-height); }
 .field__label { color: var(--cyan); font-size: 12px; letter-spacing: 1px; }
 .field__hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
@@ -612,7 +584,6 @@ body::after {
 .series__title { margin: 0; font-size: 17px; letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .series .job__badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; max-width: 100%; min-width: 0; }
 
-/* A season of a series is a row of its card; it opens to show the actions and the episodes. */
 .series__season { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
 .season__row { display: flex; align-items: center; gap: 12px; }
 
@@ -629,7 +600,6 @@ body::after {
     background: var(--tint-cyan);
 }
 
-/* The title the source gave the season is always shown, beside the chip that says which season it is. */
 .season__title {
     flex: 1;
     min-width: 0;
@@ -647,14 +617,11 @@ body::after {
 .season__panel { display: flex; flex-direction: column; gap: 10px; padding-left: 12px; border-left: 2px solid var(--line); }
 
 .series-editor { display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
-/* The gear at the end of the row of a series, and what it opens under it. */
 .series-menu { position: relative; display: inline-flex; }
-/* The gear is as big as the one of the tabs: at the size of the other buttons it is hard to see. */
 .series-menu__button { padding: 2px 10px; font-size: 24px; line-height: 1; letter-spacing: 0; }
 .series-menu__panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 190px; padding: 10px; background: var(--panel-2); border: 1px solid var(--cyan); box-shadow: var(--glow); }
 .series-menu__section { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
 .series-menu__panel:has(.series-menu__section) { min-width: 260px; }
-/* The panel never goes past the window, whatever is in it (a long name of a group or of a series wraps). */
 .series-menu__panel { box-sizing: border-box; max-width: min(360px, calc(100vw / var(--ui-zoom, 1) - 32px)); overflow-wrap: anywhere; }
 .series-menu__panel .manga__tags { min-width: 0; }
 .series-menu__panel .anime-remove { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
@@ -684,7 +651,6 @@ body::after {
     vertical-align: middle;
 }
 
-/* The seal of what was watched or read: a ✓ and the word in a solid pill (WatchedMark). */
 .watched-mark {
     display: inline-flex;
     flex: none;
@@ -712,18 +678,15 @@ body::after {
     font-weight: 900;
 }
 .history__main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-/* What is beside the title keeps its size, however long the title is. */
 .history__item > .btn, .history__item > .anime__actions { flex: none; white-space: nowrap; }
 .history__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history__meta { color: var(--muted); font-size: 12px; }
 
-/* The steps of an update of ani-cli: the ones done, the one going on, the one it stopped at, and the ones still to come. */
 .update-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 12px; }
 .update-steps__item--done { color: var(--green); }
 .update-steps__item--running { color: var(--magenta); }
 .update-steps__item--failed { color: var(--red); }
 
-/* The notices are one over the other in the corner: the first at the bottom, each new one on top of those. */
 .toasts {
     position: fixed;
     right: 20px;
@@ -794,7 +757,6 @@ body::after {
 .job__live { color: var(--red); font-weight: 700; letter-spacing: 1px; }
 @keyframes live-stripes { from { background-position: 0 0; } to { background-position: 28px 0; } }
 
-/* The stream seems to have ended: the bar drains over the checking time while a scan line sweeps it. */
 .progress--verify { position: relative; }
 .progress--verify .progress__bar {
     background: var(--yellow);
@@ -811,7 +773,6 @@ body::after {
 }
 .job__verifying { color: var(--yellow); font-weight: 700; letter-spacing: 1px; }
 
-/* Waiting for a scheduled live stream to start: a radar sweep that never reaches an end. */
 .progress--waiting { position: relative; }
 .progress--waiting .progress__bar {
     width: 100%;
@@ -829,7 +790,6 @@ body::after {
 .job__waiting { color: var(--magenta); font-weight: 700; letter-spacing: 1px; }
 .job__waiting::after { content: '...'; display: inline-block; width: 1.5em; text-align: left; animation: wait-dots 1.4s steps(4, end) infinite; overflow: hidden; vertical-align: bottom; }
 
-/* The downloaded file being processed by ffmpeg (conversion, merge, tags): a magenta bar with a scan line, until it is ready. */
 .progress--processing { position: relative; }
 .progress--processing .progress__bar {
     width: 100%;
@@ -847,7 +807,6 @@ body::after {
 .job__processing { color: var(--magenta); font-weight: 700; letter-spacing: 1px; }
 .job__processing::after { content: '...'; display: inline-block; width: 1.5em; text-align: left; animation: wait-dots 1.4s steps(4, end) infinite; overflow: hidden; vertical-align: bottom; }
 
-/* A stopped recording being closed into its file: a cyan bar with a scan line, until the file is ready. */
 .progress--saving { position: relative; }
 .progress--saving .progress__bar {
     width: 100%;
@@ -865,7 +824,6 @@ body::after {
 .job__saving { color: var(--cyan); font-weight: 700; letter-spacing: 1px; }
 .job__saving::after { content: '...'; display: inline-block; width: 1.5em; text-align: left; animation: wait-dots 1.4s steps(4, end) infinite; overflow: hidden; vertical-align: bottom; }
 
-/* Joining the parts of a recording: a bar that fills and a scan line that sweeps over it, until the file is ready. */
 .progress--merging { position: relative; }
 .progress--merging .progress__bar {
     width: 100%;
@@ -883,10 +841,6 @@ body::after {
 .job__merging { color: var(--green); font-weight: 700; letter-spacing: 1px; }
 .job__merging::after { content: '...'; display: inline-block; width: 1.5em; text-align: left; animation: wait-dots 1.4s steps(4, end) infinite; overflow: hidden; vertical-align: bottom; }
 
-/* Every progress bar glows like neon, in the colour of its state (so of the theme): a bright rim, a close halo and wider soft ones. The track
-   used to keep the glow in (it clips what comes out of it), so it lets it out on every side: the sweeps stay inside the track on their own,
-   so nothing cuts the glow at the start or at the end of the bar. The glow is a drop shadow, not a box shadow: it follows the shape of the
-   bar and its pulse (below) instead of the box of the bar. */
 .progress {
     overflow: visible;
 }
@@ -901,13 +855,10 @@ body::after {
     position: relative;
     box-shadow: none;
     filter: var(--bar-neon);
-    /* The bar paints nothing itself: its fill is drawn by its ::before, cut in the shape of the pulse. The kinds of bar set their fill with the
-       background shorthand, which would put the clip back, so this one has to win over all of them. */
     background-clip: text !important;
     mask-position: inherit;
 }
 
-/* The fill of the bar: the background of the bar (with its own flow, inherited at every frame), in the shape of the pulse. */
 .progress .progress__bar::before {
     content: '';
     position: absolute;
@@ -916,14 +867,6 @@ body::after {
     background-clip: border-box;
 }
 
-/* The bars are thin, and pulses run along them from the start to the head, round after round, as if they pushed the bar on: a train of one to
-   four flattened swells, the same up and down, their number changing from round to round in an order that does not show (twelve rounds before
-   it comes again, and every bar started at its own time). The thin band and the train are two layers of the mask. The track moves the train
-   and picks the number (a mask position and a custom property that do nothing on the track itself), and every layer cut by them takes both
-   from it, so the fill of the bar and the line that sweeps over it pulse in step, whenever each of them appeared. The train starts out of the
-   bar and leaves past its head, a train as long as its tile away, so it never jumps back in sight and the number changes while it is out of
-   sight. The track has no mask, so it keeps one position only: the train is the first layer, and the band repeats along the bar, so it
-   covers the bar whatever position it gets. */
 .progress {
     --bar-band: linear-gradient(transparent 30%, #000 30% 70%, transparent 70%);
     --bar-pulses-1: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'%3E%3Cpath d='M0 30L5 30L10 30L15 30L20 30L25 30L30 30L35 30L40 30L45 30L50 30L55 30L60 30L65 30L70 30L75 30L80 30L85 30L90 30L95 30L100 30L105 30L110 30L115 30L120 30L125 30L130 30L135 30L140 30L145 30L150 30L155 29.5L160 28.1L165 25.9L170 23.1L175 20L180 16.9L185 14.1L190 11.9L195 10.5L200 10L205 10.5L210 11.9L215 14.1L220 16.9L225 20L230 23.1L235 25.9L240 28.1L245 29.5L250 30L255 30L260 30L265 30L270 30L275 30L280 30L285 30L290 30L295 30L300 30L305 30L310 30L315 30L320 30L325 30L330 30L335 30L340 30L345 30L350 30L355 30L360 30L365 30L370 30L375 30L380 30L385 30L390 30L395 30L400 30L400 70L395 70L390 70L385 70L380 70L375 70L370 70L365 70L360 70L355 70L350 70L345 70L340 70L335 70L330 70L325 70L320 70L315 70L310 70L305 70L300 70L295 70L290 70L285 70L280 70L275 70L270 70L265 70L260 70L255 70L250 70L245 70.5L240 71.9L235 74.1L230 76.9L225 80L220 83.1L215 85.9L210 88.1L205 89.5L200 90L195 89.5L190 88.1L185 85.9L180 83.1L175 80L170 76.9L165 74.1L160 71.9L155 70.5L150 70L145 70L140 70L135 70L130 70L125 70L120 70L115 70L110 70L105 70L100 70L95 70L90 70L85 70L80 70L75 70L70 70L65 70L60 70L55 70L50 70L45 70L40 70L35 70L30 70L25 70L20 70L15 70L10 70L5 70L0 70Z'/%3E%3C/svg%3E");
@@ -949,7 +892,6 @@ body::after {
 
 @keyframes bar-pulse { from { mask-position: calc(0% - 192px) 0; } to { mask-position: calc(100% + 192px) 0; } }
 
-/* One round of the pulse each, the number of swells of the train for that round (the value of a custom property changes at once). */
 @keyframes bar-pulse-count {
     0%, 8.32% { --bar-pulses: var(--bar-pulses-2); }
     8.33%, 16.66% { --bar-pulses: var(--bar-pulses-4); }
@@ -970,10 +912,8 @@ body::after {
 .progress--verify .progress__bar { --bar-glow: var(--yellow); }
 .progress--waiting .progress__bar, .progress--processing .progress__bar { --bar-glow: var(--magenta); }
 
-/* The bars that wait or work were faded; they shine as much as the others. */
 .progress--waiting .progress__bar, .progress--processing .progress__bar, .progress--saving .progress__bar, .progress--merging .progress__bar { opacity: 0.9; }
 
-/* The timeline and the volume of the player. */
 .player__range { box-shadow: 0 0 3px var(--cyan), 0 0 10px var(--cyan), 0 0 20px color-mix(in srgb, var(--cyan) 60%, transparent); }
 
 @keyframes verify-drain { from { width: 100%; } to { width: 0%; } }
@@ -989,7 +929,6 @@ body::after {
 .link-row__folder { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; color: var(--muted); font-size: 12px; min-width: 0; }
 .link-row__folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
-/* Window with the options of one download. */
 .modal-backdrop {
     position: fixed;
     inset: 0;
@@ -1020,9 +959,6 @@ body::after {
 .modal__list--scroll { max-height: calc(40vh / var(--ui-zoom, 1)); overflow-y: auto; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
-/* Anime section */
-/* A row or a card that opens by clicking anywhere on it (see RowLink): its title is a real button whose area is stretched over the
-   row, and the other buttons of the row stay above it. */
 .row--link { position: relative; cursor: pointer; }
 .row--link:hover { background: color-mix(in srgb, var(--cyan) 8%, transparent); }
 .row--link:has(.row-link:focus-visible) { outline: 2px solid var(--yellow); outline-offset: 2px; }
@@ -1047,7 +983,6 @@ body::after {
 .row-link:focus-visible { outline: none; }
 .row-link__text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* The video downloader keeps the spacing its parts had when they were direct children of the page. */
 .downloads { display: flex; flex-direction: column; gap: 18px; }
 .downloads > .tabs { margin-top: 0; }
 .anime { display: flex; flex-direction: column; gap: 14px; }
@@ -1057,15 +992,11 @@ body::after {
 .schedule__day .section-label { margin: 0; }
 .schedule__today { color: var(--green); }
 .cover-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-/* The cover is at the top of the card, as wide as the card, and what is said of the anime is under it. */
 .cover-card { display: flex; justify-content: flex-start; align-items: stretch; flex-direction: column; gap: 10px; min-width: 0; padding: 8px; }
 .cover-card .history__main, .cover-card__body { display: flex; flex-direction: column; justify-content: flex-start; flex: 1; gap: 4px; min-width: 0; }
-/* The title is as tall as its text (three lines at most), and what is under it (the season, the buttons) is at the bottom of the card. */
 .cover-card .history__title, .cover-card .series__title { display: block; flex: none; margin: 0; overflow: hidden; font-size: 15px; line-height: 1.3; white-space: normal; }
 .cover-card .row-link__text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-/* The buttons are at the bottom of the card. */
 .cover-card__action { align-self: flex-start; margin-top: auto; }
-/* What is said of the anime in the library is just above its button, at the bottom of the card. */
 .cover-card__footer { display: flex; flex-direction: column; gap: 4px; margin-top: auto; }
 .cover-card__footer .cover-card__action, .cover-card__footer .library__footer, .cover-card__footer .anime__actions { margin-top: 0; }
 .cover-card__footer .job__badges { align-self: flex-start; }
@@ -1073,26 +1004,19 @@ body::after {
 .cover-card .job__head { align-items: flex-start; flex-direction: column; gap: 6px; }
 .cover-card .library__footer { margin-top: auto; }
 .cover-card .history__meta { line-height: 1.3; }
-/* A long word, a long date or a long list of badges breaks onto the next line instead of coming out of the card. */
 .cover-card .history__title, .cover-card .series__title, .cover-card .row-link__text, .cover-card .history__meta { overflow-wrap: anywhere; }
 .cover-card .job__badges, .cover-card .badge { flex-wrap: wrap; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
-/* In the schedule the episode and the time are at the bottom of the card. */
 .cover-card--bottom-meta .history__meta { margin-top: auto; }
 .cover { flex: none; width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid var(--line); background: var(--line); }
 .cover--none { display: flex; align-items: center; justify-content: center; padding: 4px; box-sizing: border-box; text-align: center; font-size: 10px; line-height: 1.25; letter-spacing: 0.5px; color: var(--muted); overflow: hidden; }
-/* The screens of one anime (the detail and the series of the library) show its cover at the top, at the size of the cards' cover of the schedule. */
 .series__cover { width: 90px; margin-bottom: 8px; }
-/* The series of the manga section also has a small cover in the row of each season. */
 .season__cover { flex: none; width: 40px; }
-/* Manga section: in a row (the library, the head of a manga) the cover has a size of its own; as wide as the row it would push the rest out. */
 .manga__head .cover { width: 72px; }
 .manga__head { align-items: flex-start; }
-/* The updates and the history are grids of cards, like the library's (the covers are the size of the grid's), split by day. */
 .manga__updates, .manga__history { display: flex; flex-direction: column; gap: 12px; }
 .manga__updates-day, .manga__history-day { display: flex; flex-direction: column; gap: 8px; }
 .anime__updates { display: flex; flex-direction: column; gap: 12px; }
 .anime__updates-day { display: flex; flex-direction: column; gap: 8px; }
-/* The title of the anime or manga a look for new ones is asking about, beside its button: one line, cut with an ellipsis. */
 .anime__updates .queue__toolbar { gap: 10px; }
 .check-current { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
 .manga__description { margin: 4px 0 0; white-space: pre-line; }
@@ -1148,7 +1072,6 @@ body::after {
 
 .player__title { margin: 0; font-size: 14px; letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player__video { width: 100%; flex: 1; min-height: 0; background: #000; display: block; object-fit: contain; cursor: pointer; }
-/* The outlined lettering of the fansubs: bold and wide, with no box behind it. Two rings of shadows draw the outline in em, so it follows the size of the letters. */
 .player__video::cue {
     color: #f6e9ff;
     background: transparent;
@@ -1191,7 +1114,6 @@ body::after {
         0 0.08em 0.1em rgba(0, 0, 0, 0.6);
 }
 
-/* Holds the header of the player (see AnimePlayer): it takes no room of its own, so its content lays out in the box as before. */
 .player__slot { display: contents; }
 .player__stage { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #000; border: 1px solid var(--line); }
 .player__stage:fullscreen { justify-content: center; }
@@ -1209,10 +1131,8 @@ body::after {
     position: relative;
 }
 
-/* In fullscreen the controls go away when the mouse stands still (see useFullscreenIdle), and so does the cursor. */
 .player__stage:fullscreen { position: relative; }
 
-/* Hidden, the bar leaves the layout so the video grows into its place. */
 .player__controls[data-hidden='true'] { position: absolute; left: 0; right: 0; bottom: 0; opacity: 0; pointer-events: none; }
 .player__stage:has(.player__controls[data-hidden='true']),
 .player__stage:has(.player__controls[data-hidden='true']) .player__video { cursor: none; }
@@ -1231,9 +1151,6 @@ body::after {
 }
 
 .player__button:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: var(--glow); }
-/* The pictures of the buttons are characters the font draws at different sizes: each one is scaled (from the size of the button, so it holds
-   in fullscreen too) to the height of the biggest, the loudspeaker (15 pixels at 12: measured in the app). */
-/* The buttons with a picture are all as wide as each other (the pause, two bars, was wider). */
 .player__button:has(> .player__icon) { width: 44px; padding: 0; letter-spacing: 0; }
 .player__icon { display: inline-block; line-height: 1; vertical-align: middle; }
 .player__icon--play { font-size: 1.5em; }
@@ -1260,7 +1177,6 @@ body::after {
 
 .player__size { display: flex; align-items: center; gap: 4px; }
 
-/* The panel of the gear opens over the video, above the bar; it is a child of the bar so it goes where the bar goes. */
 .player__settings {
     position: absolute;
     right: 10px;
@@ -1280,7 +1196,6 @@ body::after {
 .player__setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .player__setting-label { font-size: 12px; color: var(--muted); }
 .player__switch { width: 18px; height: 18px; margin: 0; accent-color: var(--cyan); cursor: pointer; }
-/* The next episode, over the video once one ended: as the zone between two chapters of the reader, a bar that fills and the two buttons. */
 .player__auto-next {
     position: absolute;
     right: 24px;
@@ -1303,7 +1218,6 @@ body::after {
 .player__auto-next-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .player__settings .player__select { max-width: 180px; }
 
-/* Over the video while it waits for data (after a jump on a stream), and the time under the mouse on the timeline. */
 .player__loading {
     position: absolute;
     inset: 0 0 46px 0;
@@ -1348,7 +1262,6 @@ body::after {
     gap: 4px;
 }
 
-/* The picture of the second under the mouse, above its time. */
 .player__thumb {
     display: block;
     width: 160px;
@@ -1377,16 +1290,12 @@ body::after {
     cursor: pointer;
 }
 
-/* The timeline of the player is the bar of a download: it has the same elements (.progress with a .progress__bar inside, as wide as what was
-   watched), so it has the same frame, the same glow and the same wave that flows, in every theme. The slider is above it, transparent, with only
-   its thumb to be seen. */
 .player__timeline {
     position: relative;
     flex: 1;
     min-width: 80px;
 }
 
-/* The part watched follows the time of the video at every frame: a transition would make it grow in steps behind it. */
 .player__timeline .progress__bar {
     transition: none;
 }
@@ -1401,8 +1310,6 @@ body::after {
     box-shadow: none;
 }
 
-/* In every theme, in fullscreen: the bar floats over the video with no background and takes no room (it goes away when the mouse stands still),
-   only the buttons and the timeline glow. */
 .player__stage:fullscreen { position: relative; }
 
 .player__stage:fullscreen .player__controls {
@@ -1435,13 +1342,9 @@ body::after {
     box-shadow: var(--glow);
 }
 
-/* Buttons that sit beside a text field are as tall as the field, so the row lines up. */
 .field-row .btn, .link-row__line > .btn, .anime__bar .tabs > .btn { min-height: var(--control-height); }
-/* DOWNLOADS sits at the right end of the bar, beside the gear, which keeps its place after it. It is shorter than the bar, so it floats
-   in the middle of it instead of sitting on the line under the tabs. */
 .anime__bar .tabs > .btn { margin-left: auto; align-self: center; white-space: nowrap; min-height: calc(var(--control-height) - 8px); }
 .anime__bar .tabs { flex-wrap: wrap; }
-/* On a very narrow window the tabs are gathered in one list; DOWNLOADS and the gear stay where they are. */
 .tabs__menu { display: none; flex: 1 1 140px; min-width: 0; width: auto; align-self: center; margin-bottom: 2px; }
 @media (max-width: 520px) {
     .anime__bar .tabs > .tab:not(.tab--icon) { display: none; }
@@ -1449,12 +1352,10 @@ body::after {
 }
 .anime__bar .tab--icon { margin-left: 0; }
 
-/* Window that makes the subtitle of an episode from its audio: the languages, what leaves the computer and the steps while it goes on. */
 .modal--wide { width: min(640px, 100%); }
 .modal--confirm { width: min(420px, 100%); box-sizing: border-box; }
 .modal--error { width: min(640px, 100%); box-sizing: border-box; }
 .modal__summary { margin: 0; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
-/* Everything known about an error: the name of each fact and its value, side by side. */
 .error-details { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; font-size: 12px; }
 .error-details__row { display: contents; }
 .error-details dt { color: var(--muted); }
@@ -1463,8 +1364,6 @@ body::after {
 .error-details__text { margin: 0; padding: 8px; max-height: 180px; overflow: auto; background: var(--code-bg); border: 1px solid var(--line); color: var(--muted); font-size: 12px; white-space: pre-wrap; word-break: break-word; user-select: text; }
 .modal { box-sizing: border-box; max-width: 100%; white-space: normal; }
 
-/* The window of the logs (LogsDialog): the output of the programs as a dark terminal in every theme, with fixed colors, so the colors of
-   the levels and of the ANSI codes read the same whatever theme the app has. */
 .modal--logs {
     --log-bg: #0d1117;
     --log-text: #c9d1d9;
@@ -1598,15 +1497,12 @@ body::after {
     .generate__languages { grid-template-columns: 1fr; }
     .generate__arrow { display: none; }
 }
-/* Manga sources: the icon of a source in the list, and the name of the source whose page is open. */
 .manga__source-icon { flex: none; width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--line); }
 .manga__source-icon--none { display: inline-block; }
 .manga__source-name { flex: 1; min-width: 0; margin: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .manga__source-group { display: flex; flex-direction: column; gap: 6px; }
 .manga__sources { display: flex; flex-direction: column; gap: 10px; }
 
-/* Manga section: everything in it is spaced the same way, so no block touches the next (the sections, the notices, the bars and the grids
-   used to sit one on the other). */
 .manga, .manga__browse, .manga__library, .manga__extensions, .manga__detail, .manga__jobs, .manga__sources, .manga__reader {
     display: flex;
     flex-direction: column;
@@ -1630,17 +1526,12 @@ body::after {
 .manga__tag--on { background: var(--cyan); color: var(--bg); border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
 .manga__tag--some { border-style: dashed; border-color: var(--cyan); }
 .manga__candidates { max-height: 320px; overflow-y: auto; }
-/* The window to move a manga to another source: the filters in a row that wraps, the results in the middle with their own scroll. */
 .manga__migrate-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .manga__migrate-filters > .field { flex: 1 1 150px; min-width: 0; }
 .manga__migrate-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .manga__more { min-height: 48px; display: flex; align-items: center; justify-content: center; }
-/* The end of a list drawn a part at a time: when it comes into view, more of the list is drawn. */
 .list-more { min-height: 1px; grid-column: 1 / -1; list-style: none; }
-/* A block of a long list that is not drawn: as tall as it was, across all the columns of the grid. */
 .list-window__spacer { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; }
-/* A card of a long list drawn again after its block left the screen shows as it was when it left: its entrance (the rise of the card, the
-   blur and the focus of its cover) was played the first time it was drawn, and is not played again. */
 .cover-grid > .cover-card[data-window-back],
 [data-window-back] .cover-grid > .cover-card,
 .cover-card[data-window-back] img.cover,
@@ -1650,11 +1541,8 @@ body::after {
 .manga__head-gear { position: absolute; top: 6px; right: 6px; }
 .manga__organize { display: flex; flex-direction: column; gap: 10px; }
 
-/* The gear of a source is a button the size of a finger, with a gear that can be seen. */
 .manga__gear { min-width: 40px; min-height: 40px; padding: 0; font-size: 24px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
 
-/* The check of Cloudflare has no end that is known: a wave that always flows from one end of the bar to the other, with a bright
-   crest that sweeps it (inside the track, like the others, so the track does not clip the glow of the bar). */
 .progress--cloudflare { position: relative; }
 .progress--cloudflare .progress__bar {
     width: 100%;
@@ -1668,11 +1556,9 @@ body::after {
     position: absolute;
     inset: 0;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent) 0 0 / 30% 100% no-repeat;
-    /* Back and forth: going only one way, the crest slowed down to a stop at the end and jumped back to the start, which looked stuck. */
     animation: scan-sweep 1.4s ease-in-out infinite alternate;
 }
 
-/* The filters of the search of a source. */
 .manga__filters { display: flex; flex-direction: column; gap: 10px; }
 .manga__filter-list { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; }
 .manga__filter-list > .field, .manga__filter-list > .manga__filter-header, .manga__filter-list > .manga__filter-separator, .manga__filter-list > .manga__filter-group { flex: 1 1 100%; }
@@ -1684,22 +1570,17 @@ body::after {
 .manga__tri--include { color: var(--green); border-color: var(--green); }
 .manga__tri--exclude { color: var(--red); border-color: var(--red); }
 
-/* The reader of a chapter. */
 .manga__reader.reader { gap: 8px; }
-/* The bar stays at the top of the scroll of the page: it reaches up over the padding of the page (--main-pad-top), so nothing shows above it. */
 .reader__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; position: sticky; top: calc(-1 * var(--main-pad-top, 16px)); z-index: 2; margin-top: calc(-1 * var(--main-pad-top, 16px)); padding: 22px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .reader__title { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader__page { color: var(--muted); letter-spacing: 1px; min-width: 64px; text-align: center; }
 .reader__progress { flex: 1 1 100%; order: 10; margin-top: 2px; }
 .reader__chapters { max-width: 200px; padding: 4px 8px; }
-/* Everything in the bar has the height of a field and is centered on the same line. */
 .reader__bar .job__actions { margin-top: 0; align-items: center; }
 .reader__bar .btn, .reader__bar .input { min-height: var(--control-height); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
 .reader__bar .input { width: auto; }
 .reader__bar .manga__gear { min-width: var(--control-height); padding: 0; }
-/* The settings open under the bar, which stays on top of the page: they show wherever in the chapter the user is. */
 .reader__settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: start; gap: 12px 16px; position: absolute; top: 100%; left: 0; right: 0; z-index: 3; background: var(--panel, var(--bg)); border: 1px solid var(--cyan); box-shadow: var(--glow); }
-/* Three columns when there is room, so the six settings are two even rows instead of four and two. */
 @media (min-width: 760px) { .reader__settings { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .reader__settings .field { min-width: 0; }
 .reader__float { position: fixed; right: 24px; bottom: 24px; z-index: 5; display: flex; align-items: center; gap: 10px; }
@@ -1708,9 +1589,6 @@ body::after {
 .reader__stage, .reader__scroll { position: relative; display: flex; flex-direction: column; align-items: center; min-height: calc(40vh / var(--ui-zoom, 1)); padding: 8px; border: 1px solid var(--line); }
 .reader__stage { cursor: pointer; justify-content: center; }
 .reader__scroll { gap: 8px; }
-/* The webtoon is a column of at most 938 pixels in the middle (as wide as the room when there is less): wider, a strip made for the screen of a
-   phone grows so much that a panel no longer fits on screen. 938 is the room of the reader in a window 1080 wide (a screen standing up), so
-   there the pages are as wide as the bar of the reader above them. */
 .reader__scroll--webtoon { gap: 0; padding: 0; width: min(100%, 938px); margin-inline: auto; box-sizing: border-box; }
 .reader--dark .reader__stage, .reader--dark .reader__scroll { background: #14141c; }
 .reader--black .reader__stage, .reader--black .reader__scroll { background: #000; }
@@ -1721,12 +1599,7 @@ body::after {
 .reader__stage--height .reader__img { height: calc(100vh / var(--ui-zoom, 1) - 160px); width: auto; max-width: 100%; object-fit: contain; }
 .reader__stage--screen .reader__img { max-width: 100%; max-height: calc(100vh / var(--ui-zoom, 1) - 160px); width: auto; height: auto; object-fit: contain; }
 .reader__stage--original .reader__img { max-width: none; width: auto; height: auto; }
-/* The page at its own size in the middle of the room; a page wider than the room starts at its left edge instead (`safe`), so the scroll reaches
-   all of it (centred, its left part would be cut where no scroll goes). */
 .reader__stage--original { overflow: auto; align-items: safe center; }
-/* Two pages side by side (the option of the reader, single page mode): the pair is a row as wide as the stage, the first page on the side the
-   reading starts from (the other way round when it goes from the right: a manga). Each page takes half of the row, whatever the scale; a page
-   that is alone (a wide one, or the last) is like the pages of the single page mode. */
 .reader__spread { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; }
 .reader__spread[data-direction='rtl'] { flex-direction: row-reverse; }
 .reader__spread--pair .reader__img { min-width: 0; }
@@ -1734,19 +1607,12 @@ body::after {
 .reader__stage--width .reader__spread--pair .reader__img { width: calc(50% - 2px); max-width: none; }
 .reader__stage--height .reader__spread--pair .reader__img, .reader__stage--screen .reader__spread--pair .reader__img { max-width: calc(50% - 2px); }
 .reader__failed { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; }
-/* A page whose picture is still on its way holds its place with a block, and the picture waits beside it (it still loads, but takes no room). */
-/* The slot of a page: while its picture is on its way it is the box of the page (the picture waits inside it, so a picture loaded lazily starts when
-   the page comes near); once it arrives the slot leaves no box and the picture is a page of the flow. */
 .reader__slot { display: contents; }
 .reader__slot--pending { position: relative; display: block; width: 100%; }
 .reader__loading-page { display: flex; align-items: center; justify-content: center; width: 100%; min-height: calc(70vh / var(--ui-zoom, 1)); box-sizing: border-box; padding: 24px; color: var(--muted); letter-spacing: 2px; background: var(--line); }
-/* Stronger than the sizes of the scales (.reader__stage--width .reader__img and the others): a picture on its way at its full size, out of the
-   flow, made the page scroll for a moment. */
 .reader__img.reader__img--pending { position: absolute; top: 0; left: 0; width: 1px; height: 1px; max-width: 1px; max-height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
-/* The chapter is opening: the pages are not known yet, the block holds the place of the reading. */
 .reader__chapter-loading { justify-content: center; min-height: calc(70vh / var(--ui-zoom, 1)); color: var(--muted); letter-spacing: 2px; cursor: default; }
 
-/* The options of a group of filters, picked by typing: a field with a list of what matches, and what was picked as chips. */
 .manga__picker { position: relative; }
 .manga__picker-box { position: relative; }
 .manga__picker-list { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px 0; list-style: none; max-height: 240px; overflow-y: auto; background: var(--panel, var(--bg)); border: 1px solid var(--cyan); box-shadow: var(--glow); }
@@ -1756,7 +1622,6 @@ body::after {
 .manga__sort { display: flex; align-items: flex-end; gap: 8px; }
 .manga__sort > .field { flex: 1; }
 .manga__picker-empty { padding: 6px 12px; color: var(--muted); font-size: 12px; }
-/* What was picked: a pill with the name, the state (+ or −) where there is one, and a button that takes it out. */
 .manga__chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 8px 0 0; padding: 0; }
 .manga__chip { display: inline-flex; align-items: stretch; max-width: 100%; border: 1px solid var(--green); border-radius: 14px; overflow: hidden; color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); font-size: 12px; line-height: 1.2; }
 .manga__chip--exclude { border-color: var(--red); color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
@@ -1771,17 +1636,10 @@ body::after {
 .error-notice { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .error-notice:hover, .error-notice:focus-visible { text-decoration-style: solid; }
 
-/* The width of this bar is moved frame by frame by the screen itself, so the transition of the others would only make it lag behind. */
 .progress__bar--smooth { transition: none; }
 
-/* The zones between chapters in the scroll: the one above the first page (the previous chapter) and the one below the last (the next one). */
 .reader__flow { display: flex; flex-direction: column; gap: 8px; }
-/* The area of the reader in fullscreen (a double click on the pages, in the scroll modes): the background of the theme behind the pages. */
 .app__main:fullscreen { background: var(--bg); }
-/* In fullscreen on a screen standing up, the pages of the vertical scroll and of the webtoon take the whole width: no room on the sides of the
-   page, no cap of the webtoon and no border on the sides of the column. The bar of the reader keeps 12 pixels on its sides. The pages turned
-   one or two at a time keep the room, and so does everything lying down, where the webtoon keeps its cap of 938 (wider, a panel no longer
-   fits on screen). */
 @media (orientation: portrait) {
     .app__main:fullscreen:has(.reader__scroll) { padding-inline: 0; }
     .app__main:fullscreen:has(.reader__scroll) .reader__bar { padding-inline: 12px; }
@@ -1794,30 +1652,23 @@ body::after {
 .reader__zone-hint, .reader__zone-none { margin: 0; font-size: 12px; line-height: 1.45; max-width: 420px; }
 .reader__zone-bar { width: min(420px, 80%); }
 
-/* The seasons of a series are cards, like the series of the library; a season of an anime opens its own screen with its episodes. */
 .season-grid { margin-top: 10px; align-items: stretch; }
 .season-card { margin-top: 0; padding: 8px; border-top: 0; border: 1px solid var(--line); background: var(--panel); }
 .season-card .season__cover { width: 100%; }
-/* The chip with the season, in a line of its own above the title. */
 .season-card__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .season-card .season__chip { flex: none; min-width: 0; }
-/* The title always takes the room of two lines, so what is under it starts at the same height in every card of the row. */
 .season-card .season__title { flex: none; min-height: 2.6em; font-size: 15px; line-height: 1.3; color: var(--text); white-space: normal; }
 .season-card .cover-card__footer { gap: 8px; }
 .season-card .job__badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
 .season-card .library__footer { align-items: center; }
-/* The episodes (and the chapters) of a season are cards, bigger than a row: the name and its state on top, what can be done with it in
-   a line of its own at the bottom, the same in every card of the row. */
 .episode-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; align-items: stretch; }
 .episode-cards .history__item { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 10px; min-height: 110px; padding: 12px; border-left-width: 1px; border-top: 3px solid var(--green); }
 .episode-cards .history__item--error { border-top-color: var(--red); }
 .episode-cards .history__main { flex: 1; gap: 4px; }
 .episode-cards .history__title { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .episode-cards .anime__actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-start; gap: 6px 8px; margin-top: auto; }
-/* The state of a chapter is the first thing of its line of buttons, and it is not squeezed by them. */
 .episode-cards .anime__actions .badge { flex: none; }
 
-/* Something takes a while: a ring that turns beside the words for it (turned by the style sheet, so it keeps moving while the app is busy). */
 .loading-mark { display: inline-flex; align-items: center; gap: 8px; color: var(--cyan); font-size: 12px; letter-spacing: 1px; }
 .loading-mark__ring {
     flex: none;
@@ -1831,9 +1682,7 @@ body::after {
     will-change: transform;
 }
 
-/* The cutter of the video downloader. */
 .cut { position: relative; display: flex; flex-direction: column; gap: 12px; }
-/* A file is dragged over the panel: it lights up, with the words that say it can be dropped (or cannot, while a cut goes on). */
 .cut--dragging { outline: 2px dashed var(--cyan); outline-offset: -4px; box-shadow: var(--glow-strong); }
 .cut__drop {
     position: absolute;

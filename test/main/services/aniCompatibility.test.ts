@@ -187,7 +187,6 @@ describe('compatibilityProblems', () => {
     it('finds a download that is not done the way the stand-ins of the app expect', () => {
         expect(compatibilityProblems(aniCliScript('5.2.0').replace('-P "temp:$tmp_dir"', ''), BASE)).toEqual([{ kind: 'download', name: 'yt-dlp download' }]);
         expect(compatibilityProblems(aniCliScript('5.2.0').replace(FFMPEG_LINE, FFMPEG_LINE.replace(' -stats', '')), BASE)).toEqual([{ kind: 'download', name: 'ffmpeg download' }]);
-        // The stand-in takes the picture as the first input and the audio track as the second: a call without the track is not the one it knows.
         expect(compatibilityProblems(aniCliScript('5.2.0').replace(FFMPEG_LINE, FFMPEG_LINE.replace(' -i "$audio_link"', ' -i "$audio"')), BASE)).toEqual([
             { kind: 'download', name: 'ffmpeg download' }
         ]);

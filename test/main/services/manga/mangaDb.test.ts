@@ -476,7 +476,6 @@ describe('MangaDb states of a download', () => {
         expect(states.slice(2).map((state) => {
             return state?.status;
         })).toEqual(['paused', 'done', 'idle']);
-        // The place of the interrupted chapter is kept: retrying it goes on from the pages it left.
         expect(db.outputPathOf(ids[1]!)).toBe('/m/2.cbz');
     });
 });
@@ -621,7 +620,6 @@ describe('MangaDb series', () => {
         expect(db.renameSeries([manga.id, other.id, alone.id], 'Sousou no Frieren')).toEqual({ ok: true });
         expect(db.getManga(manga.id)).toMatchObject({ series: 'Sousou no Frieren', season: 1, seasonName: 'First' });
         expect(db.getManga(other.id)).toMatchObject({ series: 'Sousou no Frieren', season: 2 });
-        // A manga that was on its own becomes the first season, but the season 1 is taken in this series.
         expect(db.getManga(alone.id)).toMatchObject({ series: 'Sousou no Frieren', season: 1 });
     });
 
@@ -1396,7 +1394,6 @@ describe('MangaDb the order of the groups in a library made before it', () => {
         old.close();
         const db = new MangaDb(path);
         expect(db.schemaVersion).toBe(11);
-        // By name, whatever the case; the ones with the same name by their id.
         expect(
             db.listGroups().map((group) => {
                 return group.name;

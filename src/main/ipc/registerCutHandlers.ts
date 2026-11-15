@@ -4,7 +4,6 @@ import type { CutPreview } from '../services/cutPreview';
 import type { CutService } from '../services/cutService';
 import type { IpcMainLike } from './registerHandlers';
 
-// A file read for the cutter becomes the one its preview and its picture are made from.
 async function chosen(response: Promise<CutChooseResponse>, preview: CutPreview): Promise<CutChooseResponse> {
     const answer = await response;
     if (answer.ok) {
@@ -13,8 +12,6 @@ async function chosen(response: Promise<CutChooseResponse>, preview: CutPreview)
     return answer;
 }
 
-// What the screen of the cutter asks: to choose and read a file (or read the one that was dropped), to cut it, to end the cut and to see the
-// one that goes on; and, before the cut, the picture of the file, where to play a part, and to forget the file.
 export function registerCutHandlers(ipcMain: IpcMainLike, cut: CutService, preview: CutPreview): void {
     ipcMain.handle(IPC.cutChoose, (): Promise<CutChooseResponse> => {
         return chosen(cut.choose(), preview);

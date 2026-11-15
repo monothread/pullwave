@@ -34,8 +34,6 @@ function chapter(remoteId: number): MangaChapter {
     return { remoteId, name: `Chapter ${remoteId}`, number: remoteId, dateUploaded: null, scanlator: null, sourceOrder: remoteId };
 }
 
-// Puts a manga with a chapter in the library as downloaded, as a CBZ in the folder of the manga (or, when `images` is given, as a folder
-// of images).
 function addChapter(fixture: Fixture, base: string, options: { title?: string; remoteId?: number; mangaRemoteId?: number; content?: string; images?: string[]; incomplete?: boolean } = {}): { chapterId: number; path: string } {
     const { title = 'One Piece', remoteId = 1, mangaRemoteId = 7, content = 'cbz-data', images, incomplete = false } = options;
     const manga = fixture.db.upsertManga({ remoteId: mangaRemoteId, sourceId: 's', title, thumbnailUrl: null });
@@ -270,7 +268,6 @@ describe('migrateMangaFolder', () => {
     });
 
     describe('failing half way', () => {
-        // The real disk, but the n-th copy fails (or makes a copy that is not like the original).
         function failingFiles(options: { failAtCopy?: number; truncateCopy?: number }): MangaMigrationFileSystem {
             const state = { copies: 0 };
             return {

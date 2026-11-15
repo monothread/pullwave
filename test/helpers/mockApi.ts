@@ -17,7 +17,6 @@ export function makeProgramInfo(id: ProgramId, overrides: Partial<ProgramInfo> =
     return { id, state: { id, status: 'ready', version: '1.0.0', bytesDone: 0, bytesTotal: 0, percent: 100, error: null }, custom: false, directory: `/tools/${id}/1.0.0`, ...overrides };
 }
 
-// Every program installed: the screens that wait for the programs let their content through.
 export function makeProgramsStatus(overrides: Partial<ProgramsStatus> = {}): ProgramsStatus {
     return {
         supported: true,
@@ -39,7 +38,6 @@ export function makeProgramVersions(overrides: Partial<ProgramVersions> = {}): P
 export interface MockApiHandle {
     api: { [K in Exclude<keyof CyberApi, 'manga' | 'programs' | 'cut' | 'logs'>]: ReturnType<typeof vi.fn> } & { manga: MockMangaApi; programs: MockProgramsApi; cut: MockCutApi; logs: MockLogsApi };
     emitCutProgress: (run: CutRun) => void;
-    // Sends new lines of a program's log to the windows that watch it.
     emitLogLines: (source: LogSource, lines: LogLine[]) => void;
     emitProgramTool: (state: ToolState) => void;
     emitProgramUpdate: (state: ToolState) => void;
@@ -193,7 +191,6 @@ export function createMockApi(): MockApiHandle {
     };
 
     const manga: MockMangaApi = {
-        // Like the anime section, the manga section is off until a test turns it on.
         status: vi.fn(async () => {
             return { supported: false, tool: null, helper: null, helperProblem: null, helperExternal: false, server: 'stopped', serverError: null };
         }),
@@ -584,7 +581,6 @@ export function createMockApi(): MockApiHandle {
         translateAnimeSubtitles: vi.fn(async (): Promise<number> => {
             return 0;
         }),
-        // Every episode asked about can be translated into German, unless a test says otherwise.
         listTranslatableEpisodes: vi.fn(async (episodeIds: number[]): Promise<SubtitleTranslatableResponse> => {
             return { language: 'German', episodeIds: [...episodeIds] };
         }),

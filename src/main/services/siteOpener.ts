@@ -2,17 +2,11 @@ import { spawn } from 'node:child_process';
 import { win32 } from 'node:path';
 import type { BrowserName, SiteBrowser } from '@shared/types';
 
-// Opens the page of a manga on its site in the browser the user chose. Where that browser is not found (or cannot be started) the page is
-// opened with the browser of the system, so a click always does something. The address is handed to the program as an argument, never
-// through a shell, so nothing in it can be taken for a command.
-
 export interface SiteOpenerDependencies {
     platform: NodeJS.Platform;
     env: Record<string, string | undefined>;
     exists: (path: string) => boolean;
-    // Starts the program and says whether it started.
     launch: (command: string, args: string[]) => Promise<boolean>;
-    // The browser of the system.
     openDefault: (url: string) => void;
 }
 
@@ -36,7 +30,6 @@ const MAC_APPS: Record<BrowserName, string> = {
     vivaldi: 'Vivaldi'
 };
 
-// Where each browser is installed on Windows, under the folders the system says (program files and the folder of the user).
 const WINDOWS_PATHS: Record<BrowserName, ReadonlyArray<readonly [string, ...string[]]>> = {
     chrome: [['ProgramFiles', 'Google', 'Chrome', 'Application', 'chrome.exe'], ['ProgramFiles(x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'], ['LOCALAPPDATA', 'Google', 'Chrome', 'Application', 'chrome.exe']],
     firefox: [['ProgramFiles', 'Mozilla Firefox', 'firefox.exe'], ['ProgramFiles(x86)', 'Mozilla Firefox', 'firefox.exe']],
@@ -52,7 +45,6 @@ export interface BrowserLaunch {
     args: string[];
 }
 
-// The programs that can open the page in this browser on this system, the first to try first.
 export function browserLaunches(browser: BrowserName, url: string, deps: Pick<SiteOpenerDependencies, 'platform' | 'env' | 'exists'>): BrowserLaunch[] {
     if (deps.platform === 'win32') {
         return WINDOWS_PATHS[browser].flatMap(([variable, ...parts]) => {
@@ -83,7 +75,6 @@ export async function openSiteIn(url: string, browser: SiteBrowser, deps: SiteOp
     deps.openDefault(url);
 }
 
-// Starts a program apart from the app (it goes on when the app closes). True once it started; false when it is not there.
 export function launchProgram(command: string, args: string[]): Promise<boolean> {
     return new Promise((resolve) => {
         const child = spawn(command, args, { detached: true, stdio: 'ignore' });

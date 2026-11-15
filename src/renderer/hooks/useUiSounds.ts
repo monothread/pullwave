@@ -4,15 +4,11 @@ import { playUiSound, type EventSound, type UiSound } from '../sound/uiSound';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
 import { MOUSE_BACK_BUTTON } from './useMouseNavigation';
 
-// A focus that follows a press of the mouse is not a move of the navigation: it makes no sound of its own.
 export const POINTER_FOCUS_MS = 400;
-// Two moves closer than this make one sound (holding an arrow down).
 export const MOVE_SOUND_GAP_MS = 60;
 
 const PRESSABLE_SELECTOR = 'button, [role="button"], a[href], summary, [role="option"]';
 
-// The sounds of the navigation, while they are on: a tick when the focus moves to a control with the keyboard or a gamepad, a press when a
-// control is clicked, and a falling sound to go back (Esc, the back button of the mouse).
 export function useUiSounds(): void {
     useEffect(() => {
         let lastPointer = 0;

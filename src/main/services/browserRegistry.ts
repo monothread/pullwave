@@ -48,7 +48,6 @@ export function parseDesktopEntry(text: string): DesktopEntry | null {
     return { name: fields.Name, exec: fields.Exec, mimeTypes: (fields.MimeType ?? '').split(';') };
 }
 
-// The program a launcher line starts: skips `env VAR=value` and refuses wrappers such as `flatpak run`.
 export function programOfExec(exec: string): string | null {
     const tokens = exec.match(/"[^"]*"|\S+/g) ?? [];
     const words = tokens.map((token) => {
@@ -104,7 +103,6 @@ async function listLinuxBrowsers(sources: RegistrySources, reader: RegistryReade
     });
 }
 
-// `reg query` prints "    (Default)    REG_SZ    value"; the name of the value is localized, so only REG_SZ is matched.
 export function parseRegistryValue(output: string): string | null {
     const match = /REG_SZ\s+(.+)/.exec(output);
     return match?.[1]?.trim() ?? null;
@@ -121,7 +119,6 @@ export function parseRegistrySubKeys(output: string, parentKey: string): string[
         });
 }
 
-// "C:\Program Files\Google\Chrome\Application\chrome.exe" -> "Chrome", the folder that names the product.
 export function productFolderOfCommand(command: string): string | null {
     const executable = /^"?([^"]+?\.exe)/i.exec(command.trim())?.[1];
     if (!executable) {

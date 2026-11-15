@@ -50,7 +50,6 @@ function setup(
     const ensured: string[] = [];
     const state = { settings: { mangaDirectory: '', mangaFormat: 'cbz' as MangaOutputFormat, ...settings }, libraryChanges: 0, entryChanges: [] as number[], existing: [...(system.existing ?? [])] };
     const heldChanges: boolean[] = [];
-    // The clock the speed is measured with; the tests move it by hand.
     const clock = { now: 0 };
     const queue = new MangaDownloadQueue({
         db,
@@ -101,13 +100,11 @@ function setup(
         now: () => {
             return clock.now;
         },
-        // Two sources, one chapter each, unless the test says otherwise (null: the fixed limits of the app).
         ...(system.limits === null ? {} : { limits: system.limits ?? { sources: 2, perSource: 1 } })
     });
     return { db, queue, downloads, updates, removed, ensured, state, counted, heldChanges, clock };
 }
 
-// A library with One Piece and its chapters as the app left them (the queue of the app that opens again starts from it).
 function libraryWith(chapters: MangaChapter[]): { db: MangaDb; mangaId: number } {
     const db = new MangaDb(':memory:', () => {
         return 1000;
@@ -167,7 +164,6 @@ describe('MangaDownloadQueue enqueue', () => {
             return [job.chapterName, job.status];
         })).toEqual([['Chapter 1', 'queued'], ['Chapter 2', 'queued'], ['Chapter 1', 'running']]);
         expect(state.libraryChanges).toBeGreaterThan(0);
-        // The chapter that started is told alone: only its manga changed.
         expect(state.entryChanges).toEqual([1]);
         expect(queue.pendingCount()).toBe(2);
         expect(queue.hasRunsToEnd()).toBe(true);
@@ -273,7 +269,6 @@ describe('MangaDownloadQueue progress and results', () => {
         downloads[0]?.options.onProgress(200, 400);
         downloads[0]?.options.onProgress(400, 400);
         expect(db.chaptersOf(1)[0]?.pageCount).toBe(400);
-        // One page of 400 is a quarter of one percent: too small to tell the screen.
         const progress = updates.filter((job) => {
             return job.pagesDone > 0;
         });
@@ -293,7 +288,6 @@ describe('MangaDownloadQueue progress and results', () => {
         expect(db.chaptersOf(1)[0]).toMatchObject({ status: 'done', filePath: '/m/Chapter 1.cbz', sizeBytes: 4096, pageCount: 20, downloadedAt: 1000 });
         expect(updates.at(-1)).toMatchObject({ status: 'done', percent: 100, pagesDone: 20, pageCount: 20 });
         expect(queue.list()).toEqual([]);
-        // The end of the chapter changes its manga only: the screen is told that manga, not to read the whole library again.
         expect(state.libraryChanges).toBe(before);
         expect(state.entryChanges.slice(entriesBefore)).toEqual([1]);
         expect(queue.hasRunsToEnd()).toBe(false);
@@ -375,7 +369,6 @@ describe('MangaDownloadQueue progress and results', () => {
         expect(downloads).toHaveLength(0);
         expect(updates.at(-1)).toMatchObject({ status: 'error', error: { code: 'DISK', message: 'EACCES: permission denied' } });
         expect(db.chaptersOf(1)[0]?.status).toBe('error');
-        // The whole library once for the chapter that was queued; the error only for its manga.
         expect(state.libraryChanges).toBe(1);
         expect(state.entryChanges).toEqual([1]);
     });
@@ -394,7 +387,6 @@ describe('MangaDownloadQueue progress and results', () => {
 });
 
 describe('MangaDownloadQueue the speed and the time left', () => {
-    // The job of the only chapter of these tests, as the screen gets it, with what changes from one test to the other.
     function runningJob(changes: Partial<MangaJob>): MangaJob {
         return {
             chapterId: 1,
@@ -414,7 +406,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
         };
     }
 
-    // One chapter of ten pages, started when the clock says `startedAt`.
     function started(startedAt = 0) {
         const context = setup();
         context.clock.now = startedAt;
@@ -436,7 +427,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
         clock.now = 500;
         downloads[0]?.options.onPageFetched(1000);
         downloads[0]?.options.onProgress(1, 10);
-        // 1000 bytes in half a second; nine pages left at half a second each.
         expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 2000, etaSeconds: 4.5 }));
     });
 
@@ -452,7 +442,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
         clock.now = 1500;
         downloads[0]?.options.onPageFetched(4000);
         downloads[0]?.options.onProgress(3, 10);
-        // 6000 bytes in a second and a half; seven pages left at half a second each.
         expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 3, percent: 30, bytesPerSecond: 4000, etaSeconds: 3.5 }));
     });
 
@@ -478,7 +467,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
         clock.now = 12_000;
         downloads[0]?.options.onPageFetched(500);
         downloads[0]?.options.onProgress(2, 10);
-        // The page of the first second is out of the window (2 s to 12 s): 500 bytes in ten seconds, one page in ten seconds.
         expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 2, percent: 20, bytesPerSecond: 50, etaSeconds: 80 }));
     });
 
@@ -503,7 +491,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
         clock.now = 1000;
         downloads[0]?.options.onPageFetched(2000);
         downloads[0]?.options.onProgress(6, 10);
-        // One page downloaded in a second: four left, a second each (the five skipped pages took no time).
         expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 6, percent: 60, bytesPerSecond: 2000, etaSeconds: 4 }));
     });
 
@@ -523,7 +510,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
         clock.now = 62_000;
         downloads[1]?.options.onPageFetched(1000);
         downloads[1]?.options.onProgress(2, 10);
-        // Only the page of the new run, in the two seconds since it started.
         expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 2, percent: 20, bytesPerSecond: 500, etaSeconds: 16 }));
     });
 
@@ -586,7 +572,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
             vi.useRealTimers();
         });
 
-        // A second goes by on the clock of the speed and on the timers.
         function tick(clock: { now: number }, to: number): void {
             clock.now = to;
             vi.advanceTimersByTime(RATE_REPORT_INTERVAL_MS);
@@ -602,12 +587,10 @@ describe('MangaDownloadQueue the speed and the time left', () => {
             downloads[0]?.options.onPageFetched(1000);
             downloads[0]?.options.onProgress(1, 10);
             expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 2000, etaSeconds: 4.5 }));
-            // The next page does not come: the one page and its 1000 bytes are spread over more and more time.
             tick(clock, 2000);
             expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 500, etaSeconds: 18 }));
             tick(clock, 4000);
             expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 250, etaSeconds: 36 }));
-            // Ten seconds after it, the page leaves the window.
             tick(clock, 11_000);
             expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: null, etaSeconds: null }));
         });
@@ -651,7 +634,6 @@ describe('MangaDownloadQueue the speed and the time left', () => {
         clock.now = 5500;
         downloads[0]?.options.onPageFetched(1000);
         downloads[0]?.options.onProgress(1, 10);
-        // 1000 bytes in the half second since the pages were known, not in the five and a half since the run started.
         expect(updates.at(-1)).toEqual(runningJob({ pagesDone: 1, percent: 10, bytesPerSecond: 2000, etaSeconds: 4.5 }));
     });
 
@@ -687,7 +669,6 @@ describe('MangaDownloadQueue pause all and resume all', () => {
         downloads[0]?.finish({ status: 'cancelled' });
         await flush();
         expect(db.getChapter(byRemote(db, 1).id)?.status).toBe('paused');
-        // The place the paused chapter left is not taken: the queue is held.
         expect(downloads).toHaveLength(1);
         expect(queue.list().map((job) => {
             return [job.chapterName, job.status];
@@ -748,7 +729,6 @@ describe('MangaDownloadQueue pause all and resume all', () => {
         expect(queue.isHeld()).toBe(true);
         downloads[1]?.finish(DONE('/m/1.cbz'));
         await flush();
-        // The chapter that waits still waits for RESUME ALL.
         expect(downloads).toHaveLength(2);
         expect(db.getChapter(byRemote(db, 2).id)?.status).toBe('queued');
         queue.resumeAll();
@@ -779,7 +759,6 @@ describe('MangaDownloadQueue pause all and resume all', () => {
         queue.pauseAll();
         downloads[0]?.finish({ status: 'cancelled' });
         await flush();
-        // More paused chapters; the first goes on by itself and takes the only place, the next two wait for it.
         [second, third, fourth].forEach((id) => {
             queue.cancel(id!);
             db.markPaused(id!);
@@ -791,7 +770,6 @@ describe('MangaDownloadQueue pause all and resume all', () => {
             return [job.chapterName, job.status];
         })).toEqual([['Chapter 1', 'running'], ['Chapter 2', 'queued'], ['Chapter 3', 'queued'], ['Chapter 4', 'cancelled']]);
 
-        // A cancelled chapter tried again waits for RESUME ALL; the other one resumed by itself starts.
         queue.cancel(third!);
         queue.retry(third!);
         downloads[1]?.finish(DONE('/m/1.cbz'));
@@ -801,7 +779,6 @@ describe('MangaDownloadQueue pause all and resume all', () => {
         })).toEqual([1, 1, 2]);
         expect(db.getChapter(third!)?.status).toBe('queued');
 
-        // One more is resumed by itself while the second runs; PAUSE ALL again forgets it.
         db.markPaused(fourth!);
         queue.resume(fourth!);
         queue.pauseAll();
@@ -1031,7 +1008,6 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
         const before = state.libraryChanges;
         const entriesBefore = state.entryChanges.length;
         queue.downloadChapters(manga.id, [4, 2, 99]);
-        // One chapter at a time for a source, the oldest first.
         expect(downloads.map((item) => {
             return item.options.chapterRemoteId;
         })).toEqual([2]);
@@ -1041,7 +1017,6 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
             ['Chapter 2', 'running'],
             ['Chapter 4', 'queued']
         ]);
-        // The whole library once for the chapters that were queued; the download that started only for its manga.
         expect(state.libraryChanges).toBe(before + 1);
         expect(state.entryChanges.slice(entriesBefore)).toEqual([manga.id]);
         downloads[0]?.finish(DONE('/m/2.cbz'));
@@ -1072,7 +1047,6 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
         queue.pause(paused);
         downloads[0]?.finish({ status: 'cancelled' });
         await flush();
-        // The paused chapter left its place to the next one, which is cancelled.
         queue.cancel(waiting);
         downloads[1]?.finish({ status: 'cancelled' });
         await flush();
@@ -1109,7 +1083,6 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
         })!;
         queue.forget([running.id]);
         expect(downloads[0]?.cancel).toHaveBeenCalledTimes(1);
-        // The run could still write a page: nothing is deleted and nothing takes its place yet.
         expect(removed).toEqual([]);
         expect(queue.list().map((job) => {
             return job.chapterName;
@@ -1126,9 +1099,7 @@ describe('MangaDownloadQueue retry, missing and housekeeping', () => {
         expect(downloads.map((item) => {
             return item.options.chapterRemoteId;
         })).toEqual([1, 2]);
-        // The forgotten chapter is not settled: it is gone from the library.
         expect(db.getChapter(running.id)?.status).toBe('downloading');
-        // The next chapter that started is told for its manga only.
         expect(state.libraryChanges).toBe(changes);
         expect(state.entryChanges.slice(entriesBefore)).toEqual([1]);
     });
@@ -1287,7 +1258,6 @@ describe('MangaDownloadQueue the chapters paused when the app last closed', () =
         queue.restore();
         expect(queue.list()).toEqual([
             { chapterId: first, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 1', sourceId: 'src-a', status: 'paused', pagesDone: 5, pageCount: 20, percent: 25, bytesPerSecond: null, etaSeconds: null, error: null, missingPages: 0 },
-            // More pages than the chapter has are not counted past its end.
             { chapterId: second, mangaId, mangaTitle: 'One Piece', chapterName: 'Chapter 2', sourceId: 'src-a', status: 'paused', pagesDone: 10, pageCount: 10, percent: 100, bytesPerSecond: null, etaSeconds: null, error: null, missingPages: 0 }
         ]);
         expect(counted).toEqual([`${ONE_PIECE}/Chapter 1.cbz.part`, `${ONE_PIECE}/Chapter 2.cbz.part`]);
@@ -1434,7 +1404,6 @@ describe('MangaDownloadQueue shutdown', () => {
         expect(downloads[0]?.cancel).toHaveBeenCalled();
         expect(downloads[1]?.cancel).toHaveBeenCalled();
         expect(db.chaptersOf(1)[0]?.status).toBe('paused');
-        // The paused one goes on from the same place when the app opens again.
         expect(db.outputPathOf(db.chaptersOf(1)[0]!.id)).toBe(`${ONE_PIECE}/Chapter 1.cbz`);
         expect(removed).toEqual([`${DOWNLOADS}/Pullwave Manga/Bleach/Chapter 10.cbz.part`]);
     });
@@ -1563,7 +1532,6 @@ describe('MangaDownloadQueue pause, resume and cancel by manga', () => {
             }).map((job) => {
                 return job.chapterName;
             })).toEqual(['Chapter 2', 'Chapter 1']);
-            // The queue is not held, and the paused chapters do not take the place of anyone.
             expect(queue.isHeld()).toBe(false);
             expect(heldChanges).toEqual([]);
             expect(downloads).toHaveLength(2);
@@ -1623,10 +1591,8 @@ describe('MangaDownloadQueue pause, resume and cancel by manga', () => {
             const entriesBefore = state.entryChanges.length;
             queue.resumeAll();
 
-            // Each chapter queued again, and each one that starts, tells the screen its manga only: never the whole library once per chapter.
             expect(state.libraryChanges).toBe(libraryBefore);
             expect(state.entryChanges.slice(entriesBefore)).toEqual([onePiece, onePiece, onePiece, bleach, bleach]);
-            // RESUME ALL queues again every paused chapter, the one paused by itself included.
             expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'running'], ['One Piece Chapter 2', 'queued'], ['Bleach Chapter 5', 'running']]);
             expect(downloads.map((item) => {
                 return item.options.chapterRemoteId;
@@ -1649,7 +1615,6 @@ describe('MangaDownloadQueue pause, resume and cancel by manga', () => {
             const entriesBefore = state.entryChanges.length;
             queue.resumeMangas([onePiece]);
 
-            // Each chapter queued again and the one that starts tell the screen their manga only.
             expect(state.libraryChanges).toBe(libraryBefore);
             expect(state.entryChanges.slice(entriesBefore)).toEqual([onePiece, onePiece, onePiece]);
             expect(statuses(queue)).toEqual([['One Piece Chapter 1', 'running'], ['One Piece Chapter 2', 'queued'], ['Bleach Chapter 5', 'paused']]);
@@ -1708,7 +1673,6 @@ describe('MangaDownloadQueue pause, resume and cancel by manga', () => {
                 return item.status;
             })).toEqual(['cancelled', 'cancelled']);
             expect(removed).toEqual([chapterWorkDirectory(downloads[0]!.options.outputPath)]);
-            // The waiting chapter and the end of the running one tell the screen their manga only.
             expect(state.libraryChanges).toBe(libraryBefore);
             expect(state.entryChanges.slice(entriesBefore)).toEqual([onePiece, onePiece]);
         });

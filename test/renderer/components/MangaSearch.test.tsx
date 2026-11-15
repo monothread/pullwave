@@ -49,7 +49,6 @@ describe('MangaSearch', () => {
         render(<MangaSearch />);
         expect(screen.getByRole('region', { name: 'SEARCH' })).toBeInTheDocument();
         expect(screen.getByLabelText('Manga name')).toHaveValue('');
-        // Ctrl+F goes to this field.
         expect(screen.getByLabelText('Manga name')).toHaveAttribute('data-search-field', '');
         expect(screen.getByRole('button', { name: 'SEARCH' })).toBeDisabled();
         await user.type(screen.getByLabelText('Manga name'), '   ');
@@ -309,7 +308,6 @@ describe('MangaSearch with many sources', () => {
             expect(useMangaStore.getState().search.status).toBe('done');
         });
         const { results } = useMangaStore.getState().search;
-        // Every source but the one for adults is searched.
         expect(results.map((result) => {
             return result.source.id;
         })).toEqual(['5', '6', '7', '8']);

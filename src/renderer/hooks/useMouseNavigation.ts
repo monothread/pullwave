@@ -8,12 +8,9 @@ import { isBatchingNavigation, onNavigationBatchEnd } from '../navigation/naviga
 import { MAX_NAVIGATION_ENTRIES, NavigationHistory } from './navigationHistory';
 import { isScrollRestoring, restoreScroll } from './scrollRestoration';
 
-// The buttons on the side of the mouse that browsers use to go back and forward.
 export const MOUSE_BACK_BUTTON = 3;
 export const MOUSE_FORWARD_BUTTON = 4;
 
-// What makes a page of the manga section: the screen, the source that is open (and whether its search or its settings are), and the
-// manga that is open.
 export interface MangaPage {
     view: MangaView;
     previousView: MangaBrowseView;
@@ -22,12 +19,10 @@ export interface MangaPage {
     settingsOpen: boolean;
     selection: MangaSelection | null;
     selectionFrom: 'browse' | 'search' | 'library';
-    // The series open in the library, and the group the library is limited to.
     librarySeries: string | null;
     libraryGroup: number | null;
 }
 
-// Everything that makes a page of the app.
 export interface NavigationSnapshot {
     tab: Tab;
     downloadsView: DownloadsView;
@@ -36,7 +31,6 @@ export interface NavigationSnapshot {
     selection: AnimeSelection | null;
     libraryFocus: number | null;
     librarySeries: string | null;
-    // The season of the series whose own screen is open.
     librarySeason: number | null;
     manga: MangaPage;
 }
@@ -59,8 +53,6 @@ function readSnapshot(): NavigationSnapshot {
     return { tab, downloadsView, view, returnView, selection, libraryFocus, librarySeries, librarySeason, manga: readMangaPage() };
 }
 
-// Shows a page of the manga section again: the source is opened again when it is another one, and its list is asked for by the section
-// itself once it is on the screen.
 function showMangaPage(page: MangaPage): void {
     const manga = useMangaStore.getState();
     if (manga.browse.sourceId !== page.sourceId) {
@@ -78,7 +70,6 @@ function showMangaPage(page: MangaPage): void {
     } else if (!page.settingsOpen && manga.sourceSettings.open) {
         manga.closeSourceSettings();
     }
-    // Files can be moved or deleted while the app is open: the library is read again when it is shown.
     if (page.view === 'library') {
         void manga.refreshLibrary();
     }
@@ -95,15 +86,12 @@ function showSnapshot(snapshot: NavigationSnapshot): void {
         librarySeries: snapshot.librarySeries,
         librarySeason: snapshot.librarySeason
     });
-    // Files can be moved or deleted while the app is open: the library says which ones are gone when it is shown.
     if (snapshot.view === 'library') {
         void useAnimeStore.getState().refreshLibrary();
     }
     showMangaPage(snapshot.manga);
 }
 
-// A player is not a page: going back from it only closes it. Returns whether there was one to close. The reader of the manga and the
-// preview of a cut are ones too.
 function closePlayers(): boolean {
     const { reader, closeReader } = useMangaStore.getState();
     if (reader.status !== 'closed') {
@@ -132,26 +120,20 @@ function isPlayerOpen(): boolean {
     return playing !== null || streaming !== null || useMangaStore.getState().reader.status !== 'closed' || useCutStore.getState().preview !== null;
 }
 
-// The area of the app that scrolls.
 function scrollArea(): HTMLElement | null {
     return document.querySelector<HTMLElement>('.app__main');
 }
 
-// Makes the back and forward buttons of the mouse move through the pages the viewer has been to.
 export function useMouseNavigation(): void {
     useEffect(() => {
         const history = new NavigationHistory<NavigationSnapshot>(MAX_NAVIGATION_ENTRIES, snapshotKey);
         let showing = false;
-        // Keeps how far the page is scrolled. A page still being put back where it was is not read: its position is not the real one yet.
         const rememberScroll = (area: HTMLElement | null): void => {
             if (area !== null && !isScrollRestoring()) {
                 history.rememberScroll(area.scrollTop);
             }
         };
-        // A change of page made of several steps (navigationBatch) is taken once, at its end; the scroll of the page that is left is kept at
-        // its first step, before the screen is drawn again.
         let batched = false;
-        // The stores tell a page is going before the screen is drawn again, so the scroll is still the one of the page that is left.
         const record = (): void => {
             if (showing) {
                 return;
@@ -172,7 +154,6 @@ export function useMouseNavigation(): void {
                 history.record(readSnapshot());
             }
         };
-        // Goes to the page `move` gives: the one that is left keeps how far it is scrolled, and the one that is shown gets its own back.
         const go = (move: () => NavigationSnapshot | null): void => {
             const area = scrollArea();
             rememberScroll(area);

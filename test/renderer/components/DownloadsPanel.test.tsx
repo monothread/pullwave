@@ -89,7 +89,6 @@ describe('DownloadsPanel', () => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
         ).toEqual(['QUEUE', 'HISTORY', 'CUT', 'SETTINGS']);
-        // The settings are a gear at the right end of the bar, not a word.
         const settings = within(subNav()).getByRole('button', { name: 'SETTINGS' });
         expect(settings).toHaveClass('tab--icon');
         expect(settings).toHaveTextContent(SETTINGS_ICON);

@@ -4,18 +4,13 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { SETTINGS_ICON } from './TabButton';
 
 interface SeriesMenuProps {
-    // The name of the series, to tell what the buttons are about.
     name: string;
     onRename: () => void;
     onRemove: () => void;
-    // Removing asks in a window over the screen with these texts.
     confirmation: { title: string; message: string; confirmLabel: string; cancelLabel: string };
-    // More to set about the series, inside the menu.
     children?: ReactNode;
 }
 
-// The gear at the end of the row of a series, with what changes the whole series: renaming it and removing it. It closes with Escape,
-// with a click anywhere else and when one of its buttons is used (removing asks in a window first).
 export function SeriesMenu({ name, onRename, onRemove, confirmation, children }: SeriesMenuProps) {
     const t = useTranslator();
     const [open, setOpen] = useState(false);

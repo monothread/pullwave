@@ -1,9 +1,5 @@
 name: Release Linux
 
-# Builds the Linux package (the AppImage) and attaches it, with latest-linux.yml, to the draft GitHub Release of the
-# version in package.json. Use it instead of `npm run release` when you do not want to build locally.
-# Run it manually from the Actions tab, before publishing the draft Release. Do not mix it with a local
-# `npm run release` of the same version: both upload latest-linux.yml and the last one wins.
 on:
   workflow_dispatch:
 

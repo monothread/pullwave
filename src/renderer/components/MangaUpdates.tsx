@@ -19,7 +19,6 @@ const ORIGIN_KEYS: Record<ArrivalOrigin, MessageKey> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// What the button says: what it does, or how far the check that is going on is (and that it is the hourly one, when it is).
 function checkButtonLabel(asked: boolean, state: MangaCheckState, t: Translator): string {
     if (state.running && state.total > 0) {
         return t(state.origin === 'auto' ? 'manga.recent.checking.auto' : 'manga.recent.checking.progress', { done: state.done, total: state.total });
@@ -32,8 +31,6 @@ function startOfDay(time: number): number {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-// The chapters that arrived in the library after their manga was in it, newest first and split by day: what the check every hour found,
-// and what the buttons that look for new chapters found. A click opens the manga in the library.
 export function MangaUpdates() {
     const t = useTranslator();
     const updates = useShownUpdates();
@@ -60,7 +57,6 @@ export function MangaUpdates() {
         void loadUpdates();
     }, [loadUpdates]);
 
-    // The day that is today when the screen opens (what is listed is told by day names from it).
     const [today] = useState(() => {
         return startOfDay(Date.now());
     });
@@ -70,7 +66,6 @@ export function MangaUpdates() {
         }
         return day === today - DAY_MS ? t('manga.recent.yesterday') : new Date(day).toLocaleDateString();
     };
-    // A long list is drawn a part at a time: the days are made of the entries drawn so far.
     const { shown: drawn, hasMore, endRef } = useIncrementalList(updates, 'manga-updates');
     const days = groupByDay<MangaUpdateEntry>(drawn, (entry) => {
         return entry.foundAt;

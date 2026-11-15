@@ -29,7 +29,6 @@ import { useDetailBackdrop } from '../hooks/useDetailBackdrop';
 import { NotFound } from './NotFound';
 
 
-// What says that episodes got into the library today (the check for new episodes put them there).
 function NewEpisodesBadge({ count, t }: { count: number; t: Translator }) {
     return (
         <span className="badge badge--new" data-testid="anime-new-episodes">
@@ -76,9 +75,7 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
         return state.setWatched;
     });
     const label = t('anime.episode', { number: episode.number });
-    // A downloaded episode whose file is there is played by clicking on its row.
     const openable = episode.status === 'done' && !episode.fileMissing;
-    // A downloaded episode whose video is there but was found to have no audio.
     const silent = episode.status === 'done' && !episode.fileMissing && episode.noAudio;
 
     return (
@@ -217,8 +214,6 @@ function EpisodeRow({ anime, episode, t }: EpisodeRowProps) {
     );
 }
 
-// What can be changed in an anime that is in a series: its place in it (the order) and the name it is shown with. The series itself
-// cannot change (it is renamed with the whole series, and leaving it is removing the anime).
 function SeasonEditor({ anime, series, t, onClose }: { anime: LibraryAnime; series: string; t: Translator; onClose: () => void }) {
     const setSeries = useAnimeStore((state) => {
         return state.setSeries;
@@ -279,7 +274,6 @@ function SeasonEditor({ anime, series, t, onClose }: { anime: LibraryAnime; seri
     );
 }
 
-// What the anime of a season has to download: only what is missing in this season, the other seasons of the series are left alone.
 function DownloadSeasonButton({ anime, t }: { anime: LibraryAnime; t: Translator }) {
     const downloadMissing = useAnimeStore((state) => {
         return state.downloadMissing;
@@ -323,9 +317,7 @@ function seasonProgress(anime: LibraryAnime, t: Translator): string {
     return t('anime.library.progress', { done: downloadedCount(anime), total: anime.episodes.length });
 }
 
-// An anime of the library, as a season of its series: a card with its cover that opens the screen of the season.
 function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; onOpen: () => void }) {
-    // Coming from a redirect (the search, the schedule) the season is brought into view. Every season starts closed, always.
     const focused = useAnimeStore((state) => {
         return state.libraryFocus === anime.id;
     });
@@ -374,7 +366,6 @@ function SeasonCard({ anime, t, onOpen }: { anime: LibraryAnime; t: Translator; 
     );
 }
 
-// What the library says when the chip chosen keeps no title (with the filter ALL there is always one, when the search found any).
 const NO_MATCH_MESSAGES: Record<LibraryFilter, MessageKey> = {
     all: 'anime.library.search.none',
     news: 'library.filter.noNews',
@@ -382,12 +373,9 @@ const NO_MATCH_MESSAGES: Record<LibraryFilter, MessageKey> = {
     ongoing: 'library.filter.noOngoing'
 };
 
-// The screen of one season: what can be done with it and its episodes, as cards. The way back goes to the screen of the series.
 type AiringChoice = 'auto' | AnimeAiringOverride;
 const AIRING_CHOICES: readonly AiringChoice[] = ['auto', 'complete', 'ongoing'];
 
-// Whether the releases of the anime are over: AniList says it by itself, and here the user can say otherwise (an anime that is complete is not
-// looked at for new episodes).
 function AiringField({ anime, t }: { anime: LibraryAnime; t: Translator }) {
     const setAiring = useAnimeStore((state) => {
         return state.setAiring;
@@ -415,12 +403,10 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
         return state.removeAnime;
     });
     const [editing, setEditing] = useState(false);
-    // The order the list shows the episodes of this anime in.
     const orderKey = animeListKey(anime.title);
     const [episodeOrder] = useListOrder('episodes', orderKey);
     useDetailBackdrop(useAnimeCoverUrl(anime.title));
 
-    // An anime on its own has nothing to order; one in a series has its season to edit (the series itself cannot change).
     const edit = anime.series !== null && (
         <button
             type="button"
@@ -464,7 +450,6 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
                 <div className="job__actions">
                     {edit}
                     <SeasonTranslation anime={anime} />
-                    {/* The anime that gives its name to the series is not removed alone: to remove it, the whole series goes. */}
                     <AnimeRemove
                         label={t('anime.remove.anime')}
                         ariaLabel={`${t('anime.remove.anime')}: ${anime.title}`}
@@ -499,38 +484,32 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
     );
 }
 
-// How many seasons a series has, in words.
 function seasonsText(group: LibraryGroup, t: Translator): string {
     return group.entries.length === 1 ? t('anime.series.seasonOne') : t('anime.series.seasons', { count: group.entries.length });
 }
 
-// Whether the anime has an episode that is not downloaded and is not being downloaded (or waiting to be) either.
 function hasMissingInAnime(anime: LibraryAnime): boolean {
     return anime.episodes.some((episode) => {
         return episode.status !== 'done' && episode.status !== 'queued' && episode.status !== 'downloading';
     });
 }
 
-// The same for a series: any of its seasons.
 function hasMissingEpisodes(group: LibraryGroup): boolean {
     return group.entries.some(hasMissingInAnime);
 }
 
-// How many episodes of all the seasons of a series got into the library today.
 function newEpisodesOf(group: LibraryGroup): number {
     return group.entries.reduce((total, anime) => {
         return total + newEpisodeCount(anime);
     }, 0);
 }
 
-// The titles of the seasons of a series, in order: its cover is the one of the first that has one.
 function seasonTitles(group: LibraryGroup): string[] {
     return group.entries.map((anime) => {
         return anime.title;
     });
 }
 
-// The card of a series: its name, how many seasons it has and the way into its own screen.
 function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; onOpen: () => void }) {
     const removeAnime = useAnimeStore((state) => {
         return state.removeAnime;
@@ -571,8 +550,6 @@ function SeriesCard({ group, t, onOpen }: { group: LibraryGroup; t: Translator; 
     );
 }
 
-// The name of the series, changed for all the anime in it: when the name is one another series has, the seasons of both join, and a season
-// they both have is refused with the one the other series could give.
 function SeriesRename({ group, t, onClose, onRenamed }: { group: LibraryGroup; t: Translator; onClose: () => void; onRenamed: (name: string) => void }) {
     const renameSeries = useAnimeStore((state) => {
         return state.renameSeries;
@@ -629,7 +606,6 @@ function SeriesRename({ group, t, onClose, onRenamed }: { group: LibraryGroup; t
     );
 }
 
-// The screen of one series: its seasons, each with its buttons and episodes, and the way back.
 function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: Translator; onBack: () => void; onRenamed: (name: string) => void }) {
     const removeAnime = useAnimeStore((state) => {
         return state.removeAnime;
@@ -638,8 +614,6 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
         return state.downloadMissing;
     });
     const [renaming, setRenaming] = useState(false);
-    // The season that is open: its own screen replaces the one of the series until the way back, or until the season is removed. It is a page
-    // of the app (in the store), so the back and forward buttons of the mouse go through it.
     const openSeasonId = useAnimeStore((state) => {
         return state.librarySeason;
     });
@@ -654,7 +628,6 @@ function SeriesView({ group, t, onBack, onRenamed }: { group: LibraryGroup; t: T
     const openSeason = group.entries.find((anime) => {
         return anime.id === openSeasonId;
     });
-    // The folder of the series is opened through an anime of it that has something downloaded.
     const downloaded = group.entries.find((anime) => {
         return downloadedCount(anime) > 0;
     });
@@ -768,19 +741,15 @@ export function AnimeLibrary() {
     const importLibrary = useAnimeStore((state) => {
         return state.importLibrary;
     });
-    // What was opened or watched, for the order by the last one watched.
     const history = useAnimeStore((state) => {
         return state.history;
     });
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<LibraryFilter>('all');
-    // The order of the grid is kept for each filter: it is the same when the app opens again.
     const [sort, setSort] = useAnimeLibrarySort(filter);
-    // What is new is counted from the time the library opened.
     const [openedAt] = useState(() => {
         return Date.now();
     });
-    // The series that is open is in the store (coming from the search, "VIEW IN LIBRARY", it is the one of the anime that was being looked at).
     const openKey = useAnimeStore((state) => {
         return state.librarySeries;
     });
@@ -819,7 +788,6 @@ export function AnimeLibrary() {
                 t={t}
                 onBack={closeSeries}
                 onRenamed={(renamed) => {
-                    // The key of a series is made of its name, so the screen goes on with the series under its new one.
                     openSeries(`series-${foldSeries(renamed)}`);
                 }}
             />

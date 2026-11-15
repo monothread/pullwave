@@ -5,8 +5,6 @@ import { processLogs, type LogWriter } from '../logHub';
 import { createLogFeed } from '../logFeed';
 import { findFreePort } from './suwayomiServer';
 
-// FlareSolverr (MIT) runs in Docker, so nothing it needs (a browser, a virtual screen) is installed on the machine of the user. The version
-// is pinned: a new one is a change of this constant.
 export const FLARESOLVERR_VERSION = 'v3.5.2';
 export const FLARESOLVERR_IMAGE_NAME = 'ghcr.io/flaresolverr/flaresolverr';
 export const FLARESOLVERR_IMAGE = `${FLARESOLVERR_IMAGE_NAME}:${FLARESOLVERR_VERSION}`;
@@ -17,13 +15,9 @@ export const FLARESOLVERR_POLL_INTERVAL_MS = 500;
 export const FLARESOLVERR_STOP_SECONDS = 3;
 const OUTPUT_LINES = 20;
 
-// What docker says of a layer when it is downloaded (it is then checked and put in place), and when it is in place. Without a terminal docker
-// tells only when a layer goes from one step to the next, not how much of it came.
 const LAYER_DOWNLOADED = /Download complete|Verifying Checksum|Extracting/;
 const LAYER_IN_PLACE = /Pull complete|Already exists/;
 
-// How far the image is, from the steps of its layers: half of a layer once it is downloaded, the whole of it once it is in place. It never goes
-// back: docker names the layers one by one as it starts, so one more layer named would otherwise make the bar shrink.
 export function pullPercent(before: number, layers: number, downloaded: number, finished: number): number {
     if (layers === 0) {
         return before;
@@ -46,19 +40,16 @@ export interface DockerResult {
     stderr: string;
 }
 
-// Runs `docker <args>`; `onLine` gets every line of the output as it comes. Never rejects: a docker that is not there ends with code null.
 export type DockerRunner = (args: string[], onLine?: (line: string) => void) => Promise<DockerResult>;
 
 type DockerSpawn = (command: string, args: string[], options: SpawnOptions) => ChildProcess;
 
-// Follows the output of a container into the log of FlareSolverr until it ends; the function returned stops following it.
 export type ContainerLogFollower = (containerId: string) => () => void;
 
 function openFlareSolverrLog(): LogWriter {
     return processLogs.open('flaresolverr');
 }
 
-// Every docker command the app runs, and what it answered, goes to the log of FlareSolverr (`openLog`).
 export function createDockerRunner(spawn: DockerSpawn = nodeSpawn, openLog: () => LogWriter = openFlareSolverrLog): DockerRunner {
     return (args, onLine) => {
         return new Promise<DockerResult>((resolve) => {
@@ -68,7 +59,6 @@ export function createDockerRunner(spawn: DockerSpawn = nodeSpawn, openLog: () =
             let stdout = '';
             let stderr = '';
             let settled = false;
-            // `failure` is why docker could not be run at all.
             const finish = (code: number | null, failure: string | null = null): void => {
                 if (!settled) {
                     settled = true;
@@ -113,8 +103,6 @@ export function createDockerRunner(spawn: DockerSpawn = nodeSpawn, openLog: () =
     };
 }
 
-// Follows `docker logs --follow` of a container: what FlareSolverr says goes to its log while the container runs. The container is
-// started with --rm, so this is the only way to keep what it said when it fails to start (it is gone with the container).
 export function createContainerLogFollower(spawn: DockerSpawn = nodeSpawn, openLog: () => LogWriter = openFlareSolverrLog): ContainerLogFollower {
     return (containerId) => {
         const log = openLog();
@@ -136,7 +124,6 @@ export function createContainerLogFollower(spawn: DockerSpawn = nodeSpawn, openL
         child.once('close', (code, signal) => {
             stdout.flush();
             stderr.flush();
-            // Ended by the app (the container stopped): docker answers the SIGTERM with 143, which is not a failure.
             if (stoppedByApp) {
                 log.stopped();
             } else {
@@ -155,19 +142,14 @@ export interface FlareSolverrDockerDependencies {
     fetchImpl?: typeof fetch;
     findFreePort?: () => Promise<number>;
     onState?: (state: ToolState) => void;
-    // A name that tells this app's container from another one (the process id is enough).
     containerName?: string;
-    // The version of the image to run, when it is not the one the app ships with (an update the user made).
     version?: string;
     startTimeoutMs?: number;
     pollIntervalMs?: number;
-    // Whether a process of this machine is alive (the owner of a container is told by the process id in its name).
     isProcessAlive?: (pid: number) => boolean;
-    // Follows the output of the container into the log of FlareSolverr while it runs.
     followLogs?: ContainerLogFollower;
 }
 
-// The process id a container of the app carries in its name (`pullwave-flaresolverr-<pid>`), or null when it has none.
 export function ownerPid(containerName: string): number | null {
     const match = /-(\d+)$/.exec(containerName.trim());
     return match === null ? null : Number(match[1]);
@@ -178,7 +160,6 @@ export function defaultIsProcessAlive(pid: number): boolean {
         process.kill(pid, 0);
         return true;
     } catch (error) {
-        // Not allowed to signal it means it is there, owned by another user.
         return (error as NodeJS.ErrnoException).code === 'EPERM';
     }
 }
@@ -199,8 +180,6 @@ function lastLines(text: string): string {
         .join('\n');
 }
 
-// Runs FlareSolverr, the program that opens a page in a real browser to get past the check of Cloudflare, as a Docker container: its image
-// is pulled when the app opens, and the container listens on a port of its own on this machine only and is removed when it stops.
 export class FlareSolverrDocker {
     private readonly docker: DockerRunner;
     private versionTag: string;
@@ -230,7 +209,6 @@ export class FlareSolverrDocker {
         this.current = { ...this.current, version: this.versionTag };
     }
 
-    // The version of the image that is run, and the image.
     get version(): string {
         return this.versionTag;
     }
@@ -239,8 +217,6 @@ export class FlareSolverrDocker {
         return `${FLARESOLVERR_IMAGE_NAME}:${this.versionTag}`;
     }
 
-    // Runs another version of FlareSolverr: its image is pulled, the container that runs (it uses the old image) is stopped, so the next use
-    // starts the new one, and the old image is removed. When the new one cannot be pulled the old one stays in use.
     async switchTo(version: string): Promise<ToolState> {
         const previousVersion = this.versionTag;
         const previousImage = this.image;
@@ -275,7 +251,6 @@ export class FlareSolverrDocker {
         return this.lastError;
     }
 
-    // Why it cannot be used, when it cannot.
     get failure(): { code: 'no-docker' | 'start-failed'; message: string } | null {
         return this.problem === null ? null : { code: this.problem, message: this.lastError ?? '' };
     }
@@ -289,7 +264,6 @@ export class FlareSolverrDocker {
         this.deps.onState?.(this.current);
     }
 
-    // Checks that Docker answers and pulls the image if it is not there (done when the app opens, and again by hand after a failure).
     prepare(): Promise<ToolState> {
         this.preparing ??= this.runPrepare().finally(() => {
             this.preparing = null;
@@ -343,7 +317,6 @@ export class FlareSolverrDocker {
         return this.current;
     }
 
-    // Stops the container and removes the image; the helper is then as if it was never installed.
     async remove(): Promise<void> {
         await this.stop();
         await this.docker(['rmi', this.image]);
@@ -371,14 +344,10 @@ export class FlareSolverrDocker {
         this.address = null;
         this.currentStatus = 'stopped';
         if (id !== null) {
-            // The container was started with --rm: it goes away when it stops.
-            // -t and not --time (deprecated since Docker 25, with a warning) nor --timeout (unknown before Docker 25).
             await this.docker(['stop', '-t', String(FLARESOLVERR_STOP_SECONDS), id]);
         }
     }
 
-    // Removes containers an earlier run of the app left behind (it was killed before it could stop them). The container of another copy of the
-    // app that is running (its process is alive) is not touched, and neither is the one this app runs.
     async removeOrphans(): Promise<void> {
         const listed = await this.docker(['ps', '--all', '--filter', `label=${FLARESOLVERR_CONTAINER_LABEL}`, '--format', '{{.ID}} {{.Names}}']);
         if (listed.code !== 0) {

@@ -7,7 +7,6 @@ import { StepTrail } from '@renderer/components/StepTrail';
 const t = createTranslator('en');
 const pt = createTranslator('pt');
 
-// What each step of the trail shows: its name, its state and whether it is the step going on.
 function stepsOf(container: HTMLElement): Array<[string, string | null, string | null, string]> {
     return Array.from(container.querySelectorAll<HTMLElement>('.steps__item')).map((item) => {
         const name = item.querySelector<HTMLElement>('.steps__name');

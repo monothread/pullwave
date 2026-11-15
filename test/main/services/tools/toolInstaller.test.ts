@@ -35,7 +35,6 @@ function goodDownload(overrides: Partial<DownloadResult> = {}): { download: Down
     return { download, calls };
 }
 
-// An unpacking that makes the files the install expects.
 function goodExtract(files: string[] = ['jre/bin/java', 'bin/server.jar']): { extract: Extract; calls: unknown[] } {
     const calls: unknown[] = [];
     const extract: Extract = (format, file, options) => {

@@ -11,7 +11,6 @@ interface MangaSeriesSettingsProps {
     manga: LibraryManga;
 }
 
-// What joins a manga of the library to the others of its series: the name of the series, its place in it and the name it is shown with.
 export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
     const t = useTranslator();
     const library = useMangaStore((state) => {
@@ -25,13 +24,11 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
     const [seasonName, setSeasonName] = useState(manga.seasonName ?? '');
     const [problem, setProblem] = useState<string | null>(null);
 
-    // With no name the series is named after the manga.
     const effectiveSeries = series.trim().length === 0 ? manga.title : series;
     const taken = takenSeasons(library, effectiveSeries, manga.id);
     const seasonTaken = taken.includes(season);
     const suggestedSeason = nextSeason(taken);
 
-    // Choosing a series that has the order wanted already offers the next one.
     function changeSeries(value: string): void {
         setSeriesName(value);
         const takenThere = takenSeasons(library, value.trim().length === 0 ? manga.title : value, manga.id);
@@ -55,7 +52,6 @@ export function MangaSeriesSettings({ manga }: MangaSeriesSettingsProps) {
         setProblem(response.reason === 'season-taken' ? t('manga.series.error.taken', { order: season, suggested: response.suggested }) : t('anime.series.error.invalid'));
     }
 
-    // The name of the series is made from the title: with it the order starts at the next free one.
     function suggest(): void {
         const suggestion = suggestSeries(manga.title);
         const takenThere = takenSeasons(library, suggestion.series, manga.id);

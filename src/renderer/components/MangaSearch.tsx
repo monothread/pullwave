@@ -29,7 +29,6 @@ const BADGE_CLASSES: Record<MangaSearchSourceStatus, string> = {
     error: 'badge--error'
 };
 
-// Looks for a manga by name in every source of a language and shows, source by source, whether it was found.
 export function MangaSearch() {
     const t = useTranslator();
     const browse = useMangaStore((state) => {
@@ -73,7 +72,6 @@ export function MangaSearch() {
         }
     }, [sourcesStatus, loadSources]);
 
-    // The language of the settings, unless the switch asks for every language.
     const settingsLanguage = useMangaLanguage(sourceLanguages(listedSources(sources, showAdult)));
 
     if (selection !== null && selectionFrom === 'search') {

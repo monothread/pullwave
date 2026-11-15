@@ -1,6 +1,3 @@
-/* The themes other than the default (cyberpunk, in :root of cyberpunk.css). The themes with data-theme-style='flat' (set by applyTheme, see
-   THEME_STYLES) have no glow, no scanlines and no cut corners; the ones with 'neon' keep what cyberpunk.css gives the default. */
-
 :root[data-theme='dark'] {
     --bg: #16181d;
     --panel: #1e2128;
@@ -73,7 +70,6 @@
     color-scheme: light;
 }
 
-/* Tokyo Night: a dark blue-grey, easy on the eyes for long sessions. */
 :root[data-theme='tokyo-night'] {
     --bg: #1a1b26;
     --panel: #1f2335;
@@ -110,7 +106,6 @@
     color-scheme: dark;
 }
 
-/* Nord: a calm, cold blue-grey. */
 :root[data-theme='nord'] {
     --bg: #2e3440;
     --panel: #353b49;
@@ -147,7 +142,6 @@
     color-scheme: dark;
 }
 
-/* Dracula: a dark purple with vivid accents. */
 :root[data-theme='dracula'] {
     --bg: #282a36;
     --panel: #2f3142;
@@ -184,7 +178,6 @@
     color-scheme: dark;
 }
 
-/* Gruvbox: warm and retro, in earthy tones. */
 :root[data-theme='gruvbox'] {
     --bg: #282828;
     --panel: #32302f;
@@ -221,7 +214,6 @@
     color-scheme: dark;
 }
 
-/* AMOLED: pure black, which saves power on OLED screens. */
 :root[data-theme='amoled'] {
     --bg: #000000;
     --panel: #0a0a0a;
@@ -258,7 +250,6 @@
     color-scheme: dark;
 }
 
-/* High contrast: white on black with thick edges, for anyone who needs the difference to be clear. */
 :root[data-theme='high-contrast'] {
     --bg: #000000;
     --panel: #000000;
@@ -295,7 +286,6 @@
     color-scheme: dark;
 }
 
-/* Sakura: light, soft and pink. */
 :root[data-theme='sakura'] {
     --bg: #fdf6f8;
     --panel: #ffffff;
@@ -332,7 +322,6 @@
     color-scheme: light;
 }
 
-/* Sakura Dark: the soft pink of Sakura at night, on a warm plum black. */
 :root[data-theme='sakura-dark'] {
     --bg: #1c1319;
     --panel: #261b22;
@@ -369,7 +358,6 @@
     color-scheme: dark;
 }
 
-/* Synthwave: neon pink and orange on a purple sunset, with the glow and the scanlines of the cyberpunk theme. */
 :root[data-theme='synthwave'] {
     --bg: #120c2a;
     --panel: #1b1340;
@@ -406,7 +394,6 @@
     color-scheme: dark;
 }
 
-/* Terminal: phosphor green on black, square corners and a strong glow, like an old monitor. */
 :root[data-theme='terminal'] {
     --bg: #020a04;
     --panel: #04120a;
@@ -443,7 +430,6 @@
     color-scheme: dark;
 }
 
-/* Neon Tokyo: neon, on a very dark background. */
 :root[data-theme='neon-tokyo'] {
     --bg: #070b1f;
     --panel: #0c1230;
@@ -480,7 +466,6 @@
     color-scheme: dark;
 }
 
-/* Acid Rain: neon, on a very dark background. */
 :root[data-theme='acid-rain'] {
     --bg: #030a08;
     --panel: #07140f;
@@ -517,7 +502,6 @@
     color-scheme: dark;
 }
 
-/* Amber City: neon, on a very dark background. */
 :root[data-theme='amber-city'] {
     --bg: #0d0805;
     --panel: #1a0f09;
@@ -554,7 +538,6 @@
     color-scheme: dark;
 }
 
-/* Ultraviolet: neon, on a very dark background. */
 :root[data-theme='ultraviolet'] {
     --bg: #0a0518;
     --panel: #130a2b;
@@ -591,7 +574,6 @@
     color-scheme: dark;
 }
 
-/* Pink Noir: neon, on a very dark background. */
 :root[data-theme='pink-noir'] {
     --bg: #050505;
     --panel: #0f0b0e;
@@ -628,7 +610,6 @@
     color-scheme: dark;
 }
 
-/* Cyber Gold: neon, on a very dark background. */
 :root[data-theme='cyber-gold'] {
     --bg: #080600;
     --panel: #120e02;
@@ -665,7 +646,6 @@
     color-scheme: dark;
 }
 
-/* Ice Neon: neon, on a very dark background. */
 :root[data-theme='ice-neon'] {
     --bg: #02111a;
     --panel: #071c2a;
@@ -702,8 +682,6 @@
     color-scheme: dark;
 }
 
-/* Neon Tokyo Light: the pink and the blue of Neon Tokyo, darkened to be read, on a pale lavender background. It keeps the monospace font, the cut
-   corners and the scanlines (dark and thin here); the glow is a soft colored halo, since a bright glow cannot be seen on a light background. */
 :root[data-theme='neon-tokyo-light'] {
     --bg: #f3f0fb;
     --panel: #ffffff;

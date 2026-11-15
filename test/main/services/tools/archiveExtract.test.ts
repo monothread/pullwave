@@ -153,7 +153,6 @@ describe('extractArchive zip', () => {
         expect(readFileSync(join(destination, 'a.txt'), 'utf-8')).toBe('a');
     });
 
-    // The reader of ZIP files refuses these names itself; safeTarget is the second guard, tested above.
     it('refuses an archive with a path that goes out of the folder, and writes nothing outside', async () => {
         const root = makeTempDir();
         const archive = join(root, 'evil.zip');

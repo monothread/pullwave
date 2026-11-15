@@ -25,17 +25,12 @@ import {
     type ProgramPlatform
 } from './programSpecs';
 
-// Looks up, for each program that can be updated, the latest version its publisher has (what the update in the settings installs, and what
-// ffmpeg is installed from on the first run), and makes the spec of it: the address is built here from what the answer says and the checksum
-// comes from the publisher, so what the network gives is only a name, a size and a hash.
-
 export const YTDLP_RELEASE_API = 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest';
 export const DENO_RELEASE_API = 'https://api.github.com/repos/denoland/deno/releases/latest';
 export const ANICLI_COMMIT_API = 'https://api.github.com/repos/pystardust/ani-cli/commits/master';
 const YTDLP_CHECKSUMS = 'SHA2-256SUMS';
 const YTDLP_SIGNATURE = 'SHA2-256SUMS.sig';
 
-// How much a program may weigh, and the script of ani-cli: something far bigger than a release is not one.
 export const MAX_SIZES: Record<ProgramId, number> = {
     ytdlp: 100_000_000,
     deno: 150_000_000,
@@ -49,14 +44,12 @@ export const MAX_SIGNATURE_BYTES = 65_536;
 export const TEXT_TIMEOUT_MS = 30_000;
 const USER_AGENT = 'pullwave';
 
-// Why a look for the latest version did not give one. The reason is what the screen turns into words; the message is for the details.
 export type LookupReason = 'no-release' | 'signature' | 'checksum' | 'invalid' | 'patches' | 'incompatible' | 'failed';
 
 export class LookupError extends Error {
     constructor(
         readonly reason: LookupReason,
         message: string,
-        // What keeps ani-cli from being used (for the reasons `patches` and `incompatible`).
         readonly problems: readonly CompatibilityProblem[] = []
     ) {
         super(message);
@@ -65,11 +58,8 @@ export class LookupError extends Error {
 
 export interface LatestDependencies {
     fetchText: (url: string) => Promise<string>;
-    // The bytes of a file, refusing one that is bigger than `maxBytes`.
     fetchBuffer: (url: string, maxBytes: number) => Promise<Buffer>;
-    // The size of a file, from its headers (nothing is downloaded).
     fetchSize: (url: string) => Promise<number>;
-    // Whether the signature is a good one of the checksums of yt-dlp, made by the key of its project.
     verifySums: (sums: Buffer, signature: Buffer) => Promise<boolean>;
 }
 
@@ -120,7 +110,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-// A release of GitHub as far as the lookups need it: its tag and the name and size of each file.
 function readRelease(text: string): Release {
     let parsed: unknown;
     try {
@@ -150,7 +139,6 @@ function sizeOf(release: Release, name: string, id: ProgramId): number {
     return size;
 }
 
-// The hash a line of a list of checksums gives for a file ("<hash>  <name>", or "<hash> *<name>").
 export function checksumOf(list: string, name: string): string | null {
     for (const line of list.split('\n')) {
         const match = /^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$/.exec(line.trim());
@@ -161,7 +149,6 @@ export function checksumOf(list: string, name: string): string | null {
     return null;
 }
 
-// The only 64-digit hash in a file of one checksum: a bare hash, "<hash>  <name>", or the table of PowerShell's Get-FileHash.
 export function singleChecksum(text: string): string | null {
     const match = /\b[0-9a-fA-F]{64}\b/.exec(text);
     return match === null ? null : match[0].toLowerCase();
@@ -175,7 +162,6 @@ async function fetchSignature(deps: LatestDependencies, url: string): Promise<Bu
     }
 }
 
-// yt-dlp: the latest release, whose list of checksums has to be signed by the project before a hash in it is worth anything.
 export async function latestYtdlp(platform: ProgramPlatform, deps: LatestDependencies = defaultLatestDependencies): Promise<ToolSpec> {
     const release = readRelease(await deps.fetchText(YTDLP_RELEASE_API));
     if (release.tag === null || !YTDLP_VERSION.test(release.tag)) {
@@ -195,7 +181,6 @@ export async function latestYtdlp(platform: ProgramPlatform, deps: LatestDepende
     return ytdlpSpec(release.tag, sha256, size, platform);
 }
 
-// deno: the latest release, with the checksum the project publishes beside the file.
 export async function latestDeno(platform: ProgramPlatform, deps: LatestDependencies = defaultLatestDependencies): Promise<ToolSpec> {
     const release = readRelease(await deps.fetchText(DENO_RELEASE_API));
     if (release.tag === null || !DENO_VERSION.test(release.tag)) {
@@ -222,7 +207,6 @@ function branchOf(platform: ProgramPlatform, name: string): [number, number] {
     return [Number(match?.[1] ?? 0), Number(match?.[2] ?? 0)];
 }
 
-// ffmpeg: the latest build, the newest numbered branch of the GPL shared build of BtbN for the system, with the checksum of its list.
 export async function latestFfmpeg(platform: ProgramPlatform, deps: LatestDependencies = defaultLatestDependencies): Promise<ToolSpec> {
     const release = readRelease(await deps.fetchText(FFMPEG_RELEASE_API));
     const candidates = release.assets
@@ -252,14 +236,9 @@ export async function latestFfmpeg(platform: ProgramPlatform, deps: LatestDepend
 
 export interface LatestAniCli {
     spec: ToolSpec;
-    // The version the script says it is (5.1.8).
     version: string;
 }
 
-// ani-cli: the script at the head of the master branch, asked for by its commit so the address is a fixed one. It is not worth anything unless
-// it looks like ani-cli and keeps everything the app relies on (see aniCompatibility.ts): every change of the app fits it, and nothing the app
-// hands it or reads from it is gone. The script has no checksum published, so the one of the file as it came is the one the install checks
-// (the file of a commit does not change).
 export async function latestAniCli(deps: LatestDependencies = defaultLatestDependencies): Promise<LatestAniCli> {
     let commit: unknown;
     try {

@@ -3,16 +3,13 @@ import { isLlmTokenSlot, type LlmStatus } from '@shared/llm';
 import type { LlmTokenStore } from '../services/llmTokenStore';
 import type { IpcMainLike } from './registerHandlers';
 
-// The longest token accepted: keys are a few hundred characters at most.
 export const MAX_TOKEN_LENGTH = 2000;
 
 export interface LlmHandlerDependencies {
     tokens: Pick<LlmTokenStore, 'canStore' | 'providers' | 'set' | 'clear'>;
-    // A token was saved or taken out.
     onChanged?: () => void;
 }
 
-// The tokens of the language models. The window can put one in, take it out and ask whether there is one, but never reads it back.
 export function registerLlmHandlers(ipcMain: IpcMainLike, deps: LlmHandlerDependencies): void {
     ipcMain.handle(IPC.llmStatus, (): LlmStatus => {
         return { canStore: deps.tokens.canStore(), providers: deps.tokens.providers() };

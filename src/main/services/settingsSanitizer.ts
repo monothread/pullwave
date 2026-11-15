@@ -34,7 +34,6 @@ function pickString(value: unknown, fallback: string): string {
     return typeof value === 'string' ? value.trim() : fallback;
 }
 
-// An address with http or https, or empty when the value is not one.
 function pickHttpAddress(value: unknown): string {
     if (typeof value !== 'string') {
         return '';
@@ -142,7 +141,6 @@ function isOptionValid(key: (typeof OPTION_KEYS)[number], value: unknown): boole
     }
 }
 
-// The options a download may carry: only the known fields with valid values; anything else (or nothing) follows the settings.
 export function sanitizeDownloadOptions(input: unknown): DownloadOptions {
     if (typeof input !== 'object' || input === null) {
         return {};

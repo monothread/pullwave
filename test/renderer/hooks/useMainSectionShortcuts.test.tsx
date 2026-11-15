@@ -31,7 +31,6 @@ function press(key: 'Home' | 'End', init: KeyboardEventInit = {}, target: Window
     return fireEvent.keyDown(target, { key, ctrlKey: true, ...init });
 }
 
-// Without view transitions in the window the section just changes.
 beforeEach(() => {
     Reflect.deleteProperty(document, 'startViewTransition');
 });

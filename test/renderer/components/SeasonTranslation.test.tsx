@@ -32,7 +32,6 @@ function nothingToTranslate(): { language: 'German'; episodeIds: number[] } {
     return { language: 'German', episodeIds: [] };
 }
 
-// The updates of the translations reach the screen through the store, which listens for them from the start of the anime section.
 beforeEach(async () => {
     mock = installMockApi();
     useAppStore.setState({ ...initialApp, settings: { ...DEFAULT_SETTINGS, animeSubtitles: 'German' } });

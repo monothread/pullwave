@@ -17,7 +17,6 @@ const LABELS: ManageDownloadsLabels = {
     cancelMessage: 'confirm.manageCancel.message'
 };
 
-// The mangas with a download to manage (running, waiting or paused), in the order their first chapter appears in the list.
 export function groupActiveJobs(jobs: readonly MangaJob[]): DownloadGroup[] {
     return groupActiveDownloads(
         jobs,
@@ -34,7 +33,6 @@ interface MangaManageDownloadsProps {
     onClose: () => void;
 }
 
-// The window to pause, resume and cancel the downloads of the mangas picked.
 export function MangaManageDownloads({ onClose }: MangaManageDownloadsProps) {
     const jobs = useShownJobs();
     const pauseMangaJobs = useMangaStore((state) => {

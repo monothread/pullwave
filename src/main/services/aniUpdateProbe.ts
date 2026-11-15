@@ -4,11 +4,6 @@ import type { AniCliService } from './aniCliService';
 import { DEFAULT_ANIME_QUALITY } from './aniArgsBuilder';
 import { comparableTitle } from './animeSourceMatch';
 
-// Before a new ani-cli takes the place of the one in use, it is tried for real, the way the app uses it: a search, the list of the episodes of
-// the anime it found, and the stream of an episode. The anime is one whose episode 1 the source once served in a way that broke downloads (a
-// picture in front of every piece of the video), so it also shows the source still answers for it. Anything that does not come back as it
-// should refuses the update.
-
 export const PROBE_QUERY = 'kaiju girl caramelise';
 export const PROBE_TITLE = 'KAIJU GIRL CARAMELISE';
 export const PROBE_EPISODE = '1';
@@ -35,8 +30,6 @@ function valueOf<T>(result: AniRunResult<T>, step: AniProbeError['step'], what: 
     throw new AniProbeError(step, result.status === 'cancelled' ? `${what} was cancelled` : `${what} failed (${errorText(result.error)})`);
 }
 
-// The anime of the probe among the results: by its title, listed by the source (not picked by ani-cli on its own) and with the id of the
-// source (the change of the app that lets the id through works).
 function probeResult(results: readonly AnimeSearchResult[]): AnimeSearchResult {
     const wanted = comparableTitle(PROBE_TITLE);
     const found = results.find((result) => {

@@ -914,7 +914,6 @@ export const pt: Messages = {
     'anime.subtitleJobs.unknown': 'Episódio que não está mais na biblioteca',
     'anime.stream.loading': 'PROCURANDO O VÍDEO…',
 
-    // Manga section
     'tab.manga': 'MANGÁ',
     'manga.aria': 'Mangá',
     'manga.nav.browse': 'EXPLORAR',

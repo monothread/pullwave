@@ -5,21 +5,15 @@ import { FieldShell, NumberField, TextField } from './fields';
 
 interface SeriesFieldsProps {
     series: string;
-    // Where the anime goes among the others of its series: it only orders them.
     season: number;
-    // The name the anime is shown with in its series, instead of "SEASON N" (empty: none). It is not used to order.
     seasonName: string;
-    // The names of the series the library already has: the ones that match what is typed are offered.
     suggestions: readonly string[];
     onSeriesChange: (series: string) => void;
     onSeasonChange: (season: number) => void;
     onSeasonNameChange: (name: string) => void;
-    // What the fields say when the mouse is over them, when it is not what an anime would need.
     hint?: string;
     nameHint?: string;
-    // What the name of the series says while it is empty, when that is not "no series".
     seriesPlaceholder?: string;
-    // Why the order cannot be used, when it cannot.
     seasonProblem?: string;
 }
 
@@ -31,8 +25,6 @@ interface SeriesSearchProps {
     onChange: (series: string) => void;
 }
 
-// A search box: what is typed filters the series the library already has, one of them can be picked, and what is typed that is
-// not one of them stays as the name of a new series.
 function SeriesSearch({ label, value, placeholder, suggestions, onChange }: SeriesSearchProps) {
     const t = useTranslator();
     const existing = t('anime.series.existing');
@@ -88,7 +80,6 @@ function SeriesSearch({ label, value, placeholder, suggestions, onChange }: Seri
     );
 }
 
-// What joins an anime to the others of its series: the name of the series, its place in it and the name it is shown with.
 export function SeriesFields({ series, season, seasonName, suggestions, onSeriesChange, onSeasonChange, onSeasonNameChange, hint, nameHint, seriesPlaceholder, seasonProblem }: SeriesFieldsProps) {
     const t = useTranslator();
     return (

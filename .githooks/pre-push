@@ -1,6 +1,4 @@
 #!/bin/sh
-# Blocks any push to main while `npm audit` reports a vulnerability (any severity, dev dependencies included).
-# Enabled by `npm install` (the "prepare" script points core.hooksPath here). Fix the vulnerability before pushing.
 
 zero_sha="0000000000000000000000000000000000000000"
 pushes_to_main=0

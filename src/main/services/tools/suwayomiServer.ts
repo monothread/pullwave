@@ -12,18 +12,9 @@ import { applyManagedSettings, managedSettings } from './suwayomiConfig';
 export const HEALTH_QUERY = '{ aboutServer { version } }';
 export const START_TIMEOUT_MS = 120_000;
 export const POLL_INTERVAL_MS = 500;
-// After asking the server to end, how long it has to do so before it is ended by force.
 export const STOP_GRACE_MS = 5000;
 const SERVER_LOG_LINES = 40;
-// The Chromium of the WebView of Suwayomi (KCEF, about 530 MB), downloaded into the data folder before the app turned it off (D-183). Nothing uses
-// it any more, so it is removed before each start, while the server is not running (once it is gone there is nothing left to do).
 export const WEBVIEW_LEFTOVER = ['bin', 'kcef'];
-// The server gives back to the system the memory it no longer uses. Java keeps what its heap once grew to: during a run of downloads the
-// server went from about 580 MB to about 1 GB and stayed there after the downloads were over (its heap may grow to a quarter of the
-// memory of the machine). Every 30 s with nothing going on it now collects and returns what it holds free beyond 30% of what it uses. No
-// limit is put on the heap: a source that needs more still gets it. The server compiles its code with the quick compiler only
-// (TieredStopAtLevel=1): measured with 60 chapters, about 45% less memory (idle 418–485 MB against 576–593, peak 405–493 against 765–776)
-// and the same time (66–67 s against 65 s, the downloads wait on the network, the server uses about 1% of the processor).
 export const SERVER_JVM_ARGS = ['-XX:G1PeriodicGCInterval=30000', '-XX:MinHeapFreeRatio=10', '-XX:MaxHeapFreeRatio=30', '-XX:TieredStopAtLevel=1'];
 const WINDOWS_SYSTEM_VARIABLES = ['SystemRoot', 'windir', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramData', 'PATHEXT', 'COMSPEC'];
 
@@ -33,9 +24,7 @@ export class SuwayomiServerError extends Error {}
 
 export interface SuwayomiServerDependencies {
     spec: ToolSpec;
-    // The folder the program was unpacked into.
     installDirectory: string;
-    // Where the server keeps its database, its settings, the extensions it installs and its cache.
     dataDirectory: string;
     platform?: NodeJS.Platform;
     spawn?: (command: string, args: string[], options: SpawnOptions) => ChildProcess;
@@ -46,16 +35,11 @@ export interface SuwayomiServerDependencies {
     pollIntervalMs?: number;
     stopGraceMs?: number;
     onStatus?: (status: SuwayomiServerStatus) => void;
-    // The address of the FlareSolverr the server reads the sites behind Cloudflare through (it is started if needed), or null when there is
-    // none. A failure to start it is not a failure to start the server: those sites just do not work.
     helperUrl?: () => Promise<string | null>;
-    // Where each start of the server writes its command and its output for the window of the logs (the log of Suwayomi by default).
     openLog?: () => LogWriter;
-    // Removes a folder and what is in it, doing nothing when it is not there.
     removeDirectory?: (path: string) => void;
 }
 
-// A port nobody is using on this machine (asked of the system, then given back).
 export function findFreePort(): Promise<number> {
     return new Promise((resolve, reject) => {
         const server = createServer();
@@ -84,7 +68,6 @@ function removeDirectory(path: string): void {
     rmSync(path, { recursive: true, force: true });
 }
 
-// Runs Suwayomi-Server as a child of the app: on a port of its own, on this machine only, and ended with the app.
 export class SuwayomiServer {
     private child: ChildProcess | null = null;
     private currentStatus: SuwayomiServerStatus = 'stopped';
@@ -107,7 +90,6 @@ export class SuwayomiServer {
         return this.lastError;
     }
 
-    // The address of the server, started if it was not running. Asking while it starts waits for the same start.
     ensureRunning(): Promise<string> {
         if (this.currentStatus === 'running' && this.address !== null) {
             return Promise.resolve(this.address);
@@ -123,7 +105,6 @@ export class SuwayomiServer {
         this.setStatus('stopped');
     }
 
-    // Ends the program if it runs; the state is left to the caller.
     private async endProcess(): Promise<void> {
         const child = this.child;
         if (child === null) {
@@ -198,7 +179,6 @@ export class SuwayomiServer {
         }
     }
 
-    // Why the WebView left behind could not be removed (a file held by another program on Windows), or null. It does not stop the start.
     private removeWebViewLeftover(): string | null {
         const path = join(this.deps.dataDirectory, ...WEBVIEW_LEFTOVER);
         try {
@@ -213,10 +193,6 @@ export class SuwayomiServer {
         const platform = this.deps.platform ?? process.platform;
         const java = join(this.deps.installDirectory, 'jre', 'bin', platform === 'win32' ? 'java.exe' : 'java');
         const jar = join(this.deps.installDirectory, 'bin', 'Suwayomi-Server.jar');
-        // Only IPv4: the FlareSolverr (a container) solves the Cloudflare check from its IPv4 address, and the clearance is tied to the address.
-        // A server that connected over IPv6 (the default of Java when the machine has it) was refused by the sites (HentaiRead).
-        // Native access for the code of the jar (the zstd it embeds loads a library of its own): Java 24 and later warn at every start without it,
-        // and a later Java is to refuse it. It gives nothing the code of the server and its extensions could not already do.
         const args = ['-Djava.net.preferIPv4Stack=true', '--enable-native-access=ALL-UNNAMED', ...SERVER_JVM_ARGS, `-Dsuwayomi.tachidesk.config.server.rootDir=${this.deps.dataDirectory}`, '-jar', jar];
         const spawn = this.deps.spawn ?? nodeSpawn;
         const child = spawn(java, args, {
@@ -224,7 +200,6 @@ export class SuwayomiServer {
             env: this.environment(platform),
             stdio: ['ignore', 'pipe', 'pipe'],
             windowsHide: true,
-            // Elsewhere the server runs in a group of its own so ending it ends what it started.
             detached: platform !== 'win32'
         });
         const remember = (chunk: Buffer): void => {
@@ -248,7 +223,6 @@ export class SuwayomiServer {
             if (this.child === child) {
                 this.child = null;
                 this.address = null;
-                // A server that dies while it starts is noticed by the wait for it; one that dies later is simply stopped.
                 if (this.currentStatus === 'running') {
                     this.setStatus('stopped');
                 }
@@ -257,7 +231,6 @@ export class SuwayomiServer {
         return child;
     }
 
-    // The command and everything the server says go to its log, and how it ended; first, the WebView that could not be removed, if so.
     private writeToLog(child: ChildProcess, java: string, args: string[], cleanupProblem: string | null): void {
         const log = (this.deps.openLog ?? openSuwayomiLog)();
         if (cleanupProblem !== null) {
@@ -282,7 +255,6 @@ export class SuwayomiServer {
         });
     }
 
-    // Nothing of the environment of the app is passed on but what the program needs to run.
     private environment(platform: NodeJS.Platform): NodeJS.ProcessEnv {
         const source = this.deps.environment ?? process.env;
         const environment: NodeJS.ProcessEnv = {};
@@ -294,7 +266,6 @@ export class SuwayomiServer {
             }
         });
         if (platform !== 'win32') {
-            // Keeps the JVM from taking the app down with it when native code aborts.
             environment['LD_PRELOAD'] = join(this.deps.installDirectory, 'bin', 'catch_abort.so');
         }
         return environment;

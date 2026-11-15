@@ -19,9 +19,6 @@ function chosenWith(filter: PickableFilter, state: MangaTriState): PickableFilte
     return filter.type === 'checkbox' ? { ...filter, value: state === 'include' } : { ...filter, value: state };
 }
 
-// The options of a group of filters (genres, tags, artists... some sources have thousands) as a field to type in: the options that match
-// what was typed are listed, one is picked with a click, and what was picked stays as a chip that can be turned into "without this" or
-// removed.
 export function MangaFilterPicker({ name, filters, onChange }: { name: string; filters: PickableFilter[]; onChange: (filters: PickableFilter[]) => void }) {
     const t = useTranslator();
     const listId = useId();
@@ -43,7 +40,6 @@ export function MangaFilterPicker({ name, filters, onChange }: { name: string; f
             return !isChosen(entry.filter) && entry.filter.name.toLowerCase().includes(needle);
         });
     const suggestions = matches.slice(0, MAX_SUGGESTIONS);
-    // The list opens with a click on the field, with everything that can be picked, and narrows as the user types.
     const showList = focused;
 
     function set(position: number, state: MangaTriState): void {
@@ -109,14 +105,12 @@ export function MangaFilterPicker({ name, filters, onChange }: { name: string; f
                                         role="option"
                                         aria-selected={false}
                                         className="manga__picker-option"
-                                        // The click is taken before the field loses the focus, which would close the list first.
                                         onMouseDown={(event) => {
                                             event.preventDefault();
                                         }}
                                         onClick={() => {
                                             set(entry.position, 'include');
                                             setText('');
-                                            // The list closes with the pick (it opens again with the next letter).
                                             setFocused(false);
                                         }}
                                     >

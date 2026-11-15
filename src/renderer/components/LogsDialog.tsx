@@ -10,7 +10,6 @@ import { highlightLog, logLevelOf, type LogToken } from './logHighlight';
 import { filterLogLines, formatLogText, formatLogTime, LOG_FILTERS, type LogFilter } from './logView';
 import { NotFound } from './NotFound';
 
-// The names of the programs are their own: they are not translated.
 export const LOG_SOURCE_LABELS: Record<LogSource, string> = {
     'yt-dlp': 'yt-dlp',
     'ani-cli': 'ani-cli',
@@ -25,7 +24,6 @@ const FILTER_LABELS: Record<LogFilter, MessageKey> = {
     errors: 'logs.filter.errors'
 };
 
-// How close to the end of the list (in pixels) still counts as being at the end: the list follows the new lines only from there.
 const FOLLOW_MARGIN_PX = 24;
 
 function tokenClassName(token: LogToken): string | undefined {
@@ -39,7 +37,6 @@ interface LogRowProps {
     line: LogLine;
 }
 
-// A line of the log: its time, then its text colored piece by piece; the whole line takes the color of how serious it is.
 const LogRow = memo(function LogRow({ line }: LogRowProps) {
     return (
         <li className={`log-line log-line--${logLevelOf(line)}`} data-stream={line.stream}>
@@ -64,7 +61,6 @@ interface LogsPaneProps {
     onClose: () => void;
 }
 
-// The log of one program: its lines, following the new ones while the list is at its end, and what can be done with them.
 function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
     const t = useTranslator();
     const pushToast = useAppStore((state) => {
@@ -98,8 +94,6 @@ function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
         }
     }
 
-    // Nothing to show: still loading, no line at all, or a filter that matches none of them (which says so with the lens of a search that found
-    // nothing).
     function emptyState(): ReactNode {
         if (!loaded) {
             return <p className="logs__empty">{t('logs.loading')}</p>;
@@ -173,13 +167,10 @@ function LogsPane({ source, filter, query, onClose }: LogsPaneProps) {
 }
 
 interface LogsDialogProps {
-    // The programs whose logs the window shows, one tab each (no tabs for one program).
     sources: readonly LogSource[];
     onClose: () => void;
 }
 
-// A window over the screen with the recent output of the programs of a section, for a quick look at what went wrong. The lines are kept
-// in memory by the app (none is written to the disk), and the secrets in them are already hidden.
 export function LogsDialog({ sources, onClose }: LogsDialogProps) {
     const t = useTranslator();
     const titleId = useId();

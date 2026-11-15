@@ -1,18 +1,9 @@
-/* The playful layer (D-147): the wave of the name that follows the app, the comet at the head of the bars, the soft pill that slides between
-   the tabs, the tiles that lean toward the pointer, the ripple of the presses, the halo that trails the focus, the confetti's neighbours
-   (the toast's timer, the stamp of a finished download), the numbers of the week, the pictures of the empty screens, the player's little
-   extras and the circle that opens when the theme changes. It only adds: the rules of the other sheets are untouched, and it reads only
-   their variables. Boxes never keep a transform (see console.css); everything that moves here is a control, a picture or a pseudo-element. */
-
-/* --- Tokens of motion ------------------------------------------------------------------------------------------------------------- */
 :root {
     --bp-dur-fast: 0.15s;
     --bp-dur-base: 0.3s;
     --bp-dur-slow: 0.6s;
 }
 
-/* --- The colour of the aurora follows the section ----------------------------------------------------------------------------------
-   The three lights are registered colours, so the change from one section to the next is a slow blend and not a jump. */
 @property --bp-aurora-a { syntax: '<color>'; inherits: true; initial-value: transparent; }
 @property --bp-aurora-b { syntax: '<color>'; inherits: true; initial-value: transparent; }
 @property --bp-aurora-c { syntax: '<color>'; inherits: true; initial-value: transparent; }
@@ -36,9 +27,6 @@
     --bp-aurora-c: color-mix(in srgb, var(--green) 20%, transparent);
 }
 
-/* --- The wave of the name ------------------------------------------------------------------------------------------------------------
-   Nothing going on: it lies almost flat and breathes slowly. Downloads going on: it rises. Many: it races. Something finished or the name
-   clicked five times: it dances. The Konami code: it runs through every colour. The delays of each bar (console.css) are kept. */
 .brand__wave--idle .brand__bar {
     animation-name: bp-wave-idle;
     animation-duration: 3.4s;
@@ -85,7 +73,6 @@
     to { filter: hue-rotate(360deg); }
 }
 
-/* --- The bars: a comet at the head, a flash when they fill ------------------------------------------------------------------------ */
 .progress__bar {
     position: relative;
 }
@@ -107,8 +94,6 @@
     display: none;
 }
 
-/* The timeline of the player is thin and it reaches its end: the head would stick out of the bar there, so it has none. The bar of the
-   reader has the head like the bars of the downloads. */
 .player__timeline .progress:not([class*='progress--']) .progress__bar:not([style*='width: 0%'])::after {
     display: none;
 }
@@ -118,7 +103,6 @@
     to { opacity: 1; transform: scaleX(1.3); }
 }
 
-/* The flash comes on top of the pulses of the bar (cyberpunk.css), which go on. */
 .job--done .progress {
     animation: bp-bar-flash 0.8s ease-out, bar-pulse 1.6s linear infinite, bar-pulse-count 19.2s linear infinite;
 }
@@ -128,7 +112,6 @@
     100% { box-shadow: 0 0 0 14px transparent; }
 }
 
-/* A finished download is stamped. */
 .badge--done {
     animation: bp-stamp 0.55s var(--bp-ease-spring) backwards;
 }
@@ -138,7 +121,6 @@
     100% { opacity: 1; transform: none; }
 }
 
-/* --- The notice has a timer ------------------------------------------------------------------------------------------------------- */
 .toast--info::before {
     content: '';
     position: absolute;
@@ -157,7 +139,6 @@
     to { transform: scaleX(0); }
 }
 
-/* --- Pictures that load: a shimmer while they are looked for, then they come into focus ---------------------------------------------- */
 .cover--none:empty {
     background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--cyan) 18%, transparent) 50%, transparent 70%);
     background-size: 250% 100%;
@@ -183,7 +164,6 @@ img.cover:not(.cover--loading) {
     to { filter: none; opacity: 1; }
 }
 
-/* --- The pictures of the sections each play their own little trick ------------------------------------------------------------------- */
 .sidenav .tab:hover .section-icon--home,
 .sidenav .tab--active .section-icon--home {
     animation: bp-icon-hop 0.7s var(--bp-ease-spring);
@@ -215,7 +195,6 @@ img.cover:not(.cover--loading) {
     100% { transform: translateY(0); }
 }
 
-/* It grows only a little and never overshoots: the picture has to stay inside the box of the tab, also halfway through. */
 @keyframes bp-icon-pulse {
     0%, 100% { transform: scale(1); }
     40% { transform: scale(1.08); filter: drop-shadow(0 0 6px var(--magenta)); }
@@ -226,7 +205,6 @@ img.cover:not(.cover--loading) {
     45% { transform: scaleX(0.15); }
 }
 
-/* --- An error shakes once ------------------------------------------------------------------------------------------------------------ */
 .error-banner {
     animation: bp-shake 0.5s ease-in-out;
 }
@@ -239,8 +217,6 @@ img.cover:not(.cover--loading) {
     80% { transform: translateX(2px); }
 }
 
-/* --- The ripple of a press ----------------------------------------------------------------------------------------------------------
-   The press gives the place (--rx, --ry); the radius and the strength are registered numbers the animation moves. */
 @property --bp-ripple { syntax: '<number>'; inherits: false; initial-value: 0; }
 @property --bp-ripple-alpha { syntax: '<number>'; inherits: false; initial-value: 0; }
 
@@ -254,7 +230,6 @@ img.cover:not(.cover--loading) {
     to { --bp-ripple: 260; --bp-ripple-alpha: 0; }
 }
 
-/* What takes something away fills with red while it is held, so the press feels like it costs something. */
 [data-hold='confirm']:active:not(:disabled) {
     background-image: linear-gradient(90deg, color-mix(in srgb, var(--red) 45%, transparent), color-mix(in srgb, var(--red) 25%, transparent));
     background-repeat: no-repeat;
@@ -266,7 +241,6 @@ img.cover:not(.cover--loading) {
     to { background-size: 100% 100%; }
 }
 
-/* --- The tiles lean toward the pointer, with a light that follows it ------------------------------------------------------------------ */
 .cover-grid > .cover-card:hover > .cover {
     transform: perspective(700px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(-4px) scale(1.04);
     transition: transform 0.12s linear, box-shadow 0.3s, filter 0.3s;
@@ -291,7 +265,6 @@ img.cover:not(.cover--loading) {
     opacity: 1;
 }
 
-/* --- The carousel: the cover moves against the pointer; the current dot fills as the five seconds pass ---------------------------------- */
 .spotlight__stage {
     --px: 0;
     --py: 0;
@@ -321,7 +294,6 @@ img.cover:not(.cover--loading) {
     to { transform: scaleX(1); }
 }
 
-/* --- A pill slides behind the active tab ---------------------------------------------------------------------------------------------- */
 .tab {
     isolation: isolate;
 }
@@ -335,7 +307,6 @@ img.cover:not(.cover--loading) {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 38%, transparent);
 }
 
-/* The item of the menu that a cover has just flown into. */
 .tab--pulse {
     animation: bp-nav-pulse 0.9s var(--bp-ease-out);
 }
@@ -345,8 +316,6 @@ img.cover:not(.cover--loading) {
     100% { box-shadow: 0 0 0 18px transparent; }
 }
 
-/* --- The halo that trails the focus -------------------------------------------------------------------------------------------------- */
-/* The generic margin of the children of .app (responsive.css) is not for a halo that is laid on the window. */
 .app > .focus-halo {
     margin: 0;
 }
@@ -362,7 +331,6 @@ img.cover:not(.cover--loading) {
     opacity: 0;
 }
 
-/* --- The digits of the clock flip ----------------------------------------------------------------------------------------------------- */
 .flip__char {
     display: inline-block;
     white-space: pre;
@@ -374,7 +342,6 @@ img.cover:not(.cover--loading) {
     to { opacity: 1; transform: none; }
 }
 
-/* --- The week in numbers --------------------------------------------------------------------------------------------------------------- */
 .stats {
     display: grid;
     gap: 14px;
@@ -436,7 +403,6 @@ img.cover:not(.cover--loading) {
     text-shadow: var(--text-glow);
 }
 
-/* --- The player: a flash for the seek, a swap for the icons, a spring for the sliders, a ring for the next episode ------------------------- */
 .player__skip {
     position: absolute;
     top: 50%;
@@ -508,14 +474,12 @@ img.cover:not(.cover--loading) {
     transition: stroke-dashoffset 0.1s linear;
 }
 
-/* --- The volume of the sounds, in the settings --------------------------------------------------------------------------------------- */
 .settings__volume {
     width: 100%;
     max-width: 320px;
     accent-color: var(--magenta);
 }
 
-/* --- A change of theme opens as a circle from where it was chosen ----------------------------------------------------------------------- */
 .vt-theme::view-transition-old(root) {
     animation: none;
     mix-blend-mode: normal;
@@ -531,12 +495,10 @@ img.cover:not(.cover--loading) {
     to { clip-path: circle(150% at var(--reveal-x, 50%) var(--reveal-y, 50%)); }
 }
 
-/* --- The player: it opens with a rise, the bar slides, the video answers a press, the volume says its number ------------------------------ */
 .player {
     animation: bp-fade-in 0.25s ease-out backwards;
 }
 
-/* A rise, not a pop: a scale would change the size of every control while it opens, and the sizes of the controls are measured. */
 .player__box {
     animation: bp-rise 0.4s var(--bp-ease-out) backwards;
 }
@@ -549,7 +511,6 @@ img.cover:not(.cover--loading) {
     transform: translateY(16px);
 }
 
-/* A big mark pops in the middle of the video when it plays or pauses, and grows as it goes. */
 .player__center {
     position: absolute;
     top: 50%;
@@ -607,7 +568,6 @@ img.cover:not(.cover--loading) {
     font-size: 1em;
 }
 
-/* What is already loaded shows on the timeline as a lighter stretch under the part watched. */
 .player__timeline .progress {
     position: relative;
 }
@@ -634,7 +594,6 @@ img.cover:not(.cover--loading) {
 .player__settings > :nth-child(3) { animation-delay: 0.1s; }
 .player__settings > :nth-child(n + 4) { animation-delay: 0.15s; }
 
-/* An episode that was left half way says where it picked up, for a moment. */
 .player__resumed {
     position: absolute;
     top: 12px;
@@ -658,7 +617,6 @@ img.cover:not(.cover--loading) {
     100% { opacity: 0; transform: translateY(-4px); }
 }
 
-/* The panel of the next episode comes in from the side, with the cover of the anime beside its name. */
 .player__auto-next {
     animation: bp-slide-left 0.5s var(--bp-ease-spring) backwards;
 }
@@ -691,8 +649,6 @@ img.cover:not(.cover--loading) {
     object-fit: cover;
 }
 
-/* --- The reader: pages turn, loading shimmers, the zone between chapters beckons, a read chapter is stamped ---------------------------- */
-/* A page turned one at a time comes in from the side the reading goes to (forward in a left to right reading: from the right). */
 .reader__stage[data-turn] .reader__img:not(.reader__img--pending) {
     --turn-from: 40px;
     animation: bp-page-turn 0.35s var(--bp-ease-out) backwards;
@@ -708,13 +664,11 @@ img.cover:not(.cover--loading) {
     to { opacity: 1; transform: none; }
 }
 
-/* The number of the page flips when the page changes (the element is new for each page, so the animation starts again). */
 .reader__page-text {
     display: inline-block;
     animation: bp-flip 0.4s var(--bp-ease-spring) backwards;
 }
 
-/* The first page of a chapter, and the pages of the scroll, only fade in: a filter on hundreds of pictures would be too much. */
 .reader__stage:not([data-turn]) .reader__img:not(.reader__img--pending),
 .reader__scroll .reader__img:not(.reader__img--pending) {
     animation: bp-reader-fade 0.5s ease-out backwards;
@@ -731,7 +685,6 @@ img.cover:not(.cover--loading) {
     animation: bp-shimmer 1.4s linear infinite;
 }
 
-/* The page a chapter was brought to glows when its picture arrives. */
 .reader__scroll .reader__img.reader__img--restored:not(.reader__img--pending) {
     animation: bp-reader-fade 0.5s ease-out backwards, bp-restored 1.4s ease-out;
 }
@@ -776,7 +729,6 @@ img.cover:not(.cover--loading) {
     50% { opacity: 1; transform: translateY(-4px); }
 }
 
-/* The bar of the zone shines when it is nearly full, as the chapter is about to change. */
 .reader__zone-bar[data-full='true'] .progress__bar {
     animation-name: bar-wave-flow, bp-zone-full;
     animation-duration: 1.4s, 0.5s;
@@ -785,13 +737,11 @@ img.cover:not(.cover--loading) {
     animation-timing-function: linear, ease-in-out;
 }
 
-/* The neon of the bar is a filter too (cyberpunk.css): the shine keeps it. */
 @keyframes bp-zone-full {
     from { filter: brightness(1) var(--bar-neon); }
     to { filter: brightness(1.5) var(--bar-neon); }
 }
 
-/* The auto scroll shows it is going: chevrons run down the button, with the speed beside them. */
 .reader__auto-flow {
     display: inline-flex;
     align-items: center;
@@ -821,7 +771,6 @@ img.cover:not(.cover--loading) {
     100% { opacity: 0.2; transform: translateY(5px); }
 }
 
-/* The button to go back to the top springs in, with a ring that fills as the chapter is read. */
 .reader__top {
     animation: bp-top-pop 0.4s var(--bp-ease-spring) backwards;
 }
@@ -855,7 +804,6 @@ img.cover:not(.cover--loading) {
     transition: stroke-dashoffset 0.15s linear;
 }
 
-/* A chapter read to its end is stamped over the page. */
 .reader__complete {
     position: fixed;
     top: 42%;
@@ -880,9 +828,6 @@ img.cover:not(.cover--loading) {
     100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1) rotate(-6deg); }
 }
 
-/* --- The pointer ------------------------------------------------------------------------------------------------------------------------
-   The pointer of the system (the theme the person chose) is used for every shape: this only says which shape each thing gets. The arrow is
-   the shape of the app; the hand is for what can be pressed; the text shape is only for fields and for the text meant to be copied. */
 body {
     cursor: default;
 }
@@ -900,7 +845,6 @@ input[type='color'] {
     cursor: pointer;
 }
 
-/* An on/off setting is pressed on its whole line, not only on the box. */
 label:has(> input[type='checkbox']),
 label:has(> input[type='radio']),
 label:has(input.switch),
@@ -908,7 +852,6 @@ label:has(input.switch),
     cursor: pointer;
 }
 
-/* What cannot be pressed now shows it (the busy shape is for what is working: it comes from aria-busy). */
 button:disabled,
 select:disabled,
 input:disabled,
@@ -924,7 +867,6 @@ button[aria-busy='true'] {
     cursor: progress;
 }
 
-/* Fields keep the text shape, and so does the text a person may want to copy. */
 input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='button']):not([type='submit']):not(:disabled),
 textarea:not(:disabled),
 .error-details__text,
@@ -932,7 +874,6 @@ textarea:not(:disabled),
     cursor: text;
 }
 
-/* --- The wave of the name is bigger ------------------------------------------------------------------------------------------------------ */
 .brand__wave {
     height: 40px;
     gap: 4px;
@@ -942,16 +883,10 @@ textarea:not(:disabled),
     width: 6px;
 }
 
-/* --- Things that were in each other's way over the player and the reader ----------------------------------------------------------------- */
-/* The part watched of the timeline starts crisp at the very start of the bar: its glow and the light at its head (which is wider than the bar when
-   the video has only just begun) no longer spill out on the left. Only the left is cut: on the other sides the cut is beyond the end of the glow,
-   so the glow fades out softly instead of ending in a hard box. */
 .player__timeline .progress__bar {
     clip-path: inset(-40px -40px -40px 0);
 }
 
-/* The notices always stay at the bottom right, over the player and the reader too; while something is in fullscreen (the video or the reader) they
-   are not shown at all. */
 body:has(:fullscreen) .toasts {
     display: none;
 }

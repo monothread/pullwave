@@ -15,7 +15,6 @@ export default defineConfig({
         setupFiles: ['test/setup.ts'],
         include: ['test/**/*.test.{ts,tsx}'],
         exclude: ['test/e2e/**'],
-        // The tests that open files take longer on the disk of the Windows runner of the release than the 5 s of the default.
         testTimeout: 10_000
     }
 });

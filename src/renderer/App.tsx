@@ -59,7 +59,6 @@ export function App() {
     const initAnime = useAnimeStore((state) => {
         return state.init;
     });
-    // The anime section only exists on Linux; elsewhere its tab is left out.
     const animeSupported = useAnimeStore((state) => {
         return state.status.supported;
     });
@@ -69,7 +68,6 @@ export function App() {
     const initPrograms = useProgramsStore((state) => {
         return state.init;
     });
-    // The manga section only exists on Linux and Windows (64 bits); elsewhere its tab is left out too.
     const mangaSupported = useMangaStore((state) => {
         return state.status.supported;
     });
@@ -99,7 +97,6 @@ export function App() {
         }
         setMenuOpen(!menuOpen);
     }, [menuOpen]);
-    // A section chosen in the menu slides in.
     const goToSection = useCallback(
         (next: Tab) => {
             withViewTransition(() => {
@@ -114,8 +111,6 @@ export function App() {
     const clearBackdrop = useBackdropStore((state) => {
         return state.clear;
     });
-    // The cover behind the screen belongs to the screen it was chosen on. Cleared before the effects of the new screen run (a layout effect
-    // runs before every passive one): a screen that shows a cover as it opens, such as the page of a manga the user comes back to, keeps it.
     useLayoutEffect(() => {
         clearBackdrop();
     }, [tab, clearBackdrop]);
@@ -133,11 +128,8 @@ export function App() {
         return trackPointerForReveal();
     }, []);
 
-    // The theme the screen shows now: a change after the first one opens as a circle from where the user chose it.
     const shownTheme = useRef<string | null>(null);
 
-    // Until the settings arrive the theme is the default one, which must neither replace the remembered theme that main.tsx already
-    // applied nor be remembered in its place.
     useEffect(() => {
         if (!settingsLoaded) {
             return undefined;

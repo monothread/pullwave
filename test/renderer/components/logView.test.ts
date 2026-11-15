@@ -2,7 +2,6 @@ import type { LogLine } from '@shared/logs';
 import { filterLogLines, formatLogText, formatLogTime, LOG_FILTERS, mergeLogLines } from '@renderer/components/logView';
 
 const ESC = String.fromCharCode(27);
-// 14:03:09.042 in the clock of the machine running the tests.
 const AT = new Date(2026, 10, 11, 14, 3, 9, 42).getTime();
 
 function line(id: number, text: string, stream: LogLine['stream'] = 'stdout'): LogLine {

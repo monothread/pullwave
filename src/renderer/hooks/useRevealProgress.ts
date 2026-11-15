@@ -6,8 +6,6 @@ function easeOutCubic(time: number): number {
     return 1 - Math.pow(1 - time, 3);
 }
 
-// Goes from 0 to 1 (slowing down at the end) when `active` turns on, and goes back to 0 when it turns off. It is what makes the numbers
-// count up while the drawing grows.
 export function useRevealProgress(active: boolean): number {
     const [progress, setProgress] = useState(0);
 

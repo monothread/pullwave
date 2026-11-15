@@ -21,7 +21,6 @@ interface ObserverRecord {
     watched: Element[];
 }
 
-// The observers the hook creates, with what each watches and the options it was made with.
 const observers = vi.hoisted(() => {
     return { created: [] as ObserverRecord[] };
 });
@@ -56,7 +55,6 @@ function Card({ id }: { id: string }) {
     return <article ref={ref} data-testid={id} />;
 }
 
-// A component that uses the hook but never gives its element.
 function Detached() {
     useOffscreenPause<HTMLElement>();
     return <p>nothing to watch</p>;
@@ -102,7 +100,6 @@ describe('useOffscreenPause', () => {
             expect(observers.created[0]?.watched).toEqual([card('a'), card('b')]);
             expect(card('a').hasAttribute(OFFSCREEN_ATTRIBUTE)).toBe(false);
             expect(card('b').hasAttribute(OFFSCREEN_ATTRIBUTE)).toBe(false);
-            // Nothing is settled while no card is out of sight and the window is shown.
             expect(loopPause.settled).toEqual([]);
         });
 

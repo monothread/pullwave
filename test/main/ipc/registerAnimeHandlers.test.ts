@@ -943,7 +943,6 @@ describe('registerAnimeHandlers', () => {
     });
 
     describe('setSeries', () => {
-        // Two seasons of one series and a third one on its own: the series of an anime is fixed once it is in the library.
         function withSeries() {
             const context = setup();
             const first = context.db.upsertAnime({ title: 'Frieren', query: 'frieren', searchIndex: 1 });
@@ -2335,7 +2334,6 @@ describe('parseHistoryRequest', () => {
         expect(parseHistoryRequest('x')).toBeNull();
         expect(parseHistoryRequest({ ...valid, title: '' })).toBeNull();
         expect(parseHistoryRequest({ ...valid, query: '' })).toBeNull();
-        // An audio that comes with it is not looked at (the anime are the subtitled ones).
         expect(parseHistoryRequest({ ...valid, audio: 'raw' })).toEqual(parseHistoryRequest(valid));
         expect(parseHistoryRequest({ ...valid, index: -1 })).toBeNull();
         expect(parseHistoryRequest({ ...valid, index: 1.5 })).toBeNull();

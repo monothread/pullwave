@@ -58,10 +58,8 @@ interface Setup {
     callsOf: () => AniRunOptions[];
 }
 
-// `results` are handed out one per run, in order.
 interface SetupOptions {
     subtitleLabels?: () => string[];
-    // What the script file says, when it can be read.
     scriptText?: string;
 }
 
@@ -102,7 +100,6 @@ function setup(results: Array<AniRunResult<AniRunOutcome>>, scriptExists: Array<
             return undefined;
         }
     };
-    // The script is "installed" or not by the sequence given: one answer for each time it is asked for, the last one for the rest.
     const programs: AniPrograms = {
         anicli: () => {
             const answer = scriptExists[existsCalls] ?? scriptExists[scriptExists.length - 1] ?? false;
@@ -161,7 +158,6 @@ describe('AniCliService subtitles', () => {
     it('runs the patched copy of the script when it can be patched', async () => {
         const { service, callsOf } = setup([done(outcome({ exitCode: 0 }))], [true], { scriptText: PATCHABLE });
         await service.download({ query: 'naruto', index: 1, episode: '1', quality: 'best', downloadDir: '/d' }).result;
-        // The patched copy is named by the checksum of what it holds (see AniCliLocator.patchedScriptPath).
         const patched = patchAniCli(PATCHABLE) as string;
         expect(callsOf()[0]?.args.slice(0, 3)).toEqual(['sh', RUNNER, `/data/anime/ani-cli.${createHash('sha256').update(patched).digest('hex').slice(0, 16)}.patched`]);
     });

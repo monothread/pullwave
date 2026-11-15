@@ -3,7 +3,6 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { CoverStyle } from './catalog';
 
-// The pictures and the video of the screenshots are made with the ffmpeg that comes with the repository (`npm run fetch-binaries`).
 const FFMPEG = resolve(__dirname, '../../resources/bin/ffmpeg');
 const FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 
@@ -29,7 +28,6 @@ function wrapped(title: string): string[] {
     return lines;
 }
 
-// A cover of 300x450 with a diagonal gradient and the title in the lower part.
 export function makeCover(directory: string, style: CoverStyle): string {
     mkdirSync(directory, { recursive: true });
     const file = join(directory, `${fileNameOf(style.title)}.png`);
@@ -51,7 +49,6 @@ export function makeCover(directory: string, style: CoverStyle): string {
     return file;
 }
 
-// A page of a manga, 800x1200: panels in black and white and the number of the page.
 export function makePage(directory: string, number: number): string {
     mkdirSync(directory, { recursive: true });
     const file = join(directory, `page-${String(number)}.png`);
@@ -69,7 +66,6 @@ export function makePage(directory: string, number: number): string {
     return file;
 }
 
-// A short video with sound (a colourful pattern and a tone) that the player and the cutter can open for real.
 export function makeVideo(directory: string, name: string, seconds: number): string {
     mkdirSync(directory, { recursive: true });
     const file = join(directory, `${name}.mp4`);

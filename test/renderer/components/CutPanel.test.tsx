@@ -419,7 +419,6 @@ describe('CutPanel drag and drop', () => {
         return screen.getByRole('region', { name: 'Cut a file' });
     }
 
-    // The drag leaves an element for another one (null: for none, as when it leaves the window or is cancelled).
     function dragLeave(from: Element, to: Element | null): void {
         const event = createEvent.dragLeave(from, { dataTransfer: FILES });
         Object.defineProperty(event, 'relatedTarget', { value: to });

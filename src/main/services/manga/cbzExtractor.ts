@@ -28,8 +28,6 @@ function openEntry(zip: yauzl.ZipFile, entry: yauzl.Entry): Promise<NodeJS.Reada
     });
 }
 
-// Puts the pages of a CBZ the app made (the files named after their place, "001.jpg"...) into a folder. Anything else in the archive
-// (the ComicInfo, a name with a path) is left out: the names written are never the ones of the archive.
 export async function extractCbzPages(file: string, directory: string): Promise<void> {
     const zip = await openZip(file);
     try {

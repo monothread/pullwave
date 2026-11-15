@@ -369,7 +369,6 @@ describe('MangaJobs trying the failed ones again', () => {
 });
 
 describe('MangaJobs: the chapter downloading', () => {
-    // The speed and the time left the big card draws, in that order.
     function heroValues(hero: HTMLElement): Array<string | null> {
         return [...hero.querySelectorAll('.download-hero__value')].map((element) => {
             return element.getAttribute('data-text');
@@ -396,7 +395,6 @@ describe('MangaJobs: the chapter downloading', () => {
         render(<MangaJobs />);
         const hero = screen.getByTestId('download-hero');
         expect(heroValues(hero)).toEqual(['1.4 MiB/s', '03:12']);
-        // The speed is in bytes, so the card can draw its graph (the readings of the graph are the card's own business).
         expect(within(hero).getByRole('img', { name: 'Speed of the last minute', hidden: true })).toBeInTheDocument();
     });
 

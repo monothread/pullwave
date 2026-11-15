@@ -28,7 +28,6 @@ interface Deferred {
     resolve: (outcome: FfmpegOutcome) => void;
 }
 
-// A preview with ffmpeg replaced: each run answers `outcome`, or waits for the test when `hold` is set.
 function setup(options: { ffmpeg?: boolean; outcome?: FfmpegOutcome; hold?: boolean } = {}) {
     const runs: FfmpegRun[] = [];
     const held: Deferred[] = [];

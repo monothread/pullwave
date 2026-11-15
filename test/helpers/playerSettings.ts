@@ -7,7 +7,6 @@ interface SettingsNames {
 
 const ENGLISH: SettingsNames = { gear: 'Settings', menu: 'Subtitles' };
 
-// Opens the settings of the player (when they are not open yet), where the subtitle menu lives.
 export async function openPlayerSettings(names: SettingsNames = ENGLISH): Promise<void> {
     const gear = await screen.findByRole('button', { name: names.gear });
     if (gear.getAttribute('aria-expanded') !== 'true') {
@@ -15,13 +14,11 @@ export async function openPlayerSettings(names: SettingsNames = ENGLISH): Promis
     }
 }
 
-// The subtitle menu, once the player has it, with the settings opened.
 export async function subtitleMenu(names: SettingsNames = ENGLISH): Promise<HTMLElement> {
     await openPlayerSettings(names);
     return screen.findByRole('combobox', { name: names.menu });
 }
 
-// The subtitle menu of a player that is already there, with the settings opened.
 export function openedSubtitleMenu(names: SettingsNames = ENGLISH): HTMLElement {
     const gear = screen.getByRole('button', { name: names.gear });
     if (gear.getAttribute('aria-expanded') !== 'true') {
@@ -30,13 +27,11 @@ export function openedSubtitleMenu(names: SettingsNames = ENGLISH): HTMLElement 
     return screen.getByRole('combobox', { name: names.menu });
 }
 
-// An option of the subtitle menu, once it is there.
 export async function subtitleOption(name: string): Promise<HTMLElement> {
     await openPlayerSettings();
     return screen.findByRole('option', { name });
 }
 
-// Opens the settings of a player that is already there (when they are not open yet).
 export function openedPlayerSettings(names: SettingsNames = ENGLISH): HTMLElement {
     const gear = screen.getByRole('button', { name: names.gear });
     if (gear.getAttribute('aria-expanded') !== 'true') {

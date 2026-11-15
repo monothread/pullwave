@@ -6,17 +6,13 @@ import { NotFound } from './NotFound';
 interface MangaOptionComboProps {
     label: string;
     options: readonly string[];
-    // The place of the option that is chosen.
     value: number;
     onChange: (index: number) => void;
 }
 
-// A field that lists its options when it is clicked and narrows the list as the user types, instead of a closed list: the option that is
-// chosen is what the field shows, and picking another one is a click on it (or Enter on the first of the ones that match).
 export function MangaOptionCombo({ label, options, value, onChange }: MangaOptionComboProps) {
     const t = useTranslator();
     const listId = useId();
-    // What the user typed; null while they have not typed anything, when the field shows the option that is chosen.
     const [typed, setTyped] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
     const needle = typed?.trim().toLowerCase() ?? '';
@@ -52,7 +48,6 @@ export function MangaOptionCombo({ label, options, value, onChange }: MangaOptio
                         setOpen(true);
                     }}
                     onFocus={(event) => {
-                        // What is shown is selected, so typing replaces it.
                         event.target.select();
                         setOpen(true);
                     }}
@@ -90,7 +85,6 @@ export function MangaOptionCombo({ label, options, value, onChange }: MangaOptio
                                         role="option"
                                         aria-selected={entry.index === value}
                                         className={`manga__picker-option${entry.index === value ? ' manga__picker-option--chosen' : ''}`}
-                                        // The click is taken before the field loses the focus, which would close the list first.
                                         onMouseDown={(event) => {
                                             event.preventDefault();
                                         }}

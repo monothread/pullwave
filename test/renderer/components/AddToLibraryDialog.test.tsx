@@ -17,7 +17,6 @@ beforeEach(() => {
     flyMock.mockClear();
 });
 
-// The orders each series uses (the series are compared as the library does: without regard to case).
 const USED: Record<string, number[]> = { frieren: [1, 3], naruto: [2], bleach: [1, 2, 3] };
 
 function setup(initial: SeriesChoice, overrides: { suggestions?: string[]; onConfirm?: (choice: SeriesChoice | null) => Promise<boolean> } = {}) {

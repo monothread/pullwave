@@ -153,7 +153,6 @@ describe('runYtdlp', () => {
             [[]],
             [[]]
         ]);
-        // The same line still tells where the stream can be fetched from.
         expect(onStream.mock.calls).toEqual([
             [{ live: false, sources: [{ url: 'https://cdn.test/v.mp4', protocol: 'https', headers: {} }, { url: 'https://cdn.test/a.m4a', protocol: 'https', headers: {} }] }],
             [{ live: false, sources: [{ url: 'https://cdn.test/single.mp4', protocol: 'https', headers: {} }] }]

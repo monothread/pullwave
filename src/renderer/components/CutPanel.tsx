@@ -38,7 +38,6 @@ interface PartBarProps {
     label: string;
 }
 
-// The bar of the part being cut: it glides to each new value (ffmpeg reports a few times a second) with the neon of the app.
 function PartBar({ percent, label }: PartBarProps) {
     const shown = useSmoothPercent(percent);
     return (
@@ -98,7 +97,6 @@ interface CutThumbProps {
     kind: 'video' | 'audio';
 }
 
-// The picture of the file chosen: a frame of the video or the cover of the audio; while it is made, a glow; with none, the mark of its kind.
 function CutThumb({ thumbnail, kind }: CutThumbProps) {
     const t = useTranslator();
     if (thumbnail?.status === 'ready') {
@@ -112,12 +110,10 @@ function CutThumb({ thumbnail, kind }: CutThumbProps) {
     );
 }
 
-// Whether what is being dragged carries files (and not text or a link).
 function carriesFiles(event: { dataTransfer: Pick<DataTransfer, 'types'> | null }): boolean {
     return Array.from(event.dataTransfer?.types ?? []).includes('Files');
 }
 
-// Cuts a video or audio file into the parts the user marks: one file for each, in the format of the original (or only the audio of a video).
 export function CutPanel() {
     const t = useTranslator();
     const downloadDir = useAppStore((state) => {
@@ -184,7 +180,6 @@ export function CutPanel() {
     const running = run?.status === 'running';
     const busy = choosing || starting || running;
 
-    // A file dropped outside the panel would make the window open it (and leave the app): while the cutter is open, a drop goes nowhere.
     useEffect(() => {
         const keepAway = (event: globalThis.DragEvent): void => {
             if (carriesFiles(event)) {
@@ -213,8 +208,6 @@ export function CutPanel() {
         }
     }
 
-    // The drag leaves each element it passes over: it has left the panel when the element it goes to (none, if it leaves the window or is
-    // cancelled) is not inside the panel.
     function onDragLeave(event: DragEvent<HTMLElement>): void {
         if (carriesFiles(event) && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
             setDragging(false);

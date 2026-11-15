@@ -23,7 +23,6 @@ describe('BinaryStatus', () => {
         ffmpeg: { found: true, path: '/data/tools/ffmpeg/b/bin/ffmpeg', version: '7.0', source: 'installed' as const }
     };
 
-    // The chip of each program (the summary, when there is one, is apart).
     function chips(): Array<string | null> {
         return Array.from(document.querySelectorAll('.binary-status__detail')).map((chip) => {
             return chip.textContent;
@@ -211,7 +210,6 @@ describe('BinaryStatus', () => {
             expect(chip.className).toBe('chip chip--pending binary-status__summary');
             expect(chip).toHaveAttribute('title', 'yt-dlp 42%\nffmpeg WAITING');
             expect(document.querySelector('.binary-status')!.firstElementChild).toBe(chip);
-            // The chips of the programs are still there, after it, for a window wide enough to show them.
             expect(chips()).toEqual(['yt-dlp 42%', 'ffmpeg WAITING']);
             expect(screen.getByText('yt-dlp 42%').className).toBe('chip chip--pending binary-status__detail');
             expect(screen.getByText('yt-dlp 42%')).not.toHaveAttribute('title');

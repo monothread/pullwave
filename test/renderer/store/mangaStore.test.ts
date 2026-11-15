@@ -67,10 +67,8 @@ describe('mangaStore init', () => {
         expect(mock.api.manga.queueHeld).toHaveBeenCalledTimes(1);
         expect(state().queueHeld).toBe(true);
         expect(mock.api.manga.checkState).toHaveBeenCalledTimes(1);
-        // Once at the start, once more after it listens to the changes.
         expect(mock.api.manga.status).toHaveBeenCalledTimes(2);
         unsubscribe();
-        // Every event of the section but the download of a newer server, which is gone (the server is not updated from the app).
         expect(mock.unsubscribers).toHaveLength(10);
         mock.unsubscribers.forEach((fn) => {
             expect(fn).toHaveBeenCalledTimes(1);
@@ -451,7 +449,6 @@ describe('mangaStore browsing', () => {
         expect(state().browse).toMatchObject({ query: 'narut', status: 'done', items: [makeSummary()], page: 3, hasNextPage: true });
         state().setQuery('   ');
         expect(state().browse).toMatchObject({ query: '   ', status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
-        // The list of the other modes does not come from the text: erasing it leaves the list.
         useMangaStore.setState({ browse: { ...state().browse, ...listed, mode: 'popular' } });
         state().setQuery('');
         expect(state().browse).toMatchObject({ query: '', status: 'done', items: [makeSummary()] });
@@ -2107,7 +2104,6 @@ describe('mangaStore one manga of the library that changed', () => {
         expect(mock.api.manga.libraryEntry).toHaveBeenCalledWith(1);
         expect(mock.api.manga.library).not.toHaveBeenCalled();
         expect(mock.api.manga.groups).not.toHaveBeenCalled();
-        // The manga that did not change is the very same object, so what shows it is not drawn again.
         expect(state().library[1]).toBe(before[1]);
     });
 
@@ -2159,7 +2155,6 @@ describe('mangaStore one manga of the library that changed', () => {
         await vi.waitFor(() => {
             expect(state().library).toEqual([ONE_DONE, TWO]);
         });
-        // Nothing more is read once the last change was read, however long it is waited for.
         await new Promise((resolve) => {
             setTimeout(resolve, 20);
         });
@@ -2193,7 +2188,6 @@ describe('mangaStore one manga of the library that changed', () => {
         });
         mock.api.manga.library.mockResolvedValue([TWO]);
         mock.emitMangaLibraryEntryChanged(1);
-        // The manga leaves the library before its answer comes.
         useMangaStore.setState({ library: [TWO] });
         answer(ONE_DONE);
         await vi.waitFor(() => {
@@ -2593,7 +2587,6 @@ describe('mangaStore searching by a term', () => {
             })
         );
         useMangaStore.getState().openSource('123', 'search');
-        // Opening a source closes the manga that was open: the one the term is of is open again.
         useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: makeDetails(), chapters: [], selected: [], error: null } });
         const early = useMangaStore.getState().loadFilters();
         const searching = state().searchByTerm('Drama');

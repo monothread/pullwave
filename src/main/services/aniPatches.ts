@@ -4,7 +4,6 @@ import { patchSearchPages, SEARCH_PAGES_NEEDS } from './aniSearchPages';
 import { patchSingleResult } from './aniSingleResult';
 import { DEBUG_REFERER_NEEDS, patchDebugReferer } from './aniStream';
 
-// Which of the changes Pullwave makes to ani-cli fit a script (see patchAniCli).
 export interface PatchReport {
     subtitleSelection: boolean;
     allSubtitles: boolean;
@@ -18,13 +17,9 @@ export type PatchName = keyof PatchReport;
 
 interface PatchDefinition {
     apply: (source: string) => string | null;
-    // The variables and functions the code the change adds reads from the script (beyond the text it looks for, which has to be there for
-    // it to fit at all): a script that no longer sets one of them would take the change and fail when it runs.
     needs: readonly string[];
 }
 
-// Every change, in the order they are made: the choice of subtitles, saving all of them, the referer in the debug output, the id and the lone
-// result in the lists, the pages of the search. Each one is made on its own (none depends on another having fit).
 export const PATCHES: Readonly<Record<PatchName, PatchDefinition>> = {
     subtitleSelection: { apply: patchSubtitleSelection, needs: SUBTITLE_SELECTION_NEEDS },
     allSubtitles: { apply: patchAllSubtitles, needs: ALL_SUBTITLES_NEEDS },
@@ -47,9 +42,6 @@ export function patchReport(source: string): PatchReport {
     };
 }
 
-// Everything Pullwave changes in the script it runs. Each change is made on its own, so a script that only fits some of them (one the user
-// chose) still gets those; the script the app installs fits them all (an update that does not is refused, see aniCompatibility.ts). Null
-// when none fits.
 export function patchAniCli(source: string): string | null {
     let result = source;
     PATCH_NAMES.forEach((name) => {

@@ -35,44 +35,32 @@ export interface ToolControl {
     stateOf: (spec: ToolSpec) => ToolState;
 }
 
-// The program that gets past the check of Cloudflare (FlareSolverr, which runs in Docker).
 export interface HelperControl {
-    // Checks that Docker is there and pulls the image if it is not.
     prepare: () => Promise<ToolState>;
-    // Stops it and removes its image.
     remove: () => Promise<void>;
     stop: () => Promise<void>;
     readonly state: ToolState;
     readonly status: MangaServerStatus;
     readonly failure: MangaHelperProblem | null;
-    // The address it answers on while it runs, and the version of its image.
     readonly baseUrl: string | null;
     readonly version: string;
-    // Starts it (when it is ready) and gives its address.
     ensureRunning: () => Promise<string>;
 }
 
 export interface MangaServiceDependencies {
-    // The program that runs the extensions on this system (null where there is none).
     spec: ToolSpec | null;
-    // The program that gets past the check of Cloudflare (null where there is none).
     helper?: HelperControl | null;
-    // The address of a FlareSolverr the user runs, when they gave one: the app runs none then.
     externalHelper?: () => string | null;
-    // Whether the user installed the helper (it is not installed by itself); installed when this is not given.
     helperEnabled?: () => boolean;
-    // The address of the helper (started if it is ready and does not run), or null when there is none to use.
     helperUrl?: () => Promise<string | null>;
     tool: ToolControl;
     server: ServerControl;
     client: () => SuwayomiClient;
-    // A server that is already running (the end-to-end tests): nothing is downloaded and nothing is started.
     externalBaseUrl?: string | null;
 }
 
 export const PROBE_TIMEOUT_MS = 4000;
 
-// Asks a FlareSolverr whether it is up: it answers with a page that says so and which version it is.
 export async function probeHelper(address: string, external: boolean, version: string | null = null): Promise<ComponentHealth> {
     try {
         const response = await fetch(`${address}/`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
@@ -97,8 +85,6 @@ export function toMangaError(error: unknown): MangaError {
     return { code: 'UNKNOWN', message: error instanceof Error ? error.message : String(error), details: describeError(error) };
 }
 
-// What the rest of the app asks of the manga side: it hides whether the program is there, whether the server runs, and turns every
-// failure into an answer the screen can show.
 export class MangaService {
     constructor(private readonly deps: MangaServiceDependencies) {}
 
@@ -132,16 +118,11 @@ export class MangaService {
         return this.deps.helperEnabled?.() ?? true;
     }
 
-    // How the server and the helper are doing. With `start`, one that is stopped is started first (it is what "check" means for the user);
-    // without it, a stopped one is only said to be stopped.
     async health(start: boolean): Promise<MangaHealth> {
         const [server, helper] = await Promise.all([this.serverHealth(start), this.helperHealth(start)]);
         return { server, helper };
     }
 
-    // Stops the server and the helper and starts them again (to get out of a hang), and says how they are doing. A chapter that is
-    // downloading fails with them and is tried again by the queue. The server that is already running somewhere else (the end-to-end
-    // tests) is not ours to stop: only its health is read.
     async restartPrograms(): Promise<MangaHealth> {
         const { server, helper, externalBaseUrl } = this.deps;
         if (externalBaseUrl == null) {
@@ -186,7 +167,6 @@ export class MangaService {
             return null;
         }
         const base = { version: helper.version, message: null, external: false };
-        // CHECK NOW is a new try: what went wrong before (Docker was not running, the container did not start) is looked at again, not repeated.
         if (start && (helper.failure !== null || helper.state.status === 'error')) {
             await helper.prepare();
         }
@@ -208,7 +188,6 @@ export class MangaService {
             if (probed.state === 'healthy' || !start) {
                 return probed;
             }
-            // It says it runs but does not answer (its container is gone): CHECK NOW stops what is left and starts it again.
             await helper.stop();
         }
         if (!start) {
@@ -226,8 +205,6 @@ export class MangaService {
         return address.length > 0 ? address : null;
     }
 
-    // Downloads the program that is not there (done when the app opens, and again by hand after a failure) and prepares the one that gets
-    // past Cloudflare (Docker, with its image). Answers with the state of the first, which is the one that is needed.
     async install(): Promise<ToolState | null> {
         const { spec, helper, tool, externalBaseUrl } = this.deps;
         if (spec === null || externalBaseUrl != null) {
@@ -241,21 +218,16 @@ export class MangaService {
         return state;
     }
 
-    // Installs the helper for Cloudflare (the user asked for it in the settings): Docker is checked and the image is pulled.
     async installHelper(): Promise<void> {
         await this.deps.helper?.prepare();
         await this.applyHelper();
     }
 
-    // Removes the helper (the user asked for it in the settings): the container is stopped and the image removed.
     async removeHelper(): Promise<void> {
         await this.deps.helper?.remove();
         await this.applyHelper();
     }
 
-    // The server may have started before the helper was there (opening the section is enough to start it): once the helper is ready the
-    // server that runs is told to use it. A server that is not running reads it from its settings when it starts.
-    // Also done when the user changes the address of their own FlareSolverr.
     async applyHelper(): Promise<void> {
         if (this.deps.server.status !== 'running' || this.deps.helperUrl === undefined) {
             return;
@@ -267,7 +239,6 @@ export class MangaService {
         }
     }
 
-    // The address of the server, started if it does not run. Fails when the program has not been downloaded yet.
     async requireServer(): Promise<string> {
         const { spec, tool, server, externalBaseUrl } = this.deps;
         if (externalBaseUrl != null) {
@@ -282,14 +253,12 @@ export class MangaService {
         return server.ensureRunning();
     }
 
-    // Starts the server in the background so what is asked next does not wait for it.
     warmUp(): void {
         this.requireServer().catch(() => {
             return undefined;
         });
     }
 
-    // Whether the server or the container of the helper is up (the app waits for them to end before it quits).
     get hasProcessesToEnd(): boolean {
         return this.deps.server.status !== 'stopped' || (this.deps.helper != null && this.deps.helper.status !== 'stopped');
     }
@@ -330,7 +299,6 @@ export class MangaService {
         });
     }
 
-    // Updates every installed extension that has an update, and answers with how many there were.
     updateAllExtensions(): Promise<MangaResult<number>> {
         return this.call(async (client) => {
             const outdated = (await client.extensions())
@@ -383,7 +351,6 @@ export class MangaService {
         });
     }
 
-    // The addresses of the pages of a chapter (used by the downloads, which handle the failure themselves).
     pagesOf(chapterRemoteId: number): Promise<string[]> {
         return this.deps.client().chapterPages(chapterRemoteId);
     }

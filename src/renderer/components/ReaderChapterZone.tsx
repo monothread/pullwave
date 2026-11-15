@@ -1,21 +1,15 @@
 import { useTranslator } from '../i18n/useTranslator';
 
 interface ReaderChapterZoneProps {
-    // Below the last page (the next chapter) or above the first one (the previous chapter).
     edge: 'start' | 'end';
-    // The name of the chapter on the other side, or null when there is none.
     title: string | null;
-    // How much of the zone is in view, from 0 to 1.
     progress: number;
-    // Whether going through the zone switches the chapter by itself (otherwise only the button does).
     automatic: boolean;
     height: number;
     onGo: () => void;
     zoneRef: React.RefObject<HTMLDivElement | null>;
 }
 
-// The zone between two chapters in the scroll: it says which chapter is on the other side, fills a bar as the user goes through it and has
-// a button to go at once. Where there is no chapter on the other side it only says so.
 export function ReaderChapterZone({ edge, title, progress, automatic, height, onGo, zoneRef }: ReaderChapterZoneProps) {
     const t = useTranslator();
     const label = edge === 'end' ? t('manga.reader.zone.next') : t('manga.reader.zone.previous');

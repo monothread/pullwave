@@ -1,17 +1,11 @@
-// Types of the anime section (ani-cli). It exists on Linux and Windows.
 import type { LlmError, SpeechTranslatesTo } from './llm';
 import type { ErrorDetails } from './errorDetails';
 import type { DownloadPart, DownloadPartKind } from './types';
 
 export interface AnimeSearchResult {
-    // Position in the result list of that exact search: ani-cli selects an entry by it (`-S <index>`).
     index: number;
     title: string;
-    // The id the source gives the anime (absent when this copy of ani-cli does not report it): unlike the position it does not change when
-    // the source lists another anime before it, and unlike the title it is not shared by the seasons of an anime.
     sourceId?: string;
-    // True when ani-cli picked the anime on its own and did not say which one: the title is then the words that were searched, not the name
-    // of the anime the episodes belong to.
     unconfirmed?: boolean;
 }
 
@@ -27,7 +21,6 @@ export type AniErrorCode =
 
 export interface AniError {
     code: AniErrorCode;
-    // What ani-cli (or the system) reported, without terminal control codes.
     raw: string;
     details?: ErrorDetails;
 }
@@ -39,8 +32,6 @@ export interface AniDownloadProgress {
     eta: string | null;
 }
 
-// The stand-in of ffmpeg (pullwave-run.sh) downloads the picture and the audio of an episode apart, one after the other: before each one it
-// says which parts the episode has, in their order, and which of them (from 0) starts now.
 export interface AniPartStart {
     kinds: DownloadPartKind[];
     index: number;
@@ -52,26 +43,17 @@ export const ANIME_QUALITIES = ['best', '1080p', '720p', '480p', '360p', 'worst'
 export type AnimeQuality = (typeof ANIME_QUALITIES)[number];
 export const DEFAULT_ANIME_QUALITY_SETTING: AnimeQuality = 'best';
 
-// Which subtitles to take: the language of the app, what ani-cli picks by itself, or one language (the name the source
-// gives it).
 export const ANIME_SUBTITLE_LANGUAGES = ['English', 'Portuguese', 'Spanish', 'French', 'German', 'Italian', 'Russian'] as const;
 export const ANIME_SUBTITLE_SETTINGS = ['auto', 'default', ...ANIME_SUBTITLE_LANGUAGES] as const;
 export type AnimeSubtitleSetting = (typeof ANIME_SUBTITLE_SETTINGS)[number];
 
-// An episode in the library. `queued` and `downloading` only live while the app is open: after a restart what was
-// unfinished is marked `error`.
-// `idle` is an episode the anime has in the library that was not downloaded (yet).
 export type AnimeEpisodeStatus = 'idle' | 'queued' | 'downloading' | 'paused' | 'done' | 'error' | 'cancelled';
 
-// What AniList says about the releases of an anime: `finished` (it ended or was cancelled) or `ongoing` (it airs, is about to air or is on a
-// break). The user can correct it: `complete` or `ongoing` (null: follow AniList).
 export const ANIME_AIRING_STATUSES = ['finished', 'ongoing'] as const;
 export type AnimeAiringStatus = (typeof ANIME_AIRING_STATUSES)[number];
 export const ANIME_AIRING_OVERRIDES = ['complete', 'ongoing'] as const;
 export type AnimeAiringOverride = (typeof ANIME_AIRING_OVERRIDES)[number];
 
-// Whether the releases of an anime are over: what the user said, or else what AniList says. An anime AniList said nothing sure about
-// (`status` null) is not complete, so it keeps being looked at for new episodes.
 export interface AnimeAiring {
     status: AnimeAiringStatus | null;
     override: AnimeAiringOverride | null;
@@ -85,20 +67,13 @@ export function isAnimeComplete(status: AnimeAiringStatus | null, override: Anim
 export interface AnimeRecord {
     id: number;
     title: string;
-    // What was searched and the position of the anime in that search: they are how ani-cli finds it again.
     query: string;
     searchIndex: number;
-    // The id the source gives it, when it was known as it was added (null for the ones added before, which are told by their title).
     sourceId: string | null;
     createdAt: number;
-    // The seasons of one anime are separate entries in the source: the user joins them with a series name and a season number
-    // (both set or both null).
     series: string | null;
-    // Where the anime goes among the others of its series (1 or more); it only orders them.
     season: number | null;
-    // The name the anime is shown with inside its series, instead of "SEASON N"; it is not used to order.
     seasonName: string | null;
-    // Whether its releases are over (an anime that is is not looked at for new episodes).
     airing: AnimeAiring;
 }
 
@@ -109,33 +84,23 @@ export interface AnimeEpisodeRecord {
     status: AnimeEpisodeStatus;
     filePath: string | null;
     sizeBytes: number | null;
-    // What went wrong with the last attempt.
     error: AniError | null;
     positionSeconds: number;
     durationSeconds: number;
     watched: boolean;
     downloadedAt: number | null;
-    // When the check for new episodes put it in the library (in milliseconds); null for the ones the library came with.
     addedAt: number | null;
-    // The episode is in the library as downloaded but its file is not on the disk any more (filled in when the library is listed).
     fileMissing: boolean;
-    // The video was found to have no audio (false also when it was not looked at: only new downloads and the check the user asks for do it).
     noAudio: boolean;
 }
 
-// An anime the viewer opened or watched, kept apart from the library: it covers what was only searched or streamed too. The same
-// title is one entry, moved to the top each time it is opened.
 export interface AnimeHistoryEntry {
     id: number;
     title: string;
-    // What was searched and the position of the anime in that search: they are how ani-cli finds it again.
     query: string;
     searchIndex: number;
-    // The last episode watched; null when it was only opened.
     episode: string | null;
-    // When the anime was last opened or watched.
     openedAt: number;
-    // When an episode of it was last watched; null when none was since this was kept (opening the anime does not count).
     watchedAt: number | null;
 }
 
@@ -151,7 +116,6 @@ export interface LibraryAnime extends AnimeRecord {
 }
 
 export interface AnimeJob {
-    // The id of the episode it downloads.
     episodeId: number;
     animeId: number;
     animeTitle: string;
@@ -161,19 +125,13 @@ export interface AnimeJob {
     speed: string;
     eta: string;
     error: AniError | null;
-    // The parts of an episode whose picture and audio are downloaded apart, each with a bar of its own; null for one that comes whole.
     parts: DownloadPart[] | null;
-    // The step after the download that is going on (ANIME_JOIN_STEP while ffmpeg joins the picture and the audio), null when there is none.
     postProcess: string | null;
-    // The steps after the download that started, in their order (the one going on is the last); empty while the episode is downloaded.
     postProcessSteps: string[];
 }
 
-// The step of an episode whose picture and audio came apart, while ffmpeg joins them: named as the step of yt-dlp that does the same, so the
-// screen tells it the same way.
 export const ANIME_JOIN_STEP = 'Merger';
 
-// Which ani-cli is in use: where it is, which version it says it is and where it comes from.
 export interface AniCliInfo {
     found: boolean;
     path: string;
@@ -182,20 +140,13 @@ export interface AniCliInfo {
 }
 
 export interface AnimeStatus {
-    // The section exists on Linux and Windows.
     supported: boolean;
-    // The files ani-cli needs are in place.
     available: boolean;
-    // The ani-cli in use; null where the section does not exist.
     aniCli: AniCliInfo | null;
 }
 
-// The most results the search lists, however many the source has: a search that matches almost everything ("a", "tsu") would otherwise read
-// page after page of the source. Past this the screen asks to refine the search.
 export const MAX_SEARCH_RESULTS = 120;
 
-// A part of the results of a search, from the first one on: `hasNextPage` says the source has more to list (and it is asked for them as the
-// list is scrolled to its end); `limited` says there are more but the list reached MAX_SEARCH_RESULTS, so no more are listed.
 export interface AnimeSearchListing {
     results: AnimeSearchResult[];
     hasNextPage: boolean;
@@ -209,33 +160,24 @@ export interface AnimeDownloadRequest {
     title: string;
     query: string;
     index: number;
-    // The id the source gives the anime, when it is known.
     sourceId?: string | null;
     episodes: string[];
-    // The series and season the anime is saved under; null leaves it as it is.
     series?: string | null;
     season?: number | null;
-    // The name it is shown with in the series; undefined leaves it as it is.
     seasonName?: string | null;
 }
 
-// An episode that airs: the anime it belongs to, when it airs and a cover to tell the anime by.
 export interface AnimeScheduleEntry {
     anilistId: number;
     title: string;
-    // The two names AniList gives the anime (either can be missing).
     english: string | null;
     romaji: string | null;
-    // Every name the anime is known by, without repeating any (the title first): they are what the anime is looked up by in the search.
     names: string[];
     episode: number;
-    // In seconds since the epoch.
     airingAt: number;
     coverUrl: string | null;
 }
 
-// The stretch of time to list, in seconds since the epoch: from its first moment up to (not including) the end. What was listed in the
-// last day is answered from what is kept, unless `refresh` asks AniList again.
 export interface AnimeScheduleRequest {
     from: number;
     to: number;
@@ -244,35 +186,26 @@ export interface AnimeScheduleRequest {
 
 export type AnimeScheduleResponse = { ok: true; entries: AnimeScheduleEntry[] } | { ok: false; error: AniError };
 
-// The cover of an anime turned out to be another one when it was checked again: the new address, by the title it was asked for.
 export interface AnimeCoverUpdate {
     title: string;
     url: string;
 }
 
-// `suggested` is the first season number the series does not have (the last one plus one), to give the one that was taken.
 export type AnimeSeriesResponse = { ok: true } | { ok: false; reason: 'invalid' } | { ok: false; reason: 'season-taken'; suggested: number };
 
-// What it takes to put an anime in the library with all its episodes, none of them downloaded.
 export interface AnimeAddRequest {
     title: string;
     query: string;
     index: number;
     sourceId?: string | null;
-    // Every episode the source lists for it.
     episodes: string[];
-    // The series and season it goes under; the name it is shown with in the series (null: none).
     series: string | null;
     season: number | null;
     seasonName: string | null;
 }
 
-// `busy` is the time the anime folder is being migrated.
 export type AnimeAddResponse = { ok: true; anime: LibraryAnime } | { ok: false; reason: 'invalid' | 'busy' } | { ok: false; reason: 'season-taken'; suggested: number };
 
-// Renaming a series changes it for all the anime that are in it. When the name is one that another series has already, the seasons of
-// both are one series from then on, so a season number that both have is refused: `anime` is the one that clashes, with the season that
-// is taken, and `suggested` is the first season number the other series does not have.
 export type AnimeRenameSeriesResponse =
     | { ok: true }
     | { ok: false; reason: 'invalid' }
@@ -280,35 +213,25 @@ export type AnimeRenameSeriesResponse =
 
 export type AnimeDownloadResponse = { ok: true; anime: LibraryAnime } | { ok: false; message: string };
 
-// The most episodes of one anime that the check for new episodes downloads by itself in one go. When it finds more, all of them are put in
-// the library but none is downloaded: so many at once means the list of the source changed, not that a season came out.
 export const MAX_AUTO_DOWNLOAD_EPISODES = 24;
 
-// How an episode got into the library after its anime was in it: found by the check every hour, or by a button the user pressed (the check
-// of all the anime, or of one).
 export const ANIME_ARRIVAL_ORIGINS = ['auto', 'manual'] as const;
 export type AnimeArrivalOrigin = (typeof ANIME_ARRIVAL_ORIGINS)[number];
 
-// An episode that arrived in the library after its anime was in it, for the screen of updates.
 export interface AnimeUpdateEntry {
     id: number;
     animeId: number;
     animeTitle: string;
     episodeId: number;
     episodeNumber: string;
-    // In milliseconds.
     foundAt: number;
     origin: AnimeArrivalOrigin;
     status: AnimeEpisodeStatus;
 }
 
-// New episodes that a check found in the anime of the library.
 export interface AnimeNewEpisodes {
-    // How many episodes were added to the library, and the titles of the anime that got them.
     count: number;
     titles: string[];
-    // The titles of the anime whose new episodes were not downloaded although the setting asks for it, because there were more than
-    // `MAX_AUTO_DOWNLOAD_EPISODES` of them.
     notDownloaded: string[];
 }
 
@@ -317,9 +240,6 @@ export interface AnimeCheckError {
     message: string;
 }
 
-// Whether a check for new episodes of all the anime is going on, who started it (the hourly look or a button), how far it is (the anime that
-// were asked about out of all of them) and the title of the anime it is asking about now. When none is going on, `origin` and `current` are
-// null and both numbers are 0.
 export interface AnimeCheckState {
     running: boolean;
     origin: AnimeArrivalOrigin | null;
@@ -330,9 +250,6 @@ export interface AnimeCheckState {
 
 export const IDLE_CHECK_STATE: AnimeCheckState = { running: false, origin: null, done: 0, total: 0, current: null };
 
-// What a check for new episodes found: how many episodes, in which anime, the anime whose new episodes were left undownloaded because
-// there were too many, in how many anime the source could not be reached, and how many anime were not asked about (the check stopped
-// because the source refused it, or the anime has no place in the search to be found by).
 export type AnimeCheckResponse =
     | { ok: true; count: number; titles: string[]; notDownloaded: string[]; failed: number; skipped: number }
     | { ok: false; error: AnimeCheckError };
@@ -347,33 +264,23 @@ export interface AnimeProgressUpdate {
 export const ANIME_MEDIA_SCHEME = 'pullwave-media';
 export type AnimeMediaKind = 'episode' | 'subtitle';
 
-// Where the player gets a video (or its subtitles) from: the main process serves the file of that episode.
 export function animeMediaUrl(kind: AnimeMediaKind, episodeId: number, trackId = ''): string {
     const base = `${ANIME_MEDIA_SCHEME}://${kind}/${episodeId}`;
     return trackId.length > 0 ? `${base}/${encodeURIComponent(trackId)}` : base;
 }
 
-// The address of the video of an episode for one opening of the player. The browser keeps, for each address, what it learned the first time it
-// opened it, and a video that could not be opened (a file that was not a video yet) is not opened again when the file is repaired or downloaded
-// again, however many times it is tried: the same address answers "could not be played" until the browser lets it go. An address of its own for
-// each opening has nothing to be mistaken for. The main process serves the same file for all of them (it reads the path of the address only).
 export function episodeVideoUrl(episodeId: number, opening: number): string {
     return `${animeMediaUrl('episode', episodeId)}?v=${opening}`;
 }
 
-// A subtitle file of a downloaded episode: the one ani-cli picked, the others the source offered, one the user loaded, one made from
-// the audio of the episode, or one a language model translated from another.
 export type AnimeSubtitleKind = 'default' | 'source' | 'imported' | 'generated' | 'translated';
 
 export interface AnimeSubtitleTrack {
-    // What identifies it among the subtitles of the episode (empty for the one ani-cli picked).
     id: string;
     label: string;
     kind: AnimeSubtitleKind;
 }
 
-// What importing a folder of anime did: the episodes it added to the library, the ones whose file it pointed to a new place, the
-// ones that were already there, and the videos it could not tell the episode of.
 export interface AnimeImportSummary {
     added: number;
     relinked: number;
@@ -381,43 +288,31 @@ export interface AnimeImportSummary {
     ignored: number;
 }
 
-// An anime that is not inside the folder of the settings is not accepted: `folder` is the one all the anime have to be in.
 export type AnimeImportResponse = ({ ok: true } & AnimeImportSummary) | { ok: false; reason: 'cancelled' } | { ok: false; reason: 'outside'; folder: string };
 
-// What looking at the audio of the library found: the episodes it looked at, the ones of those that have no audio, the ones it could not
-// read, and the ones that have no file on the disk.
 export interface AnimeAudioCheckSummary {
     checked: number;
     withoutAudio: number;
     unreadable: number;
-    // The downloaded episodes that could not be read (as many as `unreadable`).
     unreadableIds: number[];
     missing: number;
 }
 
-// What repairing the videos of some episodes did: the ones that got back, the ones that could not (they are as they were) and the ones that
-// needed nothing (or that have no file).
 export interface AnimeRepairSummary {
     repaired: number;
     failed: number;
     skipped: number;
 }
 
-// `unsupported`: this system has no anime section. `busy`: a repair is going on already.
 export type AnimeRepairResponse = ({ ok: true } & AnimeRepairSummary) | { ok: false; reason: 'busy' | 'unsupported' };
 
-// `busy`: a check is going on already. `unsupported`: this system has no anime section.
 export type AnimeAudioCheckResponse = ({ ok: true } & AnimeAudioCheckSummary) | { ok: false; reason: 'busy' | 'unsupported' };
 
-// How far the copy of the files into the new folder is: the files that were copied out of all the ones that have to be.
 export interface AnimeMigrationProgress {
     done: number;
     total: number;
 }
 
-// Why the folder of the anime was not migrated: the user gave up, a download or another migration is running, the folder
-// chosen is the current one or is inside it, a file of the new folder is in the way, or something failed while copying (what was
-// copied is then removed and nothing changes).
 export type AnimeMigrationFailure = 'cancelled' | 'busy' | 'same' | 'inside' | 'conflict' | 'failed';
 
 export type AnimeMigrationResponse =
@@ -430,14 +325,11 @@ export type AnimeSubtitleImportResponse =
     | { ok: true; tracks: AnimeSubtitleTrack[]; imported: AnimeSubtitleTrack }
     | { ok: false; reason: 'cancelled' | 'unsupported' | 'too-large' | 'unreadable' | 'missing' };
 
-// What checking an episode for subtitles it does not have yet came to: the labels of the ones that were added (none when the source
-// offers no others), and the subtitles the episode has now.
 export type AnimeSubtitleCheckResponse =
     | { ok: true; added: string[]; tracks: AnimeSubtitleTrack[] }
     | { ok: false; reason: 'missing' }
     | { ok: false; reason: 'failed'; error: AniError };
 
-// The languages a subtitle can be translated into (the name a language model understands; it is also the label of the new track).
 export const TRANSLATION_LANGUAGES = [
     'Portuguese (Brazil)',
     'Portuguese',
@@ -457,9 +349,6 @@ export const TRANSLATION_LANGUAGES = [
 export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number];
 export const DEFAULT_TRANSLATION_LANGUAGE: TranslationLanguage = 'Portuguese (Brazil)';
 
-// A subtitle of an episode to translate: `trackId` is the one to start from (null lets the app pick, the English one when it has it).
-// `replace` says what to do when the episode has the translation into that language already: true translates again and replaces it (what the
-// user asks for in the player), false or left out leaves it as it is (the translation of many episodes at once).
 export interface SubtitleTranslateRequest {
     episodeId: number;
     trackId: string | null;
@@ -467,9 +356,6 @@ export interface SubtitleTranslateRequest {
     replace?: boolean;
 }
 
-// Why a subtitle was not translated: the episode or the subtitle is not there, the settings have no token, no model or (for a
-// provider of one's own) no address, the file cannot be read, is too big or has no cues, the episode is being translated already, the episode has
-// the subtitle in that language already (nothing is asked of the model then), or the user cancelled.
 export type SubtitleTranslateFailure = 'missing' | 'no-source' | 'no-token' | 'no-model' | 'no-address' | 'unreadable' | 'too-large' | 'empty' | 'busy' | 'exists' | 'cancelled';
 
 export type SubtitleTranslateResponse =
@@ -482,29 +368,22 @@ export interface SubtitleEstimateRequest {
     trackId: string | null;
 }
 
-// What translating a subtitle takes, before it is asked for: the cues, the requests it makes and about how many tokens they use
-// (what is sent and what comes back).
 export type SubtitleEstimateResponse =
     | { ok: true; cues: number; batches: number; approxTokens: number }
     | { ok: false; reason: Extract<SubtitleTranslateFailure, 'missing' | 'no-source' | 'unreadable' | 'too-large' | 'empty'> };
 
-// Translates the subtitle of every one of these episodes, one after the other.
 export interface SubtitleTranslateManyRequest {
     episodeIds: number[];
     language: TranslationLanguage;
 }
 
-// The language the subtitles are wanted in (the one of the anime subtitles of the settings, see `autoTranslateTarget`) and which of the
-// episodes asked about can be translated into it.
 export interface SubtitleTranslatableResponse {
     language: TranslationLanguage;
     episodeIds: number[];
 }
 
-// `skipped`: there was nothing to do (the episode has the subtitle in that language already).
 export type SubtitleTranslationStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled' | 'skipped';
 
-// How the translation of the subtitle of an episode is going: the cues translated out of all of them; `reason` says why it failed.
 export interface SubtitleTranslationJob {
     episodeId: number;
     language: TranslationLanguage;
@@ -514,12 +393,8 @@ export interface SubtitleTranslationJob {
     reason: string | null;
 }
 
-// Why the automatic translation of the new episodes was turned off by itself: the provider has no more credit, did not accept the token or
-// does not have the model, or the settings lack the token, the model or the address of the provider.
 export type AutoTranslateOffReason = 'quota' | 'token' | 'model' | 'setup';
 
-// The languages the audio of an episode can be in, to make its subtitle (the name is also the label of the new track, and the code is
-// what the service of speech to text is told).
 export const TRANSCRIPTION_LANGUAGES = [
     'Japanese',
     'English',
@@ -554,30 +429,20 @@ export const TRANSCRIPTION_LANGUAGE_CODES: Record<TranscriptionLanguage, string>
     Indonesian: 'id'
 };
 
-// The audio of an episode is cut in parts of this many seconds, each one a request to the service (they take files of a limited size).
 export const SPEECH_PART_SECONDS = 600;
 
-// Making the subtitle of an episode from its audio: `audioLanguage` is the one that is spoken and `language` the one of the subtitle that
-// is wanted (the only one that is saved). When they are the same the audio is only transcribed; when the wanted one is English the audio can
-// be translated into it at once (any language, for a service that can); otherwise the transcription is translated afterwards.
 export interface SubtitleGenerateRequest {
     episodeId: number;
     audioLanguage: TranscriptionLanguage;
     language: TranslationLanguage;
 }
 
-// How the subtitle is made: by transcribing the audio, by having the audio translated into English at once, or by transcribing it and
-// translating the text afterwards.
 export type SubtitleGeneratePlan = 'transcribe' | 'direct' | 'transcribe-translate';
 
-// Whether the audio is spoken in the language of the subtitle that is wanted (Brazilian Portuguese is Portuguese, spoken).
 export function isSpokenLanguage(audioLanguage: TranscriptionLanguage, language: TranslationLanguage): boolean {
     return audioLanguage === language || (audioLanguage === 'Portuguese' && language === 'Portuguese (Brazil)');
 }
 
-// How the subtitle is made, given what the speech service can write the audio in at once: only English (another service of the protocol of
-// OpenAI, the default), any language (Gemini) or none (OpenAI, whose gpt-transcribe only transcribes). Audio spoken in the language that is
-// wanted is only transcribed, never translated.
 export function generatePlanOf(audioLanguage: TranscriptionLanguage, language: TranslationLanguage, translatesTo: SpeechTranslatesTo = 'english'): SubtitleGeneratePlan {
     if (isSpokenLanguage(audioLanguage, language)) {
         return 'transcribe';
@@ -588,9 +453,6 @@ export function generatePlanOf(audioLanguage: TranscriptionLanguage, language: T
     return translatesTo === 'any' || language === 'English' ? 'direct' : 'transcribe-translate';
 }
 
-// Why a subtitle was not made: the episode is not there, the settings have no token, no model or (for a service of one's own) no
-// address (of the speech to text, or of the translation that the plan needs), the video has no audio or nothing was said, the audio could not be taken out of the video, the file could not be saved,
-// the episode is being worked on already, or the user cancelled.
 export type SubtitleGenerateFailure =
     | 'missing'
     | 'no-token'
@@ -611,19 +473,12 @@ export type SubtitleGenerateResponse =
     | { ok: false; reason: SubtitleGenerateFailure }
     | { ok: false; reason: 'failed'; error: LlmError };
 
-// What making the subtitle takes, before it is asked for: how long the audio is, in how many parts (requests) it goes and about how many
-// bytes that is (the audio is sent as mono MP3 of 32 kbps).
 export type SubtitleGenerateEstimateResponse =
     | { ok: true; seconds: number; parts: number; approxBytes: number }
     | { ok: false; reason: Extract<SubtitleGenerateFailure, 'missing' | 'no-audio' | 'extract-failed'> };
 
-// What the subtitle is going through: the audio is taken out of the video, its parts are sent to the service (which gives back the text),
-// the text is translated, and the subtitle is saved.
 export type SubtitleGenerationPhase = 'extracting' | 'sending' | 'translating' | 'saving';
 
-// How making the subtitle of an episode is going. `done` out of `total` counts what the phase works on: the parts of the audio that were
-// sent and answered, the lines that were translated. Once it started it also says how it is made (`plan`, which can change when the direct
-// translation is refused) and, while the parts are sent, how many bytes of audio were sent out of all of them. `reason` says why it failed.
 export interface SubtitleGenerationJob {
     episodeId: number;
     language: TranslationLanguage;
@@ -637,7 +492,6 @@ export interface SubtitleGenerationJob {
     totalBytes?: number;
 }
 
-// The subtitles that are waiting to be translated or made, or are being worked on now (the ones that ended are not listed).
 export interface SubtitleJobs {
     translations: SubtitleTranslationJob[];
     generations: SubtitleGenerationJob[];
@@ -651,28 +505,21 @@ export interface AnimeStreamRequest {
     episode: string;
 }
 
-// A subtitle of a stream: the language the source names it by (the screen writes it in its own language) and where the player gets it
-// from (through the app, like the video).
 export interface AnimeStreamSubtitle {
     id: string;
     label: string;
     url: string;
 }
 
-// What the player needs to watch an episode without downloading it: the addresses go through the app, which adds what the source asks
-// of a request (the referer).
 export interface AnimeStream {
     sessionId: string;
     url: string;
-    // The subtitle ani-cli picked (the language of the app, when the source has it).
     subtitleUrl: string | null;
-    // Every subtitle the source offers, in the order it gives them; empty when this copy of ani-cli does not report them.
     subtitles: AnimeStreamSubtitle[];
 }
 
 export type AnimeStreamResponse = { ok: true; stream: AnimeStream } | { ok: false; error: AniError };
 
-// The anime section needs a POSIX shell and a few tools that ship with the app for these systems.
 export function isAnimeSupported(platform: string): boolean {
     return platform === 'linux' || platform === 'win32';
 }

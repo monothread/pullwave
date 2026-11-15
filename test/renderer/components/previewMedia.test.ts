@@ -53,7 +53,6 @@ let load: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
     hls.state.instances.length = 0;
-    // jsdom does not load media: load() only has to be seen.
     load = vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {
         return undefined;
     });

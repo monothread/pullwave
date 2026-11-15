@@ -1,41 +1,29 @@
 import { IDLE_MANGA_CHECK_STATE, type ArrivalOrigin, type LibraryManga, type MangaChapter, type MangaCheckResponse, type MangaCheckState, type MangaDetails, type MangaNewChapters, type MangaStatus } from '@shared/manga';
 import type { MangaDb } from './mangaDb';
 
-// How often the mangas of the library are asked about, and how long after the app opens the first check is made (so opening the app is
-// not slowed by it).
 export const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
 
 export interface MangaUpdateCheckerDependencies {
     db: Pick<MangaDb, 'list' | 'getLibraryManga' | 'registerChapters' | 'saveDetails'>;
-    // What the source says now about a manga of the library; throws when it cannot be reached.
     fetchManga: (remoteId: number) => Promise<{ details: MangaDetails; chapters: MangaChapter[] }>;
-    // The ids of the sources whose extension is installed. The mangas of any other source are not asked about (the server could only answer
-    // that the source is not installed). Null, or no function: the list is not known and every manga is asked about.
     installedSourceIds?: () => Promise<ReadonlySet<string> | null>;
-    // Whether the check is turned on (read at every check).
     isEnabled: () => boolean;
     onNewChapters: (news: MangaNewChapters) => void;
-    // Whether the chapters that are found are downloaded too (read at every check), and the way to queue them.
     autoDownload?: () => boolean;
     download?: (mangaId: number, chapterRemoteIds: number[]) => void;
     onLibraryChanged: () => void;
-    // The check of all the mangas began, moved on to another manga or ended (see `state`).
     onProgress?: (state: MangaCheckState) => void;
-    // The times, when they are not the usual ones (used by the end-to-end tests).
     firstDelayMs?: number;
     intervalMs?: number;
 }
 
-// The statuses that say the source will publish no more chapters of a manga.
 const OVER_STATUSES: ReadonlySet<MangaStatus> = new Set<MangaStatus>(['completed', 'cancelled']);
 
-// Whether the source says the manga is over (complete or cancelled). The check every hour does not ask about it; the user still can.
 export function isMangaOver(manga: Pick<LibraryManga, 'status'>): boolean {
     return OVER_STATUSES.has(manga.status);
 }
 
-// The chapters the source has that the library does not.
 export function newChaptersOf(manga: Pick<LibraryManga, 'chapters'>, remote: readonly MangaChapter[]): MangaChapter[] {
     const known = new Set(
         manga.chapters.map((chapter) => {
@@ -47,8 +35,6 @@ export function newChaptersOf(manga: Pick<LibraryManga, 'chapters'>, remote: rea
     });
 }
 
-// Looks, once an hour, for chapters the sources have published for the mangas of the library, and puts them in the library (they are
-// not downloaded: that is for the user to decide).
 export class MangaUpdateChecker {
     private first: ReturnType<typeof setTimeout> | null = null;
     private every: ReturnType<typeof setInterval> | null = null;
@@ -58,7 +44,6 @@ export class MangaUpdateChecker {
 
     constructor(private readonly deps: MangaUpdateCheckerDependencies) {}
 
-    // Whether a check of all the mangas is going on and how far it is (a check of one manga is too short to be told).
     state(): MangaCheckState {
         return this.progress;
     }
@@ -94,10 +79,6 @@ export class MangaUpdateChecker {
         }
     }
 
-    // Checks every manga of the library, one after the other (a site is not asked for several things at once); the check every hour
-    // leaves out the mangas that are over. A check that is going on is not started again. A manga that cannot be reached is left for the
-    // next time. The hourly check only runs when it is turned on;
-    // the one the user asks for runs whatever that setting says.
     checkNow(origin: ArrivalOrigin = 'auto'): Promise<MangaCheckResponse> {
         this.running ??= this.run(origin).finally(() => {
             this.running = null;
@@ -105,8 +86,6 @@ export class MangaUpdateChecker {
         return this.running;
     }
 
-    // The ids of the sources that are installed, or null when that cannot be known (then nothing is left out). With no way to ask, it does
-    // not wait for anything.
     private async installedSources(): Promise<ReadonlySet<string> | null> {
         if (this.deps.installedSourceIds === undefined) {
             return null;
@@ -118,8 +97,6 @@ export class MangaUpdateChecker {
         }
     }
 
-    // Checks one manga of the library, now (the button of its page). A manga whose extension is not installed is not asked about: it is
-    // answered as skipped.
     async checkManga(mangaId: number): Promise<MangaCheckResponse> {
         const manga = this.deps.db.getLibraryManga(mangaId);
         if (manga === null) {
@@ -147,11 +124,9 @@ export class MangaUpdateChecker {
             return { ok: true, count: 0, titles: [], failed: 0, skipped: 0 };
         }
         const installed = this.deps.installedSourceIds === undefined ? null : await this.installedSources();
-        // A manga that is over has no new chapters to find: the check every hour leaves it out, the one the user asks for does not.
         const library = this.deps.db.list().filter((manga) => {
             return origin === 'manual' || !isMangaOver(manga);
         });
-        // The mangas that are asked about: the ones of a source whose extension is not installed are left out.
         const asked = library.filter((manga) => {
             return installed === null || installed.has(manga.sourceId);
         });
@@ -187,11 +162,8 @@ export class MangaUpdateChecker {
         return { ok: true, count: news.count, titles: news.titles, failed, skipped };
     }
 
-    // Asks the source about one manga; what is new is put in the library (and downloaded, when the user wants that). Throws when the
-    // source cannot be reached.
     private async check(manga: LibraryManga, origin: ArrivalOrigin, news: MangaNewChapters): Promise<void> {
         const found = await this.deps.fetchManga(manga.remoteId);
-        // The chapters are registered whether or not they are new: the source may have corrected a title or a number.
         const added = newChaptersOf(manga, found.chapters);
         this.deps.db.saveDetails(manga.id, found.details);
         if (added.length === 0) {

@@ -33,7 +33,6 @@ export async function requestQuit(deps: QuitDependencies): Promise<boolean> {
     return true;
 }
 
-// Several close attempts in a row must not stack several confirmation dialogs.
 export function createQuitRequester(deps: QuitDependencies): () => Promise<boolean> {
     let asking = false;
     return async (): Promise<boolean> => {

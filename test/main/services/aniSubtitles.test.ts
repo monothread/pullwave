@@ -96,8 +96,6 @@ describe('patchSubtitleSelection', () => {
         });
         const noDefault = json.replace('"default":true', '"default":false');
 
-        // The utilities are found through links to busybox, as Pullwave makes them for ani-cli.
-        // BusyBox for Windows runs its applets itself, so there is nothing to link there.
         function toolsDirectory(): string {
             const directory = join(makeTempDir(), 'tools');
             mkdirSync(directory);

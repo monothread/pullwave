@@ -13,13 +13,11 @@ function chunk(type: string, size: number): Buffer {
     return Buffer.concat([head, Buffer.alloc(size, 7), Buffer.alloc(4, 0xcd)]);
 }
 
-// The picture the sources put in front of every segment: a PNG of 1x1 pixel, 70 bytes.
 const PICTURE = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', 13), chunk('IDAT', 13), chunk('IEND', 0)]);
 const SEGMENTS = [1, 2, 3, 4, 5].map((fill) => {
     return Buffer.concat([Buffer.from([0x47]), Buffer.alloc(1999, fill)]);
 });
 const VIDEO = Buffer.concat(SEGMENTS);
-// What yt-dlp leaves when every segment has the picture in front of it.
 const HIDDEN = Buffer.concat(
     SEGMENTS.map((segment) => {
         return Buffer.concat([PICTURE, segment]);
@@ -45,7 +43,6 @@ afterEach(() => {
     rmSync(folder, { recursive: true, force: true });
 });
 
-// An ffmpeg that does what the repair asks of it: the remux copies its input to its output, and the look at the result answers what it is told.
 function ffmpegWith(options: { remux?: FfmpegResult | Error; look?: string } = {}) {
     return vi.fn<FfmpegRunner>(async (args) => {
         if (args.includes('-f')) {

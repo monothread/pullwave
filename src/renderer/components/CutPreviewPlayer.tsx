@@ -14,7 +14,6 @@ export const PREVIEW_FAILURE_KEYS: Record<Exclude<CutPreviewFailure, 'cancelled'
     failed: 'cut.preview.error.failed'
 };
 
-// The player has no subtitles to offer for a part being seen before it is cut.
 const NO_SUBTITLES: readonly never[] = [];
 
 function ignoreSubtitle(): void {
@@ -23,11 +22,9 @@ function ignoreSubtitle(): void {
 
 interface PreviewStageProps {
     preview: CutPreviewState;
-    // The picture of the file: shown while an audio plays.
     poster: string | undefined;
 }
 
-// What the player shows: the part playing, the part being made into a file the player plays, or why it cannot be played.
 function PreviewStage({ preview, poster }: PreviewStageProps) {
     const t = useTranslator();
     const convertPreview = useCutStore((state) => {
@@ -68,8 +65,6 @@ function PreviewStage({ preview, poster }: PreviewStageProps) {
     );
 }
 
-// The player of the app on one part of the file being cut, to see that the part is the right one before it is saved (D-131). Only that part
-// plays, from its start to its end, as if it were the whole file.
 export function CutPreviewPlayer() {
     const t = useTranslator();
     const preview = useCutStore((state) => {

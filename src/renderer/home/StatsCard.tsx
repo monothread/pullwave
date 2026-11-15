@@ -20,8 +20,6 @@ export const STAT_LINES: readonly StatLine[] = [
     { key: 'streak', label: 'stats.streak' }
 ];
 
-// The numbers of the week, under the highlights of the home screen: a greeting for the hour, what was downloaded,
-// watched and read in the last seven days (the numbers count up) and the days in a row.
 export function StatsCard() {
     const t = useTranslator();
     const now = useClock();

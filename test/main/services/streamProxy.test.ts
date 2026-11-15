@@ -80,7 +80,6 @@ describe('StreamSessions', () => {
             { id: 'stream-2', label: 'English', url: proxyUrl('id1', 'https://subs.example/en.vtt') },
             { id: 'stream-3', label: 'Portuguese (- Portuguese(Brazil))', url: proxyUrl('id1', 'https://other-subs.example:8443/pt.vtt') }
         ]);
-        // The one ani-cli picked has the same address in the list as on its own, so the player can tell which it is.
         expect(stream.subtitleUrl).toBe(stream.subtitles[1]?.url);
     });
 

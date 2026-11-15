@@ -34,7 +34,6 @@ function gamepad(pressed: number[] = [], axes: number[] = [0, 0]): Gamepad {
     } as unknown as Gamepad;
 }
 
-// Runs the frame the hook asked for, with the gamepads as they are now.
 function nextFrame(): void {
     const callback = frames.shift();
     act(() => {
@@ -157,7 +156,6 @@ describe('useGamepadNavigation: when it reads the gamepads', () => {
         pads = [gamepad()];
         fireEvent(window, new Event('gamepadconnected'));
         expect(requestFrame).toHaveBeenCalledTimes(1);
-        // A second event while it reads does not start a second loop.
         fireEvent(window, new Event('gamepadconnected'));
         expect(requestFrame).toHaveBeenCalledTimes(1);
     });
@@ -217,7 +215,6 @@ describe('useGamepadNavigation: what the presses do', () => {
         spot('A').focus();
         hold([GAMEPAD_BUTTON.right]);
         expect(document.activeElement).toBe(spot('B'));
-        // Still held: it does not move again.
         hold([GAMEPAD_BUTTON.right]);
         expect(document.activeElement).toBe(spot('B'));
         hold([]);

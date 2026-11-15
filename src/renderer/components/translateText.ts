@@ -42,7 +42,6 @@ export function providerName(provider: LlmProviderId, t: Translator): string {
     return t(PROVIDER_KEYS[provider]);
 }
 
-// What the app says about a translation that did not end well.
 export function translateFailureText(response: Extract<SubtitleTranslateResponse, { ok: false }>, t: Translator): string {
     if (response.reason === 'failed') {
         return t('anime.translate.error.failed', { reason: t(LLM_ERROR_KEYS[response.error.code]) });
@@ -50,7 +49,6 @@ export function translateFailureText(response: Extract<SubtitleTranslateResponse
     return t(FAILURE_KEYS[response.reason]);
 }
 
-// The failures a dialog can show for the estimate (the ones of the translation that do not depend on the model).
 export function estimateFailureText(reason: Exclude<SubtitleTranslateFailure, 'failed'>, t: Translator): string {
     return t(FAILURE_KEYS[reason]);
 }
@@ -81,7 +79,6 @@ export function speechProviderName(provider: SpeechProviderId, t: Translator): s
     return t(SPEECH_PROVIDER_KEYS[provider]);
 }
 
-// What the app says about a subtitle that could not be made from the audio.
 export function generateFailureText(response: Extract<SubtitleGenerateResponse, { ok: false }>, t: Translator): string {
     if (response.reason === 'failed') {
         return t('anime.generate.error.failed', { reason: t(LLM_ERROR_KEYS[response.error.code]) });
@@ -89,7 +86,6 @@ export function generateFailureText(response: Extract<SubtitleGenerateResponse, 
     return t(GENERATE_FAILURE_KEYS[response.reason]);
 }
 
-// The failures a dialog can show for the measure of the audio.
 export function generateEstimateFailureText(reason: Extract<SubtitleGenerateFailure, 'missing' | 'no-audio' | 'extract-failed'>, t: Translator): string {
     return t(GENERATE_FAILURE_KEYS[reason]);
 }

@@ -3,9 +3,7 @@ import { createWriteStream, rmSync, type WriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-// A download that sends nothing for this long is given up.
 export const IDLE_TIMEOUT_MS = 30_000;
-// The archive may be this much larger than the size the publisher lists before it is refused.
 export const SIZE_TOLERANCE = 1.1;
 
 export class ToolDownloadError extends Error {}
@@ -18,7 +16,6 @@ export interface DownloadProgress {
 export interface DownloadOptions {
     url: string;
     destination: string;
-    // The size the publisher lists: the transfer stops if it goes well past it.
     expectedBytes: number;
     onProgress?: (progress: DownloadProgress) => void;
     signal?: AbortSignal;
@@ -59,7 +56,6 @@ function endStream(stream: WriteStream): Promise<void> {
     });
 }
 
-// Downloads a file to the disk, hashing it as it arrives. Only https; the file is deleted if anything goes wrong.
 export async function downloadFile(options: DownloadOptions): Promise<DownloadResult> {
     const { url, destination, expectedBytes, onProgress, signal, fetchImpl = fetch, idleTimeoutMs = IDLE_TIMEOUT_MS } = options;
     if (!url.startsWith('https://')) {
@@ -83,7 +79,6 @@ export async function downloadFile(options: DownloadOptions): Promise<DownloadRe
         if (!response.ok || response.body === null) {
             throw new ToolDownloadError(`The server answered ${response.status}`);
         }
-        // The file is only opened once there is something worth keeping; the errors of the stream come back through the writes.
         const output = createWriteStream(destination);
         output.on('error', ignore);
         file = output;

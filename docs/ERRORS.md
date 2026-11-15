@@ -4,17 +4,17 @@ Every yt-dlp error is mapped by `errorMapper` into `{ code, title, hint, raw }`.
 
 | code | Detection (stderr/exit) | Title | Hint |
 |---|---|---|---|
-| `NETWORK` | timeouts, `Unable to download`, DNS, HTTP 5xx | Network failure | Check your connection and try again. |
-| `UNAVAILABLE` | `Video unavailable`, `Private video`, `removed`, `not available` | Video unavailable | The video may be private, removed or blocked in your region. |
-| `LOGIN_REQUIRED` | `Sign in`, `age-restricted`, `members-only`, bot check | Login required | Enable browser cookies in the settings and make sure you are logged in. |
-| `FFMPEG_MISSING` | `ffmpeg not found`, `ffprobe and ffmpeg not found` | ffmpeg not found | Install ffmpeg or set its path in the settings. |
-| `FORBIDDEN` | `HTTP Error 401/403/410`, `Forbidden` (checked before `NETWORK`, because yt-dlp words it as "Unable to download webpage") | Access refused by the server | The link may have expired or may only work for the original session, network or browser. Try again from the page, enable browser cookies, or search for the stream again. |
-| `FILENAME_TOO_LONG` | `File name too long`, `Errno 36` | Title too long | Reduce the maximum title length in the settings. |
-| `OUTDATED` | `Unable to extract`, `Please update`, `Unsupported URL` | yt-dlp may be outdated | Use the update button to get the latest yt-dlp. |
-| `BINARY_MISSING` | ENOENT on spawn | yt-dlp not found | Install yt-dlp or set its path in the settings. |
-| `UNKNOWN` | everything else | Download failed | See the details below. |
+| `FILENAME_TOO_LONG` | `file name too long`, `filename too long`, `Errno 36` | Title too long | Reduce the maximum title length in the settings. |
+| `FFMPEG_MISSING` | `ffmpeg not found` / `ffmpeg is not installed`, `ffprobe and ffmpeg not found`, `ffmpeg or avconv not found` | ffmpeg not found | Install ffmpeg or set its path in the settings. |
+| `LOGIN_REQUIRED` | `sign in`, `login required`, `age-restricted`, `confirm you're not a bot`, `members-only` | Login required | Enable browser cookies in the settings and make sure you are logged in. |
+| `UNAVAILABLE` | `Video unavailable`, `Private video`, `has been removed`, `not available`, `does not exist`, `is private` | Video unavailable | The video may be private, removed or blocked in your region. |
+| `OUTDATED` | `Unable to extract`, `Please update`, `yt-dlp -U`, `Unsupported URL` | yt-dlp may be outdated | Use the update button to get the latest yt-dlp. |
+| `FORBIDDEN` | `HTTP Error 401/403/410`, `Forbidden` (checked before `NETWORK`, because yt-dlp words it as "Unable to download webpage") | Access refused by the server | The server refused the request (HTTP 401/403/410). The link may have expired or may only work for the original session, network or browser, which is common for temporary addresses. Try again from the page, or enable browser cookies in the settings. |
+| `NETWORK` | `Unable to download`, `timed out`, `Temporary failure in name resolution`, `Network is unreachable`, `connection reset/refused/aborted`, `getaddrinfo`, `HTTP Error 5xx` | Network failure | Check your connection and try again. |
+| `UNKNOWN` | everything else (with no stderr, the raw text is the exit code) | Download failed | See the details below. |
+| `BINARY_MISSING` | `ENOENT` when spawning (`mapSpawnError`, not a stderr rule) | yt-dlp not found | Install yt-dlp or set its path in the settings. |
 
-Rules are checked in the order of the table above (first match wins).
+The stderr rules of `ERROR_RULES` (`src/main/services/errorMapper.ts`) are checked in the order of the table above, case-insensitive (first match wins); `raw` keeps the last 4000 characters. The titles and hints are `error.<code>.title|hint` of the catalogs.
 New patterns: add a row here + a test in `test/main/services/errorMapper.test.ts`.
 
 ## Language model errors (subtitle translation)

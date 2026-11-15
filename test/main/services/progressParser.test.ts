@@ -234,7 +234,6 @@ describe('parseProgressLine', () => {
 });
 
 describe('parseFormatPartsLine', () => {
-    // Taken from a real run of yt-dlp with a video and an audio apart (the fields that do not matter here are left out).
     const REAL_LINE = `${STREAM_PREFIX}${JSON.stringify({
         protocol: 'file+file',
         requested_formats: [

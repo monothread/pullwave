@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 
-// How often the clock is read: often enough that the minute shown is never more than a few seconds late.
 export const CLOCK_TICK_MS = 5000;
 
-// The time now, read again every few seconds while the component is on the screen.
 export function useClock(): Date {
     const [now, setNow] = useState(() => {
         return new Date();

@@ -2,8 +2,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { VIDEO_THUMBNAIL_SCHEME } from '@shared/constants';
 
-// The covers of the anime come from AniList and, when it has none, from the posters of Kitsu: the window only shows the pictures of the
-// hosts its policy lets through, so both policies (the one of the page and the one the main process sets) must name them.
 const ROOT = resolve(__dirname, '../..');
 const POLICIES = [
     ['the page', 'src/renderer/index.html'],

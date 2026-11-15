@@ -21,13 +21,10 @@ const AUTOMATIC = 'auto';
 interface SubtitleTranslateDialogProps {
     episodeId: number;
     tracks: readonly AnimeSubtitleTrack[];
-    // The translation was saved: the subtitles the episode has now, and the new one.
     onTranslated: (tracks: AnimeSubtitleTrack[], translated: AnimeSubtitleTrack) => void;
     onClose: () => void;
 }
 
-// Before the token of the user is spent: which subtitle to start from, which language, about what it takes and who is paid, with the
-// way to confirm and, once it started, to follow it and to stop it.
 export function SubtitleTranslateDialog({ episodeId, tracks, onTranslated, onClose }: SubtitleTranslateDialogProps) {
     const t = useTranslator();
     const language = useAppLanguage();
@@ -36,7 +33,6 @@ export function SubtitleTranslateDialog({ episodeId, tracks, onTranslated, onClo
     });
     const [source, setSource] = useState(AUTOMATIC);
     const [target, setTarget] = useState<TranslationLanguage>(useTranslationTarget());
-    // The estimate with the subtitle it is for: while the one chosen has none yet it is counting.
     const [counted, setCounted] = useState<{ trackId: string | null; response: SubtitleEstimateResponse } | null>(null);
     const [job, setJob] = useState<SubtitleTranslationJob | null>(null);
     const [failure, setFailure] = useState<Extract<SubtitleTranslateResponse, { ok: false }> | null>(null);
@@ -90,7 +86,6 @@ export function SubtitleTranslateDialog({ episodeId, tracks, onTranslated, onClo
     }));
     const estimate = counted !== null && counted.trackId === trackId ? counted.response : null;
     const ready = estimate?.ok === true;
-    // Translating again replaces the translation the episode has into that language.
     const willReplace = tracks.some((track) => {
         return track.kind === 'translated' && track.label === target;
     });

@@ -4,13 +4,11 @@ import { MAX_SUBTITLE_SCALE, MIN_SUBTITLE_SCALE, scalePercent } from './subtitle
 
 interface SubtitleSizeControlProps {
     subtitleStyle: SubtitleStyle;
-    // How the buttons, the percent and the group look: the gear of the player and the window of the subtitles each have their own.
     groupClassName: string;
     buttonClassName: string;
     valueClassName: string;
 }
 
-// The two buttons that make the subtitles smaller and bigger, with the percent they are at.
 export function SubtitleSizeControl({ subtitleStyle, groupClassName, buttonClassName, valueClassName }: SubtitleSizeControlProps) {
     const t = useTranslator();
     return (

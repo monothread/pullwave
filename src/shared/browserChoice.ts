@@ -3,7 +3,6 @@ import type { DetectedBrowser, Settings } from './types';
 
 export const NO_BROWSER_CHOSEN = '';
 
-// A choice saved before browsers were detected has no folder, so it cannot be matched to a detected browser.
 export function findChosenBrowser(browsers: readonly DetectedBrowser[], settings: Pick<Settings, 'cookiesBrowserDir'>): DetectedBrowser | null {
     if (settings.cookiesBrowserDir.length === 0) {
         return null;

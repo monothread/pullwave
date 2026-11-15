@@ -263,7 +263,6 @@ describe('CutService start: the cut', () => {
                 '-threads', '3', join(folder, 'My Talk - 02 (1m34s-1m43s).mp4')
             ]
         ]);
-        // The screen is told when a part begins and when it ends, and when the whole is over.
         expect(
             sent.map((item) => {
                 return [item.status, item.segments.map((part) => { return part.status; })];
@@ -514,7 +513,6 @@ describe('CutService failures and cancelling', () => {
 
 describe('createFfmpegRunner', () => {
     const NODE = process.execPath;
-    // Runs once with the runner of the cutter, which takes a run with its arguments and its signal.
     const RUN = (run: RunFfmpeg, args: string[], signal: AbortSignal = new AbortController().signal): Promise<FfmpegOutcome> => {
         return run({ args, signal });
     };

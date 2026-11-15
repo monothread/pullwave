@@ -1,10 +1,7 @@
-// How many lists a memory keeps: the ones looked at last, the oldest being forgotten first.
 export const LIST_MEMORY_LIMIT = 50;
 
 const memories: ListMemory<unknown>[] = [];
 
-// What a long list keeps of itself while it is not on the screen (how much of it was shown, how tall its parts are), so that coming back to
-// it (the back button of the mouse, the page of a manga that is closed) finds it as tall as it was and the scroll can be put back.
 export class ListMemory<T> {
     private readonly entries = new Map<string, T>();
 
@@ -33,7 +30,6 @@ export class ListMemory<T> {
     }
 }
 
-// Forgets what every list kept (each test starts from lists never seen).
 export function clearListMemories(): void {
     memories.forEach((memory) => {
         memory.clear();

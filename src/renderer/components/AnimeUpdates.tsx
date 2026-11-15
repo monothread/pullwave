@@ -17,7 +17,6 @@ const ORIGIN_KEYS: Record<AnimeArrivalOrigin, MessageKey> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// What the button says: what it does, or how far the check that is going on is (and that it is the hourly one, when it is).
 function checkButtonLabel(asked: boolean, state: AnimeCheckState, progress: { done: number; total: number }, t: Translator): string {
     if (state.running && state.total > 0) {
         return t(state.origin === 'auto' ? 'anime.recent.checking.auto' : 'anime.recent.checking.progress', progress);
@@ -25,8 +24,6 @@ function checkButtonLabel(asked: boolean, state: AnimeCheckState, progress: { do
     return asked || state.running ? t('anime.recent.checking') : t('anime.recent.check');
 }
 
-// The episodes that arrived in the library after their anime was in it, newest first and split by day: what the check every 3 hours found,
-// and what the buttons that look for new episodes found. A click opens the anime in the library.
 export function AnimeUpdates() {
     const t = useTranslator();
     const updates = useAnimeStore((state) => {
@@ -55,7 +52,6 @@ export function AnimeUpdates() {
         void loadUpdates();
     }, [loadUpdates]);
 
-    // The day that is today when the screen opens (what is listed is told by day names from it).
     const [today] = useState(() => {
         return startOfDay(Date.now());
     });
@@ -65,12 +61,10 @@ export function AnimeUpdates() {
         }
         return day === today - DAY_MS ? t('anime.recent.yesterday') : new Date(day).toLocaleDateString();
     };
-    // A long list is drawn a part at a time: the days are made of the entries drawn so far.
     const { shown: drawn, hasMore, endRef } = useIncrementalList(updates, 'anime-updates');
     const days = groupByDay<AnimeUpdateEntry>(drawn, (entry) => {
         return entry.foundAt;
     });
-    // One check at a time: the button is off while one is going on, whether the button started it or the hourly look did.
     const busy = checking !== null || checkState.running;
     const progress = { done: checkState.done, total: checkState.total };
 

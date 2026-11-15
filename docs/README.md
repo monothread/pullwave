@@ -7,6 +7,8 @@ Desktop app for Linux and Windows (Electron + React + TypeScript) with a cyberpu
 > and from the app's settings screens.
 
 ## Start here (new sessions/agents)
+**The code is the source of truth.** These documents only point to where to look: every fact (behavior, rules, constants, file names, flags) is checked in the code before it is used, and when a document and the code disagree the code wins and the document is fixed.
+
 1. Read `PROGRESS.md` — current state and next task.
 2. Read `DECISIONS.md` — decisions already made (do not reopen them without a reason).
 3. Read `ARCHITECTURE.md` and `CONVENTIONS.md` before writing code.

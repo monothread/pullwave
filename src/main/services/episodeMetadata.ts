@@ -4,29 +4,22 @@ import { isValidEpisode } from './aniArgsBuilder';
 import { episodeFolderOf, METADATA_FILE_NAME, metadataPathFor } from './animeFiles';
 import type { AnimeDb } from './animeDb';
 
-// Next to the video of each episode the app keeps what it needs to recognize it again, whatever the folders are called: if the
-// library is lost (a new computer, a reinstall) the folder can be scanned and every episode comes back as it was.
 export { METADATA_FILE_NAME, metadataPathFor };
 export const METADATA_VERSION = 1;
-// The audio of the episode: always the subtitled one (the app has no dubbed anime any more). It is still written, so the versions of the app
-// that read it (they refused a file without it) can import the library; it is not needed to read a file.
 export const METADATA_AUDIO = 'sub';
 
 export interface EpisodeMetadata {
     version: typeof METADATA_VERSION;
     title: string;
     query: string;
-    // The position of the anime in its search; 0 when it is not known.
     searchIndex: number;
     audio: typeof METADATA_AUDIO;
     number: string;
     positionSeconds: number;
     durationSeconds: number;
     watched: boolean;
-    // The series and season the user gave the anime (both, or neither).
     series?: string;
     season?: number;
-    // The name the anime is shown with in its series (only with them).
     seasonName?: string;
 }
 
@@ -58,7 +51,6 @@ function isNonNegative(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
-// The metadata in a text, or null when it is not valid: a file that was edited or damaged is ignored as a whole.
 export function parseEpisodeMetadata(content: string): EpisodeMetadata | null {
     let raw: unknown;
     try {
@@ -86,7 +78,6 @@ export function parseEpisodeMetadata(content: string): EpisodeMetadata | null {
     ) {
         return null;
     }
-    // The series and the season only count together; a pair that cannot be used is left out and the rest of the file is kept.
     const cleanedSeries = typeof series === 'string' ? cleanSeriesName(series) : null;
     const cleanedName = typeof seasonName === 'string' ? cleanSeasonName(seasonName) : null;
     const joined = cleanedSeries !== null && isValidSeason(season) ? { series: cleanedSeries, season, ...(cleanedName ? { seasonName: cleanedName } : {}) } : {};
@@ -98,7 +89,6 @@ export function readEpisodeMetadata(videoPath: string, files: Pick<MetadataFiles
     return content === null ? null : parseEpisodeMetadata(content);
 }
 
-// Failing to write it never fails what the user was doing: the library works without it.
 export function writeEpisodeMetadata(videoPath: string, metadata: EpisodeMetadata, files: Pick<MetadataFiles, 'write'>): void {
     try {
         files.write(metadataPathFor(videoPath), `${JSON.stringify(metadata, null, 2)}\n`);
@@ -107,8 +97,6 @@ export function writeEpisodeMetadata(videoPath: string, metadata: EpisodeMetadat
     }
 }
 
-// Saves what the library knows of a downloaded episode next to its video. Only an episode in a folder of its own gets one: the
-// videos that were downloaded before that share the folder of the anime, which has room for a single file.
 export function refreshEpisodeMetadata(
     db: Pick<AnimeDb, 'getEpisode' | 'getAnime'>,
     episodeId: number,

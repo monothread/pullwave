@@ -17,7 +17,6 @@ import {
 
 const scrollIntoView = vi.fn();
 
-// Places an element on the screen for the code that measures it (jsdom lays nothing out).
 function place(element: HTMLElement, box: Box): HTMLElement {
     vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
         x: box.left,

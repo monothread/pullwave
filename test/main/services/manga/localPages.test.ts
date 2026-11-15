@@ -117,7 +117,6 @@ describe('LocalPages from a CBZ', () => {
         for (const path of paths) {
             await pages.count(path);
         }
-        // Every chapter can still be read, the oldest list is made again.
         await expect(pages.read(paths[0]!, 0)).resolves.toEqual(Buffer.from('x'));
         await expect(pages.read(paths.at(-1)!, 0)).resolves.toEqual(Buffer.from('x'));
     });

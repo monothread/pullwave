@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-// Downloads the third-party programs the end-to-end tests run for real (yt-dlp, ffmpeg/ffprobe, deno and the ani-cli toolset in
-// resources/bin/ani) into resources/bin. They are NOT shipped with the app: the app downloads its own copies the first time it opens
-// (see ProgramTools), and the tests link these into a folder that stands for them (test/e2e/programs.ts).
-// Every download is verified against the checksum published by its source.
-//
-//   node scripts/fetch-binaries.mjs [--platform=linux|win32] [--out=<dir>] [--force]
-//
-// The platform defaults to the one this script runs on.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import {
@@ -38,7 +30,6 @@ function option(name) {
 const FORCE = args.includes('--force');
 const PLATFORM = option('platform') ?? process.platform;
 const BIN_DIR = option('out') ? resolve(option('out')) : join(ROOT, 'resources', 'bin');
-// Shared libraries of ffmpeg (Linux): a sibling of the bin folder, as the binaries expect.
 const LIB_DIR = join(BIN_DIR, '..', 'lib');
 const FFMPEG_SOURCE_MARKER = join(BIN_DIR, '.ffmpeg-source');
 
@@ -51,9 +42,6 @@ const TARGETS = {
         ytdlpFile: 'yt-dlp',
         denoArchive: 'deno-x86_64-unknown-linux-gnu.zip',
         denoFile: 'deno',
-        // The shared BtbN build, not the fully static one: the static ffmpeg/ffprobe crash (segfault) as soon as they
-        // read MPEG-TS, which is what HLS streams (live or not) are made of. The shared build finds its libraries in
-        // ../lib (RPATH $ORIGIN/../lib), next to the bin folder. Needs glibc 2.28 or newer.
         ffmpegUrl: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-shared-9.0.tar.xz',
         ffmpegHash: { algorithm: 'sha256', checksumsUrl: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256', length: 64 },
         ffmpegFiles: ['ffmpeg', 'ffprobe'],
@@ -77,20 +65,15 @@ if (!TARGET) {
     process.exit(1);
 }
 
-// The anime section (ani-cli) needs a shell and a few tools that must not come from the system. Everything ships inside the
-// app, pinned to one version and one checksum each: busybox provides sh and the core utilities the script calls (busybox-w32
-// on Windows), curl does its HTTPS requests.
 const ANI_DIR = join(BIN_DIR, 'ani');
 const ANI_MARKER = join(ANI_DIR, '.sources');
 const ANI_CLI_SOURCE = {
-    // A commit of the master branch (version 5.1.8, the one the app pins in programSpecs.ts): the latest tagged release is much older.
     url: 'https://raw.githubusercontent.com/pystardust/ani-cli/8527f185a12c6b5d0247a30b2217000dd65457fe/ani-cli',
     sha256: '24ada974b567789da4ea51f9f92ec5b975b43fc0e999543f9053bcf5a628105c'
 };
 const BUSYBOX_W32_BASE = 'https://frippery.org/files/busybox';
 const ANI_TOOLS = {
     linux: {
-        // busybox.net publishes no checksums, so the hash of the downloaded file is pinned here.
         busybox: {
             url: 'https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox',
             sha256: '6e123e7f3202a8c1e9b1f94d8941580a25135382b99e8d3e34fb858bba311348'
@@ -103,7 +86,6 @@ const ANI_TOOLS = {
         curlFile: 'curl'
     },
     win32: {
-        // The 64-bit Unicode build (Windows 10 1903 or newer). Its site also publishes a signed SHA256SUM, which is checked too.
         busybox: {
             url: `${BUSYBOX_W32_BASE}/busybox-w64u-FRP-6075-g169694ebd.exe`,
             sha256: '6e263d154d8548d1eb936f65d1d8312c80df31c45974e48d6335e4dcc0f4f34c',
@@ -141,7 +123,6 @@ function verify(algorithm, data, expected, label) {
     }
 }
 
-// Checksum files come in several shapes ("<hash>  <name>", a bare hash, PowerShell's Get-FileHash table).
 function extractHash(text, length) {
     const match = new RegExp(`\\b[0-9a-fA-F]{${length}}\\b`).exec(text);
     if (!match) {
@@ -159,7 +140,6 @@ function isPresent(...names) {
 function extractZip(archivePath, destination) {
     mkdirSync(destination, { recursive: true });
     if (process.platform === 'win32') {
-        // The "tar" first in PATH may be Git for Windows' GNU tar, which cannot read zip files; Windows' own bsdtar can.
         const systemTar = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe');
         execFileSync(existsSync(systemTar) ? systemTar : 'tar', ['-xf', archivePath, '-C', destination]);
         return;
@@ -167,7 +147,6 @@ function extractZip(archivePath, destination) {
     execFileSync('unzip', ['-o', '-q', archivePath, '-d', destination]);
 }
 
-// A .tar.xz archive. Windows' own bsdtar reads it; the "tar" first in PATH there may be Git for Windows' GNU tar.
 function extractTarXz(archivePath, destination) {
     mkdirSync(destination, { recursive: true });
     if (process.platform === 'win32') {
@@ -336,8 +315,6 @@ async function fetchVerified(source, label) {
     return data;
 }
 
-// Where the maintainer publishes the checksums of a binary, they must agree with the one pinned here. An entry that is gone (old
-// builds are deleted after a while) is not an error: the pinned hash is what is trusted.
 async function crossCheckPublishedHash(source, label) {
     if (!source.publishedSums) {
         return;

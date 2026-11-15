@@ -57,7 +57,6 @@ import type { LlmProviderId, LlmStatus, LlmTokenSlot, SpeechProviderId } from '.
 
 export type VideoContainer = 'mp4' | 'mkv' | 'webm';
 export type AudioFormat = 'mp3' | 'm4a' | 'opus';
-// Settings that can be chosen for one download only. A missing field follows the setting.
 export interface DownloadOptions {
     maxResolution?: MaxResolution;
     videoContainer?: VideoContainer;
@@ -69,7 +68,6 @@ export interface DownloadOptions {
     verifyLiveEndSeconds?: number;
 }
 
-// A link to download, optionally into a folder other than the one in the settings and with options of its own.
 export interface LinkRequest {
     url: string;
     downloadDir: string | null;
@@ -99,29 +97,24 @@ export type ThemeName =
     | 'light'
     | 'sakura'
     | 'sakura-dark';
-// How a theme looks: 'neon' keeps the glow, the scanlines and the cut corners of the default theme; 'flat' has none of them.
 export type ThemeStyle = 'neon' | 'flat';
 export type LanguageCode = 'en' | 'pt' | 'es' | 'zh' | 'ja';
 export type LanguageSetting = 'device' | LanguageCode;
 export type BrowserName = 'chrome' | 'firefox' | 'brave' | 'chromium' | 'edge' | 'opera' | 'vivaldi';
-// A browser profile that has cookies: `id` is its folder inside the browser's data folder.
 export interface BrowserProfile {
     id: string;
     name: string;
 }
 
-// A browser found on this system: `engine` tells yt-dlp how to decrypt its cookies, `dataDir` is where its profiles live.
 export interface DetectedBrowser {
     label: string;
     engine: BrowserName;
     dataDir: string;
     profiles: BrowserProfile[];
 }
-// Where the pages of the sites of the mangas are opened: the browser of the system, or one of the browsers the app knows.
 export type SiteBrowser = 'default' | BrowserName;
 export type MaxResolution = 'best' | '2160' | '1440' | '1080' | '720' | '480';
 
-// A section of the app with a block on the home screen.
 export type HomeSection = 'downloads' | 'anime' | 'manga';
 
 export interface Settings {
@@ -143,7 +136,6 @@ export interface Settings {
     autoSubtitles: boolean;
     embedSubtitles: boolean;
     rateLimit: string;
-    // Always CONCURRENT_DOWNLOADS (3 downloads run at a time); it is not shown in the settings.
     maxConcurrent: number;
     ytdlpPath: string;
     ffmpegPath: string;
@@ -159,45 +151,24 @@ export interface Settings {
     theme: ThemeName;
     language: LanguageSetting;
     extraArgs: string;
-    // Anime section (Linux and Windows).
     animeDownloadDir: string;
     animeQuality: AnimeQuality;
     animeSubtitles: AnimeSubtitleSetting;
-    // Whether, once an hour, the anime of the library are checked for new episodes (which are added to the library, not downloaded).
     animeCheckNewEpisodes: boolean;
-    // Whether the new episodes found by the check are downloaded too (off: they are only added to the library).
     animeAutoDownloadNew: boolean;
-    // Whether the new episodes that the check downloaded have their subtitle translated in the background, into the language of the anime
-    // subtitles (`animeSubtitles`), when they have a subtitle but none in that language. Turned off by itself when the provider refuses.
     animeAutoTranslateNew: boolean;
-    // Manga section (Linux and Windows): where the mangas are kept (empty is a folder inside the downloads folder) and whether a
-    // chapter is made a CBZ file or a folder of images.
     mangaDirectory: string;
     mangaFormat: MangaOutputFormat;
-    // The address of a FlareSolverr the user runs already (empty: the app runs one in Docker).
     mangaFlaresolverrUrl: string;
-    // Whether the user installed the helper for sites behind Cloudflare (FlareSolverr, which runs in Docker); it is not installed by itself.
     mangaFlaresolverrEnabled: boolean;
-    // Whether the sources and the extensions for adults (+18) are listed; hidden by default.
     mangaShowAdult: boolean;
-    // The language of the sources the manga section lists, searches, filters extensions by and moves mangas to: a code ("en", "pt-BR"),
-    // "all-languages" for every language, or empty to follow the language of the computer (English when there are no sources in it).
     mangaLanguage: string;
-    // Whether, once an hour, the mangas of the library are checked for new chapters (which are added to the library, not downloaded).
     mangaCheckNewChapters: boolean;
-    // Whether the new chapters found by the check are downloaded too (off: they are only added to the library).
     mangaAutoDownloadNew: boolean;
-    // The browser OPEN ON SITE opens the page of a manga in: the one of the system, or one of the browsers found on this computer.
     mangaSiteBrowser: SiteBrowser;
-    // Translating subtitles with a language model: which provider, which model and an address instead of the one of the provider (empty
-    // for the one of the provider). The language it translates into is the one of the anime subtitles (translationTargetOf). The token is not
-    // here: it is kept apart, encrypted.
     translateProvider: LlmProviderId;
     translateModel: string;
     translateBaseUrl: string;
-    // Making the subtitle of an episode that has none from its audio: the service of speech to text (OpenAI's protocol or Gemini), its model and an
-    // address instead of the one of the service (empty for the one of the service). Its token is kept apart too. The language that is spoken is
-    // not a setting: it is asked for each time, in the window that makes the subtitle.
     transcribeProvider: SpeechProviderId;
     transcribeModel: string;
     transcribeBaseUrl: string;
@@ -224,7 +195,6 @@ export interface DownloadError {
 
 export type JobStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'cancelled';
 
-// A live stream that seems to have ended is checked for a few seconds before the download is considered finished.
 export interface LiveEndCheck {
     secondsLeft: number;
     totalSeconds: number;
@@ -245,41 +215,26 @@ export interface DownloadJob {
     live: boolean;
     elapsedSeconds: number;
     downloadedBytes: number;
-    // Unfinished files of this download are still in the folder (after an error or a cancel).
     hasPartial: boolean;
-    // The download has options of its own that replace some settings.
     customized: boolean;
-    // yt-dlp is waiting for a scheduled live stream to start.
     waitingForLive: boolean;
-    // Set while the app checks whether a live stream really ended.
     endCheck: LiveEndCheck | null;
-    // The parts of a live recording that was resumed are being joined into one file.
     merging: boolean;
-    // STOP & SAVE was asked and the recording is being closed into its file.
     saving: boolean;
-    // Name of the yt-dlp post-processor (ffmpeg step after the download, such as ExtractAudio or Merger) that is running.
     postProcess: string | null;
-    // The post-processors that started since the download ended, in the order they started (the one running is the last); empty while
-    // the file is still being downloaded. The card shows them as the steps after the download.
     postProcessSteps: string[];
-    // The picture of the video, served by the app from memory (VIDEO_THUMBNAIL_SCHEME); null until it was fetched, or when there is none.
     thumbnail: string | null;
-    // The parts of a video whose formats are downloaded one after the other (the video and the audio when they are apart), each with a bar
-    // of its own; null when the video is a single format.
     parts: DownloadPart[] | null;
 }
 
-// What a part of a download that comes in parts holds: the picture, the sound, or something else (a format whose codecs the site does not say).
 export type DownloadPartKind = 'video' | 'audio' | 'other';
 
-// One of the parts of a download that comes in parts, and how far it is (0 to 100; 100 once it is complete).
 export interface DownloadPart {
     kind: DownloadPartKind;
     percent: number;
 }
 
 export interface ProgressInfo {
-    // How far the part being downloaded is (the video and the audio that are apart are two parts, each from 0 to 100).
     percent: number;
     speed: string;
     eta: string;
@@ -287,17 +242,14 @@ export interface ProgressInfo {
     downloadedBytes: number | null;
     elapsedSeconds: number | null;
     live: boolean;
-    // The format of the part being downloaded ('' when yt-dlp does not say).
     formatId: string;
 }
 
-// One of the formats yt-dlp downloads one after the other for a video (the video and the audio when they are apart), and what it holds.
 export interface FormatPart {
     formatId: string;
     kind: DownloadPartKind;
 }
 
-// yt-dlp reports when each post-processor (the steps that run after the bytes are downloaded) starts and finishes.
 export interface PostProcessEvent {
     status: 'started' | 'finished';
     processor: string;
@@ -308,8 +260,6 @@ export interface DownloadInfo {
     filePath: string;
 }
 
-// Where a stream that is being downloaded can be fetched from: one entry for each rendition yt-dlp picked (the video and the audio
-// when they are apart), with what has to be sent to get it.
 export interface StreamSource {
     url: string;
     protocol: string;
@@ -331,7 +281,6 @@ export interface HistoryEntry {
     finishedAt: number;
 }
 
-// Where a program the app runs comes from: a path the user chose in the settings, or the one the app installed in its own folder.
 export type BinarySource = 'custom' | 'installed';
 
 export interface BinaryInfo {
@@ -375,14 +324,10 @@ export interface AppUpdateState {
     message: string | null;
 }
 
-// The sections that keep their files in a folder of their own, the ones that show how much of the disk it takes.
 export type DiskSection = 'anime' | 'manga';
 
-// Where the folder of the other section is, compared to the one that was measured: on the same disk (its size is a part of the ring of
-// its own), on another disk (its size is not in the ring) or the same folder or one inside the other (its files are counted only once).
 export type DiskSiblingPlacement = 'same-disk' | 'other-disk' | 'overlap';
 
-// What the folder of the other section (the manga for the anime, the anime for the manga) takes.
 export interface DiskSibling {
     section: DiskSection;
     directory: string;
@@ -390,9 +335,7 @@ export interface DiskSibling {
     placement: DiskSiblingPlacement;
 }
 
-// The space of the disk the folder of a section is on, and what the folder takes in it.
 export interface DiskUsage {
-    // The folder that was measured (the one in the settings, or the default one when none is set).
     directory: string;
     totalBytes: number;
     freeBytes: number;
@@ -407,30 +350,22 @@ export interface TraySupport {
 
 export interface ProgramsApi {
     status: () => Promise<ProgramsStatus>;
-    // Installs a program that is not installed (TRY AGAIN after a failure).
     install: (id: ProgramId) => Promise<ToolState>;
-    // Takes away what is installed of the program and installs it again.
     reinstall: (id: ProgramId) => Promise<ToolState>;
-    // Looks for the latest version of every program.
     check: () => Promise<ProgramVersions>;
-    // Moves a program to the latest version, keeping the one that works if it cannot.
     update: (id: ProgramId) => Promise<ProgramUpdateResult>;
-    // Goes back to the version the app was made with.
     reset: (id: ProgramId) => Promise<ProgramResetResult>;
-    // What the install of a program is doing, and what the download of an update is doing.
     onToolState: (listener: (state: ToolState) => void) => () => void;
     onUpdateState: (listener: (state: ToolState) => void) => () => void;
 }
 
 export interface CyberApi {
-    // The manga section.
     manga: MangaApi;
     getSettings: () => Promise<Settings>;
     saveSettings: (settings: Settings) => Promise<Settings>;
     addDownload: (url: string, downloadDir?: string, options?: DownloadOptions) => Promise<AddJobResult>;
     listJobs: () => Promise<DownloadJob[]>;
     cancelJob: (id: string) => Promise<void>;
-    // Stops a download keeping what was downloaded so far, and continues it from there later.
     pauseJob: (id: string) => Promise<void>;
     resumeJob: (id: string) => Promise<void>;
     stopJob: (id: string) => Promise<void>;
@@ -441,11 +376,8 @@ export interface CyberApi {
     listHistory: () => Promise<HistoryEntry[]>;
     clearHistory: () => Promise<void>;
     checkBinaries: () => Promise<BinariesStatus>;
-    // The programs the app downloads on its first run (yt-dlp, deno, ffmpeg, ani-cli, busybox and curl).
     programs: ProgramsApi;
-    // The cutter of the video downloader.
     cut: CutApi;
-    // The logs of the programs the app runs, kept in memory for a quick look.
     logs: LogsApi;
     getAppUpdateState: () => Promise<AppUpdateState>;
     checkAppUpdate: () => Promise<void>;
@@ -455,15 +387,12 @@ export interface CyberApi {
     listBrowsers: (refresh?: boolean) => Promise<DetectedBrowser[]>;
     chooseDirectory: () => Promise<string | null>;
     showItemInFolder: (path: string) => Promise<void>;
-    // Null when the disk of the folder cannot be read.
     getDiskUsage: (section: DiskSection) => Promise<DiskUsage | null>;
     getAnimeStatus: () => Promise<AnimeStatus>;
-    // `loaded` is how many results the screen already lists: the answer is the whole list up to one more result, at least, with whether the source has more.
     searchAnime: (query: string, loaded?: number) => Promise<AnimeSearchResponse>;
     listAnimeEpisodes: (query: string, index: number) => Promise<AnimeEpisodesResponse>;
     downloadAnime: (request: AnimeDownloadRequest) => Promise<AnimeDownloadResponse>;
     listAnimeLibrary: () => Promise<LibraryAnime[]>;
-    // One anime of the library as it is now (null when it is no longer in it).
     getAnimeLibraryEntry: (animeId: number) => Promise<LibraryAnime | null>;
     listAnimeHistory: () => Promise<AnimeHistoryEntry[]>;
     recordAnimeHistory: (request: AnimeHistoryRequest) => Promise<void>;
@@ -473,68 +402,42 @@ export interface CyberApi {
     cancelAnimeJob: (episodeId: number) => Promise<void>;
     retryAnimeJob: (episodeId: number) => Promise<void>;
     redownloadAnimeEpisode: (episodeId: number) => Promise<void>;
-    // The same for several episodes at once (the ones the check of the library found with a problem).
     redownloadAnimeEpisodes: (episodeIds: number[]) => Promise<void>;
     pauseAnimeJob: (episodeId: number) => Promise<void>;
     resumeAnimeJob: (episodeId: number) => Promise<void>;
     clearFinishedAnimeJobs: () => Promise<void>;
-    // Pauses what is going on and holds what waits (it keeps waiting), and goes on with everything that is paused or held.
     pauseAllAnimeJobs: () => Promise<void>;
     resumeAllAnimeJobs: () => Promise<void>;
-    // Whether the queue is held by PAUSE ALL.
     animeQueueHeld: () => Promise<boolean>;
-    // The same, for the downloads of these anime only (the rest of the queue is not held).
     pauseAnimes: (animeIds: number[]) => Promise<void>;
     resumeAnimes: (animeIds: number[]) => Promise<void>;
     cancelAnimes: (animeIds: number[]) => Promise<void>;
     removeAnimeEpisode: (episodeId: number) => Promise<void>;
     removeAnime: (animeId: number) => Promise<void>;
-    // Opens the folder the videos of an anime of the library are in.
     openAnimeFolder: (animeId: number) => Promise<void>;
-    // Opens the folder of the series an anime of the library is in (the folder of the anime itself when it has none of its own).
     openAnimeSeriesFolder: (animeId: number) => Promise<void>;
-    // Puts an anime in the library with all its episodes, none of them downloaded.
     addAnimeToLibrary: (request: AnimeAddRequest) => Promise<AnimeAddResponse>;
-    // Queues every episode of these anime of the library that is not downloaded yet.
     downloadMissingAnime: (animeIds: number[]) => Promise<void>;
-    // Gives all these anime (the ones of a series) another series name.
     renameAnimeSeries: (animeIds: number[], name: string) => Promise<AnimeRenameSeriesResponse>;
-    // Joins an anime to a series with a season number, or takes it out of one (null, null).
     setAnimeSeries: (animeId: number, series: string | null, season: number | null, seasonName: string | null) => Promise<AnimeSeriesResponse>;
-    // Asks for a folder of anime and puts what is in it into the library.
     importAnimeLibrary: () => Promise<AnimeImportResponse>;
-    // Looks at the audio of the downloaded episodes that were never looked at, and says what it found.
     checkAnimeAudio: () => Promise<AnimeAudioCheckResponse>;
-    // Repairs the videos of these downloaded episodes that are hidden behind a picture (see imageHeaderRepair.ts).
     repairAnimeEpisodes: (episodeIds: number[]) => Promise<AnimeRepairResponse>;
-    // Asks for the folder the anime are moved to, copies them there, checks the copies, points the library and the settings to
-    // the new folder and then removes the old files.
     migrateAnimeFolder: () => Promise<AnimeMigrationResponse>;
     saveAnimeProgress: (update: AnimeProgressUpdate) => Promise<void>;
     listAnimeSubtitles: (episodeId: number) => Promise<AnimeSubtitleTrack[]>;
     importAnimeSubtitle: (episodeId: number) => Promise<AnimeSubtitleImportResponse>;
     checkAnimeSubtitles: (episodeId: number) => Promise<AnimeSubtitleCheckResponse>;
-    // Translates a subtitle of an episode with the language model of the settings and saves it next to the video.
     translateAnimeSubtitle: (request: SubtitleTranslateRequest) => Promise<SubtitleTranslateResponse>;
-    // What translating a subtitle takes, to ask the user before spending their token.
     estimateAnimeSubtitleTranslation: (request: SubtitleEstimateRequest) => Promise<SubtitleEstimateResponse>;
-    // Queues the translation of the subtitle of each of these episodes; gives how many were queued (the progress comes in
-    // `onSubtitleTranslationUpdate`).
     translateAnimeSubtitles: (request: SubtitleTranslateManyRequest) => Promise<number>;
-    // The language the subtitles are wanted in (the one of the anime subtitles of the settings), and which of these episodes can be translated
-    // into it: downloaded, with a subtitle to start from and none in that language yet.
     listTranslatableEpisodes: (episodeIds: number[]) => Promise<SubtitleTranslatableResponse>;
-    // Cancels the translation of an episode, or all of them (null).
     cancelAnimeSubtitleTranslation: (episodeId: number | null) => Promise<void>;
-    // Makes the subtitle of an episode from its audio with the service of speech to text of the settings and saves it next to the video.
     generateAnimeSubtitle: (request: SubtitleGenerateRequest) => Promise<SubtitleGenerateResponse>;
-    // How long the audio is and in how many requests it goes, to ask the user before spending their token.
     estimateAnimeSubtitleGeneration: (episodeId: number) => Promise<SubtitleGenerateEstimateResponse>;
     cancelAnimeSubtitleGeneration: (episodeId: number) => Promise<void>;
-    // The subtitles of the whole app that wait to be translated or made, or are being worked on (for the screen that shows them).
     listSubtitleJobs: () => Promise<SubtitleJobs>;
     getLlmStatus: () => Promise<LlmStatus>;
-    // Keeps the token of a provider (or of a service of speech to text, see `LlmTokenSlot`), encrypted; false when it was not kept.
     setLlmToken: (slot: LlmTokenSlot, token: string) => Promise<boolean>;
     clearLlmToken: (slot: LlmTokenSlot) => Promise<void>;
     onSubtitleTranslationUpdate: (listener: (job: SubtitleTranslationJob) => void) => () => void;
@@ -542,36 +445,24 @@ export interface CyberApi {
     openAnimeStream: (request: AnimeStreamRequest) => Promise<AnimeStreamResponse>;
     closeAnimeStream: (sessionId: string) => Promise<void>;
     listAnimeSchedule: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse>;
-    // The address of the cover of an anime, found by its title; null when there is none.
     findAnimeCover: (title: string) => Promise<string | null>;
-    // The episodes that arrived in the library after their anime was in it, the newest first.
     listAnimeUpdates: () => Promise<AnimeUpdateEntry[]>;
     clearAnimeUpdates: () => Promise<void>;
-    // Asks the source for new episodes: of one anime of the library, or of all of them (null).
     checkNewAnimeEpisodes: (animeId: number | null) => Promise<AnimeCheckResponse>;
-    // Says that the releases of an anime are over (`complete`) or not (`ongoing`), whatever AniList says; null goes back to following AniList.
     setAnimeAiring: (animeId: number, override: AnimeAiringOverride | null) => Promise<void>;
-    // Whether a check for new episodes of all the anime is going on now (the hourly one or a button), to show it when the screen is opened.
     getAnimeCheckState: () => Promise<AnimeCheckState>;
     onAnimeJobUpdate: (listener: (job: AnimeJob) => void) => () => void;
-    // The queue was held by PAUSE ALL (true) or let go by RESUME ALL (false).
     onAnimeQueueHeld: (listener: (held: boolean) => void) => () => void;
     onAnimeLibraryChanged: (listener: () => void) => () => void;
-    // Only this anime of the library changed (an episode of it started, ended or was checked): the rest of the library is as it was.
     onAnimeLibraryEntryChanged: (listener: (animeId: number) => void) => () => void;
     onAnimeMigrationProgress: (listener: (progress: AnimeMigrationProgress) => void) => () => void;
-    // A cover that was checked again and changed.
     onAnimeCoverUpdate: (listener: (update: AnimeCoverUpdate) => void) => () => void;
-    // The check for new episodes added some to the library.
     onAnimeNewEpisodes: (listener: (news: AnimeNewEpisodes) => void) => () => void;
-    // The automatic translation of the new episodes was turned off by itself, and why.
     onAnimeAutoTranslateOff: (listener: (reason: AutoTranslateOffReason) => void) => () => void;
-    // The check for new episodes began, moved on by one anime or ended.
     onAnimeCheckState: (listener: (state: AnimeCheckState) => void) => () => void;
     onJobUpdate: (listener: (job: DownloadJob) => void) => () => void;
     onJobRemoved: (listener: (id: string) => void) => () => void;
     onHistoryChanged: (listener: () => void) => () => void;
     onAppUpdateState: (listener: (state: AppUpdateState) => void) => () => void;
-    // The window was minimized (true) or came back (false). A minimized window is not drawn, but on Linux the page is not told so.
     onWindowMinimized: (listener: (minimized: boolean) => void) => () => void;
 }

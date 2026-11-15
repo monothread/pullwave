@@ -656,7 +656,6 @@ describe('downloadedEpisodeCount', () => {
             makeAnime([makeEpisode({ id: 5, animeId: 20 }), makeEpisode({ id: 6, animeId: 20, number: '2', fileMissing: true })], { id: 20, title: 'Bleach' })
         ];
 
-        // An episode whose file is gone is still downloaded for the library.
         expect(downloadedEpisodeCount(library)).toBe(3);
     });
 

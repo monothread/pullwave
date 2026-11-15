@@ -231,7 +231,6 @@ describe('the lone result shown in the menu', () => {
     });
 });
 
-// The script of ani-cli the app pins (scripts/fetch-binaries.mjs puts it in resources/bin for the tests that run it).
 describe.skipIf(!existsSync(join(process.cwd(), 'resources', 'bin', 'ani', 'ani-cli')))('the script of ani-cli the app pins', () => {
     const bundled = join(process.cwd(), 'resources', 'bin', 'ani', 'ani-cli');
 
@@ -247,8 +246,6 @@ describe.skipIf(!existsSync(join(process.cwd(), 'resources', 'bin', 'ani', 'ani-
     });
 
     describe.skipIf(process.platform === 'win32')('in its function nth', () => {
-        // The function as the script has it, patched, run with a stand-in for the menu that prints what it was asked and fails (as the one of the
-        // app does, so ani-cli stops after listing).
         function runNth(prompt: string, list: string): string {
             const patched = patchAniCli(readFileSync(bundled, 'utf-8')) as string;
             const start = patched.indexOf('nth() {');

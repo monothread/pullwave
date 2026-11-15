@@ -1,12 +1,9 @@
 import confetti from 'canvas-confetti';
 
-// The confetti of a finished download, in the colours of the theme (read from its variables, so every theme throws its own).
-
 const FALLBACK_COLORS = ['#00e5ff', '#ff2bd6', '#ffd400', '#39ff88'];
 const COLOR_VARIABLES = ['--cyan', '--magenta', '--yellow', '--green'] as const;
 
 export interface ConfettiOrigin {
-    // Where it starts, from 0 to 1 of the width and the height of the window.
     x: number;
     y: number;
 }
@@ -21,7 +18,6 @@ export function themeColors(): string[] {
 
 export const TOP_RIGHT: ConfettiOrigin = { x: 0.92, y: 0.12 };
 
-// Throws one burst; the animation runs on a canvas of its own that canvas-confetti puts over the window and removes when it is over.
 export function burstConfetti(origin: ConfettiOrigin = TOP_RIGHT): void {
     void confetti({
         particleCount: 70,

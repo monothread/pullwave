@@ -1,5 +1,3 @@
-// The Fullscreen API, which jsdom does not have: an element asked for goes in fullscreen (and the document says so with `fullscreenchange`),
-// and the document leaves it. `end` leaves it as the window does by itself (with Escape, for example).
 export interface FakeFullscreen {
     current: () => Element | null;
     requests: Element[];

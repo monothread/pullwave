@@ -2,10 +2,8 @@ import { useEffect } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore, type ToastItem } from '../store/appStore';
 
-// An information notice goes away by itself; an error stays until it is dismissed.
 export const INFO_NOTICE_MS = 5000;
 
-// One notice of the stack: it goes away five seconds after it shows up, whatever the others do.
 function StackedToast({ toast }: { toast: ToastItem }) {
     const t = useTranslator();
     const dismissToast = useAppStore((state) => {
@@ -37,8 +35,6 @@ function StackedToast({ toast }: { toast: ToastItem }) {
     );
 }
 
-// The notices: the one of an action (it takes the place of the last one), and the stack of the ones that say something finished, each
-// new one on top of the others.
 export function Toast() {
     const t = useTranslator();
     const notice = useAppStore((state) => {

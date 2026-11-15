@@ -4,20 +4,11 @@ import { searchVariants } from './animeCovers';
 import { ANILIST_URL, SCHEDULE_TIMEOUT_MS, ScheduleFetchError, type ScheduleFetchOptions } from './animeSchedule';
 import { comparableTitle } from './animeSourceMatch';
 
-// Whether the releases of the anime of the library are over, from AniList: the library does not know it, and an anime that ended need not be
-// looked at for new episodes. An anime is matched to the one of AniList by its title (the title must be one of the names AniList gives, so a
-// season is not taken for another), and from then on AniList is asked about it by its id.
-
-// How many titles are searched in one request, and how many ids are asked about in one.
 export const SEARCH_BATCH = 15;
 export const REFRESH_BATCH = 50;
-// How many answers AniList gives for each title that is searched: the right one is not always the first.
 export const SEARCH_CANDIDATES = 5;
-// An anime AniList had nothing sure about is searched again after this long; one that was matched and has not ended is asked about again
-// after this long (one that ended is not asked about again).
 export const UNMATCHED_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
 export const REFRESH_AFTER_MS = 3 * 60 * 60 * 1000;
-// The requests go one after the other, a second apart (AniList limits how many it answers in a minute).
 export const REQUEST_INTERVAL_MS = 1000;
 
 const FINISHED = ['FINISHED', 'CANCELLED'];
@@ -59,7 +50,6 @@ function candidateOf(media: unknown): Candidate | null {
     return { id, status: statusOf(record.status), names };
 }
 
-// The query that searches `count` titles at once: one answer for each, named m0, m1…
 export function searchQuery(count: number): string {
     const variables = Array.from({ length: count }, (_value, position) => {
         return `$s${position}: String`;
@@ -94,13 +84,9 @@ export interface AnimeAiringDependencies extends ScheduleFetchOptions {
     db: Pick<AnimeDb, 'airingStates' | 'saveAiring'>;
     now?: () => number;
     sleep?: (milliseconds: number) => Promise<void>;
-    // What is known about the releases of some anime changed (told after each request that kept something).
     onChange?: () => void;
 }
 
-// Keeps up to date what the library knows about the releases of its anime. `sync` matches the anime that were never matched (or were not
-// matched a week ago) to AniList and asks about the ones that were matched and have not ended; it rejects when AniList cannot be reached or
-// refuses, after keeping what it had already got.
 export class AnimeAiringService {
     constructor(private readonly deps: AnimeAiringDependencies) {}
 
@@ -171,7 +157,6 @@ export class AnimeAiringService {
         let kept = 0;
         group.forEach((state) => {
             const id = state.anilistId as number;
-            // An anime AniList does not give back keeps what it had: nothing is concluded from the silence.
             if (statuses.has(id)) {
                 this.deps.db.saveAiring(state.id, id, statuses.get(id) ?? state.status);
                 kept += 1;

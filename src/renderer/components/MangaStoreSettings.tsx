@@ -6,7 +6,6 @@ import { STORE_PLACEHOLDER } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { MangaRemove } from './MangaRemove';
 
-// The stores the extensions come from: adding and removing them is a setting of the manga section.
 export function MangaStoreSettings() {
     const t = useTranslator();
     const extensions = useMangaStore((state) => {

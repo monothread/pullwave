@@ -1,8 +1,5 @@
 name: Release Windows
 
-# Builds the Windows installer on a real Windows runner and attaches it to the GitHub Release
-# of the version in package.json (creating the draft if the Linux release has not created it yet).
-# Run it manually from the Actions tab, before publishing the draft Release.
 on:
   workflow_dispatch:
 

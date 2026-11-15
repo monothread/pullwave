@@ -19,7 +19,6 @@ import { MAX_LOCAL_PAGES } from './localPages';
 import { MANGA_LIST_KINDS, MANGA_STATUSES, MANGA_TRI_STATES, MAX_GROUP_NAME_LENGTH } from '@shared/manga';
 import { cleanSeasonName, cleanSeriesName, isValidSeason } from '@shared/series';
 
-// What comes from the screen is checked before it is used: the main process does not trust the shape of anything it is sent.
 export const MAX_TEXT = 500;
 export const MAX_DESCRIPTION = 10_000;
 export const MAX_URL = 2048;
@@ -37,12 +36,10 @@ export function asId(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= Number.MAX_SAFE_INTEGER ? value : null;
 }
 
-// The place (from 0) of a page of a chapter that came from the screen.
 export function asPageIndex(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < MAX_LOCAL_PAGES ? value : null;
 }
 
-// The ids that came from the screen that are ids, without repeating one.
 export function asIds(value: unknown): number[] {
     const ids = (Array.isArray(value) ? value.slice(0, MAX_IDS) : []).map(asId).filter((id): id is number => {
         return id !== null;
@@ -66,12 +63,10 @@ export function asExtensionAction(value: unknown): ExtensionAction | null {
     return value === 'install' || value === 'uninstall' || value === 'update' ? value : null;
 }
 
-// The package name of an extension: letters, digits, dots, dashes and underscores.
 export function asPackageName(value: unknown): string | null {
     return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$/.test(value) ? value : null;
 }
 
-// The address of a store: http(s) only.
 export function asStoreUrl(value: unknown): string | null {
     const address = text(value, MAX_URL);
     if (address === null) {
@@ -107,7 +102,6 @@ export function asListRequest(value: unknown): MangaListRequest | null {
     return filters === null ? null : { sourceId, kind, page, query, filters };
 }
 
-// The chapter to read: its number on the server and, when it is in the library, its number there.
 export function asReadRequest(value: unknown): MangaReadRequest | null {
     if (!isRecord(value)) {
         return null;
@@ -121,7 +115,6 @@ export function asReadRequest(value: unknown): MangaReadRequest | null {
     return { chapterRemoteId, libraryChapterId };
 }
 
-// Some sources list thousands of artists, authors or tags in one group.
 export const MAX_FILTERS = 5000;
 export const MAX_FILTER_DEPTH = 2;
 
@@ -162,7 +155,6 @@ function asFilter(value: unknown, depth: number): MangaFilter | null {
     }
 }
 
-// The filters of a search as the screen sends them: only their kind, their place and their value matter (the options are the server's).
 function asFilters(value: unknown, depth: number): MangaFilter[] | null {
     if (!Array.isArray(value) || value.length > MAX_FILTERS) {
         return null;
@@ -234,7 +226,6 @@ function asChapter(value: unknown): MangaChapter | null {
     };
 }
 
-// A request to download (or to put in the library) a manga and some of its chapters; null when it is not one.
 export function asDownloadRequest(value: unknown): MangaDownloadRequest | null {
     if (!isRecord(value)) {
         return null;
@@ -255,7 +246,6 @@ export function asDownloadRequest(value: unknown): MangaDownloadRequest | null {
     return { manga, details: asDetails(value['details'], manga), chapters };
 }
 
-// Joining a manga to a series: the manga, the name of the series, the place in it and the name of the season (all null to leave a series).
 export function asSeriesRequest(value: unknown): MangaSeriesRequest | null {
     if (!isRecord(value)) {
         return null;
@@ -275,7 +265,6 @@ export function asSeriesRequest(value: unknown): MangaSeriesRequest | null {
     return { mangaId, series, season: value['season'], seasonName };
 }
 
-// The name of a group: in one piece, not empty, not too long.
 export function asGroupName(value: unknown): string | null {
     if (typeof value !== 'string') {
         return null;
@@ -284,7 +273,6 @@ export function asGroupName(value: unknown): string | null {
     return cleaned.length > 0 && cleaned.length <= MAX_GROUP_NAME_LENGTH ? cleaned : null;
 }
 
-// Moving a manga to another source: the manga of the library, and the manga of the other source with its chapters.
 export function asSourceMigrationRequest(value: unknown): MangaSourceMigrationRequest | null {
     if (!isRecord(value)) {
         return null;
@@ -296,7 +284,6 @@ export function asSourceMigrationRequest(value: unknown): MangaSourceMigrationRe
 
 export const MAX_PAGES = 5000;
 
-// Where the user is in a chapter. The page is from 0 and cannot be past the number of pages; the chapter has at least one page.
 export function asReadingRecord(value: unknown): ReadingRecord | null {
     if (!isRecord(value)) {
         return null;
@@ -356,7 +343,6 @@ function asPreferenceValue(type: MangaPreferenceType, value: unknown): MangaPref
     return typeof value === 'string' && value.length <= MAX_PREFERENCE_TEXT ? value : null;
 }
 
-// A change to a setting of a source: the source, the place of the setting, its kind and a value of that kind; null when it is not one.
 export function asPreferenceChange(value: unknown): MangaPreferenceChange | null {
     if (!isRecord(value)) {
         return null;

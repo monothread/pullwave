@@ -1,19 +1,13 @@
-// The short sounds of the navigation, made by the Web Audio of the window (no files): a soft tick when the focus moves, a brighter one when
-// something is pressed, a falling one to go back and a rising chord when a menu opens.
-
 export type UiSound = 'move' | 'select' | 'back' | 'open';
 
-// The sounds of what happens (not of the navigation): a download that ends, an error, a switch, something put in the library.
 export type EventSound = 'done' | 'error' | 'toggle' | 'add' | 'page';
 
 export interface ToneStep {
-    // Hertz, and when it starts and how long it lasts, in seconds.
     frequency: number;
     start: number;
     duration: number;
 }
 
-// How loud the sounds are, from 0 to 1.
 export const UI_SOUND_VOLUME = 0.06;
 
 export const UI_SOUND_TONES: Readonly<Record<UiSound, readonly ToneStep[]>> = {
@@ -45,7 +39,6 @@ export const UI_EVENT_TONES: Readonly<Record<EventSound, readonly ToneStep[]>> =
         { frequency: 247, start: 0.1, duration: 0.2 }
     ],
     toggle: [{ frequency: 740, start: 0, duration: 0.05 }, { frequency: 988, start: 0.04, duration: 0.06 }],
-    // A page turned in the reader: a short, soft note.
     page: [{ frequency: 523.3, start: 0, duration: 0.04 }],
     add: [
         { frequency: 784, start: 0, duration: 0.06 },
@@ -54,12 +47,10 @@ export const UI_EVENT_TONES: Readonly<Record<EventSound, readonly ToneStep[]>> =
     ]
 };
 
-// The wave of the notes in each style of theme: soft in the flat ones, a chiptune square (quieter, it is a harsher wave) in the neon ones.
 export const FLAT_WAVE: OscillatorType = 'triangle';
 export const NEON_WAVE: OscillatorType = 'square';
 export const NEON_GAIN_SHARE = 0.55;
 
-// How loud the sounds are as a share of UI_SOUND_VOLUME, from 0 to 1 (the choice of the user).
 let masterVolume = 1;
 
 export function setUiSoundVolume(volume: number): void {
@@ -101,7 +92,6 @@ function playStep(audio: AudioContext, step: ToneStep): void {
     oscillator.stop(begin + step.duration + 0.02);
 }
 
-// Plays a sound of the navigation; nothing happens where the window has no audio.
 export function playUiSound(sound: UiSound | EventSound): void {
     if (masterVolume === 0) {
         return;

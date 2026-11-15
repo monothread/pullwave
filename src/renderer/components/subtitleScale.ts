@@ -1,6 +1,5 @@
 const STORAGE_KEY = 'pullwave-subtitle-scale';
 
-// How much the subtitles are scaled, as a multiple of their normal size.
 export const DEFAULT_SUBTITLE_SCALE = 1;
 export const MIN_SUBTITLE_SCALE = 0.5;
 export const MAX_SUBTITLE_SCALE = 3;
@@ -10,12 +9,10 @@ export function clampSubtitleScale(scale: number): number {
     return Math.min(MAX_SUBTITLE_SCALE, Math.max(MIN_SUBTITLE_SCALE, scale));
 }
 
-// One step bigger (direction 1) or smaller (-1), never past the limits.
 export function stepSubtitleScale(scale: number, direction: 1 | -1): number {
     return clampSubtitleScale(Math.round((scale + direction * SUBTITLE_SCALE_STEP) / SUBTITLE_SCALE_STEP) * SUBTITLE_SCALE_STEP);
 }
 
-// What the viewer chose the last time: it is the same for every episode.
 export function readSubtitleScale(): number {
     try {
         const stored = Number(window.localStorage.getItem(STORAGE_KEY));

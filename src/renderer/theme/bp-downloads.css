@@ -1,6 +1,3 @@
-/* The download going on, as in the downloads of a console (D-127): the cover, a big bar, the speed and the graph of the last minute. */
-
-/* Words drawn from their data-text (components/Drawn.tsx): the banner repeats what the card of the download says. */
 .drawn::before {
     content: attr(data-text);
 }
@@ -38,7 +35,6 @@
     border-radius: 0;
 }
 
-/* The picture of a video is wide (16:9): its box is too, and the picture fills it without being stretched. */
 .download-hero--wide {
     grid-template-columns: 196px minmax(0, 1fr) minmax(200px, 320px);
 }
@@ -89,7 +85,6 @@
     border-radius: inherit;
 }
 
-/* The download that just ended stays a few seconds in the banner (D-196): its bar green and still, as the bar of a card that is complete. */
 .download-hero--done .progress .progress__bar {
     --bar-glow: var(--green);
     background: var(--green);
@@ -227,7 +222,6 @@
     }
 }
 
-/* --- The cutter: the picture of the file, the button to clear, the play of each part and its player (D-131) ------------------------------ */
 .cut__thumb {
     flex: none;
     width: 96px;
@@ -240,7 +234,6 @@
     animation: bp-rise 0.4s var(--bp-ease-spring) backwards;
 }
 
-/* No picture: the mark of the kind of the file, in the colours of the theme. */
 .cut__thumb--empty {
     display: grid;
     place-items: center;
@@ -249,7 +242,6 @@
     text-shadow: var(--text-glow);
 }
 
-/* The picture is being made: a light goes over the box. */
 .cut__thumb--loading {
     background:
         linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--cyan) 22%, transparent) 50%, transparent 70%) 0 0 / 200% 100%,
@@ -268,7 +260,6 @@
     transition: transform 0.25s var(--bp-ease-spring);
 }
 
-/* It grows a little under the mouse; its colours are the ones of every button there (the glyph stays on its filled background). */
 .cut__play:not(:disabled):hover {
     transform: scale(1.08);
 }

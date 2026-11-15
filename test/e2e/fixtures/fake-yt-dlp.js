@@ -21,13 +21,10 @@ const url = args[args.length - 1];
 const downloadDir = args[args.indexOf('-P') + 1];
 const title = 'Fake Video';
 
-// A progress line as the app asks yt-dlp for it: the format of the part being downloaded comes before the title.
 function progress(percent, formatId = 'NA') {
     process.stdout.write(`CYBERPROG|${percent.toFixed(1).padStart(6)}%|1.00MiB/s|00:01|${Math.round(percent * 1000)}|${percent / 10}|False|${formatId}|${title}\n`);
 }
 
-// The steps after the download as the real yt-dlp reports them (to stderr, since it is quiet because of --print): joining the video and the
-// audio, then moving the file, each taking a moment as with ffmpeg; then the file.
 function runStepsAfterDownload() {
     const step = (status, processor) => {
         process.stderr.write(`CYBERPP|${status}|${processor}\n`);
@@ -44,9 +41,6 @@ function runStepsAfterDownload() {
     }, 3700);
 }
 
-// Like a video whose video and audio are apart (taken from a real run of yt-dlp): it announces both formats with their codecs, then
-// downloads the video from 0 to 100% and the audio from 0 to 100% again, and merges them (with the steps after the download shown one by
-// one when the address asks for them: "steps").
 function runTwoParts() {
     const parts = [
         { format_id: '137', url: 'https://cdn.test/video.mp4', protocol: 'https', vcodec: 'avc1.640028', acodec: 'none', height: 1080 },
@@ -94,7 +88,6 @@ if (url.includes('fail') && !url.includes('partialfail') && !url.includes('livef
 }
 
 if (url.includes('partialfail') || url.includes('livefail')) {
-    // Fails halfway, like a dropped connection: the unfinished files stay in the folder, as yt-dlp leaves them.
     const live = url.includes('livefail');
     const finalPath = `${downloadDir}/${live ? 'Live Fail' : 'Partial Fail'} [abc].mp4`;
     fs.mkdirSync(downloadDir, { recursive: true });
@@ -111,8 +104,6 @@ if (url.includes('partialfail') || url.includes('livefail')) {
         process.exit(1);
     }, 300);
 } else if (url.includes('liveend') || url.includes('liveback')) {
-    // A live stream that stops by itself after a moment. The attempts that look for it again (they carry --match-filter)
-    // find it offline for `liveend`, and live again for `liveback`, like a broadcaster who lost the connection and reconnected.
     const attempt = args.includes('--match-filter');
     const name = url.includes('liveback') ? 'Live Back' : 'Live End';
     fs.mkdirSync(downloadDir, { recursive: true });
@@ -137,20 +128,16 @@ if (url.includes('partialfail') || url.includes('livefail')) {
             fs.appendFileSync(`${finalPath}.part`, Buffer.alloc(2048));
         }, 50);
     };
-    // Closing the file takes a moment, as it does for a real recording, so the "saving" state of the card can be seen.
     process.on('SIGINT', () => {
         setTimeout(finish, 1200);
     });
     if (attempt) {
-        // Reconnecting takes a moment, as a real attempt does.
         setTimeout(goLive, 1500);
     } else {
         goLive();
         setTimeout(finish, 500);
     }
 } else if (url.includes('livewait')) {
-    // A scheduled live stream: waits (printing "[wait]" lines only when yt-dlp is not quiet, as the real one does) and
-    // goes live after a while.
     const finalPath = `${downloadDir}/Live Wait [abc].mp4`;
     fs.mkdirSync(downloadDir, { recursive: true });
     if (args.includes('--no-quiet')) {
@@ -179,8 +166,6 @@ if (url.includes('partialfail') || url.includes('livefail')) {
         process.exit(0);
     });
 } else if (url.includes('liveorphan') || url.includes('liveleftover')) {
-    // A live recording like the real one with ffmpeg: a child process (the "ffmpeg") that holds the pipes open and keeps on
-    // running when yt-dlp is gone. `liveorphan` also ignores Ctrl+C, `liveleftover` exits on it but leaves the child behind.
     const finalPath = `${downloadDir}/Live Orphan [abc].mp4`;
     fs.mkdirSync(downloadDir, { recursive: true });
     fs.writeFileSync(`${finalPath}.part`, '');
@@ -207,7 +192,6 @@ if (url.includes('partialfail') || url.includes('livefail')) {
         });
     }
 } else if (url.includes('slowpartial')) {
-    // A download that is still going on: its unfinished files are in the folder, as yt-dlp keeps them while it downloads.
     const finalPath = `${downloadDir}/Slow Partial [abc].mp4`;
     fs.mkdirSync(downloadDir, { recursive: true });
     process.stdout.write(`CYBERINFO|False|${finalPath}\n`);
@@ -218,8 +202,6 @@ if (url.includes('partialfail') || url.includes('livefail')) {
         progress(50);
     }, 200);
 } else if (url.includes('livehls')) {
-    // A live HLS stream: announces where its playlists are (the port is the end of the link) and records like yt-dlp does, with a
-    // growing .part file, unless the app ends it to record the stream itself.
     const port = url.match(/-(\d+)$/)[1];
     const finalPath = `${downloadDir}/Live Hls [abc].mp4`;
     fs.mkdirSync(downloadDir, { recursive: true });
@@ -238,7 +220,6 @@ if (url.includes('partialfail') || url.includes('livefail')) {
         process.exit(0);
     });
 } else if (url.includes('livestream')) {
-    // Like a real live recording: announces it is live, grows a .part file and, on SIGINT, finishes and keeps the file.
     const finalPath = `${downloadDir}/Live Show [abc].mp4`;
     fs.mkdirSync(downloadDir, { recursive: true });
     fs.writeFileSync(`${finalPath}.part`, '');
@@ -258,24 +239,20 @@ if (url.includes('partialfail') || url.includes('livefail')) {
 }
 
 function runOrdinaryDownload() {
-// The address of the picture of the video, as yt-dlp prints it before the download (FAKE_YTDLP_THUMBNAIL; NA when the site has none).
 if (process.env.FAKE_YTDLP_THUMBNAIL) {
     process.stdout.write(`CYBERTHUMB|${process.env.FAKE_YTDLP_THUMBNAIL}\n`);
 }
 progress(10);
 if (url.includes('quiet')) {
-    // Stays alive without writing anything, so it never notices that its parent is gone.
     setInterval(() => {}, 1000);
 } else if (url.includes('slow')) {
     setInterval(() => {
         progress(50);
     }, 200);
 } else if (url.includes('convert')) {
-    // The download is complete and yt-dlp then converts the audio and moves the file; each step takes a moment, as with ffmpeg.
     progress(60);
     progress(100);
     const step = (status, processor) => {
-        // The real yt-dlp writes these progress lines to stderr when it is quiet (it is, because of --print).
         process.stderr.write(`CYBERPP|${status}|${processor}\n`);
     };
     step('started', 'ExtractAudio');

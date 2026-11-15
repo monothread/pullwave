@@ -39,8 +39,6 @@ export function updateStepKey(step: AniCliUpdateStep): MessageKey {
 
 export type UpdateStepState = 'done' | 'running' | 'failed' | 'pending';
 
-// How each step of an update of ani-cli stands, from what the update tells: the steps before the one it is at are done, that one is going on
-// (or is where it stopped), and the ones after it are still to come. A state without a step is the download.
 export function updateStepStates(state: ToolState): Array<{ step: AniCliUpdateStep; state: UpdateStepState }> {
     const current = ANICLI_UPDATE_STEPS.indexOf(state.step ?? 'download');
     return ANICLI_UPDATE_STEPS.map((step, position) => {
@@ -65,7 +63,6 @@ export function programErrorKey(code: ToolErrorCode): MessageKey {
     return ERROR_KEYS[code];
 }
 
-// The failure of a program to be installed, in words for the user and with what the app knows about it.
 export function programErrorReport(t: Translator, error: ToolError): ErrorReport {
     return codedErrorReport(t(programErrorKey(error.code)), error, error.message);
 }
@@ -78,13 +75,10 @@ export function programProgressKey(status: Exclude<ToolStatus, 'ready' | 'error'
     return PROGRESS_KEYS[status];
 }
 
-// Whether the program is being downloaded or unpacked right now.
 export function isWorking(state: ToolState): boolean {
     return state.status === 'downloading' || state.status === 'verifying' || state.status === 'extracting';
 }
 
-// A version as it is shown: the commit of ani-cli by its first digits, and the build of ffmpeg (its version is the start of the checksum of the
-// file) as a build; the others as they are.
 export function displayVersion(id: ProgramId, version: string): string {
     if (id === 'anicli') {
         return version.length === 40 ? version.slice(0, 7) : version;

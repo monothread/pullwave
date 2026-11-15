@@ -112,7 +112,6 @@ describe('AnimeDb schema', () => {
     it('rolls a new database back whole when its last migration fails, so no table of the earlier ones is left', () => {
         const path = join(makeTempDir(), 'anime.db');
         const raw = new DatabaseSync(path);
-        // Something in the way of the table of the last migration.
         raw.exec('CREATE TABLE episode_update (leftover TEXT)');
         raw.close();
 
@@ -237,7 +236,6 @@ describe('AnimeDb with the id of the source', () => {
         expect(db.findAnime(SEASON_2.title)).toEqual(season);
         expect(db.findAnime('another title', 'nisekoi-false-love-season-2-605')).toEqual(season);
         expect(db.findAnime('another title', 'unknown-1')).toBeNull();
-        // With an id, the title finds only an anime that has no id: another anime with the same title and another id is not it.
         expect(db.findAnime(SEASON_2.title, 'nisekoi-false-love-603')).toBeNull();
         const legacy = db.upsertAnime({ title: 'Naruto', query: 'naruto', searchIndex: 1 });
         expect(db.findAnime('Naruto', 'naruto-12')).toEqual(legacy);
@@ -963,7 +961,6 @@ describe('AnimeDb series and seasons', () => {
         expect(db.schemaVersion).toBe(13);
         expect(db.getAnime(anime.id)).toMatchObject({ series: 'Series', season: 2, seasonName: null });
         db.close();
-        // Three files are made and one is backed up before the migration: the disk of a Windows machine can take longer than the 5 s of the default.
     }, 30_000);
 });
 
@@ -1153,8 +1150,6 @@ describe('AnimeDb history', () => {
     });
 });
 
-// The schema of the last release (0.18.0), as it was published. It must never change: the databases of the people who use that
-// release are in this state, and the tests below open them with the current code.
 const RELEASED_MIGRATIONS: readonly string[] = [
     `CREATE TABLE anime (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1180,12 +1175,9 @@ const RELEASED_MIGRATIONS: readonly string[] = [
         downloaded_at INTEGER,
         UNIQUE (anime_id, number)
     );`,
-    // The seasons of an anime are separate entries in the source; the user joins them under a series with a season number.
     `ALTER TABLE anime ADD COLUMN series TEXT;
     ALTER TABLE anime ADD COLUMN season INTEGER;`,
-    // The name an anime is shown with inside its series (the season number only orders them).
     `ALTER TABLE anime ADD COLUMN season_name TEXT;`,
-    // What the viewer opened or watched, apart from the library (it also covers anime that were only searched or streamed).
     `CREATE TABLE anime_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -1196,7 +1188,6 @@ const RELEASED_MIGRATIONS: readonly string[] = [
         opened_at INTEGER NOT NULL,
         UNIQUE (title, audio)
     );`,
-    // What is kept so the network is asked for less: the covers and the schedule of a stretch of time.
     `CREATE TABLE anime_cover (
         key TEXT PRIMARY KEY,
         url TEXT,
@@ -1212,7 +1203,6 @@ const RELEASED_MIGRATIONS: readonly string[] = [
 ];
 
 
-// A database as the last release left it (or as an older one did, up to `version` migrations).
 function makeReleasedDatabase(path: string, version: number = RELEASED_MIGRATIONS.length): void {
     const raw = new DatabaseSync(path);
     RELEASED_MIGRATIONS.slice(0, version).forEach((migration) => {
@@ -1247,7 +1237,6 @@ function versionOf(path: string): number {
     return version;
 }
 
-// Every row of the tables the last release had, in a fixed order, to compare before and after an upgrade.
 function releasedRowsOf(path: string): Record<string, unknown[]> {
     const raw = new DatabaseSync(path, { readOnly: true });
     const rows = {
@@ -1331,7 +1320,6 @@ describe('AnimeDb upgrade of the last release', () => {
         ).toEqual([
             ['Bleach', null, null, null, 1],
             ['Frieren: Beyond Journey\'s End', 'Frieren', 1, null, 2],
-            // A dubbed anime of a library kept before (the app no longer has them) is still listed, with its episodes.
             ['Frieren: Beyond Journey\'s End Season 2', 'Frieren', 2, 'The Second Season', 1],
             ['Naruto', null, null, null, 2]
         ]);
@@ -1427,7 +1415,6 @@ describe('AnimeDb upgrade of the last release', () => {
         makeReleasedDatabase(path);
         fillReleasedDatabase(path);
         const raw = new DatabaseSync(path);
-        // Something in the way of the table of the migration.
         raw.exec('CREATE TABLE anime_availability (in_the_way INTEGER)');
         raw.close();
 
@@ -1628,7 +1615,6 @@ describe('AnimeDb migrations 7 and 8 on a database of the last release', () => {
         makeReleasedDatabase(path);
         fillAvailability(path);
         const blocker = new DatabaseSync(path);
-        // Something in the way of the table of migration 8.
         blocker.exec('CREATE TABLE episode_update (in_the_way INTEGER)');
         blocker.close();
 
@@ -2638,7 +2624,6 @@ describe('AnimeDb migration 12: when an episode was last watched', () => {
 
         expect(db.schemaVersion).toBe(13);
         expect(columnsOf(path)).toEqual(['id', 'title', 'query', 'search_index', 'audio', 'episode', 'opened_at', 'watched_at']);
-        // The entry with an episode is not backfilled: the moment it was last watched is not known.
         expect(db.listHistory()).toEqual([
             { id: 2, title: 'Bleach', query: 'bleach', searchIndex: 4, episode: '12', openedAt: NOW, watchedAt: null },
             { id: 1, title: 'Naruto', query: 'naruto', searchIndex: 1, episode: null, openedAt: NOW, watchedAt: null }
@@ -2847,7 +2832,6 @@ describe('AnimeDb migration 13: audio of an episode', () => {
             ['1', 'done', '/lib/Naruto/1.mp4', 100, false],
             ['2', 'done', '/lib/Naruto/2.mp4', 200, false]
         ]);
-        // None was looked at: every downloaded episode is left for the check the user asks for.
         expect(
             db.episodesToCheckAudio().map((episode) => {
                 return episode.number;
@@ -2877,8 +2861,6 @@ describe('AnimeDb migration 13: audio of an episode', () => {
     });
 });
 
-// A library kept by an earlier version of the app can still have dubbed anime ('dub' in the column of the audio, which stays): each is the
-// same anime as any other of its title or its id, the subtitled one first when there are both.
 describe('AnimeDb with a dubbed anime kept by an earlier version of the app', () => {
     function withLegacy(rows: Array<{ title: string; audio: 'sub' | 'dub'; sourceId?: string; searchIndex?: number }>, history: Array<{ title: string; audio: 'sub' | 'dub'; episode: string | null }> = []) {
         const path = join(makeTempDir(), 'anime.db');

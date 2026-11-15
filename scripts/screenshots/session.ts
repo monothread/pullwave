@@ -17,7 +17,6 @@ const ANI_CLI_TEMPLATE = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
 export const WINDOW = { width: 1280, height: 900 };
 export const SCREENSHOTS_DIRECTORY = resolve(ROOT, 'docs/screenshots');
 
-// What is made once for all the screenshots: the pictures, the video and the two servers.
 export interface Assets {
     root: string;
     video: string;
@@ -63,7 +62,6 @@ export async function releaseAssets(assets: Assets): Promise<void> {
 export interface Shot {
     app: ElectronApplication;
     page: Page;
-    // The folders of this run, all inside a new temporary folder: nothing is read from or written to the data of an installed app.
     work: string;
     downloads: string;
     animeFolder: string;
@@ -76,8 +74,6 @@ export interface LaunchOptions {
     env?: Record<string, string>;
 }
 
-// The programs of the app are the ones that come with the repository, except yt-dlp: the one that is installed for the app is the fake, so the
-// screens that name the program show it as a program of the app and not a path of this machine.
 function installFakeYtDlp(toolsEnv: Record<string, string>): void {
     const spec = pinnedSpec('ytdlp', process.platform, process.arch);
     const executable = spec?.executables[0];
@@ -89,7 +85,6 @@ function installFakeYtDlp(toolsEnv: Record<string, string>): void {
     symlinkSync(FAKE_YTDLP, target);
 }
 
-// The app gives ani-cli an environment of its own, so what the fake needs (the anime it lists, the video it downloads) is written into a copy of it.
 function writeFakeAniCli(assets: Assets, work: string): string {
     const file = join(work, 'fake-ani-cli.sh');
     const script = readFileSync(ANI_CLI_TEMPLATE, 'utf-8')
@@ -157,7 +152,6 @@ export async function resize(app: ElectronApplication, page: Page, width: number
     await page.waitForTimeout(500);
 }
 
-// The page the screens are made on scrolls inside the application: every screen is shown from its top.
 async function scrollToTop(page: Page): Promise<void> {
     await page.evaluate(() => {
         document.querySelectorAll('*').forEach((element) => {
@@ -166,7 +160,6 @@ async function scrollToTop(page: Page): Promise<void> {
     });
 }
 
-// The notices of the actions that were made to get here are closed: a screen shows what it is about.
 async function closeNotices(page: Page): Promise<void> {
     await page.evaluate(() => {
         document.querySelectorAll<HTMLElement>('.toast button').forEach((button) => {
@@ -185,7 +178,6 @@ export async function snap(page: Page, name: string): Promise<void> {
 
 export { VIDEO_TITLES };
 
-// One box of the screen (the episodes of a season, for instance), not the whole window.
 export async function snapElement(page: Page, selector: string, name: string): Promise<void> {
     await closeNotices(page);
     await page.mouse.move(0, 0);

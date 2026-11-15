@@ -1,10 +1,5 @@
 import type { ProgramId, ToolSpec } from '@shared/tools';
 
-// The programs the app downloads on its first run: where each one comes from, for each system, and how it is unpacked. The ones that are
-// pinned here (the version the app was made with) are the base: they are what is installed when nothing newer was chosen. yt-dlp, deno, ani-cli
-// and ffmpeg can be moved to the latest one from the update in the settings; busybox and curl stay at their version. ffmpeg has no base: the
-// build it was made with is not kept anywhere (the builds of the publishers are rolling), so the first run takes the latest one.
-
 export type ProgramPlatform = 'linux' | 'win32';
 
 export function programPlatform(platform: NodeJS.Platform, arch: string): ProgramPlatform | null {
@@ -17,19 +12,14 @@ export function executableName(command: string, platform: ProgramPlatform): stri
 
 const RAW = { format: 'raw', stripComponents: 0, exclude: [] } as const;
 
-// ----- yt-dlp -----
-
 export const YTDLP_RELEASES_URL = 'https://github.com/yt-dlp/yt-dlp/releases/download';
 export const YTDLP_ASSETS: Record<ProgramPlatform, string> = { linux: 'yt-dlp_linux', win32: 'yt-dlp.exe' };
-// The versions of yt-dlp are dates: 2026.08.19, and 2026.08.19.1 for a second one that day.
 export const YTDLP_VERSION = /^\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$/;
 
 export function ytdlpSpec(version: string, sha256: string, sizeBytes: number, platform: ProgramPlatform): ToolSpec {
     const file = executableName('yt-dlp', platform);
     return { id: 'ytdlp', version, url: `${YTDLP_RELEASES_URL}/${version}/${YTDLP_ASSETS[platform]}`, sha256, sizeBytes, ...RAW, executables: [file], entry: file };
 }
-
-// ----- deno (yt-dlp runs the JavaScript the sites ask of it with it) -----
 
 export const DENO_RELEASES_URL = 'https://github.com/denoland/deno/releases/download';
 export const DENO_ASSETS: Record<ProgramPlatform, string> = { linux: 'deno-x86_64-unknown-linux-gnu.zip', win32: 'deno-x86_64-pc-windows-msvc.zip' };
@@ -40,25 +30,19 @@ export function denoSpec(version: string, sha256: string, sizeBytes: number, pla
     return { id: 'deno', version, url: `${DENO_RELEASES_URL}/${version}/${DENO_ASSETS[platform]}`, sha256, sizeBytes, format: 'zip', stripComponents: 0, exclude: [], executables: [file], entry: file };
 }
 
-// ----- ffmpeg (and ffprobe, which comes with it) -----
-
 export const FFMPEG_RELEASE_API = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest';
 export const FFMPEG_DOWNLOAD_URL = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest';
 export const FFMPEG_CHECKSUMS = 'checksums.sha256';
-// The GPL build with shared libraries, from the same release of BtbN on both systems: the static one stops on MPEG-TS and HLS (it is what yt-dlp
-// joins the pieces of a live stream with). The name carries the numbered branch (n9.0), which changes now and then.
 export const FFMPEG_ASSETS: Record<ProgramPlatform, RegExp> = {
     linux: /^ffmpeg-n(\d{1,3})\.(\d{1,3})-latest-linux64-gpl-shared-\d{1,3}\.\d{1,3}\.tar\.xz$/,
     win32: /^ffmpeg-n(\d{1,3})\.(\d{1,3})-latest-win64-gpl-shared-\d{1,3}\.\d{1,3}\.zip$/
 };
-// The builds are rolling: the version is the start of the checksum of the file, which changes with every build.
 export const FFMPEG_VERSION = /^latest-[0-9a-f]{12}$/;
 
 export function ffmpegVersionOf(sha256: string): string {
     return `latest-${sha256.slice(0, 12)}`;
 }
 
-// `asset` is the name of the file in the release of BtbN.
 export function ffmpegSpec(platform: ProgramPlatform, asset: string, sha256: string, sizeBytes: number): ToolSpec | null {
     if (!FFMPEG_ASSETS[platform].test(asset)) {
         return null;
@@ -78,13 +62,9 @@ export function ffmpegSpec(platform: ProgramPlatform, asset: string, sha256: str
     };
 }
 
-// ----- ani-cli (a script: it runs on the busybox below, and does its requests with the curl below) -----
-
 export const ANICLI_RAW_URL = 'https://raw.githubusercontent.com/pystardust/ani-cli';
-// A commit of the master branch.
 export const ANICLI_VERSION = /^[0-9a-f]{40}$/;
 
-// The script the app is made with: an update is never older than it (see aniCompatibility.ts), and it reads the same site.
 export const ANICLI_BASE_COMMIT = '8527f185a12c6b5d0247a30b2217000dd65457fe';
 export const ANICLI_BASE_SHA256 = '24ada974b567789da4ea51f9f92ec5b975b43fc0e999543f9053bcf5a628105c';
 export const ANICLI_BASE_SIZE = 31_360;
@@ -95,12 +75,8 @@ export function aniCliSpec(commit: string, sha256: string, sizeBytes: number): T
     return { id: 'anicli', version: commit, url: `${ANICLI_RAW_URL}/${commit}/ani-cli`, sha256, sizeBytes, ...RAW, executables: ['ani-cli'], entry: 'ani-cli' };
 }
 
-// ----- busybox (the shell and the small programs ani-cli calls) and curl (its requests) -----
-
 const BUSYBOX_W32_URL = 'https://frippery.org/files/busybox';
 const CURL_URL = 'https://github.com/stunnel/static-curl/releases/download/8.22.0';
-
-// ----- what is pinned: the version of each program the app was made with -----
 
 const PINNED: Record<Exclude<ProgramId, 'ffmpeg'>, Record<ProgramPlatform, ToolSpec>> = {
     ytdlp: {
@@ -112,12 +88,10 @@ const PINNED: Record<Exclude<ProgramId, 'ffmpeg'>, Record<ProgramPlatform, ToolS
         win32: denoSpec('v2.9.7', 'a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238', 42_630_221, 'win32')
     },
     anicli: {
-        // Version 5.1.8 (ANICLI_BASE_VERSION): the latest tagged release is much older.
         linux: aniCliSpec(ANICLI_BASE_COMMIT, ANICLI_BASE_SHA256, ANICLI_BASE_SIZE),
         win32: aniCliSpec(ANICLI_BASE_COMMIT, ANICLI_BASE_SHA256, ANICLI_BASE_SIZE)
     },
     busybox: {
-        // busybox.net publishes no checksums, so the hash of the file is pinned here.
         linux: {
             id: 'busybox',
             version: '1.35.0',
@@ -128,7 +102,6 @@ const PINNED: Record<Exclude<ProgramId, 'ffmpeg'>, Record<ProgramPlatform, ToolS
             executables: ['busybox'],
             entry: 'busybox'
         },
-        // busybox-w32, the 64-bit Unicode build (Windows 10 1903 or newer).
         win32: {
             id: 'busybox',
             version: 'FRP-6075-g169694ebd',
@@ -168,8 +141,6 @@ const PINNED: Record<Exclude<ProgramId, 'ffmpeg'>, Record<ProgramPlatform, ToolS
     }
 };
 
-// The version of the program the app was made with, for this system. Null for ffmpeg (it has none) and for a system the programs are not
-// made for.
 export function pinnedSpec(id: ProgramId, platform: NodeJS.Platform, arch: string): ToolSpec | null {
     const system = programPlatform(platform, arch);
     if (system === null || id === 'ffmpeg') {
@@ -178,8 +149,6 @@ export function pinnedSpec(id: ProgramId, platform: NodeJS.Platform, arch: strin
     return PINNED[id][system];
 }
 
-// Whether the text can be the version of the program (the names of the folders of the versions are made of them, so this also keeps a
-// version from being a path).
 export function isProgramVersion(id: ProgramId, version: string): boolean {
     switch (id) {
         case 'ytdlp':

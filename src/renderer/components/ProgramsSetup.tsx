@@ -11,7 +11,6 @@ interface ProgramProgressProps {
     onRetry: () => void;
 }
 
-// One program that is being downloaded: its name, a bar, what it is doing; or why it failed, with the way to try again.
 function ProgramProgress({ program, retrying, onRetry }: ProgramProgressProps) {
     const t = useTranslator();
     const { state } = program;
@@ -53,9 +52,6 @@ interface ProgramsGateProps {
     children: ReactNode;
 }
 
-// What a part of the app (the video downloader, the anime section) needs: until the programs it runs are downloaded it shows how that is going
-// (and TRY AGAIN for any that failed) instead of the part itself. A program the user gave a path for is not waited for. Nothing is shown
-// until the state of the programs is known, and on a system the programs are not made for the part is shown as it is.
 export function ProgramsGate({ area, children }: ProgramsGateProps) {
     const t = useTranslator();
     const status = useProgramsStore((state) => {

@@ -35,9 +35,6 @@ interface Chosen {
     errorKey: ReturnType<typeof mangaErrorKey> | null;
 }
 
-// A window to move a manga of the library to the same manga in another source: the sources are limited to the language of the settings (and can be one only), they
-// are searched for the title (one of them, or all of them one after the other), the user picks the manga, and what the move does to the
-// chapters is shown before it is done. It is also the way to give a manga whose extension is gone a source that works.
 export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) {
     const t = useTranslator();
     const titleId = useId();
@@ -71,7 +68,6 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
         }
     }, [sourcesStatus, loadSources]);
 
-    // The sources the manga can move to are the ones in the language of the settings (every language when none of them is in it).
     const languages = sourceLanguages(migrationSources(allSources, manga.sourceId, ALL_LANGUAGES, showAdult));
     const language = useMangaLanguage(languages);
     const sources = migrationSources(allSources, manga.sourceId, language, showAdult);

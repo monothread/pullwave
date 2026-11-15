@@ -8,7 +8,6 @@ import { useAppStore } from '../store/appStore';
 import { useProgramsStore } from '../store/programsStore';
 import { isWorking } from './programText';
 
-// What the chip of one program says, its colour and what it shows on hover.
 interface ProgramChip {
     id: ProgramId;
     text: string;
@@ -16,19 +15,14 @@ interface ProgramChip {
     title: string | null;
 }
 
-// The program the chip is about: its id, its name and how the app found it.
 interface ProgramChipSource {
     id: ProgramId;
     label: string;
     info: BinaryInfo | undefined;
 }
 
-// From this many chips on, a window narrower than 1280 pixels shows one chip that sums them up (see .binary-status__summary): three of them
-// with the clock do not fit on the line of the top bar there.
 export const SUMMARY_FROM = 2;
 
-// A program the app downloads is shown by how its download goes (a percentage, WAITING, FAILED with the reason on hover) until it is there; once
-// it is installed and runs the chip goes away (its version is in the settings). It stays for a program that does not run (MISSING).
 export function programChipOf(source: ProgramChipSource, program: ProgramInfo | null, t: Translator): ProgramChip | null {
     const { id, label, info } = source;
     const state = program !== null && !program.custom ? program.state : null;
@@ -41,14 +35,12 @@ export function programChipOf(source: ProgramChipSource, program: ProgramInfo | 
     if (state !== null && state.status === 'missing') {
         return { id, text: `${label} ${t('tools.chip.waiting')}`, tone: 'pending', title: null };
     }
-    // Not probed yet, or installed and running: nothing to say.
     if (!info || info.found) {
         return null;
     }
     return { id, text: `${label} ${t('binary.missing')}`, tone: 'bad', title: info.path };
 }
 
-// What the summary shows on hover: one line for each program, with the reason or the place after a dash when there is one.
 export function summaryTitleOf(chips: ProgramChip[]): string {
     return chips
         .map((chip) => {
@@ -57,7 +49,6 @@ export function summaryTitleOf(chips: ProgramChip[]): string {
         .join('\n');
 }
 
-// The summary is red when one of the programs failed or is missing, grey while they only wait or download.
 export function summaryToneOf(chips: ProgramChip[]): ProgramChip['tone'] {
     return chips.some((chip) => {
         return chip.tone === 'bad';
@@ -70,7 +61,6 @@ function useProgramChips(t: Translator): ProgramChip[] {
     const binaries = useAppStore((state) => {
         return state.binaries;
     });
-    // ani-cli only exists where the anime section does.
     const aniCli = useAnimeStore((state) => {
         return state.status.aniCli;
     });

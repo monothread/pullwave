@@ -4,7 +4,6 @@ import type { ResolvedStream } from './aniStream';
 
 export const STREAM_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 export const UPSTREAM_TIMEOUT_MS = 30000;
-// Streams kept open at once; the oldest is dropped when another one is opened.
 export const MAX_SESSIONS = 8;
 
 const FORWARDED_HEADERS = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
@@ -13,7 +12,6 @@ const PLAYLIST_TYPE = 'application/vnd.apple.mpegurl';
 export interface StreamSession {
     id: string;
     referer: string | null;
-    // The hosts this stream may be fetched from: the one it started at and every one its playlists point to.
     hosts: Set<string>;
 }
 
@@ -27,7 +25,6 @@ function fromBase64Url(text: string): string {
     return Buffer.from(text, 'base64url').toString('utf-8');
 }
 
-// The address the player uses for something on the remote site: the app fetches it, so the site gets the referer it wants.
 export function proxyUrl(sessionId: string, remoteUrl: string): string {
     return `${ANIME_STREAM_SCHEME}://p/${sessionId}/${toBase64Url(remoteUrl)}`;
 }
@@ -100,8 +97,6 @@ export class StreamSessions {
     }
 }
 
-// Points every address in a playlist (segments, keys, other playlists, subtitles) back at the app, resolving the relative ones
-// against the playlist's own address, and lets the session fetch from the hosts they are on.
 export function rewritePlaylist(text: string, playlistUrl: string, session: StreamSession): string {
     const rewrite = (reference: string): string => {
         let absolute: URL;
@@ -150,8 +145,6 @@ function upstreamHeaders(session: StreamSession, request: Request): Record<strin
     return headers;
 }
 
-// Serves what the player asks for on the remote site: the playlists rewritten, the rest passed through as it arrives. Only
-// streams that were opened can be asked for, and only on the hosts they use.
 export function createStreamHandler(sessions: StreamSessions, fetchRemote: StreamFetch = fetch): (request: Request) => Promise<Response> {
     return async (request) => {
         const parsed = parseProxyUrl(request.url);

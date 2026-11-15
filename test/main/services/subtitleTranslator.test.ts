@@ -22,7 +22,6 @@ function answer(texts: string[]): LlmCompletionResult {
     return { ok: true, text: JSON.stringify(texts) };
 }
 
-// A model that translates by putting the text between brackets, so what was sent can be told from what came back.
 function bracketing(): TranslatorDependencies['complete'] {
     return vi.fn(async (_system: string, user: string): Promise<LlmCompletionResult> => {
         return answer((JSON.parse(user) as string[]).map((text) => {
@@ -129,7 +128,6 @@ describe('splitIntoBatches', () => {
 
     it('cuts again a part whose lines are long enough to pass the most characters', () => {
         const long = 'x'.repeat(MAX_BATCH_CHARACTERS - 1);
-        // Two parts by the characters: [long, 'ab'] passes the limit and is cut again.
         expect(splitIntoBatches([long, 'ab', 'cd'])).toEqual([[long], ['ab'], ['cd']]);
     });
 

@@ -11,13 +11,11 @@ interface TopBarProps {
     onToggleMenu: () => void;
 }
 
-// The bar at the top of every screen: the menu, the name, the search, the downloads, the programs and the clock.
 export function TopBar({ menuOpen, onToggleMenu }: TopBarProps) {
     const t = useTranslator();
     const onBrandClick = useLogoClicks();
     return (
         <header className="app__header topbar">
-            {/* The menu and the name share the start of the bar, as wide as its end, so the search is in the middle of the window. */}
             <div className="topbar__start">
                 <button type="button" className="topbar__button topbar__menu" aria-label={t(menuOpen ? 'nav.menu.close' : 'nav.menu.open')} aria-expanded={menuOpen} aria-controls="side-nav" onClick={onToggleMenu}>
                     <span aria-hidden="true">☰</span>

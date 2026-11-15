@@ -122,7 +122,6 @@ describe('patchDebugReferer and the subtitles of the source', () => {
     it('prints the list of the subtitles last, and an empty one when the script did not keep it', () => {
         const patched = patchDebugReferer(ORIGINAL) as string;
         expect(patched.indexOf('Referer:')).toBeLessThan(patched.indexOf('Subtitle list:'));
-        // Read with a default, so a script that kept no list does not fail on an unset variable.
         expect(patched).toContain('"${pullwave_all_subs:-}"');
     });
 });
@@ -132,7 +131,6 @@ describe.skipIf(process.platform === 'win32')('patchDebugReferer and the audio o
     const MASTER = 'https://hls.example.top/v/abc/master.m3u8';
     const AUDIO = 'https://hls.example.top/v/abc/aud/a0/index.m3u8';
 
-    // Runs the debug branch the patch writes, the way the script runs it, and gives what it printed.
     const printedWith = (audioLink: string): string => {
         const patched = patchDebugReferer(ORIGINAL) as string;
         const script = [

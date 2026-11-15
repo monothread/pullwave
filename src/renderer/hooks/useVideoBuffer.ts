@@ -1,6 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react';
 
-// How long the video can wait for data before the player says it is loading, so a jump that is answered at once shows nothing.
 export const LOADING_DELAY_MS = 150;
 
 const WAIT_EVENTS = ['seeking', 'waiting'];
@@ -8,13 +7,10 @@ const READY_EVENTS = ['playing', 'seeked', 'canplay', 'emptied', 'error'];
 const BUFFER_EVENTS = ['progress', 'timeupdate', 'seeked', 'loadedmetadata', 'durationchange', 'emptied'];
 
 export interface VideoBuffer {
-    // True while the video waits for data it does not have yet (after a jump, mostly).
     loading: boolean;
-    // How far, in percent of the video, the data loaded from where it is playing goes.
     bufferedPercent: number;
 }
 
-// The end of the loaded stretch that holds the current time; 0 when the current time is not loaded.
 export function bufferedEnd(ranges: TimeRanges, currentTime: number): number {
     for (let index = 0; index < ranges.length; index += 1) {
         if (ranges.start(index) <= currentTime && ranges.end(index) >= currentTime) {
@@ -32,7 +28,6 @@ export function bufferedPercentOf(element: HTMLVideoElement): number {
     return Math.min(100, (bufferedEnd(element.buffered, element.currentTime) / duration) * 100);
 }
 
-// What the video is doing about its data: whether it is waiting for it and how much of it is already loaded.
 export function useVideoBuffer(video: RefObject<HTMLVideoElement | null>): VideoBuffer {
     const [loading, setLoading] = useState(false);
     const [bufferedPercent, setBufferedPercent] = useState(0);

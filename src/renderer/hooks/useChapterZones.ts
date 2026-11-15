@@ -2,22 +2,17 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { endZoneProgress, startZoneProgress, ZONE_ARM_BELOW, ZONE_DWELL_MS, ZONE_FULL } from '../components/chapterZones';
 
 export interface ChapterZonesOptions {
-    // The area that scrolls, and the bar that stays on top of it.
     area: () => HTMLElement | null;
     bar: () => HTMLElement | null;
     startZone: RefObject<HTMLElement | null>;
     endZone: RefObject<HTMLElement | null>;
-    // Whether the zones are there to be scrolled through (the scroll modes, with the chapter on the screen).
     enabled: boolean;
-    // Whether going through a zone switches the chapter by itself (the setting), and whether there is a chapter on the other side.
     automatic: boolean;
     hasPrevious: boolean;
     hasNext: boolean;
     onPrevious: () => void;
     onNext: () => void;
     dwellMs?: number;
-    // The chapter on the screen: what was measured in another chapter is not given for this one (until it is measured again, the zones count as
-    // out of view, so the end of the chapter that was left is not taken for the end of the one that comes).
     chapterKey?: string;
 }
 
@@ -32,8 +27,6 @@ interface MeasuredZones extends ChapterZonesState {
     chapterKey: string;
 }
 
-// How much of each zone is in view, kept up to date as the area scrolls, and the switch of chapter when a zone stays all in view for a
-// moment (only for a zone that was out of view first, and once for each chapter).
 export function useChapterZones(options: ChapterZonesOptions): ChapterZonesState {
     const { area, bar, startZone, endZone, enabled, automatic, hasPrevious, hasNext, onPrevious, onNext, dwellMs = ZONE_DWELL_MS, chapterKey = '' } = options;
     const [state, setState] = useState<MeasuredZones>({ start: 0, end: 0, chapterKey });

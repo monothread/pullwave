@@ -33,13 +33,10 @@ interface TermButtonProps {
     term: string;
     label: string;
     kind: TermKind;
-    // Whether the source has a filter that stands for the term: only then does a click search it.
     searchable: boolean;
     onSearch: (term: string, kind: TermKind) => Promise<void>;
 }
 
-// A genre, an author or an artist: a click opens the search of the source with the filter that stands for it turned on. When the source
-// has no such filter the term is only shown.
 function TermButton({ term, label, kind, searchable, onSearch }: TermButtonProps) {
     if (!searchable) {
         return <span className="manga__tag manga__tag--plain">{term}</span>;
@@ -63,7 +60,6 @@ function formatDate(milliseconds: number | null): string {
     return milliseconds === null ? '' : new Date(milliseconds).toLocaleDateString();
 }
 
-// A manga opened from the browse: what the source says about it, its chapters to pick, and what to do with them.
 export function MangaDetail() {
     const t = useTranslator();
     const selection = useMangaStore((state) => {
@@ -84,7 +80,6 @@ export function MangaDetail() {
     const addToLibrary = useMangaStore((state) => {
         return state.addToLibrary;
     });
-    // Adds the manga and, once it is in, sends its cover to the library in the menu.
     const addAndFly = async (): Promise<void> => {
         const cover = findCover();
         if (await addToLibrary()) {
@@ -178,7 +173,6 @@ export function MangaDetail() {
     const [migrating, setMigrating] = useState(false);
     const [confirmingDuplicate, setConfirmingDuplicate] = useState(false);
     const [organizing, setOrganizing] = useState(false);
-    // The incomplete chapters whose missing pages are being downloaded again.
     const [repairingIds, setRepairingIds] = useState<number[]>([]);
 
     async function repairIncomplete(chapterId: number): Promise<void> {
@@ -192,12 +186,10 @@ export function MangaDetail() {
             });
         });
     }
-    // The page each chapter was left on: read again when the reader closes (it is what the reader writes).
     const progress = useMemo(() => {
         return readerOpen ? {} : loadAllProgress();
     }, [readerOpen]);
 
-    // The order the list shows the chapters of this manga in (the reader always goes from the first to the last).
     const orderKey = selection === null ? null : mangaListKey(selection.manga.sourceId, selection.manga.remoteId);
     const [chapterOrder] = useListOrder('chapters', orderKey);
 
@@ -209,18 +201,13 @@ export function MangaDetail() {
     const currentSource = sources.find((source) => {
         return source.id === manga.sourceId;
     });
-    // The extension of the source is not installed (known only once the list of the sources was read).
     const sourceGone = sourceIsMissing(sources, sourcesStatus, manga.sourceId);
-    // Downloading and removing files are done from the library; the page of a manga opened in the browse only reads it and adds it.
     const inLibraryPage = selectionFrom === 'library';
     const saved = libraryEntry(library, manga.sourceId, manga.remoteId);
-    // The same title already in the library from another source (only matters while this one is not in it).
     const otherSources = saved === null ? otherSourceNames(libraryEntriesByTitle(library, manga.title, manga.sourceId), sources) : [];
     const missingFromLibrary = chapters.filter((chapter) => {
         return chapterState(saved, chapter.remoteId) === null;
     }).length;
-    // Only what is missing in this season is downloaded: the chapters that a download does something for, and the pages the incomplete
-    // chapters lack.
     const toDownload =
         downloadablePicks(
             saved,
@@ -232,11 +219,8 @@ export function MangaDetail() {
             return chapterState(saved, chapter.remoteId)?.status === 'incomplete';
         }).length;
     const shown = details ?? manga;
-    // The chapters of the list (the lowest number first) and the ones the reader takes, in the same order, each with its place in the
-    // library when it is there.
     const listed = withLibraryChapters(chapters, saved);
     const ordered = [...listed].sort(compareChaptersAscending);
-    // The chapters the source lists: the others are only in the library, and the source has nothing to download for them.
     const fromSource = new Set(
         chapters.map((chapter) => {
             return chapter.remoteId;
@@ -246,7 +230,6 @@ export function MangaDetail() {
         return { remoteId: chapter.remoteId, libraryChapterId: chapterState(saved, chapter.remoteId)?.id ?? null, name: chapter.name, number: chapter.number };
     });
 
-    // Which of the genres, the author and the artist the source can search with its filters.
     const searchable = (term: string, kind: TermKind): boolean => {
         return termFilters.sourceId === manga.sourceId && termFilters.status === 'ready' && activateFilter(termFilters.filters, term, kind) !== null;
     };

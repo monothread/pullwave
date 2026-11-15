@@ -12,7 +12,6 @@ import { RowLink } from './RowLink';
 import { NotFound } from './NotFound';
 
 
-// The sources whose name has the text in it (no text lists them all), by name.
 export function searchedSources(sources: readonly MangaSource[], text: string): MangaSource[] {
     const query = text.trim().toLowerCase();
     return sources
@@ -24,7 +23,6 @@ export function searchedSources(sources: readonly MangaSource[], text: string): 
         });
 }
 
-// The name of the store an address belongs to (the address itself when the store is not known).
 export function storeName(stores: readonly MangaExtensionStore[], indexUrl: string): string {
     return (
         stores.find((store) => {
@@ -37,7 +35,6 @@ interface MangaSourceIconProps {
     url: string | null;
 }
 
-// The icon of a source, served by the manga server; nothing is shown when there is none or it does not load.
 function MangaSourceIcon({ url }: MangaSourceIconProps) {
     const [failedUrl, setFailedUrl] = useState<string | null>(null);
     if (url === null || url === failedUrl) {
@@ -58,14 +55,12 @@ function MangaSourceIcon({ url }: MangaSourceIconProps) {
     );
 }
 
-// How a language is named in a list: its code, or the words for the sources that read sites in several languages.
 export function sourceLanguageLabel(language: string, t: Translator): string {
     return language === SEVERAL_LANGUAGES ? t('manga.sources.multiLanguage') : language.toUpperCase();
 }
 
 export { sourceLanguages };
 
-// The sources of the installed extensions, by language: a source is what has the mangas, so it is what is picked here.
 export function MangaSources() {
     const t = useTranslator();
     const browse = useMangaStore((state) => {
@@ -84,7 +79,6 @@ export function MangaSources() {
     const sources = listedSources(browse.sources, showAdult);
 
     const languages = sourceLanguages(sources);
-    // The language is the one of the settings (every language when nothing is in it).
     const sourceLanguage = useMangaLanguage(languages);
     const shown = searchedSources(
         sources.filter((source) => {

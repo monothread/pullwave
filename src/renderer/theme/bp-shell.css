@@ -1,13 +1,8 @@
-/* The frame of the console interface (D-127): the top bar, the menu of the sections on the left and the cover behind the screen.
-   Loaded after console.css; like it, it only reads the variables of the themes. On a window of 760 pixels or less the menu is a dock at
-   the bottom. */
-
 :root {
     --rail: 84px;
     --rail-open: 340px;
 }
 
-/* --- The grid of the screen: the top bar, the banner of an update, the menu and the page ------------------------------------------ */
 .app {
     display: grid;
     grid-template-columns: var(--rail) minmax(0, 1fr);
@@ -46,7 +41,6 @@
     margin: 0;
 }
 
-/* --- The top bar ------------------------------------------------------------------------------------------------------------------ */
 .topbar {
     display: flex;
     align-items: center;
@@ -72,14 +66,10 @@
     min-width: 0;
 }
 
-/* With room the bar is three columns, on one line from 1000 px (a screen turned to stand up is 1080 px wide): the start and the end take the same
-   width, so the search is in the middle of the window. A start or an end never gets less than its content (max-content): a wider one takes what it
-   needs, the search takes what is left (down to 160 px) and moves aside rather than covering it. */
 @media (min-width: 1000px) {
     .topbar {
         display: grid;
         grid-template-columns: minmax(max-content, 1fr) minmax(160px, 560px) minmax(max-content, 1fr);
-        /* The same room on both sides, or the middle of the bar is not the middle of the window. */
         padding-inline: 24px;
     }
 
@@ -136,12 +126,10 @@
     flex-wrap: nowrap;
 }
 
-/* The player covers the whole window, the top bar and the menu too (the windows and the notices stay above it). */
 .player {
     z-index: 150;
 }
 
-/* --- The search of the top bar ---------------------------------------------------------------------------------------------------- */
 .global-search {
     position: relative;
     flex: 1 1 320px;
@@ -218,7 +206,6 @@
     flex: none;
 }
 
-/* --- The downloads of the whole app ----------------------------------------------------------------------------------------------- */
 .downloads-indicator {
     position: relative;
 }
@@ -229,7 +216,6 @@
     box-shadow: var(--glow);
 }
 
-/* The arrow goes down and up while something downloads. */
 .downloads-indicator__button--busy .downloads-indicator__arrow {
     display: inline-block;
     animation: bp-arrow-drop 1.4s var(--bp-ease-out) infinite;
@@ -301,7 +287,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* --- The menu of the sections ----------------------------------------------------------------------------------------------------- */
 .sidenav {
     position: relative;
     z-index: 60;
@@ -347,7 +332,6 @@
     text-shadow: none;
 }
 
-/* The line on the left of the active section grows from the middle with a spring when it is chosen. */
 .sidenav .tab::before {
     content: '';
     position: absolute;
@@ -379,7 +363,6 @@
     animation: bp-hop 0.55s var(--bp-ease-spring);
 }
 
-/* The names are for the screen readers while the menu is a rail; the open menu shows them. */
 .sidenav:not(.sidenav--open) .tab__label {
     position: absolute;
     width: 1px;
@@ -389,8 +372,6 @@
     white-space: nowrap;
 }
 
-/* The gear (the last section) is at the bottom of the menu, on the same line as the other pictures, and turns when it is pointed at or
-   chosen. */
 .sidenav .tab:last-child {
     margin-top: auto;
 }
@@ -404,7 +385,6 @@
     transform: rotate(90deg);
 }
 
-/* The open menu widens over the page, with the names; the gear says its name too. */
 .sidenav--open {
     width: min(var(--rail-open), calc(100vw / var(--ui-zoom) - 40px));
     box-shadow: 18px 0 48px -18px rgba(0, 0, 0, 0.7);
@@ -424,7 +404,6 @@
     animation: bp-fade-in 0.25s ease-out backwards;
 }
 
-/* --- The cover behind the screen -------------------------------------------------------------------------------------------------- */
 .backdrop {
     position: fixed;
     inset: 0;
@@ -444,7 +423,6 @@
     animation: bp-backdrop-in 0.7s var(--bp-ease-out) backwards;
 }
 
-/* The page stays readable over the cover: the colour of the theme rises from the bottom. */
 .backdrop--shown::after {
     content: '';
     position: absolute;
@@ -468,9 +446,6 @@
     opacity: 0.22;
 }
 
-/* --- Changes of page (navigation/viewTransition.ts) -------------------------------------------------------------------------------
-   The names exist only while a change is animated (the class on <html>): the page slides, and the cover that was clicked flies to the one of
-   the next page. */
 .vt-active .app__main {
     view-transition-name: bp-page;
 }
@@ -504,7 +479,6 @@
     from { opacity: 0; transform: translateX(36px); }
 }
 
-/* --- Less room: the menu becomes a dock at the bottom, and the search goes under the name ------------------------------------------ */
 @media (max-width: 999px) {
     .topbar {
         flex-wrap: wrap;
@@ -586,7 +560,6 @@
         margin-top: 0;
     }
 
-    /* The dock is at the edge of the window: the ring of the focus is drawn inside the button so it is not cut. */
     .sidenav .tab:focus-visible {
         outline-offset: -3px;
     }

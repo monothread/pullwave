@@ -4,7 +4,6 @@ import { LibraryCard } from '../library/LibraryCard';
 import { AnimeCover } from './AnimeCover';
 import { ConfirmButton } from './ConfirmButton';
 
-// The anime the viewer opened or watched, the most recent first. Opening one goes to its series in the library when it is there, and to its episodes in the search when it is not.
 export function AnimeHistory() {
     const t = useTranslator();
     const language = useAppLanguage();

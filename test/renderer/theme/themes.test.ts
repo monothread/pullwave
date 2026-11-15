@@ -9,7 +9,6 @@ const CYBERPUNK_CSS = readFileSync(resolve(THEME_DIRECTORY, 'cyberpunk.css'), 'u
 
 type Variables = Record<string, string>;
 
-// The themes written in themes.css (cyberpunk, the default one, is the :root of cyberpunk.css).
 const LISTED = THEMES.filter((theme) => {
     return theme !== 'device' && theme !== 'cyberpunk';
 }) as Array<Exclude<ThemeName, 'device' | 'cyberpunk'>>;
@@ -102,7 +101,6 @@ describe('Sakura Dark', () => {
         expect(night['--bg']).toBe('#1c1319');
         expect(night['--cyan']).toBe('#ff8fb8');
         expect(night['--magenta']).toBe('#c9a0ff');
-        // The surfaces are darker than the text, which is the opposite of Sakura.
         expect(luminance(color(night, '--bg'))).toBeLessThan(luminance(color(night, '--text')));
         expect(luminance(color(night, '--bg'))).toBeLessThan(0.02);
         expect(luminance(color(sakura, '--bg'))).toBeGreaterThan(0.8);
@@ -119,7 +117,6 @@ describe('Neon Tokyo Light', () => {
         expect(light['--bg']).toBe('#f3f0fb');
         expect(light['--panel']).toBe('#ffffff');
         expect(light['--text']).toBe('#1a1440');
-        // The surfaces are lighter than the text, which is the opposite of Neon Tokyo.
         expect(luminance(color(light, '--bg'))).toBeGreaterThan(0.8);
         expect(luminance(color(light, '--bg'))).toBeGreaterThan(luminance(color(light, '--text')));
         expect(luminance(color(neon, '--bg'))).toBeLessThan(0.02);
@@ -180,7 +177,6 @@ describe('Neon Tokyo Light', () => {
 });
 
 describe('the neon variations of the cyberpunk theme', () => {
-    // The two colors that paint each variation (--cyan is the main accent, --magenta the second), its background and the color of its glow.
     const VARIATIONS = [
         { theme: 'neon-tokyo', main: '#ff2e97', second: '#3d94ff', bg: '#070b1f', glow: '255, 46, 151' },
         { theme: 'acid-rain', main: '#b6ff00', second: '#00e5ff', bg: '#030a08', glow: '182, 255, 0' },
@@ -210,7 +206,6 @@ describe('the neon variations of the cyberpunk theme', () => {
         expect(variables['--magenta']).toBe(second);
         expect(variables['--bg']).toBe(bg);
         expect(variables['color-scheme']).toBe('dark');
-        // A neon theme sits on a very dark background, darker than a tenth of the luminance of its main accent.
         expect(luminance(color(variables, '--bg'))).toBeLessThan(0.02);
         expect(luminance(color(variables, '--bg'))).toBeLessThan(luminance(main) / 10);
     });

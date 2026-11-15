@@ -25,7 +25,6 @@ export class TrayManager {
         return this.queue;
     }
 
-    // The menu of an existing tray icon is fixed when it is created, so a new language needs a new icon.
     rebuild(): Promise<void> {
         this.queue = this.queue.then(() => {
             if (this.tray === null) {

@@ -1,6 +1,3 @@
-// A change of theme opens as a circle from the place where the user chose it, with the View Transitions of Chromium. Where they do not
-// exist, the theme just changes.
-
 export const THEME_REVEAL_CLASS = 'vt-theme';
 
 interface ViewTransitionLike {
@@ -11,7 +8,6 @@ type StartViewTransition = (update: () => void) => ViewTransitionLike;
 
 let lastPoint = { x: 0.5, y: 0.5 };
 
-// The place of the last press, as a share of the window (the circle opens from there).
 export function rememberPoint(clientX: number, clientY: number): void {
     const width = window.innerWidth > 0 ? window.innerWidth : 1;
     const height = window.innerHeight > 0 ? window.innerHeight : 1;
@@ -37,7 +33,6 @@ function starter(): StartViewTransition | null {
     return typeof start === 'function' ? start.bind(document) : null;
 }
 
-// Runs `update` (which changes the theme) inside a transition that opens a circle; without the API it just runs it.
 export function revealTheme(update: () => void): void {
     const start = starter();
     if (start === null) {

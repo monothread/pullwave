@@ -6,7 +6,6 @@ export type RunFfmpeg = (binary: string, args: string[]) => Promise<boolean>;
 
 export interface MergePartsOptions {
     ffmpegBinary: string;
-    // The parts of one recording, in the order they were recorded.
     paths: string[];
     runFfmpeg?: RunFfmpeg;
     fileExists?: (path: string) => boolean;
@@ -15,7 +14,6 @@ export interface MergePartsOptions {
     renameFile?: (from: string, to: string) => void;
 }
 
-// The concat demuxer reads one `file '<path>'` line per part; a quote inside a path is written as `'\''`.
 export function buildConcatList(paths: string[]): string {
     return paths
         .map((path) => {
@@ -24,9 +22,6 @@ export function buildConcatList(paths: string[]): string {
         .join('\n');
 }
 
-// A live stream that dropped and came back is recorded in several files. Copying them (no re-encoding) one after the
-// other into the first file leaves a single recording. Returns the path of that file; null when it could not be merged,
-// in which case every part is left untouched.
 export async function mergeParts(options: MergePartsOptions): Promise<string | null> {
     const runFfmpeg = options.runFfmpeg ?? runFfmpegQuietly;
     const fileExists = options.fileExists ?? existsSync;

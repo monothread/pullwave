@@ -4,10 +4,8 @@ import type { MangaDb } from './mangaDb';
 
 export interface MangaRepairDependencies {
     db: Pick<MangaDb, 'getChapter' | 'getManga' | 'chaptersOf' | 'markDone' | 'markIncomplete'>;
-    // Downloads again the missing pages into the file of the chapter.
     repair: (options: ChapterRepairOptions, signal: AbortSignal) => Promise<ChapterRunResult<ChapterDownloadResult>>;
     pathExists: (path: string) => boolean;
-    // Only the manga of the repaired chapter changed: the pages missing after "download missing" are repaired one chapter after another.
     onLibraryEntryChanged: (mangaId: number) => void;
 }
 
@@ -15,8 +13,6 @@ function invalid(message: string): MangaResult<never> {
     return { ok: false, error: { code: 'INVALID_REQUEST', message } };
 }
 
-// Downloads again the pages an incomplete chapter lacks, one chapter at a time. The chapter becomes whole (downloaded) when none is
-// lacking any more, and stays incomplete otherwise.
 export class MangaRepair {
     private readonly running = new Set<number>();
     private readonly runs = new Set<Promise<unknown>>();
@@ -24,8 +20,6 @@ export class MangaRepair {
 
     constructor(private readonly deps: MangaRepairDependencies) {}
 
-    // Downloads again the missing pages of every incomplete chapter of these mangas, one chapter after the other. A chapter that cannot
-    // be repaired stays incomplete and the next one is tried.
     async repairMissing(mangaIds: readonly number[]): Promise<void> {
         const incomplete = mangaIds.flatMap((mangaId) => {
             return [...this.deps.db.chaptersOf(mangaId)]
@@ -42,7 +36,6 @@ export class MangaRepair {
         }
     }
 
-    // Ends the downloads that are going on (their work folders are deleted) and refuses new ones; done when the app closes.
     async shutdown(): Promise<void> {
         this.controller.abort();
         await Promise.allSettled([...this.runs]);

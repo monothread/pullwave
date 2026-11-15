@@ -3,10 +3,8 @@ import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries, MAX_SEASON } from '@shared/series';
 import { codedErrorReport, type ErrorReport } from './errorReport';
 
-// An episode is only offered to resume when a bit was watched and it is not about to end.
 export const MIN_RESUME_SECONDS = 5;
 export const END_MARGIN_SECONDS = 30;
-// Past this share of the episode it counts as watched.
 export const WATCHED_RATIO = 0.75;
 
 const ERROR_KEYS: Record<AniErrorCode, MessageKey> = {
@@ -35,7 +33,6 @@ export function animeErrorKey(code: AniErrorCode): MessageKey {
     return ERROR_KEYS[code];
 }
 
-// An error of the anime section, in words for the user and with what ani-cli (or the system) reported.
 export function animeErrorReport(t: Translator, error: AniError): ErrorReport {
     return codedErrorReport(t(animeErrorKey(error.code)), error, error.raw);
 }
@@ -44,7 +41,6 @@ export function animeStatusKey(status: AnimeEpisodeStatus | AnimeJob['status']):
     return STATUS_KEYS[status];
 }
 
-// Where to resume an episode, or null to start it from the beginning.
 export function resumePosition(episode: AnimeEpisodeRecord): number | null {
     const { positionSeconds, durationSeconds, watched } = episode;
     if (watched || positionSeconds < MIN_RESUME_SECONDS) {
@@ -56,20 +52,17 @@ export function resumePosition(episode: AnimeEpisodeRecord): number | null {
     return positionSeconds;
 }
 
-// An episode to play next, and the anime of the library it belongs to (the season after or before the one being watched, at the edges).
 export interface PlayableEpisode {
     anime: LibraryAnime;
     episode: AnimeEpisodeRecord;
 }
 
-// The downloaded episodes of the anime, in reading order.
 function downloadedEpisodes(anime: LibraryAnime): AnimeEpisodeRecord[] {
     return anime.episodes.filter((episode) => {
         return episode.status === 'done';
     });
 }
 
-// The seasons of the series of the anime, in the order of the series.
 function seasonsOfSeries(library: readonly LibraryAnime[], anime: LibraryAnime): LibraryAnime[] {
     if (anime.series === null || anime.season === null) {
         return [anime];
@@ -84,8 +77,6 @@ function seasonsOfSeries(library: readonly LibraryAnime[], anime: LibraryAnime):
         });
 }
 
-// The episode that comes after (1) or before (-1) the current one, if it is already downloaded. At the end of a season it is the first (or
-// last) downloaded episode of the next (or previous) season of the series that has one.
 function adjacentDownloadedEpisode(library: readonly LibraryAnime[], anime: LibraryAnime, current: AnimeEpisodeRecord, direction: 1 | -1): PlayableEpisode | null {
     const position = anime.episodes.findIndex((episode) => {
         return episode.id === current.id;
@@ -112,17 +103,14 @@ function adjacentDownloadedEpisode(library: readonly LibraryAnime[], anime: Libr
     return null;
 }
 
-// The episode that follows in the library, if it is already downloaded.
 export function nextDownloadedEpisode(library: readonly LibraryAnime[], anime: LibraryAnime, current: AnimeEpisodeRecord): PlayableEpisode | null {
     return adjacentDownloadedEpisode(library, anime, current, 1);
 }
 
-// The episode that comes before in the library, if it is already downloaded.
 export function previousDownloadedEpisode(library: readonly LibraryAnime[], anime: LibraryAnime, current: AnimeEpisodeRecord): PlayableEpisode | null {
     return adjacentDownloadedEpisode(library, anime, current, -1);
 }
 
-// The episode that follows `current` in the list a source gives (in the order it gives them), or null for the last one and for one that is not in it.
 export function nextListedEpisode(episodes: readonly string[], current: string): string | null {
     const position = episodes.indexOf(current);
     return position === -1 ? null : (episodes[position + 1] ?? null);
@@ -138,7 +126,6 @@ export function downloadedCount(anime: LibraryAnime): number {
     }).length;
 }
 
-// The names of the series the library has, each once, in alphabetical order.
 export function seriesNames(library: readonly LibraryAnime[]): string[] {
     const names = new Map<string, string>();
     library.forEach((anime) => {
@@ -149,23 +136,16 @@ export function seriesNames(library: readonly LibraryAnime[]): string[] {
     return [...names.values()].sort(compareNames);
 }
 
-// The label of an anime inside its series: the name the user gave it, otherwise "SEASON N" from its place in the series (the first
-// one for an anime that was never joined to a series).
 export function seasonLabel(anime: LibraryAnime, t: Translator): string {
     return anime.seasonName ?? t('anime.series.season', { number: anime.season ?? 1 });
 }
 
-// One card of the library: a series with its seasons in order. Every anime is in one: an anime that was never joined to a series
-// is the only season of a series with its own title.
 export interface LibraryGroup {
     key: string;
-    // The name of the series.
     series: string;
     entries: LibraryAnime[];
 }
 
-// What is wrong with a downloaded episode: its video has no audio, or its file is not on the disk (which is told first, as the video
-// cannot be looked at).
 export type LibraryProblemKind = 'no-audio' | 'file-missing' | 'unreadable';
 
 export interface LibraryProblem {
@@ -176,15 +156,12 @@ export interface LibraryProblem {
     kind: LibraryProblemKind;
 }
 
-// What the check of the audio of the library found: how it went, how many downloaded episodes the library has (none tells an empty library from
-// one with no problem), and every downloaded episode that has a problem now.
 export interface AudioReport {
     summary: AnimeAudioCheckSummary;
     downloaded: number;
     problems: LibraryProblem[];
 }
 
-// How many episodes of the library are downloaded.
 export function downloadedEpisodeCount(library: readonly LibraryAnime[]): number {
     return library.reduce((total, anime) => {
         return (
@@ -196,14 +173,10 @@ export function downloadedEpisodeCount(library: readonly LibraryAnime[]): number
     }, 0);
 }
 
-// What can be done again for a problem: the video of one with no audio, or whose file is gone, is downloaded again; one that could not be read
-// is repaired (a download again would give the same video).
 export function isRepairable(problem: LibraryProblem): boolean {
     return problem.kind === 'unreadable';
 }
 
-// The downloaded episodes of the library that have a problem, anime by anime, in the order the library has them. `unreadableIds` are the
-// episodes the last check could not read: they count when the file is there and nothing else is known to be wrong with them.
 export function libraryProblems(library: readonly LibraryAnime[], unreadableIds: readonly number[] = []): LibraryProblem[] {
     return library.flatMap((anime) => {
         return anime.episodes.flatMap((episode): LibraryProblem[] => {
@@ -226,9 +199,6 @@ function problemKind(episode: AnimeEpisodeRecord, unreadableIds: readonly number
     return unreadableIds.includes(episode.id) ? 'unreadable' : null;
 }
 
-// Joins the animes of the library that are seasons of one series (the same name, whatever the case or the accents); an anime that
-// has no series is a series of its own, with its title as name. The cards are in alphabetical order and the seasons of a series by
-// their place in it.
 export function groupLibrary(library: readonly LibraryAnime[]): LibraryGroup[] {
     const groups: LibraryGroup[] = [];
     const bySeries = new Map<string, LibraryGroup>();
@@ -257,12 +227,10 @@ export function groupLibrary(library: readonly LibraryAnime[]): LibraryGroup[] {
     });
 }
 
-// Alphabetical order for names: no matter the case or the accents, and numbers by their value ("Naruto 2" before "Naruto 10").
 export function compareNames(first: string, second: string): number {
     return first.localeCompare(second, undefined, { sensitivity: 'base', numeric: true });
 }
 
-// The anime of the library that has this title, downloaded or not.
 export function libraryEntry(library: readonly LibraryAnime[], title: string): LibraryAnime | null {
     return (
         library.find((candidate) => {
@@ -271,7 +239,6 @@ export function libraryEntry(library: readonly LibraryAnime[], title: string): L
     );
 }
 
-// The anime of the library that has this title, when at least one of its episodes is downloaded.
 export function downloadedAnime(library: readonly LibraryAnime[], title: string): LibraryAnime | null {
     const found = library.find((candidate) => {
         return candidate.title === title;
@@ -283,22 +250,17 @@ function foldText(text: string): string {
     return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
 
-// Whether a title matches what was typed in the search of the library: no matter the case or the accents, and an empty search
-// matches everything.
 export function matchesSearch(title: string, search: string): boolean {
     const wanted = foldText(search.trim());
     return wanted.length === 0 || foldText(title).includes(wanted);
 }
 
-// The downloads that are happening or waiting: what the button of the downloads screen counts.
 export function activeJobCount(jobs: readonly AnimeJob[]): number {
     return jobs.filter((job) => {
         return job.status === 'queued' || job.status === 'running';
     }).length;
 }
 
-// The entries of a list in the order they come, split by the day (of the computer) of the time each one has: `day` is the start of that
-// day, in milliseconds.
 export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => number): Array<{ day: number; entries: T[] }> {
     const groups: Array<{ day: number; entries: T[] }> = [];
     entries.forEach((entry) => {
@@ -314,30 +276,25 @@ export function groupByDay<T>(entries: readonly T[], timeOf: (entry: T) => numbe
     return groups;
 }
 
-// The start of the day (of the computer) of a time, in milliseconds.
 export function startOfDay(time: number): number {
     const date = new Date(time);
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-// Whether the check for new episodes put the episode in the library today.
 export function isNewEpisode(episode: Pick<AnimeEpisodeRecord, 'addedAt'>, now: number = Date.now()): boolean {
     return episode.addedAt !== null && startOfDay(episode.addedAt) === startOfDay(now);
 }
 
-// How many episodes of the anime got into the library today.
 export function newEpisodeCount(anime: Pick<LibraryAnime, 'episodes'>, now: number = Date.now()): number {
     return anime.episodes.filter((episode) => {
         return isNewEpisode(episode, now);
     }).length;
 }
 
-// The order after the last one a series uses (the one offered when the order wanted is taken).
 export function nextFreeOrder(used: readonly number[]): number {
     return Math.max(0, ...used) + 1;
 }
 
-// The order to put in the field for a series: the one wanted, or the next free one when the series uses it already (and there is one).
 export function orderFor(used: readonly number[], wanted: number): number {
     const next = nextFreeOrder(used);
     return used.includes(wanted) && next <= MAX_SEASON ? next : wanted;

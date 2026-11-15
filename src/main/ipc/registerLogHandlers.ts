@@ -3,7 +3,6 @@ import { isLogSource, type LogBatch, type LogLine, type LogSource } from '@share
 import { MAX_LOG_LINES, type LogHub } from '../services/logHub';
 import type { IpcMainLike } from './registerHandlers';
 
-// The new lines are sent to the window together, at most this often: a program that writes many lines does not flood it.
 export const LOG_BATCH_MS = 150;
 
 export interface LogHandlerDependencies {
@@ -13,12 +12,9 @@ export interface LogHandlerDependencies {
 }
 
 export interface LogWatchers {
-    // Stops sending lines of every program (the page of the window was loaded again: what watched them is gone).
     stopAll: () => void;
 }
 
-// The window of the logs: it reads what a program's log holds, empties it, and, while it is open, gets the new lines of the programs it
-// shows. Nothing is sent for a program no window watches.
 export function registerLogHandlers(ipcMain: IpcMainLike, deps: LogHandlerDependencies): LogWatchers {
     const watched = new Set<LogSource>();
     const pending = new Map<LogSource, LogLine[]>();
@@ -35,7 +31,6 @@ export function registerLogHandlers(ipcMain: IpcMainLike, deps: LogHandlerDepend
     const queue = (source: LogSource, line: LogLine): void => {
         const lines = pending.get(source) ?? [];
         lines.push(line);
-        // A window that does not take the lines (it hangs) holds no more of them than the log itself.
         if (lines.length > MAX_LOG_LINES) {
             lines.splice(0, lines.length - MAX_LOG_LINES);
         }

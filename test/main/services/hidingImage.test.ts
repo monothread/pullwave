@@ -1,6 +1,5 @@
 import { imageHeaderLength, MAX_IMAGE_HEADER_BYTES } from '@main/services/hidingImage';
 
-// Built chunk by chunk so that the length of every part is right whatever the picture is: signature, IHDR (1x1), IDAT and IEND.
 function chunk(type: string, data: Uint8Array): Buffer {
     const header = Buffer.alloc(8);
     header.writeUInt32BE(data.length, 0);
@@ -10,7 +9,6 @@ function chunk(type: string, data: Uint8Array): Buffer {
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PICTURE = Buffer.concat([SIGNATURE, chunk('IHDR', Buffer.alloc(13, 1)), chunk('IDAT', Buffer.alloc(13, 2)), chunk('IEND', Buffer.alloc(0))]);
-// A piece of transport stream: the sync byte 0x47 every 188 bytes.
 const VIDEO = Buffer.concat(
     Array.from({ length: 4 }, (_value, index) => {
         return Buffer.concat([Buffer.from([0x47]), Buffer.alloc(187, index + 1)]);

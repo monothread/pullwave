@@ -17,8 +17,6 @@ export interface MediaProbe {
     kind: CutMediaKind;
 }
 
-// What ffmpeg says when it is given only the input (it ends with an error for having no output, which is expected): how long the file is
-// and whether it is a video (a picture on the cover of an audio file is not a video). Null when it has no duration or nothing to play.
 export function parseMediaProbe(stderr: string): MediaProbe | null {
     const duration = DURATION.exec(stderr);
     if (!duration) {
@@ -34,7 +32,6 @@ export function parseMediaProbe(stderr: string): MediaProbe | null {
     return { durationSeconds: seconds(duration[1], duration[2], duration[3]), kind: videos.length > 0 ? 'video' : 'audio' };
 }
 
-// How far into the output ffmpeg is, from what it printed (it rewrites a line with `time=` as it works): the last one.
 export function parseProgressSeconds(output: string): number | null {
     const last = [...output.matchAll(PROGRESS_TIME)].at(-1);
     return last ? seconds(last[1], last[2], last[3]) : null;
@@ -46,9 +43,7 @@ export function mediaOf(path: string, probe: MediaProbe): CutMedia {
 }
 
 export interface OutputFormat {
-    // With the dot.
     extension: string;
-    // Whether the picture of a video (or the cover of an audio file) is left out.
     dropVideo: boolean;
     codecArgs: string[];
 }
@@ -73,9 +68,6 @@ const AUDIO_CODECS: Record<string, string[]> = {
     '.wav': ['-c:a', 'pcm_s16le']
 };
 
-// The format of the parts. A cut is always re-encoded, so it starts on the exact moment (copying would start on the keyframe before it):
-// a part keeps the format of the file, with the encoder that fits it. A format that is not listed is left to the encoders ffmpeg chooses
-// for it. A video turned into audio takes the audio format of the settings.
 export function outputFormat(media: Pick<CutMedia, 'extension' | 'kind'>, audioOnly: boolean, audioFormat: AudioFormat): OutputFormat {
     if (media.kind === 'video' && audioOnly) {
         const extension = `.${audioFormat}`;
@@ -93,12 +85,9 @@ export interface CutCommand {
     start: number;
     end: number;
     format: OutputFormat;
-    // How many threads the encoder may use: fewer than the computer has, so the window keeps a core to draw its animations.
     threads: number;
 }
 
-// The seek goes before the input (ffmpeg jumps to the keyframe before it and, since the part is re-encoded, throws away what comes before
-// the start), the length after it. `-n` never writes over a file.
 export function buildCutArgs(command: CutCommand): string[] {
     return [
         '-hide_banner',
@@ -121,7 +110,6 @@ export function buildCutArgs(command: CutCommand): string[] {
     ];
 }
 
-// 65 seconds is "1m05s" and 3725 is "1h02m05s" (no colons: a name of a file on Windows cannot have them).
 export function clockForName(totalSeconds: number): string {
     const whole = Math.floor(totalSeconds);
     const hours = Math.floor(whole / 3600);
@@ -130,13 +118,11 @@ export function clockForName(totalSeconds: number): string {
     return hours > 0 ? `${hours}h${String(minutes).padStart(2, '0')}m${rest}s` : `${minutes}m${rest}s`;
 }
 
-// "<name> - 02 (0m10s-0m14s)<extension>": the number has as many digits as the biggest one needs, at least two.
 export function partFileName(name: string, index: number, total: number, start: number, end: number, extension: string): string {
     const digits = Math.max(2, String(total).length);
     return `${name} - ${String(index + 1).padStart(digits, '0')} (${clockForName(start)}-${clockForName(end)})${extension}`;
 }
 
-// A name for a folder or a file: no separators, no characters the systems do not accept, no dots or blanks at the ends.
 export function safeName(name: string): string {
     const cleaned = Array.from(name, (character) => {
         return character.charCodeAt(0) < 32 ? '_' : character;
@@ -149,7 +135,6 @@ export function safeName(name: string): string {
     return cleaned.length > 0 ? cleaned.slice(0, 120) : 'cut';
 }
 
-// The path itself when it is free; otherwise the same with " (2)", " (3)"... before the extension.
 export function freePath(path: string, exists: (candidate: string) => boolean): string {
     if (!exists(path)) {
         return path;

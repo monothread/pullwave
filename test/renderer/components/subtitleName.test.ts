@@ -3,7 +3,6 @@ import { cleanSubtitleName, subtitleDisplayName, subtitleDisplayNames } from '@r
 
 const LANGUAGES: readonly LanguageCode[] = ['en', 'pt', 'es', 'ja', 'zh'];
 
-// The names the source wrote for one anime, and how each language of the app writes them.
 const REAL_NAMES: ReadonlyArray<readonly [string, Record<LanguageCode, string>]> = [
     ['Arabic', { en: 'Arabic', pt: 'Árabe', es: 'Árabe', ja: 'アラビア語', zh: '阿拉伯语' }],
     ['English', { en: 'English', pt: 'Inglês', es: 'Inglés', ja: '英語', zh: '英语' }],
@@ -82,8 +81,6 @@ describe('subtitleDisplayName', () => {
     });
 });
 
-// The names other sources write, "Language - Variant", with the tags of the subtitles for the deaf (SDH), the closed captions (CC) and the
-// forced ones, and how each language of the app writes them.
 const DASHED_NAMES: ReadonlyArray<readonly [string, Record<LanguageCode, string>]> = [
     ['Portuguese - Brazilian', { en: 'Portuguese (Brazil)', pt: 'Português (Brasil)', es: 'Portugués (Brasil)', ja: 'ポルトガル語 (ブラジル)', zh: '葡萄牙语（巴西）' }],
     [

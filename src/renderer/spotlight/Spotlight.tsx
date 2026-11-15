@@ -3,14 +3,11 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useBackdropStore } from '../store/backdropStore';
 import { parallaxOf } from './parallax';
 
-// How long a highlight stays before the next one comes by itself.
 export const SPOTLIGHT_ROTATE_MS = 5000;
-// How long the change from one highlight to the next lasts: the one that leaves fades and slides away while the new one comes in.
 export const SPOTLIGHT_SLIDE_MS = 700;
 
 export interface SpotlightAction {
     label: string;
-    // What the screen readers and the tests call the button, when the label alone does not say what it is about.
     ariaLabel?: string;
     onClick: () => void;
 }
@@ -21,9 +18,7 @@ export interface SpotlightSlide {
     title: string;
     meta: string;
     art: ReactNode;
-    // The cover, behind the slide and behind the screen.
     imageUrl: string | null;
-    // How far it went, from 0 to 1; null draws no bar.
     progress: number | null;
     primary: SpotlightAction;
     secondary?: SpotlightAction;
@@ -34,7 +29,6 @@ interface SpotlightProps {
     label: string;
 }
 
-// The index `step` places away, going round at the ends.
 export function slideAfter(index: number, step: number, count: number): number {
     if (count === 0) {
         return 0;
@@ -46,7 +40,6 @@ function imageStyle(url: string | null): CSSProperties | undefined {
     return url === null ? undefined : ({ '--hero-image': `url("${url.replace(/"/g, '%22')}")` } as CSSProperties);
 }
 
-// Which way the slides go: forward, the new one comes from the right; back, from the left.
 export type SlideDirection = 'forward' | 'back';
 
 interface Leaving {
@@ -61,7 +54,6 @@ function percentOf(progress: number): string {
 interface SlideViewProps {
     slide: SpotlightSlide;
     label: string;
-    // The slide that is going away: drawn under the new one for the eye only, with no button to press.
     leaving?: SlideDirection;
     entering?: SlideDirection;
 }
@@ -103,9 +95,6 @@ function SlideView({ slide, label, leaving, entering }: SlideViewProps) {
     );
 }
 
-// The carousel of the highlights at the top of the home screen and of the libraries, as on the screen of a console: one title big over its
-// cover, its buttons, and the next one by itself every five seconds, always (an arrow or a dot shows another one and the five seconds start
-// again from it), with the one that leaves fading away under the one that comes. The cover of the one shown is behind the whole screen.
 export function Spotlight({ slides, label }: SpotlightProps) {
     const t = useTranslator();
     const [index, setIndex] = useState(0);
@@ -119,7 +108,6 @@ export function Spotlight({ slides, label }: SpotlightProps) {
 
     const position = Math.min(index, Math.max(count - 1, 0));
 
-    // Shows another slide: the one shown leaves and the new one comes in from the side it is on.
     const goTo = (next: number, direction: SlideDirection): void => {
         if (next === position || current === undefined) {
             return;
@@ -129,7 +117,6 @@ export function Spotlight({ slides, label }: SpotlightProps) {
         setIndex(next);
     };
 
-    // The timer only starts again when the slide changes, not each time the screen around is drawn again (a download going on).
     const goToRef = useRef(goTo);
     useEffect(() => {
         goToRef.current = goTo;
@@ -146,7 +133,6 @@ export function Spotlight({ slides, label }: SpotlightProps) {
         };
     }, [count, position]);
 
-    // The slide that left is taken away once the change is over.
     useEffect(() => {
         if (leaving === null) {
             return undefined;

@@ -35,9 +35,6 @@ function discardPartialCopy(userDataDir: string, files: MigrationFiles): void {
     }
 }
 
-// The data folder is named after the package, so the rename to Pullwave would otherwise start the app with empty
-// settings and history. The old folder is copied, never moved: it stays as a backup. A copy that fails halfway is
-// removed so that the next start tries again. Returns true when it copied.
 export function migrateLegacyUserData(appDataDir: string, userDataDir: string, files: MigrationFiles = DEFAULT_FILES): boolean {
     const legacyDir = join(appDataDir, LEGACY_DATA_DIR_NAME);
     if (legacyDir === userDataDir || files.exists(userDataDir) || !files.exists(legacyDir)) {

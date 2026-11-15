@@ -5,20 +5,14 @@ import type { LibraryManga, MangaChapterRecord, MangaMigrationFailure, MangaMigr
 import { isInsideDirectory, removeEmptyDirectories } from '../animeFiles';
 import type { MangaDb } from './mangaDb';
 
-// What the migration does to the disk (the tests replace it).
 export interface MangaMigrationFileSystem {
-    // The size of a file, or null when it is not there (or is not a file).
     size: (path: string) => number | null;
     exists: (path: string) => boolean;
-    // Whether the path is a folder.
     isDirectory: (path: string) => boolean;
-    // The files inside a folder, with the folders in it, as paths relative to it (using `/`).
     listFiles: (directory: string) => string[];
     makeDirectory: (path: string) => void;
-    // Copies a file; it fails when the destination is already there.
     copy: (from: string, to: string) => Promise<void>;
     removeFile: (path: string) => void;
-    // Removes a folder only when nothing is left in it (it fails otherwise).
     removeEmptyDirectory: (path: string) => void;
 }
 
@@ -55,7 +49,6 @@ export const defaultMangaMigrationFileSystem: MangaMigrationFileSystem = {
         mkdirSync(path, { recursive: true });
     },
     copy: (from, to) => {
-        // Large files are copied without holding the rest of the app.
         return new Promise((resolve, reject) => {
             setImmediate(() => {
                 try {
@@ -79,10 +72,8 @@ export interface MangaMigrationDependencies {
     db: Pick<MangaDb, 'list' | 'relinkChapters'>;
     files?: MangaMigrationFileSystem;
     platform: NodeJS.Platform;
-    // The folder the mangas are in now, and the one they are moved to.
     currentDirectory: string;
     newDirectory: string;
-    // Saves the new folder in the settings.
     saveDirectory: (directory: string) => void;
     onProgress: (progress: MangaMigrationProgress) => void;
 }
@@ -99,7 +90,6 @@ interface PlannedChapter {
     oldPath: string;
     oldSizeBytes: number | null;
     newPath: string;
-    // The old folder of the manga, which goes when nothing is left in it.
     oldMangaFolder: string;
     files: PlannedFile[];
 }
@@ -108,7 +98,6 @@ function pathFor(platform: NodeJS.Platform): typeof posix {
     return platform === 'win32' ? win32 : posix;
 }
 
-// The files that make a chapter: its CBZ, or every file in its folder of images.
 function filesOfChapter(oldPath: string, newPath: string, files: MangaMigrationFileSystem, platform: NodeJS.Platform): PlannedFile[] {
     const path = pathFor(platform);
     if (!files.isDirectory(oldPath)) {
@@ -120,8 +109,6 @@ function filesOfChapter(oldPath: string, newPath: string, files: MangaMigrationF
     });
 }
 
-// What has to be moved: every downloaded chapter that is on the disk inside the folder of the library, to the same place (the folder of
-// its manga, the name of the chapter) inside the new folder. A chapter whose file is gone, or is somewhere else, stays as it is.
 function planChapters(library: readonly LibraryManga[], dependencies: MangaMigrationDependencies, files: MangaMigrationFileSystem): PlannedChapter[] {
     const { platform, currentDirectory, newDirectory } = dependencies;
     const path = pathFor(platform);
@@ -138,7 +125,6 @@ function planChapters(library: readonly LibraryManga[], dependencies: MangaMigra
     });
 }
 
-// A file that is already in the new folder, or that two chapters would be copied to, is in the way: nothing is overwritten.
 function hasConflict(chapters: readonly PlannedChapter[], files: MangaMigrationFileSystem): boolean {
     const destinations = new Set<string>();
     return chapters
@@ -154,7 +140,6 @@ function hasConflict(chapters: readonly PlannedChapter[], files: MangaMigrationF
         });
 }
 
-// The folders a new file needs that are not there yet, the deepest first.
 function missingFolders(directory: string, files: MangaMigrationFileSystem, platform: NodeJS.Platform): string[] {
     const missing: string[] = [];
     let current = directory;
@@ -172,7 +157,6 @@ function byDepth(folders: Iterable<string>): string[] {
     });
 }
 
-// What was copied is removed again, and so are the folders that were made for it.
 function undoCopy(copied: readonly string[], created: ReadonlySet<string>, files: MangaMigrationFileSystem): void {
     copied.forEach((file) => {
         try {
@@ -190,7 +174,6 @@ function undoCopy(copied: readonly string[], created: ReadonlySet<string>, files
     });
 }
 
-// Every copy has to be there with the size of the original.
 function copiesAreComplete(chapters: readonly PlannedChapter[], files: MangaMigrationFileSystem): boolean {
     return chapters
         .flatMap((chapter) => {
@@ -202,7 +185,6 @@ function copiesAreComplete(chapters: readonly PlannedChapter[], files: MangaMigr
         });
 }
 
-// The size of a chapter that was moved: the file, or everything in its folder.
 function sizeOfMoved(chapter: PlannedChapter, files: MangaMigrationFileSystem): number | null {
     const sizes = chapter.files.map((file) => {
         return files.size(file.to);
@@ -216,15 +198,12 @@ function sizeOfMoved(chapter: PlannedChapter, files: MangaMigrationFileSystem): 
         : null;
 }
 
-// The folders that are left empty once the old files are gone: the folder of each chapter that was a folder, the one of its manga,
-// and the old folder of the library itself.
 function foldersToClean(chapters: readonly PlannedChapter[], files: MangaMigrationFileSystem, dependencies: MangaMigrationDependencies): string[] {
     const path = pathFor(dependencies.platform);
     const folders = new Set<string>();
     chapters.forEach((chapter) => {
         folders.add(chapter.oldMangaFolder);
         if (files.isDirectory(chapter.oldPath)) {
-            // The folders inside a chapter that was a folder of images (and the chapter itself).
             chapter.files.forEach((file) => {
                 let current = path.dirname(file.from);
                 while (path.resolve(current) !== path.resolve(chapter.oldMangaFolder) && isInsideDirectory(current, chapter.oldPath, dependencies.platform)) {
@@ -243,9 +222,6 @@ function foldersToClean(chapters: readonly PlannedChapter[], files: MangaMigrati
     ];
 }
 
-// Moves the downloaded chapters to a new folder, safely: the files are copied, each copy is checked against the original, the library
-// and the settings are pointed to the copies and only then are the old files removed (and the folders left empty). If anything fails
-// before that, the copies are removed and nothing changes.
 export async function migrateMangaFolder(dependencies: MangaMigrationDependencies): Promise<MangaMigrationOutcome> {
     const { db, platform, currentDirectory, newDirectory } = dependencies;
     const files = dependencies.files ?? defaultMangaMigrationFileSystem;
@@ -304,7 +280,6 @@ export async function migrateMangaFolder(dependencies: MangaMigrationDependencie
     return { ok: true, chapters: chapters.length, files: plan.length };
 }
 
-// The old files go, one by one (one that cannot be removed is left where it is), then the folders that have nothing left in them.
 function removeOldFiles(plan: readonly PlannedFile[], folders: readonly string[], files: MangaMigrationFileSystem): void {
     plan.forEach((file) => {
         try {

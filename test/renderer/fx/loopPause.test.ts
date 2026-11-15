@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { isWindowMinimized, OFFSCREEN_ATTRIBUTE, setWindowMinimized, settleLoops, watchNewAnimations } from '@renderer/fx/loopPause';
 
-// An animation as the page gives it: on an element, looping forever or playing a number of times, running or paused.
 interface FakeAnimation {
     effect: { getTiming: () => { iterations: number }; target: Element | null } | null;
     playState: AnimationPlayState;
@@ -28,7 +27,6 @@ function animation(target: Element | null, iterations: number, playState: Animat
     return fake;
 }
 
-// The animations the page lists: all of them for the document, and for an element those on it and inside it.
 function install(animations: FakeAnimation[]): void {
     const of = (root: Element): FakeAnimation[] => {
         return animations.filter((item) => {
@@ -171,7 +169,6 @@ describe('loopPause', () => {
         settleLoops(document);
         expect(free.pause).not.toHaveBeenCalled();
         expect(empty.pause).not.toHaveBeenCalled();
-        // Minimized, the looping one waits too; the one with no effect is not a looping animation.
         setWindowMinimized(true);
         expect(free.pause).toHaveBeenCalledTimes(1);
         expect(empty.pause).not.toHaveBeenCalled();
@@ -217,7 +214,6 @@ describe('loopPause', () => {
             const stop = watchNewAnimations();
             install([]);
             setWindowMinimized(true);
-            // Three arrows with delays of 0, 0.15 and 0.3 s: the first has started, the other two are still in their delay.
             const first = animation(onScreen, Infinity);
             const second = animation(offScreen, Infinity);
             const third = animation(inside, Infinity);

@@ -1,6 +1,5 @@
 import { useTranslator } from '../i18n/useTranslator';
 
-// What extensions are, and whose responsibility they are: shown above the list of extensions.
 export function MangaExtensionsAbout() {
     const t = useTranslator();
     return (

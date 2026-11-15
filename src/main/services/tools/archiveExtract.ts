@@ -15,7 +15,6 @@ export interface ExtractOptions {
     exclude: readonly string[];
 }
 
-// The path inside the archive without its leading folders (null when it is nothing but them).
 export function stripPath(path: string, components: number): string | null {
     const parts = path.replace(/\\/g, '/').split('/').filter((part) => {
         return part.length > 0 && part !== '.';
@@ -30,7 +29,6 @@ export function isExcluded(strippedPath: string, exclude: readonly string[]): bo
     });
 }
 
-// Where a path inside the archive lands, or an error when it would land outside the destination.
 export function safeTarget(destination: string, strippedPath: string): string {
     const root = resolve(destination);
     const target = resolve(root, strippedPath);
@@ -53,8 +51,6 @@ async function extractTarGz(file: string, options: ExtractOptions): Promise<void
     });
 }
 
-// The `tar` that comes with the system. On Windows it is the one of Windows itself (bsdtar, which knows xz): another tar earlier in the PATH
-// (the one of Git) takes `C:` for the name of a machine.
 function systemTar(platform: NodeJS.Platform): string {
     return platform === 'win32' ? join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 }
@@ -76,8 +72,6 @@ function defaultRunTar(command: string, args: string[]): Promise<void> {
     });
 }
 
-// Unpacks a .tar.xz with the tar of the system (xz is not something the app can unpack itself). The links of the archive are kept (the
-// libraries of ffmpeg need them); the archive is checked against its checksum before this, so it is not one that was made to harm.
 async function extractTarXz(file: string, options: ExtractOptions, run: RunTar, platform: NodeJS.Platform): Promise<void> {
     await mkdir(options.destination, { recursive: true });
     await run(systemTar(platform), ['-xJf', file, '-C', options.destination, `--strip-components=${String(options.stripComponents)}`]);
@@ -118,7 +112,6 @@ async function writeZipEntry(zip: yauzl.ZipFile, entry: yauzl.Entry, target: str
     const mode = entry.externalFileAttributes >>> 16;
     const kind = mode & MODE_TYPE_MASK;
     if (kind === MODE_SYMLINK) {
-        // A link could point anywhere: it is not unpacked.
         return;
     }
     if (entry.fileName.endsWith('/') || kind === MODE_DIRECTORY) {
@@ -174,8 +167,6 @@ async function extractZip(file: string, options: ExtractOptions): Promise<void> 
     });
 }
 
-// Unpacks an archive into a folder without the leading folders and without the excluded ones. A path that would land outside the
-// folder, and a link, are never unpacked.
 export async function extractArchive(format: ArchiveFormat, file: string, options: ExtractOptions, run: RunTar = defaultRunTar, platform: NodeJS.Platform = process.platform): Promise<void> {
     if (format === 'tar.gz') {
         await extractTarGz(file, options);

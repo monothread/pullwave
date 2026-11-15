@@ -6,7 +6,6 @@ vi.mock('electron-updater', () => {
 });
 
 describe('getElectronUpdater', () => {
-    // Regression: the default console logger crashed the app with `write EPIPE` when launched from a file manager.
     it('returns the electron-updater singleton configured for manual download and install', () => {
         const updater = getElectronUpdater();
         expect(updater).toBe(autoUpdater);

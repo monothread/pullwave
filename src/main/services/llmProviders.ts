@@ -9,15 +9,12 @@ const INVALID_KEY_HINT = /api key not valid|invalid api key|invalid x-api-key|un
 
 export interface LlmRequest {
     provider: LlmProviderId;
-    // Empty to use the address of the provider.
     baseUrl: string;
     model: string;
     token: string;
     system: string;
     user: string;
-    // Aborted when the user cancels.
     signal?: AbortSignal;
-    // How long the provider has to answer; two minutes when not given.
     timeoutMs?: number;
 }
 
@@ -67,7 +64,6 @@ function geminiRequest(request: LlmRequest, base: string): PreparedRequest {
         body: {
             systemInstruction: { parts: [{ text: request.system }] },
             contents: [{ role: 'user', parts: [{ text: request.user }] }],
-            // The answer is always a JSON array: asked as JSON, it comes without code fences or text around it.
             generationConfig: { responseMimeType: 'application/json' }
         }
     };
@@ -132,7 +128,6 @@ export function errorOf(code: LlmError['code'], raw: string, token: string, retr
     return retryAfterSeconds === undefined ? { code, raw: clean } : { code, raw: clean, retryAfterSeconds };
 }
 
-// What the status of an answer that is not a success means.
 export function failureOf(response: Response, text: string, token: string): LlmError {
     const { status } = response;
     if (status === 401 || status === 403 || INVALID_KEY_HINT.test(text)) {
@@ -158,7 +153,6 @@ function parseJson(text: string): unknown {
     }
 }
 
-// Asks a language model for a text, in the protocol of the provider. Never throws: what went wrong comes back as an error.
 export async function completeWithLlm(request: LlmRequest, fetchImpl: LlmFetch = fetch): Promise<LlmCompletionResult> {
     const info = LLM_PROVIDERS[request.provider];
     const base = request.baseUrl.length > 0 ? request.baseUrl : info.defaultBaseUrl;

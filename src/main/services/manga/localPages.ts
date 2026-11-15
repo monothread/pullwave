@@ -14,7 +14,6 @@ export function isImageName(name: string): boolean {
     return IMAGE_EXTENSIONS.has(extname(name).toLowerCase()) && !name.endsWith('/');
 }
 
-// Pages are named 001, 002... so the names in order are the pages in order (and a number longer than the rest still sorts right).
 export function comparePageNames(first: string, second: string): number {
     return first.localeCompare(second, undefined, { numeric: true, sensitivity: 'base' });
 }
@@ -31,7 +30,6 @@ function openZip(file: string): Promise<yauzl.ZipFile> {
     });
 }
 
-// The names of the images in a CBZ, in reading order (the ComicInfo and anything that is not an image are left out).
 async function cbzNames(file: string): Promise<string[]> {
     const zip = await openZip(file);
     return new Promise((resolve, reject) => {
@@ -111,8 +109,6 @@ interface Listing {
     modified: number;
     isFolder: boolean;
     names: string[];
-    // The names by the place of the page they are named after, when every name is (the ones the app makes are); a chapter that lacks
-    // a page keeps the places of the others.
     byPlace: Map<number, string> | null;
 }
 
@@ -128,8 +124,6 @@ function namesByPlace(names: readonly string[]): Map<number, string> | null {
     }));
 }
 
-// Reads the pages of a chapter that was downloaded, from the CBZ or from the folder of images the app made. Only the list of names is
-// kept (for the last few chapters); a page is read when it is asked for.
 export class LocalPages {
     private readonly listings = new Map<string, Listing>();
 
@@ -151,17 +145,14 @@ export class LocalPages {
         return listing;
     }
 
-    // How many pages the chapter has.
     async count(path: string): Promise<number> {
         return (await this.listing(path)).names.length;
     }
 
-    // The places (from 0) of the pages the chapter lacks, out of the number it should have.
     async missing(path: string, pageCount: number): Promise<number[]> {
         return missingPageIndexes((await this.listing(path)).names, pageCount);
     }
 
-    // The page at this place (from 0): the one named after the place, or the one at that position when the names say nothing.
     async read(path: string, index: number): Promise<Buffer> {
         const listing = await this.listing(path);
         const name = listing.byPlace === null ? listing.names[index] : listing.byPlace.get(index);

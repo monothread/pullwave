@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { generateKey, readKey } from 'openpgp';
 import { verifyYtdlpSums, YTDLP_SIGNING_KEY, YTDLP_SIGNING_KEY_FINGERPRINT } from '@main/services/ytdlpSignature';
 
-// The checksums of the release 2026.08.19 of yt-dlp and the signature the project published for them.
 const SUMS = readFileSync(resolve(__dirname, '../../fixtures/ytdlp/SHA2-256SUMS'));
 const SIGNATURE = readFileSync(resolve(__dirname, '../../fixtures/ytdlp/SHA2-256SUMS.sig'));
 
@@ -70,7 +69,6 @@ describe('verifyYtdlpSums', () => {
 
     it('refuses to trust a key whose text is not the one with the fingerprint that was written down', async () => {
         const other = await generateKey({ type: 'ecc', curve: 'ed25519Legacy', userIDs: [{ name: 'Someone else' }], format: 'armored' });
-        // The right text with the wrong fingerprint, and a different key with the right fingerprint.
         await expect(verifyYtdlpSums(SUMS, SIGNATURE, YTDLP_SIGNING_KEY, '0'.repeat(40))).resolves.toBe(false);
         await expect(verifyYtdlpSums(SUMS, SIGNATURE, other.publicKey, YTDLP_SIGNING_KEY_FINGERPRINT)).resolves.toBe(false);
     });

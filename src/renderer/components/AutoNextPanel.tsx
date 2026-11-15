@@ -2,27 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslator } from '../i18n/useTranslator';
 import { AnimeCover } from './AnimeCover';
 
-// How long the panel counts before the next episode starts by itself.
 export const AUTO_NEXT_DELAY_MS = 10_000;
-// How often the bar and the seconds left are brought up to date.
 export const AUTO_NEXT_TICK_MS = 100;
 
 interface AutoNextPanelProps {
-    // The name of the next episode (the anime and its number).
     title: string;
     onGo: () => void;
     onCancel: () => void;
     delayMs?: number;
-    // The anime whose cover is shown beside the name (left out: no cover).
     coverTitle?: string;
 }
 
-// Over the video, once an episode ended: which episode comes next, a bar that fills as the time passes (as the zone between two chapters of
-// the reader does), a button to go at once and one to stay. When the bar is full the next episode starts.
 export function AutoNextPanel({ title, onGo, onCancel, delayMs = AUTO_NEXT_DELAY_MS, coverTitle }: AutoNextPanelProps) {
     const t = useTranslator();
     const [elapsed, setElapsed] = useState(0);
-    // The last onGo given: the count is not started again when the player draws itself again.
     const go = useRef(onGo);
     useEffect(() => {
         go.current = onGo;

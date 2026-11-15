@@ -66,16 +66,12 @@ describe('patchSearchPages', () => {
 });
 
 interface Page {
-    // The titles of the results of the page, in order.
     titles: string[];
-    // The page the pagination links to after this one; null: no link to a next page.
     next: number | null;
-    // The sidebar repeats a page link of its own: it must not count as the pagination.
     sidebarLink?: number;
     cloudflare?: boolean;
 }
 
-// A page of the source as ani-cli reads it: the results, the pagination and the sidebar that repeats the markup of a result.
 function pageHtml(page: Page): string {
     if (page.cloudflare === true) {
         return '<html><head><title>Just a moment...</title></head></html>';
@@ -94,12 +90,9 @@ interface Run {
     stdout: string;
     stderr: string;
     status: number | null;
-    // The addresses the script asked the source for, in order.
     fetched: string[];
 }
 
-// Runs the search functions (the original or the patched ones, as the text of the change has them) with a stand-in for the source: page N is the Nth of `pages` (the address without
-// `page=` is the first one), and `die` prints and ends the script as ani-cli does.
 function runSearch(script: string, pages: (page: number) => Page, env: Record<string, string> = {}): Run {
     const dir = makeTempDir();
     writeFileSync(join(dir, 'search.sh'), `${script}\n`);
@@ -139,7 +132,6 @@ function lines(...titles: string[]): string {
 describe.skipIf(process.platform === 'win32')('the search of the patched script, run against pages of the source', () => {
     const original = ORIGINAL_SEARCH;
     const patched = PATCHED_SEARCH;
-    // Page 1 has two results and a link to page 2, page 2 has two and a link to page 3, page 3 has one and no link to a next page.
     const three = (page: number): Page => {
         if (page === 1) {
             return { titles: ['A One', 'A Two'], next: 2 };
@@ -153,7 +145,6 @@ describe.skipIf(process.platform === 'win32')('the search of the patched script,
     it('reads the first page only, as before, when it is not asked for more', () => {
         const run = runSearch(patched, three);
         expect(run.status).toBe(0);
-        // Without the variable the output is the one of the original: the last line has no line break after it.
         expect(run.stdout).toBe(lines('A One', 'A Two').replace(/\n$/, ''));
         expect(run.stderr).toBe('');
         expect(run.fetched).toEqual([ADDRESS]);

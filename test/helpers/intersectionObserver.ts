@@ -6,7 +6,6 @@ export interface ObservedEnd {
     disconnected: boolean;
 }
 
-// An IntersectionObserver that only records what it watches: the test says when the watched element comes into view (`seeEnd`).
 export function stubIntersectionObserver(): ObservedEnd[] {
     const observers: ObservedEnd[] = [];
     vi.stubGlobal(
@@ -20,7 +19,6 @@ export function stubIntersectionObserver(): ObservedEnd[] {
             observe(target: Element): void {
                 this.record.target = target;
             }
-            // The cards of a list are watched too (see useOffscreenPause): one that goes away is let go.
             unobserve(): void {
                 return undefined;
             }
@@ -32,14 +30,12 @@ export function stubIntersectionObserver(): ObservedEnd[] {
     return observers;
 }
 
-// The observers that still watch something.
 export function liveObservers(observers: readonly ObservedEnd[]): ObservedEnd[] {
     return observers.filter((observer) => {
         return !observer.disconnected;
     });
 }
 
-// The end of the list (the element the last live observer watches) comes into view.
 export function seeEnd(observers: readonly ObservedEnd[]): void {
     const observer = liveObservers(observers).at(-1);
     if (observer === undefined) {
@@ -52,12 +48,9 @@ export function seeEnd(observers: readonly ObservedEnd[]): void {
 
 export interface WatchedCards {
     targets: Element[];
-    // The browser says each of these cards is (true) or is not (false) near the part of the list that is seen.
     report: (entries: Array<[Element, boolean]>) => void;
 }
 
-// An IntersectionObserver that records every element it watches (the cards of a list, see useOffscreenPause) and lets the test say which
-// of them are in sight.
 export function stubCardObserver(): WatchedCards {
     const watched: WatchedCards = {
         targets: [],

@@ -52,64 +52,41 @@ import type { IpcMainLike } from './registerHandlers';
 
 export const MAX_TEXT_LENGTH = 200;
 export const MAX_EPISODES_PER_REQUEST = 2000;
-// The longest stretch that can be listed: a week, which is seven days (of 23 to 25 hours where the clock changes) and some more.
 export const MAX_SCHEDULE_SPAN_SECONDS = 8 * 24 * 60 * 60;
 
 export interface AnimeHandlerDependencies {
     service: Pick<AniCliService, 'isAvailable' | 'info' | 'searchListing' | 'episodes' | 'resolveStream'>;
-    // The cover of an anime by its title (null when there is none).
     covers: { find: (title: string) => Promise<string | null> };
-    // The check for new episodes: of all the anime of the library, or of one.
     updates: Pick<AnimeUpdateChecker, 'checkNow' | 'checkAnime' | 'state'>;
-    // The episodes that air in a stretch of time.
     schedule: { list: (request: AnimeScheduleRequest) => Promise<AnimeScheduleResponse> };
     streams: Pick<StreamSessions, 'create' | 'close'>;
-    // The quality of the settings, used to pick the stream.
     streamQuality: () => string;
     queue: AnimeDownloadQueue;
     db: AnimeDb;
     removeFiles: (paths: string[]) => void;
     removeFolders: (paths: string[]) => void;
-    // Removes the folders that have nothing left in them.
     removeEmptyFolders: (paths: string[]) => void;
-    // Whether a file is on the disk.
     fileExists: (path: string) => boolean;
-    // What is kept beside the video of a downloaded episode (see episodeMetadata.ts) is written again.
     refreshMetadata: (episodeId: number) => void;
-    // Asks for a folder of anime and puts what is in it into the library.
     importLibrary: () => Promise<AnimeImportResponse>;
-    // Looks at the audio of the downloaded episodes that were never looked at (see audioCheck.ts).
     checkAudio: () => Promise<AnimeAudioCheckResponse>;
-    // Repairs the videos of these downloaded episodes that are hidden behind a picture (see episodeRepair.ts).
     repairEpisodes: (episodeIds: number[]) => Promise<AnimeRepairResponse>;
-    // Asks for the folder the anime are moved to and moves them there (see animeMigration.ts).
     migrateFolder: () => Promise<AnimeMigrationResponse>;
-    // Opens a folder in the file manager of the system.
     openFolder: (path: string) => void;
-    // The folder all the anime go into, as the settings say now.
     baseDirectory: () => string;
-    // The system the files are on (decides the rules of folder names); this one by default.
     platform?: NodeJS.Platform;
     onLibraryChanged: () => void;
-    // The subtitle files of a downloaded episode: the ones it has, loading one the user chooses and looking for the ones the source
-    // offers that it does not have yet.
     subtitles: {
         list: (episodeId: number) => AnimeSubtitleTrack[];
         import: (episodeId: number) => Promise<AnimeSubtitleImportResponse>;
         check: (episodeId: number) => Promise<AnimeSubtitleCheckResponse>;
-        // Translates a subtitle with the language model of the settings (queued: the answer comes when it is done), says what that takes,
-        // and cancels the translation of an episode (or all of them, null).
         translate: (request: SubtitleTranslateRequest) => Promise<SubtitleTranslateResponse>;
-        // The language the subtitles are wanted in, and which of these episodes can be translated into it (see `canBeTranslated`).
         translatable: (episodeIds: readonly number[]) => SubtitleTranslatableResponse;
         estimate: (request: SubtitleEstimateRequest) => Promise<SubtitleEstimateResponse>;
         cancelTranslation: (episodeId: number | null) => void;
-        // Makes the subtitle of an episode from its audio with the service of speech to text of the settings (queued: the answer comes when
-        // it is done), says how long the audio is, and cancels it.
         generate: (request: SubtitleGenerateRequest) => Promise<SubtitleGenerateResponse>;
         estimateGeneration: (episodeId: number) => Promise<SubtitleGenerateEstimateResponse>;
         cancelGeneration: (episodeId: number) => void;
-        // The translations and the subtitles made from the audio that wait or are going on.
         jobs: () => SubtitleJobs;
     };
 }
@@ -120,7 +97,6 @@ function asText(value: unknown): string {
     return typeof value === 'string' ? value : '';
 }
 
-// How many results of the search the screen already lists: none when it is not said, otherwise a whole number up to the most the search lists.
 function asLoadedCount(value: unknown): number | null {
     if (value === undefined) {
         return 0;
@@ -132,7 +108,6 @@ function asId(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null;
 }
 
-// The ids that came from the screen that are ids, without repeating one.
 function validIds(value: unknown): number[] {
     const ids = (Array.isArray(value) ? value : []).map(asId).filter((id): id is number => {
         return id !== null;
@@ -152,7 +127,6 @@ function asSpokenLanguage(value: unknown): TranscriptionLanguage | null {
     }) ?? null;
 }
 
-// The id of the subtitle to translate from: null lets the app pick one; anything else that is not a text is not accepted.
 function asTrackId(value: unknown): string | null | undefined {
     if (value === null || value === undefined) {
         return null;
@@ -169,12 +143,10 @@ function validQuery(value: unknown): string | null {
     return query.length > 0 ? query : null;
 }
 
-// The id the source gives an anime, when what came is one (letters, numbers and dashes, as the source writes it).
 export function asSourceId(value: unknown): string | null {
     return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,200}$/.test(value) ? value : null;
 }
 
-// Checks what came from the screen before it reaches ani-cli or the library.
 export function parseDownloadRequest(input: unknown): AnimeDownloadRequest | string {
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const title = asText(raw.title).trim().slice(0, MAX_TEXT_LENGTH);
@@ -199,8 +171,6 @@ export function parseDownloadRequest(input: unknown): AnimeDownloadRequest | str
     return { title, query, index, episodes: numbers, ...(sourceId === null ? {} : { sourceId }), ...(joined ?? {}) };
 }
 
-// The series and the season that came with a request: none, both valid, or "invalid" (one without the other, a name that cannot be
-// kept, a season out of range).
 function parseSeries(series: unknown, season: unknown, seasonName: unknown): { series: string; season: number; seasonName?: string | null } | 'invalid' | null {
     const noSeries = series === undefined || series === null || series === '';
     const noSeason = season === undefined || season === null;
@@ -218,15 +188,12 @@ function parseSeries(series: unknown, season: unknown, seasonName: unknown): { s
     return name === undefined ? 'invalid' : { series: cleaned, season, seasonName: name };
 }
 
-// Checks what the screen says it opened or watched before it is kept in the history. The episode is optional (null when it was only
-// opened).
 export function parseHistoryRequest(input: unknown): AnimeHistoryRequest | null {
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const title = asText(raw.title).trim().slice(0, MAX_TEXT_LENGTH);
     const query = validQuery(raw.query);
     const { index } = raw;
     const episode = raw.episode === null || raw.episode === undefined ? null : asText(raw.episode);
-    // The position 0 is an anime whose place in the search is not known: it is searched by its title when it is opened again.
     if (title.length === 0 || query === null || typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
         return null;
     }
@@ -236,7 +203,6 @@ export function parseHistoryRequest(input: unknown): AnimeHistoryRequest | null 
     return { title, query, index, episode };
 }
 
-// Checks the stretch of time the screen asks the schedule of: two moments in seconds, the second after the first and not too far from it.
 export function parseScheduleRequest(input: unknown): AnimeScheduleRequest | null {
     const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
     const { from, to } = raw;
@@ -268,8 +234,6 @@ export function parseProgress(input: unknown): AnimeProgressUpdate | null {
     return { episodeId, positionSeconds, durationSeconds, watched };
 }
 
-// The folders of the episodes of an anime and the folder of the anime they are in, from the innermost out, for the episodes that
-// were in a folder of their own.
 function emptiedFolders(episodes: readonly AnimeEpisodeRecord[], platform: NodeJS.Platform | undefined): string[] {
     const inFolders = episodes.filter((episode) => {
         return episode.filePath !== null && episodeFolderOf(episode.filePath, episode.number, platform) !== null;
@@ -287,7 +251,6 @@ function emptiedFolders(episodes: readonly AnimeEpisodeRecord[], platform: NodeJ
     return [...new Set([...episodeFolders, ...animeFolders, ...seriesFolders])];
 }
 
-// On systems where the section does not exist it still answers, so the screen can tell and hide it.
 function registerUnsupported(ipcMain: IpcMainLike): void {
     const status: AnimeStatus = { supported: false, available: false, aniCli: null };
     ipcMain.handle(IPC.animeStatus, () => {
@@ -422,7 +385,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         if (cleaned === null || already === null) {
             return invalid('The search is empty or the number of results already listed is invalid.');
         }
-        // The search asks for the results after the ones the screen already has: ani-cli reads pages until it has one more.
         const result = await service.searchListing(cleaned, already + 1);
         if (result.status === 'done') {
             return { ok: true, ...result.value };
@@ -468,7 +430,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         const chosen = override === null ? null : (ANIME_AIRING_OVERRIDES.find((candidate) => {
             return candidate === override;
         }) ?? undefined);
-        // An anime that is not in the library, or a choice that is neither one of the two nor null, changes nothing.
         if (id === null || chosen === undefined || db.getAnime(id) === null) {
             return;
         }
@@ -521,7 +482,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         }
         queue.downloadMissing(validIds(ids));
     });
-    // An anime as the screen gets it: each downloaded episode says whether its file is still there.
     function present(anime: LibraryAnime): LibraryAnime {
         return {
             ...anime,
@@ -559,7 +519,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         }
         return result;
     });
-    // The files are moved one migration at a time, and never while an episode is being downloaded (nor is one started meanwhile).
     ipcMain.handle(IPC.animeMigrateFolder, async (): Promise<AnimeMigrationResponse> => {
         if (migrating || queue.pendingCount() > 0) {
             return { ok: false, reason: 'busy' };
@@ -650,7 +609,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
     ipcMain.handle(IPC.animeCancelAnimes, (_event, animeIds): void => {
         queue.cancelAnimes(validIds(animeIds));
     });
-    // Removing always deletes the files too: what is in the library is what is on the disk.
     ipcMain.handle(IPC.animeRemoveEpisode, (_event, episodeId): void => {
         const id = asId(episodeId);
         if (id === null) {
@@ -661,7 +619,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         const filePath = db.removeEpisode(id);
         if (filePath !== null) {
             deps.removeFiles(filesOfEpisode(filePath));
-            // The folder of the episode goes with it once it is empty.
             const folder = episodeFolderOf(filePath, number, deps.platform);
             if (folder !== null) {
                 deps.removeEmptyFolders([folder]);
@@ -686,19 +643,15 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
                 return filesOfEpisode(file);
             })
         );
-        // The folder of a series holds the seasons of the other anime of the series: it is never removed whole while any of them has a
-        // file in it.
         const others = db.list().flatMap((remaining) => {
             return remaining.episodes.flatMap((episode) => {
                 return episode.filePath === null ? [] : [episode.filePath];
             });
         });
         deps.removeFolders(foldersWithoutOthers(animeFoldersToRemove(anime.title, files, deps.baseDirectory(), deps.platform), others, deps.platform));
-        // A folder that was renamed is not one the app may remove whole, but what is left of it once its files are gone is empty.
         deps.removeEmptyFolders(emptiedFolders(anime.episodes, deps.platform));
         deps.onLibraryChanged();
     });
-    // What is kept beside the videos of an anime (it says the series) is written again.
     const refreshMetadataOf = (animeId: number): void => {
         db.getLibraryAnime(animeId)?.episodes.forEach((episode) => {
             if (episode.status === 'done') {
@@ -706,8 +659,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             }
         });
     };
-    // The series of an anime is fixed once it is in the library (it can only be renamed with the whole series, and leaving it is
-    // removing the anime): what can change here is its season, and the name it is shown with, inside the series it has.
     ipcMain.handle(IPC.animeSetSeries, (_event, animeId, series, season, seasonName): AnimeSeriesResponse => {
         const id = asId(animeId);
         const current = id === null ? null : db.getAnime(id);
@@ -729,7 +680,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         deps.onLibraryChanged();
         return { ok: true };
     });
-    // The anime of a series get another name for it together; a season the other series has too is refused (see AnimeDb.renameSeries).
     ipcMain.handle(IPC.animeRenameSeries, (_event, ids, name): AnimeRenameSeriesResponse => {
         const animeIds = validIds(ids).filter((id) => {
             return db.getAnime(id) !== null;
@@ -746,7 +696,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         deps.onLibraryChanged();
         return { ok: true };
     });
-    // The address comes from the library, never from the screen: only the folder of an anime that is in it can be opened.
     ipcMain.handle(IPC.animeOpenFolder, (_event, animeId): void => {
         const id = asId(animeId);
         const anime = id === null ? null : db.getLibraryAnime(id);
@@ -757,7 +706,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             deps.openFolder(animeFolderOf(downloaded.filePath, downloaded.number, deps.platform));
         }
     });
-    // The folder of the series the anime is in: where the folders of its seasons are (an anime on its own has its own folder).
     ipcMain.handle(IPC.animeOpenSeriesFolder, (_event, animeId): void => {
         const id = asId(animeId);
         const anime = id === null ? null : db.getLibraryAnime(id);
@@ -797,7 +745,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         const id = asId(episodeId);
         return id === null ? { ok: false, reason: 'missing' } : deps.subtitles.import(id);
     });
-    // What the source offers that the episode does not have is saved next to its video; what is kept beside the video is written again.
     ipcMain.handle(IPC.animeSubtitlesCheck, async (_event, episodeId): Promise<AnimeSubtitleCheckResponse> => {
         const id = asId(episodeId);
         if (id === null) {
@@ -809,7 +756,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         }
         return result;
     });
-    // A translation that ended well is kept beside the video, which is written again with what it holds.
     const translateAndRefresh = async (request: SubtitleTranslateRequest): Promise<SubtitleTranslateResponse> => {
         const result = await deps.subtitles.translate(request);
         if (result.ok) {
@@ -825,7 +771,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         if (episodeId === null || trackId === undefined || language === null) {
             return Promise.resolve({ ok: false, reason: 'missing' });
         }
-        // Asked for in the player, one episode: the user wants it translated, so a translation that was there is replaced.
         return translateAndRefresh({ episodeId, trackId, language, replace: true });
     });
     ipcMain.handle(IPC.animeSubtitleTranslateEstimate, (_event, input): Promise<SubtitleEstimateResponse> => {
@@ -837,11 +782,9 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         }
         return deps.subtitles.estimate({ episodeId, trackId });
     });
-    // Which of the episodes asked about can be translated (the screen offers to translate a season only when one can).
     ipcMain.handle(IPC.animeSubtitleTranslatable, (_event, episodeIds): SubtitleTranslatableResponse => {
         return deps.subtitles.translatable(validIds(episodeIds).slice(0, MAX_EPISODES_PER_REQUEST));
     });
-    // Queues the subtitle of each episode; the progress and the end of each one come as updates.
     ipcMain.handle(IPC.animeSubtitleTranslateMany, (_event, input): number => {
         const raw = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
         const language = asLanguage(raw.language);
@@ -850,12 +793,10 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
             return 0;
         }
         ids.forEach((episodeId) => {
-            // Many at once: the ones that have the subtitle in that language already are skipped.
             void translateAndRefresh({ episodeId, trackId: null, language, replace: false });
         });
         return ids.length;
     });
-    // Null cancels all of them; an id that is not one cancels nothing.
     ipcMain.handle(IPC.animeSubtitleTranslateCancel, (_event, episodeId): void => {
         if (episodeId === null) {
             deps.subtitles.cancelTranslation(null);
@@ -884,7 +825,6 @@ export function registerAnimeHandlers(ipcMain: IpcMainLike, deps: AnimeHandlerDe
         const id = asId(episodeId);
         return id === null ? Promise.resolve({ ok: false, reason: 'missing' }) : deps.subtitles.estimateGeneration(id);
     });
-    // An id that is not one cancels nothing.
     ipcMain.handle(IPC.animeSubtitleGenerateCancel, (_event, episodeId): void => {
         const id = asId(episodeId);
         if (id !== null) {

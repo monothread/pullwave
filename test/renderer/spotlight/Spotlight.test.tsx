@@ -68,7 +68,6 @@ describe('Spotlight', () => {
         expect(leaving?.querySelector('.hero__title')).toHaveTextContent('Title 1');
         expect(entering).toHaveClass('spotlight__slide', 'spotlight__slide--entering', 'spotlight__slide--forward');
         expect(entering).toHaveAttribute('aria-label', '2 of 3');
-        // Only the slide shown is a slide for the screen readers.
         expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1);
         act(() => {
             vi.advanceTimersByTime(SPOTLIGHT_SLIDE_MS);

@@ -12,11 +12,9 @@ const STATE_KEYS: Record<GenerateStepState, MessageKey> = {
 };
 
 interface PanelProps {
-    // What the subtitle goes through, as the job says (it can differ from what was chosen), and what it is for.
     plan: SubtitleGeneratePlan;
     job: SubtitleGenerationJob | null;
     language: TranslationLanguage;
-    // What the measure of the audio said: how many parts it goes in and how many bytes that is about.
     parts: number;
     approxBytes: number;
 }
@@ -34,8 +32,6 @@ export function stepLabel(id: GenerateStepId, plan: SubtitleGeneratePlan, langua
     }
 }
 
-// What a step says about itself while it goes on or after it is done: the audio that is ready, the parts that were sent and answered with how
-// many bytes of audio left the computer, the lines that were translated. A step that waits, or has nothing to add, says nothing.
 function stepDetail(id: GenerateStepId, state: GenerateStepState, props: PanelProps, t: Translator): string | null {
     const { job, parts, approxBytes } = props;
     const totalBytes = job?.totalBytes ?? approxBytes;
@@ -57,8 +53,6 @@ function stepDetail(id: GenerateStepId, state: GenerateStepState, props: PanelPr
     return null;
 }
 
-// The progress of a subtitle that is being made: a bar for the whole, the steps it goes through with what each one is doing right now (the
-// audio taken out of the video, the parts sent and answered, the translation, the saving) and how long it has been going on.
 export function GenerateProgressPanel(props: PanelProps) {
     const t = useTranslator();
     const elapsed = useElapsedSeconds(true);

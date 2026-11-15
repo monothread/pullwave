@@ -274,7 +274,6 @@ describe('AnimeAiringService matching the anime to AniList', () => {
 
         await service.sync();
 
-        // The second season is the one called so; the third is not listed, and the first season is not taken for it.
         expect(db.airingStates()).toEqual([
             { id: second, title: 'Frieren Season 2', anilistId: 11, status: 'ongoing', checkedAt: NOW },
             { id: third, title: 'Frieren Season 3', anilistId: null, status: null, checkedAt: NOW }

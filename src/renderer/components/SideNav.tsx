@@ -8,7 +8,6 @@ import { TabButton } from './TabButton';
 export interface SectionTab {
     id: Tab;
     label: MessageKey;
-    // The picture shown before the label.
     picture: SectionIconName;
 }
 
@@ -23,14 +22,11 @@ export const SECTION_TABS: readonly SectionTab[] = [
 interface SideNavProps {
     tabs: readonly SectionTab[];
     active: Tab;
-    // The menu is open: the rail of pictures widens and shows the names.
     open: boolean;
     onSelect: (tab: Tab) => void;
     onClose: () => void;
 }
 
-// The menu of the sections on the left, as on a console: a rail of pictures that is always there and that widens over the screen with
-// the names when it is opened (☰ in the top bar). Esc or a choice closes it.
 export function SideNav({ tabs, active, open, onSelect, onClose }: SideNavProps) {
     const t = useTranslator();
     const navRef = useRef<HTMLElement>(null);

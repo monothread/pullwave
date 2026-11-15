@@ -20,7 +20,6 @@ describe('PageTransferRate', () => {
         const rate = new PageTransferRate(1000);
         rate.add(1500, 1000);
         rate.add(3000, 3000);
-        // 4000 bytes in two seconds; a second for each of the two pages, five left.
         expect(rate.measure(3000, 5)).toEqual({ bytesPerSecond: 2000, etaSeconds: 5 });
     });
 
@@ -29,7 +28,6 @@ describe('PageTransferRate', () => {
         rate.add(1000, 50_000);
         rate.add(10_000, 1000);
         rate.add(20_000, 2000);
-        // The window goes from 10 s (left out) to 20 s: one page of 2000 bytes in ten seconds.
         expect(rate.measure(20_000, 3)).toEqual({ bytesPerSecond: 200, etaSeconds: 30 });
     });
 
@@ -37,7 +35,6 @@ describe('PageTransferRate', () => {
         const rate = new PageTransferRate(0);
         rate.add(1000, 50_000);
         expect(rate.measure(20_000, 1)).toEqual({ bytesPerSecond: null, etaSeconds: null });
-        // Measuring an earlier moment again does not bring back the page that was dropped.
         expect(rate.measure(5000, 1)).toEqual({ bytesPerSecond: null, etaSeconds: null });
     });
 

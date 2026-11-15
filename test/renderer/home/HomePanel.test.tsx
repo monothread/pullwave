@@ -14,7 +14,6 @@ const initialApp = useAppStore.getState();
 const initialAnime = useAnimeStore.getState();
 const initialManga = useMangaStore.getState();
 const loadHistory = vi.fn(async () => {});
-// As the real one does, it marks the sources as asked for at once.
 const loadSources = vi.fn(async () => {
     useMangaStore.setState({ browse: { ...useMangaStore.getState().browse, sourcesStatus: 'loading' } });
 });

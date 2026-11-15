@@ -49,7 +49,6 @@ let getContext: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
     media.opened.length = 0;
-    // jsdom has no canvas: the hook's canvases get a context that only records what is drawn.
     drawImage = vi.fn();
     getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
         return { drawImage } as unknown as CanvasRenderingContext2D;
@@ -113,7 +112,6 @@ describe('useSeekPreview', () => {
         rerender({ source: FILE, second: 40 });
         expect(media.opened).toHaveLength(1);
         expect(media.opened[0]?.moves).toEqual([12, 40]);
-        // The frame before stays until the new one is drawn.
         expect(result.current).toBe(first);
         finishSeek(media.opened[0]);
         expect(result.current).not.toBe(first);

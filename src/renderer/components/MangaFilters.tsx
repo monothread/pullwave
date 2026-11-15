@@ -103,7 +103,6 @@ function FilterItem({ filter, onChange }: { filter: MangaFilter; onChange: (filt
                 </div>
             );
         case 'group':
-            // The options of a group (genres, tags, artists...) are picked by typing, not ticked in a list of thousands.
             if (filter.filters.length > 0 && filter.filters.every(isPickable)) {
                 return (
                     <MangaFilterPicker
@@ -147,8 +146,6 @@ function FilterList({ filters, onChange }: FilterListProps) {
     );
 }
 
-// The filters a source offers for its search (genres, tags, status, order...), the way the WebUI of Suwayomi shows them: the user sets
-// them and applies them with the search.
 export function MangaFilters({ onApply }: { onApply: () => void }) {
     const t = useTranslator();
     const filters = useMangaStore((state) => {

@@ -12,7 +12,6 @@ import { APP_UPDATE_IDLE, installMockApi } from '../helpers/mockApi';
 
 const COVER = 'https://img/one-piece.jpg';
 
-// The home screen stands in for a screen that puts a cover behind the whole screen as soon as it opens (the page of a manga or an anime).
 vi.mock('@renderer/home/HomePanel', () => {
     return {
         HomePanel: () => {

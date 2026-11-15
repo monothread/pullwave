@@ -13,7 +13,6 @@ import { makeAnime, makeEpisode } from '../../helpers/animeFixtures';
 import { openedPlayerSettings, openedSubtitleMenu, openPlayerSettings, subtitleMenu, subtitleOption } from '../../helpers/playerSettings';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
-// The hidden video the picture above the timeline is taken from (see previewMedia.ts, tested on its own).
 const previewMedia = vi.hoisted(() => {
     return {
         open: vi.fn((): { element: HTMLVideoElement; close: () => void } => {
@@ -70,8 +69,6 @@ interface ManagerNames {
 
 const ENGLISH_MANAGER: ManagerNames = { gear: 'Settings', manage: 'MANAGE SUBTITLES', dialog: 'Manage subtitles' };
 
-// Opens the window of the subtitles from the gear of the player (the list of the subtitles of the episode is waited for first). The buttons
-// that load, translate, create and check subtitles are in it; the menu of the subtitles and their size are in the gear.
 async function openManager(names: ManagerNames = ENGLISH_MANAGER): Promise<HTMLElement> {
     await act(async () => {
         await Promise.resolve();
@@ -782,7 +779,6 @@ describe('AnimePlayer', () => {
             expect(mock.api.checkAnimeSubtitles).toHaveBeenCalledWith(1);
             expect(await subtitleOption('Portuguese')).toBeInTheDocument();
             expect(document.querySelector('track[id="subtitle-Portuguese"]')).toHaveAttribute('src', 'pullwave-media://subtitle/1/subtitle-Portuguese');
-            // What the viewer was watching with stays as it was.
             expect(openedSubtitleMenu()).toHaveValue('default');
         });
 
@@ -900,7 +896,6 @@ describe('AnimePlayer', () => {
                 await vi.waitFor(() => {
                     expect(useAppStore.getState().notice).toEqual({ kind: 'info', message: 'NOVAS LEGENDAS ADICIONADAS (2): Português (Brasil), Espanhol (América Latina)' });
                 });
-                // What the player asks the app for is the file, by its id, not by the name that is shown.
                 expect(document.querySelector('track[id="subtitle-Portuguese (- Portuguese(Brazil))"]')).toHaveAttribute('label', 'Portuguese (- Portuguese(Brazil))');
                 expect(document.querySelector('track[id="subtitle-Portuguese (- Portuguese(Brazil))"]')).toHaveAttribute(
                     'src',
@@ -1224,7 +1219,6 @@ describe('AnimePlayer translating subtitles', () => {
 
         it('puts the new subtitle in the list of the player and shows it', async () => {
             await translated();
-            // The default settings: the anime subtitles follow the language of the app, English here.
             expect(mock.api.translateAnimeSubtitle).toHaveBeenCalledWith({ episodeId: 1, trackId: null, language: 'English' });
             expect(await subtitleOption('Spanish')).toBeInTheDocument();
             expect(document.querySelector('track[id="translated-Spanish"]')).toHaveAttribute('src', 'pullwave-media://subtitle/1/translated-Spanish');
@@ -1259,8 +1253,6 @@ describe('AnimePlayer creating the subtitle of an episode that has none', () => 
     const AUDIO_TEXT = '25 min · about 5.7 MiB · 3 requests';
 
     beforeEach(() => {
-        // The window starts on the language of the anime subtitles (English); the subtitle is then wanted in the language of the audio,
-        // chosen in the window, so the audio is only transcribed.
         useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeSubtitles: 'English' } });
         mock.api.listAnimeSubtitles.mockResolvedValue([]);
         mock.api.estimateAnimeSubtitleGeneration.mockResolvedValue({ ok: true, seconds: 1500, parts: 3, approxBytes: 6_000_000 });
@@ -1387,7 +1379,6 @@ describe('AnimePlayer: the preview of the timeline', () => {
         expect(source.url).toMatch(/^pullwave-media:\/\/episode\/1\?v=\d+$/);
         expect(previewMedia.open).toHaveBeenCalledTimes(1);
         expect(previewMedia.open).toHaveBeenCalledWith(source, 600, expect.any(Function));
-        // The video of the player is the only one in the page: the one the picture comes from is not put in it.
         expect(document.querySelectorAll('video')).toHaveLength(1);
     });
 });

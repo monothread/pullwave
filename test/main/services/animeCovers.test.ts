@@ -16,7 +16,6 @@ const COVER = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/nar
 const OTHER_COVER = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/naruto-new.jpg';
 const TODAY = 1_790_000_000_000;
 
-// What AniList answers for every name of a request: this cover (null: a page with an anime that has none), or no anime (an empty page).
 interface BatchAnswer {
     covers: (names: readonly string[]) => Array<string | null | undefined>;
 }
@@ -41,7 +40,6 @@ function notFound(): BatchAnswer {
     };
 }
 
-// A cover for each name it knows, and no anime for the others.
 function byName(covers: Record<string, string>): BatchAnswer {
     return {
         covers: (names) => {
@@ -71,8 +69,6 @@ function namesOf(init: RequestInit): string[] {
     return Object.values((JSON.parse(init.body as string) as { variables: Record<string, string> }).variables);
 }
 
-// Answers the requests one after the other with what it is given, and remembers what was searched for (every name, in order, and the
-// names of each request).
 function setup(answers: Answer[], overrides: Partial<CoverServiceDependencies> = {}) {
     const searched: string[] = [];
     const requests: string[][] = [];
@@ -326,7 +322,6 @@ describe('AnimeCoverService when AniList cannot be asked', () => {
 describe('AnimeCoverService with fallbacks', () => {
     const FALLBACK_COVER = 'https://media.kitsu.io/anime/poster_images/11/large.jpg';
 
-    // A service tried after AniList: it answers each name with what it is given for it (null for the names it does not know), or fails.
     function fallback(name: string, answers: Record<string, string | Error>) {
         const asked: Array<[string, CoverKind]> = [];
         const service: CoverProvider = {
@@ -506,7 +501,6 @@ describe('AnimeCoverService pace', () => {
 
     it('makes the requests that come after wait too', async () => {
         const order: string[] = [];
-        // The first request is the refusal (below); the queue answers the ones after it.
         const { service, sleep, fetchFn } = setup([found(), found()]);
         sleep.mockImplementation(async (milliseconds: number) => {
             order.push(`sleep ${milliseconds}`);
@@ -522,7 +516,6 @@ describe('AnimeCoverService pace', () => {
         });
         await Promise.all([first, service.find('B')]);
 
-        // The pause AniList asked for comes before anything else is asked.
         expect(order.indexOf('sleep 5000')).toBeGreaterThan(-1);
         expect(order.filter((entry) => {
             return entry === 'sleep 1000';

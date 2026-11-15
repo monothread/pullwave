@@ -4,7 +4,6 @@ import type { LanguageSetting } from '@shared/types';
 
 let translator: Translator = createTranslator(FALLBACK_LANGUAGE);
 
-// The language of the messages the main process creates (errors, tray, dialogs) follows the saved setting.
 export function applyLanguage(setting: LanguageSetting, systemLocale: string): void {
     translator = createTranslator(resolveLanguage(setting, systemLocale));
 }

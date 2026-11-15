@@ -18,9 +18,7 @@ import type {
     TraySupport
 } from '@shared/types';
 
-// The home screen opens first: it gathers what is going on in every section (D-127).
 export type Tab = 'home' | 'downloads' | 'anime' | 'manga' | 'settings';
-// The screens of the video downloader: the queue with the field for links, what was downloaded, and its settings.
 export type DownloadsView = 'queue' | 'cut' | 'history' | 'settings';
 export type NoticeKind = 'error' | 'info';
 
@@ -29,14 +27,12 @@ export interface Notice {
     message: string;
 }
 
-// A short notice that is stacked with the others and goes away by itself (see Toast): a download that is complete.
 export interface ToastItem {
     id: number;
     message: string;
 }
 
 export const INITIAL_APP_UPDATE: AppUpdateState = { status: 'idle', currentVersion: '', version: null, percent: 0, message: null };
-// What is known of the tokens of the language models before the main process is asked.
 export const INITIAL_LLM_STATUS: LlmStatus = { canStore: true, providers: [] };
 
 export interface AppState {
@@ -45,22 +41,17 @@ export interface AppState {
     jobs: DownloadJob[];
     history: HistoryEntry[];
     settings: Settings;
-    // False until the settings have arrived from the main process; until then `settings` only holds the defaults.
     settingsLoaded: boolean;
     binaries: BinariesStatus | null;
     notice: Notice | null;
-    // The notices that are on the screen together, the newest on top of the others; each one goes away by itself.
     toasts: ToastItem[];
     appUpdate: AppUpdateState;
     traySupport: TraySupport | null;
     browsers: DetectedBrowser[] | null;
-    // Which slots (providers) have a token, and whether the system can keep one.
     llmStatus: LlmStatus;
     setTab: (tab: Tab) => void;
     setDownloadsView: (view: DownloadsView) => void;
-    // Shows a notice (it takes the place of the one on the screen); null takes it away.
     setNotice: (notice: Notice | null) => void;
-    // Adds a notice to the stack of the ones that go away by themselves, and says which one it is.
     pushToast: (message: string) => number;
     dismissToast: (id: number) => void;
     init: () => Promise<() => void>;
@@ -76,7 +67,6 @@ export interface AppState {
     refreshHistory: () => Promise<void>;
     clearHistory: () => Promise<void>;
     saveSettings: (settings: Settings) => Promise<Settings>;
-    // Reads the settings again (the main process changed them by itself).
     refreshSettings: () => Promise<void>;
     refreshLlmStatus: () => Promise<void>;
     refreshBinaries: () => Promise<void>;
@@ -88,15 +78,12 @@ export interface AppState {
     loadBrowsers: (refresh?: boolean) => Promise<void>;
 }
 
-// Messages the store creates itself (not reactive): they use the language that is saved when they are created.
-// The downloads that are complete and stay a few seconds in the queue before they leave it.
 const doneLinger = createDoneLinger<string>();
 
 function translateNow(settings: Settings, key: MessageKey, params?: MessageParams): string {
     return createTranslator(resolveAppLanguage(settings.language))(key, params);
 }
 
-// The folder and the options are only passed when the link has them.
 function addRequest(link: LinkRequest): Promise<AddJobResult> {
     if (Object.keys(link.options).length > 0) {
         return window.api.addDownload(link.url, link.downloadDir ?? '', link.options);
@@ -116,7 +103,6 @@ export function upsertJob(jobs: DownloadJob[], job: DownloadJob): DownloadJob[] 
     });
 }
 
-// What the next notice of the stack is called.
 let toastCounter = 0;
 
 export const useAppStore = create<AppState>((set, get) => {
@@ -178,12 +164,10 @@ export const useAppStore = create<AppState>((set, get) => {
                 api.checkBinaries(),
                 api.getAppUpdateState()
             ]);
-            // The app opens on the home screen (the first state); a section chosen in the menu while the app was starting is kept.
             set({ settings, settingsLoaded: true, jobs, history, binaries, appUpdate });
             const leaveQueue = (id: string): void => {
                 void get().removeJob(id);
             };
-            // A download that was complete when the window was opened again (it was staying its last seconds) leaves after its time too.
             jobs.filter((job) => {
                 return job.status === 'done';
             }).forEach((job) => {
@@ -203,7 +187,6 @@ export const useAppStore = create<AppState>((set, get) => {
                         return { jobs: upsertJob(state.jobs, job) };
                     });
                     if (finishedNow) {
-                        // A download that is complete says so, stays a few seconds in the queue (green) and leaves it (it stays in the history).
                         get().pushToast(translateNow(get().settings, 'notice.downloadDone', { title: job.title ?? job.url }));
                         useFxStore.getState().celebrate();
                         doneLinger.schedule(job.id, () => {
@@ -287,7 +270,6 @@ export const useAppStore = create<AppState>((set, get) => {
         saveSettings: async (settings) => {
             const previous = get().settings;
             const saved = await window.api.saveSettings(settings);
-            // A new language is shown once its texts are there (and the messages the stores write from then on are in it).
             await loadCatalog(resolveAppLanguage(saved.language));
             set({ settings: saved });
             if (saved.ytdlpPath !== previous.ytdlpPath || saved.ffmpegPath !== previous.ffmpegPath) {

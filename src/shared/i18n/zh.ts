@@ -908,7 +908,6 @@ export const zh: Messages = {
     'anime.subtitleJobs.unknown': '已不在库中的剧集',
     'anime.stream.loading': '正在查找视频…',
 
-    // Manga section
     'tab.manga': '漫画',
     'manga.aria': '漫画',
     'manga.nav.browse': '浏览',

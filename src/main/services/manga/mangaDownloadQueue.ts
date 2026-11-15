@@ -6,21 +6,12 @@ import { chapterOutputPath, chapterWorkDirectory, DEFAULT_MANGA_FOLDER, formatOf
 import { PageTransferRate } from './mangaTransferRate';
 import { join } from 'node:path';
 
-// Progress comes after every page; the screen only needs to hear about a visible change.
 const MIN_PERCENT_STEP = 0.5;
-// The speed and the time left go to the screen at most once a second (the graph of the speed takes one reading a second). They are also
-// looked at again once a second while no page arrives, so a page that takes long (a check of Cloudflare, a server that does not answer)
-// makes the speed go down and the time left go up, instead of leaving on the screen what the last page gave.
 export const RATE_REPORT_INTERVAL_MS = 1000;
-// How many times a chapter is tried before it is left as an error to retry by hand.
 export const MAX_TRIES = 3;
-// How long closing the app waits for the downloads to end before it deletes what they left behind.
 export const MANGA_SHUTDOWN_TIMEOUT_MS = 5000;
-// Errors that asking again will not fix.
 const FINAL_ERRORS: ReadonlySet<string> = new Set(['EMPTY_CHAPTER', 'DISK']);
 
-// How many sources download at the same time, and how many chapters each of them downloads at the same time (the chapters of one
-// manga included). They are fixed: the user does not change them.
 export interface MangaDownloadLimits {
     sources: number;
     perSource: number;
@@ -29,7 +20,6 @@ export interface MangaDownloadLimits {
 export const MANGA_DOWNLOAD_LIMITS: MangaDownloadLimits = { sources: 3, perSource: 3 };
 
 export interface MangaQueueSettings {
-    // Where the mangas are kept; empty means the default folder inside the downloads folder.
     mangaDirectory: string;
     mangaFormat: MangaOutputFormat;
 }
@@ -41,21 +31,14 @@ export interface MangaQueueDependencies {
     defaultDownloadDir: string;
     ensureDirectory: (path: string) => void;
     pathExists: (path: string) => boolean;
-    // Deletes a file or a folder with what is in it.
     removePath: (path: string) => void;
-    // How many pages are complete in the folder of a chapter being downloaded (0 when the folder is not there).
     countCompletePages: (workDirectory: string) => number;
     onJobUpdate: (job: MangaJob) => void;
     onLibraryChanged: () => void;
-    // Only this manga changed (a chapter of it started or ended): the screen asks for it alone, not for the whole library again.
     onLibraryEntryChanged: (mangaId: number) => void;
-    // The queue was held (by PAUSE ALL) or let go (by RESUME ALL).
     onHeldChange: (held: boolean) => void;
-    // The limits of the downloads at the same time; the fixed ones by default (the tests give others).
     limits?: MangaDownloadLimits;
-    // The system the files are on (decides the rules of file names); this one by default.
     platform?: NodeJS.Platform;
-    // The clock the speed is measured with; Date.now by default.
     now?: () => number;
 }
 
@@ -63,28 +46,22 @@ function isActive(job: MangaJob): boolean {
     return job.status === 'queued' || job.status === 'running';
 }
 
-// Where a chapter is made, and how.
 interface ChapterTarget {
     outputPath: string;
     format: MangaOutputFormat;
 }
 
-// Downloads a few chapters at a time for each source (so a site is not asked for too many things at once), a few sources together.
 export class MangaDownloadQueue {
     private readonly jobs = new Map<number, MangaJob>();
     private readonly handles = new Map<number, ChapterDownloadHandle>();
-    // The source of each run, kept until the run ends (also for a chapter forgotten while it ran, whose job is gone).
     private readonly runSources = new Map<number, string>();
     private readonly lastReported = new Map<number, number>();
-    // The speed of each run, when it was last sent to the screen, and the timer that looks at it again while no page arrives.
     private readonly rates = new Map<number, PageTransferRate>();
     private readonly lastRateReported = new Map<number, number>();
     private readonly rateTimers = new Map<number, ReturnType<typeof setInterval>>();
     private readonly tries = new Map<number, number>();
-    // Where each chapter that is running or paused is being made: the same place again when it goes on.
     private readonly outputPaths = new Map<number, string>();
     private readonly pauseRequested = new Set<number>();
-    // While the queue is held (PAUSE ALL) the chapters that wait keep waiting; only the ones the user resumed one by one start.
     private held = false;
     private readonly startsWhileHeld = new Set<number>();
     private closed = false;
@@ -103,15 +80,12 @@ export class MangaDownloadQueue {
         return this.held;
     }
 
-    // Puts the manga and the chapters in the library and queues them (the ones already downloaded or already waiting are left as
-    // they are). Returns the manga as the library has it.
     enqueue(request: MangaDownloadRequest): LibraryManga | null {
         const known = this.deps.db.findManga(request.manga.sourceId, request.manga.remoteId) !== null;
         const manga = this.deps.db.upsertManga(request.manga);
         if (request.details !== null) {
             this.deps.db.saveDetails(manga.id, request.details);
         }
-        // The oldest chapter goes first, whatever order the screen sent them in (the list shows the newest first).
         [...request.chapters]
             .sort((first, second) => {
                 return first.sourceOrder - second.sourceOrder;
@@ -124,9 +98,7 @@ export class MangaDownloadQueue {
         return this.deps.db.getLibraryManga(manga.id);
     }
 
-    // Puts the manga in the library with the chapters given, none of them downloaded (the ones it has already keep their state).
     addToLibrary(request: MangaDownloadRequest): LibraryManga | null {
-        // The chapters a manga comes with are not new; the ones added to a manga that was there already are.
         const known = this.deps.db.findManga(request.manga.sourceId, request.manga.remoteId) !== null;
         const manga = this.deps.db.upsertManga(request.manga);
         if (request.details !== null) {
@@ -137,8 +109,6 @@ export class MangaDownloadQueue {
         return this.deps.db.getLibraryManga(manga.id);
     }
 
-    // Queues every chapter of these mangas that is not downloaded and not waiting or downloading already, the oldest first (the
-    // order they are read in).
     downloadMissing(mangaIds: readonly number[]): void {
         mangaIds.forEach((mangaId) => {
             const manga = this.deps.db.getManga(mangaId);
@@ -155,7 +125,6 @@ export class MangaDownloadQueue {
         this.pump();
     }
 
-    // Queues these chapters of a manga of the library (the ones that are not downloaded and not waiting or going on already), the oldest first.
     downloadChapters(mangaId: number, chapterRemoteIds: readonly number[]): void {
         const manga = this.deps.db.getManga(mangaId);
         if (manga === null) {
@@ -176,7 +145,6 @@ export class MangaDownloadQueue {
         this.pump();
     }
 
-    // Queues a chapter again (after an error or a cancellation, also after the app was restarted, and a paused one).
     retry(chapterId: number): void {
         const chapter = this.deps.db.getChapter(chapterId);
         const manga = chapter === null ? null : this.deps.db.getManga(chapter.mangaId);
@@ -185,12 +153,10 @@ export class MangaDownloadQueue {
         }
         this.tries.delete(chapterId);
         this.queueChapter(manga, chapter);
-        // Only its manga changed: RESUME ALL retries every paused chapter, and the whole library read again for each one flooded the screen.
         this.deps.onLibraryEntryChanged(manga.id);
         this.pump();
     }
 
-    // Ends the run of a download that is going on, keeping the pages it has.
     pause(chapterId: number): void {
         const job = this.jobs.get(chapterId);
         const handle = this.handles.get(chapterId);
@@ -201,7 +167,6 @@ export class MangaDownloadQueue {
         handle.cancel();
     }
 
-    // Queues a paused chapter again (also after the app was restarted): it goes on from the pages it has, even while the queue is held.
     resume(chapterId: number): void {
         if (this.deps.db.getChapter(chapterId)?.status !== 'paused') {
             return;
@@ -212,8 +177,6 @@ export class MangaDownloadQueue {
         this.retry(chapterId);
     }
 
-    // The chapters that were paused when the app last closed are shown again as paused, with the pages they kept, so they can go on or
-    // be cancelled. A chapter paused before the place was remembered gets back the folder of pages it left, when it is found.
     restore(): void {
         this.deps.db.pausedChapters().forEach((chapter) => {
             const manga = this.deps.db.getManga(chapter.mangaId);
@@ -235,8 +198,6 @@ export class MangaDownloadQueue {
         });
     }
 
-    // Pauses everything: the queue is held first (so the chapters that wait keep waiting, and none takes the place of one that is
-    // paused), then the ones that are running end their run, keeping their pages.
     pauseAll(): void {
         this.setHeld(true);
         this.startsWhileHeld.clear();
@@ -248,7 +209,6 @@ export class MangaDownloadQueue {
         this.deps.onLibraryChanged();
     }
 
-    // Lets the queue go and queues again every chapter that is paused.
     resumeAll(): void {
         this.setHeld(false);
         this.startsWhileHeld.clear();
@@ -260,8 +220,6 @@ export class MangaDownloadQueue {
         this.pump();
     }
 
-    // Pauses the downloads of these mangas, without holding the queue: the chapters that are running end their run keeping their pages,
-    // and the ones that wait are paused where they are (they go on, one by one, with RESUME or with resumeMangas).
     pauseMangas(mangaIds: readonly number[]): void {
         this.jobsOfMangas(mangaIds).forEach((job) => {
             if (job.status === 'running') {
@@ -273,7 +231,6 @@ export class MangaDownloadQueue {
         this.deps.onLibraryChanged();
     }
 
-    // Queues again the paused chapters of these mangas.
     resumeMangas(mangaIds: readonly number[]): void {
         this.jobsOfMangas(mangaIds).forEach((job) => {
             if (job.status === 'paused') {
@@ -283,7 +240,6 @@ export class MangaDownloadQueue {
         this.pump();
     }
 
-    // Cancels every chapter of these mangas that is running, waiting or paused.
     cancelMangas(mangaIds: readonly number[]): void {
         this.jobsOfMangas(mangaIds).forEach((job) => {
             if (job.status === 'queued' || job.status === 'running' || job.status === 'paused') {
@@ -299,7 +255,6 @@ export class MangaDownloadQueue {
         }
         const handle = this.handles.get(chapterId);
         if (handle !== undefined) {
-            // A pause asked for before wins no more: the result of the run settles the job as cancelled.
             this.pauseRequested.delete(chapterId);
             handle.cancel();
             return;
@@ -308,11 +263,9 @@ export class MangaDownloadQueue {
         this.startsWhileHeld.delete(chapterId);
         this.deps.db.markFailed(chapterId, 'cancelled', null);
         this.update(job, { status: 'cancelled' });
-        // Only its manga changed (cancelling a manga cancels each of its waiting chapters).
         this.deps.onLibraryEntryChanged(job.mangaId);
     }
 
-    // A paused chapter is not finished: it stays, so it can still go on or be cancelled.
     clearFinished(): void {
         this.list().forEach((job) => {
             if (!isActive(job) && job.status !== 'paused') {
@@ -321,8 +274,6 @@ export class MangaDownloadQueue {
         });
     }
 
-    // The chapters are gone from the library: whatever is still running for them is stopped and forgotten. The pages of a run are
-    // deleted once it has ended (before, it could still write one), and its place goes to the next chapter only then.
     forget(chapterIds: number[]): void {
         chapterIds.forEach((chapterId) => {
             this.pauseRequested.delete(chapterId);
@@ -341,16 +292,12 @@ export class MangaDownloadQueue {
         this.pump();
     }
 
-    // Whether closing the app has downloads to end.
     hasRunsToEnd(): boolean {
         return this.handles.size > 0;
     }
 
-    // Closing the app: a download that was being paused is kept as paused at once, and every other one is cancelled and its
-    // unfinished pages are deleted.
     async shutdown(timeoutMs: number = MANGA_SHUTDOWN_TIMEOUT_MS): Promise<void> {
         this.closed = true;
-        // The chapters that wait in a held queue were paused by the user: they are found paused when the app opens again.
         if (this.held) {
             this.list().forEach((job) => {
                 if (job.status === 'queued' && !this.handles.has(job.chapterId)) {
@@ -384,7 +331,6 @@ export class MangaDownloadQueue {
         });
     }
 
-    // The jobs of these mangas, as they are now (a copy: acting on one may change the list).
     private jobsOfMangas(mangaIds: readonly number[]): MangaJob[] {
         const wanted = new Set(mangaIds);
         return this.list().filter((job) => {
@@ -392,7 +338,6 @@ export class MangaDownloadQueue {
         });
     }
 
-    // A chapter that waits is paused where it is: it has no run to end and no pages yet.
     private pauseWaiting(job: MangaJob): void {
         this.startsWhileHeld.delete(job.chapterId);
         this.deps.db.markPaused(job.chapterId);
@@ -432,7 +377,6 @@ export class MangaDownloadQueue {
         this.deps.onJobUpdate({ ...job });
     }
 
-    // A chapter that stops running stops having a speed.
     private update(job: MangaJob, changes: Partial<MangaJob>): void {
         const stopsRunning = changes.status !== undefined && changes.status !== 'running';
         if (stopsRunning) {
@@ -456,20 +400,16 @@ export class MangaDownloadQueue {
         }
     }
 
-    // The speed is measured from the moment the pages are known: asking the server for the list of the pages (which can take long on a site
-    // behind Cloudflare) is not the time of a page.
     private startRate(job: MangaJob): void {
         this.forgetRate(job.chapterId);
         this.rates.set(job.chapterId, new PageTransferRate(this.now()));
         const timer = setInterval(() => {
             this.reportRate(job);
         }, RATE_REPORT_INTERVAL_MS);
-        // The timer does not keep the app open by itself.
         timer.unref?.();
         this.rateTimers.set(job.chapterId, timer);
     }
 
-    // The speed of a run looked at again with no new page: sent only when it changed.
     private reportRate(job: MangaJob): void {
         const changes = this.rateChanges(job, job.pageCount - job.pagesDone);
         const changed = changes.bytesPerSecond !== undefined && (changes.bytesPerSecond !== job.bytesPerSecond || changes.etaSeconds !== job.etaSeconds);
@@ -485,7 +425,6 @@ export class MangaDownloadQueue {
         }
     }
 
-    // How many chapters each source is downloading.
     private runsBySource(): Map<string, number> {
         const runs = new Map<string, number>();
         this.runSources.forEach((sourceId) => {
@@ -494,8 +433,6 @@ export class MangaDownloadQueue {
         return runs;
     }
 
-    // Whether a chapter that waits may start now: the queue is not held (or the user resumed it), and its source has room (a source
-    // that is not downloading yet needs a free place among the sources).
     private canStart(job: MangaJob, runs: ReadonlyMap<string, number>): boolean {
         if (job.status !== 'queued' || this.handles.has(job.chapterId)) {
             return false;
@@ -508,7 +445,6 @@ export class MangaDownloadQueue {
         return running < limits.perSource && (running > 0 || runs.size < limits.sources);
     }
 
-    // Starts what waits, the oldest first, up to the limits of the sources.
     private pump(): void {
         if (this.closed) {
             return;
@@ -521,8 +457,6 @@ export class MangaDownloadQueue {
         }
     }
 
-    // Where the chapter is made: the place (and the format) it had when it was started before, so it goes on from the pages it kept;
-    // otherwise a free place in the folder of its manga.
     private targetFor(manga: MangaRecord, chapter: MangaChapterRecord): ChapterTarget {
         const known = this.outputPaths.get(chapter.id) ?? this.deps.db.outputPathOf(chapter.id);
         if (known !== null && this.canReuse(chapter.id, known)) {
@@ -540,7 +474,6 @@ export class MangaDownloadQueue {
         return { outputPath, format };
     }
 
-    // The place a chapter that was started before goes on at: not when the chapter is already there, nor when another one took it.
     private canReuse(chapterId: number, outputPath: string): boolean {
         return !this.deps.pathExists(outputPath) && !this.isPlaceTaken(chapterId, outputPath);
     }
@@ -552,7 +485,6 @@ export class MangaDownloadQueue {
         return takenHere || this.deps.db.isOutputPathClaimed(outputPath, chapterId);
     }
 
-    // The place the settings give a chapter, before a number is added to make it free.
     private wantedPath(manga: MangaRecord, chapter: MangaChapterRecord): string {
         const platform = this.deps.platform ?? process.platform;
         const settings = this.deps.getSettings();
@@ -560,8 +492,6 @@ export class MangaDownloadQueue {
         return chapterOutputPath(mangaDirectory(base, manga.title, platform), chapter, settings.mangaFormat, platform);
     }
 
-    // The folder of pages a chapter paused before its place was remembered left behind: the first place of its name (" (2)", " (3)"...
-    // included) that has the folder, is not downloaded and no other chapter claims. It is remembered from now on.
     private findLeftoverWork(manga: MangaRecord, chapter: MangaChapterRecord): string | null {
         const platform = this.deps.platform ?? process.platform;
         const wanted = this.wantedPath(manga, chapter);
@@ -579,7 +509,6 @@ export class MangaDownloadQueue {
         }
     }
 
-    // Whether a download was started (it is not when the job has to end right away).
     private launch(job: MangaJob): boolean {
         const { db } = this.deps;
         const chapter = db.getChapter(job.chapterId);
@@ -625,10 +554,8 @@ export class MangaDownloadQueue {
         void handle.result.then((result) => {
             this.handles.delete(chapter.id);
             this.runSources.delete(chapter.id);
-            // The pause only counts for the run it was asked of, whichever way that run ended.
             const paused = this.pauseRequested.delete(chapter.id);
             if (!this.jobs.has(chapter.id)) {
-                // The chapter was forgotten while it ran: its pages go now that nothing writes them.
                 this.discardWork(chapter.id);
                 this.pump();
                 return;
@@ -645,7 +572,6 @@ export class MangaDownloadQueue {
             } else {
                 this.finishDownloaded(job, result.value);
             }
-            // A chapter the user resumed in a held queue may still start again when it is tried again after a failure.
             if (job.status !== 'queued') {
                 this.startsWhileHeld.delete(chapter.id);
             }
@@ -655,7 +581,6 @@ export class MangaDownloadQueue {
         return true;
     }
 
-    // The pages and the speed go to the screen together, each only when it has something new to show.
     private reportProgress(job: MangaJob, pagesDone: number, pageCount: number): void {
         const changes = { ...this.pageChanges(job, pagesDone, pageCount), ...this.rateChanges(job, pageCount - pagesDone) };
         if (Object.keys(changes).length > 0) {
@@ -684,8 +609,6 @@ export class MangaDownloadQueue {
         return rate.measure(at, pagesLeft);
     }
 
-    // A failure that may pass is tried again (the pages already downloaded are kept); one that will not, or a chapter that has used
-    // its tries, is left as an error.
     private onFailure(job: MangaJob, error: MangaError): void {
         const tries = (this.tries.get(job.chapterId) ?? 0) + 1;
         if (FINAL_ERRORS.has(error.code) || tries >= MAX_TRIES) {
@@ -708,7 +631,6 @@ export class MangaDownloadQueue {
         this.outputPaths.delete(job.chapterId);
         this.tries.delete(job.chapterId);
         this.update(job, { status: 'done', percent: 100, pagesDone: pageCount, pageCount, missingPages: missingPages.length });
-        // The screen of the downloads is for what is going on or went wrong: a chapter that is complete is in the library.
         this.jobs.delete(job.chapterId);
     }
 
@@ -718,7 +640,6 @@ export class MangaDownloadQueue {
         this.update(job, { status: 'error', error });
     }
 
-    // Deletes the pages a chapter left half done, and forgets where it was being made.
     private discardWork(chapterId: number): void {
         const path = this.outputPaths.get(chapterId);
         this.outputPaths.delete(chapterId);

@@ -8,9 +8,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { appEnv } from './programs';
 
-// Runs the real yt-dlp (the one in resources/bin) against archive.org and the real ani-cli against its source: pausing, closing the app
-// with downloads going on, resuming after opening it again, and how many downloads run at a time. It needs the network and
-// `npm run fetch-binaries`, and can fail because of the sources, so it is left out unless PULLWAVE_LIVE=1.
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const EXE = process.platform === 'win32' ? '.exe' : '';
@@ -22,16 +19,13 @@ test.skip(process.env.PULLWAVE_LIVE !== '1' || !HAS_TOOLS, 'set PULLWAVE_LIVE=1 
 test.describe.configure({ mode: 'serial' });
 test.setTimeout(240000);
 
-// Public-domain films of the Internet Archive: two short ones (about 26 MB) and a long one, which only has to be started.
 const SHORT_A = 'https://archive.org/details/Popeye_forPresident';
 const SHORT_B = 'https://archive.org/details/Popeye_Nearlyweds';
 const LONG = 'https://archive.org/details/BigBuckBunny_328';
 const LONG_TOO = 'https://archive.org/details/BigBuckBunny_124';
-// The Internet Archive chooses the format of the file, so the name of the finished one is found by its beginning.
 const SHORT_A_PREFIX = 'Popeye for President [Popeye_forPresident].';
 const ANIME = 'Cyberpunk: Edgerunners';
 const ANIME_FOLDER = 'Cyberpunk_ Edgerunners';
-// Slow enough to be paused or closed while it runs, in a film of 26 MB.
 const SLOW = '300K';
 const FAST = '8M';
 
@@ -84,7 +78,6 @@ function unfinishedIn(folder: string): string[] {
     });
 }
 
-// The finished file of the film, or an empty text while there is none.
 function finishedFileIn(folder: string): string {
     return (
         filesIn(folder).find((name) => {
@@ -102,7 +95,6 @@ async function submitUrl(page: Page, url: string): Promise<void> {
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
 }
 
-// The first unfinished file of the downloads folder once it has something in it: the download is under way.
 async function waitForBytes(folder: string): Promise<string> {
     let found = '';
     await expect
@@ -156,7 +148,6 @@ test.describe('video downloads with the real yt-dlp', () => {
 
         await first.app.close();
 
-        // The pause is kept, with its unfinished file, and nothing is deleted.
         expect(sizeOf(join(downloadDir, partial))).toBe(sizeWhenPaused);
         expect(pausedList()).toMatchObject([{ job: { url: SHORT_A, status: 'paused' } }]);
 
@@ -168,7 +159,6 @@ test.describe('video downloads with the real yt-dlp', () => {
 
         await card.getByRole('button', { name: 'RESUME' }).click();
 
-        // yt-dlp goes on from where it was: the partial file never gets smaller than it was when it was paused.
         const sizes: number[] = [];
         try {
             await expect
@@ -203,7 +193,6 @@ test.describe('video downloads with the real yt-dlp', () => {
         const partial = await waitForBytes(downloadDir);
         await first.page.getByTestId('job-card').getByRole('button', { name: 'PAUSE' }).click();
 
-        // Not waiting for the card to say PAUSED: the app is closed while the process is still being ended.
         await first.app.close();
 
         expect(pausedList()).toMatchObject([{ job: { url: SHORT_A, status: 'paused' } }]);
@@ -270,7 +259,6 @@ test.describe('anime downloads with the real ani-cli', () => {
         await page.getByLabel('Anime name').press('Enter');
         await page.getByRole('button', { name: `OPEN: ${ANIME}`, exact: true }).click({ timeout: 60000 });
         await expect(page.getByRole('button', { name: 'EP 1', exact: true })).toBeVisible({ timeout: 60000 });
-        // The episodes are asked for in the library, where the anime goes first.
         await page.getByRole('button', { name: 'ADD TO LIBRARY', exact: true }).click();
         await page.getByRole('button', { name: 'CONFIRM' }).click();
         await page.getByRole('button', { name: 'VIEW IN LIBRARY', exact: true }).click();
@@ -351,7 +339,6 @@ test.describe('anime downloads with the real ani-cli', () => {
         await openLibraryEpisode(second.page);
         await expect(second.page.getByTestId('anime-episode').locator('.history__meta').first()).toHaveText('PAUSED');
         await second.page.getByRole('button', { name: `RESUME: ${ANIME} EP 1` }).click();
-        // A finished download leaves the downloads screen and is told by a toast.
         await expect(second.page.locator('.toast').filter({ hasText: `Download complete: ${ANIME} · EP 1` })).toBeVisible({ timeout: 200000 });
 
         expect(sizeOf(join(episodeFolder(1), `${ANIME_FOLDER} Episode 1.mp4`))).toBeGreaterThan(10_000_000);

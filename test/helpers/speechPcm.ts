@@ -1,8 +1,5 @@
-// Audio made for the tests of the cutting at the pauses: mono 16-bit PCM at 16 kHz, as decodeSpeechAudio gives it.
-
 export const PCM_RATE = 16_000;
 
-// A stretch of the audio: a tone of 1 kHz (well inside the band of the voice) at this amplitude, or silence when it is 0.
 export interface PcmStretch {
     seconds: number;
     amplitude: number;
@@ -16,7 +13,6 @@ export function silence(seconds: number): PcmStretch {
     return { seconds, amplitude: 0 };
 }
 
-// The PCM of the stretches one after the other.
 export function pcmOf(stretches: readonly PcmStretch[]): Uint8Array {
     const total = stretches.reduce((sum, stretch) => {
         return sum + Math.round(stretch.seconds * PCM_RATE);

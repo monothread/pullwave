@@ -2,7 +2,6 @@ import { inflateRawSync } from 'node:zlib';
 
 export interface ZipEntry {
     name: string;
-    // 0 is stored, 8 is deflated.
     method: number;
     data: Buffer;
 }
@@ -10,7 +9,6 @@ export interface ZipEntry {
 const END_OF_CENTRAL_DIRECTORY = 0x06054b50;
 const CENTRAL_DIRECTORY_HEADER = 0x02014b50;
 
-// Reads the entries of a ZIP (enough of the format for the archives the app writes).
 export function readZipEntries(zip: Buffer): ZipEntry[] {
     let end = zip.length - 22;
     while (end >= 0 && zip.readUInt32LE(end) !== END_OF_CENTRAL_DIRECTORY) {

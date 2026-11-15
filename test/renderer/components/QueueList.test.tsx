@@ -133,7 +133,6 @@ describe('QueueList', () => {
     it('wires card actions to the API', async () => {
         const user = userEvent.setup();
         useAppStore.setState({
-            // Shown running first, then the finished ones newest first: `cards` is run, done, cancelled.
             jobs: [
                 makeJob({ id: 'cancelled', status: 'cancelled' }),
                 makeJob({ id: 'done', status: 'done', filePath: '/d/x.mp4' }),
@@ -259,7 +258,6 @@ describe('QueueList: the download going on', () => {
         expect(hero.querySelector('.download-hero__title')).toHaveAttribute('data-text', 'Running video');
         expect(hero.querySelector('.download-hero__next')).toHaveTextContent('UP NEXT: 2');
         expect(hero.querySelector('.download-hero__percent')).toHaveAttribute('data-text', '40%');
-        // The card of the download is still there, with its title in words.
         expect(screen.getByRole('heading', { name: 'Running video' })).toBeInTheDocument();
     });
 

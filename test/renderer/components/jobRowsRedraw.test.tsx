@@ -16,7 +16,6 @@ import { answerDialog } from '../../helpers/confirmDialog';
 import { makeMangaJob } from '../../helpers/mangaFixtures';
 import { installMockApi, makeJob, type MockApiHandle } from '../../helpers/mockApi';
 
-// Each row asks for the text of its status once per drawing: counting those asks tells which rows were drawn again.
 vi.mock('@renderer/components/jobStatus', async (importOriginal) => {
     const original = await importOriginal<typeof import('@renderer/components/jobStatus')>();
     return { ...original, statusLabel: vi.fn(original.statusLabel) };

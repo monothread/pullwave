@@ -22,7 +22,6 @@ interface PanelBox {
     height: number;
 }
 
-// The settings of each section, and the blocks they have in their order (the disk space last, where it grows without moving the others).
 const SECTIONS = [
     {
         name: 'downloads',
@@ -44,7 +43,6 @@ const SECTIONS = [
     }
 ];
 
-// Two columns in a window of the default width, three on an ultrawide screen.
 const SIZES = [
     { width: 1100, height: 900, columns: 2 },
     { width: 3440, height: 1400, columns: 3 }
@@ -62,7 +60,6 @@ async function launch(): Promise<Session> {
     );
     const app = await electron.launch({
         args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`],
-        // The manga section is pointed at a server nobody answers: it downloads and starts nothing.
         env: { ...process.env, ...installedProgramsEnv(workDir), PULLWAVE_MANGA_URL: 'http://127.0.0.1:9', PULLWAVE_COVER_FALLBACK_URL: 'http://127.0.0.1:9' }
     });
     const page = await app.firstWindow();
@@ -87,7 +84,6 @@ async function panelBoxes(page: Page): Promise<PanelBox[]> {
     });
 }
 
-// The boxes once they stopped moving: the disk space is measured after the screen opens, and every block ends an animation when it comes in.
 async function settledBoxes(page: Page): Promise<PanelBox[]> {
     let previous = '';
     let boxes: PanelBox[] = [];
@@ -139,7 +135,6 @@ for (const size of SIZES) {
             await expect(page.locator('section.settings')).toBeVisible();
             const boxes = await settledBoxes(page);
 
-            // Every block, in its order, each title shown in capitals.
             expect(
                 boxes.map((box) => {
                     return box.legend;
@@ -157,7 +152,6 @@ for (const size of SIZES) {
 
             const columns = columnsOf(boxes);
             expect(columns).toHaveLength(size.columns);
-            // The columns start at the same height and end no further apart than the tallest block.
             const tops = columns.map((panels) => {
                 return Math.min(
                     ...panels.map((box) => {
@@ -179,7 +173,6 @@ for (const size of SIZES) {
                 })
             );
             expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThan(tallest);
-            // The disk space is the last block, at the end of the last column: nothing comes after it to move when it grows.
             if (section.legends.includes('DISK SPACE')) {
                 const last = columns.at(-1) ?? [];
                 expect(last.at(-1)?.legend).toBe('DISK SPACE');

@@ -6,7 +6,6 @@ import { useAnimeStore } from '../store/animeStore';
 import { useMangaStore } from '../store/mangaStore';
 import { useShownLibrary } from '../hooks/useShownManga';
 
-// What a line of the list says.
 function useSuggestionText(): (suggestion: SearchSuggestion) => { text: string; tag: string | null } {
     const t = useTranslator();
     return (suggestion) => {
@@ -23,7 +22,6 @@ function useSuggestionText(): (suggestion: SearchSuggestion) => { text: string; 
     };
 }
 
-// The next line of the list in a direction, going round at the ends.
 export function moveHighlight(current: number, step: 1 | -1, count: number): number {
     if (count === 0) {
         return -1;
@@ -31,8 +29,6 @@ export function moveHighlight(current: number, step: 1 | -1, count: number): num
     return (current + step + count) % count;
 }
 
-// The search of the top bar: it finds the titles of the libraries as they are typed and offers to search the text in the anime and the
-// manga sections. The arrows move through the list, Enter goes, Esc closes it.
 export function GlobalSearch() {
     const t = useTranslator();
     const listId = useId();

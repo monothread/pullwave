@@ -1,7 +1,6 @@
 import { MAX_LIVE_END_CHECK_SECONDS, MIN_LIVE_END_CHECK_SECONDS } from '@shared/constants';
 import type { DownloadOptions } from '@shared/types';
 
-// Value of a menu entry that means "follow the setting".
 export const FOLLOW_SETTING = '';
 export const SWITCH_ON = 'on';
 export const SWITCH_OFF = 'off';
@@ -25,7 +24,6 @@ export function switchValue(choice: string): boolean | undefined {
     return choice === SWITCH_ON;
 }
 
-// Changes one option and drops it when it goes back to following the setting, so only real choices are kept.
 export function withOption<K extends keyof DownloadOptions>(options: DownloadOptions, key: K, value: DownloadOptions[K] | undefined): DownloadOptions {
     const next: DownloadOptions = { ...options };
     delete next[key];

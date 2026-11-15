@@ -6,11 +6,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-// Runs the real app with the real Suwayomi and the real FlareSolverr (in Docker), and a source of a site that is behind Cloudflare. It
-// needs the network and Docker and reads a real site, so it only runs when asked; nothing is downloaded here (it would take minutes): the
-// program has to be in the folder it is given already, and the image of FlareSolverr in Docker (ghcr.io/flaresolverr/flaresolverr:v3.5.2):
-//   PULLWAVE_LIVE_CLOUDFLARE=1
-//   PULLWAVE_MANGA_TOOLS=<dir>     a `tools` folder that has `suwayomi` in it
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const TOOLS = process.env.PULLWAVE_MANGA_TOOLS ?? '';
@@ -37,7 +32,6 @@ test.beforeEach(async () => {
     await leaveHome(page);
 });
 
-// When it fails, say what the screen showed and what the server and the helper wrote: a live test cannot be repeated until it is understood.
 test.afterEach(async () => {
     const testInfo = test.info();
     if (testInfo.status !== testInfo.expectedStatus) {
@@ -55,7 +49,6 @@ test.afterEach(async () => {
 test('reads a site that is behind Cloudflare through the helper, and says that a check is going on', async () => {
     await page.getByRole('button', { name: 'MANGA', exact: true }).click();
     const nav = page.getByRole('navigation', { name: 'Manga' });
-    // The program is there and so is the image: nothing is downloaded, and the note about the helper goes away once Docker has answered.
     await expect(nav).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('region', { name: 'Helper for sites protected by Cloudflare' })).toHaveCount(0, { timeout: 20000 });
 
@@ -72,10 +65,8 @@ test('reads a site that is behind Cloudflare through the helper, and says that a
 
     await nav.getByRole('button', { name: 'BROWSE', exact: true }).click();
     await page.getByRole('button', { name: /^POPULAR: Manganato/ }).click();
-    // While the helper solves the check the screen says so, and for which site.
     await expect(page.getByTestId('manga-cloudflare')).toBeVisible({ timeout: 30000 });
     await expect(page.getByTestId('manga-cloudflare')).toContainText('Passing the Cloudflare check of');
-    // Then the site is read, and there are mangas to open.
     await expect(page.getByText(/^Results: \d+$/)).toBeVisible({ timeout: 45000 });
     await expect(page.getByTestId('manga-cloudflare')).toHaveCount(0);
     await expect(page.getByRole('alert')).toHaveCount(0);
@@ -92,19 +83,16 @@ test('offers to look for an update of the helper the app runs, and never an upda
     const status = page.getByRole('group', { name: 'Status of the programs' });
     const server = status.getByTestId('manga-health-server');
     const helper = status.getByTestId('manga-health-helper');
-    // The app runs the helper (it is installed and on): its update can be looked for, and the words say how it is made.
     await expect(status.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled({ timeout: 30000 });
     await expect(status).toContainText('Updating takes the latest release of FlareSolverr (from GitHub) and switches to it at once.');
     await expect(status).toContainText('The manga server stays at the version the app ships with: it moves with the updates of the app.');
 
     await status.getByRole('button', { name: 'CHECK FOR UPDATES' }).click();
-    // The latest release of FlareSolverr is asked of GitHub: the row of the helper says it (or why it could not be had), the server says nothing.
     await expect(helper).toContainText(/Latest: v\d+\.\d+\.\d+|Could not look for the latest version/, { timeout: 30000 });
     await expect(status.getByRole('button', { name: 'CHECK FOR UPDATES' })).toBeEnabled();
     await expect(server.getByRole('button')).toHaveCount(0);
     await expect(server).not.toContainText('Latest:');
     await expect(status.getByRole('button', { name: /RESTART NOW|USE THE ONE OF THE APP/ })).toHaveCount(0);
-    // An update to the latest is offered only when it is another version than the one that runs; nothing is updated here.
     const latest = /Latest: (v\d+\.\d+\.\d+)/.exec(await helper.innerText())?.[1] ?? null;
     if (latest !== null && latest !== 'v3.5.2') {
         await expect(helper.getByRole('button', { name: `UPDATE TO ${latest}` })).toBeEnabled();

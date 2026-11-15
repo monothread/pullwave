@@ -15,7 +15,6 @@ function roundedPieces(pieces: readonly SpeechPiece[]): SpeechPiece[] {
     });
 }
 
-// PCM where every sample has the same value.
 function constantPcm(windows: number, value: number): Uint8Array {
     const pcm = new Uint8Array(windows * WINDOW_BYTES);
     const view = new DataView(pcm.buffer);
@@ -45,7 +44,6 @@ describe('speechSegmenter', () => {
         it('gives the quietest sound a window can have just above -120 dB', () => {
             const pcm = constantPcm(1, 0);
             pcm[0] = 1;
-            // One sample of 1 among the 800 of the window.
             expect(loudnessOf(pcm)).toEqual([10 * Math.log10((1 / 32768) ** 2 / 800)]);
         });
 

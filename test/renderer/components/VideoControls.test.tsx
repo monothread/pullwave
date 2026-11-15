@@ -9,7 +9,6 @@ import type { SubtitleManagerSetting } from '@renderer/components/PlayerSettings
 import { VideoControls, formatClock, type SubtitleOption } from '@renderer/components/VideoControls';
 import type { SeekPreviewSource } from '@renderer/components/seekPreview';
 
-// The frame the preview of the timeline gives (see useSeekPreview, tested on its own), and what it was asked for at each draw.
 const seekPreview = vi.hoisted(() => {
     return { frame: null as HTMLCanvasElement | null, calls: [] as Array<[SeekPreviewSource | undefined, number | null]> };
 });
@@ -37,7 +36,6 @@ const OPTIONS: SubtitleOption[] = [
     { id: 'subtitle-Japanese', label: 'Japanese' }
 ];
 
-// The same, with the settings of the player open, where the subtitle controls are.
 function setupOpen(subtitles: SubtitleOption[] = OPTIONS, duration = 120, selected: string | null = 'default'): Harness {
     const harness = setup(subtitles, duration, selected);
     openedPlayerSettings();
@@ -66,7 +64,6 @@ function setup(subtitles: SubtitleOption[] = OPTIONS, duration = 120, selected: 
     return { video, ref, play, pause, unmount, onSelectSubtitle };
 }
 
-// A player that plays only a part of the media (the preview of a cut): from 20 to 50 of a video of 120 seconds.
 function setupRange(range: PlaybackRange = { start: 20, end: 50 }, readyState = 0) {
     const video = document.createElement('video');
     Object.defineProperty(video, 'duration', { value: 120, configurable: true });
@@ -322,7 +319,6 @@ describe('VideoControls', () => {
             expect(backward).toHaveClass('player__skip', 'player__skip--backward');
             expect(backward).toHaveTextContent('❮❮ 5s');
             expect(backward).not.toBe(forward);
-            // jsdom has no animations: React listens for whichever name of the event the style declaration of the window knows.
             ['animationend', 'webkitAnimationEnd'].forEach((name) => {
                 fireEvent(backward, new Event(name, { bubbles: true }));
             });
@@ -478,7 +474,6 @@ describe('VideoControls', () => {
         fireEvent.change(volume, { target: { value: '0.5' } });
         expect(video.volume).toBe(0.5);
         expect(video.muted).toBe(false);
-        // jsdom does not fire the event the browser fires after a volume change.
         act(() => {
             fireEvent(video, new Event('volumechange'));
         });
@@ -612,7 +607,6 @@ describe('VideoControls', () => {
             unmount();
             render(<VideoControls video={ref} subtitles={OPTIONS} selectedSubtitle="subtitle-Japanese" onSelectSubtitle={vi.fn()} />);
 
-            // The browser picks a subtitle by the language it prefers once the data of the video is there.
             (tracks[2] as FakeTextTrack).mode = 'showing';
             list.dispatchEvent(new Event('change'));
 
@@ -826,7 +820,6 @@ describe('VideoControls', () => {
             bar.getBoundingClientRect = () => {
                 return { left: 100, width: 200, right: 300, top: 0, bottom: 6, height: 6, x: 100, y: 0, toJSON: () => { return {}; } };
             };
-            // Where the box of the timeline is in the bar of the controls must not matter: the tooltip is in the box, so it is placed in it.
             Object.defineProperty(bar.parentElement as HTMLElement, 'offsetLeft', { value: 60, configurable: true });
         }
 
@@ -864,7 +857,6 @@ describe('VideoControls', () => {
             expect(tooltip.parentElement).toBe(box);
             expect(tooltip).toHaveClass('player__hover');
             expect(Array.from(box.children).map((child) => { return child.className; })).toEqual(['progress', 'player__range player__seek', 'player__hover']);
-            // The bar of the controls is the parent of the box, not of the tooltip.
             expect(box.parentElement).toHaveClass('player__controls');
             expect(tooltip.parentElement).not.toBe(box.parentElement);
         });
@@ -1511,7 +1503,6 @@ describe('VideoControls: the picture of the preview above the timeline', () => {
     let getContext: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
-        // jsdom has no canvas: the picture only has to be drawn on.
         getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
             return { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D;
         });
@@ -1555,7 +1546,6 @@ describe('VideoControls: the picture of the preview above the timeline', () => {
         expect(seekPreview.calls.at(-1)).toEqual([FILE, 50]);
         fireEvent.mouseMove(bar, { clientX: 201 });
         expect(seekPreview.calls.at(-1)).toEqual([FILE, 101]);
-        // The end of the bar is the last second the media has.
         fireEvent.mouseMove(bar, { clientX: 300 });
         expect(seekPreview.calls.at(-1)).toEqual([FILE, 199]);
         fireEvent.mouseLeave(bar);
@@ -1563,7 +1553,6 @@ describe('VideoControls: the picture of the preview above the timeline', () => {
     });
 
     it('asks for the second of the media, not of the part, when only a part is played', () => {
-        // A quarter of the part from 20 to 50 is 7.5 seconds into it: 27.5 of the media.
         const bar = renderWith(FILE, 120, { start: 20, end: 50 });
         fireEvent.mouseMove(bar, { clientX: 150 });
         expect(screen.getByRole('tooltip')).toHaveTextContent('0:07');

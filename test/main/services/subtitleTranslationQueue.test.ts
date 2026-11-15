@@ -19,7 +19,6 @@ interface Pending {
     fail: (error: unknown) => void;
 }
 
-// A queue whose translations end when the test says so.
 function setup(concurrency?: number) {
     const pending: Pending[] = [];
     const updates: SubtitleTranslationJob[] = [];

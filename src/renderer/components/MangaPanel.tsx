@@ -31,11 +31,8 @@ const VIEWS: ReadonlyArray<{ id: MangaBrowseView; label: 'manga.nav.browse' | 'm
     { id: 'settings', label: 'manga.nav.settings', icon: SETTINGS_ICON }
 ];
 
-// The screens that ask the manga server for everything they show. While the server starts or after it failed they wait for it in one place,
-// instead of each one saying it is loading and then that the server is not ready.
 const SERVER_VIEWS: ReadonlySet<MangaBrowseView> = new Set<MangaBrowseView>(['browse', 'search', 'extensions']);
 
-// The tabs of the section, in the order of the bar (the gear last): what Ctrl+Page Up and Ctrl+Page Down move through.
 export const MANGA_TAB_IDS: readonly MangaBrowseView[] = VIEWS.map((item) => {
     return item.id;
 });
@@ -68,13 +65,11 @@ export function MangaPanel() {
     });
     const shownJobs = useShownJobs();
     const active = activeJobCount(shownJobs);
-    // Whatever page of the section is opened (a screen, a source, a manga, a series, the reader) starts at the top.
     const page = useMangaStore((state) => {
         return [state.view, state.browse.sourceId ?? '', state.browse.mode, state.sourceSettings.open, state.selection?.manga.remoteId ?? '', state.librarySeries ?? '', state.libraryGroup ?? '', state.reader.status === 'closed'].join('|');
     });
 
     useEffect(() => {
-        // Coming back to a page by the buttons of the mouse puts the scroll where it was, and not at the top.
         if (isScrollRestoring()) {
             return;
         }

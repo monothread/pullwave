@@ -147,7 +147,6 @@ describe('AnimeCover that looks the cover up by the title', () => {
         expect(image(container)).toBeNull();
         expect(container.querySelector('.cover--none')).toBeEmptyDOMElement();
         expect(screen.queryByText('COVER NOT FOUND')).not.toBeInTheDocument();
-        // The store only asks once for a title, as long as it has not been answered: this one is answered so the next test is not in its way.
         await act(async () => {
             answer(null);
         });

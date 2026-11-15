@@ -24,18 +24,12 @@ export interface QueueDependencies {
         onThumbnail?: (address: string) => void,
         onParts?: (parts: FormatPart[]) => void
     ) => RunHandle;
-    // Fetches the picture of each video and keeps it while its download is in the queue; without it the downloads have no picture.
     thumbnails?: Pick<VideoThumbnails, 'load' | 'forget'>;
-    // Size of a file on disk, or null when it does not exist (used to show how much of a live stream is recorded).
     fileSize?: (path: string) => number | null;
-    // Turns the partial file of a recording that was ended by killing yt-dlp into the final file; returns its path.
     salvageRecording?: (filePath: string) => Promise<string | null>;
-    // Joins the parts of a recording that was resumed after the stream came back (in order) into the first one; returns its path.
     mergeParts?: (paths: string[]) => Promise<string | null>;
-    // The unfinished files (.part...) that belong to the download of a final file, and a way to delete files.
     findPartialFiles?: (finalPath: string) => string[];
     deleteFiles?: (paths: string[]) => void;
-    // Where the paused downloads are kept between runs of the app (see pausedStore.ts); without it a pause only lasts while the app is open.
     pausedStorage?: PausedStorage;
     addHistory: (entry: HistoryEntry) => void;
     onJobUpdate: (job: DownloadJob) => void;
@@ -46,11 +40,8 @@ export interface QueueDependencies {
 }
 
 export const LIVE_TICK_MS = 1000;
-// Shortest time between two progress updates of the same download sent to the window: yt-dlp writes its progress many times a
-// second, and each update is a message to the window and a new drawing of the queue.
 export const PROGRESS_EMIT_MS = 250;
 export const LIVE_STOP_TIMEOUT_MS = 8000;
-// Pause between two attempts to find out whether a live stream that stopped is back.
 export const LIVE_END_RETRY_MS = 2000;
 
 function defaultFileSize(path: string): number | null {
@@ -68,13 +59,11 @@ const SALVAGE_FAILED_ERROR: DownloadError = {
     raw: 'ffmpeg could not copy the partial recording into the final file.'
 };
 
-// The time after a progress update of a download is sent, and whether a newer one came in that time (it is sent at the end).
 interface ProgressCooldown {
     timer: ReturnType<typeof setTimeout>;
     pending: boolean;
 }
 
-// A live stream that seems to have ended, while the app checks whether it really did.
 interface EndCheck {
     original: RunResult;
     secondsLeft: number;
@@ -89,7 +78,6 @@ function isFinished(job: DownloadJob): boolean {
     return FINISHED_STATUSES.includes(job.status);
 }
 
-// The bars of the parts of a download that is complete: every part is complete too.
 function completeParts(parts: DownloadPart[] | null): DownloadPart[] | null {
     if (parts === null) {
         return null;
@@ -102,8 +90,6 @@ function completeParts(parts: DownloadPart[] | null): DownloadPart[] | null {
 export class QueueManager {
     private readonly jobs: DownloadJob[] = [];
     private readonly handles = new Map<string, RunHandle>();
-    // The formats of the video being downloaded by each run whose formats come one after the other (the video, then the audio), in their order:
-    // the format of a progress line says which part it is about.
     private readonly partFormats = new Map<string, string[]>();
     private readonly extras = new Map<string, RequestExtras>();
     private readonly salvaging = new Set<Promise<void>>();
@@ -111,11 +97,8 @@ export class QueueManager {
     private readonly outputPaths = new Map<string, Set<string>>();
     private readonly tickers = new Map<string, ReturnType<typeof setInterval>>();
     private readonly endChecks = new Map<string, EndCheck>();
-    // Live recordings that were asked to stop on purpose (STOP & SAVE): their end is final, so it is not double-checked.
     private readonly stopRequested = new Set<string>();
-    // Downloads asked to pause: the run is ended, and its partial files are kept so it can go on from there.
     private readonly pauseRequested = new Set<string>();
-    // The part of the recording each live job is in (1 for the first file, +1 each time the stream came back).
     private readonly parts = new Map<string, number>();
     private readonly progressCooldowns = new Map<string, ProgressCooldown>();
     private closed = false;
@@ -128,7 +111,6 @@ export class QueueManager {
         this.restorePaused();
     }
 
-    // The downloads that were paused when the app was closed are back, paused, with what is needed to go on from their partial files.
     private restorePaused(): void {
         (this.deps.pausedStorage?.load() ?? []).forEach((paused) => {
             if (this.find(paused.job.id) !== undefined) {
@@ -144,8 +126,6 @@ export class QueueManager {
         });
     }
 
-    // Keeps the paused downloads in the file: it holds exactly the ones that are paused now, so one that was resumed, cancelled or removed
-    // is not back the next time. The cookie of a page never goes to the disk.
     private savePaused(): void {
         const kept: PausedDownload[] = this.jobs
             .filter((job) => {
@@ -178,7 +158,6 @@ export class QueueManager {
         });
     }
 
-    // Stops a live recording keeping what was recorded so far (the download then completes normally).
     stop(id: string): void {
         const job = this.find(id);
         if (job?.status !== 'running' || !job.live) {
@@ -194,13 +173,10 @@ export class QueueManager {
         this.handles.get(id)?.stop();
     }
 
-    // Only a plain download that is running can be paused: not a live recording, nor one that is waiting for a live stream to start, nor
-    // one that is already closing its file (ffmpeg joining or converting).
     canPause(job: DownloadJob): boolean {
         return job.status === 'running' && !job.live && !job.waitingForLive && job.postProcess === null && !job.merging && !job.saving && !this.endChecks.has(job.id);
     }
 
-    // Ends the run keeping the partial files, so `resume` continues from them; the card waits as PAUSED and frees its place in the queue.
     pause(id: string): void {
         const job = this.find(id);
         if (!job || !this.canPause(job)) {
@@ -210,7 +186,6 @@ export class QueueManager {
         this.handles.get(id)?.cancel();
     }
 
-    // Puts a paused download back in the queue: yt-dlp finds its partial file and goes on from where it stopped.
     resume(id: string): void {
         const job = this.find(id);
         if (job?.status !== 'paused') {
@@ -222,14 +197,10 @@ export class QueueManager {
         this.pump();
     }
 
-    // Whether closing the app has something to wait for: a recording to save, or a download to end and clean up after.
     hasRunsToEnd(): boolean {
         return this.handles.size > 0;
     }
 
-    // Live recordings are asked to finish (and given a moment to save their file). A download that was being paused is kept as paused, at
-    // once, so closing the app right after pausing does not lose it. Every other download is cancelled and the unfinished files it left
-    // behind are deleted (the setting that keeps them after a failure does not apply: nothing is there to resume once the app is closed).
     async shutdown(timeoutMs: number = LIVE_STOP_TIMEOUT_MS): Promise<void> {
         this.closed = true;
         [...this.progressCooldowns.keys()].forEach((id) => {
@@ -252,7 +223,6 @@ export class QueueManager {
                 return;
             }
             if (job !== undefined && this.pauseRequested.has(id)) {
-                // The run ends on its own; finishPaused will find the card already paused and write the same thing again.
                 Object.assign(job, { status: 'paused', speed: '', eta: '' });
                 this.savePaused();
             } else if (job !== undefined) {
@@ -271,7 +241,6 @@ export class QueueManager {
                 })
             ]);
         }
-        // A recording that did not finish in time is ended, so nothing is left running (and writing) after the app is gone.
         this.handles.forEach((handle) => {
             if (stopped.includes(handle)) {
                 handle.cancel();
@@ -280,7 +249,6 @@ export class QueueManager {
         this.deleteDiscarded(discarded);
     }
 
-    // The unfinished files of the downloads that were cancelled because the app is closing, found once their processes have ended.
     private deleteDiscarded(discarded: ReadonlyArray<{ job: DownloadJob; paths: readonly string[] }>): void {
         const find = this.deps.findPartialFiles;
         if (find === undefined) {
@@ -383,7 +351,6 @@ export class QueueManager {
         this.pump();
     }
 
-    // Removing a failed or cancelled download also deletes what it left in the folder. The bulk clear keeps live recordings.
     remove(id: string, options: { deleteLiveRecording?: boolean } = {}): void {
         const job = this.find(id);
         if (!job) {
@@ -421,7 +388,6 @@ export class QueueManager {
             });
     }
 
-    // Deletes the unfinished files of a failed or cancelled download and keeps its card.
     clearPartials(id: string): void {
         const job = this.find(id);
         if (!job || !job.hasPartial) {
@@ -446,9 +412,7 @@ export class QueueManager {
         this.deps.onJobUpdate({ ...job });
     }
 
-    // Sends the progress of a download at most once every PROGRESS_EMIT_MS; the last one that came in that time is sent at its end.
     private emitProgress(job: DownloadJob): void {
-        // While the queue shuts down nothing waits any more: what comes is sent as it comes.
         if (this.closed) {
             this.emit(job);
             return;
@@ -503,7 +467,6 @@ export class QueueManager {
         }
     }
 
-    // The settings of a download: the ones saved, replaced by the options chosen for this download only.
     private settingsFor(job: DownloadJob): Settings {
         return { ...this.deps.getSettings(), ...this.extras.get(job.id)?.options };
     }
@@ -514,8 +477,6 @@ export class QueueManager {
         this.launch(job, this.settingsFor(job), this.extras.get(job.id));
     }
 
-    // Runs yt-dlp for a job. `resumedPart` is set for the attempts that look for a live stream that stopped: they only
-    // record when it is live again and write to a new file.
     private launch(job: DownloadJob, settings: Settings, extras: RequestExtras | undefined, resumedPart?: number): void {
         const args = buildYtdlpArgs(job.url, settings, this.deps.defaultDownloadDir, this.deps.resolveFfmpegLocation(settings), { ...extras, resumedPart });
         let wentLive = false;
@@ -576,9 +537,6 @@ export class QueueManager {
         });
     }
 
-    // yt-dlp prints "[wait]" while it waits for a scheduled live stream; the first recording line ends the wait.
-    // The download is complete and yt-dlp is now converting, merging or tagging the file: the speed no longer means anything. Every step that
-    // starts is kept, in its order, so the card shows the steps done and the one going on.
     private applyPostProcess(job: DownloadJob, event: PostProcessEvent): void {
         if (event.status !== 'started' || !this.find(job.id)) {
             return;
@@ -600,8 +558,6 @@ export class QueueManager {
         return !this.closed && job.live && !this.stopRequested.has(job.id) && settings.verifyLiveEnd && (result.status === 'done' || result.status === 'error') && this.find(job.id) !== undefined;
     }
 
-    // A live stream that ended (or dropped) is not finished right away: for a few seconds the app keeps asking yt-dlp whether
-    // it is live again. If it is, the recording goes on in a new file of the same card; if not, the card ends as it would have.
     private beginEndCheck(job: DownloadJob, original: RunResult): void {
         const totalSeconds = this.settingsFor(job).verifyLiveEndSeconds;
         this.stopTicker(job.id);
@@ -644,7 +600,6 @@ export class QueueManager {
         this.launch(job, this.settingsFor(job), this.extras.get(job.id), (this.parts.get(job.id) ?? 1) + 1);
     }
 
-    // An attempt ended without the stream being live: try again shortly, while there is time left.
     private endCheckAttemptEnded(job: DownloadJob): void {
         const check = this.endChecks.get(job.id);
         if (!check || check.retry !== null) {
@@ -672,7 +627,6 @@ export class QueueManager {
         return check;
     }
 
-    // The time is up (or the user wants to stop waiting): the card ends the way the recording ended.
     private concludeEndCheck(job: DownloadJob): void {
         const check = this.clearEndCheck(job.id);
         if (!check) {
@@ -684,7 +638,6 @@ export class QueueManager {
         this.finishMerged(job, check.original);
     }
 
-    // The card was removed during the check: nothing to finish, only timers and the running attempt to stop.
     private abandonEndCheck(id: string): void {
         if (!this.clearEndCheck(id)) {
             return;
@@ -695,13 +648,11 @@ export class QueueManager {
         this.outputPaths.delete(id);
     }
 
-    // The stream is live again: the attempt is now the recording of this job.
     private resumeRecording(job: DownloadJob, part: number): void {
         this.clearEndCheck(job.id);
         this.parts.set(job.id, part);
     }
 
-    // The picture of the video is fetched by the app; the download shows it once it is there (a download removed meanwhile is left alone).
     private applyThumbnail(job: DownloadJob, address: string): void {
         const thumbnails = this.deps.thumbnails;
         if (thumbnails === undefined) {
@@ -716,8 +667,6 @@ export class QueueManager {
         });
     }
 
-    // A live stream has no end and no size to measure a percentage against: show how long it has been recording and
-    // how much was written to its partial file instead.
     private applyInfo(job: DownloadJob, info: DownloadInfo): void {
         this.outputPaths.set(job.id, (this.outputPaths.get(job.id) ?? new Set<string>()).add(info.filePath));
         if (!info.live || this.tickers.has(job.id)) {
@@ -727,7 +676,6 @@ export class QueueManager {
         job.waitingForLive = false;
         this.livePaths.set(job.id, info.filePath);
         const startedAt = this.now();
-        // A recording that was resumed after the stream came back keeps counting from where the previous part stopped.
         const elapsedBefore = job.elapsedSeconds;
         const tick = (): void => {
             job.elapsedSeconds = elapsedBefore + Math.round((this.now() - startedAt) / 1000);
@@ -747,8 +695,6 @@ export class QueueManager {
         }
     }
 
-    // Each video of a run announces its formats before it starts: a video whose formats come one after the other has a bar for each of them,
-    // all empty until their turn; a video of a single format has the one bar of the download.
     private applyParts(job: DownloadJob, parts: FormatPart[]): void {
         if (parts.length < 2) {
             this.partFormats.delete(job.id);
@@ -770,8 +716,6 @@ export class QueueManager {
         this.emit(job);
     }
 
-    // The bars of the parts once a progress line came: the parts before the one it is about are complete, that one is where the line says,
-    // and the ones after it are untouched. A line about no part of the video leaves them as they were.
     private partsAfter(job: DownloadJob, progress: ProgressInfo): DownloadPart[] | null {
         const index = this.partFormats.get(job.id)?.indexOf(progress.formatId) ?? -1;
         if (job.parts === null || index < 0) {
@@ -792,7 +736,6 @@ export class QueueManager {
         job.live = job.live || progress.live;
         job.waitingForLive = false;
         job.postProcess = null;
-        // A step that ran before the download (yt-dlp runs some before it) is not a step after it.
         job.postProcessSteps = [];
         job.downloadedBytes = progress.downloadedBytes ?? job.downloadedBytes;
         if (!this.tickers.has(job.id)) {
@@ -827,8 +770,6 @@ export class QueueManager {
         return mergeable && paths.length > 1 ? paths : [];
     }
 
-    // A recording that was resumed after the stream came back ends as one file: the parts are joined, in order, into the
-    // first one. If they cannot be joined the card ends as it was, and every part stays in the folder.
     private async withMergedParts(job: DownloadJob, result: RunResult): Promise<RunResult> {
         const paths = this.partsToMerge(job, result);
         if (paths.length === 0 || !this.deps.mergeParts) {
@@ -882,8 +823,6 @@ export class QueueManager {
         }
     }
 
-    // After an error or a cancel: delete what was left behind when the user asked for it (live recordings are always kept,
-    // they can still be played), otherwise remember that it is there so the card can offer to clear it.
     private settleLeftovers(job: DownloadJob): void {
         const files = this.leftoversOf(job);
         if (files.length > 0 && !job.live && this.deps.getSettings().deletePartialsOnFailure) {
@@ -904,7 +843,6 @@ export class QueueManager {
         job.saving = false;
         job.postProcess = null;
         if (!this.find(job.id)) {
-            // The card was removed while the download was running: whatever it left behind goes too, except a live recording.
             this.deleteLeftovers(job, false);
             this.outputPaths.delete(job.id);
             return;
@@ -927,11 +865,9 @@ export class QueueManager {
         this.pump();
     }
 
-    // The run was ended on purpose to pause: the card waits with its partial files and the place in the queue is free.
     private finishPaused(job: DownloadJob): void {
         this.stopTicker(job.id);
         if (!this.find(job.id)) {
-            // The card was removed while the download was being paused: whatever it left behind goes too.
             this.deleteLeftovers(job, false);
             this.outputPaths.delete(job.id);
             return;

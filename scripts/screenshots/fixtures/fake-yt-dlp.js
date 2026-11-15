@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// Stands in for yt-dlp in the screenshots. What it does is told by the link: `?title=<name>&percent=<n>` is a download that stays at that
-// percentage (the screenshot is taken while it goes on), `?title=<name>&fail=<kind>` fails like yt-dlp does, and `?title=<name>` ends well.
 const fs = require('node:fs');
 
 const args = process.argv.slice(2);

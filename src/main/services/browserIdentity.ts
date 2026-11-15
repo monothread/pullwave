@@ -1,4 +1,3 @@
-// A browser the operating system knows about (Linux .desktop entries, Windows StartMenuInternet registry keys).
 export interface RegisteredBrowser {
     name: string;
     key: string;
@@ -7,7 +6,6 @@ export interface RegisteredBrowser {
 const WINDOWS_DATA_FOLDER = 'user data';
 const RELEASE_WORDS = new Set(['stable', 'beta', 'dev', 'unstable', 'browser']);
 
-// "google-chrome-stable", "Google Chrome" and "google-chrome" all become "googlechrome".
 export function normalizeBrowserKey(text: string): string {
     const words = text
         .toLowerCase()

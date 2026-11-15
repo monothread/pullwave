@@ -269,7 +269,6 @@ describe('MangaUpdates with a long list', () => {
         vi.unstubAllGlobals();
     });
 
-    // 35 chapters found today and 35 yesterday, the newest first.
     const LONG = Array.from({ length: 70 }, (_unused, index) => {
         return entry({ id: index + 1, chapterId: index + 1, chapterName: `Chapter ${String(index + 1)}`, foundAt: at(index < 35 ? 0 : 1, 10) - index * 1000 });
     });

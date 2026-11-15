@@ -7,10 +7,6 @@ import type { AniDownloadProgress } from '@shared/anime';
 import { asDownloadResult, runAniCli, type AniRunHandle } from '@main/services/aniCliRunner';
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 
-// The download of an episode whose audio is a track of its own, run for real: the busybox of the app runs pullwave-run.sh, which sources a
-// script holding the `download()` function of the ani-cli the app pins (it calls ffmpeg -stats -i <picture> -i <audio> ... <file>), and the
-// yt-dlp and ffmpeg of the tests download and join a picture and an audio served as HLS on 127.0.0.1. Nothing leaves the machine.
-
 const ROOT = process.cwd();
 const RUNNER = join(ROOT, 'resources', 'ani-scripts', 'pullwave-run.sh');
 const BUSYBOX = join(ROOT, 'resources', 'bin', 'ani', 'busybox');
@@ -19,14 +15,12 @@ const YTDLP = join(ROOT, 'resources', 'bin', 'yt-dlp');
 const FFMPEG = join(ROOT, 'resources', 'bin', 'ffmpeg');
 const FFPROBE = join(ROOT, 'resources', 'bin', 'ffprobe');
 const AVAILABLE = process.platform !== 'win32' && [RUNNER, BUSYBOX, ANI_CLI, YTDLP, FFMPEG, FFPROBE].every(existsSync);
-// 20 s of picture at 25 frames a second, in pieces of 4 s.
 const FRAMES = 500;
 const TITLE = 'Kaiju Episode 1';
 
 let hlsDir = '';
 let server: Server | null = null;
 let baseUrl = '';
-// While set, a piece answers 500 for that many milliseconds after it is first asked for (a hiccup of the server).
 let flaky: { name: string; windowMs: number; firstHitAt: number | null } | null = null;
 
 function serve(request: IncomingMessage, response: ServerResponse): void {
@@ -49,7 +43,6 @@ function serve(request: IncomingMessage, response: ServerResponse): void {
     response.end(readFileSync(file));
 }
 
-// The download function of the pinned ani-cli, as it is.
 function downloadFunction(): string {
     const match = /^download\(\) \{\n[\s\S]*?\n\}\n/m.exec(readFileSync(ANI_CLI, 'utf-8'));
     if (match === null) {
@@ -58,7 +51,6 @@ function downloadFunction(): string {
     return match[0];
 }
 
-// The tools ani-cli finds, as the app links them: yt-dlp, ffmpeg, ffprobe and the applets of busybox the stand-in uses.
 function toolsDir(): string {
     const tools = makeTempDir();
     symlinkSync(YTDLP, join(tools, 'yt-dlp'));
@@ -171,7 +163,6 @@ describe.skipIf(!AVAILABLE)('the download of an episode whose audio is a track o
         const result = await start(outDir, [], `${baseUrl}/v.m3u8`, `${baseUrl}/missing.m3u8`).result;
         expect(result.status).toBe('done');
         const outcome = result.status === 'done' ? result.value : null;
-        // Here the script ends with what download() gave back; the real ani-cli ends well whatever it was, so the line of the stand-in is what tells.
         expect(outcome).toMatchObject({ exitCode: 1, downloadFailed: true, destination: join(outDir, `${TITLE}.mp4.video.mp4`) });
         const checked = outcome === null ? null : asDownloadResult(outcome);
         expect(checked?.status).toBe('error');
@@ -181,7 +172,6 @@ describe.skipIf(!AVAILABLE)('the download of an episode whose audio is a track o
     }, 60_000);
 
     it('says the download failed, and leaves no file of the episode, when an episode without an audio track of its own cannot be had', async () => {
-        // ani-cli tries yt-dlp first and, when it fails, ffmpeg with the picture alone: the stand-in tries yt-dlp again and says it failed.
         const outDir = makeTempDir();
         const result = await start(outDir, [], `${baseUrl}/missing.m3u8`, '').result;
         const outcome = result.status === 'done' ? result.value : null;

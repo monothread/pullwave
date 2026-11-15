@@ -45,67 +45,38 @@ import { createTranslatedBatches } from './services/subtitleTranslator';
 import { SubtitleTranslationQueue } from './services/subtitleTranslationQueue';
 import { defaultSubtitleFileSystem, importSubtitle, listSubtitleTracks, resolveSubtitlePath, type SubtitleFileSystem } from './services/subtitleFiles';
 
-// A file the player has just let go of can still be held for a moment (Windows will not delete it then): what is left is
-// removed again after this long.
 export const REMOVE_RETRY_MS = 500;
 
 export interface AnimeRuntimeOptions {
     platform: NodeJS.Platform;
-    // userData: the library lives in <dataDir>/anime.
     dataDir: string;
-    // resources/ani-scripts (inside the package once built): the script that runs ani-cli with its stand-ins.
     scriptsDir: string;
-    // The programs the app installed (ani-cli, the shell and the curl it runs on, deno and ffmpeg).
     programs: Pick<ProgramTools, 'pathOf'>;
     defaultDownloadDir: string;
     resolver: BinaryResolver;
     getSettings: () => Settings;
-    // The language of the system, which the interface (and so the subtitles) follows when it is set to "device".
     systemLocale: string;
-    // A different ani-cli to run instead of the one the app installs (used by the end-to-end tests).
     customScriptPath?: () => string;
-    // How files and folders are deleted (the tests replace it).
     remover?: { files: (paths: string[]) => void; folders: (paths: string[]) => void; emptyFolders?: (paths: string[]) => void };
-    // How long to wait before removing again what could not be removed at first (the tests make it short).
     removeRetryMs?: number;
-    // Asks the user for a folder of anime to put into the library, starting at the given folder; null when they gave up (the
-    // tests replace it).
     chooseLibraryFolder?: (startAt: string) => Promise<string | null>;
-    // How the folders of anime are read (the tests replace it).
     scanFiles?: ScanFileSystem;
-    // Asks the user for the folder the anime are migrated to, starting at the given folder; null when they gave up (the tests
-    // replace it).
     chooseMigrationFolder?: (startAt: string) => Promise<string | null>;
-    // Saves the folder the anime are in now in the settings (once a migration has moved them).
     saveAnimeDirectory?: (directory: string) => void;
-    // Saves the automatic translation of the new episodes off in the settings (once the provider refused or the settings lack what it needs).
     disableAutoTranslate?: () => void;
-    // How the files are copied and removed by a migration (the tests replace it).
     migrationFiles?: MigrationFileSystem;
-    // Opens a folder in the file manager of the system (the tests replace it).
     openFolder?: (path: string) => void;
-    // Asks the user for a subtitle file to load; null when they gave up (the tests replace it).
     chooseSubtitleFile?: () => Promise<string | null>;
-    // How the files next to a video are read and written (the tests replace it).
     subtitleFiles?: SubtitleFileSystem;
-    // How the text at an address is fetched when the subtitles of an episode are checked; null when it could not be (the tests
-    // replace it).
     fetchSubtitleText?: (url: string, referer: string | null) => Promise<string | null>;
-    // The token of a provider or of a service of speech to text (a slot), or null when it has none (it lives in the main process only, see
-    // llmTokenStore.ts).
     getLlmToken?: (slot: LlmTokenSlot) => string | null;
-    // How the language model and the service of speech to text are reached, how ffmpeg is run to take the audio out of a video and where
-    // its parts are kept, and how long a translation waits when the provider asks it to (the tests replace them).
     llmFetch?: LlmFetch;
     speechFetch?: LlmFetch;
     runFfmpeg?: FfmpegRunner;
     audioFiles?: AudioFiles;
     translationSleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
-    // The address the schedule of the day is asked at, instead of AniList's (used by the end-to-end tests).
     scheduleUrl?: string;
-    // The address that stands in for the services of covers asked when AniList has none (used by the end-to-end tests; see FallbackOptions).
     coverFallbackUrl?: string;
-    // When the look for new episodes happens: that long after the app opens, and again that often (used by the end-to-end tests).
     checkTimes?: { firstMs: number; everyMs: number };
     send: (channel: string, payload?: unknown) => void;
 }
@@ -115,14 +86,10 @@ export interface AnimeRuntime {
     queue: AnimeDownloadQueue;
     handlers: AnimeHandlerDependencies;
     media: MediaSource;
-    // Answers the requests of the player for a stream that is being watched without downloading it.
     streamHandler: (request: Request) => Promise<Response>;
-    // Starts the automatic look for new episodes of the anime of the library (it is not started by creating the runtime), and ends it.
     startBackgroundChecks: () => void;
     stopBackgroundChecks: () => void;
-    // The settings were saved or a token changed: the automatic translation of the new episodes is turned off when it cannot work.
     enforceAutoTranslateSetup: () => void;
-    // Tries a new script of ani-cli for real before an update makes it the one in use (see aniUpdateProbe.ts).
     checkScript: AniCliCheck;
 }
 
@@ -135,10 +102,8 @@ function fileSize(path: string): number | null {
     }
 }
 
-// How long a subtitle may take to arrive.
 export const SUBTITLE_FETCH_TIMEOUT_MS = 10000;
 
-// The text at an address, asked for with the site the source expects (as ani-cli asks for the subtitle it saves).
 export async function fetchSubtitleText(url: string, referer: string | null, timeoutMs: number = SUBTITLE_FETCH_TIMEOUT_MS): Promise<string | null> {
     try {
         const headers: Record<string, string> = { 'User-Agent': STREAM_USER_AGENT };
@@ -163,14 +128,12 @@ function removeAgainLater(paths: string[], remove: (paths: string[]) => void, mi
     }, milliseconds).unref();
 }
 
-// Everything the anime section needs, or null where it does not exist (it is available on Linux and Windows).
 export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime | null {
     if (!isAnimeSupported(options.platform)) {
         return null;
     }
     const animeDir = join(options.dataDir, 'anime');
     const db = new AnimeDb(join(animeDir, 'anime.db'));
-    // The queue lives in memory: what was not finished when the app closed has to be started again by the user.
     db.failInterrupted();
     const installed: AniPrograms = {
         anicli: () => {
@@ -201,8 +164,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         };
     };
     const service = new AniCliService({ locator, customScriptPath, subtitleLabels: aniSubtitleLabels, tools: aniTools });
-    // A new ani-cli is tried on its own (its own patched copy, links and history, in a folder apart) so nothing of the one in use is touched
-    // while the update is checked.
     const checkScript: AniCliCheck = (scriptPath, onStep) => {
         const probeLocator = new AniCliLocator(
             { scriptsDir: options.scriptsDir, dataDir: join(animeDir, 'update-check') },
@@ -272,20 +233,16 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             options.send(IPC.eventAnimeQueueHeld, held);
         }
     });
-    // The episodes that were paused when the app closed are shown again, ready to go on or be cancelled.
     queue.restore();
-    // The video of a downloaded episode, or null when it has none.
     const downloadedFile = (episodeId: number): string | null => {
         const episode = db.getEpisode(episodeId);
         return episode && episode.status === 'done' ? episode.filePath : null;
     };
-    // The name of the series of an episode (the one the user gave the seasons, or the title of the anime), to help hear the names in it.
     const seriesTitleOf = (episodeId: number): string | null => {
         const episode = db.getEpisode(episodeId);
         const anime = episode === null ? null : db.getAnime(episode.animeId);
         return anime === null ? null : (anime.series ?? anime.title);
     };
-    // What the language model of the settings is asked with; what the settings lack when it cannot be.
     const llmAccess = (): LlmAccess => {
         const settings = options.getSettings();
         const token = options.getLlmToken?.(settings.translateProvider) ?? null;
@@ -313,8 +270,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             }
         };
     };
-    // The batches already translated, shared by the translations and the subtitles made from the audio: one that failed half way goes on
-    // from where it stopped when it is asked for again.
     const translatedBatches = createTranslatedBatches();
     const translations = new SubtitleTranslationQueue({
         run: (request, onProgress, signal): Promise<SubtitleTranslateResponse> => {
@@ -328,13 +283,10 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             options.send(IPC.eventSubtitleTranslation, job);
         }
     });
-    // The language the subtitles are wanted in: the one of the anime subtitles of the settings, or the language of the app when they leave the
-    // choice to ani-cli (the automatic translation of the new episodes and the translation of a season go into it).
     const translationTarget = (): TranslationLanguage => {
         const settings = options.getSettings();
         return translationTargetOf(settings.animeSubtitles, resolveLanguage(settings.language, options.systemLocale));
     };
-    // The subtitles of the new episodes the check downloads are translated into the language of the anime subtitles, when the user wants that.
     const autoTranslation = new AutoSubtitleTranslator({
         isEnabled: () => {
             return options.getSettings().animeAutoTranslateNew;
@@ -360,7 +312,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             options.send(IPC.eventAnimeAutoTranslateOff, reason);
         }
     });
-    // What the service of speech to text of the settings is asked with; what the settings lack when it cannot be.
     const speechAccess = (): SpeechAccess => {
         const settings = options.getSettings();
         const token = options.getLlmToken?.(speechTokenSlot(settings.transcribeProvider)) ?? null;
@@ -418,7 +369,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             }
         };
     };
-    // ffmpeg is looked for when it is needed, since the path can be changed in the settings.
     const runFfmpeg: FfmpegRunner = (args, signal) => {
         return (options.runFfmpeg ?? createFfmpegRunner(options.resolver.ffmpeg(options.getSettings()).path))(args, signal);
     };
@@ -443,23 +393,17 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
             return kind === 'episode' ? filePath : resolveSubtitlePath(filePath, trackId, options.subtitleFiles);
         }
     };
-    // The anime folder is being migrated: the files are moving, so nothing is downloaded into it meanwhile.
     let migrating = false;
-    // The audio of the library is being looked at: another look does not start meanwhile.
     let checkingAudio = false;
     let repairing = false;
-    // Which anime have ended, from AniList: they are not looked at for new episodes. Brought up to date at the start of each look.
     const airing = new AnimeAiringService({
         db,
         url: options.scheduleUrl,
-        // The screen of the library shows which ones ended: it reads the library again when that is learned.
         onChange: () => {
             options.send(IPC.eventAnimeLibrary);
         }
     });
-    // When the last look for new episodes was made: kept apart from the library, so the app opened again soon after a look does not look again.
     const lastCheck = new JsonStore<{ lastCheckAt: number | null }>(join(animeDir, 'update-check.json'), { lastCheckAt: null });
-    // Looks, every 3 hours, for episodes the source has listed for the anime of the library, and puts them in the library.
     const checker = new AnimeUpdateChecker({
         db,
         lastCheck: {
@@ -628,7 +572,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                 if (chosen === null) {
                     return { ok: false, reason: 'cancelled' };
                 }
-                // Every anime is inside the folder of the settings: one that is anywhere else is not accepted.
                 if (!isInsideDirectory(chosen, startAt, options.platform)) {
                     return { ok: false, reason: 'outside', folder: startAt };
                 }

@@ -22,12 +22,10 @@ const CHROMIUM_FIRST_RUN_FILE = 'First Run';
 const FIREFOX_PROFILES_FILE = 'profiles.ini';
 const FIREFOX_PROFILES_FOLDER = 'Profiles';
 const FIREFOX_COOKIES_FILE = 'cookies.sqlite';
-// Huge folders that never hold a browser profile; walking into them would only slow the scan down.
 const SKIPPED_FOLDERS = new Set(['temp', 'packages', 'programs', 'packagecache']);
 const WINDOWS_DATA_FOLDER = 'User Data';
 const COOKIE_FILES: readonly string[][] = [['Cookies'], ['Network', 'Cookies']];
 
-// The keyring entry that encrypts the cookies is named after the browser, so yt-dlp needs to know which one this is.
 const ENGINE_HINTS: ReadonlyArray<readonly [string, BrowserName]> = [
     ['brave', 'brave'],
     ['edge', 'edge'],
@@ -151,7 +149,6 @@ async function listSubfolders(context: DetectionContext, dir: string): Promise<s
     return childPaths(context, dir, await context.probe.listDirectories(dir));
 }
 
-// Every folder up to `depth` levels below the root, e.g. depth 2 reaches ~/.config/BraveSoftware/Brave-Browser.
 async function collectFolders(context: DetectionContext, root: ScanRoot): Promise<string[]> {
     if (root.depth < 1) {
         return [];
@@ -217,8 +214,6 @@ async function findChromiumProfiles(context: DetectionContext, dir: string): Pro
     );
 }
 
-// Electron apps (editors, chat clients, apps with an embedded browser...) also have "Local State" and even a Default profile.
-// A browser is told apart by being registered with the system as a web browser or, failing that, by the "First Run" marker.
 async function describeChromiumBrowser(context: DetectionContext, dir: string, registered: readonly RegisteredBrowser[]): Promise<DetectedBrowser | null> {
     if (!(await context.probe.exists(context.join(dir, CHROMIUM_STATE_FILE)))) {
         return null;
@@ -240,7 +235,6 @@ async function profilesWithCookies(context: DetectionContext, dir: string, ids: 
     });
 }
 
-// Profiles are listed in profiles.ini; without a usable list, any folder holding cookies.sqlite is taken as a profile.
 async function findFirefoxProfiles(context: DetectionContext, dir: string): Promise<BrowserProfile[]> {
     const entries = parseFirefoxProfiles(await context.probe.readText(context.join(dir, FIREFOX_PROFILES_FILE)));
     const named = await profilesWithCookies(
@@ -273,7 +267,6 @@ async function findFirefoxProfiles(context: DetectionContext, dir: string): Prom
     );
 }
 
-// Thunderbird and other Mozilla apps also have a profiles.ini, but only a browser profile holds cookies.sqlite.
 async function describeFirefoxBrowser(context: DetectionContext, dir: string, registered: readonly RegisteredBrowser[]): Promise<DetectedBrowser | null> {
     if (!(await context.probe.exists(context.join(dir, FIREFOX_PROFILES_FILE)))) {
         return null;
@@ -300,7 +293,6 @@ async function linuxRoots(context: DetectionContext, homeDir: string): Promise<{
         listSubfolders(context, context.join(homeDir, '.var', 'app')),
         listSubfolders(context, context.join(homeDir, 'snap'))
     ]);
-    // Flatpak apps keep their data under <app>/config and <app>/.mozilla; Snap apps under <app>/common.
     const flatpakConfigs = flatpakApps.map((dir) => {
         return { dir: context.join(dir, 'config'), depth: 2 };
     });
@@ -318,7 +310,6 @@ async function linuxRoots(context: DetectionContext, homeDir: string): Promise<{
     return {
         chromium: [{ dir: context.join(homeDir, '.config'), depth: 2 }, ...flatpakConfigs, ...snapCommons],
         firefox: [
-            // ~/.mozilla/firefox, ~/.config/mozilla/firefox (recent Firefox) and forks such as ~/.librewolf.
             { dir: homeDir, depth: 1 },
             { dir: context.join(homeDir, '.config'), depth: 2 },
             { dir: context.join(homeDir, '.mozilla'), depth: 1 },
@@ -333,7 +324,6 @@ async function windowsRoots(context: DetectionContext, environment: DetectionEnv
     const { env, homeDir } = environment;
     const localAppData = env.LOCALAPPDATA ?? context.join(homeDir, 'AppData', 'Local');
     const appData = env.APPDATA ?? context.join(homeDir, 'AppData', 'Roaming');
-    // The Microsoft Store build of Firefox keeps its "roaming" folder inside its package.
     const storeFirefox = (await listSubfolders(context, context.join(localAppData, 'Packages')))
         .filter((packageDir) => {
             return lastSegment(packageDir).startsWith('Mozilla.Firefox_');
@@ -342,7 +332,6 @@ async function windowsRoots(context: DetectionContext, environment: DetectionEnv
             return { dir: context.join(packageDir, 'LocalCache', 'Roaming'), depth: 2 };
         });
     return {
-        // Vendor\Product\User Data is three levels below the root.
         chromium: [
             { dir: localAppData, depth: 3 },
             { dir: appData, depth: 3 }

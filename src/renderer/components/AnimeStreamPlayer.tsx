@@ -12,33 +12,23 @@ import { ErrorNotice } from './ErrorNotice';
 import { AutoNextPanel } from './AutoNextPanel';
 import { useUiPrefsStore } from '../store/uiPrefsStore';
 
-// How much of the episode hls.js loads ahead of what is playing (its default is 30 seconds), so a jump to somewhere near is answered
-// from what is already loaded.
 export const STREAM_BUFFER_SECONDS = 60;
 
 interface StreamVideoProps {
     stream: AnimeStream;
-    // The stage of the player, where the video is drawn (see StreamView).
     stageSlot: HTMLElement;
-    // The anime and its number of the next episode, which starts by itself when this one ends (null when this is the last one).
     next: { title: string; episode: string } | null;
     onNext: () => void;
 }
 
-// The video of an episode that is not downloaded. The stream is an HLS playlist, which the browser cannot play alone: hls.js
-// reads it and feeds the video. Everything it asks for goes through the app (see streamProxy.ts). It is created again for each episode,
-// and what it shows goes into the stage that StreamView keeps: the browser leaves fullscreen when the element that is in it is removed,
-// and the next episode must come up in fullscreen as the one before.
 function StreamVideo({ stream, stageSlot, next, onNext }: StreamVideoProps) {
     const t = useTranslator();
     const video = useRef<HTMLVideoElement | null>(null);
     const [failed, setFailed] = useState(false);
     const supported = Hls.isSupported();
     const language = useAppLanguage();
-    // Every subtitle the source offers, the one ani-cli picked first and shown at first.
     const tracks = streamTracks(stream);
     const [subtitle, setSubtitle] = useState<string | null>(tracks[0]?.id ?? null);
-    // The episode ended and the next one is counted down to (see AutoNextPanel).
     const [upNext, setUpNext] = useState(false);
     const autoNext = useUiPrefsStore((state) => {
         return state.autoNext;
@@ -58,8 +48,6 @@ function StreamVideo({ stream, stageSlot, next, onNext }: StreamVideoProps) {
                 setFailed(true);
             }
         });
-        // Always the best quality the source has: hls.js would otherwise start low and choose by the speed of the connection. A source that gives
-        // one quality only (the variant that ani-cli picked) has nothing to choose from.
         hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
             const best = bestLevelIndex(data.levels);
             if (best !== null) {
@@ -86,7 +74,6 @@ function StreamVideo({ stream, stageSlot, next, onNext }: StreamVideoProps) {
                 crossOrigin="anonymous"
                 autoPlay
                 onPlay={() => {
-                    // Played again after it ended: the viewer stays on this episode.
                     setUpNext(false);
                 }}
                 onEnded={() => {
@@ -130,11 +117,8 @@ function StreamView({ streaming }: { streaming: StreamingEpisode }) {
     const watchEpisode = useAnimeStore((state) => {
         return state.watchEpisode;
     });
-    // Where the video is drawn. The stage stays from the first video on, also while the next episode is being found: the browser leaves
-    // fullscreen when its element is removed, and the viewer must not be taken out of it between two episodes.
     const [stageSlot, setStageSlot] = useState<HTMLElement | null>(null);
     const [hadVideo, setHadVideo] = useState(false);
-    // Kept in step with the state of the episode as it is drawn (and not in an effect): the stage must be there in the very draw the loading shows up.
     if (streaming.status === 'ready' && !hadVideo) {
         setHadVideo(true);
     } else if (streaming.status === 'error' && hadVideo) {

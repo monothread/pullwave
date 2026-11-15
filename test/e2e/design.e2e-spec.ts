@@ -7,14 +7,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
 
-// The audit of the console design: every screen of the video downloader and of the anime section, in every theme, at the sizes of the
-// windows from 480 pixels up to an ultrawide 3440x1440 screen (and the 1080x1920 one turned to stand up). Three independent checks look for what makes a design ugly:
-//   1. geometry: nothing scrolls sideways, comes out of the window or of its box, no text is cut, buttons of one row are the same height;
-//   2. alignment: the parts of the top bar are centred on one line and do not overlap, the sections share one line, the bar under the active
-//      section stays under it, the tiles of a grid share a width;
-//   3. legibility: the text of the controls and of the labels stands out from what is behind it (contrast), and the focus is seen.
-// Plus the behaviour of the layer: the arrow keys move the focus, the animations run, and they stop when the system asks for less motion.
-
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
@@ -44,11 +36,7 @@ const THEME_STYLES: Record<string, 'neon' | 'flat'> = {
     'sakura-dark': 'flat'
 };
 const THEMES = Object.keys(THEME_STYLES);
-// The audits of every screen go through a matrix of themes and sizes. Day to day they run on a few that stand for the others (a neon theme, a
-// light one and the neon one with the widest font, on the dock and on a common laptop); the whole matrix runs before a release, in the tests
-// tagged @full (`npm run test:e2e:full`).
 interface AuditMatrix {
-    // What the title of the test says about the matrix.
     tag: string;
     themes: readonly string[];
     sizes: ReadonlyArray<[number, number]>;
@@ -58,7 +46,6 @@ const MATRICES: readonly AuditMatrix[] = [
     { tag: '(cyberpunk, light at 1080x1850 and 3440x1400)', themes: ['cyberpunk', 'light'], sizes: [[1080, 1850], [3440, 1400]] },
     { tag: '(every theme and size) @full', themes: THEMES, sizes: SIZES }
 ];
-// The least contrast accepted between a text of the interface and what is behind it (WCAG for large text and for the parts of a control).
 const MIN_CONTRAST = 3;
 const LONG_TITLE = 'A video with a title long enough to need more than one line on a narrow window, to see how it wraps or is cut';
 
@@ -112,7 +99,6 @@ async function applyTheme(page: Page, theme: string): Promise<void> {
     }, [theme, THEME_STYLES[theme] ?? 'flat'] as const);
 }
 
-// Check 1: the geometry of every visible element of the app.
 async function geometry(page: Page, label: string): Promise<string[]> {
     return page.evaluate((where) => {
         const problems: string[] = [];
@@ -148,7 +134,6 @@ async function geometry(page: Page, label: string): Promise<string[]> {
                 return element.matches('button, .badge, .chip, .tab, label, .field__label, .section-label, .topbar__clock, .tab__label');
             })
             .forEach((element) => {
-                // A name kept for the screen readers only (the sections of the rail) is hidden on purpose, not cut.
                 if (getComputedStyle(element).clipPath === 'inset(50%)') {
                     return;
                 }
@@ -183,7 +168,6 @@ async function geometry(page: Page, label: string): Promise<string[]> {
     }, label);
 }
 
-// Check 2: the alignment of the shell and of the grids.
 async function alignment(page: Page, label: string): Promise<string[]> {
     return page.evaluate((where) => {
         const problems: string[] = [];
@@ -221,7 +205,6 @@ async function alignment(page: Page, label: string): Promise<string[]> {
                 problems.push(`${where}: a chip of the programs overlaps the clock`);
             }
         });
-        // The menu of the sections: a column of the rail on a wide window, a row of the dock at the bottom on a narrow one.
         const rail = document.querySelector<HTMLElement>('.sidenav');
         if (rail === null) {
             problems.push(`${where}: the menu of the sections is missing`);
@@ -279,13 +262,11 @@ async function alignment(page: Page, label: string): Promise<string[]> {
     }, label);
 }
 
-// Check 3: the contrast of the text of the controls and labels against what is painted behind them.
 async function legibility(page: Page, label: string, minimum: number): Promise<string[]> {
     return page.evaluate(
         ([where, least]) => {
             const problems: string[] = [];
             const probe = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
-            // Any CSS colour the browser computes (rgb, rgba, color(srgb ...)) as red, green, blue and alpha from 0 to 1.
             const parse = (value: string): [number, number, number, number] => {
                 probe.clearRect(0, 0, 1, 1);
                 probe.fillStyle = '#000';
@@ -300,7 +281,6 @@ async function legibility(page: Page, label: string, minimum: number): Promise<s
                 };
                 return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
             };
-            // The first solid colour painted behind an element (the body at the end); a gradient or an image is not judged.
             const backgroundOf = (element: HTMLElement): [number, number, number, number] | null => {
                 let current: HTMLElement | null = element;
                 while (current !== null) {
@@ -342,7 +322,6 @@ async function legibility(page: Page, label: string, minimum: number): Promise<s
     );
 }
 
-// The animations are always on (D-130): the audit ends every one at once while it measures, so nothing is caught half way in.
 const FREEZE_STYLE_ID = 'design-audit-freeze';
 
 async function freezeMotion(page: Page, frozen: boolean): Promise<void> {
@@ -395,7 +374,6 @@ MATRICES.forEach((matrix) => {
         await expect(page.locator('.sidenav--open')).toBeVisible();
         await audit(session, 'menu-open', report, matrix);
         await page.keyboard.press('Escape');
-        // The search of the top bar, open with its suggestions.
         await page.getByRole('combobox', { name: 'Search' }).fill('fake');
         await expect(page.getByRole('listbox', { name: 'Search' })).toBeVisible();
         await audit(session, 'search-open', report, matrix);
@@ -461,7 +439,6 @@ MATRICES.forEach((matrix) => {
         await anime.getByRole('button', { name: 'LIBRARY', exact: true }).click();
         await audit(session, 'anime-library', report, matrix);
 
-        // With an anime in the library: its shelves, then the screen of its series with its cover big.
         await page.evaluate(async () => {
             const api = (window as unknown as { api: { downloadAnime: (request: unknown) => Promise<unknown> } }).api;
             await api.downloadAnime({ title: 'Fake Anime', query: 'fake', index: 1, audio: 'sub', episodes: ['1'] });
@@ -472,12 +449,10 @@ MATRICES.forEach((matrix) => {
         await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 60000 });
         await expect(page.getByRole('button', { name: /^ALL \(\d+\)$/ })).toBeVisible();
         await audit(session, 'anime-library-grid', report, matrix);
-        // The filter NEW, and the order by name.
         await page.getByRole('button', { name: /^NEW \(\d+\)$/ }).click();
         await audit(session, 'anime-library-news', report, matrix);
         await page.getByRole('button', { name: /^ALL \(\d+\)$/ }).click();
 
-        // An episode watched half way: the highlights show it, on the home screen and at the top of the library.
         await page.evaluate(async () => {
             const api = (window as unknown as { api: { recordAnimeHistory: (request: unknown) => Promise<unknown> } }).api;
             await api.recordAnimeHistory({ title: 'Fake Anime', query: 'fake', index: 1, audio: 'sub', episode: '1' });
@@ -512,13 +487,10 @@ test('the top bar has the name with its wave, the clock and the sections with th
     const sections = page.getByRole('navigation', { name: 'Sections' });
     await expect(sections).toHaveClass('tabs tabs--main sidenav');
     expect(await sections.locator('.tab__decoration svg').count()).toBeGreaterThanOrEqual(3);
-    // On a wide window the menu is a rail of pictures: the names are only for the screen readers.
     await expect(sections.locator('.tab__label').first()).toHaveCSS('clip-path', 'inset(50%)');
     await expect(sections.getByRole('button', { name: 'VIDEO DOWNLOADER', exact: true })).toHaveText('VIDEO DOWNLOADER');
     await expect(sections.getByRole('button', { name: 'ANIME', exact: true })).toHaveText('ANIME');
-    // On a narrow window the pictures and the wave go away so the bar fits.
     await resize(session, 480, 800);
-    // On a narrow window the menu is a dock at the bottom, and the wave goes away so the bar fits.
     await expect(sections).toHaveCSS('flex-direction', 'row');
     await expect(page.getByRole('button', { name: 'Open the menu' })).toBeHidden();
     await expect(page.locator('.brand__wave')).toBeHidden();
@@ -544,14 +516,12 @@ test('the arrow keys move the focus along the menu and into the screen, and the 
         return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, outlineOffset: style.outlineOffset };
     });
     expect(ring).toEqual({ outlineStyle: 'solid', outlineWidth: '3px', outlineOffset: '3px' });
-    // To the right of the menu is the screen.
     await page.keyboard.press('ArrowRight');
     const focused = await page.evaluate(() => {
         const active = document.activeElement as HTMLElement;
         return { inNavigation: active.closest('.sidenav') !== null, inPage: active.closest('.app__main') !== null, tag: active.tagName };
     });
     expect(focused).toEqual({ inNavigation: false, inPage: true, tag: 'BUTTON' });
-    // Inside a field the arrows stay with the field.
     const link = page.getByLabel('Link 1', { exact: true });
     await link.fill('https://example.com/abc');
     await link.press('ArrowLeft');

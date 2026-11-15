@@ -89,7 +89,6 @@ describe('withViewTransition', () => {
         withViewTransition(update, cover);
         expect(start).toHaveBeenCalledTimes(1);
         expect(update).toHaveBeenCalledTimes(1);
-        // The new page is drawn without the name of the cover: only the cover of the next page has it.
         expect(seen).toEqual([{ marked: true, flying: false }]);
         expect(document.documentElement).toHaveClass(TRANSITION_CLASS);
         finish();

@@ -2,9 +2,6 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import { dirname } from 'node:path';
 import { getText, isVersionTag, UpdateLookupError } from './releaseLookup';
 
-// Looking for a newer FlareSolverr (the latest release of its project, which is also the tag of its image) and remembering which one
-// the app runs. The image is checked by Docker itself when it is pulled.
-
 export const FLARESOLVERR_LATEST_URL = 'https://api.github.com/repos/FlareSolverr/FlareSolverr/releases/latest';
 
 export async function fetchLatestFlareSolverr(fetchImpl: typeof fetch = fetch): Promise<string> {
@@ -16,7 +13,6 @@ export async function fetchLatestFlareSolverr(fetchImpl: typeof fetch = fetch): 
     return version;
 }
 
-// The version the user updated to, as it was kept; null when there is none or what was kept is not valid.
 export function readSelectedFlareSolverr(file: string): string | null {
     try {
         const raw = JSON.parse(readFileSync(file, 'utf-8')) as { version?: unknown };

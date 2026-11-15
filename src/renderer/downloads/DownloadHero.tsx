@@ -12,29 +12,19 @@ import { flowSeconds, formatSpeed, parseSpeed } from './speed';
 import { SpeedGraph } from './SpeedGraph';
 
 export interface DownloadHeroProps {
-    // What tells this download from another one: the graph starts again for a new one.
     id: string;
     title: string;
-    // The episode, the chapter or the pages; null for a video.
     detail: string | null;
     percent: number;
-    // The parts of a download whose video and audio come apart, each with a bar of its own in place of the one bar; null for one that does not.
     parts?: DownloadPart[] | null;
-    // The step after the download that is going on (a post-processor of yt-dlp, or the joining of an episode), null when there is none.
     postProcess?: string | null;
-    // The steps after the download that started, in their order.
     steps?: readonly string[];
-    // The download ended: it stays a few seconds, green, before it leaves.
     done?: boolean;
-    // The speed and the time left as the program says them ("" when it says nothing).
     speed: string;
     eta: string;
     kind: SectionIconName;
-    // The cover; null draws the picture of the section.
     cover: ReactNode;
-    // The shape of the cover: a poster (2:3, the covers of the anime and the manga) or wide (16:9, the picture of a video).
     coverShape?: 'poster' | 'wide';
-    // How many downloads wait after this one.
     waiting: number;
 }
 
@@ -59,9 +49,6 @@ function barClass(processing: boolean): string {
     return processing ? 'download-hero__bar progress progress--processing' : 'download-hero__bar progress';
 }
 
-// The download going on, big, at the top of the list of downloads: its cover, its bar (the bars of its parts zipped into one once they are
-// downloaded, then the bar of the step going on), the steps after the download, its speed and the graph of the last minute, and how many come
-// after it. It is for the eye only (hidden from the screen readers): everything it shows is in the card of the download.
 export function DownloadHero({ id, title, detail, percent, parts = null, postProcess = null, steps = NO_STEPS, done = false, speed, eta, kind, cover, coverShape = 'poster', waiting }: DownloadHeroProps) {
     const t = useTranslator();
     const zip = useZipPhase(postProcess !== null || done);

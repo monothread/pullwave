@@ -14,22 +14,18 @@ import { parseVtt, serializeVtt, type ParsedVtt } from './vttCues';
 
 const ENGLISH = /english/i;
 
-// What the model is asked with: where it is, which model, and the token. `reason` says what the settings lack when it cannot be asked.
 export type LlmAccess = { ok: true; ask: (system: string, user: string, signal?: AbortSignal) => Promise<LlmCompletionResult> } | { ok: false; reason: 'no-token' | 'no-model' | 'no-address' };
 
 export interface SubtitleTranslationDependencies {
     llm: () => LlmAccess;
     files?: SubtitleFileSystem;
     sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
-    // Where the batches already translated are kept, to go on after a translation that failed (see subtitleTranslator).
     batches?: TranslatedBatches;
 }
 
 type SourceFailure = Extract<SubtitleTranslateResponse, { ok: false; reason: string }>['reason'];
 type Source = { ok: true; file: SubtitleFile; parsed: ParsedVtt } | { ok: false; reason: Extract<SourceFailure, 'no-source' | 'unreadable' | 'too-large' | 'empty'> };
 
-// The subtitle to start from: the one asked for, or, when none was, the English one (the one models know best) and otherwise the one
-// ani-cli picked, never one that is a translation already.
 function pickSource(files: readonly SubtitleFile[], trackId: string | null): SubtitleFile | null {
     if (trackId !== null) {
         return files.find((file) => {
@@ -73,7 +69,6 @@ function textsOf(parsed: ParsedVtt): string[] {
     });
 }
 
-// What translating the subtitle of an episode takes, without asking the model anything.
 export function estimateSubtitleTranslation(videoPath: string, request: Pick<SubtitleEstimateRequest, 'trackId'>, files: SubtitleFileSystem = defaultSubtitleFileSystem): SubtitleEstimateResponse {
     const source = readSource(videoPath, request.trackId, files);
     if (!source.ok) {
@@ -85,8 +80,6 @@ export function estimateSubtitleTranslation(videoPath: string, request: Pick<Sub
 
 export type TranslationProgress = (done: number, total: number) => void;
 
-// Whether any subtitle of the episode that is not a translation (one of the source, the one ani-cli picked, an imported one or one made from
-// the audio) is in the language, by its label (see `labelIsInLanguage`).
 function hasOtherSubtitleIn(videoPath: string, language: TranslationLanguage, files: SubtitleFileSystem): boolean {
     const tracks = listSubtitleFiles(videoPath, files).map((file) => {
         return file.track;
@@ -94,8 +87,6 @@ function hasOtherSubtitleIn(videoPath: string, language: TranslationLanguage, fi
     return hasSubtitleIn(tracks, language);
 }
 
-// Whether translating the episode into the language would ask the model anything: it has a subtitle to start from, and none in that language
-// (translated or not). The same rules as `translateEpisodeSubtitle` when it does not replace.
 export function canBeTranslated(videoPath: string, language: TranslationLanguage, files: SubtitleFileSystem = defaultSubtitleFileSystem): boolean {
     if (hasTranslatedSubtitle(videoPath, language, files) || hasOtherSubtitleIn(videoPath, language, files)) {
         return false;
@@ -103,10 +94,6 @@ export function canBeTranslated(videoPath: string, language: TranslationLanguage
     return pickSource(listSubtitleFiles(videoPath, files), null) !== null;
 }
 
-// Translates a subtitle of an episode into a language and saves it next to the video, as a subtitle of its own. An episode that has the
-// subtitle in that language already is left as it is (`exists`), before the model is asked anything (a translation costs the user's token),
-// unless the request says to replace it: its translation into it, or any other subtitle in it (the one of the source is more reliable than a
-// translation, D-171).
 export async function translateEpisodeSubtitle(
     videoPath: string,
     request: Pick<SubtitleTranslateRequest, 'trackId' | 'replace'> & { language: TranslationLanguage },

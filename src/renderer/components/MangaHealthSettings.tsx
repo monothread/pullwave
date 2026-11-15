@@ -36,10 +36,8 @@ function resultKey(result: MangaToolUpdateResult): MessageKey {
 interface HealthRowProps {
     name: string;
     health: ComponentHealth | null;
-    // What is said when there is nothing to look at.
     unused: string;
     testId: string;
-    // The latest version found for it, once the user looked for updates; the buttons that move it to that version go in the children.
     info: ToolVersionInfo | null;
     result: MangaToolUpdateResult | null;
     children?: React.ReactNode;
@@ -83,10 +81,6 @@ function HealthRow({ name, health, unused, testId, info, result, children }: Hea
     );
 }
 
-// Whether the server and the helper for Cloudflare are up, and the button that moves the helper to the latest release of its project (the
-// server stays at the version the app ships with). It looks when the settings open (without starting anything that is stopped); CHECK NOW
-// starts what is stopped and asks it, and CHECK FOR UPDATES (only when the app runs the helper) looks for the latest one, which is what makes
-// its update button appear.
 export function MangaHealthSettings() {
     const t = useTranslator();
     const health = useMangaStore((state) => {
@@ -123,8 +117,6 @@ export function MangaHealthSettings() {
         return state.restartPrograms;
     });
     const helper = versions?.flaresolverr ?? null;
-    // Only the helper the app runs can be updated from here (the server stays at the version of the app, and a FlareSolverr of the user's own
-    // is theirs): without one there is nothing to look for.
     const updatable = health !== null && health.helper !== null && !health.helper.external;
 
     useEffect(() => {

@@ -24,17 +24,13 @@ interface Setup {
     updates: ToolState[];
     downloads: DownloadOptions[];
     run: ReturnType<typeof vi.fn<RunProgram>>;
-    // The specs the fake network knows (the pinned ones and the ones a test adds).
     register: (spec: ToolSpec) => void;
     failing: Set<string>;
-    // Addresses whose file comes with another checksum than the publisher listed.
     corrupt: Set<string>;
     custom: Record<string, string>;
     latest: { value: Partial<Record<ProgramId, ToolSpec | Error>> };
     gate: { value: Promise<void> | null };
-    // What the download of an address gives, instead of a text that names it.
     contents: Map<string, string>;
-    // What tries a new ani-cli for real (none: the update only checks the script itself).
     check: { value: AniCliCheck | null };
 }
 
@@ -74,7 +70,6 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string } = {}): Set
         downloadOptions.onProgress?.({ bytesDone: 50, bytesTotal: 100 });
         return { sha256: corrupt.has(downloadOptions.url) ? 'e'.repeat(64) : (specs.get(downloadOptions.url)?.sha256 ?? 'f'.repeat(64)), bytes: 100 };
     };
-    // Unpacking: the files the spec of the address says it has.
     const extract: typeof extractArchive = (_format, file, extractOptions) => {
         const url = readFileSync(file, 'utf-8').replace('file of ', '');
         const spec = specs.get(url);
@@ -115,7 +110,6 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string } = {}): Set
             return check.value;
         }
     });
-    // The lookups of the latest version are replaced by what the test says.
     const instance = tools as unknown as { lookup: (id: ProgramId) => Promise<{ spec: ToolSpec }>; firstSpec?: unknown };
     instance.lookup = (id) => {
         const found = latest.value[id];
@@ -125,7 +119,6 @@ function setup(options: { platform?: NodeJS.Platform; arch?: string } = {}): Set
         if (found instanceof Error) {
             return Promise.reject(found);
         }
-        // What the publisher lists, the network can give.
         specs.set(found.url, found);
         return Promise.resolve({ spec: found });
     };
@@ -631,7 +624,6 @@ describe('ProgramTools ffmpeg, which has no version of the app', () => {
         register(ffmpegLatest(SHA_A));
         failing.add(ffmpegLatest(SHA_A).url);
         expect((await tools.install('ffmpeg')).status).toBe('error');
-        // The publisher put another build in its place meanwhile.
         const newer = ffmpegSpec('linux', 'ffmpeg-n9.1-latest-linux64-gpl-shared-9.1.tar.xz', SHA_B, 71_000_000) as ToolSpec;
         register(newer);
         latest.value.ffmpeg = newer;

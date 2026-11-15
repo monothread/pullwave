@@ -1,8 +1,3 @@
-/* The libraries and the screens of one anime or manga, as the library of a console (D-127, D-128): every title as a tile in the grid (under
-   the highlights and the chips, see bp-home.css), and the page of a title with its cover big and blurred behind the screen. */
-
-/* --- The grid of every title ---------------------------------------------------------------------------------------------------- */
-/* The cards of a grid of covers are tiles: the cover is the card, the name and the buttons are under it. */
 .cover-grid {
     grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
     gap: 26px 20px;
@@ -34,7 +29,6 @@
     box-shadow: var(--bp-shadow-hover), 0 0 0 3px var(--bp-focus);
 }
 
-/* The ring of a focused card is on its cover, like the tiles of the shelves. */
 .cover-grid > .cover-card:has(.row-link:focus-visible) {
     outline: none;
     box-shadow: none;
@@ -46,7 +40,6 @@
     font-weight: 700;
 }
 
-/* --- The page of one anime or manga ------------------------------------------------------------------------------------------- */
 .series.detail {
     display: grid;
     grid-template-columns: 170px minmax(0, 1fr);
@@ -68,7 +61,6 @@
     min-width: 0;
 }
 
-/* What is long (the seasons, the episodes, the editors) uses the whole width under the hero. */
 .series.detail > .episode-cards,
 .series.detail > .cover-grid,
 .series.detail > .series-editor,
@@ -76,7 +68,6 @@
     grid-column: 1 / -1;
 }
 
-/* The page of a series has no cover of its own (the first season shows it right below): everything uses the whole width. */
 .series.detail.series--overview {
     grid-template-columns: minmax(0, 1fr);
 }
@@ -108,7 +99,6 @@
     gap: 12px;
 }
 
-/* The page of a manga: the head is the hero. */
 .manga__head.detail-hero {
     gap: 26px;
     padding: 24px 26px;
@@ -133,7 +123,6 @@
     text-shadow: var(--text-glow);
 }
 
-/* The search result of an anime: its cover bigger, over the blurred one. */
 .detail-screen .series__cover {
     width: 150px;
 }
@@ -144,20 +133,16 @@
     box-shadow: 0 24px 48px -18px rgba(0, 0, 0, 0.8);
 }
 
-/* The tile of a season is narrower than the old card: the audio goes under the chip when the two do not fit on one line. */
 .season-card__top {
     flex-wrap: wrap;
     row-gap: 6px;
 }
 
-/* --- The cards of the episodes and the chapters ------------------------------------------------------------------------------- */
 .episode-cards > li {
     border-radius: var(--bp-radius-small);
     transition: border-color 0.2s, box-shadow 0.25s, background 0.2s;
 }
 
-/* What is still to be watched or read stands out (a cyan top edge, a bold name); what was is quieter (a green edge, a grey name and a tint),
-   and says so with the seal of WatchedMark. The edge keeps its colour under the mouse: it is the state of the card. */
 .episode-cards > .history__item {
     border-top-color: var(--cyan);
 }
@@ -180,7 +165,6 @@
     border-top-color: var(--red);
 }
 
-/* The seal goes first; a long name drops under it instead of being squeezed beside it. */
 .episode-cards .history__title {
     flex-wrap: wrap;
     row-gap: 6px;
@@ -190,14 +174,12 @@
     margin-right: 0;
 }
 
-/* --- An ultrawide page: bigger tiles, so the covers do not shrink next to the width ------------------------------------------------ */
 @container main (min-width: 1700px) {
     .cover-grid {
         grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     }
 }
 
-/* --- Less room --------------------------------------------------------------------------------------------------------------------- */
 @media (max-width: 760px) {
     .cover-grid {
         grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

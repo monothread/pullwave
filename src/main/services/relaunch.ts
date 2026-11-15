@@ -23,12 +23,9 @@ export interface RestartDependencies {
 
 const WAIT_STEP_SECONDS = '0.2';
 const MAX_WAIT_STEPS = 150;
-// Variables whose entries point into the mount of the instance that is closing; the new AppImage sets its own.
 const APPIMAGE_VARIABLES = ['APPDIR', 'ARGV0', 'OWD'];
 const PATH_LIST_VARIABLES = ['PATH', 'LD_LIBRARY_PATH', 'XDG_DATA_DIRS', 'GSETTINGS_SCHEMA_DIR'];
 
-// $1 is the pid of the closing app, $2 the program to start and the rest its arguments. Everything reaches the shell as
-// arguments, never spliced into the script, so nothing in a path or argument can be run as a command.
 const WAIT_THEN_START_SCRIPT = [
     'steps=0',
     `while kill -0 "$1" 2>/dev/null && [ "$steps" -lt ${MAX_WAIT_STEPS} ]; do sleep ${WAIT_STEP_SECONDS}; steps=$((steps + 1)); done`,
@@ -49,7 +46,6 @@ function withoutMountEntries(list: string, mountDir: string): string {
         .join(':');
 }
 
-// The environment for the new instance without what the AppImage runtime of the closing one put there.
 export function cleanAppImageEnvironment(env: Environment): Environment {
     const mountDir = env.APPDIR;
     const cleaned: Environment = { ...env };
@@ -70,9 +66,6 @@ export function cleanAppImageEnvironment(env: Environment): Environment {
     return cleaned;
 }
 
-// Starting an AppImage mounts it through the setuid fusermount, which Linux refuses to a process created by Electron's own
-// app.relaunch (it inherits no_new_privs from the Chromium sandbox): "Cannot mount AppImage, please check your FUSE setup".
-// So a small shell, created by the main process, waits for the app to close and starts the .AppImage.
 export function buildAppImageRestart(appImage: string, env: Environment, argv: readonly string[], pid: number): AppImageRestart {
     return {
         command: 'sh',
@@ -89,7 +82,6 @@ function startAppImageAgain(restart: AppImageRestart, spawn: NonNullable<Restart
     child.unref();
 }
 
-// Arranges for the app to start again once it closes; the caller then quits the app.
 export function restartApplication(deps: RestartDependencies): void {
     const appImage = deps.env.APPIMAGE;
     if (!appImage) {

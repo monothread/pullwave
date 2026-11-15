@@ -194,7 +194,6 @@ describe('SubtitleGenerateDialog: the choices', () => {
             expect(card.getByText('Audio')).toBeInTheDocument();
             expect(card.getByTestId('generate-estimate')).toHaveTextContent(AUDIO_TEXT);
             expect(card.getByText('Speech to text')).toBeInTheDocument();
-            // OpenAI is always asked with gpt-transcribe, whatever model is stored.
             expect(card.getByText('OpenAI (gpt-transcribe) · gpt-transcribe')).toBeInTheDocument();
             expect(card.getByText('Each service charges your account. The cost depends on the length of the episode.')).toBeInTheDocument();
         });

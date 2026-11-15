@@ -197,7 +197,6 @@ export const IPC = {
     eventWindowMinimized: 'event:window-minimized'
 } as const;
 
-// The scheme the pictures of the videos being downloaded are served on, from memory: `pullwave-thumb://job/<id>?v=<n>`.
 export const VIDEO_THUMBNAIL_SCHEME = 'pullwave-thumb';
 
 export const BROWSERS: readonly BrowserName[] = ['chrome', 'firefox', 'brave', 'chromium', 'edge', 'opera', 'vivaldi'];
@@ -230,7 +229,6 @@ export const THEMES: readonly ThemeName[] = [
     'sakura-dark'
 ];
 
-// The style of every theme that can be applied ('device' is one of the two it follows).
 export const THEME_STYLES: Readonly<Record<Exclude<ThemeName, 'device'>, ThemeStyle>> = {
     cyberpunk: 'neon',
     synthwave: 'neon',
@@ -262,7 +260,6 @@ export const MIN_TITLE_LENGTH = 20;
 export const MAX_TITLE_LENGTH = 200;
 export const MIN_LIVE_END_CHECK_SECONDS = 1;
 export const MAX_LIVE_END_CHECK_SECONDS = 120;
-// Downloads of the video downloader and of the anime run three at a time: this is not a setting.
 export const CONCURRENT_DOWNLOADS = 3;
 
 export const DEFAULT_SETTINGS: Settings = {

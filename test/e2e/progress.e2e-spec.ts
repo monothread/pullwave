@@ -34,27 +34,21 @@ test.afterEach(async () => {
 });
 
 interface BarProbe {
-    // The name of the animation of the bar, and whether the bar really moved between two looks at it.
     animation: string;
     playState: string;
     moves: boolean;
-    // The drop shadows of the neon, whether they are in the colour of the state, and whether the bar has a box shadow left.
     layers: number;
     glow: boolean;
     boxShadow: string;
     overflow: string;
-    // The track: its height and the animation that moves the pulse.
     trackHeight: string;
     trackAnimation: string;
-    // The fill of the bar (its ::before): cut by the pulse over the thin band, the size of each, and whether the pulse moved between two looks at it.
     pulse: { masks: number; size: string; moves: boolean };
-    // The same for the line that sweeps over the track (the ::after), when there is one, and whether it swells in step with the bar.
     sweep: { animation: string; moves: boolean; inStep: boolean } | null;
 }
 
 const BARS = ['plain', 'live', 'verify', 'waiting', 'processing', 'saving', 'merging', 'cloudflare', 'done', 'error'] as const;
 
-// The train of pulses and the band, the train in a tile of 192px, and the train moving.
 const PULSE = { masks: 2, size: '192px 100%, 100% 100%', moves: true };
 
 interface Probes {
@@ -72,7 +66,6 @@ interface Probes {
     volume: { layers: number; glow: boolean };
 }
 
-// Draws every kind of bar of the app in the page, with the classes the components give them, and reads how each one looks and moves.
 async function probeBars(target: Page): Promise<Probes> {
     return target.evaluate(async () => {
         const HTML: Record<string, string> = {
@@ -109,7 +102,6 @@ async function probeBars(target: Page): Promise<Probes> {
         const dropShadowsOf = (filter: string): number => {
             return (filter.match(/drop-shadow\(/g) ?? []).length;
         };
-        // The layers of the mask (a picture or a gradient each), counted like the layers of a shadow.
         const masksOf = (element: Element, pseudo: string | null): number => {
             return layersOf(getComputedStyle(element, pseudo).maskImage);
         };
@@ -131,7 +123,6 @@ async function probeBars(target: Page): Promise<Probes> {
             host.append(wrapper);
             mounted[kind] = { track: wrapper.querySelector('.progress')!, bar: wrapper.querySelector('.progress__bar')! };
         });
-        // The animations start at the first frame drawn after the bars are in the page, which may come late on a busy machine.
         await new Promise((resolve) => {
             requestAnimationFrame(() => {
                 requestAnimationFrame(resolve);
@@ -182,7 +173,6 @@ async function probeBars(target: Page): Promise<Probes> {
             const shadow = getComputedStyle(input).boxShadow;
             return { layers: layersOf(shadow), glow: shadow.includes(colourOf('--cyan')) };
         };
-        // The timeline of the player is the bar of a download with a transparent slider over it: the glow is the one of the bar.
         const timelineBox = document.createElement('div');
         timelineBox.className = 'player__timeline';
         timelineBox.innerHTML = '<div class="progress"><div class="player__buffered" style="width: 70%"></div><div class="progress__bar" style="width: 40%"></div></div><input type="range" class="player__range player__seek">';
@@ -212,7 +202,6 @@ for (const theme of THEMES) {
         test('every bar glows like neon, in the colour of its state, and the glow is not clipped by the track', async () => {
             const probes = await probeBars(page);
             BARS.forEach((kind) => {
-                // A bright rim, a close halo and wider soft ones: four drop shadows that follow the wave, in the colour of the state, and no box shadow.
                 expect(probes[kind].layers, `${kind} layers`).toBe(4);
                 expect(probes[kind].glow, `${kind} glow colour`).toBe(true);
                 expect(probes[kind].boxShadow, `${kind} box shadow`).toBe('none');
@@ -253,7 +242,6 @@ for (const theme of THEMES) {
                 wrapper.innerHTML = '<div class="progress"><div class="progress__bar" style="width: 60%"></div></div>';
                 document.body.append(wrapper);
                 const bar = wrapper.querySelector('.progress__bar')!;
-                // The number of swells of a train is the number of its slots that rise from the band (a point at the middle of each).
                 const swellsOf = (): number => {
                     const image = getComputedStyle(bar, '::before').maskImage;
                     return [50, 100, 150, 200, 250, 300, 350].filter((x) => {
@@ -266,7 +254,6 @@ for (const theme of THEMES) {
                         setTimeout(resolve, milliseconds);
                     });
                 };
-                // The rounds take 1.6s from the first frame drawn: the number is read in the middle of the first round and of the second.
                 await new Promise((resolve) => {
                     requestAnimationFrame(() => {
                         requestAnimationFrame(resolve);

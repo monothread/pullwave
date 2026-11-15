@@ -1,5 +1,3 @@
-// How long a page that is still loading is given to become tall enough, and how many frames the position has to hold for it to be done
-// (the page being left can still be on the screen in the first frames).
 export const SCROLL_RESTORE_TIMEOUT_MS = 2000;
 export const SCROLL_RESTORE_STABLE_FRAMES = 5;
 const POSITION_TOLERANCE = 1;
@@ -7,7 +5,6 @@ const INTERRUPTIONS = ['wheel', 'touchstart', 'mousedown', 'keydown'] as const;
 
 let restoring = false;
 
-// Whether a scroll position is being put back: whatever sends a page to the top when it opens has to leave it alone meanwhile.
 export function isScrollRestoring(): boolean {
     return restoring;
 }
@@ -16,8 +13,6 @@ let stopRestoring: () => void = () => {
     return undefined;
 };
 
-// Scrolls the element to `target` once the page has the height for it, trying again while the content loads. It gives up after a while
-// and stops where it is when the viewer takes over (wheel, touch, click or key). Does nothing for the top, where a page opens anyway.
 export function restoreScroll(element: HTMLElement, target: number): void {
     stopRestoring();
     if (target <= 0) {

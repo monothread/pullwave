@@ -14,7 +14,6 @@ import { cleanTempDirs, makeTempDir } from '../helpers/tempDir';
 import { pcmOf, silence, tone } from '../helpers/speechPcm';
 import { PROMPT_TOKENS, systemPromptFor } from '@main/services/subtitleTranslator';
 
-// The library keeps its file open (and Windows will not delete an open file): close what a test opened before cleaning up.
 const opened: AnimeRuntime[] = [];
 
 function open(given: AnimeRuntimeOptions): AnimeRuntime | null {
@@ -32,7 +31,6 @@ afterEach(() => {
     cleanTempDirs();
 });
 
-// Nothing is installed: what runs ani-cli reports that it is missing.
 const NO_PROGRAMS = {
     pathOf: () => {
         return null;
@@ -56,9 +54,7 @@ function options(overrides: Partial<AnimeRuntimeOptions> = {}) {
         getSettings: () => {
             return DEFAULT_SETTINGS;
         },
-        // Nothing answers where AniList would: the look for the anime that ended cannot be made, and the check goes on without it.
         scheduleUrl: 'http://127.0.0.1:1/graphql',
-        // Nor where the services of covers asked after AniList would: the tests never reach the real ones.
         coverFallbackUrl: 'http://127.0.0.1:1',
         send
     };
@@ -531,15 +527,12 @@ describe('createAnimeRuntime', () => {
             const PROBE = '  Duration: 00:25:00.00, start: 0.000000\n  Stream #0:1(jpn): Audio: aac (LC), 48000 Hz, stereo';
             const PART_VTT = 'WEBVTT\n\n00:01.000 --> 00:02.000\nこんにちは\n';
             const GENERATED = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nこんにちは\n';
-            // A service of one's own that speaks the protocol of OpenAI and writes the subtitle with its times (WebVTT): OpenAI itself cuts
-            // the audio at its pauses instead (see 'with OpenAI as the speech service').
             const OTHER_SERVICE = { transcribeProvider: 'custom', transcribeBaseUrl: 'https://speech.example/v1' } as const;
 
             function speechAnswer(): Response {
                 return new Response(PART_VTT, { status: 200 });
             }
 
-            // ffmpeg that measures a video of 25 minutes with audio, and takes the audio out without failing.
             function fakeFfmpeg(probe = PROBE): ReturnType<typeof vi.fn<FfmpegRunner>> {
                 return vi.fn<FfmpegRunner>(async (args) => {
                     return args.includes('-vn') ? { code: 0, stderr: '' } : { code: 1, stderr: probe };
@@ -644,7 +637,6 @@ describe('createAnimeRuntime', () => {
                 expect((speechFetch.mock.calls[0] as unknown as [string])[0]).toBe('https://speech.example/v1/audio/translations');
                 expect(((speechFetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as FormData).has('language')).toBe(false);
                 expect(existsSync(join(folder, 'Naruto Episode 1.generated-English.vtt'))).toBe(true);
-                // The token of the translation was never looked for: only the speech service was used.
                 expect(getLlmToken).toHaveBeenCalledTimes(1);
                 expect(getLlmToken).toHaveBeenCalledWith('speech-custom');
             });
@@ -843,12 +835,10 @@ describe('createAnimeRuntime', () => {
 
             describe('with OpenAI as the speech service, cutting the audio at its pauses', () => {
                 const WORK = join('/tmp', 'audio-work');
-                // Two lines: from 1 s to 3 s and from 4 s to 6 s, in 7 seconds of audio; cut at 3.5 s.
                 const SPEECH = pcmOf([silence(1), tone(2), silence(1), tone(2), silence(1)]);
                 const TEXTS: Record<string, string> = { 'piece-0.mp3': 'こんにちは', 'piece-1.mp3': 'またね' };
                 const CUT = 'WEBVTT\n\n00:00:00.750 --> 00:00:03.000\nこんにちは\n\n00:00:03.750 --> 00:00:06.000\nまたね\n';
 
-                // The audio in the band of the voice and the two pieces it is cut in.
                 function piecesAudio(): AudioFiles & { removed: string[] } {
                     const removed: string[] = [];
                     return {
@@ -871,7 +861,6 @@ describe('createAnimeRuntime', () => {
                     };
                 }
 
-                // OpenAI answering, in JSON, the text of the piece it was sent.
                 function textAnswers(): ReturnType<typeof vi.fn<LlmFetch>> {
                     return vi.fn<LlmFetch>(async (_url, init) => {
                         const file = (init?.body as FormData).get('file') as File;
@@ -1306,7 +1295,6 @@ describe('createAnimeRuntime', () => {
         const VIDEO_AND_AUDIO = 'Duration: 00:23:40.04, start: 0.000000, bitrate: 4477 kb/s\n  Stream #0:0(und): Video: h264, 1920x1080\n  Stream #0:1(jpn): Audio: aac (LC), 48000 Hz, stereo';
         const VIDEO_ONLY = 'Duration: 00:23:40.04, start: 0.000000, bitrate: 4477 kb/s\n  Stream #0:0(und): Video: h264, 1920x1080';
 
-        // A library with an episode downloaded for each file (a real file on the disk, with a size).
         function withFiles(names: string[], ffmpeg: FfmpegRunner) {
             const { root, options: given } = options();
             const runtime = open({ ...given, runFfmpeg: ffmpeg });
@@ -1415,7 +1403,6 @@ describe('createAnimeRuntime', () => {
                 })
             );
 
-            // An ffmpeg that makes the MP4 by copying what it is given, and reads whatever it is asked to look at as a video with audio.
             function copying() {
                 return vi.fn<FfmpegRunner>(async (args) => {
                     if (args.includes('-f')) {
@@ -1509,7 +1496,6 @@ describe('createAnimeRuntime', () => {
     });
 
     describe('migrating the folder of the anime', () => {
-        // One downloaded episode in the default folder of the anime.
         function libraryWithOneEpisode(runtime: AnimeRuntime | null, root: string): { episodeId: number; video: string } {
             const folder = join(root, 'Downloads', 'Pullwave Anime', 'Naruto', 'Episode 1');
             mkdirSync(folder, { recursive: true });
@@ -1721,7 +1707,6 @@ describe('createAnimeRuntime', () => {
         runtime?.queue.enqueue({ title: 'Naruto', query: 'naruto', index: 1, episodes: ['1'] });
         await flush();
 
-        // The folder of the anime was created inside the default one.
         expect(existsSync(join(root, 'Downloads', 'Pullwave Anime', 'Naruto'))).toBe(true);
         const jobs = send.mock.calls
             .filter(([channel]) => {
@@ -1730,7 +1715,6 @@ describe('createAnimeRuntime', () => {
             .map(([, job]) => {
                 return (job as AnimeJob).status;
             });
-        // There is no ani-cli in the empty resources folder: the download fails three times (the queue tries it again) and ends with that error.
         expect(jobs).toEqual(['queued', 'running', 'queued', 'running', 'queued', 'running', 'error']);
         expect(runtime?.db.getEpisode(1)).toMatchObject({
             status: 'error',
@@ -1770,7 +1754,6 @@ describe('fetchSubtitleText', () => {
                 response.writeHead(200, { 'Content-Type': 'text/vtt' });
                 response.end('WEBVTT\n');
             } else if (request.url === '/slow.vtt') {
-                // Never answers: the request has to give up by itself.
                 return;
             } else {
                 response.writeHead(404);
@@ -1821,8 +1804,6 @@ describe('fetchSubtitleText', () => {
 });
 
 
-// A new ani-cli is tried for real before an update uses it: here by a fake busybox (it hands everything to the shell of the system), the real
-// script of stand-ins and a fake ani-cli that answers like the source.
 describe.skipIf(process.platform === 'win32')('createAnimeRuntime the try of a new ani-cli', () => {
     const DEBUG_OUTPUT = [
         'All links:',
@@ -1839,7 +1820,6 @@ describe.skipIf(process.platform === 'win32')('createAnimeRuntime the try of a n
         '{"label":"English","src":"https://cdn.example/en.vtt"}'
     ].join('\\n');
 
-    // The fake ani-cli: the episode asked with -e is printed by the debug player, -S alone lists the episodes, the words alone list the anime.
     function fakeAniCli(debugOutput: string): string {
         return [
             '#!/bin/sh',
@@ -1907,7 +1887,6 @@ describe.skipIf(process.platform === 'win32')('createAnimeRuntime the try of a n
         expect(existsSync(join(root, 'data', 'anime', 'update-check', 'tools', 'sed'))).toBe(true);
         expect(existsSync(join(root, 'data', 'anime', 'update-check', 'history'))).toBe(true);
         expect(existsSync(join(root, 'data', 'anime', 'tools'))).toBe(false);
-        // No copy of a script is kept beside the one in use.
         expect(readdirSync(join(root, 'data', 'anime')).filter((name) => {
             return name.startsWith('ani-cli');
         })).toEqual([]);
@@ -1980,7 +1959,6 @@ describe('createAnimeRuntime schedule', () => {
                 { anilistId: 2, title: 'English name', english: 'English name', romaji: 'Dandadan', names: ['English name', 'Dandadan', 'Other name'], episode: 3, airingAt: 1_700_050_000, coverUrl: 'https://s4.anilist.co/cover.jpg' }
             ]
         });
-        // Nothing is pushed to the screen: it is asked, and answered, once.
         expect(send).not.toHaveBeenCalled();
     });
 
@@ -2092,7 +2070,6 @@ describe('createAnimeRuntime new episodes', () => {
             runtime.stopBackgroundChecks();
         }).not.toThrow();
 
-        // The library is empty: the check only brings up to date what is known about the anime that ended, and ends.
         expect(
             send.mock.calls.map(([channel, state]) => {
                 return [channel, state];
@@ -2112,7 +2089,6 @@ describe('createAnimeRuntime new episodes', () => {
         const response = await runtime.handlers.updates.checkNow('manual');
 
         expect(response).toEqual({ ok: true, count: 0, titles: [], notDownloaded: [], failed: 2, skipped: 0 });
-        // Only the state of the check is told: nothing was added to the library.
         expect(
             send.mock.calls.map(([channel]) => {
                 return channel;
@@ -2285,10 +2261,8 @@ describe('createAnimeRuntime covers', () => {
     let origin: string;
     let searches: string[];
     let cover: string;
-    // What the services asked after AniList were asked (the address of each request), and the results Kitsu gives.
     let fallbackRequests: string[];
     let kitsuResults: unknown[];
-    // The names of each request made to AniList.
     let aniListRequests: string[][];
 
     beforeEach(async () => {
@@ -2309,7 +2283,6 @@ describe('createAnimeRuntime covers', () => {
                 chunks.push(chunk);
             });
             request.on('end', () => {
-                // AniList is asked for the names of a request together: a page for each, empty for the anime it does not know.
                 const names = Object.values((JSON.parse(Buffer.concat(chunks).toString('utf8')) as { variables: Record<string, string> }).variables);
                 searches.push(...names);
                 aniListRequests.push(names);
@@ -2403,7 +2376,6 @@ describe('createAnimeRuntime covers', () => {
         longAgo.close();
         const runtime = open(given) as AnimeRuntime;
 
-        // What was kept is shown at once.
         expect(await runtime.handlers.covers.find('Naruto')).toBe('https://s4.anilist.co/cover/old.jpg');
 
         await vi.waitFor(() => {

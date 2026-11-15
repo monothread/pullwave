@@ -50,10 +50,8 @@ import { libraryEntryRefresh, withEntry } from './libraryEntryRefresh';
 import { mangaListKey, useSortPrefsStore } from './sortPrefsStore';
 
 export type MangaView = 'browse' | 'search' | 'updates' | 'library' | 'history' | 'extensions' | 'settings' | 'downloads';
-// The views the downloads screen can go back to.
 export type MangaBrowseView = Exclude<MangaView, 'downloads'>;
 
-// How the search of a manga went in one source.
 export type MangaSearchSourceStatus = 'waiting' | 'searching' | 'found' | 'none' | 'error';
 
 export interface MangaSearchSourceResult {
@@ -63,14 +61,11 @@ export interface MangaSearchSourceResult {
     error: MangaError | null;
 }
 
-// The search of a manga in all the sources of a language. It stays as it is when the user goes to another tab.
 export interface MangaSearchState {
-    // The name in the field, and the one the results are for.
     query: string;
     searchedFor: string;
     status: 'idle' | 'searching' | 'done';
     results: MangaSearchSourceResult[];
-    // Whether the search goes through the sources of every language, not only of the language of the settings (off by default).
     allLanguages: boolean;
 }
 
@@ -78,11 +73,9 @@ export interface MangaBrowseState {
     sources: MangaSource[];
     sourcesStatus: 'idle' | 'loading' | 'ready' | 'error';
     sourcesError: MangaError | null;
-    // The source that is open (its mangas are listed); null while the list of sources is shown.
     sourceId: string | null;
     mode: MangaListKind;
     query: string;
-    // The filters of the search of the open source: what it offers (`initialFilters`, to start over from) and what the user has set.
     filters: MangaFilter[];
     initialFilters: MangaFilter[];
     filtersStatus: 'idle' | 'loading' | 'ready' | 'error';
@@ -95,13 +88,11 @@ export interface MangaBrowseState {
     error: MangaError | null;
 }
 
-// The manga that is open: what the source says about it, its chapters and the ones picked.
 export interface MangaSelection {
     manga: MangaSummary;
     status: 'loading' | 'ready' | 'error';
     details: MangaDetails | null;
     chapters: MangaChapter[];
-    // The chapters picked, by their number on the server.
     selected: number[];
     error: MangaError | null;
 }
@@ -111,25 +102,19 @@ export interface MangaExtensionsState {
     extensions: MangaExtension[];
     status: 'idle' | 'loading' | 'ready' | 'error';
     error: MangaError | null;
-    // What is being installed, updated or removed (the package name), or added or removed (the address of the store).
     busy: string[];
-    // The text and the installed-only choice (the language is the one of the settings).
     filter: Omit<ExtensionFilter, 'lang'>;
 }
 
-// The settings of the source that is being browsed.
 export interface MangaSourceSettingsState {
     open: boolean;
     status: 'idle' | 'loading' | 'ready' | 'error';
     preferences: MangaSourcePreference[];
     error: MangaError | null;
-    // A change is being saved.
     saving: boolean;
 }
 
-// What `busy` holds while every extension is being updated.
 export const UPDATE_ALL_KEY = 'update-all';
-// How long a chapter that is complete stays in the list of the downloads, for its bar to glide to the end.
 export const DONE_JOB_LINGER_MS = 1500;
 
 export type ChapterSelectionKind = 'all' | 'none' | 'missing';
@@ -166,8 +151,6 @@ const EMPTY_EXTENSIONS: MangaExtensionsState = {
     filter: { query: '', onlyInstalled: true }
 };
 
-// A chapter that can be read: its number on the server and, when it is in the library, its number there (its file is read when it was
-// downloaded).
 export interface ReaderChapter {
     remoteId: number;
     libraryChapterId: number | null;
@@ -175,106 +158,76 @@ export interface ReaderChapter {
     number: number | null;
 }
 
-// The chapter being read, among the chapters of its manga (in reading order, the oldest first).
 export interface MangaReaderState {
     status: 'closed' | 'loading' | 'ready' | 'error';
     mangaTitle: string;
     chapters: ReaderChapter[];
     index: number;
     pages: string[];
-    // The pages are read from the downloaded file.
     local: boolean;
-    // The places (from 0) of the pages the downloaded chapter lacks.
     missing: number[];
     error: MangaError | null;
-    // The manga being read, to write where the user is in the history of reading (null when it is not known).
     manga?: MangaSummary | null;
-    // The chapter was opened by CONTINUE READING: it starts on the page the manga was last read on (the last page too), not where the chapter was left.
     resume?: boolean;
-    // The chapter was reached by scrolling through the zone between chapters: from the one before it opens on its first page, from the one after it
-    // on its last (the user goes on in the direction they were scrolling).
     entry?: 'start' | 'end';
 }
 
 const EMPTY_SEARCH: MangaSearchState = { query: '', searchedFor: '', status: 'idle', results: [], allLanguages: false };
 
-// Which search is the current one: the answers of an older one are dropped.
 let searchRun = 0;
 
 const CLOSED_READER: MangaReaderState = { status: 'closed', mangaTitle: '', chapters: [], index: 0, pages: [], local: false, missing: [], error: null };
 
 interface MangaState {
     reader: MangaReaderState;
-    // The view the manga that is open was opened from: the browse and the library each show only their own.
     selectionFrom: 'browse' | 'search' | 'library';
     status: MangaStatusInfo;
     view: MangaBrowseView | 'downloads';
-    // Where the downloads screen goes back to.
     previousView: MangaBrowseView;
     library: LibraryManga[];
-    // The groups the user made (Mangas, Manhwas...), and the one the library is limited to (null: every manga).
     groups: MangaGroup[];
     libraryGroup: number | null;
-    // The groups hidden from the library for now (kept only while the app is open, not saved).
-    // The series that is open in the library (its key, see `groupLibrary`), or null for the cards.
     librarySeries: string | null;
     jobs: MangaJob[];
-    // Whether PAUSE ALL holds the queue: the chapters that wait keep waiting until RESUME ALL.
     queueHeld: boolean;
     browse: MangaBrowseState;
     search: MangaSearchState;
     selection: MangaSelection | null;
-    // A manga of the library opens with what the library has while the source is asked in the background: whether it is being asked, and
-    // why it could not be (the page stays as it is then).
     selectionRefresh: { loading: boolean; error: MangaError | null };
     sourceSettings: MangaSourceSettingsState;
     extensions: MangaExtensionsState;
-    // The checks of Cloudflare that are going on (the helper is solving them in a browser, which can take a minute).
     cloudflare: MangaCloudflareActivity[];
-    // How far the migration of the folder of the mangas is, or null when none is running.
     migration: MangaMigrationProgress | null;
-    // The chapters that were read to the end or marked as read (see `progressKey`).
     readKeys: string[];
-    // The latest version found of the helper (null until it is looked for; the server is not updated from the app), and how the programs are doing.
     toolVersions: MangaToolVersions | null;
     toolsChecking: boolean;
-    // What the last update of the helper answered.
     updateResults: { helper: MangaToolUpdateResult | null };
     updating: { helper: boolean };
     health: MangaHealth | null;
     healthChecking: boolean;
-    // The server and the helper are being stopped and started again.
     programsRestarting: boolean;
-    // The chapters that arrived in the library (the updates screen) and the history of reading, as the main process last gave them.
     updates: MangaUpdateEntry[];
     history: ReadingEntry[];
-    // What is being asked for new chapters: one manga of the library (its id), all of them, or nothing.
     checkingNew: number | 'all' | null;
-    // Whether a check of all the mangas is going on in the main process (the hourly one or a button) and how far it is.
     checkState: MangaCheckState;
 
     loadUpdates: () => Promise<void>;
     clearUpdates: () => Promise<void>;
-    // Asks the sources for new chapters of one manga of the library, or of all of them (null), and says how it went.
     checkNewChapters: (mangaId: number | null) => Promise<void>;
     loadHistory: () => Promise<void>;
     removeReading: (id: number) => Promise<void>;
     clearReading: () => Promise<void>;
-    // Goes to the page of a manga from the history: the one of the library when it is in it, otherwise the one of its source.
     openFromHistory: (entry: ReadingEntry) => Promise<void>;
     openFromUpdate: (entry: MangaUpdateEntry) => Promise<void>;
     recordReading: (record: ReadingRecord) => Promise<void>;
     checkToolUpdates: () => Promise<void>;
     updateHelper: () => Promise<void>;
-    // Looks at how the server and the helper are doing; with `start`, a stopped one is started.
     checkHealth: (start: boolean) => Promise<void>;
     restartPrograms: () => Promise<void>;
-    // Marks chapters as read, or as not read.
     markRead: (keys: readonly string[], read: boolean) => void;
     init: () => Promise<() => void>;
     refreshStatus: () => Promise<void>;
     retryInstall: () => Promise<void>;
-    // Installs, or removes, the helper for the sites protected by Cloudflare (it needs Docker).
     installHelper: () => Promise<void>;
     removeHelper: () => Promise<void>;
     setView: (view: MangaBrowseView) => void;
@@ -284,25 +237,16 @@ interface MangaState {
     loadSources: () => Promise<void>;
     setSearchAllLanguages: (value: boolean) => void;
     setSearchQuery: (query: string) => void;
-    // Looks for the name in every source of the language chosen (a few at a time), and shows how each one answered as it does.
     runSearch: () => Promise<void>;
-    // Opens a source, listing its popular (or latest) mangas, and goes back to the list of sources.
     openSource: (sourceId: string, mode?: MangaListKind) => void;
     closeSource: () => void;
-    // Shows the settings of the source being browsed (reading them), or hides them.
     openSourceSettings: () => Promise<void>;
     closeSourceSettings: () => void;
-    // Changes one setting of the source; the list is asked for again after, since what a source gives can depend on it.
     changePreference: (preference: MangaSourcePreference, value: MangaSourcePreference['value']) => Promise<void>;
     setMode: (mode: MangaListKind) => void;
     setQuery: (query: string) => void;
-    // Lists the mangas of the source, from the first page.
-    // Opens the reader on a chapter of the list (in reading order).
     openReader: (mangaTitle: string, chapters: ReaderChapter[], index: number, resume?: boolean, entry?: 'start' | 'end', manga?: MangaSummary) => Promise<void>;
-    // Goes to the next chapter (1) or the previous one (-1); false when there is none.
-    // `byScroll`: the chapter is reached by scrolling through the zone between chapters (see MangaReaderState.entry).
     goToChapter: (step: 1 | -1, byScroll?: boolean) => Promise<boolean>;
-    // Goes to the chapter at this place of the list; false when there is none.
     goToChapterIndex: (index: number) => Promise<boolean>;
     closeReader: () => void;
     runList: () => Promise<void>;
@@ -316,19 +260,11 @@ interface MangaState {
     toggleChapter: (remoteId: number) => void;
     selectChapters: (kind: ChapterSelectionKind) => void;
     downloadSelected: () => Promise<void>;
-    // Downloads one chapter of the open manga (when a download does something for it).
     downloadChapter: (remoteId: number) => Promise<void>;
     addToLibrary: () => Promise<boolean>;
-    // Goes to the library, on the page of the manga that is open.
     showInLibrary: () => Promise<void>;
-    // Goes to the source of the manga that is open (from the library), on the page of the manga there.
     showInSource: () => Promise<void>;
-    // Opens the search of the source of the manga that is open with a genre, a tag, an author or an artist: as a filter when the source
-    // has one by that name, else as the text of the search.
-    // Opens the search of the source of the manga that is open with the filter that stands for the term turned on (never as the text of the
-    // search: a term that is not one of the filters of the source is not searched).
     searchByTerm: (term: string, kind?: TermKind) => Promise<void>;
-    // The filters of the source of the manga that is open, to tell which of its genres, author and artist can be searched.
     termFilters: { sourceId: string | null; status: 'idle' | 'loading' | 'ready' | 'error'; filters: MangaFilter[] };
     loadTermFilters: (sourceId: string) => Promise<void>;
 
@@ -337,33 +273,25 @@ interface MangaState {
     openSeries: (key: string) => void;
     closeSeries: () => void;
     setLibraryGroup: (groupId: number | null) => void;
-    // Joins a manga to a series with its place in it, or takes it out of one.
     setSeries: (request: MangaSeriesRequest) => Promise<MangaSeriesResponse>;
     renameSeries: (mangaIds: number[], series: string) => Promise<MangaRenameSeriesResponse>;
     createGroup: (name: string) => Promise<MangaGroupResponse>;
     renameGroup: (groupId: number, name: string) => Promise<MangaGroupResponse>;
     deleteGroup: (groupId: number) => Promise<void>;
-    // Moves a group up (towards the first tab of the library) or down.
     moveGroup: (groupId: number, direction: MangaGroupDirection) => Promise<void>;
     setGroupMembers: (groupId: number, mangaIds: number[], member: boolean) => Promise<void>;
-    // Moves a manga of the library to the same manga in another source; on success the manga that is open is the one of the new source.
     migrateSource: (request: MangaSourceMigrationRequest) => Promise<MangaSourceMigrationResponse>;
     downloadMissing: (mangaId: number) => Promise<void>;
     openFolder: (mangaId: number) => Promise<void>;
-    // Opens the page of the manga on the site of its source.
     openSite: (url: string) => Promise<void>;
-    // Moves the downloaded chapters to a folder the user chooses, then says how it went. Returns what the migration answered.
     migrateFolder: () => Promise<MangaMigrationResponse>;
     removeManga: (mangaId: number) => Promise<void>;
     removeDownload: (chapterId: number) => Promise<void>;
 
     cancelJob: (chapterId: number) => Promise<void>;
     retryJob: (chapterId: number) => Promise<void>;
-    // Downloads again the pages an incomplete chapter lacks (all of them, from the list of chapters).
     repairChapter: (chapterId: number) => Promise<void>;
-    // Downloads the page of the chapter being read at this place (from 0); gives the error when it could not.
     repairReaderPage: (pageIndex: number) => Promise<MangaError | null>;
-    // Tries again every download that failed or was cancelled.
     retryFailedJobs: () => Promise<void>;
     pauseJob: (chapterId: number) => Promise<void>;
     pauseAllJobs: () => Promise<void>;
@@ -377,7 +305,6 @@ interface MangaState {
     loadExtensions: (refresh?: boolean) => Promise<void>;
     addStore: (indexUrl: string) => Promise<boolean>;
     removeStore: (indexUrl: string) => Promise<void>;
-    // Updates every installed extension that has an update.
     updateAllExtensions: () => Promise<void>;
     changeExtension: (pkgName: string, action: ExtensionAction) => Promise<void>;
     setExtensionFilter: (filter: Partial<Omit<ExtensionFilter, 'lang'>>) => void;
@@ -387,7 +314,6 @@ function translateNow(key: MessageKey, params?: MessageParams): string {
     return createTranslator(resolveAppLanguage(useAppStore.getState().settings.language))(key, params);
 }
 
-// The filters of a source that are being read, to wait for them when they are asked for again meanwhile.
 let filtersLoad: { sourceId: string; promise: Promise<void> } | null = null;
 
 function toast(key: MessageKey, params?: MessageParams): void {
@@ -402,9 +328,6 @@ const MIGRATION_ERRORS: Record<Exclude<MangaMigrationFailure, 'cancelled'>, Mess
     failed: 'manga.migrate.error.failed'
 };
 
-// A job in the list replaced by its newer state (or added).
-// Runs the first steps of a change of page (they all happen before the first wait) as one page for the back and forward buttons of the mouse,
-// and gives what is left of it to wait for.
 function asOnePage(steps: () => Promise<void>): Promise<void> {
     let rest: Promise<void> = Promise.resolve();
     batchNavigation(() => {
@@ -425,7 +348,6 @@ export function upsertMangaJob(jobs: readonly MangaJob[], job: MangaJob): MangaJ
     });
 }
 
-// The manga as the source describes it, kept as the summary the library knows it by.
 function summaryOf(selection: MangaSelection): MangaSummary {
     return selection.details === null
         ? selection.manga
@@ -433,7 +355,6 @@ function summaryOf(selection: MangaSelection): MangaSummary {
 }
 
 export const useMangaStore = create<MangaState>((set, get) => {
-    // One manga of the library read alone when only it changed (a chapter of it started or ended), see libraryEntryRefresh.
     const refreshLibraryEntry = libraryEntryRefresh<LibraryManga>({
         read: (mangaId) => {
             return window.api.manga.libraryEntry(mangaId);
@@ -472,7 +393,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
         });
     }
 
-    // The chapters picked that a download does something for (not the ones downloaded already, or waiting or going on).
     function chaptersToSend(selection: MangaSelection): MangaChapter[] {
         const picked = new Set(downloadablePicks(libraryEntry(get().library, selection.manga.sourceId, selection.manga.remoteId), selection.selected));
         return selection.chapters.filter((chapter) => {
@@ -529,7 +449,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             set({ library, jobs, groups, queueHeld, checkState });
             const unsubscribers = [
                 api.onToolState((tool) => {
-                    // Two programs are downloaded: the one that runs the extensions, and the one that gets past Cloudflare.
                     set((state) => {
                         return { status: tool.id === 'flaresolverr' ? { ...state.status, helper: tool } : { ...state.status, tool } };
                     });
@@ -541,7 +460,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     set((state) => {
                         return { status: { ...state.status, server } };
                     });
-                    // The covers of the library need the server: they are asked for again once it is up.
                     if (server === 'running') {
                         void get().refreshLibrary();
                     }
@@ -554,8 +472,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 }),
                 api.onJobUpdate((job) => {
                     if (job.status === 'done') {
-                        // A chapter that is complete says so and leaves the screen of the downloads (it is in the library), but not before
-                        // its bar has glided to the end.
                         set((state) => {
                             return { jobs: upsertMangaJob(state.jobs, job) };
                         });
@@ -606,8 +522,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     toast('manga.notice.newChapters', { count: news.count, titles: news.titles.join(', ') });
                 })
             ];
-            // The server starts with the app, often while the library was being read above: a change of its state then was not heard, and
-            // the screen would not say that it is starting. It is read again now that the changes are heard.
             await get().refreshStatus();
             return (): void => {
                 unsubscribers.forEach((unsubscribe) => {
@@ -626,7 +540,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         checkNewChapters: async (mangaId) => {
-            // One check at a time: while one is going on (here or by itself, every hour) another is not started.
             if (get().checkingNew !== null || get().checkState.running) {
                 return;
             }
@@ -639,7 +552,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     if (response.count === 0) {
                         toast(response.failed > 0 ? 'manga.notice.checkUnreached' : 'manga.notice.checkNone', { failed: response.failed });
                     }
-                    // The mangas whose extension is not installed were not asked about, whether or not there is something new in the others.
                     if (response.skipped > 0) {
                         toast('manga.notice.checkSkipped', { skipped: response.skipped });
                     }
@@ -793,7 +705,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
         loadSources: async () => {
             patchBrowse({ sourcesStatus: 'loading', sourcesError: null });
             const [result, stores] = await Promise.all([window.api.manga.sources(), window.api.manga.stores()]);
-            // The name of the store each source comes from is shown beside it; the list is shown even when the stores cannot be read.
             if (stores.ok) {
                 patchExtensions({ stores: stores.value });
             }
@@ -808,7 +719,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             const stillThere = sources.some((source) => {
                 return source.id === current;
             });
-            // A source that is not there any more (its extension was removed) is no longer open.
             patchBrowse({ sources, sourcesStatus: 'ready', ...(stillThere ? {} : { sourceId: null, status: 'idle', items: [], page: 1, hasNextPage: false, error: null }) });
             if (!stillThere) {
                 set({ sourceSettings: EMPTY_SOURCE_SETTINGS });
@@ -823,7 +733,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         setSearchQuery: (query) => {
             if (query.trim().length === 0) {
-                // Clearing the field clears the results too, and the answers of a search that is still going on are dropped.
                 searchRun += 1;
                 set((state) => {
                     return { search: { ...EMPTY_SEARCH, allLanguages: state.search.allLanguages } };
@@ -910,7 +819,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             }
             set({ sourceSettings: { ...EMPTY_SOURCE_SETTINGS, open: true, status: 'loading' } });
             const result = await window.api.manga.sourcePreferences(sourceId);
-            // The source may have changed, or the settings been closed, meanwhile.
             if (get().browse.sourceId !== sourceId || !get().sourceSettings.open) {
                 return;
             }
@@ -942,7 +850,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             set((state) => {
                 return { sourceSettings: { ...state.sourceSettings, saving: false, status: 'ready', preferences: result.value } };
             });
-            // What the source gives can depend on its settings: the list is asked for again.
             patchBrowse({ status: 'idle', items: [], page: 1, hasNextPage: false, error: null });
         },
 
@@ -951,7 +858,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
         },
 
         setQuery: (query) => {
-            // Clearing the field of the search clears its results too (the answer of a list still going on is dropped: the query changed).
             if (query.trim().length === 0 && get().browse.mode === 'search') {
                 patchBrowse({ query, status: 'idle', items: [], page: 1, hasNextPage: false, loadingMore: false, error: null });
                 return;
@@ -964,7 +870,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             if (sourceId === null || filtersStatus === 'ready') {
                 return;
             }
-            // Asked for while it is already being read (the screen of the filters asks too): wait for that one instead of going on without.
             if (filtersLoad !== null && filtersLoad.sourceId === sourceId) {
                 await filtersLoad.promise;
                 return;
@@ -1019,7 +924,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             }
             patchBrowse({ status: 'loading', error: null, items: [], page: 1, hasNextPage: false });
             const result = await window.api.manga.list({ sourceId, kind: mode, page: 1, query: query.trim(), ...(mode === 'search' ? { filters } : {}) });
-            // The answer of a list that was asked for before another one is not shown.
             const now = get().browse;
             if (now.sourceId !== sourceId || now.mode !== mode || now.query !== query) {
                 return;
@@ -1068,7 +972,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
         openManga: async (manga) => {
             const fromLibrary = get().view === 'library';
             const saved = fromLibrary ? libraryEntry(get().library, manga.sourceId, manga.remoteId) : null;
-            // The library does not wait for the source: its page opens with what is saved, and the source is looked at in the background.
             const local = saved === null ? null : localDetails(saved);
             set({
                 selection: local === null ? { manga, status: 'loading', details: null, chapters: [], selected: [], error: null } : { manga, status: 'ready', details: local.details, chapters: local.chapters, selected: [], error: null },
@@ -1099,7 +1002,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             const manga = readManga ?? get().selection?.manga ?? get().reader.manga ?? null;
             set({ reader: { status: 'loading', mangaTitle, chapters, index, pages: [], local: false, missing: [], error: null, manga, resume, ...(entry === undefined ? {} : { entry }) } });
             const result = await window.api.manga.readPages({ chapterRemoteId: chapter.remoteId, libraryChapterId: chapter.libraryChapterId });
-            // The answer for a chapter that is no longer the one on the screen is dropped.
             const now = get().reader;
             if (now.status === 'closed' || now.index !== index || now.chapters !== chapters) {
                 return;
@@ -1119,11 +1021,9 @@ export const useMangaStore = create<MangaState>((set, get) => {
             const entry = byScroll ? (step > 0 ? 'start' : 'end') : undefined;
             const target = reader.index + step;
             if (reader.chapters[target] !== undefined) {
-                // The manga stays the one being read, not the one open behind the reader (it differs after a change of season).
                 await get().openReader(reader.mangaTitle, reader.chapters, target, false, entry, reader.manga ?? undefined);
                 return true;
             }
-            // At the edge of a season the reading goes on in the one that follows (or comes before) it in the series.
             const season = adjacentSeason(get().library, reader.manga, step);
             if (season === null) {
                 return false;
@@ -1278,7 +1178,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
         refreshLibrary: async () => {
             const [library, groups] = await Promise.all([window.api.manga.library(), window.api.manga.groups()]);
             set((state) => {
-                // A group that is gone is no longer the one the library is limited to.
                 const stillThere = state.libraryGroup === null || groups.some((group) => {
                     return group.id === state.libraryGroup;
                 });
@@ -1342,7 +1241,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         deleteGroup: async (groupId) => {
             await window.api.manga.deleteGroup(groupId);
-            // The orders of its tab are not needed anymore.
             useSortPrefsStore.getState().clearMangaGroupSorts(groupId);
             await get().refreshLibrary();
         },
@@ -1361,7 +1259,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             const response = await window.api.manga.migrateSource(request);
             if (response.ok) {
                 await get().refreshLibrary();
-                // The manga that is open is the one of the new source now.
                 const manga = response.manga;
                 set({ selection: null });
                 await get().openManga({ remoteId: manga.remoteId, sourceId: manga.sourceId, title: manga.title, thumbnailUrl: manga.thumbnailUrl });
@@ -1403,7 +1300,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 return candidate.id === mangaId;
             });
             await window.api.manga.removeManga(mangaId);
-            // The order of its chapters is not needed anymore.
             if (removed !== undefined) {
                 useSortPrefsStore.getState().clearListOrder('chapters', mangaListKey(removed.sourceId, removed.remoteId));
             }
@@ -1506,7 +1402,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 patchExtensions({ status: 'error', error: stores.error });
                 return;
             }
-            // The stores are shown while the extensions are still coming.
             patchExtensions({ stores: stores.value });
             const extensions = await window.api.manga.extensions(refresh);
             if (!extensions.ok) {
@@ -1549,7 +1444,6 @@ export const useMangaStore = create<MangaState>((set, get) => {
             }
             patchExtensions({ error: null });
             await get().loadExtensions(false);
-            // What the sources are changes with the extensions.
             await get().loadSources();
         },
 

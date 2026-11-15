@@ -24,8 +24,6 @@ const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9])
 
 type Sent = { channel: string; payload: unknown };
 
-// The pages (by their number) whose address is not on the server of the app while they are in `failing`: the app refuses to fetch
-// those, so they fail at once and are not asked for again.
 function fakeSuwayomi(failing: ReadonlySet<string> = new Set()): { fetchImpl: typeof fetch; requests: string[] } {
     const requests: string[] = [];
     const fetchImpl = vi.fn((input: string | URL | Request, init?: RequestInit) => {
@@ -149,7 +147,6 @@ describe('createMangaRuntime availability', () => {
         before.markDownloading(kept.id, outputPath);
         before.setPageCount(kept.id, 4);
         before.markPaused(kept.id);
-        // Its folder of pages is gone: nothing is counted.
         before.markDownloading(lost.id, join(dir, 'Pullwave Manga', 'One Piece', 'Chapter 2.cbz'));
         before.setPageCount(lost.id, 4);
         before.markPaused(lost.id);
@@ -353,7 +350,6 @@ describe('createMangaRuntime downloading a chapter', () => {
         expect(sent.some((item) => {
             return item.channel === IPC.eventMangaLibrary;
         })).toBe(true);
-        // The start and the end of the chapter are told for its manga only.
         expect(sent.filter((item) => {
             return item.channel === IPC.eventMangaLibraryEntry;
         })).toEqual([
@@ -445,7 +441,6 @@ describe('createMangaRuntime downloading a chapter', () => {
         await expect(runtime!.handlers.repair.repair(chapter.id, 1)).resolves.toEqual({ ok: true, value: { missing: [] } });
         expect(requests.at(-1)).toBe(`${EXTERNAL}/api/v1/manga/7/chapter/1/page/1`);
         expect(runtime!.db.getChapter(chapter.id)).toMatchObject({ status: 'done', filePath: chapter.filePath, pageCount: 2 });
-        // The repair tells the screen the manga of the chapter only, not the whole library.
         expect(sent.filter((item) => {
             return item.channel === IPC.eventMangaLibrary;
         }).length).toBe(libraryChanges);
@@ -624,7 +619,6 @@ class QuietProcess extends EventEmitter {
     });
 }
 
-// Marks a program as installed, the way the installer does when it is done (the entry file and the marker).
 function installProgram(root: string, spec: { id: string; version: string; sha256: string; entry: string }): void {
     const directory = join(root, 'manga', 'tools', spec.id, spec.version);
     mkdirSync(join(directory, spec.entry, '..'), { recursive: true });
@@ -824,7 +818,6 @@ describe('createMangaRuntime looking for new chapters', () => {
             [onId, 'Chapter 2'],
             [onId, 'Chapter 3']
         ]);
-        // What was started is stopped before the test ends, so nothing is left writing to the library that is deleted.
         await on.runtime!.shutdown();
         const off = setup({ fetchImpl: fetchWithChapters([1, 2, 3]), settings: { mangaAutoDownloadNew: false } });
         addManga(off.runtime!);
@@ -838,7 +831,6 @@ describe('createMangaRuntime looking for new chapters', () => {
         const id = addManga(runtime!);
         await expect(runtime!.checker.checkNow()).resolves.toEqual({ ok: true, count: 0, titles: [], failed: 1, skipped: 0 });
         expect(runtime!.db.chaptersOf(id)).toHaveLength(1);
-        // Only the state of the check is told: nothing was added to the library.
         expect(sent).toEqual([
             { channel: IPC.eventMangaCheckState, payload: { running: true, origin: 'auto', done: 0, total: 1, current: 'One Piece' } },
             { channel: IPC.eventMangaCheckState, payload: { running: false, origin: null, done: 0, total: 0, current: null } }
@@ -846,7 +838,6 @@ describe('createMangaRuntime looking for new chapters', () => {
     });
 
     describe('with the sources the server has', () => {
-        // The server lists the sources whose extension is installed, and answers about the mangas.
         function fetchWithSources(sourceIds: string[], chapters: number[]): typeof fetch {
             const withManga = fetchWithChapters(chapters);
             return vi.fn((input: string | URL | Request, init?: RequestInit) => {
@@ -981,7 +972,6 @@ describe('createMangaRuntime Cloudflare helper', () => {
             openFolder: () => {
                 return undefined;
             },
-            // The programs are stand-ins: Suwayomi answers that it is ready, FlareSolverr is a server of the test behind a fake Docker.
             serverDependencies: {
                 spawn,
                 fetchImpl: (() => {
@@ -1034,7 +1024,6 @@ describe('createMangaRuntime Cloudflare helper', () => {
             'LOG_LEVEL=info',
             FLARESOLVERR_IMAGE
         ]);
-        // Only the server is a process of the app: the helper is a container.
         expect(children).toHaveLength(1);
         const conf = readFileSync(join(dataDir, 'manga', 'server', 'server.conf'), 'utf-8');
         expect(conf).toContain('server.flareSolverrEnabled = true');
@@ -1042,7 +1031,6 @@ describe('createMangaRuntime Cloudflare helper', () => {
         expect(address).toBeDefined();
         expect(address).not.toBe(`http://127.0.0.1:${port}`);
         expect(runtime.service.status().helper).toMatchObject({ id: 'flaresolverr', status: 'ready' });
-        // What the container says goes to the log of FlareSolverr while it runs, and stops being followed when it stops.
         expect(docker.followed).toEqual(['c0ffee']);
         expect(docker.unfollowed).toEqual([]);
         await runtime.shutdown();

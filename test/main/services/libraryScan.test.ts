@@ -7,7 +7,6 @@ afterEach(() => {
     cleanTempDirs();
 });
 
-// A folder tree in memory: a name ending in "/" is a folder, anything else is a file with that text.
 function tree(contents: Record<string, string>): ScanFileSystem {
     return {
         entries: (directory) => {

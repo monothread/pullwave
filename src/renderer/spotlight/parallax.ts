@@ -1,5 +1,3 @@
-// How far the pointer is from the middle of the carousel, from -1 (left or top edge) to 1 (right or bottom edge): the cover and the text
-// of the slide move a little against it, which gives the slide depth.
 export interface Parallax {
     x: number;
     y: number;

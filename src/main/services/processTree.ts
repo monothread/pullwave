@@ -6,7 +6,6 @@ export interface KillableProcess {
 }
 
 export type TaskkillSpawn = (command: string, args: string[]) => void;
-// Sends a signal to a whole process group (the process and everything it started).
 export type GroupKill = (pid: number, signal: NodeJS.Signals) => void;
 
 function defaultTaskkill(command: string, args: string[]): void {
@@ -20,10 +19,6 @@ function defaultGroupKill(pid: number, signal: NodeJS.Signals): void {
     process.kill(-pid, signal);
 }
 
-// Ends a process and everything it started. On Windows killing yt-dlp alone leaves the ffmpeg it launched running
-// (and writing) in the background, so the whole tree is ended with taskkill. Elsewhere yt-dlp runs in a group of its
-// own (see `defaultSpawn`), so the signal goes to the group: ffmpeg is reached too instead of being left running with
-// the pipes open. A process that is not a group leader is signalled alone.
 export function killProcessTree(
     child: KillableProcess,
     platform: NodeJS.Platform = process.platform,

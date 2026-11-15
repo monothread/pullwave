@@ -12,7 +12,6 @@ import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { openedSubtitleMenu } from '../../helpers/playerSettings';
 import { openErrorDialog } from '../../helpers/errorDialog';
 
-// The hidden video the picture above the timeline is taken from (see previewMedia.ts, tested on its own).
 const previewMedia = vi.hoisted(() => {
     return {
         open: vi.fn((): { element: HTMLVideoElement; close: () => void } => {
@@ -61,7 +60,6 @@ const hls = vi.hoisted(() => {
         destroy(): void {
             this.record.destroyed = true;
         }
-        // The quality hls.js was told to stay on (-1 is its automatic choice).
         set currentLevel(level: number) {
             this.record.currentLevel = level;
         }
@@ -82,8 +80,6 @@ const initialAnime = useAnimeStore.getState();
 
 const STREAM: AnimeStream = { sessionId: 's1', url: 'pullwave-stream://p/s1/abc', subtitleUrl: 'pullwave-stream://p/s1/def', subtitles: [] };
 
-// A stream whose source lists its subtitles, as the one of Frieren does: every one is named in English and the first of the list is
-// not the one ani-cli picked.
 const LISTED: AnimeStream = {
     sessionId: 's1',
     url: 'pullwave-stream://p/s1/abc',
@@ -465,7 +461,6 @@ describe('AnimeStreamPlayer', () => {
     describe('the next episode that starts by itself', () => {
         const SECOND_STREAM: AnimeStream = { sessionId: 's2', url: 'pullwave-stream://p/s2/xyz', subtitleUrl: null, subtitles: [] };
 
-        // The source lists episodes 3 and 4: the one playing is the 3rd.
         function withNextEpisode(overrides: Partial<NonNullable<ReturnType<typeof useAnimeStore.getState>['streaming']>> = {}): void {
             useAnimeStore.setState({
                 selection: { result: { index: 2, title: 'The Apothecary Diaries' }, query: 'apothecary', status: 'ready', episodes: ['2', '3', '4'], error: null }
@@ -742,7 +737,6 @@ describe('AnimeStreamPlayer: the preview of the timeline', () => {
         const source = { kind: 'hls', url: STREAM.url };
         expect(previewMedia.open).toHaveBeenCalledTimes(1);
         expect(previewMedia.open).toHaveBeenCalledWith(source, 600, expect.any(Function));
-        // The video of the player is the only one in the page: the one the picture comes from is not put in it.
         expect(document.querySelectorAll('video')).toHaveLength(1);
     });
 });

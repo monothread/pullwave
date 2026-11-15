@@ -11,13 +11,8 @@ const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
-// The sizes of the windows on screens of 1366x768 up to 1920x1080 (the taskbar takes some of the height), narrow ones, a screen turned to
-// stand up (1080x1920) and an ultrawide one (3440x1440, where the interface is magnified a fifth).
 const SIZES: Array<[number, number]> = [[480, 800], [600, 800], [768, 1000], [1024, 768], [1080, 1850], [1366, 768], [1920, 1050], [3440, 1400]];
-// Every theme: the font of the neon ones is wider than the others and their boxes are cut differently.
 const THEMES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
-// Day to day the audit runs on a few themes and sizes that stand for the others; the whole matrix runs before a release, in the test tagged
-// @full (`npm run test:e2e:full`).
 interface AuditMatrix {
     tag: string;
     themes: readonly string[];
@@ -30,13 +25,8 @@ const MATRICES: readonly AuditMatrix[] = [
 ];
 test.setTimeout(600000);
 
-// Everything that looks wrong from the geometry alone: the page scrolling sideways, boxes that go past the window or past the box
-// that holds them, text that is cut, buttons on one line that are not the same height and the cards of a grid that are not the same
-// width. It resizes the real window of the application (on the primary monitor, see createWindow) instead of emulating a size.
 async function audit(page: Page, where: string): Promise<string[]> {
     return page.evaluate((label) => {
-        // What comes in with an animation (a seal that stamps from twice its size, an icon that rises) is measured where it ends: in a screen with no
-        // compositor the animations go slowly and a box measured on the way is bigger than it is. The ones that never end (the aurora) are left alone.
         document.getAnimations().forEach((animation) => {
             const end = animation.effect?.getComputedTiming().endTime;
             if (typeof end === 'number' && Number.isFinite(end)) {
@@ -67,15 +57,12 @@ async function audit(page: Page, where: string): Promise<string[]> {
             if (parent && parent !== document.body && parent.closest('.app')) {
                 const holder = parent.getBoundingClientRect();
                 const style = getComputedStyle(parent);
-                // A tile under the mouse grows a little on purpose (its cover pops out of the card): the window keeps the last place of the
-                // mouse after it is resized, so a tile can be under it while the screen is audited.
                 const popped = getComputedStyle(element).transform !== 'none' && element.closest(':hover') !== null;
                 if (!popped && style.overflowX === 'visible' && box.right > holder.right + 2 && getComputedStyle(element).position !== 'absolute' && getComputedStyle(element).position !== 'fixed' && !element.classList.contains('logo')) {
                     problems.push(`${label}: ${name(element)} goes past its box ${name(parent)} by ${Math.round(box.right - holder.right)}px`);
                 }
             }
         });
-        // Text that is cut where it should have wrapped (a button or a label whose words do not fit).
         visible.filter((element) => {
             return element.matches('button, .badge, .chip, .tab, label, .field__label, .section-label');
         }).forEach((element) => {
@@ -83,7 +70,6 @@ async function audit(page: Page, where: string): Promise<string[]> {
                 problems.push(`${label}: the text of ${name(element)} is cut`);
             }
         });
-        // Buttons side by side on one line must be the same height.
         const rows = new Map<Element, HTMLElement[]>();
         visible.filter((element) => {
             return element.matches('button.btn, .btn');
@@ -105,7 +91,6 @@ async function audit(page: Page, where: string): Promise<string[]> {
                 }
             });
         });
-        // Cards of a grid row share a width.
         document.querySelectorAll<HTMLElement>('.queue, .history > .history__list').forEach((list) => {
             if (getComputedStyle(list).display !== 'grid') {
                 return;
@@ -123,7 +108,6 @@ async function audit(page: Page, where: string): Promise<string[]> {
                 problems.push(`${label}: the cards of ${name(list)} have different widths (${[...widths].join(', ')})`);
             }
         });
-        // The cards of the library that are on one row are the same height, whatever is in them.
         document.querySelectorAll<HTMLElement>('.library').forEach((library) => {
             const rowsOfCards = new Map<number, number[]>();
             Array.from(library.querySelectorAll<HTMLElement>(':scope > .library__card')).forEach((card) => {
@@ -179,7 +163,6 @@ MATRICES.forEach((matrix) => {
             }
         };
 
-        // Downloads: some links, one finished (it says so in a notice and leaves the queue)
         await resize(1366, 768);
         for (const [index, url] of ['https://example.com/ok1', 'https://example.com/ok2', 'https://example.com/ok3'].entries()) {
             if (index > 0) {
@@ -197,7 +180,6 @@ MATRICES.forEach((matrix) => {
         await page.getByRole('button', { name: 'SETTINGS (GLOBAL)', exact: true }).click();
         await sweep('global-settings');
 
-        // Anime
         await resize(1366, 768);
         await page.getByRole('button', { name: 'ANIME', exact: true }).click();
         await sweep('anime-schedule');
@@ -210,7 +192,6 @@ MATRICES.forEach((matrix) => {
         await page.getByRole('button', { name: 'OPEN: Fake Anime', exact: true }).click();
         await expect(page.getByRole('button', { name: 'EP 3', exact: true })).toBeVisible();
         await sweep('anime-detail');
-        // The anime goes to the library from here, and is downloaded from there.
         await page.getByRole('button', { name: 'ADD TO LIBRARY', exact: true }).click();
         await sweep('anime-add-dialog');
         await page.getByRole('button', { name: 'CONFIRM' }).click();
@@ -220,7 +201,6 @@ MATRICES.forEach((matrix) => {
         await expect(page.getByRole('button', { name: 'DOWNLOAD ALL: Fake Anime' })).toBeVisible();
         await sweep('library-series-not-downloaded');
         await page.getByRole('button', { name: 'DOWNLOAD ALL: Fake Anime' }).click();
-        // A finished download leaves the downloads screen and is told by a toast, one over the other when more finish together.
         await expect(page.locator('.toast').filter({ hasText: 'Download complete: ' }).first()).toBeVisible({ timeout: 60000 });
         await sweep('toasts-stacked');
         await expect(page.getByRole('button', { name: 'DOWNLOADS (0)' })).toBeVisible({ timeout: 60000 });
@@ -238,7 +218,6 @@ MATRICES.forEach((matrix) => {
         await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime 2', exact: true }).click();
         await page.getByRole('button', { name: 'DOWNLOAD: Fake Anime 2 EP 1', exact: true }).click();
         await expect(page.locator('.toast').filter({ hasText: 'Download complete: Fake Anime 2 · EP 1' })).toBeVisible({ timeout: 60000 });
-        // More anime for the library: two on their own and a series with many seasons (its list scrolls).
         await page.evaluate(async () => {
             const api = (window as unknown as { api: { downloadAnime: (request: unknown) => Promise<unknown> } }).api;
             for (const title of ['Zeta On Its Own', 'Alpha On Its Own With A Title That Is Quite Long To See How It Is Cut']) {
@@ -260,7 +239,6 @@ MATRICES.forEach((matrix) => {
         await page.getByTestId('anime-season').first().getByRole('button', { name: 'SHOW EPISODES' }).click();
         await page.getByRole('button', { name: /^EDIT SEASON/ }).first().click();
         await sweep('library-season-screen-edit');
-        // The screen of the season goes back to the one of the series, and this one to the cards.
         await page.getByRole('button', { name: 'BACK', exact: true }).click();
         await page.getByRole('button', { name: 'BACK TO LIBRARY', exact: true }).click();
         await page.getByRole('button', { name: 'OPEN SERIES: Zeta On Its Own' }).click();
@@ -318,8 +296,6 @@ test('puts the search of the top bar in the middle of the window when there is r
         expect(medium.search.right).toBeLessThanOrEqual(medium.end.left);
         expect(medium.search.top).toBeLessThan(medium.start.bottom);
 
-        // A screen turned to stand up (1080 px wide) and a window down to 1000 px have the bar on one line: the search takes what is left between
-        // the start and the end, which never get less than their content, and the bar does not go past the window.
         for (const [width, height] of [[1080, 1850], [1024, 768], [1000, 768]]) {
             await resize(width as number, height as number);
             const oneLine = await boxes();
@@ -330,7 +306,6 @@ test('puts the search of the top bar in the middle of the window when there is r
             expect(oneLine.end.right, `${String(width)}: the bar is inside the window`).toBeLessThanOrEqual(oneLine.window);
         }
 
-        // With less room (under 1000 px) the search goes under the name, as wide as the bar.
         await resize(999, 768);
         const narrow = await boxes();
         expect(narrow.search.top).toBeGreaterThanOrEqual(narrow.start.bottom);

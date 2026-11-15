@@ -10,7 +10,6 @@ import {
     type SeekPreviewSource
 } from '@renderer/components/seekPreview';
 
-// A hidden video: it moves when its time is set and says so with `seeked` when the test tells it the frame is there.
 class FakeVideo extends EventTarget {
     readyState = 0;
     videoWidth = 1920;
@@ -71,7 +70,6 @@ interface Harness {
     onFrame: ReturnType<typeof vi.fn<(frame: HTMLCanvasElement) => void>>;
     onFailure: ReturnType<typeof vi.fn<() => void>>;
     canvases: FakeCanvas[];
-    // The failure callback the grabber gave to the media.
     failMedia: () => void;
 }
 
@@ -280,7 +278,6 @@ describe('SeekPreviewGrabber', () => {
         expect(video.moves).toEqual([1]);
 
         video.finishSeek();
-        // The frame of 1 is kept but not shown: the mouse is on 4 now.
         expect(onFrame).not.toHaveBeenCalled();
         expect(video.moves).toEqual([1, 4]);
 
@@ -289,7 +286,6 @@ describe('SeekPreviewGrabber', () => {
         expect(onFrame).toHaveBeenCalledWith(canvases[1]);
         expect(video.moves).toEqual([1, 4]);
 
-        // The frame of 1 was kept.
         grabber.request(1);
         expect(onFrame).toHaveBeenLastCalledWith(canvases[0]);
         expect(video.moves).toEqual([1, 4]);
@@ -306,7 +302,6 @@ describe('SeekPreviewGrabber', () => {
         expect(onFrame).toHaveBeenLastCalledWith(canvases[0]);
 
         video.finishSeek();
-        // The frame of 5 is kept, not shown over the one of 1, and 6 is not asked for any more.
         expect(onFrame).toHaveBeenCalledTimes(2);
         expect(onFrame).toHaveBeenLastCalledWith(canvases[0]);
         expect(video.moves).toEqual([1, 5]);
@@ -331,7 +326,6 @@ describe('SeekPreviewGrabber', () => {
         expect(onFrame).not.toHaveBeenCalled();
         expect(video.moves).toEqual([3, 4]);
 
-        // The frame was not kept: the second is asked for again.
         video.videoWidth = 640;
         video.videoHeight = 360;
         video.finishSeek();

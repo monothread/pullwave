@@ -4,20 +4,12 @@ import { CUT_MEDIA_SCHEME, type CutMedia, type CutMediaRoute, type CutPreviewReq
 import type { RunFfmpeg } from './cutService';
 import { serveFile, type MediaFileSystem } from './mediaProtocol';
 
-// What the cutter shows before it cuts (D-131): the file chosen, served to the player of the app, a part of it converted when the player cannot
-// play it as it is, and a picture of it. The files it makes are in a folder of its own, removed when the file changes, when the panel is
-// cleared and when the app starts and ends.
-
-// The width of the picture of the file.
 export const THUMBNAIL_WIDTH = 320;
-// Where in a video the picture is taken: this share of its length (the very start is often black).
 export const THUMBNAIL_AT = 0.1;
-// Some room after the end of the file, which ffmpeg rounds.
 const END_MARGIN_SECONDS = 0.5;
 
 export interface CutPreviewDependencies {
     runFfmpeg: () => RunFfmpeg | null;
-    // The folder of the files made for the preview and the picture.
     directory: string;
     makeDirectory?: (directory: string) => void;
     removeDirectory?: (directory: string) => void;
@@ -32,7 +24,6 @@ export function cutMediaUrl(route: CutMediaRoute, id: number): string {
     return `${CUT_MEDIA_SCHEME}://${route}/${String(id)}`;
 }
 
-// The route and the number of an address of the cutter, or null when it is not one.
 export function parseCutMediaUrl(url: string): { route: CutMediaRoute; id: number } | null {
     let parsed: URL;
     try {
@@ -50,13 +41,11 @@ export function parseCutMediaUrl(url: string): { route: CutMediaRoute; id: numbe
     return { route: parsed.hostname, id: Number(match[1]) };
 }
 
-// ffmpeg arguments for the picture: a frame of a video at a tenth of its length, or the cover an audio file carries.
 export function buildThumbnailArgs(media: CutMedia, output: string): string[] {
     const seek = media.kind === 'video' ? ['-ss', String(Number((media.durationSeconds * THUMBNAIL_AT).toFixed(3)))] : [];
     return ['-hide_banner', '-nostdin', '-y', '-v', 'error', ...seek, '-i', media.path, '-map', '0:v:0', '-frames:v', '1', '-vf', `scale=${String(THUMBNAIL_WIDTH)}:-2`, '-q:v', '4', output];
 }
 
-// ffmpeg arguments for a part the player can play: a video as H.264 and AAC in MP4, an audio as AAC in M4A, fast more than small.
 export function buildPreviewArgs(media: CutMedia, segment: CutSegment, output: string): string[] {
     const length = String(Number((segment.end - segment.start).toFixed(3)));
     const codecs =
@@ -79,23 +68,19 @@ export class CutPreview {
     private thumbnailUrl: Promise<string | null> | null = null;
 
     constructor(private readonly deps: CutPreviewDependencies) {
-        // What a run before left behind (an app that was killed) is not needed any more.
         this.removeFiles();
     }
 
-    // The file the user chose: what was made for the one before is removed.
     select(media: CutMedia): void {
         this.reset();
         this.chosen = { token: this.take(), media };
     }
 
-    // Forgets the file chosen and removes what was made for it.
     clear(): void {
         this.reset();
         this.chosen = null;
     }
 
-    // The path a route serves, or null (an address of a file that is not chosen any more, or of another one).
     resolve(route: CutMediaRoute, id: number): string | null {
         if (route === 'media') {
             return this.chosen !== null && this.chosen.token === id ? this.chosen.media.path : null;
@@ -103,7 +88,6 @@ export class CutPreview {
         return this.files.get(`${route}/${String(id)}`) ?? null;
     }
 
-    // The picture of the file chosen, made once; null when there is none (an audio with no cover) or it could not be made.
     thumbnail(): Promise<string | null> {
         if (this.chosen === null) {
             return Promise.resolve(null);
@@ -112,7 +96,6 @@ export class CutPreview {
         return this.thumbnailUrl;
     }
 
-    // Where to play a part: the file chosen itself, from the start to the end of the part, or the part made into a file the player plays.
     async preview(request: CutPreviewRequest): Promise<CutPreviewResponse> {
         const chosen = this.chosen;
         if (chosen === null) {
@@ -128,7 +111,6 @@ export class CutPreview {
         return this.convert(chosen, segment);
     }
 
-    // Removes every file made, as the app ends.
     dispose(): void {
         this.reset();
     }
@@ -154,7 +136,6 @@ export class CutPreview {
         if (runFfmpeg === null) {
             return { ok: false, reason: 'no-ffmpeg' };
         }
-        // One preview is made at a time: a new one ends the one before.
         this.conversion?.abort();
         const controller = new AbortController();
         this.conversion = controller;
@@ -213,7 +194,6 @@ function defaultRemoveDirectory(directory: string): void {
     }
 }
 
-// Serves the files of the cutter (`pullwave-cut://<route>/<id>`), with ranges so the player can seek; 404 for any other address.
 export function createCutMediaHandler(preview: Pick<CutPreview, 'resolve'>, files: MediaFileSystem): (request: Request) => Response {
     return (request) => {
         const address = parseCutMediaUrl(request.url);

@@ -6,22 +6,15 @@ const FILENAME_BYTE_LIMIT = '240';
 const LIVE_WAIT_SECONDS = '30';
 const LIVE_ONLY_FILTER = 'is_live';
 
-// What a download found by the stream finder needs to reach the stream as the page itself would have.
 export interface RequestExtras {
     referer?: string;
     userAgent?: string;
     cookie?: string;
     title?: string;
-    // Folder for this download only; replaces the one in the settings.
     downloadDir?: string;
-    // Force the IP family the address is bound to.
     ipFamily?: 4 | 6;
-    // The page the stream was found on; used to look for a fresh address, never passed to yt-dlp.
     pageUrl?: string;
-    // A new attempt to record a live stream that came back: the file gets a part number, the recording does not start over
-    // and yt-dlp skips the video unless it is live.
     resumedPart?: number;
-    // Settings chosen for this download only; they replace the ones in the settings.
     options?: DownloadOptions;
 }
 
@@ -44,7 +37,6 @@ function replaceInvalidCharacters(title: string): string {
     }).join('');
 }
 
-// A title taken from a web page goes into an output template: "%" must be escaped and path separators removed.
 export function escapeTitleForTemplate(title: string, maxLength: number): string {
     return replaceInvalidCharacters(title)
         .replace(/\s+/g, ' ')
@@ -60,13 +52,8 @@ function buildOutputTemplate(settings: Settings, extras: RequestExtras): string 
     return title.length > 0 ? `${title} [%(id)s]${part}.%(ext)s` : `%(title).${settings.maxTitleLength}s [%(id)s]${part}.%(ext)s`;
 }
 
-// Live streams. "From the start" is honoured where the site allows it: yt-dlp's own option (YouTube, Twitch) and, for
-// HLS recorded through ffmpeg, starting at the first segment the playlist still offers (the whole broadcast when the
-// broadcaster keeps it, as in DVR/EVENT playlists). While waiting for a scheduled stream yt-dlp must not be quiet,
-// otherwise its "[wait]" lines are hidden and the app cannot tell that it is waiting.
 function buildLiveArgs(settings: Settings, extras: RequestExtras): string[] {
     if (extras.resumedPart !== undefined) {
-        // A stream that came back is recorded from now on, and only when it really is live.
         return ['--match-filter', LIVE_ONLY_FILTER];
     }
     const args: string[] = [];
@@ -104,7 +91,6 @@ function buildFormatArgs(settings: Settings): string[] {
     return ['-f', `bv*${heightFilter}+ba/b${heightFilter}`, '--merge-output-format', settings.videoContainer];
 }
 
-// BROWSER[:PROFILE] where PROFILE is a profile name or, for a browser found in a custom place, the folder to read from.
 function cookiesSource(settings: Settings): string {
     const { cookiesBrowser, cookiesBrowserDir, cookiesProfile } = settings;
     if (cookiesBrowserDir.length > 0) {
@@ -125,7 +111,6 @@ function buildSubtitleArgs(settings: Settings): string[] {
         return [];
     }
     const args = ['--sub-langs', settings.subtitleLangs.length > 0 ? settings.subtitleLangs : 'all'];
-    // --embed-subs already downloads the author's subtitles and then deletes the files; an explicit --write-subs would keep them.
     args.push(settings.embedSubtitles ? '--embed-subs' : '--write-subs');
     if (settings.autoSubtitles) {
         args.push('--write-auto-subs');

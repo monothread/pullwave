@@ -17,9 +17,7 @@ import { animeListKey, useSortPrefsStore } from './sortPrefsStore';
 import { activitiesOf, updatesOf, upsertSubtitleActivity, type SubtitleActivity } from './subtitleActivity';
 
 export type AnimeView = 'schedule' | 'search' | 'library' | 'updates' | 'history' | 'settings' | 'downloads' | 'subtitles';
-// The screens opened over the others (from the top bar), with BACK to the one that was shown: the downloads and the subtitles being worked on.
 export type AnimeOverlayView = Extract<AnimeView, 'downloads' | 'subtitles'>;
-// The views the screens opened over the others can go back to.
 export type AnimeBrowseView = Exclude<AnimeView, AnimeOverlayView>;
 
 function isOverlayView(view: AnimeView): view is AnimeOverlayView {
@@ -31,35 +29,24 @@ export interface AnimeSearchState {
     status: 'idle' | 'searching' | 'done' | 'error';
     results: AnimeSearchResult[];
     error: AniError | null;
-    // What the results belong to: positions mean something only for the search that produced them.
     searchedQuery: string;
-    // The source has more results after the ones listed, and they are asked for as the list is scrolled to its end.
     hasNextPage: boolean;
-    // The list reached the most results the search lists, though the source has more: the screen asks to make the search more specific.
     limited: boolean;
-    // More results are being asked for.
     loadingMore: boolean;
 }
 
-// What the search says of the results it does not list: it has no more of them to ask for, and nothing is being asked.
 const NO_MORE_RESULTS = { hasNextPage: false, limited: false, loadingMore: false } as const;
 
-// What is known about the cover of an anime: it was found, AniList has none, or it could not be asked for (it is asked again the next
-// time the card is shown).
 export type AnimeCoverState = { status: 'found'; url: string } | { status: 'none' } | { status: 'failed' };
 
-// Kept with the choice of the user, which is what it is read and saved as.
 export type { AnimeScheduleView } from './scheduleChoice';
 
-// The episodes that air today or this week, by the days of a time zone.
 export interface AnimeScheduleState {
     status: 'idle' | 'loading' | 'ready' | 'error';
     entries: AnimeScheduleEntry[];
     error: AniError | null;
     view: AnimeScheduleView;
-    // The time zone the days are counted in (the one of the machine until the user picks another).
     timeZone: string;
-    // Where each day of what is listed starts, and where the last one ends, in seconds since the epoch.
     limits: number[];
 }
 
@@ -76,73 +63,49 @@ export interface PlayingEpisode {
     episodeId: number;
 }
 
-// An episode being watched without downloading it.
 export interface StreamingEpisode {
     title: string;
     episode: string;
     status: 'loading' | 'ready' | 'error';
     stream: AnimeStream | null;
     error: AniError | null;
-    // The episode the source lists after this one, which plays by itself when this one ends (null for the last one).
     nextEpisode: string | null;
 }
 
 export interface AnimeState {
     status: AnimeStatus;
-    // ani-cli is being updated.
-    // How far the migration of the anime folder is, or null when none is running.
     migration: AnimeMigrationProgress | null;
-    // Whether the audio of the downloaded episodes is being looked at, and what the last look found (shown in a window until it is closed).
     checkingAudio: boolean;
     audioReport: AudioReport | null;
     view: AnimeView;
-    // Where BACK goes from the downloads screen and from the one of the subtitles.
     returnView: AnimeBrowseView;
     jobs: AnimeJob[];
-    // The subtitles being translated or made from the audio, or waiting to be (the ones that ended leave the list).
     subtitleJobs: SubtitleActivity[];
-    // The last update of the translation of each episode since the app opened, also of the ones that ended (by the id of the episode): what a
-    // season shows of its translation stays the same when its screen is left and opened again.
     translationUpdates: Record<number, SubtitleTranslationJob>;
-    // The queue is held by PAUSE ALL: what waits keeps waiting.
     queueHeld: boolean;
     library: LibraryAnime[];
-    // What was opened or watched, the most recent first.
     history: AnimeHistoryEntry[];
     search: AnimeSearchState;
     schedule: AnimeScheduleState;
-    // What is known so far about the cover of each anime, by its title (see `coverKey`).
     covers: Record<string, AnimeCoverState>;
-    // The episodes that arrived in the library after their anime was in it, the newest first.
     updates: AnimeUpdateEntry[];
-    // What the check for new episodes that was asked for is looking at: one anime (its id), all of them, or none.
     checkingNew: number | 'all' | null;
-    // Whether a check of all the anime is going on in the main process (the hourly one or a button) and how far it is.
     checkState: AnimeCheckState;
     selection: AnimeSelection | null;
     playing: PlayingEpisode | null;
     streaming: StreamingEpisode | null;
-    // The anime of the library the screen goes to when it is opened from the search (its episodes are shown).
     libraryFocus: number | null;
-    // The series open on the screen of the library (the key of its card); null: the cards. It is a page of the app, so the back and forward
-    // buttons of the mouse go through it.
     librarySeries: string | null;
-    // The season of the open series whose own screen is open (the id of its anime); null: the screen of the series. A page of the app too.
     librarySeason: number | null;
     init: () => Promise<() => void>;
-    // Reads whether the anime section is available (its programs are installed) and the version of ani-cli again.
     refreshStatus: () => Promise<void>;
     setView: (view: AnimeBrowseView) => void;
     openDownloads: () => void;
     closeDownloads: () => void;
-    // The screen of the subtitles being translated or made, and BACK from it.
     openSubtitleJobs: () => void;
     closeSubtitleJobs: () => void;
-    // Cancels the translation, or the making, of the subtitle of an episode.
     cancelSubtitleJob: (activity: SubtitleActivity) => Promise<void>;
-    // Cancels every subtitle being translated or made, and the ones waiting.
     cancelAllSubtitleJobs: () => Promise<void>;
-    // Forgets what the translations of these episodes did before (a season starts its translation again).
     forgetTranslationUpdates: (episodeIds: readonly number[]) => void;
     openSeries: (key: string) => void;
     closeSeries: () => void;
@@ -150,63 +113,38 @@ export interface AnimeState {
     closeSeason: () => void;
     setQuery: (query: string) => void;
     runSearch: () => Promise<void>;
-    // Asks for the results after the ones listed, when the source has more (the list is scrolled to its end).
     loadMoreSearch: () => Promise<void>;
-    // Looks the cover of an anime up by its title. A cover that was found is not asked for again; one that was not found (or could not be asked
-    // for) is, every time a screen that shows it opens (the main process decides when AniList is asked again).
     loadCover: (title: string) => Promise<void>;
-    // Lists the episodes of the day (or of the week) in the time zone that is set.
-    // `refresh` asks AniList again instead of using what was listed in the last day.
     loadSchedule: (refresh?: boolean) => Promise<void>;
     setScheduleView: (view: AnimeScheduleView) => void;
     setScheduleTimeZone: (timeZone: string) => void;
-    // Goes to the search and looks the anime of an episode of the schedule up by its names.
     openScheduleEntry: (entry: AnimeScheduleEntry) => Promise<void>;
     openResult: (result: AnimeSearchResult) => Promise<void>;
-    // Opens an anime of the library in the search, as if it had been found there, so more episodes can be downloaded.
     openLibraryAnime: (anime: Pick<AnimeRecord, 'title' | 'query' | 'searchIndex'> & Partial<Pick<AnimeRecord, 'sourceId'>>) => Promise<void>;
-    // Opens an anime of the history: in the library, on its series, when it is there; otherwise in the search, with its episodes.
     openHistoryEntry: (entry: AnimeHistoryEntry) => Promise<void>;
-    // Asks for a folder of anime and puts what is in it into the library, then says what it did.
     importLibrary: () => Promise<void>;
-    // Moves all the anime to a folder the user chooses, then says how it went. Returns what the migration answered.
     migrateFolder: () => Promise<AnimeMigrationResponse>;
-    // Looks at the audio of the downloaded episodes that were never looked at, then opens the report with every episode that has a problem.
     checkAudio: () => Promise<void>;
     closeAudioReport: () => void;
-    // Queues again every episode of the report, and closes it.
     redownloadProblems: () => Promise<void>;
-    // Repairs the videos of the episodes of the report that could not be read (see imageHeaderRepair.ts), and closes it.
     repairProblems: () => Promise<void>;
-    // Goes to the library, to the anime that was being looked at in the search.
     showInLibrary: (animeId: number) => void;
     closeResult: () => void;
-    // Downloads episodes of the opened anime; `joined` is the series and season it is saved under (none leaves it as it is).
     downloadEpisodes: (episodes: string[], joined?: SeriesChoice | null) => Promise<void>;
-    // Puts the opened anime in the library with all its episodes, none of them downloaded; `joined` is the series and season it goes
-    // under (none leaves it on its own). Says how it went, and returns whether it was added.
     addToLibrary: (joined: SeriesChoice | null) => Promise<boolean>;
-    // Queues every episode of these anime of the library that is not downloaded yet.
     downloadMissing: (animeIds: number[]) => Promise<void>;
-    // Gives all these anime (the ones of a series) another series name, then reads the library.
     renameSeries: (animeIds: number[], name: string) => Promise<AnimeRenameSeriesResponse>;
-    // Changes the season (and the name shown) of an anime inside the series it is in, then reads the library. Its series cannot change.
     setSeries: (animeId: number, series: string | null, season: number | null, seasonName: string | null) => Promise<AnimeSeriesResponse>;
     cancelJob: (episodeId: number) => Promise<void>;
     retryJob: (episodeId: number) => Promise<void>;
-    // Queues a downloaded episode again when its file is not on the disk any more.
     redownloadEpisode: (episodeId: number) => Promise<void>;
-    // Stops a download that is going on keeping what it downloaded, and goes on from there later.
     pauseJob: (episodeId: number) => Promise<void>;
     resumeJob: (episodeId: number) => Promise<void>;
-    // Pauses what is going on and holds what waits, and goes on with everything that is paused or held.
     pauseAllJobs: () => Promise<void>;
     resumeAllJobs: () => Promise<void>;
-    // The same for the downloads of the anime given only (the rest of the queue is not held).
     pauseAnimeJobs: (animeIds: number[]) => Promise<void>;
     resumeAnimeJobs: (animeIds: number[]) => Promise<void>;
     cancelAnimeJobs: (animeIds: number[]) => Promise<void>;
-    // Tries again every download that failed or was cancelled.
     retryFailedJobs: () => Promise<void>;
     clearFinishedJobs: () => Promise<void>;
     removeEpisode: (episodeId: number) => Promise<void>;
@@ -216,16 +154,12 @@ export interface AnimeState {
     watchEpisode: (episode: string) => Promise<void>;
     closeStream: () => void;
     saveProgress: (update: AnimeProgressUpdate) => Promise<void>;
-    // Marks an episode of the library as watched (or not), keeping the position it was left at.
     setWatched: (episodeId: number, watched: boolean) => Promise<void>;
     refreshLibrary: () => Promise<void>;
     loadUpdates: () => Promise<void>;
     clearUpdates: () => Promise<void>;
-    // Asks the source for new episodes of one anime of the library, or of all of them (null), then says what it found.
     checkNewEpisodes: (animeId: number | null) => Promise<void>;
-    // Goes to the anime of an update in the library.
     openFromUpdate: (entry: AnimeUpdateEntry) => void;
-    // Says that the releases of an anime are over (`complete`) or not (`ongoing`), whatever AniList says; null goes back to following AniList.
     setAiring: (animeId: number, override: AnimeAiringOverride | null) => Promise<void>;
     refreshHistory: () => Promise<void>;
     removeHistoryEntry: (id: number) => Promise<void>;
@@ -250,29 +184,21 @@ export const INITIAL_SCHEDULE: AnimeScheduleState = {
     limits: []
 };
 
-// The names of an anime that are tried in the search, one after the other, until one finds it.
 export const MAX_SCHEDULE_SEARCH_NAMES = 3;
-// What the covers are kept by: the title without the case and the spaces around it.
 export function coverKey(title: string): string {
     return title.trim().toLowerCase();
 }
 
-// The covers being looked for now.
 const coversAsked = new Set<string>();
-// The last listing that was asked for: the answer of an older one is not shown.
 let scheduleRequest = 0;
-// The last search that was made: the answer of an older one, or the one that asks for more results of an older one, is not shown.
 let searchGeneration = 0;
 
 export const UNSUPPORTED_STATUS: AnimeStatus = { supported: false, available: false, aniCli: null };
 
-// The id the source gave the result, for the requests that put the anime in the library (nothing when it is not known).
 function sourceIdOf(result: AnimeSearchResult): { sourceId?: string } {
     return result.sourceId === undefined ? {} : { sourceId: result.sourceId };
 }
 
-// A screen opened over the others: BACK goes to the screen that was shown, or, when another screen over the others was shown, to the one that
-// screen went back to.
 function overlayOpened(state: Pick<AnimeState, 'view' | 'returnView'>, view: AnimeOverlayView): Pick<AnimeState, 'view' | 'returnView'> {
     if (state.view === view) {
         return state;
@@ -284,14 +210,12 @@ function overlayClosed(state: Pick<AnimeState, 'returnView'>): Pick<AnimeState, 
     return { view: state.returnView };
 }
 
-// The episodes whose download is complete and stay a few seconds on the screen of the downloads before they leave it.
 const doneLinger = createDoneLinger<number>();
 
 function translateNow(key: MessageKey, params?: MessageParams): string {
     return createTranslator(resolveAppLanguage(useAppStore.getState().settings.language))(key, params);
 }
 
-// Keeps what was opened or watched in the history, then reads it again. It never stops what the viewer is doing.
 function recordHistory(request: AnimeHistoryRequest): void {
     void window.api
         .recordAnimeHistory(request)
@@ -327,14 +251,12 @@ function upsertAnimeJob(jobs: AnimeJob[], job: AnimeJob): AnimeJob[] {
     });
 }
 
-// The schedule as it starts: always on the day, in the time zone the user chose the last time when there is a choice.
 function initialSchedule(): AnimeScheduleState {
     const { timeZone } = readScheduleChoice();
     return { ...INITIAL_SCHEDULE, timeZone: timeZone ?? INITIAL_SCHEDULE.timeZone };
 }
 
 export const useAnimeStore = create<AnimeState>((set, get) => {
-    // One anime of the library read alone when only it changed (an episode of it started, ended or was checked), see libraryEntryRefresh.
     const refreshLibraryEntry = libraryEntryRefresh<LibraryAnime>({
         read: (animeId) => {
             return window.api.getAnimeLibraryEntry(animeId);
@@ -418,8 +340,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                         doneLinger.cancel(job.episodeId);
                         return;
                     }
-                    // A download that is complete says so, stays a few seconds on the screen of the downloads (green) and leaves it: it is
-                    // in the library.
                     useAppStore.getState().pushToast(translateNow('notice.downloadDone', { title: translateNow('anime.job.title', { title: job.animeTitle, episode: job.episode }) }));
                     useFxStore.getState().celebrate();
                     doneLinger.schedule(job.episodeId, () => {
@@ -459,7 +379,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     set({ checkState });
                 }),
                 api.onAnimeAutoTranslateOff((reason) => {
-                    // The main process saved the setting off: the screen reads the settings again so the switch shows it.
                     void useAppStore.getState().refreshSettings();
                     useAppStore.getState().pushToast(translateNow(`anime.notice.autoTranslateOff.${reason}`));
                 }),
@@ -483,7 +402,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         setView: (view) => {
             set({ view, returnView: view, libraryFocus: null, librarySeries: null, librarySeason: null });
-            // Files can be moved or deleted while the app is open: the library says which ones are gone when it is shown.
             if (view === 'library') {
                 void get().refreshLibrary();
             }
@@ -557,7 +475,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
 
         setQuery: (query) => {
             set((state) => {
-                // An empty name leaves nothing to show: the results (and the error) of the last search go away.
                 if (query.trim().length === 0) {
                     return { search: { ...state.search, query, status: 'idle', results: [], error: null, ...NO_MORE_RESULTS } };
                 }
@@ -578,7 +495,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             });
             const response = await window.api.searchAnime(query);
             set((state) => {
-                // The name was emptied, or another search was made, while this one ran: its answer is not shown.
                 if (state.search.query.trim().length === 0 || generation !== searchGeneration) {
                     return state;
                 }
@@ -600,14 +516,12 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return { search: { ...state.search, loadingMore: true } };
             });
             const response = await window.api.searchAnime(searchedQuery, results.length);
-            // Another search was made, or the list was replaced, while this one ran: the positions of this answer are not the ones of the list now.
             const now = get().search;
             if (generation !== searchGeneration || now.searchedQuery !== searchedQuery || now.results.length !== results.length) {
                 return;
             }
             set((state) => {
                 if (!response.ok) {
-                    // No more is asked for after a failure: it would be asked again at once, as the end of the list is still in view.
                     return { search: { ...state.search, loadingMore: false, hasNextPage: false, error: response.error } };
                 }
                 const lastIndex = state.search.results.reduce((last, result) => {
@@ -620,7 +534,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     search: {
                         ...state.search,
                         results: [...state.search.results, ...arrived],
-                        // An answer with nothing new would be asked for again forever.
                         hasNextPage: response.hasNextPage && arrived.length > 0,
                         limited: response.limited,
                         loadingMore: false
@@ -634,12 +547,10 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             const limits = zonedDayLimits(Date.now(), timeZone, view === 'week' ? 7 : 1);
             const asked = scheduleRequest + 1;
             scheduleRequest = asked;
-            // What was listed for the same days stays on the screen while it is listed again.
             set((state) => {
                 return { schedule: { ...state.schedule, status: 'loading', error: null, limits } };
             });
             const response = await window.api.listAnimeSchedule({ from: limits[0] as number, to: limits[limits.length - 1] as number, refresh });
-            // Another listing was asked for while this one was loading.
             if (asked !== scheduleRequest) {
                 return;
             }
@@ -667,7 +578,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             } finally {
                 coversAsked.delete(key);
             }
-            // A title that still has none is not a change: the main process looks for it again in the background and tells when it finds one.
             if (state.status === 'none' && get().covers[key]?.status === 'none') {
                 return;
             }
@@ -717,7 +627,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             recordHistory({ title: result.title, query: selection.query, index: result.index, episode: null });
             const response = await window.api.listAnimeEpisodes(selection.query, result.index);
             set((state) => {
-                // The user may have gone back or opened another result while this one was loading.
                 if (state.selection?.result !== result) {
                     return state;
                 }
@@ -790,7 +699,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return;
             }
             set({ audioReport: null });
-            // What could not be read is repaired, not downloaded again: the source would give the same video.
             const problems = report.problems.filter((problem) => {
                 return !isRepairable(problem);
             });
@@ -831,7 +739,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         openLibraryAnime: async (anime) => {
-            // An anime that was found on the disk does not know its place in the search: it is searched by its title instead.
             if (anime.searchIndex < 1) {
                 set((state) => {
                     return {
@@ -845,7 +752,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return;
             }
             const result: AnimeSearchResult = { index: anime.searchIndex, title: anime.title, ...(anime.sourceId === undefined || anime.sourceId === null ? {} : { sourceId: anime.sourceId }) };
-            // The list of the search and the anime opened from it are one page for the back and forward buttons of the mouse.
             let opening: Promise<void> = Promise.resolve();
             batchNavigation(() => {
                 set((state) => {
@@ -878,7 +784,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         showInLibrary: (animeId) => {
-            // The series of the anime is open, with its seasons.
             const group = groupLibrary(get().library).find((candidate) => {
                 return candidate.entries.some((entry) => {
                     return entry.id === animeId;
@@ -1043,7 +948,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                 return candidate.id === animeId;
             });
             await window.api.removeAnime(animeId);
-            // The order of its episodes is not needed anymore.
             if (removed !== undefined) {
                 useSortPrefsStore.getState().clearListOrder('episodes', animeListKey(removed.title));
             }
@@ -1078,7 +982,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             if (!selection) {
                 return;
             }
-            // Another episode after one that was playing (the next one that starts by itself): the stream of the one before is not needed any more.
             const before = get().streaming;
             if (before?.stream) {
                 void window.api.closeAnimeStream(before.stream.sessionId);
@@ -1094,7 +997,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
             set({ streaming: loading });
             recordHistory({ title: selection.result.title, query: selection.query, index: selection.result.index, episode });
             const response = await window.api.openAnimeStream({ query: selection.query, index: selection.result.index, episode });
-            // The user may have closed the player (or started another episode) while the video was being found.
             if (get().streaming !== loading) {
                 if (response.ok) {
                     void window.api.closeAnimeStream(response.stream.sessionId);
@@ -1145,7 +1047,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
         },
 
         checkNewEpisodes: async (animeId) => {
-            // One check at a time: while one is going on (here or by itself, every 3 hours) another is not started.
             if (get().checkingNew !== null || get().checkState.running) {
                 return;
             }
@@ -1158,7 +1059,6 @@ export const useAnimeStore = create<AnimeState>((set, get) => {
                     if (response.count === 0) {
                         useAppStore.getState().pushToast(translateNow(response.failed > 0 ? 'anime.notice.checkUnreached' : 'anime.notice.checkNone', { failed: response.failed }));
                     }
-                    // The anime that were not asked about, whether or not there is something new in the others.
                     if (response.skipped > 0) {
                         useAppStore.getState().pushToast(translateNow('anime.notice.checkSkipped', { skipped: response.skipped }));
                     }

@@ -1,10 +1,8 @@
 import { useState, type SyntheticEvent } from 'react';
 
-// A picture that arrives blurred and comes into focus once it has loaded (the cover of a tile).
 export const LOADING_CLASS = 'cover--loading';
 
 export interface ImageReveal {
-    // The classes of the picture: the base ones and, until it has loaded, the one that blurs it.
     className: (base: string) => string;
     onLoad: (event: SyntheticEvent<HTMLImageElement>) => void;
 }

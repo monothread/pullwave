@@ -18,8 +18,6 @@ function startOfDay(time: number): number {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-// The mangas that were read, the last one first and split by day, each with the chapter and the page it was left on. A manga that is in
-// the library opens on its page there (which has the chapters that are downloaded); one that only was read opens on its source.
 export function MangaHistory() {
     const t = useTranslator();
     const history = useShownHistory();
@@ -40,7 +38,6 @@ export function MangaHistory() {
         void loadHistory();
     }, [loadHistory]);
 
-    // The day that is today when the screen opens (what is listed is told by day names from it).
     const [today] = useState(() => {
         return startOfDay(Date.now());
     });
@@ -50,7 +47,6 @@ export function MangaHistory() {
         }
         return day === today - DAY_MS ? t('manga.recent.yesterday') : new Date(day).toLocaleDateString();
     };
-    // A long list is drawn a part at a time: the days are made of the entries drawn so far.
     const { shown: drawn, hasMore, endRef } = useIncrementalList(history, 'manga-history');
     const days = groupByDay<ReadingEntry>(drawn, (entry) => {
         return entry.readAt;

@@ -12,7 +12,6 @@ const PROGRESS_KEYS: Record<Exclude<ToolState['status'], 'ready' | 'error'>, Mes
     extracting: 'manga.setup.extracting'
 };
 
-// What the manga section shows until the program that runs the extensions is on the disk: how the download goes, or why it failed.
 export function MangaSetup() {
     const t = useTranslator();
     const tool = useMangaStore((state) => {

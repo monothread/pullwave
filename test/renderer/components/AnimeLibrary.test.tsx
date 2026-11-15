@@ -69,7 +69,6 @@ describe('AnimeLibrary', () => {
             expect(within(alone as HTMLElement).getByRole('heading', { level: 3, name: 'Naruto' })).toBeInTheDocument();
             expect(within(alone as HTMLElement).getByText('1 SEASON')).toBeInTheDocument();
             expect(within(alone as HTMLElement).getByRole('button', { name: 'OPEN SERIES: Naruto' })).toBeInTheDocument();
-            // The card has the name, how many seasons and the two buttons; the seasons are on the screen of the series.
             expect(screen.queryByTestId('anime-season')).not.toBeInTheDocument();
             expect(within(series as HTMLElement).getByRole('button', { name: 'OPEN SERIES: Frieren' })).toBeInTheDocument();
             expect(screen.getByText('2 ANIMES')).toBeInTheDocument();
@@ -89,7 +88,6 @@ describe('AnimeLibrary', () => {
                 const footer = card.querySelector('.cover-card__footer') as HTMLElement;
                 expect(footer.querySelector('.job__badges .badge')).not.toBeNull();
                 expect(footer.querySelector('.library__footer')).not.toBeNull();
-                // The seasons are above the button that removes, both at the bottom of the card.
                 expect(footer.firstElementChild).toHaveClass('job__badges');
                 expect(footer.lastElementChild).toHaveClass('library__footer');
             });
@@ -123,7 +121,6 @@ describe('AnimeLibrary', () => {
             await waitFor(() => {
                 expect(view.querySelectorAll('img.cover')).toHaveLength(2);
             });
-            // The only covers are the ones of the cards of the seasons.
             const seasons = Array.from(view.querySelectorAll('img.cover'));
             expect(seasons).toHaveLength(2);
             seasons.forEach((cover) => {
@@ -305,7 +302,6 @@ describe('AnimeLibrary', () => {
             expect(screen.queryByTestId('series-view')).not.toBeInTheDocument();
             expect(screen.getAllByTestId('anime-card')).toHaveLength(2);
             expect(screen.getByRole('textbox', { name: 'Search the library' })).toBeInTheDocument();
-            // Ctrl+F goes to this field.
             expect(screen.getByRole('textbox', { name: 'Search the library' })).toHaveAttribute('data-search-field', '');
         });
 
@@ -745,7 +741,6 @@ describe('AnimeLibrary', () => {
             await user.click(screen.getByRole('button', { name: 'REMOVE ANIME: Frieren Season 2' }));
             await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'REMOVE' }));
             expect(removeAnime.mock.calls).toEqual([[40]]);
-            // The season that was open is gone (the mock does not take it out of the library), so the way back is the series.
             await user.click(screen.getByRole('button', { name: 'BACK' }));
 
             await user.click(screen.getByRole('button', { name: 'Series options: Frieren' }));
@@ -1239,10 +1234,8 @@ describe('AnimeLibrary', () => {
         useAnimeStore.setState({ library: [LIBRARY[0] as (typeof LIBRARY)[number]] });
         render(<AnimeLibrary />);
 
-        // On the card there are no episodes: the button takes to the screen of the anime, where the season is a card.
         expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'OPEN SERIES: Naruto' }));
-        // Even the only season of a series is a card that is opened.
         expect(screen.queryByTestId('anime-episode')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'SHOW EPISODES: Naruto' })).not.toHaveAttribute('aria-expanded');
 
@@ -1318,7 +1311,6 @@ describe('AnimeLibrary', () => {
         it('has no button to show the file of an episode, which is what the button of the anime is for', async () => {
             const { user } = await expand();
             expect(screen.queryByRole('button', { name: /^SHOW FILE/ })).not.toBeInTheDocument();
-            // The folder is on the screen of the series, one back from the season.
             expect(screen.queryByRole('button', { name: 'OPEN FOLDER: Naruto' })).not.toBeInTheDocument();
             await user.click(screen.getByRole('button', { name: 'BACK' }));
             expect(screen.getAllByRole('button', { name: 'OPEN FOLDER: Naruto' })).toHaveLength(1);
@@ -1401,7 +1393,6 @@ describe('AnimeLibrary', () => {
             expect(within(season).queryByText('SHOW EPISODES')).not.toBeInTheDocument();
             expect(within(season).queryByText('HIDE EPISODES')).not.toBeInTheDocument();
 
-            // The only season of a series starts closed too.
             const toggle = within(season).getByRole('button', { name: 'SHOW EPISODES: Naruto' });
             expect(toggle).toHaveClass('row-link');
             expect(toggle).toHaveTextContent('Naruto');
@@ -1480,13 +1471,11 @@ describe('AnimeLibrary', () => {
             await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
             const rows = screen.getAllByTestId('anime-episode');
 
-            // Downloaded: episodes 1 to 3 are links, with the title as the button and no PLAY button of its own.
             [0, 1, 2].forEach((index) => {
                 expect(rows[index]).toHaveClass('row--link');
                 expect(within(rows[index] as HTMLElement).getByRole('button', { name: `PLAY: Naruto EP ${index + 1}` })).toHaveClass('row-link');
                 expect(within(rows[index] as HTMLElement).queryByText('PLAY')).not.toBeInTheDocument();
             });
-            // Error, cancelled and queued ones cannot be played.
             [3, 4, 5].forEach((index) => {
                 expect(rows[index]).not.toHaveClass('row--link');
                 expect(within(rows[index] as HTMLElement).queryByRole('button', { name: /^PLAY: / })).not.toBeInTheDocument();
@@ -1638,7 +1627,6 @@ describe('AnimeLibrary anime that cannot be removed alone', () => {
         const user = await openSeries([makeAnime([makeEpisode({ id: 1 })], { id: 10, title: 'Naruto' })], 'Naruto');
         await user.click(screen.getByRole('button', { name: /^SHOW EPISODES: / }));
         expect(screen.getByRole('button', { name: 'REMOVE ANIME: Naruto' })).toBeDisabled();
-        // The series is removed whole from the gear of its screen, which takes the anime with it.
         await user.click(screen.getByRole('button', { name: 'BACK' }));
         await user.click(screen.getByRole('button', { name: 'Series options: Naruto' }));
         await user.click(screen.getByRole('button', { name: 'REMOVE SERIES: Naruto' }));
@@ -2127,7 +2115,6 @@ describe('AnimeLibrary episodes that are not downloaded', () => {
 
     it('counts only the downloaded ones in the progress of the anime', async () => {
         const { user } = await openSeries();
-        // The progress is on the screen of the season and, going back, on its card.
         expect(within(screen.getByTestId('season-view')).getByText('1/3 DOWNLOADED')).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'BACK' }));
         expect(within(screen.getByTestId('anime-season')).getByText('1/3 DOWNLOADED')).toBeInTheDocument();
@@ -2200,7 +2187,6 @@ describe('AnimeLibrary translating the subtitles of a season', () => {
 });
 
 describe('AnimeLibrary episodes that the check for new episodes put in the library', () => {
-    // Noon of a Wednesday in the time zone of the machine.
     const NOON = new Date(2026, 9, 7, 12, 0, 0).getTime();
     const DAY = 24 * 60 * 60 * 1000;
 
@@ -2466,7 +2452,6 @@ describe('AnimeLibrary: the highlights, the filters and the order', () => {
     });
 
     it('does not put in front of the ones watched the titles that were only opened or added, however recently', async () => {
-        // Solo and Saga 2 were opened last (when they were added or looked at); only Alpha Old, long ago, and Saga, before, were watched.
         useAnimeStore.setState({
             history: [
                 makeAnimeHistory({ id: 1, title: 'Solo', episode: null, openedAt: 900, watchedAt: null }),

@@ -11,9 +11,6 @@ const PROGRESS_KEYS: Record<Exclude<ToolState['status'], 'ready' | 'error'>, Mes
     extracting: 'manga.setup.extracting'
 };
 
-// The helper that gets past Cloudflare runs in Docker, its image is pulled after the program that runs the extensions is downloaded:
-// while it is not there the sites protected by Cloudflare do not work, and the rest does, so this is a note and not a screen that stops
-// the section. Nothing is shown when the user gave the address of a FlareSolverr of their own.
 export function MangaHelperNotice() {
     const t = useTranslator();
     const helper = useMangaStore((state) => {

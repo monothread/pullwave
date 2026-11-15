@@ -65,7 +65,6 @@ describe('activityPercent', () => {
     });
 
     it('counts the steps of a subtitle made from the audio', () => {
-        // Taking the audio out is done (5) and half of sending it (50) is done.
         expect(activityPercent(MAKING)).toBe(30);
     });
 

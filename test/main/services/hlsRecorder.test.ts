@@ -5,7 +5,6 @@ import { DEFAULT_HLS_TUNING, partPathFor, startHlsRecording, type HlsRecorderTun
 import { cleanTempDirs, makeTempDir } from '../../helpers/tempDir';
 import { runFfmpegQuietly } from '@main/services/ffmpegExec';
 
-// The default runner of ffmpeg (which writes to the log of ffmpeg) is a stand-in here: no test runs ffmpeg.
 vi.mock('@main/services/ffmpegExec', () => {
     return { runFfmpegQuietly: vi.fn() };
 });
@@ -19,7 +18,6 @@ const AUDIO: HlsSource = { url: 'https://cdn.test/audio/list.m3u8?session=1', he
 
 interface Track {
     name: string;
-    // The place of the first segment the playlist lists, and how many it lists.
     first: number;
     count: number;
     ended: boolean;
@@ -29,22 +27,16 @@ interface Track {
     playlistText: string | null;
 }
 
-// A site that serves the playlists and the segments of the renditions the test sets up. A segment is the text "<track>-<number>;".
 class FakeSite {
     readonly tracks = new Map<string, Track>();
     readonly requests: Array<{ url: string; headers: Record<string, string> }> = [];
-    // How many times an address answers with an error before it answers well, and with which status.
     readonly failures = new Map<string, { times: number; status: number }>();
-    // How long an address takes to answer.
     readonly delays = new Map<string, number>();
-    // What happens each time a playlist is asked for (the stream moves on).
     onPlaylist: ((track: Track, calls: number) => void) | null = null;
-    // Unless a test moves the stream on itself, a playlist ends the stream when it is asked for this many times (null: it never ends).
     endsAtReload: number | null = 2;
     private readonly playlistCalls = new Map<string, number>();
     active = 0;
     mostActive = 0;
-    // The same, for the segments only.
     activeSegments = 0;
     mostActiveSegments = 0;
 
@@ -195,7 +187,6 @@ describe('startHlsRecording of a stream that is over', () => {
         const recording = start();
         await recording.started;
         await expect(recording.result).resolves.toEqual({ status: 'done', filePath, lostSegments: 0 });
-        // The recording starts three segments before the end of the playlist, like a player does.
         expect(muxed).toEqual([
             {
                 binary: '/bin/ffmpeg',
@@ -264,7 +255,6 @@ describe('startHlsRecording of a stream that is over', () => {
 });
 
 describe('startHlsRecording following a stream that goes on', () => {
-    // The playlist gets two more segments each time it is asked for, and ends after `reloads` times.
     function growing(site: FakeSite, reloads: number): void {
         site.onPlaylist = (track, calls) => {
             if (calls > 1) {
@@ -280,7 +270,6 @@ describe('startHlsRecording following a stream that goes on', () => {
         growing(site, 4);
         const recording = start();
         await expect(recording.result).resolves.toMatchObject({ status: 'done', lostSegments: 0 });
-        // Three segments at first (10 to 12), then two more at each reload (up to 18).
         expect(track.first).toBe(16);
         expect(muxed[0]?.contents).toEqual([`video-init;${segmentsOf('video', 10, 18)}`]);
         const asked = site.requests.filter((request) => {
@@ -317,7 +306,6 @@ describe('startHlsRecording following a stream that goes on', () => {
     it('downloads the segments of a rendition at the same time, up to the limit, and writes them in order anyway', async () => {
         const { site, muxed, start } = setup({ sources: [VIDEO], tuning: { concurrency: 3, startSegmentsBack: 10 } });
         site.add('video', { count: 8, first: 0 });
-        // The first segments are the slowest to arrive.
         site.delays.set('https://cdn.test/video/seg1.m4s', 60);
         site.delays.set('https://cdn.test/video/seg2.m4s', 40);
         site.delays.set('https://cdn.test/video/seg3.m4s', 20);
@@ -361,7 +349,6 @@ describe('startHlsRecording when segments are lost', () => {
         const { site, muxed, start } = setup({ sources: [VIDEO] });
         site.add('video', { ended: false, count: 3, first: 10 });
         site.onPlaylist = (track, calls) => {
-            // The second reload shows segments 15 to 17: 13 and 14 were never listed again.
             track.first = calls === 1 ? 10 : 15;
             track.ended = calls >= 2;
         };
@@ -484,7 +471,6 @@ describe('startHlsRecording when the stream stops', () => {
 });
 
 describe('startHlsRecording stop and cancel', () => {
-    // A stream that never ends: two more segments each time its playlist is asked for.
     function endless(site: FakeSite): void {
         site.add('video', { ended: false, count: 3, first: 10 });
         site.onPlaylist = (track, calls) => {
@@ -522,7 +508,6 @@ describe('startHlsRecording stop and cancel', () => {
         site.delays.set('https://cdn.test/video/seg12.m4s', 30);
         recording.stop();
         await recording.result;
-        // The slow segment was waited for: it is in the file, after the ones before it.
         expect(muxed[0]?.contents[0]?.startsWith(`video-init;${segmentsOf('video', 10, 12)}`)).toBe(true);
     });
 

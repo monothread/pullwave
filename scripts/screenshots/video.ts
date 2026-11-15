@@ -3,8 +3,6 @@ import { join } from 'node:path';
 import { VIDEO_TITLES } from './catalog';
 import { resize, snap, WINDOW, type Assets, type Shot } from './session';
 
-// The screens of the video downloader.
-
 export function videoLink(title: string, query: Record<string, string> = {}): string {
     const parameters = new URLSearchParams({ title, ...query });
     return `https://videos.example/watch?${parameters.toString()}`;
@@ -20,7 +18,6 @@ export async function submitLink(page: Page, link: string): Promise<void> {
     await page.getByRole('button', { name: 'DOWNLOAD', exact: true }).click();
 }
 
-// Two downloads that go on, at the percentages the links say.
 export async function startTwoDownloads(page: Page): Promise<void> {
     await submitLink(page, videoLink(VIDEO_TITLES[0] ?? '', { percent: '73', speed: '8.41MiB/s', eta: '00:36' }));
     await expect(page.getByTestId('job-card').first()).toBeVisible();

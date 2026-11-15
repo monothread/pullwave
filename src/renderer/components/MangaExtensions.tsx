@@ -11,7 +11,6 @@ import { extensionLanguages, filterExtensions, isListed } from './mangaText';
 import { MangaErrorNotice } from './MangaErrorNotice';
 import { NotFound } from './NotFound';
 
-// The stores the extensions come from, and the extensions to install, update or remove.
 export function MangaExtensions() {
     const t = useTranslator();
     const extensions = useMangaStore((state) => {
@@ -46,14 +45,12 @@ export function MangaExtensions() {
     const listedExtensions = extensions.extensions.filter((extension) => {
         return isListed(extension.contentWarning, showAdult);
     });
-    // The language is the one of the settings (every language when no extension is in it).
     const lang = useMangaLanguage(extensionLanguages(listedExtensions));
     const shown = filterExtensions(extensions.extensions, { ...filter, lang }, showAdult);
     const updatable = listedExtensions.filter((extension) => {
         return extension.isInstalled && extension.hasUpdate;
     }).length;
 
-    // Nothing is installed yet, so the switch is what hides the extensions that are there to be installed.
     const onlyInstalledHidesAll =
         filter.onlyInstalled &&
         filter.query.trim().length === 0 &&

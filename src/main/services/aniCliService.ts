@@ -16,10 +16,8 @@ import { asDownloadResult, runAniCli, type AniRunHandle, type AniRunOptions, typ
 
 export interface AniServiceDependencies {
     locator: AniCliLocator;
-    // The ani-cli path chosen in the settings ("" for the one that ships with the app).
     customScriptPath: () => string;
     tools: () => AniTools;
-    // The languages of the subtitles to try, in order; none leaves the choice to ani-cli.
     subtitleLabels?: () => readonly string[];
     run?: (options: AniRunOptions) => AniRunHandle;
 }
@@ -57,8 +55,6 @@ function choicesFor(outcome: AniRunOutcome, prompt: string): string[] {
         });
 }
 
-// The part of the results the screen can list: no more than MAX_SEARCH_RESULTS, and what is left out says the list is limited (not that the
-// source has no more).
 function listingOf(results: AnimeSearchResult[], moreResults: boolean): AnimeSearchListing {
     const limited = results.length > MAX_SEARCH_RESULTS || (results.length === MAX_SEARCH_RESULTS && moreResults);
     return { results: results.slice(0, MAX_SEARCH_RESULTS), hasNextPage: moreResults && !limited, limited };
@@ -75,12 +71,10 @@ export class AniCliService {
         this.run = deps.run ?? runAniCli;
     }
 
-    // Which ani-cli is in use and its version.
     info(): AniCliInfo {
         return this.deps.locator.info(this.deps.customScriptPath());
     }
 
-    // Whether the copy of ani-cli to use exists.
     isAvailable(): boolean {
         return this.deps.locator.isReady(this.deps.customScriptPath());
     }
@@ -101,19 +95,15 @@ export class AniCliService {
         });
     }
 
-    // The site ani-cli reads the anime from, as the last run found it.
     get provider(): string | null {
         return this.deps.locator.provider;
     }
 
-    // The results of the search from the first one up to at least the position `atLeast` (the source gives them a page at a time, and the
-    // positions are the ones ani-cli takes to open an anime), never more than MAX_SEARCH_RESULTS.
     async search(query: string, atLeast = FIRST_RESULT): Promise<AniRunResult<AnimeSearchResult[]>> {
         const listing = await this.searchListing(query, atLeast);
         return listing.status === 'done' ? { status: 'done', value: listing.value.results } : listing;
     }
 
-    // The same, with whether the source has more results after the ones listed.
     async searchListing(query: string, atLeast = FIRST_RESULT): Promise<AniRunResult<AnimeSearchListing>> {
         if (sanitizeQuery(query).length === 0) {
             return failure('The search is empty.');
@@ -132,13 +122,8 @@ export class AniCliService {
                 return entry !== null;
             });
         if (results.length > 0) {
-            // The results that share a title are told apart by what the id of the source says (see tellResultsApart).
             return { status: 'done', value: listingOf(tellResultsApart(results), outcome.value.moreResults) };
         }
-        // A single result is picked by ani-cli itself, without asking, so all that shows is the list of its episodes (or,
-        // when it has just one, nothing at all: ani-cli goes on to fetch it and ends cleanly). The script of the app lists it too (see
-        // aniSingleResult.ts); this is a script it does not fit, where the anime the source picked is not known: the title is only what was
-        // searched, and the result says so.
         if (choicesFor(outcome.value, EPISODE_PROMPT).length > 0 || outcome.value.exitCode === 0) {
             return { status: 'done', value: { results: [{ index: 1, title: sanitizeQuery(query), unconfirmed: true }], hasNextPage: false, limited: false } };
         }
@@ -164,8 +149,6 @@ export class AniCliService {
         return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Listing the episodes of an anime with ani-cli' }) };
     }
 
-    // An anime with one episode (a film) is not listed: ani-cli picks it on its own. Its number is not shown either, so
-    // episode 1 is tried; the answer is only trusted if ani-cli accepts it.
     private async singleEpisode(query: string, index: number): Promise<AniRunResult<string[]>> {
         const handle = this.start([...buildEpisodesArgs(query, index).slice(0, 2), '-e', SINGLE_EPISODE, sanitizeQuery(query)], '.', {}, undefined, index);
         if (handle === null) {
@@ -181,8 +164,6 @@ export class AniCliService {
         return { status: 'error', error: mapAniError(outcome.value.output, outcome.value.exitCode, { operation: 'Listing the episodes of an anime with ani-cli' }) };
     }
 
-    // What ani-cli prints about an episode instead of playing it (the "debug" player), read by `parse`; null from `parse` is the
-    // error ani-cli reported.
     private async askAboutEpisode<T>(request: AniStreamOptions, parse: (output: string) => T | null): Promise<AniRunResult<T>> {
         const invalid = validateDownloadRequest(request);
         if (invalid !== null) {
@@ -203,13 +184,10 @@ export class AniCliService {
         return { status: 'done', value: answer };
     }
 
-    // The address of an episode to watch it without downloading it. ani-cli prints it instead of playing it.
     async resolveStream(request: AniStreamOptions): Promise<AniRunResult<ResolvedStream>> {
         return this.askAboutEpisode(request, parseStreamOutput);
     }
 
-    // The subtitles the source offers for an episode, asked the same way (they are empty when this copy of ani-cli does not report
-    // them). An episode the source cannot play is an error, as it is for watching it.
     async resolveSubtitles(request: AniStreamOptions): Promise<AniRunResult<ResolvedSubtitles>> {
         return this.askAboutEpisode(request, (output) => {
             return parseStreamOutput(output) === null ? null : parseSubtitleList(output);

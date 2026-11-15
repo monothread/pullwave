@@ -2,7 +2,7 @@
 
 ## When starting
 1. Read `PROGRESS.md` (find `TODO` tasks with no pending dependency).
-2. Read `DECISIONS.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`.
+2. Read `DECISIONS.md`, `ARCHITECTURE.md`, `CONVENTIONS.md` as pointers only: confirm in the code anything you rely on (the code wins when they disagree, and the document is then fixed).
 3. Claim the task: set its status to `DOING` and fill in `Owner` (e.g. `session-2026-09-30-a`).
 
 ## While working

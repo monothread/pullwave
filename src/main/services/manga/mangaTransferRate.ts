@@ -1,9 +1,6 @@
-// The speed of the chapter being downloaded and the time it still needs, from the pages that arrived in the last few seconds (an old
-// burst or a slow start does not weigh on what is shown for long).
 export const RATE_WINDOW_MS = 10_000;
 
 export interface TransferMeasure {
-    // null while no page has arrived in the window (only pages already on the disk, or none yet).
     bytesPerSecond: number | null;
     etaSeconds: number | null;
 }
@@ -18,10 +15,8 @@ const UNKNOWN_MEASURE: TransferMeasure = { bytesPerSecond: null, etaSeconds: nul
 export class PageTransferRate {
     private samples: PageSample[] = [];
 
-    // `startedAt` is when the run began: the first pages are measured from it, so the time of asking for the first one counts.
     constructor(private readonly startedAt: number) {}
 
-    // A page was asked of the server now: the bytes it brought (0 when it failed, which still took its time).
     add(at: number, bytes: number): void {
         this.samples.push({ at, bytes });
     }

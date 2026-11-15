@@ -216,7 +216,6 @@ function versions(flaresolverr: MangaToolVersions['flaresolverr'] = { current: '
     return { flaresolverr };
 }
 
-// The helper is the one the app runs (the look for updates is offered), unless the test says otherwise.
 function show(toolVersions: MangaToolVersions | null, extra: Partial<typeof initialManga> = {}): void {
     mock.api.manga.health.mockReturnValue(new Promise(() => {
         return undefined;

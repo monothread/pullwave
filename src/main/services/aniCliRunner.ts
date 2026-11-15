@@ -23,14 +23,10 @@ export interface MenuChoice {
 
 export interface AniRunOutcome {
     exitCode: number | null;
-    // Everything ani-cli and the tools it started wrote, without terminal control codes.
     output: string;
     menuChoices: MenuChoice[];
-    // The file yt-dlp reported as the target of the download.
     destination: string | null;
-    // The search read the pages it was asked for and the source has one more (see aniSearchPages.ts); it is not part of `output`.
     moreResults: boolean;
-    // The stand-in of ffmpeg said the download of the episode failed (see pullwave-run.sh), whatever the exit code of ani-cli.
     downloadFailed: boolean;
 }
 
@@ -39,15 +35,12 @@ export interface AniRunOptions {
     args: string[];
     env: NodeJS.ProcessEnv;
     onProgress?: (progress: AniDownloadProgress) => void;
-    // A part of an episode whose picture and audio are downloaded apart starts (the progress lines after it are about that part).
     onPart?: (part: AniPartStart) => void;
-    // The parts of an episode whose picture and audio came apart are downloaded and ffmpeg starts joining them.
     onJoin?: () => void;
     onDestination?: (path: string) => void;
     spawnFn?: SpawnFn;
     platform?: NodeJS.Platform;
     killGroup?: GroupKill;
-    // Where the command and its output are written for the window of the logs (the log of ani-cli by default).
     log?: LogWriter;
 }
 
@@ -56,8 +49,6 @@ export interface AniRunHandle {
     cancel: () => void;
 }
 
-// Runs `busybox sh ani-cli ...`. It only reads what the process says; what a non-zero exit code means depends on the
-// command (listing choices ends with ani-cli failing on purpose), so that is left to the caller.
 export function runAniCli(options: AniRunOptions): AniRunHandle {
     const spawnFn = options.spawnFn ?? defaultSpawn;
     const platform = options.platform ?? process.platform;
@@ -75,7 +66,6 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     let exitGrace: ReturnType<typeof setTimeout> | null = null;
     let exitSignal: NodeJS.Signals | null = null;
 
-    // The log keeps the line as it came (its colors included); the progress lines are held back so they do not fill it.
     const writeToLog = (stream: OutputStream, line: string): void => {
         if (parseProgressLine(stripAnsi(line))) {
             log.progress(stream, line);
@@ -108,13 +98,11 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
             return;
         }
         const clean = stripAnsi(line);
-        // Progress lines are far too many to keep: they would only make the text kept for an error grow.
         const progress = parseProgressLine(clean);
         if (progress) {
             options.onProgress?.(progress);
             return;
         }
-        // ani-cli clears the line with a carriage return before each message, which leaves blank lines behind.
         if (clean.trim().length === 0) {
             return;
         }
@@ -170,7 +158,6 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
         };
         child.once('exit', (code: number | null, signal: NodeJS.Signals | null) => {
             exitSignal = signal;
-            // The pipes may stay open if something ani-cli started is still running: end it and give the result anyway.
             exitGrace = setTimeout(() => {
                 if (settled) {
                     return;
@@ -192,7 +179,6 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
             }
             cancelled = true;
             killProcessTree(child, platform, undefined, 'SIGTERM', options.killGroup);
-            // Whatever is still alive after the grace period (yt-dlp, ffmpeg) is killed.
             escalation = setTimeout(() => {
                 killProcessTree(child, platform, undefined, 'SIGKILL', options.killGroup);
             }, KILL_ESCALATION_MS);
@@ -200,8 +186,6 @@ export function runAniCli(options: AniRunOptions): AniRunHandle {
     };
 }
 
-// For a run that is expected to succeed (a download): a non-zero exit, or a download the stand-in of ffmpeg said failed, becomes the error
-// ani-cli or yt-dlp reported (with no words of its own, a failed download of the network: it is tried again).
 export function asDownloadResult(outcome: AniRunOutcome): AniRunResult<AniRunOutcome> {
     if (outcome.exitCode === 0 && !outcome.downloadFailed) {
         return { status: 'done', value: outcome };

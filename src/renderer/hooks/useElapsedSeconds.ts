@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 
-// How many whole seconds have passed since `running` became true (zero when it is not), updated every second.
 export function useElapsedSeconds(running: boolean): number {
     const [elapsed, setElapsed] = useState(0);
 

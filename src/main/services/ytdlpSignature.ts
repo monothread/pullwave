@@ -1,8 +1,5 @@
 import { createMessage, readKey, readSignature, verify } from 'openpgp';
 
-// The key the yt-dlp project signs its releases with (public.key in https://github.com/yt-dlp/yt-dlp), and its fingerprint, kept apart: the
-// key is only trusted if it has this fingerprint, so a change to the text of the key below does not go unnoticed. The fingerprint is
-// the one of the signature of the release 2026.08.19 (checked with gpg) and is also on keys.openpgp.org and keyserver.ubuntu.com.
 export const YTDLP_SIGNING_KEY_FINGERPRINT = 'ac0cbbe6848d6a873464af4e57cf65933b5a7581';
 export const YTDLP_SIGNING_KEY = `-----BEGIN PGP PUBLIC KEY BLOCK-----
 
@@ -35,8 +32,6 @@ gXIoRHXkDqe23PZ/jURYCv0sjVtjPoVC+bg=
 -----END PGP PUBLIC KEY BLOCK-----
 `;
 
-// Whether `signature` (the binary SHA2-256SUMS.sig of a release) is a good signature of `sums` (its SHA2-256SUMS) made by the key of the
-// yt-dlp project. Any failure to read or check either of them is a no: nothing is installed on a doubt.
 export async function verifyYtdlpSums(
     sums: Buffer,
     signature: Buffer,
@@ -57,7 +52,6 @@ export async function verifyYtdlpSums(
         if (first === undefined) {
             return false;
         }
-        // `verified` rejects when the signature is not good (a different text, another key, or one that has expired).
         return await first.verified;
     } catch {
         return false;

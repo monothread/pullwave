@@ -36,11 +36,8 @@ export interface HandlerDependencies {
     browserCatalog: BrowserCatalog;
     onSettingsSaved: (settings: Settings) => void;
     chooseDirectory: () => Promise<string | null>;
-    // Whether the folder of the anime is fixed in the settings: with anime in the library it only changes by a migration, which
-    // moves them too.
     animeFolderLocked?: () => boolean;
     showItemInFolder: (path: string) => void;
-    // The folder of the downloads of the system, where the anime and the manga go when no folder is chosen.
     defaultDownloadDir: string;
 }
 
@@ -51,7 +48,6 @@ function asString(value: unknown): string {
 export function registerHandlers(deps: HandlerDependencies): void {
     const { ipcMain, settingsStore, historyStore, queue } = deps;
 
-    // A change of the folder of the anime is ignored while it is locked (the rest of the settings is saved as usual).
     function keepLockedAnimeFolder(input: unknown): unknown {
         if (!deps.animeFolderLocked?.() || typeof input !== 'object' || input === null) {
             return input;

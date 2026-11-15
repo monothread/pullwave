@@ -4,12 +4,9 @@ import type { DiagnosticLog } from './diagnosticLog';
 export type DiagnosticContents = Pick<WebContents, 'on' | 'executeJavaScript'>;
 
 export interface WindowDiagnosticsOptions {
-    // Called when the interface cannot talk to the app (the preload failed or `window.api` is missing).
     onBridgeMissing: (reason: string) => void;
 }
 
-// Writes what goes wrong inside the window to the diagnostic log: preload failures, errors logged by the page,
-// a crashed or unloadable page, and whether the bridge the buttons depend on (`window.api`) exists after loading.
 export function attachWindowDiagnostics(contents: DiagnosticContents, log: DiagnosticLog, options: WindowDiagnosticsOptions): void {
     contents.on('preload-error', (_event, preloadPath, error) => {
         const reason = `Preload failed: ${preloadPath}: ${error.stack ?? error.message}`;

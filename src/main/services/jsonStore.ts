@@ -2,12 +2,9 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 export interface JsonStoreOptions {
-    // Writes the file without indentation: smaller and faster to write, for files nobody reads by hand.
     compact?: boolean;
 }
 
-// A value kept in a JSON file. The file is read once: after that the value is kept in memory and only writes touch the disk,
-// so this store must be the only one that writes its file while the app runs.
 export class JsonStore<T> {
     private cache: { value: T } | null = null;
 

@@ -1,11 +1,9 @@
 import { useId } from 'react';
 import { graphPoints } from './speed';
 
-// The size the graph is drawn in; the page stretches it to its box.
 export const GRAPH_WIDTH = 300;
 export const GRAPH_HEIGHT = 80;
 
-// The speed of the last minute as a line over a filled area, as in the downloads of a console.
 export function SpeedGraph({ samples, label }: { samples: readonly number[]; label: string }) {
     const gradientId = useId();
     const line = graphPoints(samples, GRAPH_WIDTH, GRAPH_HEIGHT);

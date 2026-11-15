@@ -10,22 +10,17 @@ type LoadStatus = 'loading' | 'ready' | 'error';
 
 interface DiskUsageChartProps {
     section: DiskSection;
-    // When it changes the disk is read again (the folder was changed, or files were added or removed).
     refreshKey: string;
-    // True while the files of the section are being moved (a migration of the folder): the disk is not read until it ends, because what is
-    // on it changes all the time and the reading would compete with the copy.
     busy?: boolean;
 }
 
 const RING_RADIUS = 52;
 
-// What the folder of the other section is called in the legend.
 const SIBLING_LABELS: Record<DiskSection, MessageKey> = {
     anime: 'settings.disk.sibling.anime',
     manga: 'settings.disk.sibling.manga'
 };
 
-// What is said about the folder of the other section when it is not a part of the ring of its own.
 const SIBLING_NOTES: Record<Exclude<DiskSiblingPlacement, 'same-disk'>, MessageKey> = {
     'other-disk': 'settings.disk.note.otherDisk',
     overlap: 'settings.disk.note.overlap'
@@ -38,13 +33,11 @@ interface DiskReading {
 
 interface RingSegmentProps {
     className: string;
-    // Where the segment starts and how long it is, in percent of the ring.
     start: number;
     length: number;
     stroke?: string;
 }
 
-// The ring has a path length of 100, so a percentage is the length of the segment as it is.
 function RingSegment({ className, start, length, stroke }: RingSegmentProps) {
     return (
         <circle
@@ -85,15 +78,12 @@ function LegendItem({ kind, label, value, valueTestId, note }: LegendItemProps) 
     );
 }
 
-// The space of the disk the folder of a section is on: a ring that grows when it opens, with the part the folder takes, the part other files
-// take and the free part.
 export function DiskUsageChart({ section, refreshKey, busy = false }: DiskUsageChartProps) {
     const t = useTranslator();
     const gradientId = useId();
     const [reloads, setReloads] = useState(0);
     const [reading, setReading] = useState<DiskReading | null>(null);
     const readingKey = `${section}|${refreshKey}|${reloads}`;
-    // What was read belongs to the key it was asked for: with another key (the folder changed, or REFRESH) the disk is being read again.
     const current = reading?.key === readingKey ? reading : null;
     const status: LoadStatus = current === null ? 'loading' : current.usage === null ? 'error' : 'ready';
     const usage = current?.usage ?? null;

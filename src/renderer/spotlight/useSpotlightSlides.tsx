@@ -20,7 +20,6 @@ function newsText(item: SpotlightItem & { reason: 'news' }, t: Translator): stri
     return item.count === 1 ? t('spotlight.newChapter') : t('spotlight.newChapters', { count: item.count });
 }
 
-// One highlight as the carousel draws it: what it says, its cover and its buttons.
 export function toSlide(item: SpotlightItem, t: Translator, covers: Readonly<Record<string, AnimeCoverState>>): SpotlightSlide {
     const primary = (label: string) => {
         return {
@@ -63,7 +62,6 @@ export function toSlide(item: SpotlightItem, t: Translator, covers: Readonly<Rec
             key: item.key,
             eyebrow: t('home.hero.continueReading'),
             title: item.title,
-            // A chapter whose pages are not known yet (the next one, not opened) shows only its name.
             meta: entry.pageCount > 0 ? `${entry.chapterName} · ${t('spotlight.page', { page: entry.page + 1, total: entry.pageCount })}` : entry.chapterName,
             art,
             imageUrl: item.coverUrl,
@@ -74,7 +72,6 @@ export function toSlide(item: SpotlightItem, t: Translator, covers: Readonly<Rec
     return { key: item.key, eyebrow: t('spotlight.news'), title: item.title, meta: newsText(item, t), art, imageUrl: item.coverUrl, progress: null, primary: primary(t('spotlight.view')) };
 }
 
-// The slides of the carousel for these highlights.
 export function useSpotlightSlides(items: readonly SpotlightItem[]): SpotlightSlide[] {
     const t = useTranslator();
     const covers = useAnimeStore((state) => {

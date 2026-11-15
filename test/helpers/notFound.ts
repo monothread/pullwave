@@ -1,7 +1,5 @@
 import type { NotFoundSize } from '@renderer/components/NotFound';
 
-// The words of a search that found nothing, in the lens of NotFound (D-197) of the size given: the words in their paragraph, the lens, its cross
-// and the rows it looks through for the eye only.
 export function expectNotFound(text: HTMLElement, size: NotFoundSize): void {
     expect(text.tagName).toBe('P');
     expect(text.className).toBe('not-found__text');

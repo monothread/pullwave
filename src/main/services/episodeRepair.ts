@@ -3,16 +3,11 @@ import type { AnimeDb } from './animeDb';
 import type { RepairResult } from './imageHeaderRepair';
 
 export interface EpisodeRepairOptions {
-    // The size of a file, or null when it is not there.
     fileSize: (path: string) => number | null;
     repair: (path: string) => Promise<RepairResult>;
-    // Whether the video has an audio stream, or null when that could not be told.
     hasAudio: (path: string) => Promise<boolean | null>;
 }
 
-// Repairs the videos of these downloaded episodes that are hidden behind a picture (see imageHeaderRepair.ts), one at a time. It answers how many
-// it repaired, how many it could not (they stay as they were) and how many it left alone (not downloaded, no file on the disk, or a video that is
-// not hidden behind a picture). A repaired episode has its size brought up to date and its audio looked at again.
 export async function repairLibraryEpisodes(db: AnimeDb, episodeIds: readonly number[], options: EpisodeRepairOptions): Promise<AnimeRepairSummary> {
     const summary: AnimeRepairSummary = { repaired: 0, failed: 0, skipped: 0 };
     for (const episodeId of episodeIds) {

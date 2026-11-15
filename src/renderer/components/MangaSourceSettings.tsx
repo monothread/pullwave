@@ -11,7 +11,6 @@ interface PreferenceFieldProps {
     onChange: (value: MangaSourcePreference['value']) => void;
 }
 
-// A text setting is saved when the user leaves the field or presses Enter, not at every key.
 function TextPreference({ preference, disabled, onChange }: PreferenceFieldProps & { preference: Extract<MangaSourcePreference, { type: 'text' }> }) {
     const [draft, setDraft] = useState(preference.value);
     const commit = (): void => {
@@ -77,7 +76,6 @@ function PreferenceField({ preference, disabled, onChange }: PreferenceFieldProp
     const hint = preference.summary.length > 0 ? preference.summary : undefined;
     switch (preference.type) {
         case 'text':
-            // The key makes the field start over from what the server says when the setting changes.
             return <TextPreference key={`${preference.key}:${preference.value}`} preference={preference} disabled={disabled} onChange={onChange} />;
         case 'list':
             return (
@@ -101,7 +99,6 @@ function PreferenceField({ preference, disabled, onChange }: PreferenceFieldProp
     }
 }
 
-// The settings of the source being browsed. Some sources (the ones that read another server, for instance) do nothing until they are set.
 export function MangaSourceSettings() {
     const t = useTranslator();
     const settings = useMangaStore((state) => {

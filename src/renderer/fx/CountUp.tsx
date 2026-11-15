@@ -3,11 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 
 interface CountUpProps {
     value: number;
-    // How long the count lasts, in seconds.
     seconds?: number;
 }
 
-// A number that counts up from where it was to its new value (from 0 the first time it is shown).
 export function CountUp({ value, seconds = 0.9 }: CountUpProps) {
     const [shown, setShown] = useState(0);
     const from = useRef(0);

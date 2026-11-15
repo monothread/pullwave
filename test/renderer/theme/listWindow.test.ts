@@ -4,7 +4,6 @@ const cyberpunk = readStylesheet('cyberpunk.css');
 const consoleLayer = readStylesheet('console.css');
 const funLayer = readStylesheet('bp-fun.css');
 
-// How much a selector weighs, as (ids, classes and attributes, elements), to know which rule wins.
 function specificity(selector: string): [number, number, number] {
     const withoutNot = selector.replace(/:not\(([^)]*)\)/g, ' $1');
     const ids = (withoutNot.match(/#[\w-]+/g) ?? []).length;

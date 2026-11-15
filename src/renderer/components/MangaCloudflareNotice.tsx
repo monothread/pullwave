@@ -4,13 +4,9 @@ import { useTranslator } from '../i18n/useTranslator';
 import { useMangaStore } from '../store/mangaStore';
 import { checksForSource, sourceScope } from './mangaText';
 
-// A check that goes by faster than this is not worth a notice, and one that is on stays a moment after it ends, so it does not flicker.
 export const CLOUDFLARE_SHOW_AFTER_MS = 1500;
 export const CLOUDFLARE_HIDE_AFTER_MS = 1000;
 
-// Says that a check of Cloudflare is going on for the source the user is in, and for which site: the helper solves it in a browser, which can
-// take up to a minute, and without this the screen only says it is loading. Only for the source that is open (the one being browsed, or the
-// one of the manga that is open or being read), and only once it has taken a while.
 export function MangaCloudflareNotice() {
     const t = useTranslator();
     const checks = useMangaStore((state) => {
@@ -50,7 +46,6 @@ export function MangaCloudflareNotice() {
                 })
         )
     ].join(', ');
-    // What the notice says stays while it fades, even when there is nothing left to say it about.
     const [said, setSaid] = useState('');
     if (mine.length > 0 && said !== hosts) {
         setSaid(hosts);

@@ -13,22 +13,16 @@ import { PlayerIcon } from './PlayerIcon';
 import { previewSecondOf, type SeekPreviewSource } from './seekPreview';
 import { SeekPreviewThumb } from './SeekPreviewThumb';
 
-// Kept here, where the player's other files already import it from.
 export type { SubtitleOption } from './PlayerSettings';
 
 interface VideoControlsProps {
     video: RefObject<HTMLVideoElement | null>;
     subtitles: readonly SubtitleOption[];
-    // The id of the subtitle being shown; null when they are off.
     selectedSubtitle: string | null;
     onSelectSubtitle: (id: string | null) => void;
-    // Only this part of the media is played, as if it were the whole of it (the preview of a cut); left out, the whole media.
     range?: PlaybackRange;
-    // The switch of the next episode that starts by itself, in the settings of the player; left out, there is none.
     autoNext?: AutoNextSetting;
-    // The window of the subtitles, opened from the settings of the player; left out, the settings have no way into it.
     subtitleManager?: SubtitleManagerSetting;
-    // Where the picture shown above the timeline, of the second under the mouse, is taken from; left out, the tooltip shows the time only.
     preview?: SeekPreviewSource;
 }
 
@@ -41,7 +35,6 @@ interface PlaybackState {
 }
 
 const INITIAL_STATE: PlaybackState = { paused: true, currentTime: 0, duration: 0, volume: 1, muted: false };
-// A single click waits this long for a second one, so a double click does not also pause the video.
 const DOUBLE_CLICK_WAIT_MS = 250;
 const SYNC_EVENTS = ['play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'seeked', 'ended'];
 
@@ -59,19 +52,16 @@ export function formatClock(seconds: number): string {
     return `${minutes}:${rest}`;
 }
 
-// The icon that pops over the video when it starts or stops, and the number that tells one pop from the next.
 interface CenterFlash {
     kind: 'play' | 'pause';
     id: number;
 }
 
-// The volume shown for a moment beside the slider.
 interface VolumeBubble {
     percent: number;
     id: number;
 }
 
-// The flash of a seek that is on the screen: which way, and a number that tells one flash from the next (so the animation starts again).
 interface SkipFlash extends SkipFlashDirection {
     id: number;
 }
@@ -86,8 +76,6 @@ function readState(element: HTMLVideoElement): PlaybackState {
     };
 }
 
-// While the media plays, its time is read at every frame of the screen: the media only says where it is a few times a second, and the bar
-// would grow in jumps (a part of a few seconds, in the preview of a cut, jumped by a tenth of its length at a time).
 function useFrameClock(video: RefObject<HTMLVideoElement | null>, playing: boolean, onTime: (seconds: number) => void): void {
     useEffect(() => {
         const element = video.current;
@@ -129,7 +117,6 @@ function togglePlayback(element: HTMLVideoElement): void {
     }
 }
 
-// Rounded to the hundredth, so repeated steps do not drift away from the slider's marks (or from zero, which is what mutes).
 function steppedVolume(value: number): number {
     return Math.round(clamp(value, 0, 1) * 100) / 100;
 }
@@ -178,7 +165,6 @@ function progressStyle(percent: number): CSSProperties {
     return { '--progress': `${percent}%` } as CSSProperties;
 }
 
-// Keeps the media inside the part: it starts at its start, stops at its end, and plays again from the start when it is played at the end.
 function useRangeLimits(video: RefObject<HTMLVideoElement | null>, range: PlaybackRange | undefined): void {
     const start = range?.start;
     const end = range?.end;
@@ -216,7 +202,6 @@ function useRangeLimits(video: RefObject<HTMLVideoElement | null>, range: Playba
     }, [video, start, end]);
 }
 
-// The control bar of the player. It drives the <video> through its own API, so it looks the same in every theme.
 export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubtitle, range, autoNext, subtitleManager, preview }: VideoControlsProps) {
     const t = useTranslator();
     const [state, setState] = useState<PlaybackState>(INITIAL_STATE);
@@ -225,12 +210,10 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
     const [managerOpen, setManagerOpen] = useState(false);
     const [hover, setHover] = useState<SeekHover | null>(null);
     const [skip, setSkip] = useState<SkipFlash | null>(null);
-    // The big icon that pops in the middle of the video when it plays or pauses, and the percent that shows while the volume changes.
     const [centerFlash, setCenterFlash] = useState<CenterFlash | null>(null);
     const [volumeBubble, setVolumeBubble] = useState<VolumeBubble | null>(null);
     const bubbleCount = useRef(0);
     const { loading, bufferedPercent } = useVideoBuffer(video);
-    // The bar stays while the settings are open: they are part of it.
     const hidden = useFullscreenIdle(video) && !settingsOpen;
     useRangeLimits(video, range);
     const followTime = useCallback((seconds: number): void => {
@@ -267,7 +250,6 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         let count = 0;
         const flash = (kind: CenterFlash['kind']) => {
             return (): void => {
-                // The pause at the end of an episode is not one the viewer asked for: the panel of the next episode comes then, with no mark over it.
                 if (kind === 'pause' && element.ended) {
                     return;
                 }
@@ -317,13 +299,11 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         };
     }, [video]);
 
-    // The part played, for the keys (read when a key is pressed, so the listener does not change with it).
     const rangeRef = useRef(range);
     useEffect(() => {
         rangeRef.current = range;
     }, [range]);
 
-    // The keys work wherever the focus is on the page (the video is not a field, so a click on it leaves it nowhere in the bar).
     useEffect(() => {
         const element = video.current;
         if (!element) {
@@ -350,7 +330,6 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                 showVolume((element.muted ? 0 : element.volume) * 100);
             }
         };
-        // A button is pressed when the space is released, so that is held back too, or it would press the focused button after the pause.
         const onKeyUp = (event: globalThis.KeyboardEvent): void => {
             if (event.key === ' ' && shortcutOf(event) !== null) {
                 event.preventDefault();
@@ -364,9 +343,6 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         };
     }, [video]);
 
-    // Shows the chosen subtitle and hides the others. Run again when the list changes: the tracks are added with it. The browser picks
-    // subtitles by itself too (by language, once the video's data is there), possibly after the choice was applied and not only the
-    // one that was chosen, so whenever the tracks change the choice is put back.
     useEffect(() => {
         const element = video.current;
         if (!element) {
@@ -395,7 +371,6 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         }
     }
 
-    // A point of the timeline: of the part when there is one.
     function seekTo(seconds: number): void {
         const element = video.current;
         if (element) {
@@ -429,19 +404,15 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
         }
     }
 
-    // The tooltip sits in the box of the timeline, right above the bar, at the part of the bar the mouse is on (a percentage, not pixels: when
-    // the interface is magnified the mouse is measured in other pixels than the ones the tooltip is placed in).
     function hoverTimeline(input: HTMLInputElement, clientX: number): void {
         setHover(seekHover(clientX, input.getBoundingClientRect(), duration));
     }
 
     const silent = state.muted || state.volume === 0;
-    // What the timeline shows: the part, from 0 to its length, when there is one.
     const duration = range === undefined ? state.duration : rangeLength(range);
     const currentTime = range === undefined ? state.currentTime : timeInRange(state.currentTime, range);
     const seekPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
     const volumePercent = silent ? 0 : state.volume * 100;
-    // The second of the media under the mouse, for the picture of the preview (of the media, not of the part, when there is a part).
     const previewSecond = hover === null || preview === undefined ? null : previewSecondOf(range === undefined ? hover.time : mediaTimeOf(hover.time, range), state.duration);
     const previewFrame = useSeekPreview(preview, previewSecond);
 
@@ -493,8 +464,6 @@ export function VideoControls({ video, subtitles, selectedSubtitle, onSelectSubt
                         {range === undefined && <div className="player__buffered" style={{ width: `${String(bufferedPercent)}%` }} />}
                         <div className="progress__bar" style={{ width: `${seekPercent}%` }} />
                     </div>
-                    {/* Any step: the thumb stands at the very time of the video, as the bar does; with a step it went in jumps (a tenth of a
-                        second is a fiftieth of a part of five seconds). The arrows still move it by the steps of the shortcuts. */}
                     <input
                         type="range"
                         className="player__range player__seek"

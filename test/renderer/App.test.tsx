@@ -13,7 +13,6 @@ import { APP_UPDATE_IDLE, installMockApi, makeJob, type MockApiHandle } from '..
 let mock: MockApiHandle;
 const initial = useAppStore.getState();
 
-// The app opens on the home screen: the tests of the video downloader go to it first.
 async function openDownloader(): Promise<void> {
     await screen.findByRole('region', { name: 'Home' });
     fireEvent.click(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' }));
@@ -38,7 +37,6 @@ describe('App', () => {
         expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument();
         expect(screen.queryByText('// BOOTING SYSTEMS…')).not.toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'PULLWAVE' })).toBeInTheDocument();
-        // The programs are installed and run: the header has no chip about them.
         expect(screen.queryByText(/^yt-dlp /)).not.toBeInTheDocument();
         expect(document.querySelectorAll('.chip')).toHaveLength(0);
     });
@@ -58,7 +56,6 @@ describe('App', () => {
         expect(screen.getByText('Changes are saved automatically.')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'SAVE SETTINGS' })).not.toBeInTheDocument();
 
-        // The video downloader opens on the screen it was left on.
         await user.click(screen.getByRole('button', { name: 'VIDEO DOWNLOADER' }));
         expect(screen.getByText('// HISTORY IS EMPTY.')).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'QUEUE' }));
@@ -124,7 +121,6 @@ describe('App', () => {
         const { unmount } = render(<App />);
         await openDownloader();
         unmount();
-        // The events of the app, the minimizing of the window among them.
         expect(mock.unsubscribers).toHaveLength(7);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -299,7 +295,6 @@ describe('App theme', () => {
             render(<App />);
             await openDownloader();
             await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
-            // The changes of page use the transitions too; the first theme applied (when the settings arrive) does not.
             const pageChanges = start.mock.calls.length;
             expect(document.documentElement.classList.contains('vt-theme')).toBe(false);
             await user.selectOptions(screen.getByLabelText('Theme'), 'dark');
@@ -397,8 +392,6 @@ describe('App anime section', () => {
                     return button.getAttribute('aria-label') ?? button.textContent;
                 })
         ).toEqual(['HOME', 'VIDEO DOWNLOADER', 'ANIME', 'SETTINGS (GLOBAL)']);
-        // The settings are the drawn gear at the bottom of the menu, like the pictures of the sections; the name is kept for the screen readers
-        // and shown when the menu opens.
         const settings = screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' });
         expect(settings).not.toHaveClass('tab--icon');
         expect(settings.querySelector('.tab__decoration svg.section-icon--settings')).not.toBeNull();
@@ -414,7 +407,6 @@ describe('App anime section', () => {
 
         expect(screen.getByRole('button', { name: 'ANIME' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('region', { name: 'Anime' })).toBeInTheDocument();
-        // The section opens on the schedule, the first of its tabs.
         expect(screen.getByRole('button', { name: 'SCHEDULE' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('region', { name: 'Anime schedule' })).toBeInTheDocument();
         expect(screen.queryByLabelText('Anime name')).not.toBeInTheDocument();
@@ -589,8 +581,6 @@ describe('App manga section', () => {
         await screen.findByRole('button', { name: 'MANGA' });
         const before = mock.unsubscribers.length;
         unmount();
-        // Every event of the app (the minimizing of the window among them) and of the manga section (one manga of the library that changed
-        // among them), now without the download of a newer manga server (it is not updated from the app).
         expect(before).toBe(17);
         mock.unsubscribers.forEach((unsubscribe) => {
             expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -684,7 +674,6 @@ describe('App console shell', () => {
         expect(nav).toHaveClass('sidenav--open');
         expect(screen.getByRole('button', { name: 'Close the menu' })).toHaveAttribute('aria-expanded', 'true');
         expect(document.querySelector('.app')).toHaveClass('app--menu-open');
-        // The section that is open takes the focus.
         expect(document.activeElement).toBe(screen.getByRole('button', { name: 'HOME' }));
 
         fireEvent.keyDown(document, { key: 'Escape' });

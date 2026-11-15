@@ -6,7 +6,6 @@ export const THEME_DIRECTORY = resolve(__dirname, '../../src/renderer/theme');
 export interface CssRule {
     selector: string;
     declarations: Record<string, string>;
-    // The prelude of the at-rule the rule is in (for example "@media (prefers-reduced-motion: reduce)"), or null at the top.
     media: string | null;
 }
 
@@ -19,7 +18,6 @@ function stripComments(css: string): string {
     return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
-// Splits at the commas that are not inside parentheses or brackets (a selector list, the layers of a shadow).
 export function splitTopLevel(text: string, separator: string): string[] {
     const parts: string[] = [];
     let depth = 0;
@@ -54,7 +52,6 @@ function parseDeclarations(body: string): Record<string, string> {
     return declarations;
 }
 
-// The blocks at one level of the text: what comes before each pair of braces and what is inside it.
 function blocksOf(css: string): CssAtRule[] {
     const blocks: CssAtRule[] = [];
     let depth = 0;
@@ -112,7 +109,6 @@ export function readStylesheet(name: string): Stylesheet {
     return { rules, atRules, text };
 }
 
-// What a selector ends up with at the top of the sheet (not inside an @media), the later rules winning over the earlier ones.
 export function styleOf(sheet: Stylesheet, selector: string): Record<string, string> {
     return Object.assign(
         {},
@@ -126,7 +122,6 @@ export function styleOf(sheet: Stylesheet, selector: string): Record<string, str
     ) as Record<string, string>;
 }
 
-// What the selector gets inside the @media that has the text in its prelude.
 export function mediaStyleOf(sheet: Stylesheet, media: string, selector: string): Record<string, string> {
     return Object.assign(
         {},

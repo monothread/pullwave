@@ -262,7 +262,6 @@ describe('MangaReader single page', () => {
         await user.click(screen.getByRole('button', { name: 'TRY AGAIN' }));
         const after = screen.getAllByRole('img');
         expect(after).toHaveLength(3);
-        // The pages that did not fail are the same elements: they were not loaded again.
         expect(after[0]).toBe(before[0]);
         expect(after[2]).toBe(before[2]);
         expect(after[1]).toHaveAttribute('src', PAGES[1]);
@@ -546,7 +545,6 @@ function loadWith(image: HTMLElement, width: number, height: number): void {
     fireEvent.load(image);
 }
 
-// The stage of the reader with a box of 200 pixels, so a clientX is its place in percent (twice).
 function stageOf200(): HTMLElement {
     const stage = screen.getByTestId('reader-stage');
     stage.getBoundingClientRect = () => {
@@ -1158,7 +1156,6 @@ describe('MangaReader back to the top', () => {
             await user.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
             await user.click(screen.getByRole('button', { name: 'AUTO SCROLL' }));
             expect(screen.getByRole('button', { name: 'STOP SCROLL' })).toHaveAttribute('aria-pressed', 'true');
-            // The chapter starts again at its first page when the mode changes: the page is scrolled down again.
             area.scrollTop = 3000;
             fireEvent.scroll(area);
             await user.click(await screen.findByRole('button', { name: 'Back to the top' }));
@@ -1371,7 +1368,6 @@ describe('MangaReader continuing where the manga was last read', () => {
         expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 2, page: 1 });
         fireEvent.keyDown(window, { key: 'End' });
         expect(loadLastPosition('One Piece')).toEqual({ chapterRemoteId: 2, page: 2 });
-        // The page kept for the chapter goes back to the first one when it is read to its end, the last position does not.
         expect(loadProgress('One Piece|2')).toBe(0);
     });
 
@@ -1893,7 +1889,6 @@ describe('MangaReader the zones between chapters', () => {
                 return undefined;
             };
         });
-        // An area 652 tall under a bar of 90, with the pages 3000 tall after a zone of 468 (the pages start at 678 when it is not scrolled).
         vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
             if (this === area) {
                 return box(112, 652);
@@ -1992,7 +1987,6 @@ describe('MangaReader the zones between chapters', () => {
             show();
             runFrames(5);
             expect(screen.queryByTestId('reader-complete')).toBeNull();
-            // The zone has just come into view: a tenth of it, not enough.
             bringEndIntoView(764 - 46);
             expect(screen.queryByTestId('reader-complete')).toBeNull();
             expect(useFxStore.getState().celebrations).toBe(0);
@@ -2501,7 +2495,6 @@ describe('MangaReader: the scroll shows what it does', () => {
         expect(flow).toHaveAttribute('aria-hidden', 'true');
         expect(flow.querySelectorAll('span:not(.reader__auto-speed)')).toHaveLength(3);
         expect(flow.querySelector('.reader__auto-speed')).toHaveTextContent('120 px/s');
-        // The name of the button is still only what it says.
         expect(screen.getByRole('button', { name: 'STOP SCROLL' })).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'STOP SCROLL' }));
         expect(screen.queryByTestId('reader-auto-flow')).toBeNull();

@@ -10,28 +10,21 @@ import { createLogFeed, isFfmpegStatsLine } from './logFeed';
 import { buildCutArgs, freePath, mediaOf, outputFormat, parseMediaProbe, parseProgressSeconds, partFileName, safeName } from './cutArgs';
 
 export interface FfmpegOutcome {
-    // Null when ffmpeg could not be started or was ended by a signal.
     code: number | null;
-    // What it printed (the end of it).
     output: string;
 }
 
 export interface FfmpegRun {
     args: string[];
     signal: AbortSignal;
-    // Called with what ffmpeg prints as it works.
     onOutput?: (chunk: string) => void;
 }
 
 export type RunFfmpeg = (run: FfmpegRun) => Promise<FfmpegOutcome>;
 
 const MAX_OUTPUT = 20_000;
-// The screen is told about the progress at most this often, and only when the percentage changed: the updates must not take the time
-// the window needs to draw its animations.
 export const PROGRESS_INTERVAL_MS = 250;
 
-// Runs ffmpeg as a process of its own (so it never blocks the app), at a low priority, and kills it when the signal is aborted. Every run
-// writes its command and what ffmpeg says to a log of its own (`openLog`; the log of ffmpeg by default).
 export function createFfmpegRunner(binary: string, openLog: () => LogWriter = openFfmpegLog): RunFfmpeg {
     return ({ args, signal, onOutput }) => {
         return new Promise((resolve) => {
@@ -84,15 +77,12 @@ export function createFfmpegRunner(binary: string, openLog: () => LogWriter = op
 
 export interface CutServiceDependencies {
     runFfmpeg: () => RunFfmpeg | null;
-    // The window of the files: the path that was chosen, or null.
     chooseFile: () => Promise<string | null>;
-    // The folder of the downloads, where the folder of each cut is made.
     outputRoot: () => string;
     audioFormat: () => AudioFormat;
     send: (run: CutRun) => void;
     threads?: () => number;
     now?: () => number;
-    // The names of the files in a folder (the tests replace it).
     listDirectory?: (directory: string) => Promise<string[]>;
     makeDirectory?: (directory: string) => Promise<void>;
 }
@@ -113,7 +103,6 @@ function lastLine(output: string): string {
     return lines.at(-1) ?? '';
 }
 
-// Whether the parts are inside the file and in order that makes sense; the request comes from the window, so nothing is trusted.
 function validSegments(segments: unknown, durationSeconds: number): segments is CutSegment[] {
     return (
         Array.isArray(segments) &&
@@ -126,7 +115,6 @@ function validSegments(segments: unknown, durationSeconds: number): segments is 
     );
 }
 
-// Cuts a video or audio file into the parts the user marked, one file for each, one after the other.
 export class CutService {
     private run: CutRun | null = null;
     private controller: AbortController | null = null;
@@ -138,7 +126,6 @@ export class CutService {
         return this.run;
     }
 
-    // Reads the file: how long it is and whether it has a picture (a video) or only sound.
     async probe(path: string): Promise<CutChooseResponse> {
         const runFfmpeg = this.deps.runFfmpeg();
         if (runFfmpeg === null) {
@@ -199,13 +186,11 @@ export class CutService {
         this.nextId += 1;
         this.run = run;
         this.publish();
-        // The answer is the cut as it begins (every part waiting): the first part starts as soon as the next line runs.
         const begun = structuredClone(run);
         void this.cutAll(media, audioOnly, directory, taken, controller, runFfmpeg);
         return { ok: true, run: begun };
     }
 
-    // Ends the cut that goes on. The part being made is deleted by the end of its process (ffmpeg leaves half a file, which is removed).
     cancel(): void {
         this.controller?.abort();
     }

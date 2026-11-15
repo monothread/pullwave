@@ -107,7 +107,6 @@ describe('downloadFile', () => {
         vi.useFakeTimers();
         const dir = makeTempDir();
         const destination = join(dir, 'f');
-        // A real fetch ends the body of the answer when its signal is aborted.
         const fetchImpl = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
             const body = new ReadableStream<Uint8Array>({
                 start(controller) {
@@ -122,7 +121,6 @@ describe('downloadFile', () => {
         downloadFile({ url: URL_OK, destination, expectedBytes: 1, fetchImpl, idleTimeoutMs: 1000 }).catch((error: unknown) => {
             outcome = error;
         });
-        // The folder is made with real file system calls, so the timer starts a moment after the call: time goes on until it fires.
         await vi.waitFor(
             async () => {
                 await vi.advanceTimersByTimeAsync(1100);

@@ -39,7 +39,7 @@ design and the animations were not to change at all (D-200).
    whole library be read as before. `keyedRefresh` reads one manga at a time: requests that come while it is read make one more read after it.
    The anime library does the same (`onLibraryEntryChanged(animeId)` in `AnimeDownloadQueue`, `event:anime-library-entry`,
    `anime:library-entry`); both stores share `libraryEntryRefresh`.
-2. `watchMinimized` (main) tells the page `event:window-minimized` on minimize/restore/show/maximize (each reads `isMinimized()`), and
+2. `watchMinimized` (main, `windowMinimized.ts`) tells the page `event:window-minimized` on minimize/restore/show/maximize/focus (`MINIMIZE_EVENTS`; each reads `isMinimized()`), and
    tells it again when the page is loaded; the preload keeps the last state for a page that subscribes late.
 3. and 4. `fx/loopPause.ts` pauses, through the animations themselves, **only the animations that loop forever**: all of them while the
    window is minimized, and those of a card marked `data-offscreen` by one shared `IntersectionObserver` (`useOffscreenPause`, with a

@@ -463,7 +463,6 @@ describe('MangaDetail removing the download of a chapter of the library', () => 
                 makeChapterRecord({ id: 4, remoteId: 14, status: 'idle' })
             ])
         ];
-        // The library is read again after a removal: the mock gives the same one back.
         mock.api.manga.library.mockResolvedValue(library);
         useMangaStore.setState({ library });
         open({ chapters: [...CHAPTERS, makeChapter({ remoteId: 14, name: 'Fourth', number: 4 })] });
@@ -652,7 +651,6 @@ describe('MangaDetail in the library page', () => {
         render(<MangaDetail />);
         const row = screen.getAllByTestId('manga-chapter')[0]!;
         expect(row).toHaveClass('row--link');
-        // Only the link that reads, the button that marks the chapter as read and the one that downloads it (the chapter is not downloaded).
         expect(
             within(row)
                 .getAllByRole('button')

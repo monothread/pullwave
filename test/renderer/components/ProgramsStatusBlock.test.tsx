@@ -43,7 +43,6 @@ function version(id: ProgramId, overrides: Partial<ProgramVersionInfo>): void {
     useProgramsStore.setState({ versions: { ...versions, [id]: { ...versions[id], ...overrides } } });
 }
 
-// The words of a program that was refused after it was looked at (the error INVALID).
 const INVALID_TEXT = 'The downloaded program does not work, so it was discarded.';
 
 function row(id: ProgramId): HTMLElement {
@@ -419,7 +418,6 @@ describe('ProgramsStatusBlock updates', () => {
                     return item.getAttribute('data-state');
                 })
         ).toEqual(['failed', 'pending', 'pending', 'pending', 'pending', 'pending']);
-        // Nothing was downloaded: the result of the update says why, not the failure of a downloaded program.
         expect(within(row('anicli')).queryByText(INVALID_TEXT)).not.toBeInTheDocument();
     });
 

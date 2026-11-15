@@ -163,7 +163,6 @@ describe('AnimeJobs', () => {
 
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'done' })] });
         rerender(<AnimeJobs />);
-        // A download that completed leaves by itself after its moment: there is nothing to clear for it.
         expect(screen.queryByRole('button', { name: 'CLEAR FAILED' })).not.toBeInTheDocument();
 
         useAnimeStore.setState({ jobs: [makeAnimeJob({ status: 'running' }), makeAnimeJob({ episodeId: 2, status: 'error' })] });

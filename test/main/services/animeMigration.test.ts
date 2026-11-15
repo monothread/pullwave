@@ -33,7 +33,6 @@ function write(path: string, content: string): void {
     writeFileSync(path, content);
 }
 
-// Puts an episode in the library as downloaded, with a video (and a subtitle and metadata beside it) in the folder given.
 function addEpisode(fixture: Fixture, folder: string, options: { title?: string; number?: string; series?: string; season?: number; content?: string } = {}): { episodeId: number; video: string } {
     const { title = 'Naruto', number = '1', content = 'video-data' } = options;
     const anime = fixture.db.upsertAnime({ title, query: title.toLowerCase(), searchIndex: 1 });
@@ -305,8 +304,6 @@ describe('migrateAnimeFolder', () => {
 
         it('refuses when two episodes would be copied to the same file', async () => {
             const fixture = newFixture();
-            // Two anime whose titles become the same name of a folder end up in the same place: a name does not start with a dot, on Linux as
-            // on Windows (and both titles are names a file can have on either system).
             const first = addEpisode(fixture, join(fixture.oldBase, 'one', 'Episode 1'), { title: 'Naruto' });
             const second = addEpisode(fixture, join(fixture.root, 'two', 'Episode 1'), { title: '.Naruto' });
 
@@ -319,7 +316,6 @@ describe('migrateAnimeFolder', () => {
     });
 
     describe('failing half way', () => {
-        // The real disk, but the n-th copy fails (or makes a copy that is not like the original).
         function failingFiles(options: { failAtCopy?: number; truncateCopy?: number }): MigrationFileSystem & { copies: number } {
             const state = { copies: 0 };
             return {
@@ -440,7 +436,6 @@ describe('migrateAnimeFolder', () => {
                 }
             };
             await migrate(fixture, files);
-            // Only the copies in the new folder were removed (rolled back); the originals never were.
             expect(
                 removed.every((path) => {
                     return path.startsWith(fixture.newBase);
@@ -537,7 +532,6 @@ describe('defaultMigrationFileSystem', () => {
 });
 
 describe('migrateAnimeFolder with the paths of Windows', () => {
-    // A disk in memory, so the paths of Windows can be used wherever the tests run.
     function memoryDisk(initial: Record<string, number>) {
         const key = (path: string): string => {
             return path.replace(/\//g, '\\').toLowerCase();
@@ -582,7 +576,6 @@ describe('migrateAnimeFolder with the paths of Windows', () => {
         const anime = db.upsertAnime({ title: 'Fake Anime', query: 'fake', searchIndex: 1 });
         db.setSeries(anime.id, 'Fake Anime', 1, null);
         const episode = db.ensureEpisode(anime.id, '1');
-        // As ani-cli reports it on Windows: the folders with slashes.
         const video = 'C:/Anime/Fake Anime/Season 1/Episode 1/Fake Anime Episode 1.mp4';
         db.markDone(episode.id, video, 10);
         return { db, episode, video };

@@ -2,7 +2,6 @@ import { GAMEPAD_BUTTON, STICK_THRESHOLD, heldInputs, intentsOf, type GamepadSna
 
 const BUTTON_COUNT = 17;
 
-// A gamepad of the standard layout with the given buttons held and the left stick at the given position.
 function pad(pressed: number[] = [], axes: number[] = [0, 0, 0, 0]): GamepadSnapshot {
     return {
         buttons: Array.from({ length: BUTTON_COUNT }, (_, index) => {

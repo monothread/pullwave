@@ -18,13 +18,10 @@ interface Setup {
     fetched: number[];
     answers: Map<number, { details: MangaDetails; chapters: MangaChapter[] } | Error>;
     enabled: { value: boolean };
-    // The ids of the sources that are installed (null: not known), and whether asking for them fails.
     installed: { value: ReadonlySet<string> | null; fails: boolean; asked: number };
-    // Every state of the check that was told.
     progress: MangaCheckState[];
 }
 
-// `gate` makes each answer of the source wait until it is let go (to have a check that takes long).
 function setup(gate?: () => Promise<void>): Setup {
     const db = new MangaDb(':memory:', () => {return 1});
     const news: MangaNewChapters[] = [];
@@ -206,7 +203,6 @@ describe('MangaUpdateChecker', () => {
         release();
         await first;
         expect(context.news).toHaveLength(1);
-        // Once it is over a new one can start.
         const third = checker.checkNow();
         expect(third).not.toBe(first);
         release();
@@ -506,7 +502,6 @@ describe('MangaUpdateChecker the mangas that are over', () => {
         context.db.saveDetails(mangaId, { url: null, author: null, artist: null, description: null, genres: [], status });
     }
 
-    // One manga of each status, each with a new chapter at the source.
     function oneOfEachStatus(context: Setup): Record<MangaStatus, number> {
         const ids: Record<MangaStatus, number> = {
             ongoing: addManga(context, 1, 'Ongoing Manga', [1]),
@@ -663,7 +658,6 @@ describe('MangaUpdateChecker the mangas that are over', () => {
         expect(context.db.getManga(cancelled)).toMatchObject({ status: 'hiatus' });
         expect(context.db.getManga(ongoing)).toMatchObject({ status: 'cancelled' });
 
-        // The next check every hour follows what was kept: the two that go on again are asked about, the one that ended is not.
         await context.checker.checkNow('auto');
         expect(context.fetched).toEqual([8, 9, 7, 8, 7]);
     });
