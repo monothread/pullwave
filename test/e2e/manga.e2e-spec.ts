@@ -2752,13 +2752,25 @@ test.describe('manga section', () => {
         })).toBe('24px');
     });
 
-    async function readingSpot(area: Locator): Promise<ReadingSpot> {
-        return area.evaluate((element): ReadingSpot => {
+    async function twoFrames(): Promise<void> {
+        await session.page.evaluate(async () => {
+            for (let frame = 0; frame < 2; frame += 1) {
+                await new Promise<number>((resolve) => {
+                    return requestAnimationFrame(resolve);
+                });
+            }
+        });
+    }
+
+    async function readingSpot(area: Locator): Promise<ReadingSpot | null> {
+        return area.evaluate((element): ReadingSpot | null => {
             const middle = element.getBoundingClientRect().top + element.clientHeight / 2;
             const page = Array.from(element.querySelectorAll<HTMLElement>('img[data-page]')).find((picture) => {
-                const box = picture.getBoundingClientRect();
-                return box.top <= middle && box.bottom > middle;
-            })!;
+                return picture.getBoundingClientRect().bottom > middle;
+            });
+            if (page === undefined) {
+                return null;
+            }
             const box = page.getBoundingClientRect();
             return { page: Number(page.dataset['page']), share: Math.round(((middle - box.top) / box.height) * 100) / 100 };
         });
@@ -2776,8 +2788,8 @@ test.describe('manga section', () => {
                 const third = element.querySelector<HTMLElement>('img[data-page="2"]')!.getBoundingClientRect();
                 element.scrollTop += third.top + third.height * 0.4 - (element.getBoundingClientRect().top + element.clientHeight / 2);
             });
-            const before = await readingSpot(area);
-            expect(before).toEqual({ page: 2, share: 0.4 });
+            const before = { page: 2, share: 0.4 };
+            expect(await readingSpot(area)).toEqual(before);
 
             const enter = async (spot: ReadingSpot): Promise<void> => {
                 await column.dblclick();
@@ -2814,17 +2826,48 @@ test.describe('manga section', () => {
             await expect.poll(async () => {
                 return readingSpot(area);
             }).toEqual(moved);
-            await session.page.evaluate(async () => {
-                for (let frame = 0; frame < 2; frame += 1) {
-                    await new Promise<number>((resolve) => {
-                        return requestAnimationFrame(resolve);
-                    });
-                }
-            });
+            await twoFrames();
             await leave(async () => {
                 await session.page.keyboard.press('Escape');
             }, moved);
             await expect(reader).toBeVisible();
+        });
+    }
+
+    for (const mode of ['webtoon', 'vertical'] as const) {
+        test(`keeps the same reading spot when the window changes the width of the ${mode} reader`, async () => {
+            const { reader, area } = await openWebtoon();
+            const column = reader.getByTestId('reader-scroll');
+            await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+            await reader.getByLabel('Reading mode').selectOption(mode);
+            await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+            await expect(column).toHaveClass(new RegExp(`reader__scroll--${mode}`));
+            await session.page.setViewportSize({ width: 1920, height: 1080 });
+            await expect.poll(async () => {
+                return (await webtoonColumnLayout(reader)).roomWidth;
+            }).toBeGreaterThan(938);
+            await area.evaluate((element) => {
+                window.dispatchEvent(new WheelEvent('wheel'));
+                const third = element.querySelector<HTMLElement>('img[data-page="2"]')!.getBoundingClientRect();
+                element.scrollTop += third.top + third.height * 0.4 - (element.getBoundingClientRect().top + element.clientHeight / 2);
+            });
+            const spot = { page: 2, share: 0.4 };
+            await expect.poll(async () => {
+                return readingSpot(area);
+            }).toEqual(spot);
+            await twoFrames();
+            const sizes = [
+                { width: 700, height: 1080 },
+                { width: 1920, height: 1080 },
+                { width: 1366, height: 900 },
+                { width: 1080, height: 1850 }
+            ];
+            for (const size of sizes) {
+                await session.page.setViewportSize(size);
+                await expect.poll(async () => {
+                    return readingSpot(area);
+                }).toEqual(spot);
+            }
         });
     }
 

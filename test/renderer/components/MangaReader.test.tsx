@@ -2458,6 +2458,16 @@ describe('MangaReader fullscreen', () => {
             resize();
             expect(main.scrollTop).toBe(1750);
         });
+
+        it.each(['vertical', 'webtoon'] as const)('brings back the page and the spot in it when the window changes the width of the pages (%s)', async (mode) => {
+            const main = await renderWithGeometry(mode);
+            main.scrollTop = 1750;
+            fireEvent.scroll(main);
+            width = 800;
+            resize();
+            expect(main.scrollTop).toBe(1300);
+            expect(fake.current()).toBeNull();
+        });
     });
 });
 

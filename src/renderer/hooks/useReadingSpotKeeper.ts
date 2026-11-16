@@ -36,7 +36,7 @@ export function useReadingSpotKeeper(area: () => HTMLElement, flow: RefObject<HT
             }
         };
         const onResize = (): void => {
-            if (document.fullscreenElement !== reading.fullscreen) {
+            if (document.fullscreenElement !== reading.fullscreen || (reading.spot !== null && widthOf(element) !== reading.width)) {
                 reading.fullscreen = document.fullscreenElement;
                 reading.keptUntil = Date.now() + READING_SPOT_KEEP_MS;
             }

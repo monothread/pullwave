@@ -121,7 +121,7 @@ afterEach(() => {
 });
 
 describe('useReadingSpotKeeper', () => {
-    it('keeps the spot for two seconds after the fullscreen changes', () => {
+    it('keeps the spot for two seconds after the fullscreen or the width of the pages changes', () => {
         expect(READING_SPOT_KEEP_MS).toBe(2000);
     });
 
@@ -175,28 +175,59 @@ describe('useReadingSpotKeeper', () => {
         expect(scene.area.scrollTop).toBe(2200);
     });
 
-    it('stops keeping it once the time is over, and then only reads the new spot', () => {
+    it('stops keeping it once the time is over, and then reads the new spot and leaves the scroll alone while the width stays', () => {
         setup();
         scene.scrollTo(1750);
         enterFullscreen();
         scene.setWidth(1200);
         resize();
         vi.advanceTimersByTime(READING_SPOT_KEEP_MS);
-        scene.setWidth(1100);
+        scene.scrollTo(400);
         resize();
-        expect(scene.area.scrollTop).toBe(2200);
+        expect(scene.area.scrollTop).toBe(400);
+        scene.setWidth(1300);
+        resize();
+        expect(scene.area.scrollTop).toBe(475);
     });
 
-    it('leaves the scroll alone when the size changes without a change of fullscreen, and keeps the spot read at the new size', () => {
+    it('brings back the spot when the pages change width without a change of fullscreen, as the window is resized', () => {
         setup();
         scene.scrollTo(1750);
         scene.setWidth(800);
         resize();
-        expect(scene.area.scrollTop).toBe(1750);
-        enterFullscreen();
+        expect(scene.area.scrollTop).toBe(1300);
         scene.setWidth(1600);
         resize();
-        expect(scene.area.scrollTop).toBe(4000);
+        expect(scene.area.scrollTop).toBe(3100);
+    });
+
+    it('brings it back again when the pages move once more while it is kept, as the zones above them change height after the window', () => {
+        setup();
+        scene.scrollTo(1750);
+        scene.setWidth(800);
+        resize();
+        scene.area.scrollTop = 1450;
+        vi.advanceTimersByTime(READING_SPOT_KEEP_MS - 1);
+        resize();
+        expect(scene.area.scrollTop).toBe(1300);
+    });
+
+    it('does not hold on to a spot it never had when the pages first get a width', () => {
+        scene.setWidth(0);
+        setup();
+        scene.setWidth(1000);
+        resize();
+        scene.scrollTo(1750);
+        scene.setWidth(1200);
+        resize();
+        expect(scene.area.scrollTop).toBe(2200);
+    });
+
+    it('leaves the scroll alone when only the height of the pages changes', () => {
+        setup();
+        scene.scrollTo(1750);
+        resize();
+        expect(scene.area.scrollTop).toBe(1750);
     });
 
     it('does not read the scroll while the spot is kept', () => {
@@ -211,12 +242,14 @@ describe('useReadingSpotKeeper', () => {
         expect(scene.area.scrollTop).toBe(2425);
     });
 
-    it('does not read a scroll that comes after the pages changed size and before the change is seen', () => {
+    it.each([true, false])('does not read a scroll that comes after the pages changed width and before the change is seen (fullscreen: %s)', (fullscreen) => {
         setup();
         scene.scrollTo(1750);
         scene.setWidth(1200);
         scene.scrollTo(400);
-        enterFullscreen();
+        if (fullscreen) {
+            enterFullscreen();
+        }
         resize();
         expect(scene.area.scrollTop).toBe(2200);
     });
@@ -228,12 +261,12 @@ describe('useReadingSpotKeeper', () => {
         scene.setWidth(1200);
         resize();
         window.dispatchEvent(new Event(name));
-        scene.scrollTo(500);
+        scene.scrollTo(400);
         resize();
-        expect(scene.area.scrollTop).toBe(500);
+        expect(scene.area.scrollTop).toBe(400);
         scene.setWidth(1300);
         resize();
-        expect(scene.area.scrollTop).toBe(500);
+        expect(scene.area.scrollTop).toBe(475);
     });
 
     it('leaves the scroll alone when no page is in the middle', () => {
