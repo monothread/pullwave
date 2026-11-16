@@ -2358,6 +2358,107 @@ describe('MangaReader fullscreen', () => {
         expect(fake.exits()).toBe(1);
         expect(fake.current()).toBeNull();
     });
+
+    describe('the reading spot', () => {
+        let observers: { callback: ResizeObserverCallback; observed: Element[] }[];
+        let width: number;
+
+        class FakeResizeObserver {
+            observed: Element[] = [];
+
+            constructor(public callback: ResizeObserverCallback) {
+                observers.push(this);
+            }
+
+            observe(element: Element): void {
+                this.observed.push(element);
+            }
+
+            unobserve(): void {
+                return undefined;
+            }
+
+            disconnect(): void {
+                return undefined;
+            }
+        }
+
+        function box(top: number, height: number): DOMRect {
+            return { top, bottom: top + height, height, left: 0, right: width, width, x: 0, y: top, toJSON: () => { return {}; } };
+        }
+
+        function resize(): void {
+            observers.forEach((observer) => {
+                observer.callback([], {} as ResizeObserver);
+            });
+        }
+
+        async function renderWithGeometry(mode: 'vertical' | 'webtoon'): Promise<HTMLElement> {
+            const main = await renderInMode(mode);
+            let scrolled = 0;
+            Object.defineProperty(main, 'clientHeight', { configurable: true, value: 1000 });
+            Object.defineProperty(main, 'scrollTop', {
+                configurable: true,
+                get: () => {
+                    return scrolled;
+                },
+                set: (value: number) => {
+                    scrolled = value;
+                }
+            });
+            vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+                const page = (this as HTMLElement).dataset['page'];
+                if (page !== undefined) {
+                    return box(Number(page) * width * 1.5 - scrolled, width * 1.5);
+                }
+                if (this.classList.contains('reader__flow')) {
+                    return box(-scrolled, width * 6);
+                }
+                return box(0, 0);
+            });
+            resize();
+            return main;
+        }
+
+        beforeEach(() => {
+            observers = [];
+            width = 1000;
+            vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+        });
+
+        afterEach(() => {
+            vi.restoreAllMocks();
+            vi.unstubAllGlobals();
+        });
+
+        it.each(['vertical', 'webtoon'] as const)('watches the pages that scroll (%s)', async (mode) => {
+            const main = await renderInMode(mode);
+            const flow = main.querySelector('.reader__flow');
+            expect(flow).not.toBeNull();
+            expect(observers.flatMap((observer) => { return observer.observed; })).toContain(flow);
+        });
+
+        it('has no pages that scroll to watch one page at a time', async () => {
+            const main = await renderInMode('single');
+            expect(main.querySelector('.reader__flow')).toBeNull();
+        });
+
+        it.each(['vertical', 'webtoon'] as const)('brings back the page and the spot in it when the pages grow in fullscreen and shrink out of it (%s)', async (mode) => {
+            const main = await renderWithGeometry(mode);
+            main.scrollTop = 1750;
+            fireEvent.scroll(main);
+            fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+            expect(fake.current()).toBe(main);
+            width = 1200;
+            resize();
+            expect(main.scrollTop).toBe(2200);
+            fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+            expect(fake.current()).toBeNull();
+            width = 1000;
+            resize();
+            expect(main.scrollTop).toBe(1750);
+        });
+    });
 });
 
 describe('MangaReader: the pages turn', () => {

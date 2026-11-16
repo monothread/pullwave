@@ -282,6 +282,11 @@ interface WebtoonColumnLayout {
     pageWidths: number[];
 }
 
+interface ReadingSpot {
+    page: number;
+    share: number;
+}
+
 interface FullscreenReaderLayout {
     areaWidth: number;
     areaClientWidth: number;
@@ -2746,6 +2751,82 @@ test.describe('manga section', () => {
             return getComputedStyle(element).paddingLeft;
         })).toBe('24px');
     });
+
+    async function readingSpot(area: Locator): Promise<ReadingSpot> {
+        return area.evaluate((element): ReadingSpot => {
+            const middle = element.getBoundingClientRect().top + element.clientHeight / 2;
+            const page = Array.from(element.querySelectorAll<HTMLElement>('img[data-page]')).find((picture) => {
+                const box = picture.getBoundingClientRect();
+                return box.top <= middle && box.bottom > middle;
+            })!;
+            const box = page.getBoundingClientRect();
+            return { page: Number(page.dataset['page']), share: Math.round(((middle - box.top) / box.height) * 100) / 100 };
+        });
+    }
+
+    for (const mode of ['webtoon', 'vertical'] as const) {
+        test(`keeps the same reading spot when the ${mode} reader goes in and out of fullscreen`, async () => {
+            const { reader, area } = await openWebtoon();
+            const column = reader.getByTestId('reader-scroll');
+            await reader.getByRole('button', { name: 'READER SETTINGS' }).click();
+            await reader.getByLabel('Reading mode').selectOption(mode);
+            await reader.getByRole('button', { name: 'READER SETTINGS' }).click({ force: true });
+            await expect(column).toHaveClass(new RegExp(`reader__scroll--${mode}`));
+            await area.evaluate((element) => {
+                const third = element.querySelector<HTMLElement>('img[data-page="2"]')!.getBoundingClientRect();
+                element.scrollTop += third.top + third.height * 0.4 - (element.getBoundingClientRect().top + element.clientHeight / 2);
+            });
+            const before = await readingSpot(area);
+            expect(before).toEqual({ page: 2, share: 0.4 });
+
+            const enter = async (spot: ReadingSpot): Promise<void> => {
+                await column.dblclick();
+                await expect(column).toHaveAttribute('data-fullscreen', 'true');
+                await expect.poll(async () => {
+                    return (await fullscreenReaderLayout(reader)).columnWidth;
+                }).toBe(1070);
+                await expect.poll(async () => {
+                    return readingSpot(area);
+                }).toEqual(spot);
+            };
+            const leave = async (how: () => Promise<void>, spot: ReadingSpot): Promise<void> => {
+                await how();
+                await expect(column).toHaveAttribute('data-fullscreen', 'false');
+                await expect.poll(async () => {
+                    return (await webtoonColumnLayout(reader)).columnWidth;
+                }).toBe(938);
+                await expect.poll(async () => {
+                    return readingSpot(area);
+                }).toEqual(spot);
+            };
+
+            await enter(before);
+            await leave(async () => {
+                await column.dblclick();
+            }, before);
+            await enter(before);
+            await area.evaluate((element) => {
+                window.dispatchEvent(new WheelEvent('wheel'));
+                const fourth = element.querySelector<HTMLElement>('img[data-page="3"]')!.getBoundingClientRect();
+                element.scrollTop += fourth.top + fourth.height * 0.25 - (element.getBoundingClientRect().top + element.clientHeight / 2);
+            });
+            const moved = { page: 3, share: 0.25 };
+            await expect.poll(async () => {
+                return readingSpot(area);
+            }).toEqual(moved);
+            await session.page.evaluate(async () => {
+                for (let frame = 0; frame < 2; frame += 1) {
+                    await new Promise<number>((resolve) => {
+                        return requestAnimationFrame(resolve);
+                    });
+                }
+            });
+            await leave(async () => {
+                await session.page.keyboard.press('Escape');
+            }, moved);
+            await expect(reader).toBeVisible();
+        });
+    }
 
     test('puts the reader in fullscreen with a double click on the pages, and leaves it with another or with Escape, without closing the reader', async () => {
         const { reader } = await openWebtoon();

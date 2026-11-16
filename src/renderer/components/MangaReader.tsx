@@ -41,6 +41,7 @@ import { ReaderChapterZone } from './ReaderChapterZone';
 import { chapterStartScrollTop, zoneHeight } from './chapterZones';
 import { noop, scrollToTopSmoothly } from '../hooks/smoothScroll';
 import { useReaderFullscreen } from '../hooks/useReaderFullscreen';
+import { useReadingSpotKeeper } from '../hooks/useReadingSpotKeeper';
 
 const PRELOAD_AHEAD = 3;
 const RESTORE_LIMIT_MS = 8000;
@@ -106,6 +107,7 @@ export function MangaReader() {
     const restoringRef = useRef(false);
     const settledRef = useRef(new Set<number>());
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const flowRef = useRef<HTMLDivElement | null>(null);
     const sectionRef = useRef<HTMLElement | null>(null);
     const startZoneRef = useRef<HTMLDivElement | null>(null);
     const endZoneRef = useRef<HTMLDivElement | null>(null);
@@ -364,6 +366,7 @@ export function MangaReader() {
 
     const zonesOn = continuous && reader.status === 'ready' && total > 0;
     const fullscreen = useReaderFullscreen(scroller, reader.status !== 'closed');
+    useReadingSpotKeeper(scroller, flowRef, zonesOn);
     const scrolledDown = useScrolledDown(scroller, () => {
         return TOP_BUTTON_THRESHOLD + startTopRef.current;
     });
@@ -852,7 +855,7 @@ export function MangaReader() {
                 </div>
             )}
             {reader.status === 'ready' && total > 0 && continuous && (
-                <div className="reader__flow">
+                <div ref={flowRef} className="reader__flow">
                     <ReaderChapterZone
                         edge="start"
                         zoneRef={startZoneRef}
