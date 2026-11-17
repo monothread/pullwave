@@ -22,7 +22,7 @@ There is nothing else to install: everything the app needs comes with it.
 - **Subtitles made for you:** translate a subtitle into another language, or create one from the audio of an episode that has none, with your own account at OpenAI, Claude, Gemini and others.
 - **Manga** from the sources of the Mihon/Tachiyomi extensions: search them all at once, keep a library of cards, read in the app and download as CBZ.
 - Made for **every screen**: from a half-screen window to an **ultrawide 3440x1440** monitor, and to a monitor turned to stand up (**1080x1920**).
-- Twenty-one themes: cyberpunk ones and flat ones, light and dark.
+- Eighteen themes, cyberpunk ones and flat ones, each with a light and a dark version; the mode (System, Dark or Light) picks which one is shown.
 - The whole app in **English, Português, Español, 中文 and 日本語**.
 - Updates itself, and downloads and updates its video and anime tools from inside the app (the package stays small).
 
@@ -251,7 +251,7 @@ Use it only for content you have the right to download; see [DISCLAIMER.md](DISC
 
 ## Settings, themes and languages
 Settings are saved as you change them. The ⚙ of the top bar has the ones of the whole app:
-- **Theme:** Device (follows your system, the default) or one of twenty-one: the neon ones (Cyberpunk, Synthwave, Terminal in phosphor green, and eight more: Neon Tokyo, Acid Rain, Amber City, Ultraviolet, Pink Noir, Cyber Gold, Ice Neon and Neon Tokyo Light, the only neon one on a light background) and the flat ones, dark (Dark, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED in pure black, High contrast, Sakura Dark) or light (Light, Sakura). In the neon themes the controls float over the video in fullscreen with a progress bar that glows in the colors of the theme.
+- **Light or dark mode and Theme:** two fields. The mode is System (the default: it follows the light or dark mode of the computer, on Linux and Windows, and switches as soon as it changes), Dark or Light. The theme is one of eighteen, each with a light and a dark version: the neon ones (Cyberpunk, Synthwave, Terminal in phosphor green, Neon Tokyo, Acid Rain, Amber City, Ultraviolet, Pink Noir, Cyber Gold and Ice Neon) and the flat ones (Default, Tokyo Night, Nord, Dracula, Gruvbox, AMOLED, High contrast and Sakura). A theme saved by an older version opens as its theme in the mode it had. In the neon themes the controls float over the video in fullscreen with a progress bar that glows in the colors of the theme.
 - **Language:** Device (follows your system, the default), English, Português, Español, 中文 or 日本語. The whole app changes right away.
 - **Sound volume:** how loud the short sounds of the navigation and of the events are (the button of the top bar turns them on and off).
 - **System tray:** keep the app running in the tray when you close the window.

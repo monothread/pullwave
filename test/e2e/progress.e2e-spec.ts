@@ -6,20 +6,22 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
+import { THEMES } from '../../src/shared/constants';
+import { themeChoiceOf } from '../../src/shared/themeChoice';
+import type { ThemeName } from '../../src/shared/types';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
-const THEMES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
 
 let workDir: string;
 let app: ElectronApplication;
 let page: Page;
 
-async function launch(theme: string): Promise<void> {
+async function launch(theme: ThemeName): Promise<void> {
     workDir = mkdtempSync(join(tmpdir(), 'pullwave-progress-e2e-'));
     const userData = join(workDir, 'user-data');
     mkdirSync(userData, { recursive: true });
-    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', theme, checkUpdatesOnStart: false }));
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', ...themeChoiceOf(theme), checkUpdatesOnStart: false }));
     app = await electron.launch({ executablePath: ELECTRON_PATH, args: [ROOT, '--no-sandbox', `--user-data-dir=${userData}`], env: { ...process.env, ...installedProgramsEnv(workDir) } as Record<string, string> });
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1100, height: 780 });

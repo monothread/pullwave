@@ -165,10 +165,10 @@ describe('the settings being loaded', () => {
     });
 
     it('are marked as loaded, with their values, once init has read them', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'nord' });
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: 'dark', themeFamily: 'nord' });
         await useAppStore.getState().init();
         expect(useAppStore.getState().settingsLoaded).toBe(true);
-        expect(useAppStore.getState().settings).toEqual({ ...DEFAULT_SETTINGS, theme: 'nord' });
+        expect(useAppStore.getState().settings).toEqual({ ...DEFAULT_SETTINGS, themeMode: 'dark', themeFamily: 'nord' });
     });
 });
 

@@ -180,12 +180,16 @@ describe('bp-shell.css', () => {
     it('puts the cover behind everything, readable, and never in AMOLED or high contrast', () => {
         expect(styleOf(shell, '.backdrop')).toMatchObject({ position: 'fixed', inset: '0', 'z-index': '-1', 'pointer-events': 'none' });
         expect(styleOf(shell, '.backdrop__image')).toMatchObject({ filter: 'blur(42px) saturate(1.25)', opacity: '0.32' });
-        expect(styleOf(shell, ":root[data-theme='high-contrast'] .backdrop")).toEqual({ display: 'none' });
-        expect(styleOf(shell, ":root[data-theme='amoled'] .backdrop")).toEqual({ display: 'none' });
+        ['high-contrast', 'high-contrast-light', 'amoled', 'amoled-light'].forEach((theme) => {
+            expect(styleOf(shell, `:root[data-theme='${theme}'] .backdrop`), theme).toEqual({ display: 'none' });
+        });
     });
 
-    it.each(['light', 'sakura', 'neon-tokyo-light'])('makes the cover behind the screen paler in the %s theme', (theme) => {
-        expect(styleOf(shell, `:root[data-theme='${theme}'] .backdrop__image`)).toEqual({ opacity: '0.22' });
+    it('makes the cover behind the screen paler in every light theme, by its scheme and not by its name', () => {
+        expect(styleOf(shell, ":root[data-theme-scheme='light'] .backdrop__image")).toEqual({ opacity: '0.22' });
+        ['light', 'sakura', 'neon-tokyo-light'].forEach((theme) => {
+            expect(styleOf(shell, `:root[data-theme='${theme}'] .backdrop__image`), theme).toEqual({});
+        });
     });
 
     it('names the page and the covers for a change of page only while it is animated', () => {

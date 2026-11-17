@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { DEFAULT_SETTINGS, THEME_STYLES } from '@shared/constants';
+import { DEFAULT_SETTINGS, THEME_FAMILIES, THEME_STYLES } from '@shared/constants';
 import { App } from '@renderer/App';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
 import { useAppStore } from '@renderer/store/appStore';
@@ -214,108 +214,181 @@ describe('App theme', () => {
     afterEach(() => {
         delete document.documentElement.dataset.theme;
         delete document.documentElement.dataset.themeStyle;
+        delete document.documentElement.dataset.themeScheme;
         Reflect.deleteProperty(window, 'matchMedia');
     });
 
-    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('applies the %s theme, with its style, from the stored settings', async (theme) => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
-        render(<App />);
-        await openDownloader();
-        expect(document.documentElement.dataset.theme).toBe(theme);
-        expect(document.documentElement.dataset.themeStyle).toBe(THEME_STYLES[theme]);
-    });
-
-    it('uses device by default and follows a dark system', async () => {
-        prefersDark = true;
-        render(<App />);
-        await openDownloader();
-        expect(DEFAULT_SETTINGS.theme).toBe('device');
-        expect(document.documentElement.dataset.theme).toBe('dark');
-    });
-
-    it('uses device by default and follows a light system', async () => {
-        render(<App />);
-        await openDownloader();
-        expect(document.documentElement.dataset.theme).toBe('light');
-    });
-
-    it('follows the system when it switches between light and dark while open', async () => {
-        render(<App />);
-        await openDownloader();
-        expect(document.documentElement.dataset.theme).toBe('light');
-        expect(listeners.size).toBe(1);
-        prefersDark = true;
+    function switchSystem(dark: boolean): void {
+        prefersDark = dark;
         act(() => {
             listeners.forEach((listener) => {
                 listener();
             });
         });
-        expect(document.documentElement.dataset.theme).toBe('dark');
-    });
+    }
 
-    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('does not follow the system with the %s theme', async (theme) => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme });
-        render(<App />);
-        await openDownloader();
-        expect(listeners.size).toBe(0);
-    });
+    function rootTheme(): [string | undefined, string | undefined, string | undefined] {
+        const { theme, themeStyle, themeScheme } = document.documentElement.dataset;
+        return [theme, themeStyle, themeScheme];
+    }
 
-    it('stops following the system once a fixed theme is chosen', async () => {
+    async function openGlobalSettings(): Promise<ReturnType<typeof userEvent.setup>> {
         const user = userEvent.setup();
         render(<App />);
         await openDownloader();
         await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
-        await user.selectOptions(screen.getByLabelText('Theme'), 'cyberpunk');
+        return user;
+    }
+
+    it.each(THEME_FAMILIES)('applies $dark, the dark theme of the $id family, with its style, in the dark mode', async ({ id, dark }) => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: 'dark', themeFamily: id });
+        render(<App />);
+        await openDownloader();
+        expect(rootTheme()).toEqual([dark, THEME_STYLES[dark], 'dark']);
+    });
+
+    it.each(THEME_FAMILIES)('applies $light, the light theme of the $id family, with its style, in the light mode', async ({ id, light }) => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: 'light', themeFamily: id });
+        render(<App />);
+        await openDownloader();
+        expect(rootTheme()).toEqual([light, THEME_STYLES[light], 'light']);
+    });
+
+    it('uses the system mode and the default family by default, and follows a dark system', async () => {
+        prefersDark = true;
+        render(<App />);
+        await openDownloader();
+        expect(DEFAULT_SETTINGS).toMatchObject({ themeMode: 'device', themeFamily: 'default' });
+        expect(rootTheme()).toEqual(['dark', 'flat', 'dark']);
+    });
+
+    it('uses the system mode by default and follows a light system', async () => {
+        render(<App />);
+        await openDownloader();
+        expect(rootTheme()).toEqual(['light', 'flat', 'light']);
+    });
+
+    it('follows the system when it switches between light and dark while open, with the two themes of the family', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: 'device', themeFamily: 'cyberpunk' });
+        render(<App />);
+        await openDownloader();
+        expect(rootTheme()).toEqual(['cyberpunk-light', 'neon', 'light']);
+        expect(listeners.size).toBe(1);
+        switchSystem(true);
+        expect(rootTheme()).toEqual(['cyberpunk', 'neon', 'dark']);
+        switchSystem(false);
+        expect(rootTheme()).toEqual(['cyberpunk-light', 'neon', 'light']);
+    });
+
+    it('switches without the circle when the system changes, since nothing was clicked', async () => {
+        const start = vi.fn((update: () => void) => {
+            update();
+            return { finished: Promise.resolve() };
+        });
+        render(<App />);
+        await openDownloader();
+        Object.defineProperty(document, 'startViewTransition', { configurable: true, value: start, writable: true });
+        try {
+            switchSystem(true);
+            expect(rootTheme()).toEqual(['dark', 'flat', 'dark']);
+            expect(start).not.toHaveBeenCalled();
+        } finally {
+            Reflect.deleteProperty(document, 'startViewTransition');
+        }
+    });
+
+    it.each(['dark', 'light'] as const)('does not follow the system in the %s mode', async (themeMode) => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode, themeFamily: 'nord' });
+        render(<App />);
+        await openDownloader();
+        expect(listeners.size).toBe(0);
+        expect(document.documentElement.dataset.theme).toBe(themeMode === 'dark' ? 'nord' : 'nord-light');
+    });
+
+    it('stops following the system once a fixed mode is chosen, and follows it again on system', async () => {
+        prefersDark = true;
+        const user = await openGlobalSettings();
+        expect(listeners.size).toBe(1);
+        await user.selectOptions(screen.getByLabelText('Light or dark mode'), 'light');
         await waitFor(() => {
-            expect(document.documentElement.dataset.theme).toBe('cyberpunk');
+            expect(document.documentElement.dataset.theme).toBe('light');
         });
         expect(listeners.size).toBe(0);
-    });
-
-    it('changes the theme as soon as it is chosen in the settings and saves it', async () => {
-        const user = userEvent.setup();
-        render(<App />);
-        await openDownloader();
-        await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
-        await user.selectOptions(screen.getByLabelText('Theme'), 'dark');
+        await user.selectOptions(screen.getByLabelText('Light or dark mode'), 'device');
         await waitFor(() => {
             expect(document.documentElement.dataset.theme).toBe('dark');
         });
-        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, theme: 'dark' });
+        expect(listeners.size).toBe(1);
+    });
+
+    it('changes the theme as soon as a family is chosen and saves it, showing the version of the mode', async () => {
+        prefersDark = true;
+        const user = await openGlobalSettings();
+        await user.selectOptions(screen.getByLabelText('Theme'), 'synthwave');
+        await waitFor(() => {
+            expect(rootTheme()).toEqual(['synthwave', 'neon', 'dark']);
+        });
+        expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, themeFamily: 'synthwave' });
+        switchSystem(false);
+        expect(rootTheme()).toEqual(['synthwave-light', 'neon', 'light']);
     });
 
     it('opens a circle to change the theme when the browser can, and not for the first theme it applies', async () => {
-        const user = userEvent.setup();
         const start = vi.fn((update: () => void) => {
             update();
             return { finished: Promise.resolve() };
         });
         Object.defineProperty(document, 'startViewTransition', { configurable: true, value: start, writable: true });
         try {
-            render(<App />);
-            await openDownloader();
-            await user.click(screen.getByRole('button', { name: 'SETTINGS (GLOBAL)' }));
+            const user = await openGlobalSettings();
             const pageChanges = start.mock.calls.length;
             expect(document.documentElement.classList.contains('vt-theme')).toBe(false);
-            await user.selectOptions(screen.getByLabelText('Theme'), 'dark');
+            await user.selectOptions(screen.getByLabelText('Light or dark mode'), 'dark');
             await waitFor(() => {
                 expect(document.documentElement.dataset.theme).toBe('dark');
             });
             expect(start).toHaveBeenCalledTimes(pageChanges + 1);
+            await user.selectOptions(screen.getByLabelText('Theme'), 'nord');
+            await waitFor(() => {
+                expect(document.documentElement.dataset.theme).toBe('nord');
+            });
+            expect(start).toHaveBeenCalledTimes(pageChanges + 2);
         } finally {
             Reflect.deleteProperty(document, 'startViewTransition');
         }
     });
 
-    it('remembers the applied theme for the next start', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'cyberpunk' });
+    it('does not open a circle when the chosen mode shows the same theme as before', async () => {
+        const start = vi.fn((update: () => void) => {
+            update();
+            return { finished: Promise.resolve() };
+        });
+        prefersDark = true;
+        Object.defineProperty(document, 'startViewTransition', { configurable: true, value: start, writable: true });
+        try {
+            const user = await openGlobalSettings();
+            const pageChanges = start.mock.calls.length;
+            await user.selectOptions(screen.getByLabelText('Light or dark mode'), 'dark');
+            await waitFor(() => {
+                expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, themeMode: 'dark' });
+            });
+            expect(document.documentElement.dataset.theme).toBe('dark');
+            expect(start).toHaveBeenCalledTimes(pageChanges);
+        } finally {
+            Reflect.deleteProperty(document, 'startViewTransition');
+        }
+    });
+
+    it('remembers the theme choice for the next start', async () => {
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: 'dark', themeFamily: 'cyberpunk' });
         render(<App />);
         await openDownloader();
-        expect(window.localStorage.getItem('cyber-dl-theme')).toBe('cyberpunk');
+        expect(JSON.parse(window.localStorage.getItem('cyber-dl-theme') ?? '')).toEqual({ themeMode: 'dark', themeFamily: 'cyberpunk' });
     });
 
     it('keeps the remembered theme while the settings are still loading, instead of flashing the default', async () => {
-        window.localStorage.setItem('cyber-dl-theme', 'nord');
+        const remembered = { themeMode: 'dark', themeFamily: 'nord' } as const;
+        window.localStorage.setItem('cyber-dl-theme', JSON.stringify(remembered));
         document.documentElement.dataset.theme = 'nord';
         document.documentElement.dataset.themeStyle = THEME_STYLES.nord;
         let resolveSettings: (settings: typeof DEFAULT_SETTINGS) => void = () => {
@@ -330,18 +403,18 @@ describe('App theme', () => {
         expect(screen.getByText('// BOOTING SYSTEMS…')).toBeInTheDocument();
         expect(document.documentElement.dataset.theme).toBe('nord');
         expect(document.documentElement.dataset.themeStyle).toBe(THEME_STYLES.nord);
-        expect(window.localStorage.getItem('cyber-dl-theme')).toBe('nord');
+        expect(JSON.parse(window.localStorage.getItem('cyber-dl-theme') ?? '')).toEqual(remembered);
 
         await act(async () => {
-            resolveSettings({ ...DEFAULT_SETTINGS, theme: 'nord' });
+            resolveSettings({ ...DEFAULT_SETTINGS, ...remembered });
         });
         await screen.findByRole('region', { name: 'Home' });
         expect(document.documentElement.dataset.theme).toBe('nord');
-        expect(window.localStorage.getItem('cyber-dl-theme')).toBe('nord');
+        expect(JSON.parse(window.localStorage.getItem('cyber-dl-theme') ?? '')).toEqual(remembered);
     });
 
     it('does not make a neon follow the mouse in the cyberpunk theme', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'cyberpunk' });
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: 'dark', themeFamily: 'cyberpunk' });
         render(<App />);
         await openDownloader();
         await act(async () => {
@@ -357,7 +430,7 @@ describe('App theme', () => {
     });
 
     it('does not follow the mouse in the dark theme', async () => {
-        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, theme: 'dark' });
+        mock.api.getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: 'dark' });
         render(<App />);
         await openDownloader();
         await act(async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { AUTOSAVE_DELAY_MS } from '@renderer/hooks/useAutoSaveSettings';
-import { DEFAULT_SETTINGS } from '@shared/constants';
+import { DEFAULT_SETTINGS, THEME_FAMILY_IDS, THEME_MODES } from '@shared/constants';
 import type { DiskSection, DiskUsage } from '@shared/types';
 import { SettingsPanel } from '@renderer/components/SettingsPanel';
 import { UNSUPPORTED_STATUS, useAnimeStore } from '@renderer/store/animeStore';
@@ -53,7 +53,7 @@ describe('SettingsPanel layout', () => {
         ['OUTPUT', 'QUALITY & FORMAT', 'PLAYLISTS & SUBTITLES', 'LIVE STREAMS', 'BROWSER COOKIES', 'YT-DLP', 'ADVANCED', 'FOLDER & LIBRARY', 'NEW EPISODES', 'FOLDER & FORMAT', 'NEW CHAPTERS'].forEach((legend) => {
             expect(screen.queryByText(legend, { selector: 'legend' })).not.toBeInTheDocument();
         });
-        expect(screen.getByLabelText('Theme')).toHaveValue('device');
+        expect(screen.getByLabelText('Light or dark mode')).toHaveValue('device');
         expect(screen.getByLabelText('Language')).toHaveValue('device');
         expect(screen.getByLabelText('Keep running in the system tray when the window is closed')).not.toBeChecked();
         expect(screen.getByLabelText('Check for updates on startup')).toBeChecked();
@@ -69,7 +69,7 @@ describe('SettingsPanel layout', () => {
         ['APPEARANCE & WINDOW', 'APP UPDATES', 'FOLDER & LIBRARY', 'NEW EPISODES', 'FOLDER & FORMAT', 'NEW CHAPTERS'].forEach((legend) => {
             expect(screen.queryByText(legend)).not.toBeInTheDocument();
         });
-        expect(screen.queryByLabelText('Theme')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Light or dark mode')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Language')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Check for updates on startup')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Anime download folder')).not.toBeInTheDocument();
@@ -98,7 +98,7 @@ describe('SettingsPanel layout', () => {
         expect(screen.getByLabelText('Anime quality')).toHaveValue('best');
         expect(screen.queryByLabelText('Anime audio')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Download folder')).not.toBeInTheDocument();
-        expect(screen.queryByLabelText('Theme')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Light or dark mode')).not.toBeInTheDocument();
     });
 
     it.each(['global', 'downloads', 'anime'] as const)('has no save button and explains that changes are saved automatically in the %s settings', (scope) => {
@@ -159,7 +159,7 @@ describe('SettingsPanel language', () => {
             expect(screen.getByText(legend)).toBeInTheDocument();
         });
         expect(screen.getByLabelText('Idioma')).toHaveValue('pt');
-        expect(screen.getByLabelText('Tema')).toBeInTheDocument();
+        expect(screen.getByLabelText('Modo claro ou escuro')).toBeInTheDocument();
         expect(screen.getByText('As alterações são salvas automaticamente.')).toBeInTheDocument();
     });
 
@@ -427,9 +427,9 @@ describe('SettingsPanel scopes and what they load', () => {
 
     it('shows the same saved settings in every scope', () => {
         useAnimeStore.setState({ status: makeStatus() });
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, theme: 'dark', downloadDir: '/media', animeDownloadDir: '/anime' } });
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, themeMode: 'dark', downloadDir: '/media', animeDownloadDir: '/anime' } });
         const global = render(<SettingsPanel scope="global" />);
-        expect(screen.getByLabelText('Theme')).toHaveValue('dark');
+        expect(screen.getByLabelText('Light or dark mode')).toHaveValue('dark');
         global.unmount();
         const downloads = render(<SettingsPanel scope="downloads" />);
         expect(screen.getByLabelText('Download folder')).toHaveValue('/media');
@@ -446,9 +446,9 @@ describe('SettingsPanel scopes and what they load', () => {
         expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, downloadDir: '/media' });
         await flushPromises();
         render(<SettingsPanel scope="global" />);
-        fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'dark' } });
+        fireEvent.change(screen.getByLabelText('Light or dark mode'), { target: { value: 'dark' } });
         await flushPromises();
-        expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, downloadDir: '/media', theme: 'dark' });
+        expect(mock.api.saveSettings).toHaveBeenLastCalledWith({ ...DEFAULT_SETTINGS, downloadDir: '/media', themeMode: 'dark' });
     });
 });
 
@@ -836,16 +836,39 @@ describe('SettingsPanel live streams', () => {
 });
 
 describe('SettingsPanel theme', () => {
-    it('offers every theme, device being the default', () => {
+    function optionsOf(label: string): string[][] {
+        const select = screen.getByLabelText(label) as HTMLSelectElement;
+        return Array.from(select.options).map((option) => {
+            return [option.value, option.textContent ?? ''];
+        });
+    }
+
+    it('shows two fields, the mode and then the theme, with their hints', () => {
         render(<SettingsPanel scope="global" />);
-        const select = screen.getByLabelText('Theme') as HTMLSelectElement;
-        expect(select).toHaveValue('device');
-        expect(
-            Array.from(select.options).map((option) => {
-                return [option.value, option.textContent];
-            })
-        ).toEqual([
-            ['device', 'Device (follows the system)'],
+        const labels = Array.from(screen.getByText('APPEARANCE & WINDOW').closest('fieldset')?.querySelectorAll('select') ?? []).map((select) => {
+            return select.getAttribute('aria-label');
+        });
+        expect(labels).toEqual(['Light or dark mode', 'Theme', 'Language']);
+        expect(screen.getByText('System follows the light or dark mode of your computer and switches as soon as it changes. Saved and restored the next time the app opens.')).toBeInTheDocument();
+        expect(screen.getByText('Every theme has a light and a dark version; the mode picks which one is shown.')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Dark theme')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Light theme')).not.toBeInTheDocument();
+    });
+
+    it('offers system, dark and light as the modes, system being the default', () => {
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText('Light or dark mode')).toHaveValue('device');
+        expect(optionsOf('Light or dark mode')).toEqual([
+            ['device', 'System'],
+            ['dark', 'Dark'],
+            ['light', 'Light']
+        ]);
+    });
+
+    it('offers every theme once, named without light or dark, default being the default', () => {
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText('Theme')).toHaveValue('default');
+        expect(optionsOf('Theme')).toEqual([
             ['cyberpunk', 'Cyberpunk (neon)'],
             ['synthwave', 'Synthwave (neon)'],
             ['terminal', 'Terminal (green)'],
@@ -853,36 +876,47 @@ describe('SettingsPanel theme', () => {
             ['acid-rain', 'Acid Rain (lime)'],
             ['amber-city', 'Amber City (orange and teal)'],
             ['ultraviolet', 'Ultraviolet (violet)'],
-            ['pink-noir', 'Pink Noir (pink on black)'],
+            ['pink-noir', 'Pink Noir (pink)'],
             ['cyber-gold', 'Cyber Gold (yellow)'],
             ['ice-neon', 'Ice Neon (icy cyan)'],
-            ['neon-tokyo-light', 'Neon Tokyo Light (pink and blue, light)'],
-            ['dark', 'Dark'],
+            ['default', 'Default'],
             ['tokyo-night', 'Tokyo Night'],
             ['nord', 'Nord'],
             ['dracula', 'Dracula'],
             ['gruvbox', 'Gruvbox'],
-            ['amoled', 'AMOLED (pure black)'],
+            ['amoled', 'AMOLED'],
             ['high-contrast', 'High contrast'],
-            ['light', 'Light'],
-            ['sakura', 'Sakura (pink, light)'],
-            ['sakura-dark', 'Sakura Dark (pink, dark)']
+            ['sakura', 'Sakura (pink)']
         ]);
-        expect(screen.getByText('Device follows the light or dark mode of your system. Saved and restored the next time the app opens.')).toBeInTheDocument();
+        optionsOf('Theme').forEach(([, name]) => {
+            expect(name).not.toMatch(/\b(light|dark)\b/i);
+        });
     });
 
-    it.each(['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'] as const)('saves right away when %s is chosen', async (theme) => {
+    it.each(THEME_MODES)('saves right away when the %s mode is chosen, without touching the theme', async (themeMode) => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, themeMode: themeMode === 'dark' ? 'light' : 'dark', themeFamily: 'nord' } });
         render(<SettingsPanel scope="global" />);
-        fireEvent.change(screen.getByLabelText('Theme'), { target: { value: theme } });
+        fireEvent.change(screen.getByLabelText('Light or dark mode'), { target: { value: themeMode } });
         await flushPromises();
         expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
-        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, theme });
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, themeMode, themeFamily: 'nord' });
     });
 
-    it('reflects the stored theme', () => {
-        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, theme: 'light' } });
+    it.each(THEME_FAMILY_IDS.filter((family) => {
+        return family !== 'default';
+    }))('saves right away when the %s theme is chosen, without touching the mode', async (themeFamily) => {
         render(<SettingsPanel scope="global" />);
-        expect(screen.getByLabelText('Theme')).toHaveValue('light');
+        fireEvent.change(screen.getByLabelText('Theme'), { target: { value: themeFamily } });
+        await flushPromises();
+        expect(mock.api.saveSettings).toHaveBeenCalledTimes(1);
+        expect(mock.api.saveSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, themeFamily });
+    });
+
+    it('reflects the stored mode and theme', () => {
+        useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, themeMode: 'light', themeFamily: 'amoled' } });
+        render(<SettingsPanel scope="global" />);
+        expect(screen.getByLabelText('Light or dark mode')).toHaveValue('light');
+        expect(screen.getByLabelText('Theme')).toHaveValue('amoled');
     });
 });
 

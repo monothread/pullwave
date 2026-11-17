@@ -74,12 +74,15 @@ describe('the console layer: tokens', () => {
         expect(styleOf(sheet, ":root[data-theme-style='neon']")).toEqual({ '--bp-radius': '3px', '--bp-radius-small': '2px', '--bp-aurora-opacity': '0.8' });
     });
 
-    it.each(["light", "sakura", "neon-tokyo-light"])('gives the %s theme soft shadows and a pale aurora', (theme) => {
-        expect(styleOf(sheet, `:root[data-theme='${theme}']`)).toEqual({
+    it('gives every light theme, by its scheme and not by its name, soft shadows and a pale aurora', () => {
+        expect(styleOf(sheet, ":root[data-theme-scheme='light']")).toEqual({
             '--bp-shadow': '0 10px 26px -16px rgba(31, 36, 48, 0.35)',
             '--bp-shadow-hover': '0 16px 34px -18px color-mix(in srgb, var(--cyan) 60%, transparent)',
             '--bp-aurora-opacity': '0.35',
             '--bp-sheen': 'rgba(255, 255, 255, 0.5)'
+        });
+        ['light', 'sakura', 'neon-tokyo-light'].forEach((theme) => {
+            expect(styleOf(sheet, `:root[data-theme='${theme}']`), theme).toEqual({});
         });
     });
 
@@ -88,12 +91,12 @@ describe('the console layer: tokens', () => {
         expect(styleOf(sheet, ":root[data-theme='dark']")).toEqual({});
     });
 
-    it('keeps the screen plain black in AMOLED: no aurora and no soft shadows', () => {
-        expect(styleOf(sheet, ":root[data-theme='amoled']")).toEqual({ '--bp-aurora-opacity': '0', '--bp-shadow': 'none', '--bp-shadow-hover': 'none' });
+    it.each(['amoled', 'amoled-light'])('keeps the screen plain in %s: no aurora and no soft shadows', (theme) => {
+        expect(styleOf(sheet, `:root[data-theme='${theme}']`)).toEqual({ '--bp-aurora-opacity': '0', '--bp-shadow': 'none', '--bp-shadow-hover': 'none' });
     });
 
-    it('keeps high contrast plain too, with a ring in the colour of the text', () => {
-        expect(styleOf(sheet, ":root[data-theme='high-contrast']")).toEqual({ '--bp-aurora-opacity': '0', '--bp-shadow': 'none', '--bp-shadow-hover': 'none', '--bp-ring': '0 0 0 2px var(--text)' });
+    it.each(['high-contrast', 'high-contrast-light'])('keeps %s plain too, with a ring in the colour of the text', (theme) => {
+        expect(styleOf(sheet, `:root[data-theme='${theme}']`)).toEqual({ '--bp-aurora-opacity': '0', '--bp-shadow': 'none', '--bp-shadow-hover': 'none', '--bp-ring': '0 0 0 2px var(--text)' });
     });
 });
 
@@ -310,7 +313,7 @@ describe('the console layer: the disk space', () => {
         });
     });
 
-    it.each(['synthwave', 'amber-city', 'pink-noir', 'cyber-gold', 'sakura', 'sakura-dark'])('uses the green of the %s theme for the folder of the other section, because its cyan or magenta is warm', (theme) => {
+    it.each(['synthwave', 'synthwave-light', 'amber-city', 'amber-city-light', 'pink-noir', 'pink-noir-light', 'cyber-gold', 'cyber-gold-light', 'sakura', 'sakura-dark'])('uses the green of the %s theme for the folder of the other section, because its cyan or magenta is warm', (theme) => {
         expect(styleOf(sheet, `:root[data-theme='${theme}'] .disk`)).toEqual({ '--disk-sibling': 'var(--green)' });
     });
 
@@ -322,7 +325,9 @@ describe('the console layer: the disk space', () => {
             .map((rule) => {
                 return rule.selector;
             });
-        expect(overridden.sort()).toEqual([".disk", ":root[data-theme='amber-city'] .disk", ":root[data-theme='cyber-gold'] .disk", ":root[data-theme='pink-noir'] .disk", ":root[data-theme='sakura'] .disk", ":root[data-theme='sakura-dark'] .disk", ":root[data-theme='synthwave'] .disk"].sort());
+        expect(overridden.sort()).toEqual(['.disk', ...['synthwave', 'synthwave-light', 'amber-city', 'amber-city-light', 'pink-noir', 'pink-noir-light', 'cyber-gold', 'cyber-gold-light', 'sakura', 'sakura-dark'].map((theme) => {
+            return `:root[data-theme='${theme}'] .disk`;
+        })].sort());
     });
 
     it('lights the part of the ring of the line of the legend that is pointed at, and dims the others', () => {

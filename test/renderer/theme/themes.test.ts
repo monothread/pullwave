@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { THEME_STYLES, THEMES } from '@shared/constants';
+import { LIGHT_THEMES, THEME_FAMILIES, THEME_STYLES, THEMES } from '@shared/constants';
 import type { ThemeName } from '@shared/types';
 
 const THEME_DIRECTORY = resolve(__dirname, '../../../src/renderer/theme');
@@ -10,10 +10,8 @@ const CYBERPUNK_CSS = readFileSync(resolve(THEME_DIRECTORY, 'cyberpunk.css'), 'u
 type Variables = Record<string, string>;
 
 const LISTED = THEMES.filter((theme) => {
-    return theme !== 'device' && theme !== 'cyberpunk';
-}) as Array<Exclude<ThemeName, 'device' | 'cyberpunk'>>;
-
-const LIGHT_THEMES: readonly ThemeName[] = ['light', 'sakura', 'neon-tokyo-light'];
+    return theme !== 'cyberpunk';
+}) as Array<Exclude<ThemeName, 'cyberpunk'>>;
 const ACCENTS = ['--cyan', '--magenta', '--yellow', '--red', '--green'] as const;
 const SURFACES = ['--bg', '--panel', '--panel-2', '--input-bg'] as const;
 const MIN_CONTRAST = 4.5;
@@ -60,7 +58,7 @@ function color(variables: Variables, name: string): string {
 }
 
 describe('the themes in themes.css', () => {
-    it('has a block for every theme of the list but device and cyberpunk, and no other', () => {
+    it('has a block for every theme of the list but cyberpunk, and no other', () => {
         const written = [...THEMES_CSS.matchAll(/^:root\[data-theme='([a-z-]+)'\] \{$/gm)].map((match) => {
             return match[1];
         });
@@ -83,11 +81,9 @@ describe('the themes in themes.css', () => {
         });
     });
 
-    it.each(THEMES.filter((theme) => {
-        return theme !== 'device';
-    }))('%s tells the browser if it is light or dark', (theme) => {
+    it.each(THEMES)('%s tells the browser if it is light or dark', (theme) => {
         const scheme = themeVariables(theme)['color-scheme'];
-        expect(scheme).toBe(LIGHT_THEMES.includes(theme) ? 'light' : 'dark');
+        expect(scheme).toBe((LIGHT_THEMES as readonly ThemeName[]).includes(theme) ? 'light' : 'dark');
     });
 });
 
@@ -159,12 +155,8 @@ describe('Neon Tokyo Light', () => {
         expect(light['--body-bg']).toContain('var(--bg)');
     });
 
-    it('is the only neon theme on a light background', () => {
-        const lightNeon = LISTED.filter((theme) => {
-            return THEME_STYLES[theme] === 'neon' && themeVariables(theme)['color-scheme'] === 'light';
-        });
-        expect(lightNeon).toEqual(['neon-tokyo-light']);
-        expect(THEMES.indexOf('neon-tokyo-light')).toBe(THEMES.indexOf('ice-neon') + 1);
+    it('comes right after Neon Tokyo among the light themes, as its pair', () => {
+        expect(LIGHT_THEMES.indexOf('neon-tokyo-light')).toBe(THEMES.indexOf('neon-tokyo'));
     });
 
     it('is not the same palette as Neon Tokyo or as the other light themes', () => {
@@ -241,6 +233,69 @@ describe('the neon variations of the cyberpunk theme', () => {
     });
 });
 
+describe('the light version of each dark theme', () => {
+    const NEW_FAMILIES = THEME_FAMILIES.filter((family) => {
+        return !['dark', 'sakura-dark', 'neon-tokyo'].includes(family.dark);
+    });
+
+    it('creates fifteen of them, named after their dark theme', () => {
+        expect(NEW_FAMILIES).toHaveLength(15);
+        NEW_FAMILIES.forEach((family) => {
+            expect(family.light).toBe(`${family.dark}-light`);
+        });
+    });
+
+    it.each(THEME_FAMILIES)('$light is a light background with dark text, the opposite of $dark', ({ dark, light }) => {
+        const night = themeVariables(dark);
+        const day = themeVariables(light);
+        expect(day['color-scheme']).toBe('light');
+        expect(night['color-scheme']).toBe('dark');
+        expect(luminance(color(day, '--bg'))).toBeGreaterThan(0.6);
+        expect(luminance(color(day, '--text'))).toBeLessThan(0.05);
+        expect(luminance(color(night, '--bg'))).toBeLessThan(luminance(color(day, '--bg')));
+    });
+
+    it.each(NEW_FAMILIES)('$light keeps the font, the corners and the style of $dark', ({ dark, light }) => {
+        const night = themeVariables(dark);
+        const day = themeVariables(light);
+        expect(THEME_STYLES[light]).toBe(THEME_STYLES[dark]);
+        expect(day['--font']).toBe(night['--font']);
+        expect(day['--cut']).toBe(night['--cut']);
+    });
+
+    it.each(NEW_FAMILIES.filter((family) => {
+        return THEME_STYLES[family.dark] === 'neon';
+    }))('$light glows softly in its own main accent and draws its scanlines in its own ink', ({ light }) => {
+        const day = themeVariables(light);
+        const accent = color(day, '--cyan');
+        const ink = color(day, '--text');
+        const channels = (hex: string): string => {
+            return [1, 3, 5]
+                .map((index) => {
+                    return parseInt(hex.slice(index, index + 2), 16);
+                })
+                .join(', ');
+        };
+        expect(day['--glow']).toBe(`0 0 12px rgba(${channels(accent)}, 0.22)`);
+        expect(day['--glow-strong']).toBe(`0 0 14px rgba(${channels(accent)}, 0.35)`);
+        expect(day['--tint-cyan']).toBe(`rgba(${channels(accent)}, 0.07)`);
+        expect(day['--scanlines']).toBe(`repeating-linear-gradient(to bottom, rgba(${channels(ink)}, 0.03) 0, rgba(${channels(ink)}, 0.03) 1px, transparent 1px, transparent 3px)`);
+        expect(day['--body-bg']).toContain('var(--bg)');
+    });
+
+    it('turns AMOLED into pure white and high contrast into pure black on white', () => {
+        expect(themeVariables('amoled-light')['--bg']).toBe('#ffffff');
+        expect(themeVariables('high-contrast-light')).toMatchObject({ '--bg': '#ffffff', '--panel': '#ffffff', '--text': '#000000', '--line': '#000000' });
+    });
+
+    it('does not reuse the palette of the dark theme in its light version', () => {
+        THEME_FAMILIES.forEach(({ dark, light }) => {
+            expect(themeVariables(light)['--bg'], light).not.toBe(themeVariables(dark)['--bg']);
+            expect(themeVariables(light)['--cyan'], light).not.toBe(themeVariables(dark)['--cyan']);
+        });
+    });
+});
+
 describe('the style of each theme', () => {
     it.each(LISTED.filter((theme) => {
         return THEME_STYLES[theme] === 'flat';
@@ -254,7 +309,9 @@ describe('the style of each theme', () => {
         expect(variables['--body-bg']).toBe('var(--bg)');
     });
 
-    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light'] as const)('%s is neon: it has a glow and scanlines, and the monospace font of the cyberpunk theme', (theme) => {
+    it.each(LISTED.filter((theme) => {
+        return THEME_STYLES[theme] === 'neon';
+    }))('%s is neon: it has a glow and scanlines, and the monospace font of the cyberpunk theme', (theme) => {
         const variables = themeVariables(theme);
         ['--glow', '--glow-strong', '--glow-hot', '--glow-red', '--glow-yellow', '--glow-green', '--glow-inset', '--text-glow', '--logo-glow', '--scanlines'].forEach((name) => {
             expect(variables[name], name).not.toBe('none');
@@ -288,7 +345,7 @@ describe('the style of each theme', () => {
 });
 
 describe('the colors of each theme can be read', () => {
-    const READABLE: Array<Exclude<ThemeName, 'device' | 'cyberpunk'>> = LISTED;
+    const READABLE: Array<Exclude<ThemeName, 'cyberpunk'>> = LISTED;
 
     it.each(READABLE)('%s: the text and the muted text, on every surface', (theme) => {
         const variables = themeVariables(theme);

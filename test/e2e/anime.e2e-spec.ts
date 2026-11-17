@@ -14,6 +14,8 @@ import { dirname, join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
 import { scrollToBottom, scrollToTop, scrollUntilDrawn } from './windowedList';
 import { systemPromptFor } from '../../src/main/services/subtitleTranslator';
+import { THEMES } from '../../src/shared/constants';
+import { themeChoiceOf } from '../../src/shared/themeChoice';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
@@ -137,7 +139,7 @@ async function openFirstResult(page: Page): Promise<void> {
 
 test.skip(!['linux', 'win32'].includes(process.platform) || !HAS_ANI_TOOLS, 'the anime section exists on Linux and Windows and needs `npm run fetch-binaries`');
 
-const PLAYER_THEMES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
+const PLAYER_THEMES = THEMES;
 
 test.beforeEach(async () => {
     workDir = mkdtempSync(join(tmpdir(), 'pullwave-anime-e2e-'));
@@ -713,7 +715,7 @@ test('the back and forward buttons of the mouse go through the series of the lib
 for (const theme of PLAYER_THEMES) {
 test(`in fullscreen, in the ${theme} theme, the controls float over the video and go away when the mouse is still, and only the part of the timeline already watched has the wave and the glow @resize`, async () => {
     await session.app.close();
-    session = await launch(join(workDir, 'user-data'), { theme });
+    session = await launch(join(workDir, 'user-data'), { ...themeChoiceOf(theme) });
     const { page } = session;
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await downloadFirstEpisode(page);

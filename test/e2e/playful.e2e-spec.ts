@@ -298,8 +298,10 @@ test('the settings of the whole app have the volume of the sounds, kept in the w
 test('a change of theme opens as a circle from where it was chosen, and ends with the new theme', async () => {
     const { page } = session;
     await page.locator('#side-nav [data-section-id="settings"]').click();
-    const select = page.getByLabel('Theme');
+    await page.emulateMedia({ colorScheme: 'light' });
+    const select = page.getByLabel('Light or dark mode');
     await expect(select).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await select.selectOption('dark');
     await page.waitForFunction(() => {
         return document.documentElement.classList.contains('vt-theme');

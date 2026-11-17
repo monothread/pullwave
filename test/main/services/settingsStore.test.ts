@@ -28,6 +28,22 @@ describe('SettingsStore', () => {
         expect(new SettingsStore(path).get()).toEqual({ ...DEFAULT_SETTINGS, downloadDir: '/old' });
     });
 
+    it.each([
+        ['nord', { themeMode: 'dark', themeFamily: 'nord' }],
+        ['sakura', { themeMode: 'light', themeFamily: 'sakura' }],
+        ['device', { themeMode: 'device', themeFamily: 'default' }]
+    ] as const)('moves the theme %s an older version saved to its mode and family', (theme, choice) => {
+        const path = join(makeTempDir(), 's.json');
+        writeFileSync(path, JSON.stringify({ downloadDir: '/old', theme }));
+        expect(new SettingsStore(path).get()).toEqual({ ...DEFAULT_SETTINGS, downloadDir: '/old', ...choice });
+    });
+
+    it('keeps the mode and family a newer file saved, and ignores an old theme beside them', () => {
+        const path = join(makeTempDir(), 's.json');
+        writeFileSync(path, JSON.stringify({ theme: 'nord', themeMode: 'light', themeFamily: 'gruvbox' }));
+        expect(new SettingsStore(path).get()).toEqual({ ...DEFAULT_SETTINGS, themeMode: 'light', themeFamily: 'gruvbox' });
+    });
+
     it('reads the file once and keeps the settings after that', () => {
         const path = join(makeTempDir(), 's.json');
         writeFileSync(path, JSON.stringify({ downloadDir: '/first' }));

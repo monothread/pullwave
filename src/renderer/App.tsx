@@ -31,7 +31,9 @@ import { useMangaStore } from './store/mangaStore';
 import { useProgramsStore } from './store/programsStore';
 import { useAppStore, type Tab } from './store/appStore';
 import { useBackdropStore } from './store/backdropStore';
-import { applyTheme, DARK_SCHEME_QUERY, rememberTheme } from './theme/resolveTheme';
+import { applyTheme, DARK_SCHEME_QUERY, rememberTheme, systemPrefersDark } from './theme/resolveTheme';
+import { resolveThemeChoice } from '@shared/themeChoice';
+import type { ThemeChoice, ThemeName } from '@shared/types';
 
 export function App() {
     const t = useTranslator();
@@ -115,8 +117,11 @@ export function App() {
         clearBackdrop();
     }, [tab, clearBackdrop]);
 
-    const theme = useAppStore((state) => {
-        return state.settings.theme;
+    const themeMode = useAppStore((state) => {
+        return state.settings.themeMode;
+    });
+    const themeFamily = useAppStore((state) => {
+        return state.settings.themeFamily;
     });
 
     const settingsLoaded = useAppStore((state) => {
@@ -128,33 +133,37 @@ export function App() {
         return trackPointerForReveal();
     }, []);
 
-    const shownTheme = useRef<string | null>(null);
+    const shownTheme = useRef<ThemeName | null>(null);
 
     useEffect(() => {
         if (!settingsLoaded) {
             return undefined;
         }
+        const choice: ThemeChoice = { themeMode, themeFamily };
         if (shownTheme.current === null) {
-            applyTheme(theme);
-        } else if (shownTheme.current !== theme) {
-            revealTheme(() => {
-                applyTheme(theme);
-            });
+            shownTheme.current = applyTheme(choice);
+        } else {
+            const next = resolveThemeChoice(choice, systemPrefersDark());
+            if (shownTheme.current !== next) {
+                revealTheme(() => {
+                    applyTheme(choice);
+                });
+            }
+            shownTheme.current = next;
         }
-        shownTheme.current = theme;
-        rememberTheme(theme);
-        if (theme !== 'device' || typeof window.matchMedia !== 'function') {
+        rememberTheme(choice);
+        if (themeMode !== 'device' || typeof window.matchMedia !== 'function') {
             return undefined;
         }
         const query = window.matchMedia(DARK_SCHEME_QUERY);
         const follow = (): void => {
-            applyTheme('device');
+            shownTheme.current = applyTheme(choice);
         };
         query.addEventListener('change', follow);
         return () => {
             query.removeEventListener('change', follow);
         };
-    }, [theme, settingsLoaded]);
+    }, [themeMode, themeFamily, settingsLoaded]);
 
     useEffect(() => {
         document.documentElement.lang = language;

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from '../../test/e2e/programs';
 import { pinnedSpec } from '../../src/main/services/tools/programSpecs';
+import { themeChoiceOf } from '../../src/shared/themeChoice';
+import type { ThemeName } from '../../src/shared/types';
 import { ANIME_TITLES, EPISODES, MANGA_TITLES, VIDEO_TITLES } from './catalog';
 import { makeCover, makePage, makeVideo } from './media';
 import { FakeAniList, FakeSuwayomi } from './servers';
@@ -68,7 +70,7 @@ export interface Shot {
 }
 
 export interface LaunchOptions {
-    theme?: string;
+    theme?: ThemeName;
     settings?: Record<string, unknown>;
     history?: (shot: Pick<Shot, 'downloads'>) => unknown[];
     env?: Record<string, string>;
@@ -106,7 +108,7 @@ export async function launch(assets: Assets, options: LaunchOptions = {}): Promi
         join(userData, 'settings.json'),
         JSON.stringify({
             language: 'en',
-            theme: options.theme ?? 'neon-tokyo',
+            ...themeChoiceOf(options.theme ?? 'neon-tokyo'),
             checkUpdatesOnStart: false,
             verifyLiveEnd: false,
             downloadDir: downloads,

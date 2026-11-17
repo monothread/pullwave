@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
-import {
-    applyTheme,
-    DARK_SCHEME_QUERY,
-    rememberedTheme,
-    rememberTheme,
-    resolveTheme,
-    systemPrefersDark,
-    THEME_STORAGE_KEY
-} from '@renderer/theme/resolveTheme';
-import { THEME_STYLES, THEMES } from '@shared/constants';
+import { applyTheme, DARK_SCHEME_QUERY, rememberedTheme, rememberTheme, systemPrefersDark, THEME_STORAGE_KEY } from '@renderer/theme/resolveTheme';
+import { THEME_FAMILIES, THEME_STYLES } from '@shared/constants';
+import type { ThemeChoice } from '@shared/types';
 
 function mockSystem(dark: boolean): ReturnType<typeof vi.fn> {
     const matchMedia = vi.fn((query: string) => {
@@ -18,43 +11,21 @@ function mockSystem(dark: boolean): ReturnType<typeof vi.fn> {
     return matchMedia;
 }
 
+function rootTheme(): [string | undefined, string | undefined, string | undefined] {
+    const { theme, themeStyle, themeScheme } = document.documentElement.dataset;
+    return [theme, themeStyle, themeScheme];
+}
+
+const DEFAULT_CHOICE: ThemeChoice = { themeMode: 'device', themeFamily: 'default' };
+const NORD_CHOICE: ThemeChoice = { themeMode: 'device', themeFamily: 'nord' };
+
 afterEach(() => {
     Reflect.deleteProperty(window, 'matchMedia');
     window.localStorage.clear();
     delete document.documentElement.dataset.theme;
     delete document.documentElement.dataset.themeStyle;
+    delete document.documentElement.dataset.themeScheme;
     vi.restoreAllMocks();
-});
-
-describe('resolveTheme', () => {
-    it.each([
-        ['device', true, 'dark'],
-        ['device', false, 'light'],
-        ['cyberpunk', true, 'cyberpunk'],
-        ['cyberpunk', false, 'cyberpunk'],
-        ['synthwave', true, 'synthwave'],
-        ['terminal', false, 'terminal'],
-        ['neon-tokyo', true, 'neon-tokyo'],
-        ['acid-rain', false, 'acid-rain'],
-        ['amber-city', true, 'amber-city'],
-        ['ultraviolet', false, 'ultraviolet'],
-        ['pink-noir', true, 'pink-noir'],
-        ['cyber-gold', false, 'cyber-gold'],
-        ['ice-neon', true, 'ice-neon'],
-        ['neon-tokyo-light', false, 'neon-tokyo-light'],
-        ['tokyo-night', false, 'tokyo-night'],
-        ['nord', true, 'nord'],
-        ['dracula', false, 'dracula'],
-        ['gruvbox', true, 'gruvbox'],
-        ['amoled', false, 'amoled'],
-        ['high-contrast', true, 'high-contrast'],
-        ['dark', false, 'dark'],
-        ['light', true, 'light'],
-        ['sakura', true, 'sakura'],
-        ['sakura-dark', false, 'sakura-dark']
-    ] as const)('resolves %s with a system that prefers dark = %s to %s', (theme, dark, expected) => {
-        expect(resolveTheme(theme, dark)).toBe(expected);
-    });
 });
 
 describe('systemPrefersDark', () => {
@@ -76,80 +47,80 @@ describe('systemPrefersDark', () => {
 });
 
 describe('applyTheme', () => {
-    it('puts the resolved theme on the document', () => {
+    it('follows a dark system with the dark theme of the family, and returns it', () => {
         mockSystem(true);
-        applyTheme('device');
-        expect(document.documentElement.dataset.theme).toBe('dark');
-        applyTheme('light');
-        expect(document.documentElement.dataset.theme).toBe('light');
-        applyTheme('cyberpunk');
-        expect(document.documentElement.dataset.theme).toBe('cyberpunk');
+        expect(applyTheme(NORD_CHOICE)).toBe('nord');
+        expect(rootTheme()).toEqual(['nord', 'flat', 'dark']);
     });
 
-    it.each([
-        ['cyberpunk', 'neon'],
-        ['synthwave', 'neon'],
-        ['terminal', 'neon'],
-        ['neon-tokyo', 'neon'],
-        ['acid-rain', 'neon'],
-        ['amber-city', 'neon'],
-        ['ultraviolet', 'neon'],
-        ['pink-noir', 'neon'],
-        ['cyber-gold', 'neon'],
-        ['ice-neon', 'neon'],
-        ['neon-tokyo-light', 'neon'],
-        ['dark', 'flat'],
-        ['tokyo-night', 'flat'],
-        ['nord', 'flat'],
-        ['dracula', 'flat'],
-        ['gruvbox', 'flat'],
-        ['amoled', 'flat'],
-        ['high-contrast', 'flat'],
-        ['light', 'flat'],
-        ['sakura', 'flat'],
-        ['sakura-dark', 'flat']
-    ] as const)('puts the %s theme on the document with the %s style', (theme, style) => {
+    it('follows a light system with the light theme of the family, and returns it', () => {
         mockSystem(false);
-        applyTheme(theme);
-        expect(document.documentElement.dataset.theme).toBe(theme);
-        expect(document.documentElement.dataset.themeStyle).toBe(style);
+        expect(applyTheme(NORD_CHOICE)).toBe('nord-light');
+        expect(rootTheme()).toEqual(['nord-light', 'flat', 'light']);
     });
 
-    it('gives the device theme the style of the theme it follows', () => {
+    it('uses the light theme of the family when the system mode cannot be read', () => {
+        expect(applyTheme(NORD_CHOICE)).toBe('nord-light');
+    });
+
+    it('keeps the dark theme in the dark mode, whatever the system says', () => {
+        mockSystem(false);
+        expect(applyTheme({ themeMode: 'dark', themeFamily: 'nord' })).toBe('nord');
+        expect(rootTheme()).toEqual(['nord', 'flat', 'dark']);
+    });
+
+    it('keeps the light theme in the light mode, whatever the system says', () => {
         mockSystem(true);
-        applyTheme('device');
-        expect([document.documentElement.dataset.theme, document.documentElement.dataset.themeStyle]).toEqual(['dark', 'flat']);
-        mockSystem(false);
-        applyTheme('device');
-        expect([document.documentElement.dataset.theme, document.documentElement.dataset.themeStyle]).toEqual(['light', 'flat']);
+        expect(applyTheme({ themeMode: 'light', themeFamily: 'nord' })).toBe('nord-light');
+        expect(rootTheme()).toEqual(['nord-light', 'flat', 'light']);
     });
 
-    it('has a style for every theme that can be applied, and none for device', () => {
-        expect(Object.keys(THEME_STYLES).sort()).toEqual(
-            THEMES.filter((theme) => {
-                return theme !== 'device';
-            }).sort()
-        );
+    it.each(THEME_FAMILIES)('puts the dark theme of the $id family on the document with its style and the dark scheme', ({ id, dark }) => {
+        applyTheme({ themeMode: 'dark', themeFamily: id });
+        expect(rootTheme()).toEqual([dark, THEME_STYLES[dark], 'dark']);
+    });
+
+    it.each(THEME_FAMILIES)('puts the light theme of the $id family on the document with its style and the light scheme', ({ id, light }) => {
+        applyTheme({ themeMode: 'light', themeFamily: id });
+        expect(rootTheme()).toEqual([light, THEME_STYLES[light], 'light']);
+    });
+
+    it('gives the light version of a neon family the neon style', () => {
+        applyTheme({ themeMode: 'light', themeFamily: 'cyberpunk' });
+        expect(rootTheme()).toEqual(['cyberpunk-light', 'neon', 'light']);
     });
 });
 
 describe('remembering the theme', () => {
-    it('stores the chosen theme and reads it back', () => {
-        rememberTheme('light');
-        expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
-        expect(rememberedTheme()).toBe('light');
+    it('stores the whole choice and reads it back', () => {
+        rememberTheme(NORD_CHOICE);
+        expect(JSON.parse(window.localStorage.getItem(THEME_STORAGE_KEY) ?? '')).toEqual(NORD_CHOICE);
+        expect(rememberedTheme()).toEqual(NORD_CHOICE);
     });
 
-    it.each(['synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'sakura', 'sakura-dark'] as const)('stores %s and reads it back', (theme) => {
-        rememberTheme(theme);
-        expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe(theme);
-        expect(rememberedTheme()).toBe(theme);
+    it('falls back to the default choice when nothing is stored', () => {
+        expect(rememberedTheme()).toEqual(DEFAULT_CHOICE);
     });
 
-    it('falls back to device when nothing or something unknown is stored', () => {
-        expect(rememberedTheme()).toBe('device');
-        window.localStorage.setItem(THEME_STORAGE_KEY, 'solarized');
-        expect(rememberedTheme()).toBe('device');
+    it.each([
+        ['nord', { themeMode: 'dark', themeFamily: 'nord' }],
+        ['sakura', { themeMode: 'light', themeFamily: 'sakura' }],
+        ['sakura-dark', { themeMode: 'dark', themeFamily: 'sakura' }],
+        ['light', { themeMode: 'light', themeFamily: 'default' }],
+        ['device', { themeMode: 'device', themeFamily: 'default' }]
+    ] as const)('reads the theme %s stored by an older version as its mode and family', (stored, choice) => {
+        window.localStorage.setItem(THEME_STORAGE_KEY, stored);
+        expect(rememberedTheme()).toEqual(choice);
+    });
+
+    it.each(['solarized', '42', 'null', '"nord"', '[1]'])('falls back to the default choice when %s is stored', (stored) => {
+        window.localStorage.setItem(THEME_STORAGE_KEY, stored);
+        expect(rememberedTheme()).toEqual(DEFAULT_CHOICE);
+    });
+
+    it('cleans a stored choice with an unknown family', () => {
+        window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ themeMode: 'light', themeFamily: 'solarized' }));
+        expect(rememberedTheme()).toEqual({ themeMode: 'light', themeFamily: 'default' });
     });
 
     it('does not fail when the storage cannot be used', () => {
@@ -160,8 +131,8 @@ describe('remembering the theme', () => {
             throw new Error('blocked');
         });
         expect(() => {
-            rememberTheme('dark');
+            rememberTheme(NORD_CHOICE);
         }).not.toThrow();
-        expect(rememberedTheme()).toBe('device');
+        expect(rememberedTheme()).toEqual(DEFAULT_CHOICE);
     });
 });

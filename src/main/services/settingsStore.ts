@@ -1,4 +1,3 @@
-import { DEFAULT_SETTINGS } from '@shared/constants';
 import type { Settings } from '@shared/types';
 import { JsonStore } from './jsonStore';
 import { sanitizeSettings } from './settingsSanitizer';
@@ -13,7 +12,7 @@ export class SettingsStore {
 
     get(): Settings {
         if (this.current === null) {
-            this.current = sanitizeSettings({ ...DEFAULT_SETTINGS, ...this.store.read() });
+            this.current = sanitizeSettings(this.store.read());
         }
         return { ...this.current };
     }

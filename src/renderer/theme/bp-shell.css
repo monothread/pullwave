@@ -436,13 +436,13 @@
 }
 
 :root[data-theme='high-contrast'] .backdrop,
-:root[data-theme='amoled'] .backdrop {
+:root[data-theme='high-contrast-light'] .backdrop,
+:root[data-theme='amoled'] .backdrop,
+:root[data-theme='amoled-light'] .backdrop {
     display: none;
 }
 
-:root[data-theme='light'] .backdrop__image,
-:root[data-theme='sakura'] .backdrop__image,
-:root[data-theme='neon-tokyo-light'] .backdrop__image {
+:root[data-theme-scheme='light'] .backdrop__image {
     opacity: 0.22;
 }
 

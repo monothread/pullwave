@@ -52,7 +52,7 @@ test('the cutter and the settings, with the folders of an imaginary home', async
     await shot.app.close();
 });
 
-for (const theme of ['dark', 'light']) {
+for (const theme of ['dark', 'light'] as const) {
     test(`the queue in the ${theme} theme`, async () => {
         const shot = await launch(assets, { theme });
         await shootQueue(shot, `${theme}-downloads`);

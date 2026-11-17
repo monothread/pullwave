@@ -6,16 +6,18 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
+import { THEMES } from '../../src/shared/constants';
+import { showTheme } from './showTheme';
+import type { ThemeName } from '../../src/shared/types';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
 const SIZES: Array<[number, number]> = [[480, 800], [600, 800], [768, 1000], [1024, 768], [1080, 1850], [1366, 768], [1920, 1050], [3440, 1400]];
-const THEMES = ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'];
 interface AuditMatrix {
     tag: string;
-    themes: readonly string[];
+    themes: readonly ThemeName[];
     sizes: ReadonlyArray<[number, number]>;
 }
 const MATRICES: readonly AuditMatrix[] = [
@@ -155,9 +157,7 @@ MATRICES.forEach((matrix) => {
             for (const [w, h] of matrix.sizes) {
                 await resize(w, h);
                 for (const theme of matrix.themes) {
-                    await page.evaluate((name) => {
-                        document.documentElement.dataset.theme = name;
-                    }, theme);
+                    await showTheme(page, theme);
                     report.push(...(await audit(page, `${screenName} ${theme} ${w}x${h}`)));
                 }
             }

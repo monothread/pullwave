@@ -10,12 +10,12 @@ import {
     MIN_LIVE_END_CHECK_SECONDS,
     MIN_TITLE_LENGTH,
     RESOLUTIONS,
-    THEMES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
 import { ANIME_QUALITIES, ANIME_SUBTITLE_SETTINGS } from '@shared/anime';
 import { LLM_PROVIDER_IDS, SPEECH_PROVIDER_IDS } from '@shared/llm';
 import { MANGA_OUTPUT_FORMATS } from '@shared/manga';
+import { sanitizeThemeChoice } from '@shared/themeChoice';
 import type { DownloadOptions, Settings } from '@shared/types';
 
 const RATE_LIMIT_PATTERN = /^\d+(\.\d+)?[KkMmGg]?$/;
@@ -93,7 +93,7 @@ export function sanitizeSettings(input: unknown): Settings {
         waitForLive: pickBoolean(raw.waitForLive, defaults.waitForLive),
         verifyLiveEnd: pickBoolean(raw.verifyLiveEnd, defaults.verifyLiveEnd),
         verifyLiveEndSeconds: pickClampedInteger(raw.verifyLiveEndSeconds, MIN_LIVE_END_CHECK_SECONDS, MAX_LIVE_END_CHECK_SECONDS, defaults.verifyLiveEndSeconds),
-        theme: pickEnum(raw.theme, THEMES, defaults.theme),
+        ...sanitizeThemeChoice(raw),
         language: pickEnum(raw.language, LANGUAGE_SETTINGS, defaults.language),
         extraArgs: pickString(raw.extraArgs, defaults.extraArgs),
         animeDownloadDir: pickString(raw.animeDownloadDir, defaults.animeDownloadDir),

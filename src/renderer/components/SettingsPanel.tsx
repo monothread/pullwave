@@ -6,7 +6,8 @@ import {
     MIN_LIVE_END_CHECK_SECONDS,
     MIN_TITLE_LENGTH,
     RESOLUTIONS,
-    THEMES,
+    THEME_FAMILY_IDS,
+    THEME_MODES,
     VIDEO_CONTAINERS
 } from '@shared/constants';
 import { useEffect, useRef } from 'react';
@@ -16,7 +17,7 @@ import { chosenBrowserWarning, findChosenBrowser, NO_BROWSER_CHOSEN } from '@sha
 import { LANGUAGE_NAMES, type Translator } from '@shared/i18n/core';
 import { translationSetupGap } from '@shared/llm';
 import { hasUnboundedAutoSubtitles } from '@shared/subtitles';
-import type { DetectedBrowser, LanguageSetting, SiteBrowser, ThemeName } from '@shared/types';
+import type { DetectedBrowser, LanguageSetting, SiteBrowser, ThemeFamilyId, ThemeMode } from '@shared/types';
 import { useAutoSaveSettings, type SaveStatus } from '../hooks/useAutoSaveSettings';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
@@ -68,8 +69,12 @@ function formatSaveStatus(status: SaveStatus, t: Translator): string {
     return t(`settings.save.${status}`);
 }
 
-function formatTheme(theme: ThemeName, t: Translator): string {
-    return t(`theme.${theme}`);
+function formatThemeFamily(family: ThemeFamilyId, t: Translator): string {
+    return t(`themeFamily.${family}`);
+}
+
+function formatThemeMode(mode: ThemeMode, t: Translator): string {
+    return t(`themeMode.${mode}`);
 }
 
 function formatLanguage(language: LanguageSetting, t: Translator): string {
@@ -298,15 +303,27 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                     <fieldset className="panel">
                         <legend>{t('settings.appearance')}</legend>
                         <SelectField
+                            label={t('settings.themeMode')}
+                            value={draft.themeMode}
+                            options={THEME_MODES}
+                            formatOption={(mode) => {
+                                return formatThemeMode(mode, t);
+                            }}
+                            hint={t('settings.themeMode.hint')}
+                            onChange={(value) => {
+                                change('themeMode', value);
+                            }}
+                        />
+                        <SelectField
                             label={t('settings.theme')}
-                            value={draft.theme}
-                            options={THEMES}
-                            formatOption={(theme) => {
-                                return formatTheme(theme, t);
+                            value={draft.themeFamily}
+                            options={THEME_FAMILY_IDS}
+                            formatOption={(family) => {
+                                return formatThemeFamily(family, t);
                             }}
                             hint={t('settings.theme.hint')}
                             onChange={(value) => {
-                                change('theme', value);
+                                change('themeFamily', value);
                             }}
                         />
                         <SelectField

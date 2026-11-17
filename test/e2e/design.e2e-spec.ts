@@ -6,39 +6,19 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
+import { THEME_STYLES, THEMES } from '../../src/shared/constants';
+import { themeScheme } from '../../src/shared/themeChoice';
+import { showTheme } from './showTheme';
+import type { ThemeName } from '../../src/shared/types';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
 const FAKE_ANI_CLI = resolve(__dirname, 'fixtures/fake-ani-cli.sh');
 const FAKE_YTDLP = resolve(__dirname, 'fixtures/fake-yt-dlp.js');
 const SIZES: Array<[number, number]> = [[480, 800], [1024, 768], [1080, 1850], [1366, 768], [1920, 1050], [3440, 1400]];
-const THEME_STYLES: Record<string, 'neon' | 'flat'> = {
-    cyberpunk: 'neon',
-    synthwave: 'neon',
-    terminal: 'neon',
-    'neon-tokyo': 'neon',
-    'acid-rain': 'neon',
-    'amber-city': 'neon',
-    'ultraviolet': 'neon',
-    'pink-noir': 'neon',
-    'cyber-gold': 'neon',
-    'ice-neon': 'neon',
-    'neon-tokyo-light': 'neon',
-    dark: 'flat',
-    'tokyo-night': 'flat',
-    nord: 'flat',
-    dracula: 'flat',
-    gruvbox: 'flat',
-    amoled: 'flat',
-    'high-contrast': 'flat',
-    light: 'flat',
-    sakura: 'flat',
-    'sakura-dark': 'flat'
-};
-const THEMES = Object.keys(THEME_STYLES);
 interface AuditMatrix {
     tag: string;
-    themes: readonly string[];
+    themes: readonly ThemeName[];
     sizes: ReadonlyArray<[number, number]>;
 }
 const MATRICES: readonly AuditMatrix[] = [
@@ -92,11 +72,14 @@ async function resize(session: Session, width: number, height: number): Promise<
     await session.page.waitForTimeout(350);
 }
 
-async function applyTheme(page: Page, theme: string): Promise<void> {
-    await page.evaluate(([name, style]) => {
-        document.documentElement.dataset.theme = name;
-        document.documentElement.dataset.themeStyle = style;
-    }, [theme, THEME_STYLES[theme] ?? 'flat'] as const);
+function expectedAurora(theme: ThemeName): string {
+    if (['amoled', 'amoled-light', 'high-contrast', 'high-contrast-light'].includes(theme)) {
+        return '0';
+    }
+    if (themeScheme(theme) === 'light') {
+        return '0.35';
+    }
+    return THEME_STYLES[theme] === 'neon' ? '0.8' : '0.55';
 }
 
 async function geometry(page: Page, label: string): Promise<string[]> {
@@ -344,7 +327,7 @@ async function audit(session: Session, screenName: string, report: string[], mat
     for (const [width, height] of matrix.sizes) {
         await resize(session, width, height);
         for (const theme of matrix.themes) {
-            await applyTheme(session.page, theme);
+            await showTheme(session.page, theme);
             const where = `${screenName} ${theme} ${width}x${height}`;
             report.push(...(await geometry(session.page, where)), ...(await alignment(session.page, where)), ...(await legibility(session.page, where, MIN_CONTRAST)));
         }
@@ -555,7 +538,7 @@ test('the animations run, also when the system asks for less motion (D-130)', as
 
 test('every theme keeps its own colours under the layer: background, accent of the active section and style', async () => {
     const { page } = session;
-    const expected: Record<string, string> = {
+    const expected: Record<ThemeName, string> = {
         cyberpunk: 'rgb(7, 6, 15)',
         synthwave: 'rgb(18, 12, 42)',
         terminal: 'rgb(2, 10, 4)',
@@ -576,10 +559,25 @@ test('every theme keeps its own colours under the layer: background, accent of t
         'high-contrast': 'rgb(0, 0, 0)',
         light: 'rgb(243, 244, 247)',
         sakura: 'rgb(253, 246, 248)',
-        'sakura-dark': 'rgb(28, 19, 25)'
+        'sakura-dark': 'rgb(28, 19, 25)',
+        'cyberpunk-light': 'rgb(238, 248, 251)',
+        'synthwave-light': 'rgb(251, 242, 250)',
+        'terminal-light': 'rgb(240, 246, 236)',
+        'acid-rain-light': 'rgb(241, 248, 234)',
+        'amber-city-light': 'rgb(251, 244, 236)',
+        'ultraviolet-light': 'rgb(245, 240, 253)',
+        'pink-noir-light': 'rgb(250, 247, 248)',
+        'cyber-gold-light': 'rgb(251, 248, 233)',
+        'ice-neon-light': 'rgb(238, 247, 251)',
+        'tokyo-night-light': 'rgb(225, 226, 231)',
+        'nord-light': 'rgb(236, 239, 244)',
+        'dracula-light': 'rgb(255, 251, 235)',
+        'gruvbox-light': 'rgb(251, 241, 199)',
+        'amoled-light': 'rgb(255, 255, 255)',
+        'high-contrast-light': 'rgb(255, 255, 255)'
     };
     for (const theme of THEMES) {
-        await applyTheme(page, theme);
+        await showTheme(page, theme);
         const look = await page.evaluate(() => {
             const active = document.querySelector('.sidenav .tab--active') as Element;
             return {
@@ -590,6 +588,6 @@ test('every theme keeps its own colours under the layer: background, accent of t
         });
         expect(look.background, theme).toBe(expected[theme]);
         expect(look.barImage, theme).toContain('linear-gradient');
-        expect(look.aurora, theme).toBe(theme === 'amoled' || theme === 'high-contrast' ? '0' : theme === 'light' || theme === 'sakura' || theme === 'neon-tokyo-light' ? '0.35' : THEME_STYLES[theme] === 'neon' ? '0.8' : '0.55');
+        expect(look.aurora, theme).toBe(expectedAurora(theme));
     }
 });

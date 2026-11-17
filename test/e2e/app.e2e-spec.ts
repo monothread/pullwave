@@ -1425,7 +1425,7 @@ test('audio-only quick toggle switches to audio extraction', async () => {
 });
 
 test.describe('themes', () => {
-    const BACKGROUNDS: Record<string, string> = { cyberpunk: 'rgb(7, 6, 15)', dark: 'rgb(22, 24, 29)', light: 'rgb(243, 244, 247)' };
+    const BACKGROUNDS: Record<string, string> = { cyberpunk: 'rgb(7, 6, 15)', dark: 'rgb(22, 24, 29)', light: 'rgb(243, 244, 247)', nord: 'rgb(46, 52, 64)', 'nord-light': 'rgb(236, 239, 244)' };
 
     async function backgroundOf(page: Page): Promise<string> {
         return page.evaluate(() => {
@@ -1433,23 +1433,50 @@ test.describe('themes', () => {
         });
     }
 
-    test('device is the default theme and follows the system light or dark mode', async () => {
+    async function expectTheme(page: Page, theme: string, scheme: 'dark' | 'light'): Promise<void> {
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await expect(page.locator('html')).toHaveAttribute('data-theme-scheme', scheme);
+    }
+
+    function savedThemeChoice(userData: string): Record<string, unknown> {
+        const { themeMode, themeFamily } = readSettings(userData);
+        return { themeMode, themeFamily };
+    }
+
+    test('the system mode is the default and follows the light or dark mode of the computer while the app is open', async () => {
         const { page } = session;
         await page.emulateMedia({ colorScheme: 'dark' });
-        await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+        await expectTheme(page, 'dark', 'dark');
         expect(await backgroundOf(page)).toBe(BACKGROUNDS.dark);
         await page.emulateMedia({ colorScheme: 'light' });
-        await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+        await expectTheme(page, 'light', 'light');
         expect(await backgroundOf(page)).toBe(BACKGROUNDS.light);
         await openGlobalSettings(page);
-        await expect(page.getByLabel('Theme')).toHaveValue('device');
+        await expect(page.getByLabel('Light or dark mode')).toHaveValue('device');
+        await expect(page.getByLabel('Theme', { exact: true })).toHaveValue('default');
     });
 
-    test('offers every theme', async () => {
+    test('in the system mode, a switch of the computer shows the other version of the chosen theme at once', async () => {
         const { page } = session;
         await openGlobalSettings(page);
+        await page.emulateMedia({ colorScheme: 'light' });
+        await page.getByLabel('Theme', { exact: true }).selectOption('nord');
+        await expectTheme(page, 'nord-light', 'light');
+        expect(await backgroundOf(page)).toBe(BACKGROUNDS['nord-light']);
+        await page.emulateMedia({ colorScheme: 'dark' });
+        await expectTheme(page, 'nord', 'dark');
+        expect(await backgroundOf(page)).toBe(BACKGROUNDS.nord);
+        await page.emulateMedia({ colorScheme: 'light' });
+        await expectTheme(page, 'nord-light', 'light');
+    });
+
+    test('offers two fields: the three modes, and every theme once, named without light or dark', async () => {
+        const { page } = session;
+        await openGlobalSettings(page);
+        await expect(page.getByLabel('Dark theme', { exact: true })).toHaveCount(0);
+        await expect(page.getByLabel('Light theme', { exact: true })).toHaveCount(0);
+        await expect(page.getByLabel('Light or dark mode', { exact: true }).locator('option')).toHaveText(['System', 'Dark', 'Light']);
         await expect(page.getByLabel('Theme', { exact: true }).locator('option')).toHaveText([
-            'Device (follows the system)',
             'Cyberpunk (neon)',
             'Synthwave (neon)',
             'Terminal (green)',
@@ -1457,38 +1484,37 @@ test.describe('themes', () => {
             'Acid Rain (lime)',
             'Amber City (orange and teal)',
             'Ultraviolet (violet)',
-            'Pink Noir (pink on black)',
+            'Pink Noir (pink)',
             'Cyber Gold (yellow)',
             'Ice Neon (icy cyan)',
-            'Neon Tokyo Light (pink and blue, light)',
-            'Dark',
+            'Default',
             'Tokyo Night',
             'Nord',
             'Dracula',
             'Gruvbox',
-            'AMOLED (pure black)',
+            'AMOLED',
             'High contrast',
-            'Light',
-            'Sakura (pink, light)',
-            'Sakura Dark (pink, dark)'
+            'Sakura (pink)'
         ]);
     });
 
-    test('choosing a theme changes the look right away and saves it', async () => {
+    test('choosing a mode and a theme changes the look right away and saves them', async () => {
         const { page, userData } = session;
         await openGlobalSettings(page);
-        await page.getByLabel('Theme').selectOption('cyberpunk');
-        await expect(page.locator('html')).toHaveAttribute('data-theme', 'cyberpunk');
+        await page.getByLabel('Light or dark mode').selectOption('dark');
+        await page.getByLabel('Theme', { exact: true }).selectOption('cyberpunk');
+        await expectTheme(page, 'cyberpunk', 'dark');
         expect(await backgroundOf(page)).toBe(BACKGROUNDS.cyberpunk);
         await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 6000 });
-        expect(readSettings(userData).theme).toBe('cyberpunk');
+        expect(savedThemeChoice(userData)).toEqual({ themeMode: 'dark', themeFamily: 'cyberpunk' });
+        expect(readSettings(userData)).not.toHaveProperty('theme');
 
-        await page.getByLabel('Theme').selectOption('dark');
-        await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+        await page.getByLabel('Theme', { exact: true }).selectOption('default');
+        await expectTheme(page, 'dark', 'dark');
         expect(await backgroundOf(page)).toBe(BACKGROUNDS.dark);
         await expect.poll(() => {
-            return readSettings(userData).theme;
-        }).toBe('dark');
+            return savedThemeChoice(userData);
+        }).toEqual({ themeMode: 'dark', themeFamily: 'default' });
     });
 
     async function glowOf(page: Page): Promise<{ attribute: string | null; x: string; y: string; layer: string; image: string }> {
@@ -1514,87 +1540,103 @@ test.describe('themes', () => {
         });
     }
 
+    const THEME_FAMILIES: Array<[string, string, string, string, string, 'neon' | 'flat']> = [
+        ['cyberpunk', 'cyberpunk', 'cyberpunk-light', 'rgb(7, 6, 15)', 'rgb(238, 248, 251)', 'neon'],
+        ['synthwave', 'synthwave', 'synthwave-light', 'rgb(18, 12, 42)', 'rgb(251, 242, 250)', 'neon'],
+        ['terminal', 'terminal', 'terminal-light', 'rgb(2, 10, 4)', 'rgb(240, 246, 236)', 'neon'],
+        ['neon-tokyo', 'neon-tokyo', 'neon-tokyo-light', 'rgb(7, 11, 31)', 'rgb(243, 240, 251)', 'neon'],
+        ['acid-rain', 'acid-rain', 'acid-rain-light', 'rgb(3, 10, 8)', 'rgb(241, 248, 234)', 'neon'],
+        ['amber-city', 'amber-city', 'amber-city-light', 'rgb(13, 8, 5)', 'rgb(251, 244, 236)', 'neon'],
+        ['ultraviolet', 'ultraviolet', 'ultraviolet-light', 'rgb(10, 5, 24)', 'rgb(245, 240, 253)', 'neon'],
+        ['pink-noir', 'pink-noir', 'pink-noir-light', 'rgb(5, 5, 5)', 'rgb(250, 247, 248)', 'neon'],
+        ['cyber-gold', 'cyber-gold', 'cyber-gold-light', 'rgb(8, 6, 0)', 'rgb(251, 248, 233)', 'neon'],
+        ['ice-neon', 'ice-neon', 'ice-neon-light', 'rgb(2, 17, 26)', 'rgb(238, 247, 251)', 'neon'],
+        ['default', 'dark', 'light', 'rgb(22, 24, 29)', 'rgb(243, 244, 247)', 'flat'],
+        ['tokyo-night', 'tokyo-night', 'tokyo-night-light', 'rgb(26, 27, 38)', 'rgb(225, 226, 231)', 'flat'],
+        ['nord', 'nord', 'nord-light', 'rgb(46, 52, 64)', 'rgb(236, 239, 244)', 'flat'],
+        ['dracula', 'dracula', 'dracula-light', 'rgb(40, 42, 54)', 'rgb(255, 251, 235)', 'flat'],
+        ['gruvbox', 'gruvbox', 'gruvbox-light', 'rgb(40, 40, 40)', 'rgb(251, 241, 199)', 'flat'],
+        ['amoled', 'amoled', 'amoled-light', 'rgb(0, 0, 0)', 'rgb(255, 255, 255)', 'flat'],
+        ['high-contrast', 'high-contrast', 'high-contrast-light', 'rgb(0, 0, 0)', 'rgb(255, 255, 255)', 'flat'],
+        ['sakura', 'sakura-dark', 'sakura', 'rgb(28, 19, 25)', 'rgb(253, 246, 248)', 'flat']
+    ];
+
     test('no theme has a neon glow that follows the mouse, the cyberpunk one included', async () => {
         const { page } = session;
         await openGlobalSettings(page);
-        for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']) {
-            await page.getByLabel('Theme').selectOption(theme);
-            await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-            await waitForTheThemeToSettle(page);
-            const before = await glowOf(page);
-            await page.mouse.move(300, 200);
-            await page.mouse.move(640, 480);
-            await page.waitForTimeout(200);
-            const after = await glowOf(page);
-            expect(after).toEqual({ attribute: null, x: '', y: '', layer: '""', image: before.image });
-            expect(after.image).toContain('radial-gradient(38% 32% at 18% 22%');
+        for (const [family, dark, light] of THEME_FAMILIES) {
+            await page.getByLabel('Theme', { exact: true }).selectOption(family);
+            for (const [mode, theme] of [['dark', dark], ['light', light]] as const) {
+                await page.getByLabel('Light or dark mode').selectOption(mode);
+                await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+                await waitForTheThemeToSettle(page);
+                const before = await glowOf(page);
+                await page.mouse.move(300, 200);
+                await page.mouse.move(640, 480);
+                await page.waitForTimeout(200);
+                const after = await glowOf(page);
+                expect(after, theme).toEqual({ attribute: null, x: '', y: '', layer: '""', image: before.image });
+                expect(after.image, theme).toContain('radial-gradient(38% 32% at 18% 22%');
+            }
         }
     });
 
-    const THEME_BACKGROUNDS: Array<[string, string, 'neon' | 'flat']> = [
-        ['cyberpunk', 'rgb(7, 6, 15)', 'neon'],
-        ['synthwave', 'rgb(18, 12, 42)', 'neon'],
-        ['terminal', 'rgb(2, 10, 4)', 'neon'],
-        ['neon-tokyo', 'rgb(7, 11, 31)', 'neon'],
-        ['acid-rain', 'rgb(3, 10, 8)', 'neon'],
-        ['amber-city', 'rgb(13, 8, 5)', 'neon'],
-        ['ultraviolet', 'rgb(10, 5, 24)', 'neon'],
-        ['pink-noir', 'rgb(5, 5, 5)', 'neon'],
-        ['cyber-gold', 'rgb(8, 6, 0)', 'neon'],
-        ['ice-neon', 'rgb(2, 17, 26)', 'neon'],
-        ['neon-tokyo-light', 'rgb(243, 240, 251)', 'neon'],
-        ['dark', 'rgb(22, 24, 29)', 'flat'],
-        ['tokyo-night', 'rgb(26, 27, 38)', 'flat'],
-        ['nord', 'rgb(46, 52, 64)', 'flat'],
-        ['dracula', 'rgb(40, 42, 54)', 'flat'],
-        ['gruvbox', 'rgb(40, 40, 40)', 'flat'],
-        ['amoled', 'rgb(0, 0, 0)', 'flat'],
-        ['high-contrast', 'rgb(0, 0, 0)', 'flat'],
-        ['light', 'rgb(243, 244, 247)', 'flat'],
-        ['sakura', 'rgb(253, 246, 248)', 'flat'],
-        ['sakura-dark', 'rgb(28, 19, 25)', 'flat']
-    ];
+    async function expectLook(page: Page, theme: string, scheme: 'dark' | 'light', background: string, style: 'neon' | 'flat'): Promise<void> {
+        await expectTheme(page, theme, scheme);
+        await expect(page.locator('html')).toHaveAttribute('data-theme-style', style);
+        expect(await backgroundOf(page), theme).toBe(background);
+        const look = await page.evaluate(() => {
+            return {
+                scanlines: getComputedStyle(document.body, '::after').backgroundImage,
+                logoGlow: getComputedStyle(document.querySelector('.logo') as Element).textShadow,
+                colorScheme: getComputedStyle(document.documentElement).colorScheme
+            };
+        });
+        expect(look.colorScheme, theme).toBe(scheme);
+        if (style === 'flat') {
+            expect({ scanlines: look.scanlines, logoGlow: look.logoGlow }, theme).toEqual({ scanlines: 'none', logoGlow: 'none' });
+        } else {
+            expect(look.scanlines, theme).toContain('repeating-linear-gradient');
+            expect(look.logoGlow, theme).not.toBe('none');
+        }
+    }
 
-    for (const [theme, background, style] of THEME_BACKGROUNDS) {
-        test(`the ${theme} theme can be chosen: it paints its background, takes the ${style} style and is saved`, async () => {
+    for (const [family, dark, light, darkBackground, lightBackground, style] of THEME_FAMILIES) {
+        test(`the ${family} theme can be chosen: ${dark} in the dark mode and ${light} in the light mode paint their backgrounds, take the ${style} style and are saved`, async () => {
             const { page, userData } = session;
             await openGlobalSettings(page);
 
-            await page.getByLabel('Theme').selectOption(theme);
+            await page.getByLabel('Light or dark mode').selectOption('dark');
+            await page.getByLabel('Theme', { exact: true }).selectOption(family);
+            await expectLook(page, dark, 'dark', darkBackground, style);
 
-            await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-            await expect(page.locator('html')).toHaveAttribute('data-theme-style', style);
-            expect(await backgroundOf(page)).toBe(background);
-            const look = await page.evaluate(() => {
-                return {
-                    scanlines: getComputedStyle(document.body, '::after').backgroundImage,
-                    logoGlow: getComputedStyle(document.querySelector('.logo') as Element).textShadow
-                };
-            });
-            if (style === 'flat') {
-                expect(look).toEqual({ scanlines: 'none', logoGlow: 'none' });
-            } else {
-                expect(look.scanlines).toContain('repeating-linear-gradient');
-                expect(look.logoGlow).not.toBe('none');
-            }
+            await page.getByLabel('Light or dark mode').selectOption('light');
+            await expectLook(page, light, 'light', lightBackground, style);
             await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 6000 });
-            expect(readSettings(userData).theme).toBe(theme);
+            await expect.poll(() => {
+                return savedThemeChoice(userData);
+            }).toEqual({ themeMode: 'light', themeFamily: family });
         });
     }
 
-    test('a fixed theme ignores the system mode', async () => {
+    test('a fixed mode ignores the mode of the computer', async () => {
         const { page } = session;
         await openGlobalSettings(page);
-        await page.getByLabel('Theme').selectOption('light');
+        await page.getByLabel('Light or dark mode').selectOption('light');
         await page.emulateMedia({ colorScheme: 'dark' });
-        await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+        await expectTheme(page, 'light', 'light');
         expect(await backgroundOf(page)).toBe(BACKGROUNDS.light);
+        await page.getByLabel('Light or dark mode').selectOption('dark');
+        await page.emulateMedia({ colorScheme: 'light' });
+        await expectTheme(page, 'dark', 'dark');
+        expect(await backgroundOf(page)).toBe(BACKGROUNDS.dark);
     });
 
     test('the simple themes have no scanlines and no glow on the logo', async () => {
         const { page } = session;
         await openGlobalSettings(page);
-        await page.getByLabel('Theme').selectOption('dark');
+        await page.getByLabel('Light or dark mode').selectOption('dark');
+        await expectTheme(page, 'dark', 'dark');
         const style = await page.evaluate(() => {
             return {
                 scanlines: getComputedStyle(document.body, '::after').backgroundImage,
@@ -1604,10 +1646,11 @@ test.describe('themes', () => {
         expect(style).toEqual({ scanlines: 'none', logoGlow: 'none' });
     });
 
-    test('the chosen theme is still there after closing and opening the app again', async () => {
+    test('the chosen mode and theme are still there after closing and opening the app again', async () => {
         const { page, app, userData, downloadDir } = session;
         await openGlobalSettings(page);
-        await page.getByLabel('Theme').selectOption('cyberpunk');
+        await page.getByLabel('Light or dark mode').selectOption('dark');
+        await page.getByLabel('Theme', { exact: true }).selectOption('cyberpunk');
         await expect(page.getByText('All changes saved.')).toBeVisible({ timeout: 6000 });
         await app.close();
 
@@ -1618,13 +1661,33 @@ test.describe('themes', () => {
         try {
             const reopenedPage = await reopened.firstWindow();
             await reopenedPage.waitForSelector('.logo');
-            await expect(reopenedPage.locator('html')).toHaveAttribute('data-theme', 'cyberpunk');
+            await expectTheme(reopenedPage, 'cyberpunk', 'dark');
             expect(await backgroundOf(reopenedPage)).toBe(BACKGROUNDS.cyberpunk);
             await openGlobalSettings(reopenedPage);
-            await expect(reopenedPage.getByLabel('Theme')).toHaveValue('cyberpunk');
-            expect(readSettings(userData)).toMatchObject({ theme: 'cyberpunk', downloadDir });
+            await expect(reopenedPage.getByLabel('Light or dark mode')).toHaveValue('dark');
+            await expect(reopenedPage.getByLabel('Theme', { exact: true })).toHaveValue('cyberpunk');
+            expect(readSettings(userData)).toMatchObject({ themeMode: 'dark', themeFamily: 'cyberpunk', downloadDir });
         } finally {
             await reopened.close();
+        }
+    });
+
+    test('moves the theme an older version saved to its mode and theme, and saves it that way at the first save', async () => {
+        const own = await launch({ settings: { theme: 'sakura' } });
+        try {
+            await expectTheme(own.page, 'sakura', 'light');
+            expect(await backgroundOf(own.page)).toBe('rgb(253, 246, 248)');
+            await openGlobalSettings(own.page);
+            await expect(own.page.getByLabel('Light or dark mode')).toHaveValue('light');
+            await expect(own.page.getByLabel('Theme', { exact: true })).toHaveValue('sakura');
+            await own.page.getByLabel('Light or dark mode').selectOption('dark');
+            await expectTheme(own.page, 'sakura-dark', 'dark');
+            await expect.poll(() => {
+                return savedThemeChoice(own.userData);
+            }).toEqual({ themeMode: 'dark', themeFamily: 'sakura' });
+            expect(readSettings(own.userData)).not.toHaveProperty('theme');
+        } finally {
+            await own.app.close();
         }
     });
 });
@@ -1670,10 +1733,10 @@ test.describe('the screen the app opens on', () => {
             await expect(home).toBeVisible();
             await expect(home.locator('.section-card__title')).toHaveText(['VIDEO DOWNLOADER', 'ANIME', 'MANGA']);
             await openGlobalSettings(own.page);
-            await own.page.getByLabel('Theme').selectOption('cyberpunk');
+            await own.page.getByLabel('Light or dark mode').selectOption('dark');
             await expect.poll(() => {
-                return readSettings(own.userData).theme;
-            }).toBe('cyberpunk');
+                return readSettings(own.userData).themeMode;
+            }).toBe('dark');
             expect(readSettings(own.userData)).not.toHaveProperty('startTab');
         } finally {
             await own.app.close();

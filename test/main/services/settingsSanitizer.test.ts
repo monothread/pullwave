@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, THEMES } from '@shared/constants';
+import { DEFAULT_SETTINGS, THEME_FAMILIES, THEME_FAMILY_IDS } from '@shared/constants';
 import { sanitizeDownloadOptions, sanitizeSettings } from '@main/services/settingsSanitizer';
 
 describe('sanitizeSettings', () => {
@@ -42,7 +42,8 @@ describe('sanitizeSettings', () => {
             startMinimized: true,
             liveFromStart: true,
             waitForLive: true,
-            theme: 'light',
+            themeMode: 'light',
+            themeFamily: 'nord',
             language: 'ja',
             verifyLiveEnd: false,
             verifyLiveEndSeconds: 45,
@@ -453,21 +454,46 @@ describe('sanitizeSettings', () => {
 });
 
 describe('sanitizeSettings theme', () => {
-    it.each(['device', 'cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark'])('keeps the %s theme', (theme) => {
-        expect(sanitizeSettings({ theme }).theme).toBe(theme);
+    it('defaults to following the system, with the default family', () => {
+        expect(DEFAULT_SETTINGS).toMatchObject({ themeMode: 'device', themeFamily: 'default' });
+        expect(sanitizeSettings({})).toMatchObject({ themeMode: 'device', themeFamily: 'default' });
     });
 
-    it('defaults to device when it is missing, unknown or not a string', () => {
-        expect(DEFAULT_SETTINGS.theme).toBe('device');
-        expect(sanitizeSettings({}).theme).toBe('device');
-        expect(sanitizeSettings({ theme: 'solarized' }).theme).toBe('device');
-        expect(sanitizeSettings({ theme: 3 }).theme).toBe('device');
-        expect(sanitizeSettings({ theme: 'Tokyo Night' }).theme).toBe('device');
-        expect(sanitizeSettings({ theme: 'tokyo_night' }).theme).toBe('device');
+    it.each(['device', 'dark', 'light'] as const)('keeps the %s mode with the chosen family', (themeMode) => {
+        expect(sanitizeSettings({ themeMode, themeFamily: 'dracula' })).toMatchObject({ themeMode, themeFamily: 'dracula' });
     });
 
-    it('offers the twenty-one themes, in the order of the list', () => {
-        expect(THEMES).toEqual(['device', 'cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']);
+    it.each(THEME_FAMILY_IDS)('keeps the %s family', (themeFamily) => {
+        expect(sanitizeSettings({ themeMode: 'dark', themeFamily }).themeFamily).toBe(themeFamily);
+    });
+
+    it('puts back the default family when it is unknown or the name of a single theme', () => {
+        expect(sanitizeSettings({ themeMode: 'dark', themeFamily: 'nord-light' })).toMatchObject({ themeMode: 'dark', themeFamily: 'default' });
+        expect(sanitizeSettings({ themeMode: 'light', themeFamily: 3 })).toMatchObject({ themeMode: 'light', themeFamily: 'default' });
+    });
+
+    it.each(THEME_FAMILIES)('moves the old saved theme $dark to the dark mode of the $id family', ({ id, dark }) => {
+        expect(sanitizeSettings({ theme: dark })).toMatchObject({ themeMode: 'dark', themeFamily: id });
+    });
+
+    it.each(THEME_FAMILIES)('moves the old saved theme $light to the light mode of the $id family', ({ id, light }) => {
+        expect(sanitizeSettings({ theme: light })).toMatchObject({ themeMode: 'light', themeFamily: id });
+    });
+
+    it('moves the old device theme, or an unknown one, to the defaults', () => {
+        ['device', 'solarized', 3, 'Tokyo Night', 'tokyo_night', undefined].forEach((theme) => {
+            expect(sanitizeSettings({ theme })).toMatchObject({ themeMode: 'device', themeFamily: 'default' });
+        });
+    });
+
+    it('ignores the old theme once a mode is saved, and does not keep it among the settings', () => {
+        const sanitized = sanitizeSettings({ theme: 'nord', themeMode: 'light', themeFamily: 'amoled' });
+        expect(sanitized).toMatchObject({ themeMode: 'light', themeFamily: 'amoled' });
+        expect(sanitized).not.toHaveProperty('theme');
+    });
+
+    it('goes back to the old theme when the saved mode is unknown', () => {
+        expect(sanitizeSettings({ theme: 'nord', themeMode: 'auto', themeFamily: 'amoled' })).toMatchObject({ themeMode: 'dark', themeFamily: 'nord' });
     });
 });
 

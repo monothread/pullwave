@@ -1,4 +1,20 @@
-import type { AudioFormat, BrowserName, LanguageCode, LanguageSetting, MaxResolution, Settings, SiteBrowser, ThemeName, ThemeStyle, VideoContainer } from './types';
+import type {
+    AudioFormat,
+    BrowserName,
+    DarkThemeName,
+    LanguageCode,
+    LanguageSetting,
+    LightThemeName,
+    MaxResolution,
+    Settings,
+    SiteBrowser,
+    ThemeMode,
+    ThemeFamily,
+    ThemeFamilyId,
+    ThemeName,
+    ThemeStyle,
+    VideoContainer
+} from './types';
 
 export const IPC = {
     settingsGet: 'settings:get',
@@ -206,54 +222,66 @@ export const SITE_BROWSERS: readonly SiteBrowser[] = ['default', ...BROWSERS];
 export const RESOLUTIONS: readonly MaxResolution[] = ['best', '2160', '1440', '1080', '720', '480'];
 export const VIDEO_CONTAINERS: readonly VideoContainer[] = ['mp4', 'mkv', 'webm'];
 export const AUDIO_FORMATS: readonly AudioFormat[] = ['mp3', 'm4a', 'opus'];
-export const THEMES: readonly ThemeName[] = [
-    'device',
-    'cyberpunk',
-    'synthwave',
-    'terminal',
-    'neon-tokyo',
-    'acid-rain',
-    'amber-city',
-    'ultraviolet',
-    'pink-noir',
-    'cyber-gold',
-    'ice-neon',
-    'neon-tokyo-light',
-    'dark',
-    'tokyo-night',
-    'nord',
-    'dracula',
-    'gruvbox',
-    'amoled',
-    'high-contrast',
-    'light',
-    'sakura',
-    'sakura-dark'
+export const THEME_MODES: readonly ThemeMode[] = ['device', 'dark', 'light'];
+
+export const THEME_FAMILIES: readonly ThemeFamily[] = [
+    { id: 'cyberpunk', dark: 'cyberpunk', light: 'cyberpunk-light', style: 'neon' },
+    { id: 'synthwave', dark: 'synthwave', light: 'synthwave-light', style: 'neon' },
+    { id: 'terminal', dark: 'terminal', light: 'terminal-light', style: 'neon' },
+    { id: 'neon-tokyo', dark: 'neon-tokyo', light: 'neon-tokyo-light', style: 'neon' },
+    { id: 'acid-rain', dark: 'acid-rain', light: 'acid-rain-light', style: 'neon' },
+    { id: 'amber-city', dark: 'amber-city', light: 'amber-city-light', style: 'neon' },
+    { id: 'ultraviolet', dark: 'ultraviolet', light: 'ultraviolet-light', style: 'neon' },
+    { id: 'pink-noir', dark: 'pink-noir', light: 'pink-noir-light', style: 'neon' },
+    { id: 'cyber-gold', dark: 'cyber-gold', light: 'cyber-gold-light', style: 'neon' },
+    { id: 'ice-neon', dark: 'ice-neon', light: 'ice-neon-light', style: 'neon' },
+    { id: 'default', dark: 'dark', light: 'light', style: 'flat' },
+    { id: 'tokyo-night', dark: 'tokyo-night', light: 'tokyo-night-light', style: 'flat' },
+    { id: 'nord', dark: 'nord', light: 'nord-light', style: 'flat' },
+    { id: 'dracula', dark: 'dracula', light: 'dracula-light', style: 'flat' },
+    { id: 'gruvbox', dark: 'gruvbox', light: 'gruvbox-light', style: 'flat' },
+    { id: 'amoled', dark: 'amoled', light: 'amoled-light', style: 'flat' },
+    { id: 'high-contrast', dark: 'high-contrast', light: 'high-contrast-light', style: 'flat' },
+    { id: 'sakura', dark: 'sakura-dark', light: 'sakura', style: 'flat' }
 ];
 
-export const THEME_STYLES: Readonly<Record<Exclude<ThemeName, 'device'>, ThemeStyle>> = {
-    cyberpunk: 'neon',
-    synthwave: 'neon',
-    terminal: 'neon',
-    'neon-tokyo': 'neon',
-    'acid-rain': 'neon',
-    'amber-city': 'neon',
-    'ultraviolet': 'neon',
-    'pink-noir': 'neon',
-    'cyber-gold': 'neon',
-    'ice-neon': 'neon',
-    'neon-tokyo-light': 'neon',
-    dark: 'flat',
-    'tokyo-night': 'flat',
-    nord: 'flat',
-    dracula: 'flat',
-    gruvbox: 'flat',
-    amoled: 'flat',
-    'high-contrast': 'flat',
-    light: 'flat',
-    sakura: 'flat',
-    'sakura-dark': 'flat'
-};
+export const THEME_FAMILY_IDS: readonly ThemeFamilyId[] = THEME_FAMILIES.map((family) => {
+    return family.id;
+});
+
+export const DARK_THEMES: readonly DarkThemeName[] = THEME_FAMILIES.map((family) => {
+    return family.dark;
+});
+
+export const LIGHT_THEMES: readonly LightThemeName[] = THEME_FAMILIES.map((family) => {
+    return family.light;
+});
+
+export const THEMES: readonly ThemeName[] = [...DARK_THEMES, ...LIGHT_THEMES];
+
+export const THEME_FAMILY_BY_ID = Object.fromEntries(
+    THEME_FAMILIES.map((family) => {
+        return [family.id, family];
+    })
+) as Readonly<Record<ThemeFamilyId, ThemeFamily>>;
+
+export const THEME_FAMILY_OF = Object.fromEntries(
+    THEME_FAMILIES.flatMap((family) => {
+        return [
+            [family.dark, family.id],
+            [family.light, family.id]
+        ];
+    })
+) as Readonly<Record<ThemeName, ThemeFamilyId>>;
+
+export const THEME_STYLES = Object.fromEntries(
+    THEME_FAMILIES.flatMap((family) => {
+        return [
+            [family.dark, family.style],
+            [family.light, family.style]
+        ];
+    })
+) as Readonly<Record<ThemeName, ThemeStyle>>;
 export const LANGUAGE_CODES: readonly LanguageCode[] = ['en', 'pt', 'es', 'zh', 'ja'];
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['device', ...LANGUAGE_CODES];
 export const FALLBACK_LANGUAGE: LanguageCode = 'en';
@@ -295,7 +323,8 @@ export const DEFAULT_SETTINGS: Settings = {
     waitForLive: false,
     verifyLiveEnd: true,
     verifyLiveEndSeconds: 10,
-    theme: 'device',
+    themeMode: 'device',
+    themeFamily: 'default',
     language: 'device',
     extraArgs: '',
     animeDownloadDir: '',

@@ -6,6 +6,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { installedProgramsEnv } from './programs';
+import { THEMES } from '../../src/shared/constants';
+import { themeChoiceOf } from '../../src/shared/themeChoice';
+import type { ThemeName } from '../../src/shared/types';
 
 const ROOT = resolve(__dirname, '../..');
 const ELECTRON_PATH = createRequire(__filename)('electron') as unknown as string;
@@ -30,11 +33,11 @@ async function size(locator: Locator): Promise<{ width: number; height: number }
     return { width: Math.round(box?.width ?? 0), height: Math.round(box?.height ?? 0) };
 }
 
-async function launch(theme: string): Promise<void> {
+async function launch(theme: ThemeName): Promise<void> {
     workDir = mkdtempSync(join(tmpdir(), 'pullwave-buttons-e2e-'));
     const userData = join(workDir, 'user-data');
     mkdirSync(userData, { recursive: true });
-    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', theme, checkUpdatesOnStart: false }));
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ language: 'en', ...themeChoiceOf(theme), checkUpdatesOnStart: false }));
     writeFileSync(
         join(userData, 'history.json'),
         JSON.stringify([
@@ -55,7 +58,7 @@ test.afterEach(async () => {
     rmSync(workDir, { recursive: true, force: true });
 });
 
-for (const theme of ['cyberpunk', 'synthwave', 'terminal', 'neon-tokyo', 'acid-rain', 'amber-city', 'ultraviolet', 'pink-noir', 'cyber-gold', 'ice-neon', 'neon-tokyo-light', 'dark', 'tokyo-night', 'nord', 'dracula', 'gruvbox', 'amoled', 'high-contrast', 'light', 'sakura', 'sakura-dark']) {
+for (const theme of THEMES) {
     test.describe(`button sizes (${theme} theme)`, () => {
         test.beforeEach(async () => {
             await launch(theme);

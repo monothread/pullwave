@@ -74,8 +74,7 @@ export interface LinkRequest {
     options: DownloadOptions;
 }
 
-export type ThemeName =
-    | 'device'
+export type DarkThemeName =
     | 'cyberpunk'
     | 'synthwave'
     | 'terminal'
@@ -86,7 +85,6 @@ export type ThemeName =
     | 'pink-noir'
     | 'cyber-gold'
     | 'ice-neon'
-    | 'neon-tokyo-light'
     | 'dark'
     | 'tokyo-night'
     | 'nord'
@@ -94,9 +92,54 @@ export type ThemeName =
     | 'gruvbox'
     | 'amoled'
     | 'high-contrast'
-    | 'light'
-    | 'sakura'
     | 'sakura-dark';
+export type LightThemeName =
+    | 'cyberpunk-light'
+    | 'synthwave-light'
+    | 'terminal-light'
+    | 'neon-tokyo-light'
+    | 'acid-rain-light'
+    | 'amber-city-light'
+    | 'ultraviolet-light'
+    | 'pink-noir-light'
+    | 'cyber-gold-light'
+    | 'ice-neon-light'
+    | 'light'
+    | 'tokyo-night-light'
+    | 'nord-light'
+    | 'dracula-light'
+    | 'gruvbox-light'
+    | 'amoled-light'
+    | 'high-contrast-light'
+    | 'sakura';
+export type ThemeName = DarkThemeName | LightThemeName;
+export type ThemeScheme = 'dark' | 'light';
+export type ThemeMode = 'device' | ThemeScheme;
+export type ThemeFamilyId =
+    | 'cyberpunk'
+    | 'synthwave'
+    | 'terminal'
+    | 'neon-tokyo'
+    | 'acid-rain'
+    | 'amber-city'
+    | 'ultraviolet'
+    | 'pink-noir'
+    | 'cyber-gold'
+    | 'ice-neon'
+    | 'default'
+    | 'tokyo-night'
+    | 'nord'
+    | 'dracula'
+    | 'gruvbox'
+    | 'amoled'
+    | 'high-contrast'
+    | 'sakura';
+export interface ThemeFamily {
+    id: ThemeFamilyId;
+    dark: DarkThemeName;
+    light: LightThemeName;
+    style: ThemeStyle;
+}
 export type ThemeStyle = 'neon' | 'flat';
 export type LanguageCode = 'en' | 'pt' | 'es' | 'zh' | 'ja';
 export type LanguageSetting = 'device' | LanguageCode;
@@ -148,7 +191,8 @@ export interface Settings {
     waitForLive: boolean;
     verifyLiveEnd: boolean;
     verifyLiveEndSeconds: number;
-    theme: ThemeName;
+    themeMode: ThemeMode;
+    themeFamily: ThemeFamilyId;
     language: LanguageSetting;
     extraArgs: string;
     animeDownloadDir: string;
@@ -173,6 +217,8 @@ export interface Settings {
     transcribeModel: string;
     transcribeBaseUrl: string;
 }
+
+export type ThemeChoice = Pick<Settings, 'themeMode' | 'themeFamily'>;
 
 export type ErrorCode =
     | 'NETWORK'
