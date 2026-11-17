@@ -4131,6 +4131,41 @@ test.describe('manga: the orders kept, the cover behind the page and what to go 
         await expect(session.page.getByTestId('manga-chapter').locator('.row-link')).toHaveText(['The Great Race', 'Romance Dawn']);
     });
 
+    test('puts the manga just read first in the library sorted by last read, every time one is read', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openSource(session.page);
+        await session.page.getByRole('button', { name: 'Open: One Piece' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await session.page.getByRole('button', { name: 'Open: Bleach' }).click();
+        await session.page.getByRole('button', { name: 'ADD TO LIBRARY' }).click();
+        await goTo(session.page, 'LIBRARY');
+        const libraryOrder = session.page.getByRole('combobox', { name: 'Sort by' });
+        await libraryOrder.selectOption('last');
+        await expect(libraryOrder).toHaveValue('last');
+        const titles = session.page.getByTestId('manga-entry').locator('.row-link');
+        await expect(titles).toHaveText(['Bleach', 'One Piece']);
+        const reader = session.page.getByRole('region', { name: 'Reader' });
+        const readFromLibrary = async (title: string): Promise<void> => {
+            await session.page.getByTestId('manga-entry').getByRole('button', { name: `Open: ${title}` }).click();
+            await session.page.getByRole('button', { name: 'READ: Romance Dawn', exact: true }).click();
+            await expect(reader.getByText(`${title} · Romance Dawn`)).toBeVisible();
+            await session.page.keyboard.press('Escape');
+            await expect(reader).toHaveCount(0);
+            await session.page.getByRole('button', { name: '← BACK', exact: true }).click();
+        };
+
+        await readFromLibrary('One Piece');
+        await expect(titles).toHaveText(['One Piece', 'Bleach']);
+        await readFromLibrary('Bleach');
+        await expect(titles).toHaveText(['Bleach', 'One Piece']);
+        await readFromLibrary('One Piece');
+        await expect(titles).toHaveText(['One Piece', 'Bleach']);
+        await expect(libraryOrder).toHaveValue('last');
+    });
+
     test('keeps the order of the library for each tab of groups, even after the app is closed and opened again', async () => {
         session = await launch();
         await openManga(session.page);

@@ -710,6 +710,11 @@ export const useMangaStore = create<MangaState>((set, get) => {
 
         recordReading: async (record) => {
             await window.api.manga.recordReading(record);
+            await get()
+                .loadHistory()
+                .catch(() => {
+                    return undefined;
+                });
         },
 
         checkToolUpdates: async () => {

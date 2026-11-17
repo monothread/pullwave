@@ -2733,6 +2733,43 @@ describe('mangaStore the history of reading', () => {
         expect(mock.api.manga.recordReading).toHaveBeenCalledWith(record);
     });
 
+    it('reads the history again after writing, so the newest reading comes first', async () => {
+        const older = { ...ENTRY, id: 5, mangaRemoteId: 8, title: 'Bleach', readAt: 1700000000000, libraryMangaId: 2 };
+        useMangaStore.setState({ history: [older, { ...ENTRY, readAt: 1600000000000, libraryMangaId: 1 }] });
+        const updated = [{ ...ENTRY, readAt: 1800000000000, libraryMangaId: 1 }, older];
+        mock.api.manga.readingHistory.mockResolvedValue(updated);
+        const record = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: null, chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+        await state().recordReading(record);
+        expect(mock.api.manga.recordReading).toHaveBeenCalledWith(record);
+        expect(mock.api.manga.readingHistory).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.readingHistory).toHaveBeenCalledWith();
+        const [written] = mock.api.manga.recordReading.mock.invocationCallOrder;
+        const [read] = mock.api.manga.readingHistory.mock.invocationCallOrder;
+        expect(written).toBeLessThan(read ?? 0);
+        expect(state().history).toEqual(updated);
+    });
+
+    it('keeps the history it had and does not fail when reading it again fails after writing', async () => {
+        const kept = [ENTRY];
+        useMangaStore.setState({ history: kept });
+        mock.api.manga.readingHistory.mockRejectedValue(new Error('history read failed'));
+        const record = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: null, chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+        await expect(state().recordReading(record)).resolves.toBeUndefined();
+        expect(mock.api.manga.recordReading).toHaveBeenCalledWith(record);
+        expect(mock.api.manga.readingHistory).toHaveBeenCalledTimes(1);
+        expect(state().history).toEqual(kept);
+    });
+
+    it('does not read the history again when writing fails', async () => {
+        const kept = [ENTRY];
+        useMangaStore.setState({ history: kept });
+        mock.api.manga.recordReading.mockRejectedValue(new Error('disk full'));
+        const record = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: null, chapterRemoteId: 11, chapterName: 'Romance Dawn', chapterNumber: 1, page: 3, pageCount: 20 };
+        await expect(state().recordReading(record)).rejects.toThrow('disk full');
+        expect(mock.api.manga.readingHistory).not.toHaveBeenCalled();
+        expect(state().history).toEqual(kept);
+    });
+
     it('remembers the manga that is open when the reader opens, and keeps it when it goes to another chapter', async () => {
         const open = makeSummary();
         useMangaStore.setState({ selection: { manga: open, status: 'ready', details: makeDetails(), chapters: [], selected: [], error: null } });

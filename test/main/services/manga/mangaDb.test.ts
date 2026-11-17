@@ -1410,6 +1410,17 @@ describe('MangaDb the history of reading', () => {
         expect(db.readingHistory()[0]?.title).toBe(`Manga ${String(MAX_READING_KEPT + 10)}`);
     });
 
+    it('lists every reading it keeps when no limit is asked, so the oldest kept one is still there', () => {
+        const db = readingSetup();
+        for (let index = 1; index <= MAX_READING_KEPT + 10; index += 1) {
+            db.recordReading({ ...RECORD, mangaRemoteId: index, title: `Manga ${String(index)}` });
+        }
+        const history = db.readingHistory();
+        expect(history).toHaveLength(MAX_READING_KEPT);
+        expect(history[0]?.title).toBe(`Manga ${String(MAX_READING_KEPT + 10)}`);
+        expect(history[MAX_READING_KEPT - 1]?.title).toBe('Manga 11');
+    });
+
     it('removes a line, or all of them', () => {
         const db = readingSetup();
         db.recordReading(RECORD);

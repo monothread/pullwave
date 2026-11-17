@@ -801,7 +801,7 @@ export class MangaDb {
         this.run('DELETE FROM reading_history WHERE id NOT IN (SELECT id FROM reading_history ORDER BY read_at DESC, id DESC LIMIT ?)', MAX_READING_KEPT);
     }
 
-    readingHistory(limit = 200): ReadingEntry[] {
+    readingHistory(limit = MAX_READING_KEPT): ReadingEntry[] {
         return this.all(
             `SELECT r.*, (SELECT m.id FROM manga m WHERE m.source_id = r.source_id AND m.remote_id = r.manga_remote_id) AS library_id
              FROM reading_history r ORDER BY r.read_at DESC, r.id DESC LIMIT ?`,
