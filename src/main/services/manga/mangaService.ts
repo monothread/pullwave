@@ -1,6 +1,7 @@
 import type {
     ExtensionAction,
     MangaHelperProblem,
+    MangaChapter,
     MangaDetailsWithChapters,
     MangaError,
     MangaExtension,
@@ -348,6 +349,12 @@ export class MangaService {
     details(remoteId: number): Promise<MangaResult<MangaDetailsWithChapters>> {
         return this.call((client) => {
             return client.mangaWithChapters(remoteId);
+        });
+    }
+
+    chaptersByIds(chapterRemoteIds: readonly number[]): Promise<MangaResult<MangaChapter[]>> {
+        return this.call((client) => {
+            return client.chaptersByIds(chapterRemoteIds);
         });
     }
 

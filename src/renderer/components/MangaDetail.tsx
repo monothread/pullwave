@@ -234,16 +234,17 @@ export function MangaDetail() {
         return termFilters.sourceId === manga.sourceId && termFilters.status === 'ready' && activateFilter(termFilters.filters, term, kind) !== null;
     };
 
+    const readingTitle = saved?.title ?? shown.title;
     const readSet = new Set(readKeys);
     const isRead = (remoteId: number): boolean => {
-        return readSet.has(progressKey(shown.title, remoteId));
+        return readSet.has(progressKey(readingTitle, remoteId));
     };
     const allRead = readable.length > 0 && readable.every((chapter) => {
         return isRead(chapter.remoteId);
     });
-    const lastRemoteId = loadLastChapter(shown.title);
+    const lastRemoteId = loadLastChapter(readingTitle);
     const hasStarted = readable.some((chapter) => {
-        return isRead(chapter.remoteId) || (progress[progressKey(shown.title, chapter.remoteId)] ?? 0) > 0 || chapter.remoteId === lastRemoteId;
+        return isRead(chapter.remoteId) || (progress[progressKey(readingTitle, chapter.remoteId)] ?? 0) > 0 || chapter.remoteId === lastRemoteId;
     });
     const nextIndex = continueIndex(readable, isRead, lastRemoteId);
 
@@ -372,7 +373,7 @@ export function MangaDetail() {
                             type="button"
                             className="btn btn--primary"
                             onClick={() => {
-                                void openReader(shown.title, readable, nextIndex, true);
+                                void openReader(readingTitle, readable, nextIndex, true);
                             }}
                         >
                             {hasStarted ? t('manga.detail.continue') : t('manga.detail.start')}
@@ -383,7 +384,7 @@ export function MangaDetail() {
                             onClick={() => {
                                 markRead(
                                     readable.map((chapter) => {
-                                        return progressKey(shown.title, chapter.remoteId);
+                                        return progressKey(readingTitle, chapter.remoteId);
                                     }),
                                     !allRead
                                 );
@@ -517,10 +518,10 @@ export function MangaDetail() {
                             const state = chapterState(saved, chapter.remoteId);
                             const label = chapterLabel(chapter.name, chapter.number);
                             const read = isRead(chapter.remoteId);
-                            const pageLeftOn = progress[progressKey(shown.title, chapter.remoteId)] ?? 0;
+                            const pageLeftOn = progress[progressKey(readingTitle, chapter.remoteId)] ?? 0;
                             const open = (): void => {
                                 void openReader(
-                                    shown.title,
+                                    readingTitle,
                                     readable,
                                     readable.findIndex((item) => {
                                         return item.remoteId === chapter.remoteId;
@@ -550,7 +551,7 @@ export function MangaDetail() {
                                                 aria-pressed={read}
                                                 aria-label={`${read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}: ${label}`}
                                                 onClick={() => {
-                                                    markRead([progressKey(shown.title, chapter.remoteId)], !read);
+                                                    markRead([progressKey(readingTitle, chapter.remoteId)], !read);
                                                 }}
                                             >
                                                 {read ? t('manga.detail.markUnread') : t('manga.detail.markRead')}

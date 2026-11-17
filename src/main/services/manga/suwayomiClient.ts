@@ -99,6 +99,7 @@ export const QUERIES = {
     mangaWithChapters: `mutation ($id: Int!) {
         fetchMangaAndChapters(input: { id: $id, fetchManga: true, fetchChapters: true }) { manga { ${MANGA_DETAIL_FIELDS} } chapters { ${CHAPTER_FIELDS} } }
     }`,
+    chaptersByIds: `query ($ids: [Int!]) { chapters(filter: { id: { in: $ids } }) { nodes { ${CHAPTER_FIELDS} } } }`,
     setFlareSolverr: `mutation ($settings: PartialSettingsTypeInput!) { setSettings(input: { settings: $settings }) { settings { flareSolverrEnabled flareSolverrUrl } } }`,
     chapterPages: 'mutation ($chapterId: Int!) { fetchChapterPages(input: { chapterId: $chapterId }) { pages } }'
 } as const;
@@ -265,6 +266,13 @@ export class SuwayomiClient {
             const details: MangaDetails = parseDetails(payload['manga'], baseUrl);
             const chapters: MangaChapter[] = parseChapters(payload['chapters']);
             return { details, chapters };
+        });
+    }
+
+    async chaptersByIds(chapterIds: readonly number[]): Promise<MangaChapter[]> {
+        const data = await this.request(QUERIES.chaptersByIds, { ids: chapterIds });
+        return this.parsed(() => {
+            return parseChapters(record(record(data, 'The answer')['chapters'], 'The chapters')['nodes']);
         });
     }
 

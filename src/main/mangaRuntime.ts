@@ -7,7 +7,7 @@ import type { MangaHandlerDependencies } from './ipc/registerMangaHandlers';
 import { MangaChapterDownloader } from './services/manga/mangaChapterDownloader';
 import { MangaDb } from './services/manga/mangaDb';
 import { MangaDownloadQueue } from './services/manga/mangaDownloadQueue';
-import { migrateMangaFolder, type MangaMigrationFileSystem } from './services/manga/mangaMigration';
+import { migrateMangaFolder, renameMangaFolder, type MangaMigrationFileSystem } from './services/manga/mangaMigration';
 import { MangaUpdateChecker } from './services/manga/mangaUpdateChecker';
 import { COMIC_INFO_FILE, DEFAULT_MANGA_FOLDER, isCompletePage, mangaDirectory } from './services/manga/mangaFiles';
 import { createImageFetcher } from './services/manga/mangaImages';
@@ -341,6 +341,16 @@ export function createMangaRuntime(options: MangaRuntimeOptions): MangaRuntime |
                 }
             });
             return outcome.ok ? { ...outcome, destination: chosen } : outcome;
+        },
+        renameFolder: (manga, title) => {
+            return renameMangaFolder({
+                db,
+                files: options.migrationFiles,
+                platform: options.platform,
+                manga,
+                currentFolder: mangaDirectory(baseDirectory(), manga.title, options.platform),
+                newFolder: mangaDirectory(baseDirectory(), title, options.platform)
+            });
         },
         onLibraryChanged: notifyLibraryChanged
     };

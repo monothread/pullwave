@@ -1327,6 +1327,72 @@ describe('MangaDetail what was read', () => {
         await user.click(screen.getByRole('button', { name: 'READ: Second' }));
         expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 12, libraryChapterId: null });
     });
+
+    describe('when the source names a library manga differently from the library', () => {
+        const SAVED = makeLibraryManga(
+            ORDERED.map((chapter, index) => {
+                return makeChapterRecord({ id: index + 1, remoteId: chapter.remoteId, name: chapter.name, number: chapter.number });
+            }),
+            { title: 'New Title' }
+        );
+
+        function openRenamed(): void {
+            useMangaStore.setState({ library: [SAVED] });
+            open({ chapters: ORDERED, details: makeDetails({ title: 'Old Title' }) });
+        }
+
+        it('shows as read the chapters read under the library title, not under the title of the source', () => {
+            useMangaStore.setState({ readKeys: [progressKey('New Title', 11), progressKey('New Title', 12), progressKey('Old Title', 13)] });
+            openRenamed();
+            render(<MangaDetail />);
+            expect(screen.getByRole('heading', { name: 'Old Title' })).toBeInTheDocument();
+            expect(
+                screen.getAllByTestId('manga-chapter').map((row) => {
+                    return row.classList.contains('history__item--watched');
+                })
+            ).toEqual([true, true, false]);
+            expect(screen.getByRole('button', { name: 'Mark as read: Third' })).toHaveAttribute('aria-pressed', 'false');
+            expect(screen.getByRole('button', { name: 'Mark as not read: Second' })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: 'Mark as not read: First' })).toHaveAttribute('aria-pressed', 'true');
+        });
+
+        it('marks chapters as read under the library title', async () => {
+            const user = userEvent.setup();
+            openRenamed();
+            render(<MangaDetail />);
+            await user.click(screen.getByRole('button', { name: 'Mark as read: Second' }));
+            expect(useMangaStore.getState().readKeys).toEqual([progressKey('New Title', 12)]);
+            await user.click(screen.getByRole('button', { name: 'MARK ALL AS READ' }));
+            expect([...useMangaStore.getState().readKeys].sort()).toEqual([11, 12, 13].map((id) => {return progressKey('New Title', id)}).sort());
+        });
+
+        it('says the page left on and continues in the last chapter kept under the library title, and reads it under that title', async () => {
+            const user = userEvent.setup();
+            saveLastChapter('New Title', 12);
+            saveLastChapter('Old Title', 13);
+            saveProgress(progressKey('New Title', 12), 4);
+            openRenamed();
+            render(<MangaDetail />);
+            expect(within(screen.getAllByTestId('manga-chapter')[1]!).getByText(/left on page 5/)).toBeInTheDocument();
+            await user.click(screen.getByRole('button', { name: 'CONTINUE READING' }));
+            expect(mock.api.manga.readPages).toHaveBeenCalledWith({ chapterRemoteId: 12, libraryChapterId: 2 });
+            expect(useMangaStore.getState().reader).toMatchObject({ mangaTitle: 'New Title', index: 1, resume: true });
+            useMangaStore.getState().closeReader();
+            await user.click(screen.getByRole('button', { name: 'READ: Third' }));
+            expect(useMangaStore.getState().reader).toMatchObject({ mangaTitle: 'New Title', index: 2, resume: false });
+        });
+
+        it('keeps using the title of the source for a manga that is not in the library', () => {
+            useMangaStore.setState({ readKeys: [progressKey('Old Title', 11)], library: [] });
+            open({ chapters: ORDERED, details: makeDetails({ title: 'Old Title' }) });
+            render(<MangaDetail />);
+            expect(
+                screen.getAllByTestId('manga-chapter').map((row) => {
+                    return row.classList.contains('history__item--watched');
+                })
+            ).toEqual([true, false, false]);
+        });
+    });
 });
 
 describe('MangaDetail the chapters that are new today', () => {

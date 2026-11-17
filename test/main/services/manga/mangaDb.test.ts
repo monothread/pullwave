@@ -545,6 +545,41 @@ describe('MangaDb moving the files', () => {
             db.relinkChapters([]);
         }).not.toThrow();
     });
+    it('points the files and the work of chapters at the folder they were moved to, together, and touches no other', () => {
+        const { db, manga } = setup();
+        const first = db.ensureChapter(manga.id, chapter(1));
+        const second = db.ensureChapter(manga.id, chapter(2));
+        const third = db.ensureChapter(manga.id, chapter(3));
+        db.markDone(first.id, '/old/Chapter 1.cbz', 10, 3);
+        db.setOutputPath(second.id, '/old/Chapter 2.cbz');
+        db.setOutputPath(third.id, '/elsewhere/Chapter 3.cbz');
+        db.relinkFolder({ chapters: [{ chapterId: first.id, filePath: '/new/Chapter 1.cbz', sizeBytes: 11 }], outputs: [{ chapterId: second.id, outputPath: '/new/Chapter 2.cbz' }] });
+        expect(db.getChapter(first.id)).toMatchObject({ status: 'done', filePath: '/new/Chapter 1.cbz', sizeBytes: 11 });
+        expect(db.outputPathOf(second.id)).toBe('/new/Chapter 2.cbz');
+        expect(db.outputPathOf(third.id)).toBe('/elsewhere/Chapter 3.cbz');
+    });
+
+    it('changes neither the files nor the work of any chapter when one of them fails, and does nothing for none', () => {
+        const { db, manga } = setup();
+        const first = db.ensureChapter(manga.id, chapter(1));
+        const second = db.ensureChapter(manga.id, chapter(2));
+        db.markDone(first.id, '/old/Chapter 1.cbz', 10, 3);
+        db.setOutputPath(second.id, '/old/Chapter 2.cbz');
+        expect(() => {
+            db.relinkFolder({
+                chapters: [{ chapterId: first.id, filePath: '/new/Chapter 1.cbz', sizeBytes: 11 }],
+                outputs: [
+                    { chapterId: second.id, outputPath: '/new/Chapter 2.cbz' },
+                    { chapterId: second.id, outputPath: undefined as unknown as string }
+                ]
+            });
+        }).toThrow();
+        expect(db.getChapter(first.id)).toMatchObject({ filePath: '/old/Chapter 1.cbz', sizeBytes: 10 });
+        expect(db.outputPathOf(second.id)).toBe('/old/Chapter 2.cbz');
+        expect(() => {
+            db.relinkFolder({ chapters: [], outputs: [] });
+        }).not.toThrow();
+    });
 });
 
 describe('MangaDb series', () => {
@@ -875,7 +910,17 @@ describe('MangaDb moving a manga to another source', () => {
         const group = db.createGroup('Mangas')!;
         db.setGroupMembers(group.id, [manga.id], true);
         const result = db.moveToSource(manga.id, { manga: TARGET, details: details(), chapters: [chapter(1, { remoteId: 701 }), chapter(2, { remoteId: 702 }), chapter(5, { remoteId: 705 })] });
-        expect(result).toEqual({ ok: true, matched: 2, added: 1, dropped: 1 });
+        expect(result).toEqual({
+            ok: true,
+            previousTitle: 'One Piece',
+            chapterMoves: [
+                { from: 1, to: 701 },
+                { from: 2, to: 702 }
+            ],
+            matched: 2,
+            added: 1,
+            dropped: 1
+        });
         expect(db.getManga(manga.id)).toMatchObject({
             id: manga.id,
             sourceId: '999',
@@ -900,7 +945,7 @@ describe('MangaDb moving a manga to another source', () => {
         const { db, manga, two } = inLibrary();
         db.markIncomplete(two.id, '/m/One Piece/Chapter 2.cbz', 20, 5);
         const result = db.moveToSource(manga.id, { manga: TARGET, details: null, chapters: [chapter(1, { remoteId: 701 })] });
-        expect(result).toEqual({ ok: true, matched: 1, added: 0, dropped: 1 });
+        expect(result).toEqual({ ok: true, previousTitle: 'One Piece', chapterMoves: [{ from: 1, to: 701 }], matched: 1, added: 0, dropped: 1 });
         expect(db.getChapter(two.id)).toMatchObject({ status: 'incomplete', filePath: '/m/One Piece/Chapter 2.cbz', pageCount: 5 });
     });
 
@@ -956,6 +1001,46 @@ describe('MangaDb moving a manga to another source', () => {
         }).toThrow();
         expect(db.getManga(manga.id)).toMatchObject({ sourceId: '123', remoteId: 7 });
         expect(db.getChapter(one.id)?.remoteId).toBe(1);
+    });
+});
+
+describe('MangaDb renaming a manga', () => {
+    const RECORD = { sourceId: '123', mangaRemoteId: 7, title: 'One Piece', thumbnailUrl: null, chapterRemoteId: 1, chapterName: 'Chapter 1', chapterNumber: 1, page: 2, pageCount: 9 };
+
+    it('changes its title and the title of its reading history, and nothing else', () => {
+        const { db, manga } = setup();
+        const one = db.ensureChapter(manga.id, chapter(1));
+        db.markDone(one.id, '/m/One Piece/Chapter 1.cbz', 10, 3);
+        const other = db.upsertManga({ remoteId: 8, sourceId: '123', title: 'Bleach', thumbnailUrl: null });
+        db.recordReading(RECORD);
+        db.recordReading({ ...RECORD, mangaRemoteId: 8, title: 'Bleach' });
+        expect(db.renameManga(manga.id, 'New Title')).toBe(true);
+        expect(db.getManga(manga.id)).toMatchObject({ id: manga.id, sourceId: '123', remoteId: 7, title: 'New Title', thumbnailUrl: 'http://127.0.0.1:1/t.jpg' });
+        expect(db.getChapter(one.id)).toMatchObject({ remoteId: 1, status: 'done', filePath: '/m/One Piece/Chapter 1.cbz' });
+        expect(db.getManga(other.id)?.title).toBe('Bleach');
+        expect(
+            db.readingHistory().map((entry) => {
+                return [entry.mangaRemoteId, entry.title];
+            })
+        ).toEqual([
+            [8, 'Bleach'],
+            [7, 'New Title']
+        ]);
+    });
+
+    it('says when there is no such manga', () => {
+        const { db } = setup();
+        expect(db.renameManga(999, 'New Title')).toBe(false);
+    });
+
+    it('changes nothing when it fails half way', () => {
+        const { db, manga } = setup();
+        db.recordReading(RECORD);
+        expect(() => {
+            db.renameManga(manga.id, undefined as unknown as string);
+        }).toThrow();
+        expect(db.getManga(manga.id)?.title).toBe('One Piece');
+        expect(db.readingHistory()[0]?.title).toBe('One Piece');
     });
 });
 
@@ -1265,6 +1350,21 @@ describe('MangaDb the history of reading', () => {
         const db = readingSetup();
         db.recordReading(RECORD);
         expect(db.readingHistory()).toEqual([{ ...RECORD, id: expect.any(Number), readAt: 5010, libraryMangaId: null }]);
+    });
+
+    it('keeps a manga of the library under the title of the library, whatever title the reader gives', () => {
+        const db = readingSetup();
+        db.upsertManga({ remoteId: 7, sourceId: '123', title: 'Title of the library', thumbnailUrl: null });
+        db.recordReading({ ...RECORD, title: 'Title of the source' });
+        db.recordReading({ ...RECORD, mangaRemoteId: 8, title: 'Bleach' });
+        expect(
+            db.readingHistory().map((entry) => {
+                return [entry.mangaRemoteId, entry.title];
+            })
+        ).toEqual([
+            [8, 'Bleach'],
+            [7, 'Title of the library']
+        ]);
     });
 
     it('says the manga is in the library when it is, by its source and number', () => {

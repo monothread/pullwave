@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import {
+    copiedReadKeys,
+    copyChapterProgress,
     DEFAULT_READER_PREFS,
+    hasReadUnderTitle,
     LAST_CHAPTER_KEY,
     LAST_PAGE_KEY,
     loadAllProgress,
@@ -10,6 +13,9 @@ import {
     loadReadKeys,
     MAX_READ_CHAPTERS,
     MAX_REMEMBERED_MANGAS,
+    moveMangaReading,
+    movedReadKeys,
+    orphanReadIds,
     READ_KEY,
     saveLastChapter,
     saveLastPosition,
@@ -428,5 +434,241 @@ describe('reader preferences of each manga', () => {
             refuse.mockRestore();
         }
         expect(loadReaderPrefs('One Piece')).toEqual(DEFAULT_READER_PREFS);
+    });
+});
+
+describe('hasReadUnderTitle', () => {
+    const KEYS = [progressKey('New Title', 11), progressKey('One Piece', 12)];
+
+    it('is true when one of the chapters is read under the title', () => {
+        expect(hasReadUnderTitle(KEYS, 'New Title', [10, 11])).toBe(true);
+    });
+
+    it('is false when the chapters are read only under another title', () => {
+        expect(hasReadUnderTitle(KEYS, 'New Title', [12])).toBe(false);
+    });
+
+    it('is false when none of the chapters is read, or there is no chapter', () => {
+        expect(hasReadUnderTitle(KEYS, 'New Title', [13, 14])).toBe(false);
+        expect(hasReadUnderTitle(KEYS, 'New Title', [])).toBe(false);
+        expect(hasReadUnderTitle([], 'New Title', [11])).toBe(false);
+    });
+});
+
+describe('orphanReadIds', () => {
+    it('gives once each chapter read under one of the titles that no known chapter has', () => {
+        const keys = [progressKey('Old Title', 1), progressKey('Old Title', 2), progressKey('New Title', 3), progressKey('New Title', 1), progressKey('Other', 4)];
+        expect(orphanReadIds(keys, ['Old Title', 'New Title'], new Set([2]))).toEqual([1, 3]);
+    });
+
+    it('reads the title of a key up to its last bar', () => {
+        expect(orphanReadIds([progressKey('A | B', 5)], ['A | B'], new Set())).toEqual([5]);
+    });
+
+    it('ignores keys that are not a title and a chapter id', () => {
+        expect(orphanReadIds(['Old Title', 'Old Title|', 'Old Title|x', 'Old Title|0', 'Old Title|-2', 'Old Title|1.5', '|7'], ['Old Title', ''], new Set())).toEqual([]);
+    });
+
+    it('gives nothing when every chapter is known, or without titles', () => {
+        expect(orphanReadIds([progressKey('Old Title', 1)], ['Old Title'], new Set([1]))).toEqual([]);
+        expect(orphanReadIds([progressKey('Old Title', 1)], [], new Set())).toEqual([]);
+    });
+});
+
+describe('copiedReadKeys', () => {
+    const MOVES = [
+        { from: 1, to: 101 },
+        { from: 2, to: 102 }
+    ];
+
+    it('adds the key of each chapter read to its new title and id, keeping every key there was', () => {
+        const keys = [progressKey('Other', 1), progressKey('Old', 1), progressKey('Old', 3), progressKey('Old', 2)];
+        expect(copiedReadKeys(keys, 'Old', 'New', MOVES)).toEqual([progressKey('Other', 1), progressKey('Old', 1), progressKey('Old', 3), progressKey('Old', 2), progressKey('New', 101), progressKey('New', 102)]);
+    });
+
+    it('does not add a key that is there already, and adds nothing for a chapter not read', () => {
+        const keys = [progressKey('New', 101), progressKey('Old', 1)];
+        expect(copiedReadKeys(keys, 'Old', 'New', MOVES)).toEqual([progressKey('New', 101), progressKey('Old', 1)]);
+    });
+
+    it('copies under the same title, and changes nothing without moves', () => {
+        expect(copiedReadKeys([progressKey('Same', 1)], 'Same', 'Same', MOVES)).toEqual([progressKey('Same', 1), progressKey('Same', 101)]);
+        expect(copiedReadKeys([progressKey('Old', 1)], 'Old', 'New', [])).toEqual([progressKey('Old', 1)]);
+    });
+});
+
+describe('copyChapterProgress', () => {
+    const MOVES = [
+        { from: 1, to: 101 },
+        { from: 2, to: 102 }
+    ];
+
+    it('copies the page each chapter was left on, keeping the one there already and every page there was', () => {
+        saveProgress(progressKey('Old', 1), 3);
+        saveProgress(progressKey('Old', 2), 5);
+        saveProgress(progressKey('New', 102), 8);
+        copyChapterProgress('Old', 'New', MOVES);
+        expect(JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? '{}')).toEqual({ [progressKey('Old', 1)]: 3, [progressKey('Old', 2)]: 5, [progressKey('New', 102)]: 8, [progressKey('New', 101)]: 3 });
+    });
+
+    it('writes nothing when there is nothing to copy', () => {
+        saveProgress(progressKey('New', 101), 8);
+        const write = vi.spyOn(Storage.prototype, 'setItem');
+        copyChapterProgress('Old', 'New', MOVES);
+        copyChapterProgress('New', 'New', [{ from: 101, to: 101 }]);
+        expect(write).not.toHaveBeenCalled();
+        write.mockRestore();
+    });
+
+    it('does not fail when the browser refuses to keep it', () => {
+        saveProgress(progressKey('Old', 1), 3);
+        const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('full');
+        });
+        try {
+            expect(() => {
+                copyChapterProgress('Old', 'New', MOVES);
+            }).not.toThrow();
+        } finally {
+            write.mockRestore();
+        }
+        expect(loadProgress(progressKey('New', 101))).toBe(0);
+    });
+});
+
+describe('movedReadKeys', () => {
+    const MOVES = [
+        { from: 1, to: 101 },
+        { from: 2, to: 102 }
+    ];
+
+    it('gives each moved chapter its new title and id in its place, and keeps everything else as it is', () => {
+        const keys = [progressKey('Other', 1), progressKey('Old', 1), progressKey('Old', 3), progressKey('Old', 2)];
+        expect(movedReadKeys(keys, 'Old', 'New', MOVES)).toEqual([progressKey('Other', 1), progressKey('New', 101), progressKey('Old', 3), progressKey('New', 102)]);
+    });
+
+    it('keeps one key when the chapter was read under both titles', () => {
+        const keys = [progressKey('New', 101), progressKey('Old', 1), progressKey('Old', 2)];
+        expect(movedReadKeys(keys, 'Old', 'New', MOVES)).toEqual([progressKey('New', 101), progressKey('New', 102)]);
+    });
+
+    it('moves the chapters to the new title when they keep their ids', () => {
+        const keys = [progressKey('Old', 1), progressKey('New', 1)];
+        expect(
+            movedReadKeys(keys, 'Old', 'New', [
+                { from: 1, to: 1 },
+                { from: 2, to: 2 }
+            ])
+        ).toEqual([progressKey('New', 1)]);
+    });
+
+    it('moves the ids under the same title', () => {
+        expect(movedReadKeys([progressKey('Same', 1)], 'Same', 'Same', MOVES)).toEqual([progressKey('Same', 101)]);
+    });
+
+    it('changes nothing without moves', () => {
+        const keys = [progressKey('Old', 1)];
+        expect(movedReadKeys(keys, 'Old', 'New', [])).toEqual(keys);
+    });
+});
+
+describe('moveMangaReading', () => {
+    const MOVES = [
+        { from: 1, to: 101 },
+        { from: 2, to: 102 }
+    ];
+
+    function stored(key: string): unknown {
+        return JSON.parse(window.localStorage.getItem(key) ?? 'null') as unknown;
+    }
+
+    it('moves the page each chapter was left on, keeping the one already under the new title and what is not moved', () => {
+        saveProgress(progressKey('Other', 1), 7);
+        saveProgress(progressKey('Old', 1), 3);
+        saveProgress(progressKey('Old', 2), 5);
+        saveProgress(progressKey('Old', 9), 6);
+        saveProgress(progressKey('New', 102), 8);
+        moveMangaReading('Old', 'New', MOVES);
+        expect(stored(PROGRESS_KEY)).toEqual({ [progressKey('Other', 1)]: 7, [progressKey('New', 101)]: 3, [progressKey('Old', 9)]: 6, [progressKey('New', 102)]: 8 });
+    });
+
+    it('moves the last chapter and the last position to the new title with the new id', () => {
+        saveLastChapter('Other', 1);
+        saveLastChapter('Old', 2);
+        saveLastPosition('Old', 1, 4);
+        moveMangaReading('Old', 'New', MOVES);
+        expect(stored(LAST_CHAPTER_KEY)).toEqual({ Other: 1, New: 102 });
+        expect(stored(LAST_PAGE_KEY)).toEqual({ New: { chapterRemoteId: 101, page: 4 } });
+    });
+
+    it('keeps the last chapter and the last position already under the new title, and drops the old ones', () => {
+        saveLastChapter('New', 105);
+        saveLastChapter('Old', 2);
+        saveLastPosition('New', 105, 9);
+        saveLastPosition('Old', 1, 4);
+        moveMangaReading('Old', 'New', MOVES);
+        expect(stored(LAST_CHAPTER_KEY)).toEqual({ New: 105 });
+        expect(stored(LAST_PAGE_KEY)).toEqual({ New: { chapterRemoteId: 105, page: 9 } });
+    });
+
+    it('leaves the last chapter and the last position alone when their chapter is not moved', () => {
+        saveLastChapter('Old', 9);
+        saveLastPosition('Old', 9, 2);
+        moveMangaReading('Old', 'New', MOVES);
+        expect(stored(LAST_CHAPTER_KEY)).toEqual({ Old: 9 });
+        expect(stored(LAST_PAGE_KEY)).toEqual({ Old: { chapterRemoteId: 9, page: 2 } });
+        expect(loadLastChapter('New')).toBeNull();
+    });
+
+    it('moves the ids of the last chapter and the last position under the same title', () => {
+        saveLastChapter('Same', 1);
+        saveLastPosition('Same', 2, 3);
+        moveMangaReading('Same', 'Same', MOVES);
+        expect(stored(LAST_CHAPTER_KEY)).toEqual({ Same: 101 });
+        expect(stored(LAST_PAGE_KEY)).toEqual({ Same: { chapterRemoteId: 102, page: 3 } });
+    });
+
+    it('moves the reader preferences of the manga to the new title, unless the new title has its own', () => {
+        const webtoon = { ...DEFAULT_READER_PREFS, mode: 'webtoon' as const };
+        const vertical = { ...DEFAULT_READER_PREFS, mode: 'vertical' as const };
+        saveReaderPrefs(webtoon, 'Old');
+        moveMangaReading('Old', 'New', MOVES);
+        expect(stored(PREFS_BY_MANGA_KEY)).toEqual({ New: webtoon });
+        saveReaderPrefs(webtoon, 'Old');
+        saveReaderPrefs(vertical, 'New');
+        moveMangaReading('Old', 'New', MOVES);
+        expect(stored(PREFS_BY_MANGA_KEY)).toEqual({ New: vertical });
+    });
+
+    it('leaves the reader preferences alone under the same title', () => {
+        const webtoon = { ...DEFAULT_READER_PREFS, mode: 'webtoon' as const };
+        saveReaderPrefs(webtoon, 'Same');
+        moveMangaReading('Same', 'Same', MOVES);
+        expect(stored(PREFS_BY_MANGA_KEY)).toEqual({ Same: webtoon });
+    });
+
+    it('writes only the pages left on when nothing else is kept', () => {
+        const write = vi.spyOn(Storage.prototype, 'setItem');
+        moveMangaReading('Old', 'New', MOVES);
+        expect(write.mock.calls).toEqual([[PROGRESS_KEY, '{}']]);
+        write.mockRestore();
+        expect(stored(LAST_CHAPTER_KEY)).toBeNull();
+        expect(stored(LAST_PAGE_KEY)).toBeNull();
+        expect(stored(PREFS_BY_MANGA_KEY)).toBeNull();
+    });
+
+    it('does not fail when the browser refuses to keep it', () => {
+        saveProgress(progressKey('Old', 1), 3);
+        const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('full');
+        });
+        try {
+            expect(() => {
+                moveMangaReading('Old', 'New', MOVES);
+            }).not.toThrow();
+        } finally {
+            write.mockRestore();
+        }
+        expect(loadProgress(progressKey('Old', 1))).toBe(3);
     });
 });

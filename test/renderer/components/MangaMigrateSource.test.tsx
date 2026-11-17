@@ -230,7 +230,7 @@ describe('MangaMigrateSource', () => {
     it('moves the manga to the one that was picked, with its chapters and details, and closes', async () => {
         const user = userEvent.setup();
         const moved = makeLibraryManga([], { id: 9, sourceId: '200', remoteId: 70 });
-        mock.api.manga.migrateSource.mockResolvedValue({ ok: true, manga: moved, matched: 2, added: 1, dropped: 0 });
+        mock.api.manga.migrateSource.mockResolvedValue({ ok: true, manga: moved, previousTitle: 'One Piece', chapterMoves: [], matched: 2, added: 1, dropped: 0 });
         const onClose = renderPanel();
         await user.click(screen.getByRole('button', { name: 'SEARCH' }));
         await user.click(await screen.findByRole('button', { name: 'Pick: One Piece (Other Dex)' }));
@@ -241,6 +241,20 @@ describe('MangaMigrateSource', () => {
         });
         await vi.waitFor(() => {
             expect(onClose).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('gives the manga that was picked the title its source gives on its page, which the library will take', async () => {
+        const user = userEvent.setup();
+        mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails({ remoteId: 70, sourceId: '200', title: 'New Title' }), chapters: chapters(1, 2, 4) } });
+        mock.api.manga.migrateSource.mockResolvedValue({ ok: true, manga: makeLibraryManga([], { id: 9, sourceId: '200', remoteId: 70, title: 'New Title' }), previousTitle: 'One Piece', chapterMoves: [], matched: 2, added: 1, dropped: 0 });
+        renderPanel();
+        await user.click(screen.getByRole('button', { name: 'SEARCH' }));
+        await user.click(await screen.findByRole('button', { name: 'Pick: One Piece (Other Dex)' }));
+        await user.click(await screen.findByRole('button', { name: 'MIGRATE' }));
+        expect(mock.api.manga.migrateSource).toHaveBeenCalledWith({
+            mangaId: 9,
+            target: { manga: makeSummary({ remoteId: 70, sourceId: '200', title: 'New Title' }), details: makeDetails({ remoteId: 70, sourceId: '200', title: 'New Title' }), chapters: chapters(1, 2, 4) }
         });
     });
 

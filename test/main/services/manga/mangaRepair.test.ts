@@ -129,6 +129,23 @@ describe('MangaRepair', () => {
         await expect(service.repair(chapter.id, null)).resolves.toEqual({ ok: false, error: { code: 'INVALID_REQUEST', message: 'The chapter has no pages to download again.' } });
     });
 
+    it('says a manga is being repaired only while one of its chapters is, and not for another manga', async () => {
+        let finish: (result: RepairResult) => void = () => {
+            return undefined;
+        };
+        const pending = new Promise<RepairResult>((resolve) => {
+            finish = resolve;
+        });
+        const { service, chapter, manga } = setup({ result: pending });
+        expect(service.isRepairing(manga.id)).toBe(false);
+        const running = service.repair(chapter.id, null);
+        expect(service.isRepairing(manga.id)).toBe(true);
+        expect(service.isRepairing(manga.id + 1)).toBe(false);
+        finish({ status: 'error', error: { code: 'UNKNOWN', message: 'x' } });
+        await running;
+        expect(service.isRepairing(manga.id)).toBe(false);
+    });
+
     it('allows another try after the first one failed', async () => {
         const { service, chapter, repair } = setup({ result: { status: 'error', error: { code: 'UNKNOWN', message: 'x' } } });
         await service.repair(chapter.id, null);

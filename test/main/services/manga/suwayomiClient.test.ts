@@ -421,6 +421,30 @@ describe('SuwayomiClient mangas', () => {
         expect(calls[0]?.body).toEqual({ query: QUERIES.mangaWithChapters, variables: { id: 7 } });
     });
 
+    it('gives the chapters the server keeps under the ids asked, from any manga, newest first', async () => {
+        const { client, calls } = setup([
+            data({
+                chapters: {
+                    nodes: [
+                        { id: 901, name: 'Ch. 1', chapterNumber: 1, uploadDate: '1700000000000', scanlator: 'G', sourceOrder: 1 },
+                        { id: 902, name: 'Ch. 2', chapterNumber: 2, uploadDate: null, scanlator: null, sourceOrder: 2 }
+                    ]
+                }
+            })
+        ]);
+        expect(QUERIES.chaptersByIds.startsWith('query')).toBe(true);
+        await expect(client.chaptersByIds([901, 902, 999])).resolves.toEqual([
+            { remoteId: 902, name: 'Ch. 2', number: 2, dateUploaded: null, scanlator: null, sourceOrder: 2 },
+            { remoteId: 901, name: 'Ch. 1', number: 1, dateUploaded: 1700000000000, scanlator: 'G', sourceOrder: 1 }
+        ]);
+        expect(calls[0]?.body).toEqual({ query: QUERIES.chaptersByIds, variables: { ids: [901, 902, 999] } });
+    });
+
+    it('says the answer is not valid when the server gives no list of chapters', async () => {
+        const { client } = setup([data({ chapters: { nodes: 'x' } })]);
+        await expect(client.chaptersByIds([901])).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    });
+
     it('gives the addresses of the pages of a chapter', async () => {
         const { client, calls } = setup([data({ fetchChapterPages: { pages: ['/api/v1/manga/7/chapter/1/page/0', '/api/v1/manga/7/chapter/1/page/1'] } })]);
         await expect(client.chapterPages(11)).resolves.toEqual([`${BASE}/api/v1/manga/7/chapter/1/page/0`, `${BASE}/api/v1/manga/7/chapter/1/page/1`]);

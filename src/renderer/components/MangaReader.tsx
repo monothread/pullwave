@@ -209,7 +209,7 @@ export function MangaReader() {
         const record: ReadingRecord = {
             sourceId: manga.sourceId,
             mangaRemoteId: manga.remoteId,
-            title: manga.title,
+            title: reader.mangaTitle,
             thumbnailUrl: manga.thumbnailUrl,
             chapterRemoteId: chapter.remoteId,
             chapterName: chapter.name,
@@ -222,7 +222,7 @@ export function MangaReader() {
         return () => {
             window.clearTimeout(timer);
         };
-    }, [reader.status, total, chapter, manga, page, flushReading]);
+    }, [reader.status, reader.mangaTitle, total, chapter, manga, page, flushReading]);
 
     useEffect(() => {
         return flushReading;

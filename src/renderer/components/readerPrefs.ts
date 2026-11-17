@@ -1,3 +1,5 @@
+import type { MangaChapterMove } from '@shared/manga';
+
 export const READER_MODES = ['single', 'vertical', 'webtoon'] as const;
 export const READER_DIRECTIONS = ['ltr', 'rtl'] as const;
 export const READER_SCALES = ['width', 'height', 'screen', 'original'] as const;
@@ -238,3 +240,138 @@ export function saveLastPosition(mangaTitle: string, chapterRemoteId: number, pa
     }
 }
 
+
+function chapterRenames(fromTitle: string, toTitle: string, moves: readonly MangaChapterMove[]): Map<string, string> {
+    return new Map(
+        moves.map((move) => {
+            return [progressKey(fromTitle, move.from), progressKey(toTitle, move.to)];
+        })
+    );
+}
+
+export function hasReadUnderTitle(readKeys: readonly string[], title: string, chapterRemoteIds: readonly number[]): boolean {
+    const read = new Set(readKeys);
+    return chapterRemoteIds.some((chapterRemoteId) => {
+        return read.has(progressKey(title, chapterRemoteId));
+    });
+}
+
+export function orphanReadIds(readKeys: readonly string[], titles: readonly string[], knownChapterIds: ReadonlySet<number>): number[] {
+    const wanted = new Set(titles);
+    const orphans = new Set<number>();
+    readKeys.forEach((key) => {
+        const separator = key.lastIndexOf('|');
+        const chapterRemoteId = Number(key.slice(separator + 1));
+        if (separator > 0 && wanted.has(key.slice(0, separator)) && Number.isInteger(chapterRemoteId) && chapterRemoteId > 0 && !knownChapterIds.has(chapterRemoteId)) {
+            orphans.add(chapterRemoteId);
+        }
+    });
+    return [...orphans];
+}
+
+export function movedReadKeys(keys: readonly string[], fromTitle: string, toTitle: string, moves: readonly MangaChapterMove[]): string[] {
+    const renames = chapterRenames(fromTitle, toTitle, moves);
+    const moved = new Set<string>();
+    keys.forEach((key) => {
+        moved.add(renames.get(key) ?? key);
+    });
+    return [...moved];
+}
+
+export function copiedReadKeys(keys: readonly string[], fromTitle: string, toTitle: string, moves: readonly MangaChapterMove[]): string[] {
+    const renames = chapterRenames(fromTitle, toTitle, moves);
+    const copied = new Set(keys);
+    keys.forEach((key) => {
+        const target = renames.get(key);
+        if (target !== undefined) {
+            copied.add(target);
+        }
+    });
+    return [...copied];
+}
+
+export function copyChapterProgress(fromTitle: string, toTitle: string, moves: readonly MangaChapterMove[]): void {
+    try {
+        const all = readProgress();
+        let changed = false;
+        chapterRenames(fromTitle, toTitle, moves).forEach((target, source) => {
+            const page = all[source];
+            if (page !== undefined && !(target in all)) {
+                all[target] = page;
+                changed = true;
+            }
+        });
+        if (changed) {
+            window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(all));
+        }
+    } catch {
+        // Not kept.
+    }
+}
+
+function movedProgress(all: Record<string, number>, renames: ReadonlyMap<string, string>): Record<string, number> {
+    const moved: Record<string, number> = {};
+    Object.entries(all).forEach(([key, page]) => {
+        const target = renames.get(key);
+        if (target === undefined) {
+            moved[key] = page;
+        } else if (!(target in all)) {
+            moved[target] = page;
+        }
+    });
+    return moved;
+}
+
+function movedTitleEntry<T>(all: Record<string, T>, fromTitle: string, toTitle: string, carried: (value: T) => T | null): Record<string, T> | null {
+    const current = all[fromTitle];
+    const value = current === undefined ? null : carried(current);
+    if (value === null) {
+        return null;
+    }
+    const moved = { ...all };
+    delete moved[fromTitle];
+    if (!(toTitle in moved)) {
+        moved[toTitle] = value;
+    }
+    return moved;
+}
+
+function writeIfMoved(storageKey: string, moved: Record<string, unknown> | null): void {
+    if (moved !== null) {
+        window.localStorage.setItem(storageKey, JSON.stringify(moved));
+    }
+}
+
+export function moveMangaReading(fromTitle: string, toTitle: string, moves: readonly MangaChapterMove[]): void {
+    const destinations = new Map(
+        moves.map((move) => {
+            return [move.from, move.to];
+        })
+    );
+    try {
+        window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(movedProgress(readProgress(), chapterRenames(fromTitle, toTitle, moves))));
+        writeIfMoved(
+            LAST_CHAPTER_KEY,
+            movedTitleEntry(readLastChapters(), fromTitle, toTitle, (chapterRemoteId) => {
+                return destinations.get(chapterRemoteId) ?? null;
+            })
+        );
+        writeIfMoved(
+            LAST_PAGE_KEY,
+            movedTitleEntry(readLastPositions(), fromTitle, toTitle, (position) => {
+                const chapterRemoteId = destinations.get(position.chapterRemoteId);
+                return chapterRemoteId === undefined ? null : { chapterRemoteId, page: position.page };
+            })
+        );
+        if (fromTitle !== toTitle) {
+            writeIfMoved(
+                PREFS_BY_MANGA_KEY,
+                movedTitleEntry(readPrefsByManga(), fromTitle, toTitle, (prefs) => {
+                    return prefs;
+                })
+            );
+        }
+    } catch {
+        // Not kept.
+    }
+}

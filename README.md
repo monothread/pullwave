@@ -241,7 +241,7 @@ Read and keep manga from the sites that the extensions of [Mihon/Tachiyomi](http
   ![The page of a manga](docs/screenshots/manga-page.png)
   ![The reader](docs/screenshots/manga-reader.png)
   ![The reader with two pages side by side](docs/screenshots/manga-two-pages.png)
-- **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: the sources are the ones in the language of the settings (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number.
+- **MIGRATE TO ANOTHER SOURCE** (in the ⚙ of the page of a manga, or LINK SOURCE) opens a window: the sources are the ones in the language of the settings (the ones that read several languages are always there), pick one source or all of them, search the title, choose the manga and see what happens to the chapters before it is done. What you downloaded stays; the chapters are matched by number. The manga takes the title of the new source, its folder is renamed to that title, and the chapters read stay read.
 - **The folder:** as with the anime, once there are mangas in the library the folder is fixed and only **MIGRATE FOLDER** changes it (it moves the files, checks them and then removes the old ones).
 - **Disk space:** the manga settings end with the same ring, for the manga folder, with the anime folder shown next to it.
 

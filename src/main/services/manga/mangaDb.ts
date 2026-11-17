@@ -13,6 +13,7 @@ import {
     type ArrivalOrigin,
     type LibraryManga,
     type MangaChapter,
+    type MangaChapterMove,
     type MangaChapterRecord,
     type MangaChapterStatus,
     type MangaDetails,
@@ -470,6 +471,22 @@ export class MangaDb {
         this.run('UPDATE chapter SET output_path = ? WHERE id = ?', outputPath, chapterId);
     }
 
+    relinkFolder(links: { chapters: ReadonlyArray<{ chapterId: number; filePath: string; sizeBytes: number | null }>; outputs: ReadonlyArray<{ chapterId: number; outputPath: string }> }): void {
+        this.db.exec('BEGIN');
+        try {
+            links.chapters.forEach((update) => {
+                this.run('UPDATE chapter SET file_path = ?, size_bytes = ? WHERE id = ?', update.filePath, update.sizeBytes, update.chapterId);
+            });
+            links.outputs.forEach((update) => {
+                this.run('UPDATE chapter SET output_path = ? WHERE id = ?', update.outputPath, update.chapterId);
+            });
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+    }
+
     isOutputPathClaimed(outputPath: string, exceptChapterId: number): boolean {
         return this.one('SELECT 1 AS claimed FROM chapter WHERE output_path = ? AND id != ? LIMIT 1', outputPath, exceptChapterId) !== null;
     }
@@ -495,7 +512,10 @@ export class MangaDb {
         }
     }
 
-    moveToSource(mangaId: number, target: { manga: MangaSummary; details: MangaDetails | null; chapters: readonly MangaChapter[] }): { ok: true; matched: number; added: number; dropped: number } | { ok: false; reason: 'not-found' | 'same' | 'exists' } {
+    moveToSource(
+        mangaId: number,
+        target: { manga: MangaSummary; details: MangaDetails | null; chapters: readonly MangaChapter[] }
+    ): { ok: true; previousTitle: string; chapterMoves: MangaChapterMove[]; matched: number; added: number; dropped: number } | { ok: false; reason: 'not-found' | 'same' | 'exists' } {
         const current = this.getManga(mangaId);
         if (current === null) {
             return { ok: false, reason: 'not-found' };
@@ -536,7 +556,27 @@ export class MangaDb {
             throw error;
         }
         this.registerChapters(mangaId, matching.added, 'move');
-        return { ok: true, matched: matching.matched.length, added: matching.added.length, dropped: dropped.length };
+        const chapterMoves = matching.matched.map(({ record, incoming }) => {
+            return { from: record.remoteId, to: incoming.remoteId };
+        });
+        return { ok: true, previousTitle: current.title, chapterMoves, matched: matching.matched.length, added: matching.added.length, dropped: dropped.length };
+    }
+
+    renameManga(mangaId: number, title: string): boolean {
+        const manga = this.getManga(mangaId);
+        if (manga === null) {
+            return false;
+        }
+        this.db.exec('BEGIN');
+        try {
+            this.run('UPDATE manga SET title = ? WHERE id = ?', title, mangaId);
+            this.run('UPDATE reading_history SET title = ? WHERE source_id = ? AND manga_remote_id = ?', title, manga.sourceId, manga.remoteId);
+            this.db.exec('COMMIT');
+        } catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+        return true;
     }
 
     seasonTaken(series: string, season: number, exceptMangaId: number): boolean {
@@ -739,6 +779,7 @@ export class MangaDb {
     }
 
     recordReading(record: ReadingRecord): void {
+        const title = this.findManga(record.sourceId, record.mangaRemoteId)?.title ?? record.title;
         this.run(
             `INSERT INTO reading_history (source_id, manga_remote_id, title, thumbnail_url, chapter_remote_id, chapter_name, chapter_number, page, page_count, read_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -748,7 +789,7 @@ export class MangaDb {
                 page_count = excluded.page_count, read_at = excluded.read_at`,
             record.sourceId,
             record.mangaRemoteId,
-            record.title,
+            title,
             record.thumbnailUrl,
             record.chapterRemoteId,
             record.chapterName,

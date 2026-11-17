@@ -19,6 +19,7 @@ import {
     asPreferenceChange,
     asReadRequest,
     asReadingRecord,
+    asRetitleRequest,
     asSourceId,
     asStoreUrl
 } from '@main/services/manga/mangaRequests';
@@ -373,6 +374,28 @@ describe('asGroupName', () => {
 
     it.each([[''], ['   '], ['x'.repeat(61)], [5], [null], [undefined], [{}]])('refuses %j', (value) => {
         expect(asGroupName(value)).toBeNull();
+    });
+});
+
+describe('asRetitleRequest', () => {
+    it('reads the manga and its new title, without the spaces around it', () => {
+        expect(asRetitleRequest({ mangaId: 3, title: '  New Title ' })).toEqual({ mangaId: 3, title: 'New Title' });
+    });
+
+    it('cuts a title that is too long', () => {
+        expect(asRetitleRequest({ mangaId: 3, title: 'x'.repeat(MAX_TEXT + 10) })).toEqual({ mangaId: 3, title: 'x'.repeat(MAX_TEXT) });
+    });
+
+    it.each([
+        ['nothing', undefined],
+        ['not an object', 'New Title'],
+        ['no manga', { title: 'New Title' }],
+        ['a manga that is not an id', { mangaId: 0, title: 'New Title' }],
+        ['no title', { mangaId: 3 }],
+        ['an empty title', { mangaId: 3, title: '   ' }],
+        ['a title that is not text', { mangaId: 3, title: 7 }]
+    ])('refuses %s', (_case, value) => {
+        expect(asRetitleRequest(value)).toBeNull();
     });
 });
 

@@ -8,6 +8,7 @@ import type {
     MangaListRequest,
     MangaPreferenceChange,
     MangaReadRequest,
+    MangaRetitleRequest,
     MangaSeriesRequest,
     MangaSourceMigrationRequest,
     MangaPreferenceType,
@@ -280,6 +281,15 @@ export function asSourceMigrationRequest(value: unknown): MangaSourceMigrationRe
     const mangaId = asId(value['mangaId']);
     const target = asDownloadRequest(value['target']);
     return mangaId === null || target === null ? null : { mangaId, target };
+}
+
+export function asRetitleRequest(value: unknown): MangaRetitleRequest | null {
+    if (!isRecord(value)) {
+        return null;
+    }
+    const mangaId = asId(value['mangaId']);
+    const title = text(value['title'], MAX_TEXT);
+    return mangaId === null || title === null ? null : { mangaId, title };
 }
 
 export const MAX_PAGES = 5000;

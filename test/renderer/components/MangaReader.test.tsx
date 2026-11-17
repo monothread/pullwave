@@ -1744,6 +1744,16 @@ describe('MangaReader the history of reading', () => {
         expect(mock.api.manga.recordReading).toHaveBeenCalledWith({ ...RECORD, page: 0 });
     });
 
+    it('writes the title the chapters are read under, which the page of the manga takes from the library, not the one of the source', () => {
+        open({ manga: { ...MANGA, title: 'Title of the source' }, mangaTitle: 'One Piece' });
+        render(<MangaReader />);
+        act(() => {
+            vi.advanceTimersByTime(800);
+        });
+        expect(mock.api.manga.recordReading).toHaveBeenCalledTimes(1);
+        expect(mock.api.manga.recordReading).toHaveBeenCalledWith({ ...RECORD, page: 0 });
+    });
+
     it('writes only the page the user stopped on when they turn the pages quickly', () => {
         open({ manga: MANGA });
         render(<MangaReader />);

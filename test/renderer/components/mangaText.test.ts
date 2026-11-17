@@ -4,6 +4,7 @@ import { createTranslator } from '@shared/i18n';
 import {
     ALL_LANGUAGES,
     activeJobCount,
+    chapterMovesByNumber,
     chapterState,
     chapterStatusKey,
     compareNames,
@@ -46,6 +47,7 @@ import {
     jobStatusKey,
     STORE_PLACEHOLDER,
     libraryEntriesByTitle,
+    libraryChapterIds,
     libraryEntry,
     sourceIsMissing,
     sourceLabelsOf,
@@ -58,7 +60,7 @@ import {
     toolErrorKey,
     toolErrorReport
 } from '@renderer/components/mangaText';
-import { makeChapterRecord, makeExtension, makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
+import { makeChapter, makeChapterRecord, makeExtension, makeLibraryManga, makeMangaJob, makeSource } from '../../helpers/mangaFixtures';
 import { makeMangaUpdate, makeReading } from '../../helpers/homeFixtures';
 
 const t = createTranslator('en');
@@ -480,6 +482,47 @@ describe('localDetails', () => {
 
     it('gives a manga with no chapters an empty list', () => {
         expect(localDetails(makeLibraryManga([])).chapters).toEqual([]);
+    });
+});
+
+describe('libraryChapterIds', () => {
+    it('gives the ids of every chapter of every manga of the library', () => {
+        const library = [
+            makeLibraryManga([makeChapterRecord({ id: 1, remoteId: 11 }), makeChapterRecord({ id: 2, remoteId: 12 })]),
+            makeLibraryManga([makeChapterRecord({ id: 3, remoteId: 31 })], { id: 2, remoteId: 8 }),
+            makeLibraryManga([], { id: 3, remoteId: 9 })
+        ];
+        expect(libraryChapterIds(library)).toEqual(new Set([11, 12, 31]));
+    });
+
+    it('is empty for an empty library', () => {
+        expect(libraryChapterIds([])).toEqual(new Set());
+    });
+});
+
+describe('chapterMovesByNumber', () => {
+    const CURRENT = [
+        { remoteId: 701, number: 1 },
+        { remoteId: 702, number: 2 },
+        { remoteId: 703, number: 2 },
+        { remoteId: 704, number: 3.5 },
+        { remoteId: 705, number: null }
+    ];
+
+    it('moves each old chapter to the only current chapter with its number', () => {
+        expect(chapterMovesByNumber([makeChapter({ remoteId: 11, number: 1 }), makeChapter({ remoteId: 14, number: 3.5 })], CURRENT)).toEqual([
+            { from: 11, to: 701 },
+            { from: 14, to: 704 }
+        ]);
+    });
+
+    it('leaves out an old chapter whose number two current chapters have, none has, or that has no number', () => {
+        expect(chapterMovesByNumber([makeChapter({ remoteId: 12, number: 2 }), makeChapter({ remoteId: 19, number: 9 }), makeChapter({ remoteId: 20, number: null })], CURRENT)).toEqual([]);
+    });
+
+    it('gives nothing without old chapters or without current chapters', () => {
+        expect(chapterMovesByNumber([], CURRENT)).toEqual([]);
+        expect(chapterMovesByNumber([makeChapter({ remoteId: 11, number: 1 })], [])).toEqual([]);
     });
 });
 

@@ -45,6 +45,9 @@ class FakeSuwayomi {
     otherSource = false;
     otherSourceFirst = false;
     otherChapters = [1, 2, 3];
+    otherDetailsTitle = 'One Piece';
+    detailsTitle = 'One Piece';
+    keptChapters: Array<{ id: number; name: string; chapterNumber: number; uploadDate: string; scanlator: null; sourceOrder: number }> = [];
     laterChapters: number[] = [];
     mangaStatus = 'ONGOING';
     unlistedChapters = new Set<number>();
@@ -185,12 +188,22 @@ class FakeSuwayomi {
             const mangas = variables['type'] === 'SEARCH' ? all.filter((item) => {return String(item['title']).toLowerCase().includes(text)}) : all;
             return { fetchSourceManga: { hasNextPage: false, mangas } };
         }
+        if (query.includes('chapters(filter')) {
+            const wanted = new Set(variables['ids'] as number[]);
+            return {
+                chapters: {
+                    nodes: this.keptChapters.filter((chapter) => {
+                        return wanted.has(chapter.id);
+                    })
+                }
+            };
+        }
         if (query.includes('fetchMangaAndChapters')) {
             const id = Number(variables['id']);
             if (id === 70) {
                 return {
                     fetchMangaAndChapters: {
-                        manga: { ...this.manga(70, 'One Piece'), realUrl: 'https://other.example/manga/70', author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
+                        manga: { ...this.manga(70, this.otherDetailsTitle), realUrl: 'https://other.example/manga/70', author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: 'ONGOING' },
                         chapters: this.otherChapters.map((number) => {
                             return { id: 700 + number, name: `Ch. ${number}`, chapterNumber: number, uploadDate: '1700000000000', scanlator: null, sourceOrder: number };
                         })
@@ -199,7 +212,7 @@ class FakeSuwayomi {
             }
             return {
                 fetchMangaAndChapters: {
-                    manga: { ...this.manga(id, id === 7 ? 'One Piece' : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: this.mangaStatus },
+                    manga: { ...this.manga(id, id === 7 ? this.detailsTitle : 'Bleach'), realUrl: `https://dex.example/manga/${id}`, author: 'Oda', artist: null, description: 'Pirates', genre: ['Action'], status: this.mangaStatus },
                     chapters: [
                         { id: 101, name: 'Romance Dawn', chapterNumber: 1, uploadDate: '1700000000000', scanlator: 'Group A', sourceOrder: 1 },
                         { id: 102, name: 'The Great Race', chapterNumber: 2, uploadDate: '1700100000000', scanlator: null, sourceOrder: 2 },
@@ -2034,6 +2047,114 @@ test.describe('manga section', () => {
         await waitForDownloaded(session.page);
         await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz', 'Chapter 3.cbz']);
         expect(fake.graphqlRequests('fetchChapterPages').map((item) => {return item.variables?.['chapterId']})).toEqual([101, 102, 703]);
+    });
+
+    test('gives a manga moved to another source the title of the new source, moving its folder and what was read', async () => {
+        fake.otherSource = true;
+        fake.otherDetailsTitle = 'New Title';
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await waitForDownloaded(session.page);
+        await session.page.getByRole('button', { name: 'Mark as read: Romance Dawn' }).click();
+        await expect.poll(() => {return existsSync(join(mangaFolder(), 'One Piece', 'Chapter 2.cbz'))}).toBe(true);
+
+        await openOrganize(session.page);
+        await session.page.getByRole('button', { name: 'MIGRATE TO ANOTHER SOURCE' }).click();
+        await session.page.getByRole('button', { name: 'SEARCH', exact: true }).last().click();
+        await session.page.getByRole('button', { name: 'Pick: One Piece (Other Dex)' }).click();
+        await expect(session.page.getByTestId('manga-migration-preview')).toBeVisible();
+        await session.page.getByRole('button', { name: 'MIGRATE', exact: true }).click();
+        await expect(session.page.locator('.toast').filter({ hasText: 'Migrated: 2 chapter(s) matched, 1 added, 0 removed.' }).first()).toBeVisible();
+
+        await expect(session.page.getByRole('heading', { name: 'New Title', exact: true })).toBeVisible();
+        await expect(session.page.getByTestId('manga-chapter')).toHaveCount(3);
+        await expect(session.page.getByRole('button', { name: 'Mark as not read: Ch. 1' })).toHaveAttribute('aria-pressed', 'true');
+        await expect(session.page.getByRole('button', { name: 'Mark as read: Ch. 2' })).toHaveAttribute('aria-pressed', 'false');
+        await expect(session.page.getByRole('button', { name: 'Mark as read: Ch. 3' })).toHaveAttribute('aria-pressed', 'false');
+        const readKeys = await session.page.evaluate(() => {
+            return JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]') as string[];
+        });
+        expect(readKeys).toEqual(['New Title|701']);
+        expect(readdirSync(mangaFolder())).toEqual(['New Title']);
+        expect(readdirSync(join(mangaFolder(), 'New Title')).sort()).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+
+        await downloadSeason(session.page, 'New Title');
+        await waitForDownloaded(session.page);
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'New Title')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz', 'Chapter 3.cbz']);
+        expect(readdirSync(mangaFolder())).toEqual(['New Title']);
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'Open: New Title' })).toBeVisible();
+        await expect(session.page.getByText('3 of 3 downloaded')).toBeVisible();
+    });
+
+    test('takes the title of the source for a library manga whose chapters were read under it, joining what was read under both titles', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await downloadSeason(session.page);
+        await waitForDownloaded(session.page);
+        await expect.poll(() => {return readdirSync(join(mangaFolder(), 'One Piece')).sort()}).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+        await session.page.evaluate(() => {
+            window.localStorage.setItem('pullwave.manga.read', JSON.stringify(['One Piece|101', 'New Title|101', 'New Title|102']));
+        });
+        await session.app.close();
+
+        fake.detailsTitle = 'New Title';
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+
+        await expect(session.page.getByRole('heading', { name: 'New Title', exact: true })).toBeVisible();
+        await expect(session.page.getByRole('button', { name: 'Mark as not read: Romance Dawn' })).toHaveAttribute('aria-pressed', 'true');
+        await expect(session.page.getByRole('button', { name: 'Mark as not read: The Great Race' })).toHaveAttribute('aria-pressed', 'true');
+        await expect
+            .poll(() => {
+                return session.page.evaluate(() => {
+                    return JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]') as string[];
+                });
+            })
+            .toEqual(['New Title|101', 'New Title|102']);
+        await expect.poll(() => {return readdirSync(mangaFolder())}).toEqual(['New Title']);
+        expect(readdirSync(join(mangaFolder(), 'New Title')).sort()).toEqual(['Chapter 1.cbz', 'Chapter 2.cbz']);
+        await session.page.getByRole('button', { name: '← BACK' }).click();
+        await expect(session.page.getByTestId('manga-entry').getByRole('heading', { name: 'Open: New Title' })).toBeVisible();
+        await expect(session.page.getByText('2 of 2 downloaded')).toBeVisible();
+    });
+
+    test('marks again as read the chapters read before the manga got new chapter ids, matching them by number and keeping the old marks', async () => {
+        session = await launch();
+        await openManga(session.page);
+        await installExtension(session.page);
+        await openOnePieceInLibrary(session.page);
+        await session.page.evaluate(() => {
+            window.localStorage.setItem('pullwave.manga.read', JSON.stringify(['One Piece|9002', 'One Piece|9005']));
+        });
+        await session.app.close();
+
+        fake.keptChapters = [
+            { id: 9002, name: 'Old 2', chapterNumber: 2, uploadDate: '1700000000000', scanlator: null, sourceOrder: 2 },
+            { id: 9005, name: 'Old 5', chapterNumber: 5, uploadDate: '1700000000000', scanlator: null, sourceOrder: 5 }
+        ];
+        session = await launch();
+        await openManga(session.page);
+        await goTo(session.page, 'LIBRARY');
+        await session.page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
+
+        await expect(session.page.getByRole('button', { name: 'Mark as not read: The Great Race' })).toHaveAttribute('aria-pressed', 'true');
+        await expect(session.page.getByRole('button', { name: 'Mark as read: Romance Dawn' })).toHaveAttribute('aria-pressed', 'false');
+        await expect
+            .poll(() => {
+                return session.page.evaluate(() => {
+                    return JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]') as string[];
+                });
+            })
+            .toEqual(['One Piece|9002', 'One Piece|9005', 'One Piece|102']);
+        expect(fake.graphqlRequests('chapters(filter').map((item) => {return item.variables?.['ids']})).toEqual([[9002, 9005]]);
     });
 
     test('says a manga is in the library from another source, and asks before adding it again', async () => {

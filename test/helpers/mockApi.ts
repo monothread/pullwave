@@ -337,6 +337,12 @@ export function createMockApi(): MockApiHandle {
         migrateSource: vi.fn(async () => {
             return { ok: false, reason: 'invalid' };
         }),
+        retitle: vi.fn(async () => {
+            return { ok: false, reason: 'invalid' };
+        }),
+        chaptersByIds: vi.fn(async () => {
+            return { ok: true, value: [] };
+        }),
         migrateFolder: vi.fn(async () => {
             return { ok: false, reason: 'cancelled' };
         }),

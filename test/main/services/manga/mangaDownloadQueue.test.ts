@@ -230,6 +230,49 @@ describe('MangaDownloadQueue enqueue', () => {
     });
 });
 
+describe('MangaDownloadQueue while folders are moved', () => {
+    it('queues what is asked but starts nothing until the folders are moved, and then starts it in the folder of the title the manga has then', () => {
+        const { db, mangaId } = libraryWith([chapter(1), chapter(2)]);
+        const { queue, downloads } = setup({}, { db });
+        queue.setFoldersMoving(true);
+        queue.downloadChapters(mangaId, [1, 2]);
+        expect(downloads).toEqual([]);
+        expect(queue.pendingCount()).toBe(2);
+        expect(
+            queue.list().map((job) => {
+                return [job.chapterName, job.status];
+            })
+        ).toEqual([
+            ['Chapter 1', 'queued'],
+            ['Chapter 2', 'queued']
+        ]);
+        db.renameManga(mangaId, 'New Title');
+        queue.setFoldersMoving(false);
+        expect(
+            downloads.map((item) => {
+                return item.options.outputPath;
+            })
+        ).toEqual([`${DOWNLOADS}/Pullwave Manga/New Title/Chapter 1.cbz`]);
+    });
+
+    it('starts nothing more while folders are moved, even when a download ends, and goes on after', async () => {
+        const { db, mangaId } = libraryWith([chapter(1), chapter(2)]);
+        const { queue, downloads } = setup({}, { db });
+        queue.downloadChapters(mangaId, [1, 2]);
+        expect(downloads).toHaveLength(1);
+        queue.setFoldersMoving(true);
+        downloads[0]!.finish(DONE(`${ONE_PIECE}/Chapter 1.cbz`));
+        await flush();
+        expect(downloads).toHaveLength(1);
+        queue.setFoldersMoving(false);
+        expect(
+            downloads.map((item) => {
+                return item.options.chapterRemoteId;
+            })
+        ).toEqual([1, 2]);
+    });
+});
+
 describe('MangaDownloadQueue concurrency', () => {
     it('downloads one chapter at a time for a source and a few sources together', () => {
         const { queue, downloads } = setup({}, { limits: { sources: 2, perSource: 1 } });

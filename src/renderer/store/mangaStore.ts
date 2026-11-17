@@ -8,6 +8,8 @@ import type {
     ExtensionAction,
     LibraryManga,
     MangaChapter,
+    MangaChapterMove,
+    MangaDetailsWithChapters,
     MangaCheckState,
     MangaCloudflareActivity,
     MangaDetails,
@@ -40,11 +42,11 @@ import type {
     MangaSummary
 } from '@shared/manga';
 import { resolveAppLanguage, systemLocale } from '../i18n/language';
-import { adjacentSeason, ALL_LANGUAGES, chapterState, downloadablePicks, libraryEntry, listedSources, localDetails, readerChapters, resolveMangaLanguage, type ExtensionFilter } from '../components/mangaText';
+import { adjacentSeason, ALL_LANGUAGES, chapterMovesByNumber, chapterState, downloadablePicks, libraryChapterIds, libraryEntry, listedSources, localDetails, readerChapters, resolveMangaLanguage, withLibraryChapters, type ExtensionFilter } from '../components/mangaText';
 import { activateFilter, type TermKind } from '../components/mangaFilterSearch';
 import { RESULTS_PER_SOURCE, runLimited, SEARCH_CONCURRENCY, searchableSources, sourceLanguages } from '../components/mangaSearchSources';
 import { loadMangaUiPrefs, saveMangaUiPrefs } from '../components/mangaUiPrefs';
-import { loadReadKeys, saveReadKeys } from '../components/readerPrefs';
+import { copiedReadKeys, copyChapterProgress, hasReadUnderTitle, loadReadKeys, moveMangaReading, movedReadKeys, orphanReadIds, saveReadKeys } from '../components/readerPrefs';
 import { useAppStore } from './appStore';
 import { libraryEntryRefresh, withEntry } from './libraryEntryRefresh';
 import { mangaListKey, useSortPrefsStore } from './sortPrefsStore';
@@ -199,6 +201,8 @@ interface MangaState {
     cloudflare: MangaCloudflareActivity[];
     migration: MangaMigrationProgress | null;
     readKeys: string[];
+    failedRetitles: number[];
+    triedRecoveries: number[];
     toolVersions: MangaToolVersions | null;
     toolsChecking: boolean;
     updateResults: { helper: MangaToolUpdateResult | null };
@@ -225,6 +229,7 @@ interface MangaState {
     checkHealth: (start: boolean) => Promise<void>;
     restartPrograms: () => Promise<void>;
     markRead: (keys: readonly string[], read: boolean) => void;
+    moveReading: (fromTitle: string, toTitle: string, moves: readonly MangaChapterMove[]) => void;
     init: () => Promise<() => void>;
     refreshStatus: () => Promise<void>;
     retryInstall: () => Promise<void>;
@@ -348,10 +353,13 @@ export function upsertMangaJob(jobs: readonly MangaJob[], job: MangaJob): MangaJ
     });
 }
 
-function summaryOf(selection: MangaSelection): MangaSummary {
-    return selection.details === null
-        ? selection.manga
-        : { remoteId: selection.details.remoteId, sourceId: selection.details.sourceId, title: selection.details.title, thumbnailUrl: selection.details.thumbnailUrl };
+function summaryOf(selection: MangaSelection, library: readonly LibraryManga[]): MangaSummary {
+    const summary =
+        selection.details === null
+            ? selection.manga
+            : { remoteId: selection.details.remoteId, sourceId: selection.details.sourceId, title: selection.details.title, thumbnailUrl: selection.details.thumbnailUrl };
+    const saved = libraryEntry(library, summary.sourceId, summary.remoteId);
+    return saved === null ? summary : { ...summary, title: saved.title };
 }
 
 export const useMangaStore = create<MangaState>((set, get) => {
@@ -393,6 +401,92 @@ export const useMangaStore = create<MangaState>((set, get) => {
         });
     }
 
+    function followRenamedReader(fromTitle: string, toTitle: string): void {
+        const { reader } = get();
+        if (reader.status !== 'closed' && reader.mangaTitle === fromTitle) {
+            set({ reader: { ...reader, mangaTitle: toTitle } });
+        }
+    }
+
+    async function adoptTitleReadUnder(saved: LibraryManga, sourceTitle: string): Promise<string> {
+        if (saved.title === sourceTitle || get().failedRetitles.includes(saved.id)) {
+            return saved.title;
+        }
+        const chapterRemoteIds = saved.chapters.map((chapter) => {
+            return chapter.remoteId;
+        });
+        if (!hasReadUnderTitle(get().readKeys, sourceTitle, chapterRemoteIds)) {
+            return saved.title;
+        }
+        const response = await window.api.manga.retitle({ mangaId: saved.id, title: sourceTitle });
+        if (!response.ok) {
+            if (response.reason !== 'busy') {
+                set({ failedRetitles: [...get().failedRetitles, saved.id] });
+            }
+            return saved.title;
+        }
+        followRenamedReader(saved.title, response.manga.title);
+        get().moveReading(
+            saved.title,
+            response.manga.title,
+            chapterRemoteIds.map((chapterRemoteId) => {
+                return { from: chapterRemoteId, to: chapterRemoteId };
+            })
+        );
+        await get().refreshLibrary();
+        return response.manga.title;
+    }
+
+    function copyReading(fromTitle: string, toTitle: string, moves: readonly MangaChapterMove[]): void {
+        copyChapterProgress(fromTitle, toTitle, moves);
+        set((state) => {
+            const readKeys = copiedReadKeys(state.readKeys, fromTitle, toTitle, moves);
+            saveReadKeys(readKeys);
+            return { readKeys };
+        });
+    }
+
+    async function recoverOrphanReads(saved: LibraryManga, title: string, sourceChapters: readonly MangaChapter[]): Promise<void> {
+        if (get().triedRecoveries.includes(saved.id)) {
+            return;
+        }
+        const titles = saved.title === title ? [title] : [saved.title, title];
+        const current = withLibraryChapters(sourceChapters, saved);
+        const known = libraryChapterIds(get().library);
+        current.forEach((chapter) => {
+            known.add(chapter.remoteId);
+        });
+        const orphans = orphanReadIds(get().readKeys, titles, known);
+        if (orphans.length === 0) {
+            return;
+        }
+        set({ triedRecoveries: [...get().triedRecoveries, saved.id] });
+        const result = await window.api.manga.chaptersByIds(orphans);
+        if (!result.ok) {
+            set({
+                triedRecoveries: get().triedRecoveries.filter((mangaId) => {
+                    return mangaId !== saved.id;
+                })
+            });
+            return;
+        }
+        const moves = chapterMovesByNumber(result.value, current);
+        if (moves.length > 0) {
+            titles.forEach((fromTitle) => {
+                copyReading(fromTitle, title, moves);
+            });
+        }
+    }
+
+    async function repairReading(manga: MangaSummary, source: MangaDetailsWithChapters): Promise<void> {
+        const saved = libraryEntry(get().library, manga.sourceId, manga.remoteId);
+        if (saved === null) {
+            return;
+        }
+        const title = await adoptTitleReadUnder(saved, source.details.title);
+        await recoverOrphanReads(saved, title, source.chapters);
+    }
+
     function chaptersToSend(selection: MangaSelection): MangaChapter[] {
         const picked = new Set(downloadablePicks(libraryEntry(get().library, selection.manga.sourceId, selection.manga.remoteId), selection.selected));
         return selection.chapters.filter((chapter) => {
@@ -421,6 +515,8 @@ export const useMangaStore = create<MangaState>((set, get) => {
         selectionFrom: 'browse',
         migration: null,
         readKeys: loadReadKeys(),
+        failedRetitles: [],
+        triedRecoveries: [],
         toolVersions: null,
         toolsChecking: false,
         updateResults: { helper: null },
@@ -662,6 +758,15 @@ export const useMangaStore = create<MangaState>((set, get) => {
                     return !wanted.has(key);
                 });
                 const readKeys = read ? [...others, ...wanted] : others;
+                saveReadKeys(readKeys);
+                return { readKeys };
+            });
+        },
+
+        moveReading: (fromTitle, toTitle, moves) => {
+            moveMangaReading(fromTitle, toTitle, moves);
+            set((state) => {
+                const readKeys = movedReadKeys(state.readKeys, fromTitle, toTitle, moves);
                 saveReadKeys(readKeys);
                 return { readKeys };
             });
@@ -992,6 +1097,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
                 return;
             }
             set({ selection: { ...current, status: 'ready', details: result.value.details, chapters: result.value.chapters }, selectionRefresh: { loading: false, error: null } });
+            await repairReading(manga, result.value);
         },
 
         openReader: async (mangaTitle, chapters, index, resume = false, entry, readManga) => {
@@ -1091,7 +1197,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             if (chapters.length === 0) {
                 return;
             }
-            const library = await window.api.manga.download({ manga: summaryOf(selection), details: selection.details, chapters });
+            const library = await window.api.manga.download({ manga: summaryOf(selection, get().library), details: selection.details, chapters });
             if (library !== null) {
                 toast('manga.notice.queued', { count: chapters.length });
             }
@@ -1113,7 +1219,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             if (chapter === undefined || downloadablePicks(entry, [remoteId]).length === 0) {
                 return;
             }
-            const library = await window.api.manga.download({ manga: summaryOf(selection), details: selection.details, chapters: [chapter] });
+            const library = await window.api.manga.download({ manga: summaryOf(selection, get().library), details: selection.details, chapters: [chapter] });
             if (library !== null) {
                 toast('manga.notice.queued', { count: 1 });
             }
@@ -1125,7 +1231,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             if (selection === null || selection.status !== 'ready' || selection.chapters.length === 0) {
                 return false;
             }
-            const library = await window.api.manga.addToLibrary({ manga: summaryOf(selection), details: selection.details, chapters: selection.chapters });
+            const library = await window.api.manga.addToLibrary({ manga: summaryOf(selection, get().library), details: selection.details, chapters: selection.chapters });
             await get().refreshLibrary();
             if (library !== null) {
                 toast('manga.notice.added', { title: library.title });
@@ -1138,7 +1244,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             if (selection === null) {
                 return;
             }
-            const manga = summaryOf(selection);
+            const manga = summaryOf(selection, get().library);
             await asOnePage(() => {
                 set({ view: 'library', selection: null });
                 return get().openManga(manga);
@@ -1150,7 +1256,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
             if (selection === null) {
                 return;
             }
-            const manga = summaryOf(selection);
+            const manga = summaryOf(selection, get().library);
             await asOnePage(() => {
                 set({ view: 'browse' });
                 get().openSource(manga.sourceId, 'popular');
@@ -1258,6 +1364,7 @@ export const useMangaStore = create<MangaState>((set, get) => {
         migrateSource: async (request) => {
             const response = await window.api.manga.migrateSource(request);
             if (response.ok) {
+                get().moveReading(response.previousTitle, response.manga.title, response.chapterMoves);
                 await get().refreshLibrary();
                 const manga = response.manga;
                 set({ selection: null });

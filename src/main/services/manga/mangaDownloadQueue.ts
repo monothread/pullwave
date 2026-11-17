@@ -65,6 +65,7 @@ export class MangaDownloadQueue {
     private held = false;
     private readonly startsWhileHeld = new Set<number>();
     private closed = false;
+    private foldersMoving = false;
 
     constructor(private readonly deps: MangaQueueDependencies) {}
 
@@ -74,6 +75,13 @@ export class MangaDownloadQueue {
 
     pendingCount(): number {
         return this.list().filter(isActive).length;
+    }
+
+    setFoldersMoving(moving: boolean): void {
+        this.foldersMoving = moving;
+        if (!moving) {
+            this.pump();
+        }
     }
 
     isHeld(): boolean {
@@ -446,7 +454,7 @@ export class MangaDownloadQueue {
     }
 
     private pump(): void {
-        if (this.closed) {
+        if (this.closed || this.foldersMoving) {
             return;
         }
         const runs = this.runsBySource();

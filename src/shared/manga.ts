@@ -237,9 +237,23 @@ export interface MangaSourceMigrationRequest {
 
 export type MangaSourceMigrationFailure = 'invalid' | 'not-found' | 'same' | 'exists' | 'busy';
 
+export interface MangaChapterMove {
+    from: number;
+    to: number;
+}
+
 export type MangaSourceMigrationResponse =
-    | { ok: true; manga: LibraryManga; matched: number; added: number; dropped: number }
+    | { ok: true; manga: LibraryManga; previousTitle: string; chapterMoves: MangaChapterMove[]; matched: number; added: number; dropped: number }
     | { ok: false; reason: MangaSourceMigrationFailure };
+
+export interface MangaRetitleRequest {
+    mangaId: number;
+    title: string;
+}
+
+export type MangaRetitleFailure = 'invalid' | 'not-found' | 'busy' | 'conflict' | 'failed';
+
+export type MangaRetitleResponse = { ok: true; manga: LibraryManga } | { ok: false; reason: MangaRetitleFailure };
 
 export interface MangaJob {
     chapterId: number;
@@ -423,6 +437,7 @@ export interface MangaApi {
     setSourcePreference: (change: MangaPreferenceChange) => Promise<MangaResult<MangaSourcePreference[]>>;
     list: (request: MangaListRequest) => Promise<MangaResult<MangaListing>>;
     details: (remoteId: number) => Promise<MangaResult<MangaDetailsWithChapters>>;
+    chaptersByIds: (chapterRemoteIds: number[]) => Promise<MangaResult<MangaChapter[]>>;
     addToLibrary: (request: MangaDownloadRequest) => Promise<LibraryManga | null>;
     download: (request: MangaDownloadRequest) => Promise<LibraryManga | null>;
     downloadMissing: (mangaIds: number[]) => Promise<void>;
@@ -463,6 +478,7 @@ export interface MangaApi {
     moveGroup: (groupId: number, direction: MangaGroupDirection) => Promise<void>;
     setGroupMembers: (groupId: number, mangaIds: number[], member: boolean) => Promise<void>;
     migrateSource: (request: MangaSourceMigrationRequest) => Promise<MangaSourceMigrationResponse>;
+    retitle: (request: MangaRetitleRequest) => Promise<MangaRetitleResponse>;
     checkToolUpdates: () => Promise<MangaToolVersions>;
     updateHelper: () => Promise<MangaToolUpdateResult>;
     health: (start: boolean) => Promise<MangaHealth>;

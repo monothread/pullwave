@@ -6,6 +6,7 @@ import { useAppStore } from '@renderer/store/appStore';
 import { DEFAULT_SORT_PREFS, SORT_PREFS_STORAGE_KEY, useSortPrefsStore } from '@renderer/store/sortPrefsStore';
 import { DONE_JOB_LINGER_MS, UPDATE_ALL_KEY, upsertMangaJob, useMangaStore } from '@renderer/store/mangaStore';
 import type { MangaSourcePreference } from '@shared/manga';
+import { progressKey, saveLastChapter, saveProgress } from '@renderer/components/readerPrefs';
 import { makeChapter, makeChapterRecord, makeDetails, makeExtension, makeLibraryManga, makeMangaJob, makeMangaStatus, makeSource, makeSummary, makeTool } from '../../helpers/mangaFixtures';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -711,6 +712,24 @@ describe('mangaStore opening a manga', () => {
                 expect(mock.api.manga.download).toHaveBeenCalledWith({ manga: makeSummary(), details: makeDetails(), chapters: [chapters[1]] });
                 expect(toasts()).toEqual(['1 chapter(s) queued.']);
                 expect(mock.api.manga.library).toHaveBeenCalled();
+            });
+
+            it('sends a manga of the library under the title of the library, so the title the source gives does not replace it', async () => {
+                const saved = makeLibraryManga([], { title: 'Library Title' });
+                useMangaStore.setState({ library: [saved] });
+                mock.api.manga.library.mockResolvedValue([saved]);
+                mock.api.manga.download.mockResolvedValue(makeLibraryManga([]));
+                mock.api.manga.addToLibrary.mockResolvedValue(makeLibraryManga([]));
+                await state().downloadChapter(12);
+                state().toggleChapter(13);
+                await state().downloadSelected();
+                await state().addToLibrary();
+                const sent = makeSummary({ title: 'Library Title' });
+                expect(mock.api.manga.download.mock.calls).toEqual([
+                    [{ manga: sent, details: makeDetails(), chapters: [chapters[1]] }],
+                    [{ manga: sent, details: makeDetails(), chapters: [chapters[2]] }]
+                ]);
+                expect(mock.api.manga.addToLibrary).toHaveBeenCalledWith({ manga: sent, details: makeDetails(), chapters });
             });
 
             it('does not touch the chapters that were picked', async () => {
@@ -1732,7 +1751,7 @@ describe('mangaStore series, groups and the move to another source', () => {
 
         it('reads the library, opens the manga of the new source and says what happened', async () => {
             const moved = makeLibraryManga([], { id: 3, sourceId: '999', remoteId: 70 });
-            mock.api.manga.migrateSource.mockResolvedValue({ ok: true, manga: moved, matched: 4, added: 2, dropped: 1 });
+            mock.api.manga.migrateSource.mockResolvedValue({ ok: true, manga: moved, previousTitle: 'One Piece', chapterMoves: [], matched: 4, added: 2, dropped: 1 });
             mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails({ remoteId: 70, sourceId: '999' }), chapters: [makeChapter()] } });
             useMangaStore.setState({ selection: { manga: makeSummary(), status: 'ready', details: null, chapters: [], selected: [], error: null } });
             await expect(state().migrateSource(REQUEST)).resolves.toMatchObject({ ok: true, matched: 4, added: 2, dropped: 1 });
@@ -1741,6 +1760,32 @@ describe('mangaStore series, groups and the move to another source', () => {
             expect(mock.api.manga.details).toHaveBeenCalledWith(70);
             expect(state().selection).toMatchObject({ manga: { remoteId: 70, sourceId: '999' }, status: 'ready' });
             expect(toasts()).toEqual(['Migrated: 4 chapter(s) matched, 2 added, 1 removed.']);
+        });
+
+        it('carries what was read to the title and the chapters of the new source', async () => {
+            const moved = makeLibraryManga([], { id: 3, sourceId: '999', remoteId: 70, title: 'New Title' });
+            mock.api.manga.migrateSource.mockResolvedValue({
+                ok: true,
+                manga: moved,
+                previousTitle: 'Old Title',
+                chapterMoves: [
+                    { from: 1, to: 101 },
+                    { from: 2, to: 102 }
+                ],
+                matched: 2,
+                added: 0,
+                dropped: 0
+            });
+            mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails({ remoteId: 70, sourceId: '999', title: 'New Title' }), chapters: [makeChapter()] } });
+            useMangaStore.setState({ readKeys: [progressKey('Old Title', 1), progressKey('Old Title', 2), progressKey('Other', 1)] });
+            saveLastChapter('Old Title', 2);
+            saveProgress(progressKey('Old Title', 1), 6);
+            await state().migrateSource(REQUEST);
+            expect(state().readKeys).toEqual([progressKey('New Title', 101), progressKey('New Title', 102), progressKey('Other', 1)]);
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]')).toEqual(state().readKeys);
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.last') ?? '{}')).toEqual({ 'New Title': 102 });
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.progress') ?? '{}')).toEqual({ [progressKey('New Title', 101)]: 6 });
+            expect(mock.api.manga.retitle).not.toHaveBeenCalled();
         });
 
         it('changes nothing on the screen when it did not happen', async () => {
@@ -1757,6 +1802,15 @@ describe('mangaStore series, groups and the move to another source', () => {
 describe('mangaStore chapters read', () => {
     beforeEach(() => {
         useMangaStore.setState({ readKeys: [] });
+    });
+
+    it('moves what was read from one title and chapter ids to others, and keeps it', () => {
+        useMangaStore.setState({ readKeys: [progressKey('Old', 1), progressKey('Old', 3), progressKey('New', 101)] });
+        saveLastChapter('Old', 1);
+        state().moveReading('Old', 'New', [{ from: 1, to: 101 }]);
+        expect(state().readKeys).toEqual([progressKey('New', 101), progressKey('Old', 3)]);
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]')).toEqual([progressKey('New', 101), progressKey('Old', 3)]);
+        expect(JSON.parse(window.localStorage.getItem('pullwave.manga.last') ?? '{}')).toEqual({ New: 101 });
     });
 
     it('marks chapters as read, once each, and keeps them', () => {
@@ -1974,6 +2028,215 @@ describe('mangaStore opening a manga of the library', () => {
         expect(state().selection).toMatchObject({ status: 'ready', error: null, chapters: [expect.objectContaining({ remoteId: 11 }), expect.objectContaining({ remoteId: 12 })] });
         expect(state().selection?.details?.description).toBe('Saved description');
         expect(state().selectionRefresh).toEqual({ loading: false, error: FAILURE });
+    });
+
+    describe('when the source names it differently from the library', () => {
+        const renamed = { ...saved, title: 'New Title' };
+        const SOURCE_DETAILS = makeDetails({ title: 'New Title' });
+
+        beforeEach(() => {
+            mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: SOURCE_DETAILS, chapters: fresh } });
+        });
+
+        it('takes the title of the source when chapters of the manga were read under it, and joins what was read under both titles', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 11), progressKey('New Title', 11), progressKey('New Title', 12), progressKey('Other', 11)] });
+            saveLastChapter('One Piece', 11);
+            saveLastChapter('New Title', 12);
+            saveProgress(progressKey('One Piece', 12), 3);
+            mock.api.manga.retitle.mockResolvedValue({ ok: true, manga: renamed });
+            mock.api.manga.library.mockResolvedValue([renamed]);
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.retitle).toHaveBeenCalledTimes(1);
+            expect(mock.api.manga.retitle).toHaveBeenCalledWith({ mangaId: 1, title: 'New Title' });
+            expect(state().readKeys).toEqual([progressKey('New Title', 11), progressKey('New Title', 12), progressKey('Other', 11)]);
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]')).toEqual(state().readKeys);
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.last') ?? '{}')).toEqual({ 'New Title': 12 });
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.progress') ?? '{}')).toEqual({ [progressKey('New Title', 12)]: 3 });
+            expect(mock.api.manga.library).toHaveBeenCalledTimes(1);
+            expect(state().library).toEqual([renamed]);
+        });
+
+        it('does the same when the manga of the library is opened from the browse', async () => {
+            useMangaStore.setState({ view: 'browse', readKeys: [progressKey('New Title', 12)] });
+            mock.api.manga.retitle.mockResolvedValue({ ok: true, manga: renamed });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.retitle).toHaveBeenCalledWith({ mangaId: 1, title: 'New Title' });
+            expect(state().readKeys).toEqual([progressKey('New Title', 12)]);
+        });
+
+        it('keeps the title of the library when nothing of the manga was read under the title of the source', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 11), progressKey('New Title', 99)] });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.retitle).not.toHaveBeenCalled();
+            expect(mock.api.manga.library).not.toHaveBeenCalled();
+            expect(state().readKeys).toEqual([progressKey('One Piece', 11), progressKey('New Title', 99)]);
+        });
+
+        it('changes nothing when the title cannot be changed', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 11), progressKey('New Title', 12)] });
+            mock.api.manga.retitle.mockResolvedValue({ ok: false, reason: 'conflict' });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.retitle).toHaveBeenCalledWith({ mangaId: 1, title: 'New Title' });
+            expect(mock.api.manga.library).not.toHaveBeenCalled();
+            expect(state().readKeys).toEqual([progressKey('One Piece', 11), progressKey('New Title', 12)]);
+            expect(state().library).toEqual([saved]);
+        });
+
+        it('does not try again in the session a title that could not be taken, but does after the app was busy', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('New Title', 12)] });
+            mock.api.manga.retitle.mockResolvedValueOnce({ ok: false, reason: 'busy' }).mockResolvedValueOnce({ ok: false, reason: 'failed' });
+            await state().openManga(makeSummary());
+            expect(state().failedRetitles).toEqual([]);
+            await state().openManga(makeSummary());
+            expect(state().failedRetitles).toEqual([1]);
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.retitle).toHaveBeenCalledTimes(2);
+        });
+
+        it('makes the reader that is open on the manga go on under the new title, so what it keeps is not left under the old one', async () => {
+            const chapters = [{ remoteId: 11, libraryChapterId: 1, name: 'Romance Dawn', number: 1 }];
+            useMangaStore.setState({
+                readKeys: [progressKey('New Title', 12)],
+                reader: { status: 'ready', mangaTitle: 'One Piece', chapters, index: 0, pages: ['p'], local: true, missing: [], error: null, manga: makeSummary() }
+            });
+            mock.api.manga.retitle.mockResolvedValue({ ok: true, manga: renamed });
+            await state().openManga(makeSummary());
+            expect(state().reader).toEqual({ status: 'ready', mangaTitle: 'New Title', chapters, index: 0, pages: ['p'], local: true, missing: [], error: null, manga: makeSummary() });
+        });
+
+        it('leaves alone a reader that is closed or open on another manga', async () => {
+            const chapters = [{ remoteId: 81, libraryChapterId: 9, name: 'Other', number: 1 }];
+            const other = { status: 'ready' as const, mangaTitle: 'Bleach', chapters, index: 0, pages: ['p'], local: true, missing: [], error: null, manga: null };
+            useMangaStore.setState({ readKeys: [progressKey('New Title', 12)], reader: other });
+            mock.api.manga.retitle.mockResolvedValue({ ok: true, manga: renamed });
+            await state().openManga(makeSummary());
+            expect(state().reader).toEqual(other);
+        });
+
+        it('does nothing when the source cannot be reached', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('New Title', 12)] });
+            mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.retitle).not.toHaveBeenCalled();
+        });
+
+        it('does nothing for a manga that is not in the library', async () => {
+            useMangaStore.setState({ library: [], readKeys: [progressKey('New Title', 12)] });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.retitle).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('recovering what was read in chapters the manga no longer has', () => {
+        const OLD_CHAPTERS = [makeChapter({ remoteId: 901, number: 1 }), makeChapter({ remoteId: 902, number: 2 }), makeChapter({ remoteId: 909, number: 9 })];
+
+        beforeEach(() => {
+            mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: fresh } });
+        });
+
+        it('asks the server for the number of the old chapters and copies what was read to the chapters with the same number, leaving the last chapter alone', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 901), progressKey('One Piece', 902), progressKey('One Piece', 909), progressKey('Other', 903)] });
+            saveLastChapter('One Piece', 902);
+            saveProgress(progressKey('One Piece', 901), 4);
+            mock.api.manga.chaptersByIds.mockResolvedValue({ ok: true, value: OLD_CHAPTERS });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).toHaveBeenCalledTimes(1);
+            expect(mock.api.manga.chaptersByIds).toHaveBeenCalledWith([901, 902, 909]);
+            expect(state().readKeys).toEqual([progressKey('One Piece', 901), progressKey('One Piece', 902), progressKey('One Piece', 909), progressKey('Other', 903), progressKey('One Piece', 11), progressKey('One Piece', 12)]);
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.read') ?? '[]')).toEqual(state().readKeys);
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.last') ?? '{}')).toEqual({ 'One Piece': 902 });
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.progress') ?? '{}')).toEqual({ [progressKey('One Piece', 901)]: 4, [progressKey('One Piece', 11)]: 4 });
+            expect(state().triedRecoveries).toEqual([1]);
+        });
+
+        it('copies to the new title what was read under both titles once the title of the source is taken', async () => {
+            const renamed = { ...saved, title: 'New Title' };
+            mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails({ title: 'New Title' }), chapters: fresh } });
+            mock.api.manga.retitle.mockResolvedValue({ ok: true, manga: renamed });
+            mock.api.manga.library.mockResolvedValue([renamed]);
+            mock.api.manga.chaptersByIds.mockResolvedValue({ ok: true, value: OLD_CHAPTERS });
+            useMangaStore.setState({ readKeys: [progressKey('New Title', 12), progressKey('One Piece', 901), progressKey('New Title', 902)] });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).toHaveBeenCalledWith([901, 902]);
+            expect(state().readKeys).toEqual([progressKey('New Title', 12), progressKey('One Piece', 901), progressKey('New Title', 902), progressKey('New Title', 11)]);
+        });
+
+        it('does not count as lost a chapter the source lists now that the library has not taken yet', async () => {
+            const listed = [...fresh, makeChapter({ remoteId: 14, name: 'Second', number: 2, scanlator: 'Group B' })];
+            mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: listed } });
+            mock.api.manga.chaptersByIds.mockResolvedValue({ ok: true, value: [makeChapter({ remoteId: 14, number: 2 })] });
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 14)] });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).not.toHaveBeenCalled();
+            expect(state().readKeys).toEqual([progressKey('One Piece', 14)]);
+        });
+
+        it('leaves out a number that two chapters the source lists now have, even when the library has only one of them', async () => {
+            const listed = [...fresh, makeChapter({ remoteId: 14, name: 'Second', number: 2, scanlator: 'Group B' })];
+            mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: listed } });
+            mock.api.manga.chaptersByIds.mockResolvedValue({ ok: true, value: OLD_CHAPTERS });
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 901), progressKey('One Piece', 902)] });
+            await state().openManga(makeSummary());
+            expect(state().readKeys).toEqual([progressKey('One Piece', 901), progressKey('One Piece', 902), progressKey('One Piece', 11)]);
+        });
+
+        it('keeps the mark of the chapter it was found in, so a manga out of the library with the same title does not lose it', async () => {
+            mock.api.manga.chaptersByIds.mockResolvedValue({ ok: true, value: [makeChapter({ remoteId: 501, number: 1 })] });
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 501)] });
+            saveProgress(progressKey('One Piece', 501), 3);
+            await state().openManga(makeSummary());
+            expect(state().readKeys).toEqual([progressKey('One Piece', 501), progressKey('One Piece', 11)]);
+            expect(JSON.parse(window.localStorage.getItem('pullwave.manga.progress') ?? '{}')).toEqual({ [progressKey('One Piece', 501)]: 3, [progressKey('One Piece', 11)]: 3 });
+        });
+
+        it('does not count as lost a chapter that another manga of the library has, even under the same title', async () => {
+            const twin = makeLibraryManga([makeChapterRecord({ id: 5, remoteId: 501 })], { id: 2, sourceId: '999', remoteId: 70 });
+            useMangaStore.setState({ library: [saved, twin], readKeys: [progressKey('One Piece', 501), progressKey('One Piece', 11)] });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).not.toHaveBeenCalled();
+            expect(state().readKeys).toEqual([progressKey('One Piece', 501), progressKey('One Piece', 11)]);
+        });
+
+        it('does not ask the server when nothing was read in chapters the manga no longer has', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 11)] });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).not.toHaveBeenCalled();
+            expect(state().triedRecoveries).toEqual([]);
+        });
+
+        it('keeps what the server does not know or cannot match, and does not ask again in the session', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 909), progressKey('One Piece', 950)] });
+            mock.api.manga.chaptersByIds.mockResolvedValue({ ok: true, value: [OLD_CHAPTERS[2]!] });
+            await state().openManga(makeSummary());
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).toHaveBeenCalledTimes(1);
+            expect(state().readKeys).toEqual([progressKey('One Piece', 909), progressKey('One Piece', 950)]);
+        });
+
+        it('asks again the next time the page is opened when the server could not answer', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 901)] });
+            mock.api.manga.chaptersByIds.mockResolvedValueOnce({ ok: false, error: FAILURE }).mockResolvedValueOnce({ ok: true, value: OLD_CHAPTERS });
+            await state().openManga(makeSummary());
+            expect(state().readKeys).toEqual([progressKey('One Piece', 901)]);
+            expect(state().triedRecoveries).toEqual([]);
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).toHaveBeenCalledTimes(2);
+            expect(state().readKeys).toEqual([progressKey('One Piece', 901), progressKey('One Piece', 11)]);
+        });
+
+        it('does nothing when the source cannot be reached', async () => {
+            useMangaStore.setState({ readKeys: [progressKey('One Piece', 901)] });
+            mock.api.manga.details.mockResolvedValue({ ok: false, error: FAILURE });
+            await state().openManga(makeSummary());
+            expect(mock.api.manga.chaptersByIds).not.toHaveBeenCalled();
+        });
+    });
+
+    it('does not change the title when the source names the manga as the library does', async () => {
+        useMangaStore.setState({ readKeys: [progressKey('One Piece', 11)] });
+        mock.api.manga.details.mockResolvedValue({ ok: true, value: { details: makeDetails(), chapters: fresh } });
+        await state().openManga(makeSummary());
+        expect(mock.api.manga.retitle).not.toHaveBeenCalled();
     });
 
     it('forgets the failure of the last manga when another is opened, and when the page is closed', async () => {

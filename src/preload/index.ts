@@ -74,6 +74,9 @@ const manga: CyberApi['manga'] = {
     details: (remoteId) => {
         return ipcRenderer.invoke(IPC.mangaDetails, remoteId);
     },
+    chaptersByIds: (chapterRemoteIds) => {
+        return ipcRenderer.invoke(IPC.mangaChaptersByIds, chapterRemoteIds);
+    },
     addToLibrary: (request) => {
         return ipcRenderer.invoke(IPC.mangaAddToLibrary, request);
     },
@@ -193,6 +196,9 @@ const manga: CyberApi['manga'] = {
     },
     migrateSource: (request) => {
         return ipcRenderer.invoke(IPC.mangaMigrateSource, request);
+    },
+    retitle: (request) => {
+        return ipcRenderer.invoke(IPC.mangaRetitle, request);
     },
     checkToolUpdates: () => {
         return ipcRenderer.invoke(IPC.mangaToolsCheck);

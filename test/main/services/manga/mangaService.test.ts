@@ -96,6 +96,10 @@ function setup(overrides: Partial<MangaServiceDependencies> & { ready?: boolean 
             calls.push('details');
             return Promise.resolve({ details: {}, chapters: [] });
         }),
+        chaptersByIds: vi.fn(() => {
+            calls.push('chaptersByIds');
+            return Promise.resolve([{ remoteId: 901, name: 'Ch. 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 }]);
+        }),
         setFlareSolverr: vi.fn(() => {
             calls.push('setFlareSolverr');
             return Promise.resolve();
@@ -407,7 +411,9 @@ describe('MangaService operations', () => {
         await expect(service.setSourcePreference({ sourceId: '123', position: 0, type: 'text', value: 'x' })).resolves.toEqual({ ok: true, value: [] });
         await expect(service.list({ sourceId: '1', kind: 'popular', page: 1, query: '' })).resolves.toEqual({ ok: true, value: { items: [], hasNextPage: false } });
         await expect(service.details(7)).resolves.toMatchObject({ ok: true });
-        expect(calls).toEqual(['stores', 'addStore https://b/i.json', 'removeStore', 'extensions', 'refreshExtensions', 'changeExtension', 'sources', 'sourcePreferences', 'sourceFilters', 'setSourcePreference', 'list', 'details']);
+        await expect(service.chaptersByIds([901, 902])).resolves.toEqual({ ok: true, value: [{ remoteId: 901, name: 'Ch. 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 }] });
+        expect(calls).toEqual(['stores', 'addStore https://b/i.json', 'removeStore', 'extensions', 'refreshExtensions', 'changeExtension', 'sources', 'sourcePreferences', 'sourceFilters', 'setSourcePreference', 'list', 'details', 'chaptersByIds']);
+        expect(client.chaptersByIds).toHaveBeenCalledWith([901, 902]);
         expect(client.sourcePreferences).toHaveBeenCalledWith('123');
         expect(client.sourceFilters).toHaveBeenCalledWith('123');
         expect(client.setSourcePreference).toHaveBeenCalledWith({ sourceId: '123', position: 0, type: 'text', value: 'x' });
@@ -440,6 +446,16 @@ describe('MangaService operations', () => {
         await expect(service.setSourcePreference({ sourceId: '1', position: 0, type: 'text', value: 'x' })).resolves.toEqual({
             ok: false,
             error: { code: 'API_ERROR', message: 'no such source', details: { occurredAt: NOW, errorName: 'Error', stack: preferenceFailure.stack } }
+        });
+    });
+
+    it('turns a failure to read chapters by their ids into an answer', async () => {
+        const { service, client } = setup();
+        const failure = new SuwayomiApiError('INVALID_RESPONSE', 'The chapters must be a list');
+        client.chaptersByIds.mockRejectedValueOnce(failure);
+        await expect(service.chaptersByIds([901])).resolves.toEqual({
+            ok: false,
+            error: { code: 'INVALID_RESPONSE', message: 'The chapters must be a list', details: { occurredAt: NOW, errorName: 'Error', stack: failure.stack } }
         });
     });
 

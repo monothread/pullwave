@@ -566,6 +566,20 @@ describe('createMangaRuntime files', () => {
         expect(runtime!.handlers.folderOf(manga.id)).toBe('/incomplete/One Piece');
     });
 
+    it('moves the chapters of a manga from the folder of its title to the folder of a new one, inside the folder of the settings', async () => {
+        const base = makeTempDir();
+        const { runtime } = setup({ settings: { mangaDirectory: base } });
+        const manga = runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'Old Title', thumbnailUrl: null });
+        const chapter = runtime!.db.ensureChapter(manga.id, { remoteId: 1, name: 'Chapter 1', number: 1, dateUploaded: null, scanlator: null, sourceOrder: 1 });
+        mkdirSync(join(base, 'Old Title'), { recursive: true });
+        writeFileSync(join(base, 'Old Title', 'Chapter 1.cbz'), 'zip');
+        runtime!.db.markDone(chapter.id, join(base, 'Old Title', 'Chapter 1.cbz'), 3, 1);
+        await expect(runtime!.handlers.renameFolder(runtime!.db.getLibraryManga(manga.id)!, 'New Title')).resolves.toEqual({ ok: true });
+        expect(readdirSync(base)).toEqual(['New Title']);
+        expect(readdirSync(join(base, 'New Title'))).toEqual(['Chapter 1.cbz']);
+        expect(runtime!.db.getChapter(chapter.id)?.filePath).toBe(join(base, 'New Title', 'Chapter 1.cbz'));
+    });
+
     it('uses the folder of the settings for a manga with nothing downloaded', () => {
         const { runtime } = setup({ settings: { mangaDirectory: '/mnt/manga' } });
         const manga = runtime!.db.upsertManga({ remoteId: 7, sourceId: '123', title: 'One Piece', thumbnailUrl: null });

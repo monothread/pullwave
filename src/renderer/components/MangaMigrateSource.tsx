@@ -120,7 +120,7 @@ export function MangaMigrateSource({ manga, onClose }: MangaMigrateSourceProps) 
         setWorking(true);
         const response = await migrateSource({
             mangaId: manga.id,
-            target: { manga: chosen.candidate.item, details: chosen.details, chapters: chosen.chapters }
+            target: { manga: { ...chosen.candidate.item, title: chosen.details?.title ?? chosen.candidate.item.title }, details: chosen.details, chapters: chosen.chapters }
         });
         setWorking(false);
         if (response.ok) {

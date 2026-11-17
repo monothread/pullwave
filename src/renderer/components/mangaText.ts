@@ -1,7 +1,7 @@
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries } from '@shared/series';
 import { hasChapterFile } from '@shared/manga';
-import type { LibraryManga, MangaChapter, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus, MangaUpdateEntry } from '@shared/manga';
+import type { LibraryManga, MangaChapter, MangaChapterMove, MangaCloudflareActivity, MangaChapterRecord, MangaDetailsWithChapters, MangaChapterStatus, MangaError, MangaErrorCode, MangaExtension, MangaJob, MangaSource, MangaStatus, MangaUpdateEntry } from '@shared/manga';
 import type { ToolError, ToolErrorCode } from '@shared/tools';
 import type { MangaReaderState, ReaderChapter } from '../store/mangaStore';
 import { codedErrorReport, type ErrorReport } from './errorReport';
@@ -136,6 +136,29 @@ export function withLibraryChapters(chapters: readonly MangaChapter[], saved: Pi
         })
         .map(toSourceChapter);
     return [...chapters, ...unlisted];
+}
+
+export function libraryChapterIds(library: readonly LibraryManga[]): Set<number> {
+    const ids = new Set<number>();
+    library.forEach((manga) => {
+        manga.chapters.forEach((chapter) => {
+            ids.add(chapter.remoteId);
+        });
+    });
+    return ids;
+}
+
+export function chapterMovesByNumber(oldChapters: readonly MangaChapter[], currentChapters: ReadonlyArray<Pick<MangaChapterRecord, 'remoteId' | 'number'>>): MangaChapterMove[] {
+    const byNumber = new Map<number, number | null>();
+    currentChapters.forEach((chapter) => {
+        if (chapter.number !== null) {
+            byNumber.set(chapter.number, byNumber.has(chapter.number) ? null : chapter.remoteId);
+        }
+    });
+    return oldChapters.flatMap((chapter) => {
+        const to = chapter.number === null ? undefined : byNumber.get(chapter.number);
+        return to === undefined || to === null ? [] : [{ from: chapter.remoteId, to }];
+    });
 }
 
 export function libraryEntry(library: readonly LibraryManga[], sourceId: string, remoteId: number): LibraryManga | null {

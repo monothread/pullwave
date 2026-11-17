@@ -14,7 +14,7 @@ function invalid(message: string): MangaResult<never> {
 }
 
 export class MangaRepair {
-    private readonly running = new Set<number>();
+    private readonly running = new Map<number, number>();
     private readonly runs = new Set<Promise<unknown>>();
     private readonly controller = new AbortController();
 
@@ -34,6 +34,10 @@ export class MangaRepair {
             }
             await this.repair(chapter.id, null);
         }
+    }
+
+    isRepairing(mangaId: number): boolean {
+        return [...this.running.values()].includes(mangaId);
     }
 
     async shutdown(): Promise<void> {
@@ -63,7 +67,7 @@ export class MangaRepair {
         if (this.running.has(chapterId)) {
             return invalid('The pages of the chapter are being downloaded already.');
         }
-        this.running.add(chapterId);
+        this.running.set(chapterId, chapter.mangaId);
         try {
             const result = await this.deps.repair(
                 {
