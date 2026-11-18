@@ -298,3 +298,5 @@
 
 - 2026-11-18 · A light theme no longer opens with dark frames (D-203): proven by recording the opening at 60 fps in a virtual screen (the fixed `#07060f` of the window, then the dark `:root` of the page before the theme script, then the theme guessed from "System" on a first start). The window now takes the background of the theme it will show and follows a save and a switch of the system; the page shows the window until a theme is put on it; nothing is guessed when no theme is kept. The recording after the fix has no dark frame. Type check and lint OK; unit tests of what changed (16 files, 1245); e2e of the themes and the opening (32), design (10).
 
+
+- Released 0.28.6 (tag `v0.28.6` = `fec043b2d6c69f0eec7e1cd3f5650f6f13af655c`): the window opens in the colour of the theme it will show, with no dark flash in a light theme. Pushed with `--no-verify` as the owner allowed (GHSA-fc5q-39xc-vjpf in picomatch, still with no fixed version). Release Linux, then Release Windows, then the draft published with its notes on 2026-11-18; the Test Windows workflow was not run.
