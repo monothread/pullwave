@@ -282,6 +282,44 @@ export const THEME_STYLES = Object.fromEntries(
         ];
     })
 ) as Readonly<Record<ThemeName, ThemeStyle>>;
+export const THEME_BACKGROUNDS: Readonly<Record<ThemeName, string>> = {
+    cyberpunk: '#07060f',
+    'cyberpunk-light': '#eef8fb',
+    synthwave: '#120c2a',
+    'synthwave-light': '#fbf2fa',
+    terminal: '#020a04',
+    'terminal-light': '#f0f6ec',
+    'neon-tokyo': '#070b1f',
+    'neon-tokyo-light': '#f3f0fb',
+    'acid-rain': '#030a08',
+    'acid-rain-light': '#f1f8ea',
+    'amber-city': '#0d0805',
+    'amber-city-light': '#fbf4ec',
+    ultraviolet: '#0a0518',
+    'ultraviolet-light': '#f5f0fd',
+    'pink-noir': '#050505',
+    'pink-noir-light': '#faf7f8',
+    'cyber-gold': '#080600',
+    'cyber-gold-light': '#fbf8e9',
+    'ice-neon': '#02111a',
+    'ice-neon-light': '#eef7fb',
+    dark: '#16181d',
+    light: '#f3f4f7',
+    'tokyo-night': '#1a1b26',
+    'tokyo-night-light': '#e1e2e7',
+    nord: '#2e3440',
+    'nord-light': '#eceff4',
+    dracula: '#282a36',
+    'dracula-light': '#fffbeb',
+    gruvbox: '#282828',
+    'gruvbox-light': '#fbf1c7',
+    amoled: '#000000',
+    'amoled-light': '#ffffff',
+    'high-contrast': '#000000',
+    'high-contrast-light': '#ffffff',
+    'sakura-dark': '#1c1319',
+    sakura: '#fdf6f8'
+};
 export const LANGUAGE_CODES: readonly LanguageCode[] = ['en', 'pt', 'es', 'zh', 'ja'];
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['device', ...LANGUAGE_CODES];
 export const FALLBACK_LANGUAGE: LanguageCode = 'en';

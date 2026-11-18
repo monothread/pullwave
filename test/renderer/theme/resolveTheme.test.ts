@@ -98,8 +98,8 @@ describe('remembering the theme', () => {
         expect(rememberedTheme()).toEqual(NORD_CHOICE);
     });
 
-    it('falls back to the default choice when nothing is stored', () => {
-        expect(rememberedTheme()).toEqual(DEFAULT_CHOICE);
+    it('has no choice when nothing is stored, so no theme is guessed before the settings load', () => {
+        expect(rememberedTheme()).toBeNull();
     });
 
     it.each([
@@ -123,7 +123,7 @@ describe('remembering the theme', () => {
         expect(rememberedTheme()).toEqual({ themeMode: 'light', themeFamily: 'default' });
     });
 
-    it('does not fail when the storage cannot be used', () => {
+    it('does not fail when the storage cannot be used, and has no choice then', () => {
         vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
             throw new Error('blocked');
         });
@@ -133,6 +133,6 @@ describe('remembering the theme', () => {
         expect(() => {
             rememberTheme(NORD_CHOICE);
         }).not.toThrow();
-        expect(rememberedTheme()).toEqual(DEFAULT_CHOICE);
+        expect(rememberedTheme()).toBeNull();
     });
 });

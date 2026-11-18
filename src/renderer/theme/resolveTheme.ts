@@ -1,5 +1,5 @@
 import { THEME_STYLES } from '@shared/constants';
-import { DEFAULT_THEME_CHOICE, resolveThemeChoice, sanitizeThemeChoice, themeScheme } from '@shared/themeChoice';
+import { resolveThemeChoice, sanitizeThemeChoice, themeScheme } from '@shared/themeChoice';
 import type { ThemeChoice, ThemeName } from '@shared/types';
 
 export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
@@ -35,11 +35,11 @@ function parseStoredChoice(stored: string): Record<string, unknown> {
     }
 }
 
-export function rememberedTheme(): ThemeChoice {
+export function rememberedTheme(): ThemeChoice | null {
     try {
         const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-        return stored === null ? { ...DEFAULT_THEME_CHOICE } : sanitizeThemeChoice(parseStoredChoice(stored));
+        return stored === null ? null : sanitizeThemeChoice(parseStoredChoice(stored));
     } catch {
-        return { ...DEFAULT_THEME_CHOICE };
+        return null;
     }
 }

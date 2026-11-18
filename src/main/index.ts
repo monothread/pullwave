@@ -1,11 +1,13 @@
 import { appendFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, safeStorage, screen, session, shell, type Display } from 'electron';
 import { MANGA_PAGE_SCHEME } from '@shared/manga';
 import { ANIME_MEDIA_SCHEME, ANIME_STREAM_SCHEME, isAnimeSupported } from '@shared/anime';
 import { CUT_MEDIA_SCHEME } from '@shared/cut';
 import { IPC, VIDEO_THUMBNAIL_SCHEME } from '@shared/constants';
+import { DEFAULT_THEME_CHOICE } from '@shared/themeChoice';
+import type { ThemeChoice } from '@shared/types';
 import { createAnimeRuntime } from './animeRuntime';
 import { registerAnimeHandlers } from './ipc/registerAnimeHandlers';
 import { registerMangaHandlers } from './ipc/registerMangaHandlers';
@@ -25,6 +27,7 @@ import { JsonStore } from './services/jsonStore';
 import { LlmTokenStore, type SecretCipher } from './services/llmTokenStore';
 import { createDiagnosticLog, type DiagnosticLog } from './services/diagnosticLog';
 import { attachWindowDiagnostics } from './services/windowDiagnostics';
+import { paintWindowBackground, windowBackground } from './services/windowBackground';
 import { AppUpdateService } from './services/appUpdateService';
 import { BinaryResolver } from './services/binaryResolver';
 import { BrowserCatalog } from './services/browserCatalog';
@@ -82,6 +85,9 @@ let quitting = false;
 let diagnosticLog: DiagnosticLog | null = null;
 let logWatchers: LogWatchers | null = null;
 let bridgeWarningShown = false;
+let readThemeChoice: () => ThemeChoice = () => {
+    return DEFAULT_THEME_CHOICE;
+};
 
 function warnAboutMissingBridge(reason: string): void {
     if (bridgeWarningShown) {
@@ -168,6 +174,10 @@ function windowPosition(width: number, height: number): { x: number; y: number }
     return { x: area.x + Math.max(0, Math.round((area.width - width) / 2)), y: area.y + Math.max(0, Math.round((area.height - height) / 2)) };
 }
 
+function repaintWindowBackground(): void {
+    paintWindowBackground(mainWindow, readThemeChoice(), nativeTheme.shouldUseDarkColors);
+}
+
 function createWindow(options: { hidden: boolean }): BrowserWindow {
     const window = new BrowserWindow({
         width: 1100,
@@ -176,7 +186,7 @@ function createWindow(options: { hidden: boolean }): BrowserWindow {
         ...windowPosition(1100, 780),
         minWidth: 480,
         minHeight: 520,
-        backgroundColor: '#07060f',
+        backgroundColor: windowBackground(readThemeChoice(), nativeTheme.shouldUseDarkColors),
         title: 'PULLWAVE',
         autoHideMenuBar: true,
         icon: iconPath(),
@@ -294,6 +304,9 @@ interface BootstrapResult {
 function bootstrap(): BootstrapResult {
     const dataDir = app.getPath('userData');
     const settingsStore = new SettingsStore(join(dataDir, 'settings.json'));
+    readThemeChoice = () => {
+        return settingsStore.get();
+    };
     const historyStore = new HistoryStore(join(dataDir, 'history.json'));
     const pausedStore = new PausedStore(join(dataDir, 'paused.json'));
     const llmTokens = new LlmTokenStore(new JsonStore(join(dataDir, 'llm-tokens.json'), {}), createSecretCipher());
@@ -663,6 +676,7 @@ function bootstrap(): BootstrapResult {
         browserCatalog,
         onSettingsSaved: (settings) => {
             applyLanguage(settings.language, app.getLocale());
+            repaintWindowBackground();
             autostart.sync(settings.launchAtLogin);
             void manager.sync(settings.closeToTray).then(() => {
                 return manager.rebuild();
@@ -703,6 +717,7 @@ if (!app.requestSingleInstanceLock()) {
         const { startMinimized, trayReady } = bootstrap();
         const hidden = shouldStartHidden({ autostart, startMinimized });
         mainWindow = createWindow({ hidden });
+        nativeTheme.on('updated', repaintWindowBackground);
         void trayReady.then(() => {
             if (hidden && !trayManager?.canHideToTray()) {
                 showWindow();

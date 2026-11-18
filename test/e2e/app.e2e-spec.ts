@@ -1672,6 +1672,35 @@ test.describe('themes', () => {
         }
     });
 
+    test('the window behind the page has the background of the theme shown: from the start, after a change and when the system switches', async () => {
+        const own = await launch({ settings: { themeMode: 'light', themeFamily: 'gruvbox' } });
+        try {
+            const windowBackground = async (): Promise<string> => {
+                const color = await own.app.evaluate(({ BrowserWindow }) => {
+                    return BrowserWindow.getAllWindows()[0]?.getBackgroundColor() ?? '';
+                });
+                return color.toLowerCase();
+            };
+            expect(await windowBackground()).toBe('#fbf1c7');
+            await openGlobalSettings(own.page);
+            await own.page.getByLabel('Light or dark mode').selectOption('dark');
+            await expect.poll(windowBackground).toBe('#282828');
+            await own.page.getByLabel('Theme', { exact: true }).selectOption('nord');
+            await expect.poll(windowBackground).toBe('#2e3440');
+            await own.page.getByLabel('Light or dark mode').selectOption('device');
+            await own.app.evaluate(({ nativeTheme }) => {
+                nativeTheme.themeSource = 'light';
+            });
+            await expect.poll(windowBackground).toBe('#eceff4');
+            await own.app.evaluate(({ nativeTheme }) => {
+                nativeTheme.themeSource = 'dark';
+            });
+            await expect.poll(windowBackground).toBe('#2e3440');
+        } finally {
+            await own.app.close();
+        }
+    });
+
     test('moves the theme an older version saved to its mode and theme, and saves it that way at the first save', async () => {
         const own = await launch({ settings: { theme: 'sakura' } });
         try {

@@ -54,6 +54,16 @@ body {
     line-height: 1.5;
 }
 
+:root:not([data-theme]) {
+    color-scheme: normal;
+}
+
+:root:not([data-theme]) body,
+:root:not([data-theme]) body::before,
+:root:not([data-theme]) body::after {
+    background: none;
+}
+
 body::after {
     content: '';
     position: fixed;

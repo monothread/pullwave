@@ -14,7 +14,10 @@ import './theme/bp-fun.css';
 import { applyTheme, rememberedTheme } from './theme/resolveTheme';
 import { loadStartCatalogs } from './i18n/catalogs';
 
-applyTheme(rememberedTheme());
+const remembered = rememberedTheme();
+if (remembered !== null) {
+    applyTheme(remembered);
+}
 
 void loadStartCatalogs(window.api ? window.api.getSettings : null).finally(() => {
     const container = document.getElementById('root');

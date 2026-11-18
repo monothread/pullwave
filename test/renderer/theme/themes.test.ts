@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { LIGHT_THEMES, THEME_FAMILIES, THEME_STYLES, THEMES } from '@shared/constants';
+import { LIGHT_THEMES, THEME_BACKGROUNDS, THEME_FAMILIES, THEME_STYLES, THEMES } from '@shared/constants';
 import type { ThemeName } from '@shared/types';
+import { readStylesheet, styleOf } from '../../helpers/cssRules';
 
 const THEME_DIRECTORY = resolve(__dirname, '../../../src/renderer/theme');
 const THEMES_CSS = readFileSync(resolve(THEME_DIRECTORY, 'themes.css'), 'utf-8');
@@ -84,6 +85,27 @@ describe('the themes in themes.css', () => {
     it.each(THEMES)('%s tells the browser if it is light or dark', (theme) => {
         const scheme = themeVariables(theme)['color-scheme'];
         expect(scheme).toBe((LIGHT_THEMES as readonly ThemeName[]).includes(theme) ? 'light' : 'dark');
+    });
+});
+
+describe('the page before a theme is put on it', () => {
+    const sheet = readStylesheet('cyberpunk.css');
+
+    it('lets the background of the window show, with no colour scheme of its own, so a light theme does not open dark', () => {
+        expect(styleOf(sheet, ':root:not([data-theme])')).toEqual({ 'color-scheme': 'normal' });
+        [':root:not([data-theme]) body', ':root:not([data-theme]) body::before', ':root:not([data-theme]) body::after'].forEach((selector) => {
+            expect(styleOf(sheet, selector), selector).toEqual({ background: 'none' });
+        });
+    });
+});
+
+describe('the background of each theme for the window', () => {
+    it('has one for every theme and for nothing else', () => {
+        expect(Object.keys(THEME_BACKGROUNDS).sort()).toEqual([...THEMES].sort());
+    });
+
+    it.each(THEMES)('%s paints the window with the background of its palette', (theme) => {
+        expect(THEME_BACKGROUNDS[theme]).toBe(themeVariables(theme)['--bg']);
     });
 });
 

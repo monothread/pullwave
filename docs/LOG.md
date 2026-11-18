@@ -295,3 +295,6 @@
 
 
 - Released 0.28.5 (tag `v0.28.5` = `d36c54a08217709a2e4e7bd2940aa8897684a271`): themes split into a light or dark mode (System, Dark, Light) and a theme with both versions, fifteen new light themes, the System mode following the computer live, and the theme of an older version kept. The pre-push hook blocked the push on GHSA-fc5q-39xc-vjpf (ReDoS in picomatch ≤ 4.0.7, reached only through vite and vitest, with no fixed version published yet); the owner allowed skipping the hook for that push. Release Linux, then Release Windows, then the draft published with its notes on 2026-11-18; the Test Windows workflow was not run.
+
+- 2026-11-18 · A light theme no longer opens with dark frames (D-203): proven by recording the opening at 60 fps in a virtual screen (the fixed `#07060f` of the window, then the dark `:root` of the page before the theme script, then the theme guessed from "System" on a first start). The window now takes the background of the theme it will show and follows a save and a switch of the system; the page shows the window until a theme is put on it; nothing is guessed when no theme is kept. The recording after the fix has no dark frame. Type check and lint OK; unit tests of what changed (16 files, 1245); e2e of the themes and the opening (32), design (10).
+
