@@ -87,7 +87,6 @@ export const zh: Messages = {
     'search.kind.anime': '动画',
     'search.kind.manga': '漫画',
     'downloads.indicator': '进行中的下载：{count}',
-    'downloads.indicator.empty': '没有正在下载的内容。',
     'downloads.indicator.video': '视频',
     'downloads.indicator.anime': '动画',
     'downloads.indicator.manga': '漫画',

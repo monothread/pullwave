@@ -91,7 +91,6 @@ export function DownloadsIndicator() {
             </button>
             {open && (
                 <div className="downloads-indicator__panel">
-                    {total === 0 && <p className="downloads-indicator__empty">{t('downloads.indicator.empty')}</p>}
                     {kinds.map((kind) => {
                         return (
                             <IndicatorRow

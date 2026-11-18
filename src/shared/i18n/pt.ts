@@ -87,7 +87,6 @@ export const pt: Messages = {
     'search.kind.anime': 'ANIME',
     'search.kind.manga': 'MANGÁ',
     'downloads.indicator': 'Downloads em andamento: {count}',
-    'downloads.indicator.empty': 'Nada sendo baixado.',
     'downloads.indicator.video': 'VÍDEOS',
     'downloads.indicator.anime': 'ANIME',
     'downloads.indicator.manga': 'MANGÁ',

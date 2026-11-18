@@ -254,12 +254,6 @@
     animation: bp-pop 0.25s var(--bp-ease-spring) backwards;
 }
 
-.downloads-indicator__empty {
-    margin: 4px 8px 6px;
-    color: var(--muted);
-    font-size: 13px;
-}
-
 .downloads-indicator__row {
     display: flex;
     align-items: center;

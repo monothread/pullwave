@@ -67,22 +67,31 @@ describe('DownloadsIndicator', () => {
         expect(button.querySelector('.downloads-indicator__count')).toHaveTextContent('3');
     });
 
-    it('has no count and no light when nothing downloads, and says so when opened', () => {
+    it('has no count and no light when nothing downloads, and opens only the lines of the sections at zero', () => {
         useAppStore.setState({ jobs: [] });
         useAnimeStore.setState({ jobs: [] });
-        render(<DownloadsIndicator />);
+        const { container } = render(<DownloadsIndicator />);
         const button = screen.getByRole('button', { name: 'Downloads going on: 0' });
         expect(button).not.toHaveClass('downloads-indicator__button--busy');
         expect(button.querySelector('.downloads-indicator__count')).toBeNull();
         fireEvent.click(button);
-        expect(screen.getByText('Nothing is downloading.')).toBeInTheDocument();
+        const panel = container.querySelector('.downloads-indicator__panel') as HTMLElement;
+        expect(
+            Array.from(panel.children).map((child) => {
+                return [child.className, child.getAttribute('aria-label'), child.textContent];
+            })
+        ).toEqual([
+            ['downloads-indicator__row', 'VIDEOS: 0 going on', 'VIDEOS0'],
+            ['downloads-indicator__row', 'ANIME: 0 going on', 'ANIME0'],
+            ['downloads-indicator__row', 'MANGA: 0 going on', 'MANGA0'],
+            ['downloads-indicator__row', 'TRANSLATING: 0 going on', 'TRANSLATING0'],
+        ]);
     });
 
     it('opens a line for each section, which leads to its downloads and closes the list', () => {
         render(<DownloadsIndicator />);
         fireEvent.click(screen.getByRole('button', { name: 'Downloads going on: 3' }));
         expect(screen.getByRole('button', { name: 'Downloads going on: 3' })).toHaveAttribute('aria-expanded', 'true');
-        expect(screen.queryByText('Nothing is downloading.')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'VIDEOS: 1 going on' })).toHaveTextContent('VIDEOS1');
         expect(screen.getByRole('button', { name: 'ANIME: 2 going on' })).toHaveTextContent('ANIME2');
         fireEvent.click(screen.getByRole('button', { name: 'MANGA: 0 going on' }));
@@ -120,7 +129,6 @@ describe('DownloadsIndicator', () => {
         expect(button).toHaveClass('downloads-indicator__button--busy');
         expect(button.querySelector('.downloads-indicator__count')).toHaveTextContent('1');
         fireEvent.click(button);
-        expect(screen.queryByText('Nothing is downloading.')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'TRANSLATING: 1 going on' })).toBeInTheDocument();
     });
 

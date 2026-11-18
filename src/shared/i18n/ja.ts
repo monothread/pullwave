@@ -87,7 +87,6 @@ export const ja: Messages = {
     'search.kind.anime': 'アニメ',
     'search.kind.manga': 'マンガ',
     'downloads.indicator': '進行中のダウンロード: {count}',
-    'downloads.indicator.empty': 'ダウンロード中のものはありません。',
     'downloads.indicator.video': '動画',
     'downloads.indicator.anime': 'アニメ',
     'downloads.indicator.manga': 'マンガ',

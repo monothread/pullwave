@@ -85,7 +85,6 @@ export const en = {
     'search.kind.anime': 'ANIME',
     'search.kind.manga': 'MANGA',
     'downloads.indicator': 'Downloads going on: {count}',
-    'downloads.indicator.empty': 'Nothing is downloading.',
     'downloads.indicator.video': 'VIDEOS',
     'downloads.indicator.anime': 'ANIME',
     'downloads.indicator.manga': 'MANGA',
