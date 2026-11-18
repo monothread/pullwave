@@ -616,6 +616,8 @@ export const es: Messages = {
     'anime.series.existing': 'Ya en la biblioteca',
     'anime.season.label': 'Orden',
     'anime.season.edit': 'EDITAR TEMPORADA',
+    'anime.season.continue': 'SEGUIR VIENDO',
+    'anime.season.start': 'EMPEZAR A VER',
     'anime.season.downloadAll': 'DESCARGAR TEMPORADA',
     'anime.season.error.invalid': 'Indica un orden de 1 a 99 y un nombre de hasta 60 caracteres.',
     'anime.series.save': 'GUARDAR',

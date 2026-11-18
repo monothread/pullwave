@@ -611,6 +611,8 @@ export const ja: Messages = {
     'anime.series.existing': 'ライブラリ内',
     'anime.season.label': '順番',
     'anime.season.edit': 'シーズンを編集',
+    'anime.season.continue': '続きを見る',
+    'anime.season.start': '見始める',
     'anime.season.downloadAll': 'シーズンをダウンロード',
     'anime.season.error.invalid': '1〜99の順番と、60文字までの表示名を入力してください。',
     'anime.series.save': '保存',

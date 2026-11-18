@@ -1714,6 +1714,39 @@ async function downloadFirstEpisode(page: Page): Promise<void> {
     await waitForDownloaded(page);
 }
 
+test('the season starts the first episode, then continues the one left and goes on to the next once it is watched', async () => {
+    const { page } = session;
+    await openAnimeTab(page);
+    await openFirstResult(page);
+    await downloadFromLibrary(page, [1, 2]);
+    await waitForDownloaded(page);
+
+    await page.getByRole('button', { name: 'LIBRARY', exact: true }).click();
+    await page.getByRole('button', { name: 'OPEN SERIES: Fake Anime' }).click();
+    await page.getByRole('button', { name: 'SHOW EPISODES: Fake Anime', exact: true }).click();
+    const season = page.getByTestId('season-view');
+    await expect(season.getByRole('button', { name: 'CONTINUE WATCHING', exact: true })).toHaveCount(0);
+
+    await season.getByRole('button', { name: 'START WATCHING', exact: true }).click();
+    const first = page.getByRole('dialog', { name: 'Fake Anime · EP 1' });
+    await expect(first).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(first).toBeHidden();
+
+    await expect(season.getByRole('button', { name: 'START WATCHING', exact: true })).toHaveCount(0);
+    await season.getByRole('button', { name: 'CONTINUE WATCHING', exact: true }).click();
+    await expect(first).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(first).toBeHidden();
+
+    await season.getByRole('button', { name: 'MARK AS WATCHED: Fake Anime EP 1', exact: true }).click();
+    await season.getByRole('button', { name: 'CONTINUE WATCHING', exact: true }).click();
+    const second = page.getByRole('dialog', { name: 'Fake Anime · EP 2' });
+    await expect(second).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(second).toBeHidden();
+});
+
 test('an episode cannot be removed: it has no remove button, only the anime and the series can', async () => {
     const { page, animeDir } = session;
     await downloadFirstEpisode(page);

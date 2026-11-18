@@ -610,6 +610,8 @@ export const zh: Messages = {
     'anime.series.existing': '资料库中已有',
     'anime.season.label': '顺序',
     'anime.season.edit': '编辑季',
+    'anime.season.continue': '继续观看',
+    'anime.season.start': '开始观看',
     'anime.season.downloadAll': '下载本季',
     'anime.season.error.invalid': '请填写1到99的顺序，以及不超过60个字符的名称。',
     'anime.series.save': '保存',

@@ -613,6 +613,8 @@ export const en = {
     'anime.series.existing': 'In the library',
     'anime.season.label': 'Order',
     'anime.season.edit': 'EDIT SEASON',
+    'anime.season.continue': 'CONTINUE WATCHING',
+    'anime.season.start': 'START WATCHING',
     'anime.season.downloadAll': 'DOWNLOAD SEASON',
     'anime.season.error.invalid': 'Give an order from 1 to 99 and a name of up to 60 characters.',
     'anime.series.save': 'SAVE',

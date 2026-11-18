@@ -6,6 +6,7 @@ import {
     downloadedAnime,
     downloadedCount,
     downloadedEpisodeCount,
+    episodeToResume,
     END_MARGIN_SECONDS,
     compareNames,
     groupByDay,
@@ -23,6 +24,7 @@ import {
     orderFor,
     previousDownloadedEpisode,
     resumePosition,
+    seasonContinueTarget,
     seasonLabel,
     seriesNames,
     startOfDay,
@@ -31,6 +33,7 @@ import {
 import type { AnimeEpisodeRecord } from '@shared/anime';
 import { createTranslator } from '@shared/i18n';
 import { makeAnime, makeAnimeJob, makeEpisode } from '../../helpers/animeFixtures';
+import { makeAnimeHistory } from '../../helpers/homeFixtures';
 
 describe('constants', () => {
     it('has the thresholds the player relies on', () => {
@@ -173,6 +176,113 @@ describe('nextDownloadedEpisode', () => {
             const other = makeAnime([makeEpisode({ id: 6 })], { id: 13, series: 'Naruto', season: 2 });
             expect(nextDownloadedEpisode([seasonOne, other], seasonOne, seasonOne.episodes[1] as AnimeEpisodeRecord)).toBeNull();
         });
+    });
+});
+
+describe('episodeToResume', () => {
+    const first = makeEpisode({ id: 1, number: '1', positionSeconds: 120, durationSeconds: 1200 });
+    const second = makeEpisode({ id: 2, number: '2' });
+    const anime = makeAnime([first, second]);
+
+    it('resumes the episode itself while it is downloaded, unwatched and its file is there', () => {
+        expect(episodeToResume([anime], anime, '1')).toEqual({ anime, episode: first });
+    });
+
+    it.each([
+        ['was watched', { watched: true }],
+        ['lost its file', { fileMissing: true }],
+        ['is not downloaded', { status: 'error' as const }]
+    ])('goes to the next downloaded episode when the episode %s', (_reason, overrides) => {
+        const changed = makeAnime([{ ...first, ...overrides }, second]);
+        expect(episodeToResume([changed], changed, '1')).toEqual({ anime: changed, episode: second });
+    });
+
+    it.each([
+        ['is not downloaded', [{ ...first, watched: true }, { ...second, status: 'queued' as const }]],
+        ['was watched', [{ ...first, watched: true }, { ...second, watched: true }]],
+        ['lost its file', [{ ...first, watched: true }, { ...second, fileMissing: true }]]
+    ])('gives null when the next episode %s', (_reason, episodes) => {
+        const changed = makeAnime(episodes);
+        expect(episodeToResume([changed], changed, '1')).toBeNull();
+    });
+
+    it('gives null after the last episode and for an episode the anime does not have', () => {
+        const done = makeAnime([{ ...first, watched: true }]);
+        expect(episodeToResume([done], done, '1')).toBeNull();
+        expect(episodeToResume([anime], anime, '99')).toBeNull();
+    });
+
+    it('goes on in the next season of the series', () => {
+        const seasonOne = makeAnime([makeEpisode({ id: 1, number: '12', watched: true })], { id: 10, title: 'Show', series: 'Show', season: 1 });
+        const seasonTwo = makeAnime([makeEpisode({ id: 2, number: '1' })], { id: 11, title: 'Show 2', series: 'Show', season: 2 });
+        expect(episodeToResume([seasonOne, seasonTwo], seasonOne, '12')).toEqual({ anime: seasonTwo, episode: seasonTwo.episodes[0] });
+    });
+});
+
+describe('seasonContinueTarget', () => {
+    const first = makeEpisode({ id: 1, number: '1' });
+    const second = makeEpisode({ id: 2, number: '2' });
+    const third = makeEpisode({ id: 3, number: '3' });
+    const anime = makeAnime([first, second, third], { id: 1, title: 'Naruto' });
+
+    it('resumes the episode last opened in the history of the season', () => {
+        const halfWay = { ...second, positionSeconds: 300, durationSeconds: 1200 };
+        const season = makeAnime([{ ...first, watched: true }, halfWay, third], { id: 1, title: 'Naruto' });
+        expect(seasonContinueTarget([season], season, [makeAnimeHistory({ title: 'Naruto', episode: '2' })])).toEqual({ playable: { anime: season, episode: halfWay }, started: true });
+    });
+
+    it('uses the newest history entry of the season and skips entries of other titles and without an episode', () => {
+        const history = [
+            makeAnimeHistory({ id: 4, title: 'Bleach', episode: '3' }),
+            makeAnimeHistory({ id: 3, title: 'Naruto', episode: null }),
+            makeAnimeHistory({ id: 2, title: 'Naruto', episode: '3' }),
+            makeAnimeHistory({ id: 1, title: 'Naruto', episode: '1' })
+        ];
+        expect(seasonContinueTarget([anime], anime, history)).toEqual({ playable: { anime, episode: third }, started: true });
+    });
+
+    it('goes to the next downloaded episode when the last one opened was watched', () => {
+        const season = makeAnime([{ ...first, watched: true }, second, third], { id: 1, title: 'Naruto' });
+        expect(seasonContinueTarget([season], season, [makeAnimeHistory({ title: 'Naruto', episode: '1' })])).toEqual({ playable: { anime: season, episode: second }, started: true });
+    });
+
+    it('goes on in the next season when the season is over', () => {
+        const seasonOne = makeAnime([makeEpisode({ id: 1, number: '12', watched: true })], { id: 10, title: 'Show', series: 'Show', season: 1 });
+        const seasonTwo = makeAnime([makeEpisode({ id: 2, number: '1' })], { id: 11, title: 'Show 2', series: 'Show', season: 2 });
+        expect(seasonContinueTarget([seasonOne, seasonTwo], seasonOne, [makeAnimeHistory({ title: 'Show', episode: '12' })])).toEqual({ playable: { anime: seasonTwo, episode: seasonTwo.episodes[0] }, started: true });
+    });
+
+    it('falls back to the first unwatched downloaded episode, as started, when the history leads nowhere', () => {
+        const season = makeAnime([{ ...first, watched: true }, { ...second, status: 'idle' }, third], { id: 1, title: 'Naruto' });
+        expect(seasonContinueTarget([season], season, [makeAnimeHistory({ title: 'Naruto', episode: '1' })])).toEqual({ playable: { anime: season, episode: third }, started: true });
+    });
+
+    it('falls back to the first unwatched downloaded episode when the history has an episode the season does not have', () => {
+        expect(seasonContinueTarget([anime], anime, [makeAnimeHistory({ title: 'Naruto', episode: '99' })])).toEqual({ playable: { anime, episode: first }, started: true });
+    });
+
+    it('starts at the first episode, not started, when nothing was watched', () => {
+        expect(seasonContinueTarget([anime], anime, [])).toEqual({ playable: { anime, episode: first }, started: false });
+    });
+
+    it('does not count an entry that only opened the anime as having started it', () => {
+        expect(seasonContinueTarget([anime], anime, [makeAnimeHistory({ title: 'Naruto', episode: null })])).toEqual({ playable: { anime, episode: first }, started: false });
+    });
+
+    it('skips episodes that are not downloaded, were watched or lost their file', () => {
+        const season = makeAnime([{ ...first, status: 'queued' }, { ...second, fileMissing: true }, { ...third, watched: true }, makeEpisode({ id: 4, number: '4' })], { id: 1, title: 'Naruto' });
+        expect(seasonContinueTarget([season], season, [])).toEqual({ playable: { anime: season, episode: season.episodes[3] }, started: true });
+    });
+
+    it('counts an episode with saved progress as started, without history', () => {
+        const season = makeAnime([{ ...first, positionSeconds: 30, durationSeconds: 1200 }, second], { id: 1, title: 'Naruto' });
+        expect(seasonContinueTarget([season], season, [])).toEqual({ playable: { anime: season, episode: season.episodes[0] }, started: true });
+    });
+
+    it('gives null when there is no downloaded episode left to watch', () => {
+        const watched = makeAnime([{ ...first, watched: true }, { ...second, status: 'error' }], { id: 1, title: 'Naruto' });
+        expect(seasonContinueTarget([watched], watched, [makeAnimeHistory({ title: 'Naruto', episode: '1' })])).toBeNull();
+        expect(seasonContinueTarget([makeAnime([])], makeAnime([]), [])).toBeNull();
     });
 });
 

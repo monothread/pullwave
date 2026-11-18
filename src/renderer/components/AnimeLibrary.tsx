@@ -4,7 +4,7 @@ import type { AnimeAiringOverride, AnimeEpisodeRecord, LibraryAnime } from '@sha
 import type { MessageKey, Translator } from '@shared/i18n';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAnimeStore } from '../store/animeStore';
-import { animeErrorReport, animeStatusKey, downloadedCount, groupLibrary, isNewEpisode, matchesSearch, newEpisodeCount, resumePosition, seasonLabel, type LibraryGroup } from './animeText';
+import { animeErrorReport, animeStatusKey, downloadedCount, groupLibrary, isNewEpisode, matchesSearch, newEpisodeCount, resumePosition, seasonContinueTarget, seasonLabel, type LibraryGroup } from './animeText';
 import { AnimeCover } from './AnimeCover';
 import { SeriesCover } from './SeriesCover';
 import { AnimeRemove } from './AnimeRemove';
@@ -398,6 +398,34 @@ function AiringField({ anime, t }: { anime: LibraryAnime; t: Translator }) {
     );
 }
 
+function ContinueWatchingButton({ anime, t }: { anime: LibraryAnime; t: Translator }) {
+    const library = useAnimeStore((state) => {
+        return state.library;
+    });
+    const history = useAnimeStore((state) => {
+        return state.history;
+    });
+    const play = useAnimeStore((state) => {
+        return state.play;
+    });
+    const target = seasonContinueTarget(library, anime, history);
+    if (target === null) {
+        return null;
+    }
+    const { playable } = target;
+    return (
+        <button
+            type="button"
+            className="btn btn--small btn--primary"
+            onClick={() => {
+                play(playable.anime.id, playable.episode.id);
+            }}
+        >
+            {t(target.started ? 'anime.season.continue' : 'anime.season.start')}
+        </button>
+    );
+}
+
 function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; seriesName: string; t: Translator; onBack: () => void }) {
     const removeAnime = useAnimeStore((state) => {
         return state.removeAnime;
@@ -448,6 +476,7 @@ function SeasonView({ anime, seriesName, t, onBack }: { anime: LibraryAnime; ser
                 </header>
                 <AiringField anime={anime} t={t} />
                 <div className="job__actions">
+                    <ContinueWatchingButton anime={anime} t={t} />
                     {edit}
                     <SeasonTranslation anime={anime} />
                     <AnimeRemove

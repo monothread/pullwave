@@ -1362,6 +1362,74 @@ describe('AnimeLibrary', () => {
         expect(mock.api.removeAnime).toHaveBeenCalledWith(11);
     });
 
+    describe('continue watching', () => {
+        const FIRST = makeEpisode({ id: 1, number: '1' });
+        const SECOND = makeEpisode({ id: 2, number: '2' });
+        const THIRD = makeEpisode({ id: 3, number: '3' });
+
+        async function openSeason(library: ReturnType<typeof makeAnime>[], series: string) {
+            const user = userEvent.setup();
+            useAnimeStore.setState({ library });
+            render(<AnimeLibrary />);
+            await user.click(screen.getByRole('button', { name: `OPEN SERIES: ${series}` }));
+            await user.click(screen.getAllByRole('button', { name: /^SHOW EPISODES: / })[0] as HTMLElement);
+            return { user, view: screen.getByTestId('season-view') };
+        }
+
+        it('offers START WATCHING on the first downloaded episode when nothing was watched, and plays it', async () => {
+            const anime = makeAnime([{ ...FIRST, status: 'queued' }, SECOND, THIRD], { id: 10, title: 'Naruto' });
+            useAnimeStore.setState({ history: [] });
+            const { user, view } = await openSeason([anime], 'Naruto');
+            expect(within(view).queryByRole('button', { name: 'CONTINUE WATCHING' })).not.toBeInTheDocument();
+            await user.click(within(view).getByRole('button', { name: 'START WATCHING' }));
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 10, episodeId: 2 });
+            expect(mock.api.recordAnimeHistory).toHaveBeenCalledWith({ title: 'Naruto', query: 'naruto', index: 1, episode: '2' });
+        });
+
+        it('offers CONTINUE WATCHING on the episode last opened, while it is not over', async () => {
+            const anime = makeAnime([{ ...FIRST, watched: true }, { ...SECOND, positionSeconds: 300, durationSeconds: 1200 }, THIRD], { id: 10, title: 'Naruto' });
+            useAnimeStore.setState({ history: [makeAnimeHistory({ title: 'Naruto', episode: '2' })] });
+            const { user, view } = await openSeason([anime], 'Naruto');
+            expect(within(view).queryByRole('button', { name: 'START WATCHING' })).not.toBeInTheDocument();
+            await user.click(within(view).getByRole('button', { name: 'CONTINUE WATCHING' }));
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 10, episodeId: 2 });
+        });
+
+        it('continues with the next episode when the last one opened was watched', async () => {
+            const anime = makeAnime([FIRST, { ...SECOND, watched: true }, THIRD], { id: 10, title: 'Naruto' });
+            useAnimeStore.setState({ history: [makeAnimeHistory({ title: 'Naruto', episode: '2' })] });
+            const { user, view } = await openSeason([anime], 'Naruto');
+            await user.click(within(view).getByRole('button', { name: 'CONTINUE WATCHING' }));
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 10, episodeId: 3 });
+        });
+
+        it('continues in the next season of the series when the season is over', async () => {
+            const seasonOne = makeAnime([{ ...FIRST, watched: true }], { id: 40, title: 'Frieren', series: 'Frieren', season: 1 });
+            const seasonTwo = makeAnime([makeEpisode({ id: 7, number: '1' })], { id: 41, title: 'Frieren Season 2', series: 'Frieren', season: 2 });
+            useAnimeStore.setState({ history: [makeAnimeHistory({ title: 'Frieren', episode: '1' })] });
+            const { user, view } = await openSeason([seasonOne, seasonTwo], 'Frieren');
+            expect(view).toHaveAccessibleName('Frieren');
+            await user.click(within(view).getByRole('button', { name: 'CONTINUE WATCHING' }));
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 41, episodeId: 7 });
+        });
+
+        it('says CONTINUE WATCHING when an episode was watched, even without history', async () => {
+            const anime = makeAnime([{ ...FIRST, watched: true }, SECOND], { id: 10, title: 'Naruto' });
+            useAnimeStore.setState({ history: [] });
+            const { user, view } = await openSeason([anime], 'Naruto');
+            await user.click(within(view).getByRole('button', { name: 'CONTINUE WATCHING' }));
+            expect(useAnimeStore.getState().playing).toEqual({ animeId: 10, episodeId: 2 });
+        });
+
+        it('has no button when there is no downloaded episode left to watch', async () => {
+            const anime = makeAnime([{ ...FIRST, watched: true }, { ...SECOND, fileMissing: true }, { ...THIRD, status: 'error' }], { id: 10, title: 'Naruto' });
+            useAnimeStore.setState({ history: [makeAnimeHistory({ title: 'Naruto', episode: '1' })] });
+            const { view } = await openSeason([anime], 'Naruto');
+            expect(within(view).queryByRole('button', { name: 'CONTINUE WATCHING' })).not.toBeInTheDocument();
+            expect(within(view).queryByRole('button', { name: 'START WATCHING' })).not.toBeInTheDocument();
+        });
+    });
+
     describe('rows and cards that open by clicking on them', () => {
         it('opens a series from its card: the name is the button, the card is a link row and the only other button is REMOVE SERIES', async () => {
             const user = userEvent.setup();

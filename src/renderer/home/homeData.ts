@@ -1,7 +1,7 @@
 import type { AnimeHistoryEntry, AnimeJob, LibraryAnime } from '@shared/anime';
 import type { LibraryManga, MangaChapterRecord, MangaJob, ReadingEntry } from '@shared/manga';
 import type { DownloadJob } from '@shared/types';
-import { libraryEntry, nextDownloadedEpisode } from '../components/animeText';
+import { episodeToResume, libraryEntry, type PlayableEpisode } from '../components/animeText';
 import { adjacentSeason, compareChaptersAscending } from '../components/mangaText';
 import { progressKey } from '../components/readerPrefs';
 
@@ -40,21 +40,13 @@ function progressOf(position: number, duration: number): number {
     return Math.min(1, Math.max(0, position / duration));
 }
 
-function episodeToContinue(library: readonly LibraryAnime[], anime: LibraryAnime, entry: AnimeHistoryEntry): ContinueWatchingItem | null {
-    const current = anime.episodes.find((episode) => {
-        return episode.number === entry.episode;
-    });
-    if (current === undefined) {
-        return null;
-    }
-    if (current.status === 'done' && !current.watched && !current.fileMissing) {
-        return { animeId: anime.id, episodeId: current.id, title: anime.title, episode: current.number, progress: progressOf(current.positionSeconds, current.durationSeconds) };
-    }
-    const next = nextDownloadedEpisode(library, anime, current);
-    if (next === null || next.episode.watched || next.episode.fileMissing) {
-        return null;
-    }
-    return { animeId: next.anime.id, episodeId: next.episode.id, title: next.anime.title, episode: next.episode.number, progress: progressOf(next.episode.positionSeconds, next.episode.durationSeconds) };
+function itemOf({ anime, episode }: PlayableEpisode): ContinueWatchingItem {
+    return { animeId: anime.id, episodeId: episode.id, title: anime.title, episode: episode.number, progress: progressOf(episode.positionSeconds, episode.durationSeconds) };
+}
+
+function resumeFromHistory(library: readonly LibraryAnime[], entry: AnimeHistoryEntry): PlayableEpisode | null {
+    const anime = entry.episode === null ? null : libraryEntry(library, entry.title);
+    return anime === null || entry.episode === null ? null : episodeToResume(library, anime, entry.episode);
 }
 
 export function continueWatching(library: readonly LibraryAnime[], history: readonly AnimeHistoryEntry[], limit: number = CONTINUE_LIMIT): ContinueWatchingItem[] {
@@ -64,11 +56,10 @@ export function continueWatching(library: readonly LibraryAnime[], history: read
         if (items.length >= limit) {
             break;
         }
-        const anime = entry.episode === null ? null : libraryEntry(library, entry.title);
-        const item = anime === null ? null : episodeToContinue(library, anime, entry);
-        if (item !== null && !seen.has(item.animeId)) {
-            seen.add(item.animeId);
-            items.push(item);
+        const playable = resumeFromHistory(library, entry);
+        if (playable !== null && !seen.has(playable.anime.id)) {
+            seen.add(playable.anime.id);
+            items.push(itemOf(playable));
         }
     }
     return items;

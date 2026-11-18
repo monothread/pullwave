@@ -1,4 +1,4 @@
-import type { AniError, AniErrorCode, AnimeAudioCheckSummary, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeJob, LibraryAnime } from '@shared/anime';
+import type { AniError, AniErrorCode, AnimeAudioCheckSummary, AnimeEpisodeRecord, AnimeEpisodeStatus, AnimeHistoryEntry, AnimeJob, LibraryAnime } from '@shared/anime';
 import type { MessageKey, Translator } from '@shared/i18n';
 import { foldSeries, MAX_SEASON } from '@shared/series';
 import { codedErrorReport, type ErrorReport } from './errorReport';
@@ -109,6 +109,50 @@ export function nextDownloadedEpisode(library: readonly LibraryAnime[], anime: L
 
 export function previousDownloadedEpisode(library: readonly LibraryAnime[], anime: LibraryAnime, current: AnimeEpisodeRecord): PlayableEpisode | null {
     return adjacentDownloadedEpisode(library, anime, current, -1);
+}
+
+function isUnwatchedFile(episode: AnimeEpisodeRecord): boolean {
+    return episode.status === 'done' && !episode.watched && !episode.fileMissing;
+}
+
+export function episodeToResume(library: readonly LibraryAnime[], anime: LibraryAnime, episodeNumber: string): PlayableEpisode | null {
+    const current = anime.episodes.find((episode) => {
+        return episode.number === episodeNumber;
+    });
+    if (current === undefined) {
+        return null;
+    }
+    if (isUnwatchedFile(current)) {
+        return { anime, episode: current };
+    }
+    const next = nextDownloadedEpisode(library, anime, current);
+    return next !== null && isUnwatchedFile(next.episode) ? next : null;
+}
+
+export interface ContinueTarget {
+    playable: PlayableEpisode;
+    started: boolean;
+}
+
+function hasStartedWatching(anime: LibraryAnime): boolean {
+    return anime.episodes.some((episode) => {
+        return episode.watched || episode.positionSeconds > 0;
+    });
+}
+
+export function seasonContinueTarget(library: readonly LibraryAnime[], anime: LibraryAnime, history: readonly AnimeHistoryEntry[]): ContinueTarget | null {
+    const lastSeen = history.find((entry) => {
+        return entry.title === anime.title && entry.episode !== null;
+    });
+    const resumed = lastSeen === undefined || lastSeen.episode === null ? null : episodeToResume(library, anime, lastSeen.episode);
+    if (resumed !== null) {
+        return { playable: resumed, started: true };
+    }
+    const firstUnwatched = anime.episodes.find(isUnwatchedFile);
+    if (firstUnwatched === undefined) {
+        return null;
+    }
+    return { playable: { anime, episode: firstUnwatched }, started: lastSeen !== undefined || hasStartedWatching(anime) };
 }
 
 export function nextListedEpisode(episodes: readonly string[], current: string): string | null {

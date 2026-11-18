@@ -300,3 +300,5 @@
 
 
 - Released 0.28.6 (tag `v0.28.6` = `fec043b2d6c69f0eec7e1cd3f5650f6f13af655c`): the window opens in the colour of the theme it will show, with no dark flash in a light theme. Pushed with `--no-verify` as the owner allowed (GHSA-fc5q-39xc-vjpf in picomatch, still with no fixed version). Release Linux, then Release Windows, then the draft published with its notes on 2026-11-18; the Test Windows workflow was not run.
+- 2026-11-18 · The season of an anime has CONTINUE WATCHING / START WATCHING (D-204), like CONTINUE READING of the manga. Type check and lint OK; unit tests of what changed (animeText, AnimeLibrary, home, spotlight, i18n); e2e of the button and of the season and player (3). The layout audit fails with 596 lines, all on the player screen, the same with the code before the change.
+
