@@ -21,6 +21,7 @@ import { formatVttTime, parseVtt, serializeVtt, shiftCues, type VttCue } from '.
 
 export const PIECE_STREAMS = 6;
 export const CONTEXT_PIECES = 2;
+export const MAX_BAD_RESPONSE_RETRIES = 1;
 
 export interface SpeechInput {
     task: SpeechTask;
@@ -34,7 +35,7 @@ export interface SpeechInput {
 }
 
 export type SpeechAccess =
-    | { ok: true; translatesTo: SpeechTranslatesTo; cutsAtPauses: boolean; ask: (input: SpeechInput) => Promise<LlmCompletionResult> }
+    | { ok: true; translatesTo: SpeechTranslatesTo; cutsAtPauses: boolean; partSeconds?: number; ask: (input: SpeechInput) => Promise<LlmCompletionResult> }
     | { ok: false; reason: 'no-token' | 'no-model' | 'no-address' };
 
 export interface SubtitleGenerationDependencies {
@@ -89,7 +90,7 @@ async function speechPiecesOf(videoPath: string, directory: string, ffmpeg: Ffmp
 export async function estimateSubtitleGeneration(
     videoPath: string,
     ffmpeg: FfmpegRunner,
-    options: { cutsAtPauses: boolean; audio?: AudioFiles } = { cutsAtPauses: false }
+    options: { cutsAtPauses: boolean; partSeconds?: number; audio?: AudioFiles } = { cutsAtPauses: false }
 ): Promise<SubtitleGenerateEstimateResponse> {
     const probe = await probeAudio(videoPath, ffmpeg);
     if (!probe.ok) {
@@ -97,7 +98,8 @@ export async function estimateSubtitleGeneration(
     }
     const approxBytes = Math.round(probe.seconds * AUDIO_BYTES_PER_SECOND);
     if (!options.cutsAtPauses) {
-        return { ok: true, seconds: probe.seconds, parts: Math.max(1, Math.ceil(probe.seconds / SPEECH_PART_SECONDS)), approxBytes };
+        const partSeconds = options.partSeconds ?? SPEECH_PART_SECONDS;
+        return { ok: true, seconds: probe.seconds, parts: Math.max(1, Math.ceil(probe.seconds / partSeconds)), approxBytes };
     }
     const audio = options.audio ?? defaultAudioFiles;
     const directory = audio.makeDirectory();
@@ -112,16 +114,25 @@ export async function estimateSubtitleGeneration(
 async function askPart(input: Omit<SpeechInput, 'signal'>, access: Extract<SpeechAccess, { ok: true }>, dependencies: SubtitleGenerationDependencies, signal?: AbortSignal): Promise<LlmCompletionResult> {
     const sleep = dependencies.sleep ?? defaultSleep;
     let waits = 0;
+    let badResponses = 0;
     for (;;) {
         if (isAborted(signal)) {
             return CANCELLED_ERROR;
         }
         const result = await access.ask({ ...input, signal });
-        if (result.ok || result.error.code !== 'RATE_LIMITED' || waits >= MAX_RATE_LIMIT_WAITS) {
+        if (result.ok) {
             return result;
         }
-        waits += 1;
-        await sleep(waitSecondsOf(result.error) * 1000, signal);
+        if (result.error.code === 'RATE_LIMITED' && waits < MAX_RATE_LIMIT_WAITS) {
+            waits += 1;
+            await sleep(waitSecondsOf(result.error) * 1000, signal);
+            continue;
+        }
+        if (access.translatesTo === 'any' && result.error.code === 'BAD_RESPONSE' && badResponses < MAX_BAD_RESPONSE_RETRIES) {
+            badResponses += 1;
+            continue;
+        }
+        return result;
     }
 }
 
@@ -133,6 +144,7 @@ interface SendContext {
     task: SpeechTask;
     audioLanguage: TranscriptionLanguage;
     language: TranslationLanguage;
+    partSeconds?: number;
     access: Extract<SpeechAccess, { ok: true }>;
     dependencies: SubtitleGenerationDependencies;
     audio: AudioFiles;
@@ -157,6 +169,7 @@ function inputOf(context: SendContext, audio: Uint8Array, fileName: string): Omi
 
 async function sendParts(paths: readonly string[], context: SendContext): Promise<PartsResult> {
     const cues: VttCue[] = [];
+    const partSeconds = context.partSeconds ?? SPEECH_PART_SECONDS;
     let sentBytes = 0;
     context.report(0, paths.length, 0);
     for (const [index, path] of paths.entries()) {
@@ -164,7 +177,7 @@ async function sendParts(paths: readonly string[], context: SendContext): Promis
         if (!result.ok) {
             return { ok: false, response: responseOf(result), refused: index === 0 && result.error.code === 'BAD_RESPONSE' };
         }
-        cues.push(...shiftCues(parseVtt(result.text).cues, index * SPEECH_PART_SECONDS));
+        cues.push(...shiftCues(parseVtt(result.text).cues, index * partSeconds));
         sentBytes += context.audio.size(path);
         context.report(index + 1, paths.length, sentBytes);
     }
@@ -298,11 +311,12 @@ function totalBytesOf(paths: readonly string[], audio: AudioFiles): number {
     }, 0);
 }
 
-function sendContextOf(context: TranscribeContext, task: SpeechTask, plan: () => SubtitleGeneratePlan, totalBytes: number): SendContext {
+function sendContextOf(context: TranscribeContext, task: SpeechTask, plan: () => SubtitleGeneratePlan, totalBytes: number, partSeconds?: number): SendContext {
     return {
         task,
         audioLanguage: context.request.audioLanguage,
         language: context.request.language,
+        partSeconds,
         access: context.access.speech,
         dependencies: context.dependencies,
         audio: context.audio,
@@ -315,7 +329,8 @@ function sendContextOf(context: TranscribeContext, task: SpeechTask, plan: () =>
 
 async function transcribeInParts(context: TranscribeContext): Promise<Transcribed> {
     const { audio, signal } = context;
-    const parts = await extractAudioParts(context.videoPath, context.directory, context.dependencies.ffmpeg, audio, signal);
+    const partSeconds = context.access.speech.partSeconds ?? SPEECH_PART_SECONDS;
+    const parts = await extractAudioParts(context.videoPath, context.directory, context.dependencies.ffmpeg, audio, signal, partSeconds);
     if (isAborted(signal)) {
         return { ok: false, response: { ok: false, reason: 'cancelled' } };
     }
@@ -333,13 +348,15 @@ async function transcribeInParts(context: TranscribeContext): Promise<Transcribe
                 () => {
                     return plan;
                 },
-                totalBytes
+                totalBytes,
+                partSeconds
             )
         );
     };
     let translation = context.access.translation;
+    const canFallback = plan === 'direct' && context.access.speech.translatesTo === 'english';
     let sent = await send(plan === 'direct' ? 'translate' : 'transcribe');
-    if (!sent.ok && plan === 'direct' && sent.refused) {
+    if (!sent.ok && canFallback && sent.refused) {
         const fallback = context.dependencies.translation();
         if (!fallback.ok) {
             return { ok: false, response: { ok: false, reason: TRANSLATION_FAILURES[fallback.reason] } };

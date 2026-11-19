@@ -97,6 +97,19 @@ describe('extractAudioParts', () => {
         expect(files.list).toHaveBeenCalledWith(DIRECTORY);
     });
 
+    it('asks ffmpeg for mono 16 kHz MP3 parts of the requested length when given', async () => {
+        const run = runner({ code: 0, stderr: '' });
+        const files = audioFiles(['part-000.mp3', 'part-001.mp3']);
+        expect(await extractAudioParts(VIDEO, DIRECTORY, run, files, undefined, 180)).toEqual({
+            ok: true,
+            paths: [join(DIRECTORY, 'part-000.mp3'), join(DIRECTORY, 'part-001.mp3')]
+        });
+        expect(run).toHaveBeenCalledWith(
+            ['-hide_banner', '-nostdin', '-y', '-v', 'error', '-i', VIDEO, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k', '-f', 'segment', '-segment_time', '180', '-reset_timestamps', '1', join(DIRECTORY, 'part-%03d.mp3')],
+            undefined
+        );
+    });
+
     it('passes the signal to ffmpeg', async () => {
         const run = runner({ code: 0, stderr: '' });
         const controller = new AbortController();

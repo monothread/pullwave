@@ -109,7 +109,14 @@ export async function probeAudio(videoPath: string, run: FfmpegRunner): Promise<
 
 export type AudioParts = { ok: true; paths: string[] } | { ok: false; reason: 'no-audio' | 'extract-failed' };
 
-export async function extractAudioParts(videoPath: string, directory: string, run: FfmpegRunner, audio: AudioFiles, signal?: AbortSignal): Promise<AudioParts> {
+export async function extractAudioParts(
+    videoPath: string,
+    directory: string,
+    run: FfmpegRunner,
+    audio: AudioFiles,
+    signal?: AbortSignal,
+    partSeconds: number = SPEECH_PART_SECONDS
+): Promise<AudioParts> {
     const result = await run(
         [
             '-hide_banner',
@@ -123,7 +130,7 @@ export async function extractAudioParts(videoPath: string, directory: string, ru
             '-f',
             'segment',
             '-segment_time',
-            String(SPEECH_PART_SECONDS),
+            String(partSeconds),
             '-reset_timestamps',
             '1',
             join(directory, 'part-%03d.mp3')

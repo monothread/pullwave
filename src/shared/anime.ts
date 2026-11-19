@@ -1,4 +1,5 @@
-import type { LlmError, SpeechTranslatesTo } from './llm';
+import { SPEECH_PART_SECONDS, type LlmError, type SpeechTranslatesTo } from './llm';
+export { SPEECH_PART_SECONDS };
 import type { ErrorDetails } from './errorDetails';
 import type { DownloadPart, DownloadPartKind } from './types';
 
@@ -428,8 +429,6 @@ export const TRANSCRIPTION_LANGUAGE_CODES: Record<TranscriptionLanguage, string>
     Turkish: 'tr',
     Indonesian: 'id'
 };
-
-export const SPEECH_PART_SECONDS = 600;
 
 export interface SubtitleGenerateRequest {
     episodeId: number;

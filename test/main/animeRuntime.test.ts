@@ -1071,6 +1071,67 @@ describe('createAnimeRuntime', () => {
                     });
                     expect(existsSync(join(folder, 'Naruto Episode 1.generated-Spanish.vtt'))).toBe(false);
                 });
+
+                it('splits audio into 3-minute parts and clamps cues to 180 seconds', async () => {
+                    const speechFetch = vi.fn(async () => {
+                        return new Response(
+                            JSON.stringify({
+                                candidates: [{ content: { parts: [{ text: '[{"start":178,"end":190,"text":"Fim"},{"start":200,"end":210,"text":"Fora"}]' }] } }]
+                            }),
+                            { status: 200 }
+                        );
+                    });
+                    const { runtime, episode, folder, ffmpeg } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: '' }, 'gem-key', speechFetch);
+                    const result = await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Portuguese (Brazil)' });
+                    expect(result).toMatchObject({ ok: true });
+                    const ffmpegArgs = ffmpeg.mock.calls[0]?.[0] ?? [];
+                    const segmentTimeIndex = ffmpegArgs.indexOf('-segment_time');
+                    expect(segmentTimeIndex).toBeGreaterThan(-1);
+                    expect(ffmpegArgs[segmentTimeIndex + 1]).toBe('180');
+                    expect(readFileSync(join(folder, 'Naruto Episode 1.generated-Portuguese (Brazil).vtt'), 'utf-8')).toBe('WEBVTT\n\n00:02:58.000 --> 00:03:00.000\nFim\n');
+                });
+
+                it('estimates 3-minute parts for Gemini', async () => {
+                    const { video, given } = downloaded();
+                    const runtime = open({
+                        ...given,
+                        getSettings: () => {
+                            return { ...DEFAULT_SETTINGS, transcribeProvider: 'gemini', transcribeModel: 'gem-model' };
+                        },
+                        runFfmpeg: vi.fn(async () => {
+                            return { code: 1, stderr: PROBE };
+                        })
+                    });
+                    const episode = addEpisode(runtime, video);
+                    expect(await runtime?.handlers.subtitles.estimateGeneration(episode.id)).toEqual({ ok: true, seconds: 1500, parts: 9, approxBytes: 6_000_000 });
+                });
+
+                it('retries a 503 high-demand response from Gemini and succeeds', async () => {
+                    let calls = 0;
+                    const speechFetch = vi.fn(async () => {
+                        calls += 1;
+                        return calls === 1 ? new Response('high demand', { status: 503, headers: { 'retry-after': '0.001' } }) : geminiAnswer();
+                    });
+                    const { runtime, episode } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: '' }, 'gem-key', speechFetch);
+                    expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Portuguese (Brazil)' })).toMatchObject({ ok: true });
+                    expect(speechFetch).toHaveBeenCalledTimes(2);
+                });
+
+                it('surfaces Gemini BAD_RESPONSE directly instead of failing with missing translation token', async () => {
+                    const speechFetch = vi.fn(async () => {
+                        return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'not json' }] } }] }), { status: 200 });
+                    });
+                    const { runtime, episode } = generating({ transcribeProvider: 'gemini', transcribeModel: 'gem-model', transcribeBaseUrl: '' }, 'gem-key', speechFetch);
+                    expect(await runtime?.handlers.subtitles.generate({ episodeId: episode.id, audioLanguage: 'Japanese', language: 'Spanish' })).toEqual({
+                        ok: false,
+                        reason: 'failed',
+                        error: {
+                            code: 'BAD_RESPONSE',
+                            raw: 'The answer is not a list of subtitle lines with times: {"candidates":[{"content":{"parts":[{"text":"not json"}]}}]}'
+                        }
+                    });
+                    expect(speechFetch).toHaveBeenCalledTimes(2);
+                });
             });
 
             it.skipIf(process.platform === 'win32')('runs the ffmpeg of the settings when no other way to run it is given', async () => {

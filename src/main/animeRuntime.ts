@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { isAnimeSupported, type AnimeScheduleRequest, type AutoTranslateOffReason, type SubtitleGenerateResponse, type SubtitleTranslateResponse, type TranslationLanguage } from '@shared/anime';
 import { IPC } from '@shared/constants';
 import { resolveLanguage } from '@shared/i18n';
-import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, translationSetupGap, type LlmTokenSlot } from '@shared/llm';
+import { LLM_PROVIDERS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechPartSeconds, speechTokenSlot, speechTranslatesTo, translationSetupGap, type LlmTokenSlot } from '@shared/llm';
 import type { Settings } from '@shared/types';
 import type { AnimeHandlerDependencies } from './ipc/registerAnimeHandlers';
 import { AniCliLocator, type AniPrograms, type AniTools } from './services/aniCliLocator';
@@ -325,10 +325,12 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         if (settings.transcribeBaseUrl.length === 0 && SPEECH_PROVIDERS[settings.transcribeProvider].defaultBaseUrl.length === 0) {
             return { ok: false, reason: 'no-address' };
         }
+        const partSeconds = speechPartSeconds(settings.transcribeProvider);
         return {
             ok: true,
             translatesTo: speechTranslatesTo(settings.transcribeProvider),
             cutsAtPauses: speechCutsAtPauses(settings.transcribeProvider),
+            partSeconds,
             ask: (input) => {
                 if (settings.transcribeProvider === 'gemini') {
                     return transcribeWithGemini({
@@ -339,6 +341,7 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                         audioLanguage: input.audioLanguage,
                         language: input.language,
                         audio: input.audio,
+                        maxSeconds: partSeconds,
                         signal: input.signal
                     }, options.speechFetch);
                 }
@@ -628,7 +631,12 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
                     if (filePath === null) {
                         return { ok: false, reason: 'missing' };
                     }
-                    return estimateSubtitleGeneration(filePath, runFfmpeg, { cutsAtPauses: speechCutsAtPauses(options.getSettings().transcribeProvider), audio: options.audioFiles });
+                    const provider = options.getSettings().transcribeProvider;
+                    return estimateSubtitleGeneration(filePath, runFfmpeg, {
+                        cutsAtPauses: speechCutsAtPauses(provider),
+                        partSeconds: speechPartSeconds(provider),
+                        audio: options.audioFiles
+                    });
                 },
                 cancelGeneration: (episodeId) => {
                     generations.cancel(episodeId);

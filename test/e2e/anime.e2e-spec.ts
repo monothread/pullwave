@@ -4527,7 +4527,10 @@ test.describe('creating the subtitle of an episode from its audio', () => {
     interface GeminiRequest {
         path: string;
         key: string | undefined;
-        body: { contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> };
+        body: {
+            contents: Array<{ parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }>;
+            generationConfig?: { responseMimeType?: string; responseSchema?: { type?: string } };
+        };
     }
 
     const FIRST_PART = 'WEBVTT\n\n00:01.000 --> 00:03.000\nPart one\n';
@@ -4561,7 +4564,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
                 const path = request.url ?? '';
                 if (path.startsWith('/v1beta/models/') && path.endsWith(':generateContent')) {
                     geminis.push({ path, key: request.headers['x-goog-api-key'] as string | undefined, body: JSON.parse(body.toString('utf-8')) as GeminiRequest['body'] });
-                    const segments = geminis.length === 1 ? '[{"start":1,"end":3,"text":"Parte um"}]' : '[{"start":2,"end":4,"text":"Parte dois"}]';
+                    const segments = `[{"start":${geminis.length === 1 ? 1 : 2},"end":${geminis.length === 1 ? 3 : 4},"text":"Parte ${geminis.length}"}]`;
                     response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ candidates: [{ content: { parts: [{ text: segments }] } }] }));
                     return;
                 }
@@ -4979,7 +4982,7 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         expect(Object.keys(tokens)).toEqual(['speech-gemini']);
 
         await downloadWithoutSubtitle(page);
-        const { create } = await openGenerateDialog(page, 'Japanese', 'Portuguese (Brazil)');
+        const { create } = await openGenerateDialog(page, 'Japanese', 'Portuguese (Brazil)', /^11 min · about 2\.5 MiB · 4 requests$/);
         await expect(create.getByTestId('generate-plan')).toHaveText('The audio, spoken in Japanese, is written in Portuguese (Brazil) at once by the speech service.');
         const facts = create.getByRole('region', { name: 'What will be sent' });
         await expect(facts.getByText('Gemini (Google) · gem-model')).toBeVisible();
@@ -4990,10 +4993,12 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         await expect(create).toBeHidden({ timeout: 60000 });
         await expect(page.locator('.toast--info .toast__message', { hasText: 'SUBTITLE CREATED' })).toHaveText('SUBTITLE CREATED IN Portuguese (Brazil).');
 
-        expect(geminis).toHaveLength(2);
+        expect(geminis).toHaveLength(4);
         geminis.forEach((request) => {
             expect(request.path).toBe('/v1beta/models/gem-model:generateContent');
             expect(request.key).toBe('gem-key');
+            expect(request.body.generationConfig?.responseMimeType).toBe('application/json');
+            expect(request.body.generationConfig?.responseSchema?.type).toBe('ARRAY');
             const [text, audio] = request.body.contents[0]?.parts ?? [];
             expect(text?.text).toContain('The audio is spoken in Japanese. Write what is said translated into Portuguese (Brazil).');
             expect(audio?.inlineData?.mimeType).toBe('audio/mp3');
@@ -5002,7 +5007,9 @@ test.describe('creating the subtitle of an episode from its audio', () => {
         });
         expect(received).toEqual([]);
         expect(chats).toEqual([]);
-        expect(readFileSync(generatedFile('Portuguese (Brazil)'), 'utf-8')).toBe('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nParte um\n\n00:10:02.000 --> 00:10:04.000\nParte dois\n');
+        expect(readFileSync(generatedFile('Portuguese (Brazil)'), 'utf-8')).toBe(
+            'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nParte 1\n\n00:03:02.000 --> 00:03:04.000\nParte 2\n\n00:06:02.000 --> 00:06:04.000\nParte 3\n\n00:09:02.000 --> 00:09:04.000\nParte 4\n'
+        );
         expect(existsSync(generatedFile('Japanese'))).toBe(false);
     });
 

@@ -164,6 +164,18 @@ describe('estimateSubtitleGeneration', () => {
         expect(await estimateSubtitleGeneration(VIDEO, ffmpeg)).toMatchObject({ ok: true, parts });
     });
 
+    it('uses custom partSeconds when calculating parts for services that use shorter chunks', async () => {
+        const ffmpeg = vi.fn<FfmpegRunner>(async () => {
+            return { code: 1, stderr: WITH_AUDIO('00:24:03.52') };
+        });
+        expect(await estimateSubtitleGeneration(VIDEO, ffmpeg, { cutsAtPauses: false, partSeconds: 180 })).toEqual({
+            ok: true,
+            seconds: 24 * 60 + 3.52,
+            parts: 9,
+            approxBytes: Math.round((24 * 60 + 3.52) * 4000)
+        });
+    });
+
     it.each(['no-audio', 'extract-failed'] as const)('says why when the audio cannot be measured (%s)', async (reason) => {
         const stderr = reason === 'no-audio' ? '  Duration: 00:24:03.52, start: 0.0\n  Stream #0:0: Video: h264' : 'garbage';
         const ffmpeg = vi.fn<FfmpegRunner>(async () => {
@@ -410,9 +422,9 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
         expect(translation).not.toHaveBeenCalled();
     });
 
-    it('sends the audio again to be transcribed, and translates the text, when the first part is answered with something that is not a subtitle', async () => {
+    it('retries a part once on BAD_RESPONSE for a service that translates directly to any language, without falling back to the language model', async () => {
         const ask = speaking(REFUSED, FIRST_PART, SECOND_PART);
-        const { files, translate, dependencies } = setup(ask, translating(), {}, 'any');
+        const { files, translate, translation, dependencies } = setup(ask, translating(), {}, 'any');
         const onProgress = vi.fn<(done: number, total: number, extra: GenerationProgressExtra) => void>();
         const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, onProgress);
         expect(result).toMatchObject({ ok: true, generated: { id: 'generated-Spanish' } });
@@ -420,24 +432,86 @@ describe('generateEpisodeSubtitle: having the audio written in any language at o
             ask.mock.calls.map((call) => {
                 return [call[0].task, call[0].fileName];
             })
-        ).toEqual([['translate', 'part-0.mp3'], ['transcribe', 'part-0.mp3'], ['transcribe', 'part-1.mp3']]);
-        expect(translate).toHaveBeenCalledTimes(1);
-        expect(translate.mock.calls[0]?.[0]).toBe(systemPromptFor('Spanish', { title: TITLE }));
-        expect(files.written[generatedFile('Spanish')]).toContain('[こんにちは]');
-        expect(onProgress.mock.calls.at(-2)?.[2]).toEqual({ phase: 'translating', plan: 'transcribe-translate' });
+        ).toEqual([['translate', 'part-0.mp3'], ['translate', 'part-0.mp3'], ['translate', 'part-1.mp3']]);
+        expect(translation).not.toHaveBeenCalled();
+        expect(translate).not.toHaveBeenCalled();
+        expect(files.written[generatedFile('Spanish')]).toBe(TRANSCRIBED);
+        expect(onProgress.mock.calls.at(-1)?.[2]).toEqual({ phase: 'saving', plan: 'direct' });
     });
 
-    it('says the translation lacks what it lacks, when the answer is refused and there is nothing to translate the text with', async () => {
-        const ask = speaking(REFUSED, FIRST_PART);
-        const { files, audio, dependencies } = setup(ask, translating(), {
-            translation: () => {
-                return { ok: false, reason: 'no-model' };
-            }
-        }, 'any');
-        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-translation-model' });
-        expect(ask).toHaveBeenCalledTimes(1);
+    it('retries a later part once on BAD_RESPONSE for a service that translates directly to any language', async () => {
+        const ask = speaking(FIRST_PART, REFUSED, SECOND_PART);
+        const { files, translation, dependencies } = setup(ask, translating(), {}, 'any');
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn());
+        expect(result).toMatchObject({ ok: true, generated: { id: 'generated-Spanish' } });
+        expect(
+            ask.mock.calls.map((call) => {
+                return [call[0].task, call[0].fileName];
+            })
+        ).toEqual([['translate', 'part-0.mp3'], ['translate', 'part-1.mp3'], ['translate', 'part-1.mp3']]);
+        expect(translation).not.toHaveBeenCalled();
+        expect(files.written[generatedFile('Spanish')]).toBe(TRANSCRIBED);
+    });
+
+    it('returns the BAD_RESPONSE error after retrying once, without falling back to the language model or masking it as missing translation setup', async () => {
+        const ask = speaking(REFUSED, REFUSED, FIRST_PART);
+        const translation = vi.fn((): LlmAccess => {
+            return { ok: false, reason: 'no-model' };
+        });
+        const { files, audio, dependencies } = setup(ask, translating(), { translation }, 'any');
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Spanish', title: TITLE }, dependencies, vi.fn())).toEqual({
+            ok: false,
+            reason: 'failed',
+            error: REFUSED.ok ? { code: 'BAD_RESPONSE', raw: '' } : REFUSED.error
+        });
+        expect(ask).toHaveBeenCalledTimes(2);
+        expect(translation).not.toHaveBeenCalled();
         expect(files.written).toEqual({});
         expect(audio.removed).toEqual([WORK]);
+    });
+
+    it('retries a part once on BAD_RESPONSE when transcribing in the spoken language for a service that translates directly to any language', async () => {
+        const ask = speaking(REFUSED, FIRST_PART, SECOND_PART);
+        const { files, translation, dependencies } = setup(ask, translating(), {}, 'any');
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn());
+        expect(result).toMatchObject({ ok: true, generated: { id: 'generated-Japanese' } });
+        expect(
+            ask.mock.calls.map((call) => {
+                return [call[0].task, call[0].fileName];
+            })
+        ).toEqual([['transcribe', 'part-0.mp3'], ['transcribe', 'part-0.mp3'], ['transcribe', 'part-1.mp3']]);
+        expect(translation).not.toHaveBeenCalled();
+        expect(files.written[generatedFile('Japanese')]).toBe(TRANSCRIBED);
+    });
+
+    it('uses partSeconds for ffmpeg segmentation and cue shifting when provided', async () => {
+        const ask = speaking(FIRST_PART, SECOND_PART);
+        const { files, ffmpeg, dependencies } = setup(ask, translating(), {
+            speech: () => {
+                return { ok: true, translatesTo: 'any', cutsAtPauses: false, partSeconds: 180, ask };
+            }
+        });
+        const result = await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Portuguese (Brazil)', title: TITLE }, dependencies, vi.fn());
+        expect(result).toMatchObject({ ok: true, generated: { id: 'generated-Portuguese (Brazil)' } });
+        const ffmpegArgs = ffmpeg.mock.calls[0]?.[0] ?? [];
+        const segmentTimeIndex = ffmpegArgs.indexOf('-segment_time');
+        expect(segmentTimeIndex).toBeGreaterThan(-1);
+        expect(ffmpegArgs[segmentTimeIndex + 1]).toBe('180');
+        expect(files.written[generatedFile('Portuguese (Brazil)')]).toBe(
+            [
+                'WEBVTT',
+                '',
+                '00:00:01.000 --> 00:00:03.000',
+                'こんにちは',
+                '',
+                '00:00:04.000 --> 00:00:06.000 align:start',
+                'またね',
+                '',
+                '00:03:02.000 --> 00:03:04.500',
+                'ただいま',
+                ''
+            ].join('\n')
+        );
     });
 });
 
@@ -1139,5 +1213,19 @@ describe('generateEpisodeSubtitle: cutting the audio at its pauses', () => {
         expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'English', title: TITLE }, dependencies, vi.fn())).toEqual({ ok: false, reason: 'no-translation-token' });
         expect(ffmpeg).not.toHaveBeenCalled();
         expect(ask).not.toHaveBeenCalled();
+    });
+
+    it('does not retry BAD_RESPONSE for pause-cut pieces', async () => {
+        const ask = vi.fn<Ask>(async (): Promise<LlmCompletionResult> => {
+            return { ok: false, error: { code: 'BAD_RESPONSE', raw: 'bad json' } };
+        });
+        const { files, dependencies } = cuttingSetup(ask, { pcm: pcmOf([silence(1), tone(2)]), pieces: 1 });
+        expect(await generateEpisodeSubtitle(VIDEO, { audioLanguage: 'Japanese', language: 'Japanese', title: TITLE }, dependencies, vi.fn())).toEqual({
+            ok: false,
+            reason: 'failed',
+            error: { code: 'BAD_RESPONSE', raw: 'bad json' }
+        });
+        expect(ask).toHaveBeenCalledTimes(1);
+        expect(files.written).toEqual({});
     });
 });

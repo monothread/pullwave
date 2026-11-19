@@ -46,8 +46,15 @@ export function speechModelOf(provider: SpeechProviderId, model: string): string
     return provider === 'openai' ? OPENAI_SPEECH_MODEL : model;
 }
 
+export const SPEECH_PART_SECONDS = 600;
+export const GEMINI_SPEECH_PART_SECONDS = 180;
+
 export function speechCutsAtPauses(provider: SpeechProviderId): boolean {
     return provider === 'openai';
+}
+
+export function speechPartSeconds(provider: SpeechProviderId): number {
+    return provider === 'gemini' ? GEMINI_SPEECH_PART_SECONDS : SPEECH_PART_SECONDS;
 }
 
 export const LLM_TOKEN_SLOTS = [...LLM_PROVIDER_IDS, 'speech-openai', 'speech-gemini', 'speech-custom'] as const;

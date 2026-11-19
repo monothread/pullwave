@@ -1,4 +1,4 @@
-import { isLlmProviderId, isLlmTokenSlot, LLM_PROVIDER_IDS, LLM_PROVIDERS, LLM_TOKEN_SLOTS, OPENAI_SPEECH_MODEL, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechTokenSlot, speechTranslatesTo, translationSetupGap } from '@shared/llm';
+import { GEMINI_SPEECH_PART_SECONDS, isLlmProviderId, isLlmTokenSlot, LLM_PROVIDER_IDS, LLM_PROVIDERS, LLM_TOKEN_SLOTS, OPENAI_SPEECH_MODEL, SPEECH_PART_SECONDS, SPEECH_PROVIDER_IDS, SPEECH_PROVIDERS, speechCutsAtPauses, speechModelOf, speechPartSeconds, speechTokenSlot, speechTranslatesTo, translationSetupGap } from '@shared/llm';
 
 describe('LLM_PROVIDER_IDS', () => {
     it('lists the providers the app knows, in the order the settings show them', () => {
@@ -72,6 +72,16 @@ describe('the services of speech to text', () => {
         ['gemini', false]
     ] as const)('cut the audio at its pauses for %s: %s', (provider, cuts) => {
         expect(speechCutsAtPauses(provider)).toBe(cuts);
+    });
+
+    it.each([
+        ['openai', SPEECH_PART_SECONDS],
+        ['custom', SPEECH_PART_SECONDS],
+        ['gemini', GEMINI_SPEECH_PART_SECONDS]
+    ] as const)('split audio for %s into %is parts', (provider, seconds) => {
+        expect(SPEECH_PART_SECONDS).toBe(600);
+        expect(GEMINI_SPEECH_PART_SECONDS).toBe(180);
+        expect(speechPartSeconds(provider)).toBe(seconds);
     });
 
     it.each(SPEECH_PROVIDER_IDS)('keep the token of %s in a slot of their own', (provider) => {

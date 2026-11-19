@@ -118,7 +118,7 @@ const READERS: Record<LlmProtocol, (body: unknown) => string | null> = {
     gemini: geminiText
 };
 
-function retryAfterOf(response: Response): number | undefined {
+export function retryAfterOf(response: Response): number | undefined {
     const seconds = Number(response.headers.get('retry-after'));
     return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
 }

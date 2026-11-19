@@ -48,6 +48,7 @@ describe('promptFor', () => {
     it('asks for the text in the language that is wanted when it is translated, naming the language that is spoken', () => {
         const prompt = promptFor('translate', 'Japanese', 'Portuguese (Brazil)');
         expect(prompt).toContain('The audio is spoken in Japanese. Write what is said translated into Portuguese (Brazil).');
+        expect(prompt).toContain('Every subtitle line must be written in Portuguese (Brazil); do not leave any line in Japanese.');
     });
 
     it('asks for the text in the language that is spoken when it is only transcribed', () => {
@@ -91,6 +92,23 @@ describe('parseSegments', () => {
 
     it('gives an empty list for an empty list', () => {
         expect(parseSegments('[]')).toEqual([]);
+        expect(parseSegments('[]', 180)).toEqual([]);
+    });
+
+    it('clamps end times to maxSeconds and drops cues starting at or after maxSeconds', () => {
+        expect(
+            parseSegments(
+                '[{"start":1,"end":3,"text":"ok"},{"start":178,"end":185,"text":"edge"},{"start":180,"end":184,"text":"beyond"},{"start":900,"end":905,"text":"hallucinated"}]',
+                180
+            )
+        ).toEqual([
+            { start: 1, end: 3, text: 'ok' },
+            { start: 178, end: 180, text: 'edge' }
+        ]);
+    });
+
+    it('gives null when every non-empty cue starts at or after maxSeconds', () => {
+        expect(parseSegments('[{"start":180,"end":185,"text":"late"},{"start":200,"end":205,"text":"later"}]', 180)).toBeNull();
     });
 
     it.each([
@@ -127,7 +145,7 @@ describe('segmentsToVtt', () => {
 });
 
 describe('transcribeWithGemini: the request', () => {
-    it('asks the model of the address of Gemini, with the key in the header, the instructions as text and the audio inline', async () => {
+    it('asks the model of the address of Gemini, with the key in the header, the instructions as text, the audio inline and structured JSON output', async () => {
         const { fetchImpl, calls } = fakeFetch(answerOf('[]'));
         await transcribeWithGemini(BASE, fetchImpl);
         expect(calls).toHaveLength(1);
@@ -142,8 +160,29 @@ describe('transcribeWithGemini: the request', () => {
                         { inlineData: { mimeType: 'audio/mp3', data: Buffer.from(AUDIO).toString('base64') } }
                     ]
                 }
-            ]
+            ],
+            generationConfig: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: 'ARRAY',
+                    items: {
+                        type: 'OBJECT',
+                        properties: {
+                            start: { type: 'NUMBER' },
+                            end: { type: 'NUMBER' },
+                            text: { type: 'STRING' }
+                        },
+                        required: ['start', 'end', 'text']
+                    }
+                }
+            }
         });
+    });
+
+    it('strips a leading models/ prefix from the model name before encoding it in the address', async () => {
+        const { fetchImpl, calls } = fakeFetch(answerOf('[]'));
+        await transcribeWithGemini({ ...BASE, model: 'models/gemini-3.5-flash-lite' }, fetchImpl);
+        expect(calls[0]?.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
     });
 
     it('puts the model in the address with what an address does not accept written out', async () => {
@@ -187,6 +226,52 @@ describe('transcribeWithGemini: the answer', () => {
         expect(result).toEqual({ ok: true, text: 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nOlá\n' });
     });
 
+    it('ignores thought parts returned by thinking models when reading the answer', async () => {
+        const response = new Response(
+            JSON.stringify({
+                candidates: [
+                    {
+                        content: {
+                            parts: [
+                                { text: 'Let me think about this audio...', thought: true },
+                                { text: '[{"start":1,"end":3,"text":"Olá"}]', thought: false }
+                            ]
+                        }
+                    }
+                ]
+            }),
+            { status: 200 }
+        );
+        expect(await transcribeWithGemini(BASE, fakeFetch(response).fetchImpl)).toEqual({
+            ok: true,
+            text: 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nOlá\n'
+        });
+    });
+
+    it('rejects a response that only contains thought parts', async () => {
+        const body = JSON.stringify({ candidates: [{ content: { parts: [{ text: '[{"start":1,"end":3,"text":"Olá"}]', thought: true }] } }] });
+        expect(await errorOf(new Response(body, { status: 200 }))).toEqual({
+            code: 'BAD_RESPONSE',
+            raw: `The answer is not a list of subtitle lines with times: ${body}`
+        });
+    });
+
+    it('applies maxSeconds to clamp end times and drop cues past the part length', async () => {
+        const result = await transcribeWithGemini(
+            { ...BASE, maxSeconds: 180 },
+            fakeFetch(answerOf('[{"start":178,"end":185,"text":"Fim"},{"start":200,"end":205,"text":"Fora"}]')).fetchImpl
+        );
+        expect(result).toEqual({ ok: true, text: 'WEBVTT\n\n00:02:58.000 --> 00:03:00.000\nFim\n' });
+    });
+
+    it('returns BAD_RESPONSE when every cue starts at or after maxSeconds', async () => {
+        const body = JSON.stringify({ candidates: [{ content: { parts: [{ text: '[{"start":180,"end":185,"text":"Fora"}]' }] } }] });
+        expect(await errorOf(new Response(body, { status: 200 }), { ...BASE, maxSeconds: 180 })).toEqual({
+            code: 'BAD_RESPONSE',
+            raw: `The answer is not a list of subtitle lines with times: ${body}`
+        });
+    });
+
     it('gives a subtitle with no cues when nothing is said', async () => {
         expect(await transcribeWithGemini(BASE, fakeFetch(answerOf('[]')).fetchImpl)).toEqual({ ok: true, text: 'WEBVTT\n' });
     });
@@ -224,6 +309,26 @@ describe('transcribeWithGemini: the answer', () => {
     it('says to wait on a 429, with how long the service asked', async () => {
         expect(await errorOf(respond(429, 'slow down', { 'retry-after': '7' }))).toEqual({ code: 'RATE_LIMITED', raw: 'slow down', retryAfterSeconds: 7 });
         expect(await errorOf(respond(429, 'slow down'))).toEqual({ code: 'RATE_LIMITED', raw: 'slow down' });
+    });
+
+    it('treats 503 high demand as retryable rate limiting, with retry-after when valid and without the token', async () => {
+        expect(await errorOf(respond(503, 'high demand', { 'retry-after': '12' }))).toEqual({
+            code: 'RATE_LIMITED',
+            raw: 'HTTP 503: high demand',
+            retryAfterSeconds: 12
+        });
+        expect(await errorOf(respond(503, 'high demand', { 'retry-after': '0' }))).toEqual({
+            code: 'RATE_LIMITED',
+            raw: 'HTTP 503: high demand'
+        });
+        expect(await errorOf(respond(503, 'high demand', { 'retry-after': 'soon' }))).toEqual({
+            code: 'RATE_LIMITED',
+            raw: 'HTTP 503: high demand'
+        });
+        expect(await errorOf(respond(503, 'high demand gem-secret'))).toEqual({
+            code: 'RATE_LIMITED',
+            raw: 'HTTP 503: high demand [token]'
+        });
     });
 
     it('says the model is not there on 404', async () => {
