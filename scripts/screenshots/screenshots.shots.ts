@@ -21,7 +21,7 @@ test.afterAll(async () => {
     rmSync('/tmp/pullwave-demo', { recursive: true, force: true });
 });
 
-test('the video downloader, the anime and the manga, and the home screen, in the Neon Tokyo theme', async () => {
+test('the video downloader, the anime and the manga, and the home screen, in the Neon Tokyo Light theme', async () => {
     const shot = await launch(assets, { history: historyOf, settings: { mangaDirectory: DEMO_MANGA_FOLDER } });
     await shootError(shot);
     await shootQueue(shot, 'neon-tokyo-downloads');
@@ -52,10 +52,14 @@ test('the cutter and the settings, with the folders of an imaginary home', async
     await shot.app.close();
 });
 
-for (const theme of ['dark', 'light'] as const) {
-    test(`the queue in the ${theme} theme`, async () => {
-        const shot = await launch(assets, { theme });
-        await shootQueue(shot, `${theme}-downloads`);
+for (const entry of [
+    { theme: 'neon-tokyo' as const, file: 'neon-tokyo-dark-downloads' },
+    { theme: 'dark' as const, file: 'dark-downloads' },
+    { theme: 'light' as const, file: 'light-downloads' }
+]) {
+    test(`the queue in the ${entry.theme} theme`, async () => {
+        const shot = await launch(assets, { theme: entry.theme });
+        await shootQueue(shot, entry.file);
         await shot.app.close();
     });
 }

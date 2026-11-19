@@ -1,7 +1,7 @@
 {
   "name": "pullwave",
   "version": "0.28.9",
-  "description": "Cyberpunk yt-dlp GUI and video downloader for Linux and Windows",
+  "description": "Desktop video downloader (yt-dlp), anime library & player (ani-cli), and manga reader (Mihon/Tachiyomi) for Linux and Windows.",
   "main": "out/main/index.js",
   "author": {
     "name": "monothread",

@@ -11,8 +11,10 @@ const PAGES_PER_CHAPTER = 5;
 const MANGA_FIRST_ID = 11;
 const FIRST_SOURCE = '4242';
 const SECOND_SOURCE = '5252';
-const EXTENSION_PACKAGE = 'eu.kanade.tachiyomi.extension.en.lanternscans';
+const EXTENSION_PACKAGE = 'eu.kanade.tachiyomi.extension.en.mangadex';
 const STORE_ADDRESS = 'https://store.example/index.min.json';
+const FIRST_SOURCE_NAME = 'MangaDex';
+const SECOND_SOURCE_NAME = 'MangaPark';
 
 abstract class LocalServer {
     private server: Server | null = null;
@@ -56,9 +58,20 @@ function sendJson(response: ServerResponse, payload: unknown): void {
     response.end(JSON.stringify(payload));
 }
 
+function imageMimeType(bytes: Buffer): string {
+    if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+        return 'image/jpeg';
+    }
+    if (bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') {
+        return 'image/webp';
+    }
+    return 'image/png';
+}
+
 function sendPicture(response: ServerResponse, file: string): void {
-    response.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
-    response.end(readFileSync(file));
+    const bytes = readFileSync(file);
+    response.writeHead(200, { 'Content-Type': imageMimeType(bytes), 'Cache-Control': 'no-store' });
+    response.end(bytes);
 }
 
 export interface AniListFiles {
@@ -80,15 +93,18 @@ export class FakeAniList extends LocalServer {
     private schedule(start: number, end: number): Json {
         const first = Math.floor(start / SECONDS_PER_DAY);
         const airings: Json[] = [];
+        const series = ANIME_TITLES.filter((anime) => {
+            return anime.title !== 'Jujutsu Kaisen 0';
+        });
         for (let day = first; day <= Math.floor(end / SECONDS_PER_DAY); day += 1) {
-            ANIME_TITLES.forEach((anime, position) => {
+            series.forEach((anime, position) => {
                 const airingAt = day * SECONDS_PER_DAY + (position * 3 + 1) * 3600 + 20 * 60;
                 if (airingAt > start && airingAt < end && (position + day) % 3 !== 0) {
                     airings.push({
                         episode: 4 + ((day + position) % 8),
                         airingAt,
                         media: {
-                            id: 1000 + position,
+                            id: anime.anilistId,
                             format: 'TV',
                             countryOfOrigin: 'JP',
                             isAdult: false,
@@ -161,7 +177,7 @@ export class FakeSuwayomi extends LocalServer {
     private extension(): Json {
         return {
             pkgName: EXTENSION_PACKAGE,
-            name: 'Tachiyomi: Lantern Scans',
+            name: `Tachiyomi: ${FIRST_SOURCE_NAME}`,
             lang: 'en',
             versionName: '1.4.12',
             isInstalled: this.installed,
@@ -196,12 +212,22 @@ export class FakeSuwayomi extends LocalServer {
     }
 
     private details(id: number): Json {
+        const entry = MANGA_TITLES[id - MANGA_FIRST_ID];
+        const sourceName = this.sourceOfManga(id) === FIRST_SOURCE ? FIRST_SOURCE_NAME : SECOND_SOURCE_NAME;
         return {
             fetchMangaAndChapters: {
-                manga: { ...this.manga(id), realUrl: `https://lanternscans.example/manga/${String(id)}`, author: 'Mei Tanabe', artist: 'Ren Okabe', description: 'A quiet town, a strange visitor and a secret kept for three generations.', genre: ['Adventure', 'Mystery', 'Slice of life'], status: 'ONGOING' },
+                manga: {
+                    ...this.manga(id),
+                    realUrl: `https://mangadex.example/manga/${String(id)}`,
+                    author: entry?.author ?? 'Unknown',
+                    artist: entry?.artist ?? 'Unknown',
+                    description: entry?.description ?? '',
+                    genre: entry?.genres ?? ['Action', 'Adventure'],
+                    status: entry?.status ?? 'ONGOING'
+                },
                 chapters: Array.from({ length: CHAPTERS }, (_unused, index) => {
                     const number = index + 1;
-                    return { id: id * 100 + number, name: `Chapter ${String(number)}`, chapterNumber: number, uploadDate: String(Date.now() - (CHAPTERS - number) * 86400000), scanlator: 'Lantern Scans', sourceOrder: number };
+                    return { id: id * 100 + number, name: `Chapter ${String(number)}`, chapterNumber: number, uploadDate: String(Date.now() - (CHAPTERS - number) * 86400000), scanlator: sourceName, sourceOrder: number };
                 })
             }
         };
@@ -212,7 +238,7 @@ export class FakeSuwayomi extends LocalServer {
             return { aboutServer: { version: 'v2.4.2366' } };
         }
         if (query.includes('addExtensionStore')) {
-            const store = { name: 'Lantern Store', indexUrl: String(variables['indexUrl']) };
+            const store = { name: 'Keiyoushi', indexUrl: String(variables['indexUrl']) };
             this.stores.push(store);
             return { addExtensionStore: { extensionStore: store } };
         }
@@ -230,7 +256,7 @@ export class FakeSuwayomi extends LocalServer {
             return { extensions: { nodes: this.stores.length > 0 ? [this.extension()] : [] } };
         }
         if (query.trim().startsWith('{ sources')) {
-            return { sources: { nodes: this.installed ? [this.source(FIRST_SOURCE, 'Lantern Scans'), this.source(SECOND_SOURCE, 'Paperwind')] : [] } };
+            return { sources: { nodes: this.installed ? [this.source(FIRST_SOURCE, FIRST_SOURCE_NAME), this.source(SECOND_SOURCE, SECOND_SOURCE_NAME)] : [] } };
         }
         if (query.includes('{ filters {')) {
             return { source: { filters: [] } };

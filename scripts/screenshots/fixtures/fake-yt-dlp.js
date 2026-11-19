@@ -19,7 +19,7 @@ const downloadDir = args[args.indexOf('-P') + 1];
 const finalPath = `${downloadDir}/${title} [abc].mp4`;
 
 function progress(value, speed, eta) {
-    process.stdout.write(`CYBERPROG|${value.toFixed(1).padStart(6)}%|${speed}|${eta}|${Math.round(value * 40000)}|${(value * 4).toFixed(1)}|False|${title}\n`);
+    process.stdout.write(`CYBERPROG|${value.toFixed(1).padStart(6)}%|${speed}|${eta}|${Math.round(value * 40000)}|${(value * 4).toFixed(1)}|False|137|${title}\n`);
 }
 
 if (fail === 'unavailable') {

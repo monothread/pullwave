@@ -17,8 +17,25 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+trimmed_query="$(printf '%s' "$query" | sed 's/^ *//;s/ *$//')"
+
+matching_list() {
+    if [ -n "$trimmed_query" ]; then
+        matches="$(cut -d' ' -f2- "@ANIME_LIST@" | grep -i -F -- "$trimmed_query")"
+        if [ -n "$matches" ]; then
+            n=1
+            printf '%s\n' "$matches" | while IFS= read -r line; do
+                printf '%s %s\n' "$n" "$line"
+                n=$((n + 1))
+            done
+            return
+        fi
+    fi
+    cat "@ANIME_LIST@"
+}
+
 title_of() {
-    sed -n "${1}p" "@ANIME_LIST@" | cut -d' ' -f2-
+    matching_list | sed -n "${1}p" | cut -d' ' -f2-
 }
 
 if [ "$download" = 1 ]; then
@@ -27,7 +44,7 @@ if [ "$download" = 1 ]; then
     printf '[download]  25.0%% of ~  19.00B at  1.00MiB/s ETA 00:01 (frag 1/4)\n'
     cp "@VIDEO@" "$file"
     printf '[download] 100%% of   19.00B in 00:00:01 at 1.00MiB/s\n'
-    printf 'WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nThe harbor lights wake up one by one.\n\n00:00:06.000 --> 00:00:10.000\nSomeone is waiting at the last pier.\n' > "$ANI_CLI_DOWNLOAD_DIR/$(title_of "$index") Episode $episode.vtt"
+    printf "WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nDon't worry. I'm the strongest.\n\n00:00:06.000 --> 00:00:10.000\nLet's finish this before nightfall.\n" > "$ANI_CLI_DOWNLOAD_DIR/$(title_of "$index") Episode $episode.vtt"
     exit 0
 fi
 
@@ -46,5 +63,5 @@ if [ -n "$index" ]; then
     exit 1
 fi
 
-"$ANI_CLI_MENU" 'Select anime: ' < "@ANIME_LIST@"
+matching_list | "$ANI_CLI_MENU" 'Select anime: '
 exit 1

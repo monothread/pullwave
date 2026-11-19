@@ -8,7 +8,7 @@ import { pinnedSpec } from '../../src/main/services/tools/programSpecs';
 import { themeChoiceOf } from '../../src/shared/themeChoice';
 import type { ThemeName } from '../../src/shared/types';
 import { ANIME_TITLES, EPISODES, MANGA_TITLES, VIDEO_TITLES } from './catalog';
-import { makeCover, makePage, makeVideo } from './media';
+import { makePage, makeVideo, prepareCovers } from './media';
 import { FakeAniList, FakeSuwayomi } from './servers';
 
 const ROOT = resolve(__dirname, '../..');
@@ -33,12 +33,7 @@ export async function prepareAssets(): Promise<Assets> {
     const animeCovers = join(root, 'covers', 'anime');
     const mangaCovers = join(root, 'covers', 'manga');
     const pages = join(root, 'pages');
-    ANIME_TITLES.forEach((style) => {
-        makeCover(animeCovers, style);
-    });
-    MANGA_TITLES.forEach((style) => {
-        makeCover(mangaCovers, style);
-    });
+    await prepareCovers(animeCovers, mangaCovers, ANIME_TITLES, MANGA_TITLES);
     for (let number = 1; number <= 5; number += 1) {
         makePage(pages, number);
     }
@@ -108,7 +103,7 @@ export async function launch(assets: Assets, options: LaunchOptions = {}): Promi
         join(userData, 'settings.json'),
         JSON.stringify({
             language: 'en',
-            ...themeChoiceOf(options.theme ?? 'neon-tokyo'),
+            ...themeChoiceOf(options.theme ?? 'neon-tokyo-light'),
             checkUpdatesOnStart: false,
             verifyLiveEnd: false,
             downloadDir: downloads,

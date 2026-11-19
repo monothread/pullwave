@@ -2,21 +2,21 @@ import { expect, type Page } from '@playwright/test';
 import { snap, type Shot } from './session';
 
 const STORE_ADDRESS = 'https://store.example/index.min.json';
-const SOURCE = 'Lantern Scans';
+const SOURCE = 'MangaDex';
 
 export interface MangaToAdd {
     title: string;
-    source: 'Lantern Scans' | 'Paperwind';
+    source: 'MangaDex' | 'MangaPark';
     downloaded: boolean;
 }
 
 export const MANGA_LIBRARY: readonly MangaToAdd[] = [
-    { title: 'Tidebound Chronicles', source: 'Lantern Scans', downloaded: true },
-    { title: 'Paper Lantern Detective', source: 'Lantern Scans', downloaded: true },
-    { title: 'Orbit Cafe', source: 'Lantern Scans', downloaded: false },
-    { title: 'Hollow Crown Knights', source: 'Lantern Scans', downloaded: true },
-    { title: 'Salt and Ember', source: 'Paperwind', downloaded: false },
-    { title: 'The Last Lantern Keeper', source: 'Paperwind', downloaded: true }
+    { title: 'One Piece', source: 'MangaDex', downloaded: true },
+    { title: 'Chainsaw Man', source: 'MangaDex', downloaded: true },
+    { title: 'Berserk', source: 'MangaDex', downloaded: true },
+    { title: 'Vagabond', source: 'MangaDex', downloaded: false },
+    { title: 'One-Punch Man', source: 'MangaPark', downloaded: true },
+    { title: 'Solo Leveling', source: 'MangaPark', downloaded: false }
 ];
 
 function mangaNav(page: Page) {
@@ -36,7 +36,7 @@ export async function installExtension(page: Page): Promise<void> {
     await goToMangaTab(page, 'SETTINGS');
     await page.getByLabel('Address of a store (index.min.json)').fill(STORE_ADDRESS);
     await page.getByRole('button', { name: 'ADD', exact: true }).click();
-    await expect(page.getByText('Lantern Store')).toBeVisible();
+    await expect(page.getByText('Keiyoushi')).toBeVisible();
     await goToMangaTab(page, 'EXTENSIONS');
     await page.getByRole('switch', { name: 'Installed only' }).uncheck();
     await page.getByRole('button', { name: `INSTALL: Tachiyomi: ${SOURCE}` }).click();
@@ -95,9 +95,9 @@ export async function shootMangaSearch(shot: Shot): Promise<void> {
     const { page } = shot;
     await openManga(page);
     await goToMangaTab(page, 'SEARCH');
-    await page.getByLabel('Manga name').fill('lantern');
+    await page.getByLabel('Manga name').fill('one');
     await page.getByRole('button', { name: 'SEARCH', exact: true }).last().click();
-    await expect(page.getByText('"lantern": found in 2 of 2 sources')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('"one": found in 2 of 2 sources')).toBeVisible({ timeout: 30000 });
     await page.waitForTimeout(2000);
     await snap(page, 'manga-search');
 }
@@ -115,7 +115,7 @@ export async function shootMangaPage(shot: Shot): Promise<void> {
     await openManga(page);
     await goToMangaTab(page, 'LIBRARY');
     await backToList(page);
-    await page.getByTestId('manga-entry').getByRole('button', { name: 'Open: Paper Lantern Detective' }).click();
+    await page.getByTestId('manga-entry').getByRole('button', { name: 'Open: One Piece' }).click();
     await expect(page.getByRole('button', { name: 'READ: Chapter 1', exact: true })).toBeVisible();
     await page.waitForTimeout(1500);
     await snap(page, 'manga-page');
