@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { AnimeJob } from '@shared/anime';
 import { DEFAULT_SETTINGS, IPC } from '@shared/constants';
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
@@ -2479,7 +2479,11 @@ describe('createAnimeRuntime covers', () => {
     });
 });
 
-describe('createAnimeRuntime automatic translation of the new episodes', () => {
+describe('createAnimeRuntime automatic translation of downloaded episodes', () => {
+    const FAKE_ANI_CLI = resolve(__dirname, '../e2e/fixtures/fake-ani-cli.sh');
+    const ANI_SCRIPTS = resolve(__dirname, '../../resources/ani-scripts');
+    const ENGLISH_VTT = 'WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nHello there\n';
+
     function withSettings(settings: Partial<typeof DEFAULT_SETTINGS>, token: string | null) {
         const disableAutoTranslate = vi.fn();
         const getLlmToken = vi.fn(() => {
@@ -2494,6 +2498,59 @@ describe('createAnimeRuntime automatic translation of the new episodes', () => {
         });
         const runtime = open(given) as AnimeRuntime;
         return { runtime, send, disableAutoTranslate, getLlmToken };
+    }
+
+    function withFakeDownload(settings: Partial<typeof DEFAULT_SETTINGS>, subtitleLabel = 'English') {
+        const calls: Array<{ url: string; body: { model: string; messages: Array<{ role: string; content: string }> } }> = [];
+        const llmFetch: LlmFetch = vi.fn(async (url, init) => {
+            const body = JSON.parse(String(init?.body)) as { model: string; messages: Array<{ role: string; content: string }> };
+            calls.push({ url: String(url), body });
+            const texts = JSON.parse(body.messages[1]?.content ?? '[]') as string[];
+            const translated = texts.map((text) => {
+                return `T: ${text}`;
+            });
+            return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(translated) } }] }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        });
+        const { root, send, options: base } = options();
+        const busybox = join(root, 'busybox');
+        writeFileSync(
+            busybox,
+            '#!/bin/sh\ncmd=${0##*/}\nif [ "$cmd" = busybox ]; then\n  shift\n  exec /bin/sh "$@"\nfi\nPATH=/usr/bin:/bin exec "$cmd" "$@"\n',
+            { mode: 0o755 }
+        );
+        const programs = {
+            pathOf: (id: string) => {
+                return id === 'busybox' ? busybox : id === 'curl' ? join(root, 'curl') : null;
+            },
+            expectedPathOf: () => {
+                return null;
+            }
+        };
+        const given: AnimeRuntimeOptions = {
+            ...base,
+            scriptsDir: ANI_SCRIPTS,
+            programs,
+            resolver: new BinaryResolver(programs),
+            customScriptPath: () => {
+                return FAKE_ANI_CLI;
+            },
+            getSettings: () => {
+                return { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'gpt-x', animeSubtitles: 'Spanish', animeAutoTranslateNew: true, ...settings };
+            },
+            getLlmToken: () => {
+                return 'sk-test';
+            },
+            llmFetch
+        };
+        const historyDir = join(root, 'data', 'anime', 'history');
+        mkdirSync(historyDir, { recursive: true });
+        writeFileSync(join(historyDir, 'download-subtitle'), ENGLISH_VTT);
+        writeFileSync(join(historyDir, 'download-subtitle-label'), subtitleLabel);
+        const runtime = open(given) as AnimeRuntime;
+        return { root, runtime, send, calls };
     }
 
     it('turns it off and tells the screen when it is on and the provider has no token', () => {
@@ -2557,5 +2614,95 @@ describe('createAnimeRuntime automatic translation of the new episodes', () => {
         runtime.enforceAutoTranslateSetup();
 
         expect(send.mock.calls).toEqual([[IPC.eventAnimeAutoTranslateOff, 'setup']]);
+    });
+
+    function addFakeEpisodes(runtime: AnimeRuntime, episodes: string[]): { animeId: number; episodeIds: number[] } {
+        const added = runtime.queue.addToLibrary({ title: 'Fake Anime', query: 'fake', index: 1, episodes, series: null, season: null, seasonName: null });
+        if (!added.ok) {
+            throw new Error(`Could not add Fake Anime: ${added.reason}`);
+        }
+        return {
+            animeId: added.anime.id,
+            episodeIds: added.anime.episodes.map((episode) => {
+                return episode.id;
+            })
+        };
+    }
+
+    it.runIf(process.platform === 'linux')('translates a single episode downloaded manually when the target subtitle is missing', async () => {
+        const { root, runtime, send, calls } = withFakeDownload({});
+        const { episodeIds } = addFakeEpisodes(runtime, ['1', '2']);
+        const firstId = episodeIds[0];
+        if (firstId === undefined) {
+            throw new Error('Expected episode 1 to exist');
+        }
+
+        runtime.queue.retry(firstId);
+
+        const translatedPath = join(root, 'Downloads', 'Pullwave Anime', 'Fake Anime', 'Episode 1', 'Fake Anime Episode 1.translated-Spanish.vtt');
+        await vi.waitFor(() => {
+            expect(existsSync(translatedPath)).toBe(true);
+        }, { timeout: 10000 });
+        expect(readFileSync(translatedPath, 'utf-8')).toBe('WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nT: Hello there\n');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]?.body.model).toBe('gpt-x');
+        expect(calls[0]?.body.messages[0]?.content).toContain('Spanish');
+        expect(calls[0]?.body.messages[1]?.content).toBe(JSON.stringify(['Hello there']));
+        expect(send).toHaveBeenCalledWith(IPC.eventSubtitleTranslation, { episodeId: firstId, language: 'Spanish', status: 'done', done: 1, total: 1, reason: null });
+    });
+
+    it.runIf(process.platform === 'linux')('translates every episode downloaded when downloading a full season manually', async () => {
+        const { root, runtime, calls } = withFakeDownload({});
+        const { animeId } = addFakeEpisodes(runtime, ['1', '2']);
+
+        runtime.queue.downloadMissing([animeId]);
+
+        const firstTranslated = join(root, 'Downloads', 'Pullwave Anime', 'Fake Anime', 'Episode 1', 'Fake Anime Episode 1.translated-Spanish.vtt');
+        const secondTranslated = join(root, 'Downloads', 'Pullwave Anime', 'Fake Anime', 'Episode 2', 'Fake Anime Episode 2.translated-Spanish.vtt');
+        await vi.waitFor(() => {
+            expect(existsSync(firstTranslated)).toBe(true);
+            expect(existsSync(secondTranslated)).toBe(true);
+        }, { timeout: 10000 });
+        expect(readFileSync(firstTranslated, 'utf-8')).toBe('WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nT: Hello there\n');
+        expect(readFileSync(secondTranslated, 'utf-8')).toBe('WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nT: Hello there\n');
+        expect(calls).toHaveLength(2);
+    });
+
+    it.runIf(process.platform === 'linux')('does not translate a manually downloaded episode that already has the target subtitle', async () => {
+        const { root, runtime, calls } = withFakeDownload({ animeSubtitles: 'Spanish' }, 'Spanish');
+        const { episodeIds } = addFakeEpisodes(runtime, ['1']);
+        const firstId = episodeIds[0];
+        if (firstId === undefined) {
+            throw new Error('Expected episode 1 to exist');
+        }
+
+        runtime.queue.retry(firstId);
+
+        await vi.waitFor(() => {
+            expect(runtime.db.getEpisode(firstId)?.status).toBe('done');
+        }, { timeout: 10000 });
+        await flush();
+
+        expect(calls).toEqual([]);
+        expect(existsSync(join(root, 'Downloads', 'Pullwave Anime', 'Fake Anime', 'Episode 1', 'Fake Anime Episode 1.translated-Spanish.vtt'))).toBe(false);
+    });
+
+    it.runIf(process.platform === 'linux')('does not translate a manually downloaded episode while the setting is off', async () => {
+        const { root, runtime, calls } = withFakeDownload({ animeAutoTranslateNew: false });
+        const { episodeIds } = addFakeEpisodes(runtime, ['1']);
+        const firstId = episodeIds[0];
+        if (firstId === undefined) {
+            throw new Error('Expected episode 1 to exist');
+        }
+
+        runtime.queue.retry(firstId);
+
+        await vi.waitFor(() => {
+            expect(runtime.db.getEpisode(firstId)?.status).toBe('done');
+        }, { timeout: 10000 });
+        await flush();
+
+        expect(calls).toEqual([]);
+        expect(existsSync(join(root, 'Downloads', 'Pullwave Anime', 'Fake Anime', 'Episode 1', 'Fake Anime Episode 1.translated-Spanish.vtt'))).toBe(false);
     });
 });

@@ -432,9 +432,6 @@ export function createAnimeRuntime(options: AnimeRuntimeOptions): AnimeRuntime |
         },
         download: (animeId, episodes) => {
             if (!migrating) {
-                autoTranslation.expect(episodes.map((number) => {
-                    return db.ensureEpisode(animeId, number).id;
-                }));
                 queue.downloadEpisodes(animeId, episodes);
             }
         },

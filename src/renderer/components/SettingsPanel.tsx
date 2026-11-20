@@ -899,6 +899,15 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                                 change('animeSubtitles', value);
                             }}
                         />
+                        <ToggleField
+                            label={t('settings.animeAutoTranslateNew')}
+                            checked={draft.animeAutoTranslateNew}
+                            disabled={translationGap !== null && !draft.animeAutoTranslateNew}
+                            hint={translationGap === null ? t('settings.animeAutoTranslateNew.hint') : t('settings.animeAutoTranslateNew.needsSetup')}
+                            onChange={(value) => {
+                                change('animeAutoTranslateNew', value);
+                            }}
+                        />
                     </fieldset>
 
                     <fieldset className="panel">
@@ -917,15 +926,6 @@ export function SettingsPanel({ scope }: SettingsPanelProps) {
                             hint={t('settings.animeAutoDownloadNew.hint')}
                             onChange={(value) => {
                                 change('animeAutoDownloadNew', value);
-                            }}
-                        />
-                        <ToggleField
-                            label={t('settings.animeAutoTranslateNew')}
-                            checked={draft.animeAutoTranslateNew}
-                            disabled={translationGap !== null && !draft.animeAutoTranslateNew}
-                            hint={translationGap === null ? t('settings.animeAutoTranslateNew.hint') : t('settings.animeAutoTranslateNew.needsSetup')}
-                            onChange={(value) => {
-                                change('animeAutoTranslateNew', value);
                             }}
                         />
                     </fieldset>

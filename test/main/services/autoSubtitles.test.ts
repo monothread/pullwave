@@ -121,9 +121,8 @@ describe('offReasonOf', () => {
 });
 
 describe('AutoSubtitleTranslator', () => {
-    it('translates the subtitle of an episode the check queued once its download ends, into the language that is wanted', async () => {
+    it('translates the subtitle of any downloaded episode into the language that is wanted', async () => {
         const { translator, deps, pending } = setup();
-        translator.expect([4]);
 
         const done = translator.episodeDownloaded(4);
         pending[0]?.finish(DONE);
@@ -140,9 +139,8 @@ describe('AutoSubtitleTranslator', () => {
         expect(deps.cancel).not.toHaveBeenCalled();
     });
 
-    it('translates each of the episodes the check queued, and each only once', async () => {
+    it('translates each downloaded episode independently', async () => {
         const { translator, deps, pending } = setup();
-        translator.expect([4, 5]);
 
         const first = translator.episodeDownloaded(5);
         const second = translator.episodeDownloaded(4);
@@ -150,48 +148,50 @@ describe('AutoSubtitleTranslator', () => {
             entry.finish(DONE);
         });
         await Promise.all([first, second]);
-        await translator.episodeDownloaded(4);
 
         expect(deps.translate.mock.calls).toEqual([[{ episodeId: 5, trackId: null, language: 'Spanish', replace: false }], [{ episodeId: 4, trackId: null, language: 'Spanish', replace: false }]]);
     });
 
-    it('does not touch an episode the check did not queue (one the user downloaded)', async () => {
-        const { translator, deps } = setup();
-        translator.expect([4]);
+    it('does not start a second translation for an episode that is already being translated', async () => {
+        const { translator, deps, pending } = setup();
 
-        await translator.episodeDownloaded(7);
+        const first = translator.episodeDownloaded(4);
+        await translator.episodeDownloaded(4);
+        pending[0]?.finish(DONE);
+        await first;
+
+        expect(deps.translate).toHaveBeenCalledTimes(1);
+        expect(deps.translate).toHaveBeenCalledWith({ episodeId: 4, trackId: null, language: 'Spanish', replace: false });
+    });
+
+    it('does nothing while the setting is off', async () => {
+        const { translator, deps } = setup({ enabled: false });
+
+        await translator.episodeDownloaded(4);
 
         expect(deps.setupGap).not.toHaveBeenCalled();
         expect(deps.tracks).not.toHaveBeenCalled();
         expect(deps.translate).not.toHaveBeenCalled();
     });
 
-    it('keeps nothing the check queued while the setting is off', async () => {
-        const { translator, deps, state } = setup({ enabled: false });
-        translator.expect([4]);
-        state.enabled = true;
+    it('does not translate while off and translates again once turned back on', async () => {
+        const { translator, deps, pending, state } = setup({ enabled: false });
 
         await translator.episodeDownloaded(4);
-
-        expect(deps.translate).not.toHaveBeenCalled();
-    });
-
-    it('does not translate when the setting was turned off before the download ended, and forgets the episode', async () => {
-        const { translator, deps, state } = setup();
-        translator.expect([4]);
-        state.enabled = false;
-
-        await translator.episodeDownloaded(4);
-        state.enabled = true;
-        await translator.episodeDownloaded(4);
-
         expect(deps.tracks).not.toHaveBeenCalled();
         expect(deps.translate).not.toHaveBeenCalled();
+
+        state.enabled = true;
+        const done = translator.episodeDownloaded(5);
+        pending[0]?.finish(DONE);
+        await done;
+
+        expect(deps.translate).toHaveBeenCalledTimes(1);
+        expect(deps.translate).toHaveBeenCalledWith({ episodeId: 5, trackId: null, language: 'Spanish', replace: false });
     });
 
     it('leaves an episode with no video as it is', async () => {
         const { translator, deps } = setup({ tracks: null });
-        translator.expect([4]);
 
         await translator.episodeDownloaded(4);
 
@@ -202,7 +202,6 @@ describe('AutoSubtitleTranslator', () => {
 
     it('leaves an episode with no subtitle at all as it is (nothing is made from the audio)', async () => {
         const { translator, deps } = setup({ tracks: [] });
-        translator.expect([4]);
 
         await translator.episodeDownloaded(4);
 
@@ -212,7 +211,6 @@ describe('AutoSubtitleTranslator', () => {
 
     it('leaves an episode that has a subtitle in the language that is wanted already', async () => {
         const { translator, deps } = setup({ target: 'Portuguese', tracks: [ENGLISH_SOURCE, { id: 'subtitle-Portuguese - Brazilian', label: 'Portuguese - Brazilian', kind: 'source' }] });
-        translator.expect([4]);
 
         await translator.episodeDownloaded(4);
 
@@ -222,7 +220,6 @@ describe('AutoSubtitleTranslator', () => {
 
     it.each(['no-token', 'no-model', 'no-address'] as const)('turns the setting off, without asking anything, when the settings lack something (%s)', async (gap) => {
         const { translator, deps } = setup({ gap });
-        translator.expect([4]);
 
         await translator.episodeDownloaded(4);
 
@@ -237,7 +234,6 @@ describe('AutoSubtitleTranslator', () => {
         ['MODEL_NOT_FOUND', 'model']
     ] as const)('turns the setting off when the provider answers %s', async (code, reason) => {
         const { translator, deps, pending } = setup();
-        translator.expect([4]);
 
         const done = translator.episodeDownloaded(4);
         pending[0]?.finish(failed(code));
@@ -250,7 +246,6 @@ describe('AutoSubtitleTranslator', () => {
 
     it.each(['no-token', 'no-model', 'no-address'] as const)('turns the setting off when the translation answers %s', async (reason) => {
         const { translator, deps, pending } = setup();
-        translator.expect([4]);
 
         const done = translator.episodeDownloaded(4);
         pending[0]?.finish({ ok: false, reason });
@@ -263,7 +258,6 @@ describe('AutoSubtitleTranslator', () => {
         'keeps the setting on after a failure of one episode (%j)',
         async (response) => {
             const { translator, deps, pending } = setup();
-            translator.expect([4, 5]);
 
             const done = translator.episodeDownloaded(4);
             pending[0]?.finish(response);
@@ -280,7 +274,6 @@ describe('AutoSubtitleTranslator', () => {
 
     it('keeps the setting on when the queue throws', async () => {
         const { translator, deps, pending } = setup();
-        translator.expect([4]);
 
         const done = translator.episodeDownloaded(4);
         pending[0]?.fail(new Error('boom'));
@@ -289,9 +282,8 @@ describe('AutoSubtitleTranslator', () => {
         expect(deps.turnOff).not.toHaveBeenCalled();
     });
 
-    it('once turned off, cancels the other translations it queued, forgets what was waiting and tells it only once', async () => {
+    it('once turned off, cancels the other translations it queued, ignores later episodes and tells it only once', async () => {
         const { translator, deps, pending } = setup();
-        translator.expect([4, 5, 6]);
 
         const first = translator.episodeDownloaded(4);
         const second = translator.episodeDownloaded(5);
@@ -309,7 +301,6 @@ describe('AutoSubtitleTranslator', () => {
 
     it('does not tell it again when two translations are refused at once', async () => {
         const { translator, deps, pending, state } = setup();
-        translator.expect([4, 5]);
         deps.cancel.mockImplementation(() => {
             return undefined;
         });
@@ -337,21 +328,8 @@ describe('AutoSubtitleTranslator', () => {
             expect(deps.turnOff).toHaveBeenCalledWith('setup');
         });
 
-        it('lets go of what was waiting once it turns the setting off', async () => {
-            const { translator, deps, state } = setup({ gap: 'no-token' });
-            translator.expect([4]);
-
-            translator.enforceSetup();
-            state.enabled = true;
-            state.gap = null;
-            await translator.episodeDownloaded(4);
-
-            expect(deps.translate).not.toHaveBeenCalled();
-        });
-
         it('cancels the translations it queued once it turns the setting off', async () => {
             const { translator, deps, state } = setup();
-            translator.expect([4]);
             const done = translator.episodeDownloaded(4);
             await settle();
 
@@ -459,7 +437,6 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
     ])('never asks the provider when the episode has %s', async (_name, names) => {
         const files = filesWith(names);
         const { translator, ask, turnOff } = wire(files, 'Spanish');
-        translator.expect([4]);
 
         await translator.episodeDownloaded(4);
 
@@ -474,7 +451,6 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
         it('asks the provider once when the episode has only the English subtitle', async () => {
             const files = filesWith({ 'Fake Episode 4.subtitle-English.vtt': ENGLISH });
             const { translator, ask } = wire(files, language);
-            translator.expect([4]);
 
             await translator.episodeDownloaded(4);
 
@@ -486,7 +462,6 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
         it('never asks the provider when the source has the subtitle in that language', async () => {
             const files = filesWith({ 'Fake Episode 4.subtitle-English.vtt': ENGLISH, [`Fake Episode 4.subtitle-${language}.vtt`]: ENGLISH });
             const { translator, ask } = wire(files, language);
-            translator.expect([4]);
 
             await translator.episodeDownloaded(4);
 
@@ -497,7 +472,6 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
         it('never asks the provider when it translated the episode into that language before', async () => {
             const files = filesWith({ 'Fake Episode 4.subtitle-English.vtt': ENGLISH, [`Fake Episode 4.translated-${language}.vtt`]: ENGLISH });
             const { translator, ask } = wire(files, language);
-            translator.expect([4]);
 
             await translator.episodeDownloaded(4);
 
@@ -508,7 +482,6 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
     it('never asks the provider for English when the source has the English subtitle', async () => {
         const files = filesWith({ 'Fake Episode 4.subtitle-English.vtt': ENGLISH });
         const { translator, ask } = wire(files, 'English');
-        translator.expect([4]);
 
         await translator.episodeDownloaded(4);
 
@@ -532,7 +505,6 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
     it('asks the provider once and saves the translation when the episode has the subtitle only in another language', async () => {
         const files = filesWith({ 'Fake Episode 4.subtitle-English.vtt': ENGLISH });
         const { translator, ask, turnOff } = wire(files, 'Spanish');
-        translator.expect([4]);
 
         await translator.episodeDownloaded(4);
 
@@ -545,10 +517,8 @@ describe('AutoSubtitleTranslator with the files of the episode', () => {
     it('does not ask the provider again when the same episode is downloaded once more after it was translated', async () => {
         const files = filesWith({ 'Fake Episode 4.subtitle-English.vtt': ENGLISH });
         const { translator, ask } = wire(files, 'Spanish');
-        translator.expect([4]);
         await translator.episodeDownloaded(4);
 
-        translator.expect([4]);
         await translator.episodeDownloaded(4);
 
         expect(ask).toHaveBeenCalledTimes(1);

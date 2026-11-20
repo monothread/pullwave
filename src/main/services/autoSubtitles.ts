@@ -37,22 +37,12 @@ export interface AutoSubtitleDependencies {
 }
 
 export class AutoSubtitleTranslator {
-    private readonly expected = new Set<number>();
     private readonly translating = new Set<number>();
 
     constructor(private readonly deps: AutoSubtitleDependencies) {}
 
-    expect(episodeIds: readonly number[]): void {
-        if (!this.deps.isEnabled()) {
-            return;
-        }
-        episodeIds.forEach((episodeId) => {
-            this.expected.add(episodeId);
-        });
-    }
-
     async episodeDownloaded(episodeId: number): Promise<void> {
-        if (!this.expected.delete(episodeId) || !this.deps.isEnabled()) {
+        if (!this.deps.isEnabled() || this.translating.has(episodeId)) {
             return;
         }
         if (this.deps.setupGap() !== null) {
@@ -90,7 +80,6 @@ export class AutoSubtitleTranslator {
     }
 
     private turnOff(reason: AutoTranslateOffReason): void {
-        this.expected.clear();
         const running = [...this.translating];
         this.translating.clear();
         if (this.deps.isEnabled()) {

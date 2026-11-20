@@ -2396,10 +2396,10 @@ describe('the schedule', () => {
             });
 
             it.each([
-                ['quota', 'The automatic translation of the new episodes was turned off: the translation provider has no credit left.'],
-                ['token', 'The automatic translation of the new episodes was turned off: the translation provider did not accept the token.'],
-                ['model', 'The automatic translation of the new episodes was turned off: the translation provider does not have the model.'],
-                ['setup', 'The automatic translation of the new episodes was turned off: the token or the model of the translation provider is missing.']
+                ['quota', 'The automatic subtitle translation was turned off: the translation provider has no credit left.'],
+                ['token', 'The automatic subtitle translation was turned off: the translation provider did not accept the token.'],
+                ['model', 'The automatic subtitle translation was turned off: the translation provider does not have the model.'],
+                ['setup', 'The automatic subtitle translation was turned off: the token or the model of the translation provider is missing.']
             ] as const)('reads the settings again and says why the automatic translation was turned off (%s)', async (reason, message) => {
                 const dispose = await useAnimeStore.getState().init();
                 useAppStore.setState({ settings: { ...DEFAULT_SETTINGS, animeAutoTranslateNew: true } });

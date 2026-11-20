@@ -1150,9 +1150,9 @@ describe('SettingsPanel anime section', () => {
             expect(screen.getByRole('switch', { name: 'Download the new episodes found' })).toBeChecked();
         });
 
-        describe('the switch that translates the subtitles of the new episodes', () => {
-            const NAME = 'Translate the subtitles of the new episodes downloaded';
-            const HINT = 'Once a new episode downloaded by the check (every 3 hours, or the button that looks for them) is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the language of the app when it is "WHAT ANI-CLI PICKS"; Portuguese is translated into Brazilian Portuguese), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
+        describe('the switch that translates the subtitles of the downloaded episodes', () => {
+            const NAME = 'Translate the subtitles of the episodes downloaded';
+            const HINT = 'Once a downloaded episode is complete, its subtitle is translated in the background into the language of "Anime subtitles" (the language of the app when it is "WHAT ANI-CLI PICKS"; Portuguese is translated into Brazilian Portuguese), if the episode has a subtitle but none in that language. Episodes with no subtitle are left as they are. It uses the token of the translation provider and turns itself off when the provider refuses (no credit left, token not accepted, model not found).';
             const NEEDS_SETUP = 'Save the token and the model of the provider in SUBTITLE TRANSLATION to turn this on.';
             const READY = { ...DEFAULT_SETTINGS, translateProvider: 'openai', translateModel: 'gpt-x' } as const;
 
@@ -2102,9 +2102,9 @@ describe('SettingsPanel order of the blocks', () => {
         expect(within(block('FOLDER & LIBRARY')).getByRole('button', { name: 'CHECK DOWNLOADED EPISODES' })).toBeInTheDocument();
         expect(within(block('DOWNLOADS')).getByLabelText('Anime quality')).toBeInTheDocument();
         expect(within(block('DOWNLOADS')).getByLabelText('Anime subtitles')).toBeInTheDocument();
+        expect(within(block('DOWNLOADS')).getByLabelText('Translate the subtitles of the episodes downloaded')).toBeInTheDocument();
         expect(within(block('NEW EPISODES')).getByLabelText('Look for new episodes every 3 hours')).toBeInTheDocument();
         expect(within(block('NEW EPISODES')).getByLabelText('Download the new episodes found')).toBeInTheDocument();
-        expect(within(block('NEW EPISODES')).getByLabelText('Translate the subtitles of the new episodes downloaded')).toBeInTheDocument();
         expect(within(block('SUBTITLE TRANSLATION (LANGUAGE MODEL)')).getByLabelText('Provider')).toBeInTheDocument();
         expect(within(block('SUBTITLE CREATION (SPEECH TO TEXT)')).getByLabelText('Speech-to-text service')).toBeInTheDocument();
         await flushPromises();
