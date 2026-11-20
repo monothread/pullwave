@@ -778,7 +778,7 @@ describe('AnimeDb importing what was found on the disk', () => {
         expect(() => {
             db.relinkEpisodes([
                 { episodeId: first.id, filePath: '/new/1.mp4', sizeBytes: 11 },
-                { episodeId: 2, filePath: undefined as unknown as string, sizeBytes: 1 }
+                { episodeId: 2, filePath: Symbol('invalid') as unknown as string, sizeBytes: 1 }
             ]);
         }).toThrow();
 

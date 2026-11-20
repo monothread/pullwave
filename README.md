@@ -267,7 +267,7 @@ All settings save automatically. Open global **⚙ Settings** from the navigatio
 
 Further technical documentation lives in [`docs/`](docs/README.md), and release instructions are in [`docs/RELEASING.md`](docs/RELEASING.md).
 
-Requires **Node.js 24+**. Companion binaries are downloaded by the app at runtime rather than bundled in the repository; run `npm run fetch-binaries` to fetch real copies for local end-to-end tests.
+Requires **Node.js 26+**. Companion binaries are downloaded by the app at runtime rather than bundled in the repository; run `npm run fetch-binaries` to fetch real copies for local end-to-end tests.
 
 | Command | Description |
 |---|---|

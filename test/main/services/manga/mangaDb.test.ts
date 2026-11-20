@@ -533,7 +533,7 @@ describe('MangaDb moving the files', () => {
         expect(() => {
             db.relinkChapters([
                 { chapterId: first.id, filePath: '/new/1.cbz', sizeBytes: 11 },
-                { chapterId: 1, filePath: undefined as unknown as string, sizeBytes: 1 }
+                { chapterId: 1, filePath: Symbol('invalid') as unknown as string, sizeBytes: 1 }
             ]);
         }).toThrow();
         expect(db.getChapter(first.id)?.filePath).toBe('/old/1.cbz');
@@ -570,7 +570,7 @@ describe('MangaDb moving the files', () => {
                 chapters: [{ chapterId: first.id, filePath: '/new/Chapter 1.cbz', sizeBytes: 11 }],
                 outputs: [
                     { chapterId: second.id, outputPath: '/new/Chapter 2.cbz' },
-                    { chapterId: second.id, outputPath: undefined as unknown as string }
+                    { chapterId: second.id, outputPath: Symbol('invalid') as unknown as string }
                 ]
             });
         }).toThrow();
