@@ -1,6 +1,7 @@
 import {
     chapterStartScrollTop,
     endZoneProgress,
+    restingBarBottom,
     startZoneProgress,
     ZONE_ARM_BELOW,
     ZONE_DWELL_MS,
@@ -89,5 +90,21 @@ describe('chapterStartScrollTop', () => {
     it('rounds to whole pixels and never goes above the top', () => {
         expect(chapterStartScrollTop(0, 210.6, 210)).toBe(1);
         expect(chapterStartScrollTop(0, 100, 210)).toBe(0);
+    });
+});
+
+describe('restingBarBottom', () => {
+    it('returns the top of the area when there is no bar', () => {
+        expect(restingBarBottom(112, null)).toBe(112);
+    });
+
+    it('returns the bottom of a bar sitting at or below the top of the area', () => {
+        expect(restingBarBottom(112, { top: 112, bottom: 202 })).toBe(202);
+        expect(restingBarBottom(112, { top: 130, bottom: 220 })).toBe(220);
+    });
+
+    it('keeps the resting bottom when the bar is translated upward while hiding', () => {
+        expect(restingBarBottom(112, { top: 96, bottom: 186 })).toBe(202);
+        expect(restingBarBottom(0, { top: -16, bottom: 74 })).toBe(90);
     });
 });

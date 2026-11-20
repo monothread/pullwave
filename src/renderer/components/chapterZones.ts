@@ -30,3 +30,10 @@ export function startZoneProgress(zone: Edges, visibleTop: number): number {
 export function chapterStartScrollTop(current: number, pagesTop: number, wantedTop: number): number {
     return Math.max(0, Math.round(current + pagesTop - wantedTop));
 }
+
+export function restingBarBottom(areaTop: number, bar: Edges | null): number {
+    if (bar === null) {
+        return areaTop;
+    }
+    return Math.max(bar.bottom, areaTop + Math.max(0, bar.bottom - bar.top));
+}

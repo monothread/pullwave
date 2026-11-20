@@ -38,9 +38,10 @@ import { MangaErrorNotice } from './MangaErrorNotice';
 import { useScrollFraction } from '../hooks/useScrollFraction';
 import { useChapterZones } from '../hooks/useChapterZones';
 import { ReaderChapterZone } from './ReaderChapterZone';
-import { chapterStartScrollTop, zoneHeight } from './chapterZones';
+import { chapterStartScrollTop, restingBarBottom, zoneHeight } from './chapterZones';
 import { noop, scrollToTopSmoothly } from '../hooks/smoothScroll';
 import { useReaderFullscreen } from '../hooks/useReaderFullscreen';
+import { useReaderFullscreenBar } from '../hooks/useReaderFullscreenBar';
 import { useReadingSpotKeeper } from '../hooks/useReadingSpotKeeper';
 
 const PRELOAD_AHEAD = 3;
@@ -109,6 +110,7 @@ export function MangaReader() {
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const flowRef = useRef<HTMLDivElement | null>(null);
     const sectionRef = useRef<HTMLElement | null>(null);
+    const barRef = useRef<HTMLElement | null>(null);
     const startZoneRef = useRef<HTMLDivElement | null>(null);
     const endZoneRef = useRef<HTMLDivElement | null>(null);
     const [zoneHeightPx, setZoneHeightPx] = useState(() => {
@@ -122,7 +124,7 @@ export function MangaReader() {
     }, []);
 
     const bar = useCallback((): HTMLElement | null => {
-        return sectionRef.current?.querySelector<HTMLElement>('.reader__bar') ?? null;
+        return barRef.current;
     }, []);
 
     const chapterStartTop = useCallback((): number => {
@@ -131,7 +133,7 @@ export function MangaReader() {
         if (pages === null) {
             return 0;
         }
-        const wanted = (bar()?.getBoundingClientRect().bottom ?? area.getBoundingClientRect().top) + 8;
+        const wanted = restingBarBottom(area.getBoundingClientRect().top, bar()?.getBoundingClientRect() ?? null) + 8;
         return chapterStartScrollTop(area.scrollTop, pages.getBoundingClientRect().top, wanted);
     }, [scroller, bar]);
 
@@ -366,6 +368,7 @@ export function MangaReader() {
 
     const zonesOn = continuous && reader.status === 'ready' && total > 0;
     const fullscreen = useReaderFullscreen(scroller, reader.status !== 'closed');
+    const barHidden = useReaderFullscreenBar(scroller, barRef, fullscreen.active, settingsOpen);
     useReadingSpotKeeper(scroller, flowRef, zonesOn);
     const scrolledDown = useScrolledDown(scroller, () => {
         return TOP_BUTTON_THRESHOLD + startTopRef.current;
@@ -674,7 +677,7 @@ export function MangaReader() {
 
     return (
         <section ref={sectionRef} className={`manga__reader reader reader--${prefs.background}`} aria-label={t('manga.reader.aria')}>
-            <header className="reader__bar">
+            <header ref={barRef} className="reader__bar" data-hidden={barHidden}>
                 <button type="button" className="btn btn--small btn--ghost" onClick={closeReader}>
                     {t('manga.reader.close')}
                 </button>

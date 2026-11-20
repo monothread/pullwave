@@ -3026,6 +3026,55 @@ test.describe('manga section', () => {
         await expect(reader).toHaveCount(0);
     });
 
+    test('hides the top bar after 5 seconds in fullscreen, shows it on hover, and hides it again after leaving', async () => {
+        const { reader } = await openWebtoon();
+        const bar = reader.locator('.reader__bar');
+        await expect(bar).toHaveAttribute('data-hidden', 'false');
+
+        await session.page.mouse.move(400, 500);
+        await reader.getByRole('img').nth(1).dblclick();
+        await expect(reader.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'true');
+        await expect(bar).toHaveAttribute('data-hidden', 'false');
+
+        await expect(bar).toHaveAttribute('data-hidden', 'true', { timeout: 8000 });
+        await expect
+            .poll(() => {
+                return bar.evaluate((element) => {
+                    const style = getComputedStyle(element);
+                    return { opacity: style.opacity, pointerEvents: style.pointerEvents };
+                });
+            })
+            .toEqual({ opacity: '0', pointerEvents: 'none' });
+
+        await session.page.mouse.move(420, 520);
+        await expect(bar).toHaveAttribute('data-hidden', 'true');
+
+        await session.page.mouse.move(420, 16);
+        await expect(bar).toHaveAttribute('data-hidden', 'false');
+        await expect
+            .poll(() => {
+                return bar.evaluate((element) => {
+                    const style = getComputedStyle(element);
+                    return { opacity: style.opacity, pointerEvents: style.pointerEvents };
+                });
+            })
+            .toEqual({ opacity: '1', pointerEvents: 'auto' });
+
+        await session.page.mouse.move(420, 520);
+        await expect(bar).toHaveAttribute('data-hidden', 'true', { timeout: 8000 });
+
+        await session.page.keyboard.press('Escape');
+        await expect(reader.getByTestId('reader-scroll')).toHaveAttribute('data-fullscreen', 'false');
+        await expect(bar).toHaveAttribute('data-hidden', 'false');
+        await expect
+            .poll(() => {
+                return bar.evaluate((element) => {
+                    return getComputedStyle(element).opacity;
+                });
+            })
+            .toBe('1');
+    });
+
     test('keeps the notices at the bottom right of the window over the reader, hides them while the reader is in fullscreen, and shows them there again when it leaves it', async () => {
         const { reader } = await openWebtoon();
         const { page } = session;

@@ -17,7 +17,15 @@ describe('the bar of the reader', () => {
             top: 'calc(-1 * var(--main-pad-top, 16px))',
             'margin-top': 'calc(-1 * var(--main-pad-top, 16px))',
             padding: '22px 0 8px',
-            background: 'var(--bg)'
+            background: 'var(--bg)',
+            transition: 'opacity 0.25s ease'
+        });
+    });
+
+    it('fades out and lets clicks pass through when hidden in fullscreen', () => {
+        expect(styleOf(cyberpunk, ".reader__bar[data-hidden='true']")).toEqual({
+            opacity: '0',
+            'pointer-events': 'none'
         });
     });
 });

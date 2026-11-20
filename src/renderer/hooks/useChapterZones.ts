@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { endZoneProgress, startZoneProgress, ZONE_ARM_BELOW, ZONE_DWELL_MS, ZONE_FULL } from '../components/chapterZones';
+import { endZoneProgress, restingBarBottom, startZoneProgress, ZONE_ARM_BELOW, ZONE_DWELL_MS, ZONE_FULL } from '../components/chapterZones';
 
 export interface ChapterZonesOptions {
     area: () => HTMLElement | null;
@@ -79,7 +79,7 @@ export function useChapterZones(options: ChapterZonesOptions): ChapterZonesState
             const areaBox = scrolling.getBoundingClientRect();
             const start = startZone.current;
             const end = endZone.current;
-            const visibleTop = bar()?.getBoundingClientRect().bottom ?? areaBox.top;
+            const visibleTop = restingBarBottom(areaBox.top, bar()?.getBoundingClientRect() ?? null);
             const startProgress = start === null ? 0 : startZoneProgress(start.getBoundingClientRect(), visibleTop);
             const endProgress = end === null ? 0 : endZoneProgress(end.getBoundingClientRect(), areaBox.bottom);
             setState((current) => {

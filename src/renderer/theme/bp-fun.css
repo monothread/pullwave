@@ -694,6 +694,14 @@ img.cover:not(.cover--loading) {
     100% { box-shadow: 0 0 0 0 transparent, 0 0 0 transparent; }
 }
 
+.reader__bar {
+    transition: opacity 0.25s ease, transform 0.3s var(--bp-ease-out);
+}
+
+.reader__bar[data-hidden='true'] {
+    transform: translateY(-16px);
+}
+
 .reader__stage,
 .reader__scroll {
     transition: background 0.4s ease;

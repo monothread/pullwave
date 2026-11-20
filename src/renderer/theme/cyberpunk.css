@@ -1581,7 +1581,8 @@ body::after {
 .manga__tri--exclude { color: var(--red); border-color: var(--red); }
 
 .manga__reader.reader { gap: 8px; }
-.reader__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; position: sticky; top: calc(-1 * var(--main-pad-top, 16px)); z-index: 2; margin-top: calc(-1 * var(--main-pad-top, 16px)); padding: 22px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.reader__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; position: sticky; top: calc(-1 * var(--main-pad-top, 16px)); z-index: 2; margin-top: calc(-1 * var(--main-pad-top, 16px)); padding: 22px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); transition: opacity 0.25s ease; }
+.reader__bar[data-hidden='true'] { opacity: 0; pointer-events: none; }
 .reader__title { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader__page { color: var(--muted); letter-spacing: 1px; min-width: 64px; text-align: center; }
 .reader__progress { flex: 1 1 100%; order: 10; margin-top: 2px; }

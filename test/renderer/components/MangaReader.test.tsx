@@ -2369,6 +2369,151 @@ describe('MangaReader fullscreen', () => {
         expect(fake.current()).toBeNull();
     });
 
+    describe('the bar in fullscreen', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('keeps the bar visible outside of fullscreen even after 5 seconds', async () => {
+            const main = await renderInMode('vertical');
+            vi.useFakeTimers();
+            const bar = main.querySelector('.reader__bar') as HTMLElement;
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+            act(() => {
+                vi.advanceTimersByTime(10000);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+        });
+
+        it('hides the bar after 5 seconds in fullscreen, shows it on hover, and hides it again 5 seconds after leaving', async () => {
+            const main = await renderInMode('vertical');
+            vi.useFakeTimers();
+            const bar = main.querySelector('.reader__bar') as HTMLElement;
+            fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+
+            act(() => {
+                vi.advanceTimersByTime(4999);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+
+            fireEvent.mouseMove(main, { clientY: 300 });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+
+            fireEvent.mouseMove(main, { clientY: 20 });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+            act(() => {
+                vi.advanceTimersByTime(10000);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+
+            fireEvent.mouseMove(main, { clientY: 300 });
+            act(() => {
+                vi.advanceTimersByTime(4999);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+        });
+
+        it('keeps the bar visible while reader settings are open and hides it 5 seconds after they close', async () => {
+            const main = await renderInMode('vertical');
+            vi.useFakeTimers();
+            const bar = main.querySelector('.reader__bar') as HTMLElement;
+            fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+            fireEvent.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            act(() => {
+                vi.advanceTimersByTime(10000);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+
+            fireEvent.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            act(() => {
+                vi.advanceTimersByTime(4999);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+        });
+
+        it('shows the bar again immediately when leaving fullscreen', async () => {
+            const main = await renderInMode('single');
+            vi.useFakeTimers();
+            const bar = main.querySelector('.reader__bar') as HTMLElement;
+            const stage = stageOf200();
+            fireEvent.doubleClick(stage, { clientX: 100 });
+            act(() => {
+                vi.advanceTimersByTime(5000);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+
+            fireEvent.doubleClick(stage, { clientX: 100 });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+        });
+
+        it('keeps the bar visible while hovering inside the settings panel and hides it 5 seconds after clicking outside', async () => {
+            const main = await renderInMode('vertical');
+            vi.useFakeTimers();
+            const bar = main.querySelector('.reader__bar') as HTMLElement;
+            fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+            fireEvent.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            const panel = main.querySelector('.reader__settings') as HTMLElement;
+            fireEvent.mouseMove(panel, { clientY: 260 });
+            act(() => {
+                vi.advanceTimersByTime(10000);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+
+            fireEvent.mouseMove(main, { clientY: 400 });
+            fireEvent.click(screen.getByTestId('reader-scroll'));
+            expect(main.querySelector('.reader__settings')).toBeNull();
+            act(() => {
+                vi.advanceTimersByTime(4999);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+        });
+
+        it('keeps auto-hiding the bar across chapter changes and mode switches in fullscreen', async () => {
+            const main = await renderInMode('vertical');
+            vi.useFakeTimers();
+            const bar = main.querySelector('.reader__bar') as HTMLElement;
+            fireEvent.doubleClick(screen.getByTestId('reader-scroll'));
+            act(() => {
+                open({ status: 'loading', index: 2, pages: [] });
+            });
+            act(() => {
+                open({ status: 'ready', index: 2 });
+            });
+            act(() => {
+                vi.advanceTimersByTime(5000);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+
+            fireEvent.mouseMove(main, { clientY: 16 });
+            expect(bar).toHaveAttribute('data-hidden', 'false');
+            fireEvent.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            fireEvent.change(screen.getByLabelText('Reading mode'), { target: { value: 'single' } });
+            fireEvent.click(screen.getByRole('button', { name: 'READER SETTINGS' }));
+            fireEvent.mouseMove(main, { clientY: 400 });
+            act(() => {
+                vi.advanceTimersByTime(5000);
+            });
+            expect(bar).toHaveAttribute('data-hidden', 'true');
+        });
+    });
+
     describe('the reading spot', () => {
         let observers: { callback: ResizeObserverCallback; observed: Element[] }[];
         let width: number;

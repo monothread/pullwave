@@ -416,6 +416,11 @@ describe('bp-fun.css: the reader', () => {
     it('stamps a chapter that was read to its end, over the page and out of the way of the mouse', () => {
         expect(styleOf(sheet, '.reader__complete')).toMatchObject({ position: 'fixed', top: '42%', left: '50%', 'pointer-events': 'none', animation: 'bp-complete 2.2s var(--bp-ease-out) forwards' });
     });
+
+    it('slides the top bar up and out when it hides in fullscreen, with the fade it already had', () => {
+        expect(styleOf(sheet, '.reader__bar')).toEqual({ transition: 'opacity 0.25s ease, transform 0.3s var(--bp-ease-out)' });
+        expect(styleOf(sheet, ".reader__bar[data-hidden='true']")).toEqual({ transform: 'translateY(-16px)' });
+    });
 });
 
 describe('bp-fun.css: the pointer', () => {
