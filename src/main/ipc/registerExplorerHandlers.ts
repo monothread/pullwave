@@ -12,12 +12,9 @@ import type { ExplorerService } from '../services/explorerService';
 import type { IpcMainLike } from './registerHandlers';
 
 export function registerExplorerHandlers(ipcMain: IpcMainLike, explorer: ExplorerService): void {
-    ipcMain.handle(IPC.explorerList, (_event, directory, showHidden): Promise<ExplorerListResponse> => {
+    ipcMain.handle(IPC.explorerList, (_event, directory): Promise<ExplorerListResponse> => {
         const target = typeof directory === 'string' && directory.length > 0 ? directory : undefined;
-        return explorer.list(target, showHidden === true);
-    });
-    ipcMain.handle(IPC.explorerChooseFolder, (): Promise<string | null> => {
-        return explorer.chooseFolder();
+        return explorer.list(target);
     });
     ipcMain.handle(IPC.explorerOpenFolder, (_event, directory): Promise<ExplorerOpenFolderResponse> => {
         return explorer.openFolder(typeof directory === 'string' ? directory : '');

@@ -145,8 +145,31 @@ describe('QueueList', () => {
         expect(mock.api.cancelJob).not.toHaveBeenCalled();
         await answerDialog(user, 'Cancel this download?', 'CANCEL');
         expect(mock.api.cancelJob).toHaveBeenCalledWith('run');
+        mock.api.explorer.list.mockResolvedValueOnce({
+            ok: true,
+            listing: {
+                directory: '/d',
+                parent: null,
+                breadcrumbs: [{ name: 'd', path: '/d' }],
+                entries: [
+                    {
+                        path: '/d/x.mp4',
+                        name: 'x.mp4',
+                        kind: 'video',
+                        extension: '.mp4',
+                        sizeBytes: 1024,
+                        modifiedAt: 1000,
+                        token: 1,
+                        thumbnailUrl: 'pullwave-explorer://thumbnail/1',
+                        mediaUrl: 'pullwave-explorer://media/1'
+                    }
+                ],
+                roots: [{ id: 'downloads', label: 'd', path: '/d', kind: 'downloads' }]
+            }
+        });
         await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'SHOW FILE' }));
-        expect(mock.api.showItemInFolder).toHaveBeenCalledWith('/d/x.mp4');
+        expect(mock.api.explorer.list).toHaveBeenCalledWith('/d');
+        expect(useAppStore.getState().downloadsView).toBe('explorer');
         await user.click(within(cards[1] as HTMLElement).getByRole('button', { name: 'REMOVE' }));
         expect(mock.api.removeJob).not.toHaveBeenCalled();
         await answerDialog(user, 'Remove this download from the list?', 'REMOVE');

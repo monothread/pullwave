@@ -6,6 +6,7 @@ import type { ConvertMedia, ConvertRun } from '@shared/convert';
 import { ConvertPanel } from '@renderer/components/ConvertPanel';
 import { useAppStore } from '@renderer/store/appStore';
 import { useConvertStore } from '@renderer/store/convertStore';
+import { useExplorerStore } from '@renderer/store/explorerStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
 const VIDEO_A: ConvertMedia = { path: '/v/talk.mp4', name: 'talk', extension: '.mp4', durationSeconds: 75 };
@@ -59,8 +60,32 @@ describe('ConvertPanel', () => {
         });
         expect(await screen.findByText('Done: 1 audio file(s) saved.')).toBeInTheDocument();
 
+        mock.api.explorer.list.mockResolvedValueOnce({
+            ok: true,
+            listing: {
+                directory: '/v',
+                parent: null,
+                breadcrumbs: [{ name: 'v', path: '/v' }],
+                entries: [
+                    {
+                        path: '/v/talk.flac',
+                        name: 'talk.flac',
+                        kind: 'audio',
+                        extension: '.flac',
+                        sizeBytes: 1024,
+                        modifiedAt: 1000,
+                        token: 1,
+                        thumbnailUrl: null,
+                        mediaUrl: 'pullwave-explorer://media/1'
+                    }
+                ],
+                roots: [{ id: 'downloads', label: 'v', path: '/v', kind: 'downloads' }]
+            }
+        });
         await user.click(screen.getByRole('button', { name: 'SHOW FILE' }));
-        expect(mock.api.showItemInFolder).toHaveBeenCalledWith('/v/talk.flac');
+        expect(mock.api.explorer.list).toHaveBeenCalledWith('/v');
+        expect(useAppStore.getState().downloadsView).toBe('explorer');
+        expect(useExplorerStore.getState().highlightedPath).toBe('/v/talk.flac');
     });
 
     it('accepts dropped video files and reports drop failure cleanly', async () => {

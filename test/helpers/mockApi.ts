@@ -200,15 +200,12 @@ export function createMockApi(): MockApiHandle {
                 ok: true,
                 listing: {
                     directory: target,
-                    parent: target === '/' ? null : '/',
-                    breadcrumbs: [{ name: '/', path: '/' }, { name: 'downloads', path: target }],
+                    parent: target === '/downloads' ? null : '/downloads',
+                    breadcrumbs: [{ name: 'downloads', path: target }],
                     entries: [],
                     roots: [{ id: 'downloads', label: 'downloads', path: '/downloads', kind: 'downloads' }]
                 }
             };
-        }),
-        chooseFolder: vi.fn(async (): Promise<string | null> => {
-            return null;
         }),
         openFolder: vi.fn(async (): Promise<ExplorerOpenFolderResponse> => {
             return { ok: true };

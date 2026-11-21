@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import type { ExplorerEntry, ExplorerListFailure, ExplorerWriteFailure } from '@shared/explorer';
 import type { MessageKey } from '@shared/i18n';
+import { INCREMENTAL_STEP } from '../hooks/useIncrementalList';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
@@ -22,7 +23,7 @@ import {
 } from './explorerHelpers';
 import { IncrementalItems } from './IncrementalItems';
 import { LoadingMark } from './LoadingMark';
-import { SelectField, SwitchInput } from './fields';
+import { SelectField } from './fields';
 
 const LIST_ERROR_KEYS: Record<ExplorerListFailure, MessageKey> = {
     'not-found': 'explorer.error.not-found',
@@ -36,6 +37,7 @@ const WRITE_ERROR_KEYS: Record<ExplorerWriteFailure, MessageKey> = {
     exists: 'explorer.write.exists',
     'not-found': 'explorer.write.not-found',
     denied: 'explorer.write.denied',
+    'not-empty': 'explorer.write.not-empty',
     failed: 'explorer.write.failed'
 };
 
@@ -373,14 +375,16 @@ function EntryVisual({ entry }: { entry: ExplorerEntry }) {
 interface EntryItemProps {
     entry: ExplorerEntry;
     language: string;
+    highlighted: boolean;
     onOpen: (entry: ExplorerEntry) => void;
     onContextMenu: (event: MouseEvent<HTMLElement>, entry: ExplorerEntry) => void;
     onSendToConvert: (entry: ExplorerEntry) => void;
     onSendToCut: (entry: ExplorerEntry) => void;
 }
 
-function ExplorerItem({ entry, language, onOpen, onContextMenu, onSendToConvert, onSendToCut }: EntryItemProps) {
+function ExplorerItem({ entry, language, highlighted, onOpen, onContextMenu, onSendToConvert, onSendToCut }: EntryItemProps) {
     const t = useTranslator();
+    const itemRef = useRef<HTMLLIElement | null>(null);
     const kindLabel = t(`explorer.kind.${entry.kind}`);
     const badgeText = entry.kind === 'directory' ? kindLabel : entry.extension.slice(1).toUpperCase();
     const meta =
@@ -390,9 +394,16 @@ function ExplorerItem({ entry, language, onOpen, onContextMenu, onSendToConvert,
                 : kindLabel
             : `${formatBytes(entry.sizeBytes)} · ${new Date(entry.modifiedAt).toLocaleDateString(language)}`;
 
+    useEffect(() => {
+        if (highlighted && itemRef.current !== null && typeof itemRef.current.scrollIntoView === 'function') {
+            itemRef.current.scrollIntoView({ block: 'nearest' });
+        }
+    }, [highlighted]);
+
     return (
         <li
-            className={`explorer__item explorer__item--${entry.kind}`}
+            ref={itemRef}
+            className={`explorer__item explorer__item--${entry.kind}${highlighted ? ' explorer__item--highlighted' : ''}`}
             data-testid={`explorer-item-${entry.kind}`}
             onContextMenu={(event) => {
                 onContextMenu(event, entry);
@@ -481,9 +492,6 @@ export function ExplorerPanel() {
     const historyIndex = useExplorerStore((state) => {
         return state.historyIndex;
     });
-    const showHidden = useExplorerStore((state) => {
-        return state.showHidden;
-    });
     const filter = useExplorerStore((state) => {
         return state.filter;
     });
@@ -499,6 +507,15 @@ export function ExplorerPanel() {
     const viewMode = useExplorerStore((state) => {
         return state.viewMode;
     });
+    const highlightedPath = useExplorerStore((state) => {
+        return state.highlightedPath;
+    });
+    const clearHighlight = useExplorerStore((state) => {
+        return state.clearHighlight;
+    });
+    const downloadDir = useAppStore((state) => {
+        return state.settings?.downloadDir ?? '';
+    });
     const open = useExplorerStore((state) => {
         return state.open;
     });
@@ -513,12 +530,6 @@ export function ExplorerPanel() {
     });
     const goUp = useExplorerStore((state) => {
         return state.goUp;
-    });
-    const chooseFolder = useExplorerStore((state) => {
-        return state.chooseFolder;
-    });
-    const setShowHidden = useExplorerStore((state) => {
-        return state.setShowHidden;
     });
     const setFilter = useExplorerStore((state) => {
         return state.setFilter;
@@ -567,9 +578,31 @@ export function ExplorerPanel() {
         }
     }, [loaded, loading, open]);
 
+    const lastDownloadDirRef = useRef(downloadDir);
+    useEffect(() => {
+        if (lastDownloadDirRef.current === downloadDir) {
+            return;
+        }
+        lastDownloadDirRef.current = downloadDir;
+        if (loaded) {
+            void open();
+        }
+    }, [downloadDir, loaded, open]);
+
     const visibleEntries = useMemo(() => {
         return filterAndSortEntries(entries, filter, query, sortBy, sortDirection);
     }, [entries, filter, query, sortBy, sortDirection]);
+
+    const highlightedIndex = useMemo(() => {
+        if (highlightedPath === null) {
+            return -1;
+        }
+        return visibleEntries.findIndex((entry) => {
+            return entry.path === highlightedPath;
+        });
+    }, [highlightedPath, visibleEntries]);
+
+    const incrementalStep = highlightedIndex >= INCREMENTAL_STEP ? highlightedIndex + 1 : INCREMENTAL_STEP;
 
     const counts = useMemo(() => {
         return countEntries(visibleEntries);
@@ -579,6 +612,7 @@ export function ExplorerPanel() {
     const canForward = historyIndex >= 0 && historyIndex < historyLength - 1;
 
     function handleOpen(entry: ExplorerEntry): void {
+        clearHighlight();
         setTrashError(null);
         if (entry.kind === 'directory') {
             void open(entry.path);
@@ -733,15 +767,6 @@ export function ExplorerPanel() {
                             </button>
                         );
                     })}
-                    <button
-                        type="button"
-                        className="btn btn--small"
-                        onClick={() => {
-                            void chooseFolder();
-                        }}
-                    >
-                        {t('explorer.chooseFolder')}
-                    </button>
                 </div>
             </div>
 
@@ -875,16 +900,6 @@ export function ExplorerPanel() {
                     </button>
                 </div>
 
-                <label className="explorer__hidden-toggle">
-                    <SwitchInput
-                        label={t('explorer.showHidden')}
-                        checked={showHidden}
-                        onChange={(checked) => {
-                            void setShowHidden(checked);
-                        }}
-                    />
-                </label>
-
                 <div className="explorer__view-toggle" role="group" aria-label={`${t('explorer.view.grid')} / ${t('explorer.view.list')}`}>
                     <button
                         type="button"
@@ -946,14 +961,16 @@ export function ExplorerPanel() {
                         <ul className={`explorer__entries explorer__entries--${viewMode}`} data-testid="explorer-entries">
                             <IncrementalItems
                                 items={visibleEntries}
-                                listKey={`${directory}|${filter}|${query}|${sortBy}|${sortDirection}`}
+                                listKey={`${directory}|${filter}|${query}|${sortBy}|${sortDirection}|${String(incrementalStep)}`}
                                 end="li"
+                                step={incrementalStep}
                                 renderItem={(entry) => {
                                     return (
                                         <ExplorerItem
                                             key={entry.path}
                                             entry={entry}
                                             language={language}
+                                            highlighted={highlightedPath === entry.path}
                                             onOpen={handleOpen}
                                             onContextMenu={openItemMenu}
                                             onSendToConvert={handleSendToConvert}

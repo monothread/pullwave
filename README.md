@@ -127,11 +127,11 @@ On ultrawide monitors (shown at **3440×1440**), the layout expands, scales clea
 Lists every finished and failed download with timestamp and a quick action to reveal the file in your file manager.
 
 ### Explorer
-Browse local folders directly inside Pullwave, starting at your configured downloads directory:
-- Shows **only folders, videos, and audio files** — non-media files are filtered out automatically, with search and type filters (**ALL**, **VIDEOS**, **AUDIO**) plus breadcrumb navigation, **UP**, **HOME**, **REFRESH**, and a single **OPEN FOLDER** button next to the item count summary.
-- Video cards load on-demand FFmpeg thumbnails backed by a persistent disk cache.
+Browse your configured downloads folder directly inside Pullwave:
+- Confined to your configured **downloads directory** (and its subfolders) and shows **only folders, videos, and audio files** — non-media and hidden files are filtered out automatically, with search and type filters (**ALL**, **VIDEOS**, **AUDIO**), persistent sort and view preferences, breadcrumb navigation, **UP**, **REFRESH**, and a single **OPEN FOLDER** button next to the item count summary.
+- Video cards load on-demand FFmpeg thumbnails backed by a session disk cache with a 30-minute TTL.
 - Click any folder card to enter it, or click any video/audio card to play it inside the built-in media player (with Previous/Next navigation, `VideoControls`, keyboard shortcuts, `Escape`/mouse-back close, and automatic FFmpeg fallback transcoding when a codec is unsupported).
-- Media cards include quick **TO AUDIO** and **CUT** actions; right-clicking a card or the background opens a context menu next to the cursor with **New folder**, **Rename** (preserving file extensions), **Show in folder**, **Convert to audio**, **Cut**, and **Move to trash** (with a confirmation dialog).
+- Media cards include quick **TO AUDIO** and **CUT** actions; clicking **SHOW FILE** in the queue, history, or converter reveals and highlights the file directly inside the Explorer tab; right-clicking a card or the background opens a context menu next to the cursor with **New folder**, **Rename** (preserving file extensions), **Show in folder**, **Convert to audio**, **Cut**, and **Move to trash** (for media files and completely empty folders, with a confirmation dialog).
 
 ### Cut
 ![Cut tab with two marked segments](docs/screenshots/neon-tokyo-cut.png)

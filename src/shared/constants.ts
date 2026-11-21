@@ -53,7 +53,6 @@ export const IPC = {
     convertCurrent: 'convert:current',
     convertClear: 'convert:clear',
     explorerList: 'explorer:list',
-    explorerChooseFolder: 'explorer:choose-folder',
     explorerOpenFolder: 'explorer:open-folder',
     explorerCreateFolder: 'explorer:create-folder',
     explorerRename: 'explorer:rename',

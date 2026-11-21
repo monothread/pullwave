@@ -1,5 +1,5 @@
 import { lstat, mkdir, readdir, realpath, rename, stat } from 'node:fs/promises';
-import { dirname, extname, isAbsolute, join, parse, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, parse, resolve, sep } from 'node:path';
 import {
     EXPLORER_MEDIA_SCHEME,
     type ExplorerBreadcrumb,
@@ -12,8 +12,6 @@ import {
     type ExplorerOpenFolderResponse,
     type ExplorerPreviewResponse,
     type ExplorerRenameResponse,
-    type ExplorerRoot,
-    type ExplorerRootKind,
     type ExplorerTrashFailure,
     type ExplorerTrashResponse,
     type ExplorerWriteFailure
@@ -29,17 +27,8 @@ const WINDOWS_FORBIDDEN = /[<>:"/\\|?*]/;
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 const POSIX_FORBIDDEN = /\//;
 
-export interface ExplorerRootCandidate {
-    id: string;
-    label: string;
-    path: string;
-    kind: ExplorerRootKind;
-}
-
 export interface ExplorerServiceDependencies {
     defaultDirectory: () => string;
-    roots: () => ExplorerRootCandidate[];
-    chooseFolder: (currentDir?: string) => Promise<string | null>;
     trashItem: (path: string) => Promise<void>;
     openExternal: (path: string) => Promise<string>;
     thumbnails: ExplorerThumbnails;
@@ -112,7 +101,7 @@ export function validateEntryName(rawName: string, platform: NodeJS.Platform = p
         return null;
     }
     const name = rawName.trim();
-    if (name.length === 0 || name === '.' || name === '..') {
+    if (name.length === 0 || name.startsWith('.')) {
         return null;
     }
     for (let index = 0; index < name.length; index += 1) {
@@ -133,8 +122,51 @@ export function validateEntryName(rawName: string, platform: NodeJS.Platform = p
     return name;
 }
 
-export function buildBreadcrumbs(directory: string): ExplorerBreadcrumb[] {
+export function isWithinRoot(candidatePath: string, rootPath: string, platform: NodeJS.Platform = process.platform): boolean {
+    const candidate = resolve(candidatePath);
+    const root = resolve(rootPath);
+    const candidateKey = pathKeyOf(candidate, platform);
+    const rootKey = pathKeyOf(root, platform);
+    if (candidateKey === rootKey) {
+        return true;
+    }
+    const prefix = rootKey.endsWith(sep) ? rootKey : `${rootKey}${sep}`;
+    return candidateKey.startsWith(prefix);
+}
+
+function hasHiddenRelativeSegment(candidatePath: string, rootPath: string): boolean {
+    const candidate = resolve(candidatePath);
+    const root = resolve(rootPath);
+    if (candidate.length <= root.length) {
+        return false;
+    }
+    const rest = candidate.slice(root.length);
+    return rest.split(/[\\/]+/).some((segment) => {
+        return segment.startsWith('.');
+    });
+}
+
+export function buildBreadcrumbs(
+    directory: string,
+    rootDirectory?: string,
+    platform: NodeJS.Platform = process.platform
+): ExplorerBreadcrumb[] {
     const normalized = resolve(directory);
+    if (rootDirectory !== undefined && isWithinRoot(normalized, rootDirectory, platform)) {
+        const normalizedRoot = resolve(rootDirectory);
+        const rootName = basename(normalizedRoot) || normalizedRoot;
+        const crumbs: ExplorerBreadcrumb[] = [{ name: rootName, path: normalizedRoot }];
+        const rest = normalized.slice(normalizedRoot.length);
+        const parts = rest.split(/[\\/]+/).filter((part) => {
+            return part.length > 0;
+        });
+        let current = normalizedRoot;
+        for (const part of parts) {
+            current = current.endsWith(sep) ? `${current}${part}` : `${current}${sep}${part}`;
+            crumbs.push({ name: part, path: current });
+        }
+        return crumbs;
+    }
     const { root } = parse(normalized);
     const rest = normalized.slice(root.length);
     const parts = rest.split(/[\\/]+/).filter((part) => {
@@ -171,29 +203,51 @@ export class ExplorerService {
     private readonly tokenByPathKey = new Map<string, number>();
     private nextToken = 1;
     private currentDirectory = '';
+    private lastRootKey = '';
     private listSeq = 0;
     private readonly statLimit = createConcurrencyLimit(STAT_CONCURRENCY);
 
     constructor(private readonly deps: ExplorerServiceDependencies) {}
 
     resolveToken(token: number): ExplorerEntry | null {
-        return this.tokens.get(token) ?? null;
+        const entry = this.tokens.get(token);
+        if (entry === undefined) {
+            return null;
+        }
+        const platform = this.deps.platform ?? process.platform;
+        if (!this.isInsideRoot(entry.path, this.rootDirectory(), platform, false)) {
+            this.tokens.delete(token);
+            this.tokenByPathKey.delete(pathKeyOf(entry.path, platform));
+            return null;
+        }
+        return entry;
     }
 
     cancelPreview(): void {
         this.deps.thumbnails.cancelPreview();
     }
 
-    async list(directory?: string, showHidden = false): Promise<ExplorerListResponse> {
+    async list(directory?: string): Promise<ExplorerListResponse> {
+        const platform = this.deps.platform ?? process.platform;
+        const root = this.rootDirectory();
+        const rootKey = pathKeyOf(root, platform);
+        if (this.lastRootKey !== rootKey) {
+            this.lastRootKey = rootKey;
+            this.tokens.clear();
+            this.tokenByPathKey.clear();
+        }
         const hasRequested = typeof directory === 'string' && directory.trim().length > 0;
         if (hasRequested && !isAbsolute(directory)) {
             return { ok: false, reason: 'not-found' };
         }
-        const requested = hasRequested ? directory : this.deps.defaultDirectory();
+        const requested = hasRequested ? directory : root;
         if (!isAbsolute(requested)) {
             return { ok: false, reason: 'not-found' };
         }
         const target = resolve(requested);
+        if (!this.isInsideRoot(target, root, platform, true)) {
+            return { ok: false, reason: 'denied' };
+        }
         this.listSeq += 1;
         const seq = this.listSeq;
         let dirStat;
@@ -205,6 +259,10 @@ export class ExplorerService {
         if (!dirStat.isDirectory()) {
             return { ok: false, reason: 'not-directory' };
         }
+        const realRoot = await this.resolveRealRootIfInside(target, root, platform, true);
+        if (realRoot === null) {
+            return { ok: false, reason: 'denied' };
+        }
         let dirents;
         try {
             dirents = await readdir(target, { withFileTypes: true });
@@ -215,9 +273,8 @@ export class ExplorerService {
             this.deps.thumbnails.cancelPending();
             this.currentDirectory = target;
         }
-        const platform = this.deps.platform ?? process.platform;
         const visibleDirents = dirents.filter((dirent) => {
-            return showHidden || !dirent.name.startsWith('.');
+            return !dirent.name.startsWith('.');
         });
         const built = await Promise.all(
             visibleDirents.map((dirent) => {
@@ -229,7 +286,7 @@ export class ExplorerService {
                         resolvedPath = await realpath(fullPath).catch(() => {
                             return '';
                         });
-                        if (resolvedPath.length === 0) {
+                        if (resolvedPath.length === 0 || !this.isInsideRoot(resolvedPath, realRoot, platform, false)) {
                             return null;
                         }
                         info = await stat(resolvedPath).catch(() => {
@@ -298,29 +355,31 @@ export class ExplorerService {
             }
             entries.push(item);
         }
+        const isAtRoot = pathKeyOf(target, platform) === pathKeyOf(root, platform);
         const parentCandidate = dirname(target);
-        const parent = parentCandidate === target ? null : parentCandidate;
+        const parent = isAtRoot || parentCandidate === target || !this.isInsideRoot(parentCandidate, root, platform, true) ? null : parentCandidate;
         return {
             ok: true,
             listing: {
                 directory: target,
                 parent,
-                breadcrumbs: buildBreadcrumbs(target),
+                breadcrumbs: buildBreadcrumbs(target, root, platform),
                 entries,
-                roots: await this.availableRoots(platform)
+                roots: [{ id: 'downloads', label: basename(root) || 'downloads', path: root, kind: 'downloads' }]
             }
         };
-    }
-
-    async chooseFolder(): Promise<string | null> {
-        return this.deps.chooseFolder(this.currentDirectory || this.deps.defaultDirectory());
     }
 
     async openFolder(directory: string): Promise<ExplorerOpenFolderResponse> {
         if (typeof directory !== 'string' || directory.trim().length === 0 || !isAbsolute(directory)) {
             return { ok: false, reason: 'not-found' };
         }
+        const platform = this.deps.platform ?? process.platform;
+        const root = this.rootDirectory();
         const resolvedTarget = resolve(directory);
+        if (!this.isInsideRoot(resolvedTarget, root, platform, true)) {
+            return { ok: false, reason: 'denied' };
+        }
         let info;
         try {
             info = await stat(resolvedTarget);
@@ -329,6 +388,9 @@ export class ExplorerService {
         }
         if (!info.isDirectory()) {
             return { ok: false, reason: 'not-found' };
+        }
+        if (!(await this.isRealInsideRoot(resolvedTarget, root, platform, true))) {
+            return { ok: false, reason: 'denied' };
         }
         const message = await this.deps.openExternal(resolvedTarget);
         return message === '' ? { ok: true } : { ok: false, reason: 'failed' };
@@ -340,7 +402,15 @@ export class ExplorerService {
         if (name === null || typeof parentDir !== 'string' || parentDir.trim().length === 0 || !isAbsolute(parentDir)) {
             return { ok: false, reason: 'invalid-name' };
         }
-        const target = join(resolve(parentDir), name);
+        const root = this.rootDirectory();
+        const resolvedParent = resolve(parentDir);
+        if (!this.isInsideRoot(resolvedParent, root, platform, true) || !(await this.isRealInsideRoot(resolvedParent, root, platform, true))) {
+            return { ok: false, reason: 'denied' };
+        }
+        const target = join(resolvedParent, name);
+        if (!this.isInsideRoot(target, root, platform, false)) {
+            return { ok: false, reason: 'denied' };
+        }
         try {
             await mkdir(target);
             return { ok: true, path: target };
@@ -355,8 +425,9 @@ export class ExplorerService {
         if (name === null || typeof targetPath !== 'string' || targetPath.trim().length === 0 || !isAbsolute(targetPath)) {
             return { ok: false, reason: 'invalid-name' };
         }
+        const root = this.rootDirectory();
         const resolvedTarget = resolve(targetPath);
-        if (dirname(resolvedTarget) === resolvedTarget || this.isProtectedRoot(resolvedTarget, platform)) {
+        if (dirname(resolvedTarget) === resolvedTarget || !this.isInsideRoot(resolvedTarget, root, platform, false)) {
             return { ok: false, reason: 'denied' };
         }
         let info;
@@ -365,7 +436,7 @@ export class ExplorerService {
         } catch (error) {
             return { ok: false, reason: mapWriteError(error) };
         }
-        if (info.isSymbolicLink()) {
+        if (info.isSymbolicLink() || !(await this.isRealInsideRoot(resolvedTarget, root, platform, false))) {
             return { ok: false, reason: 'denied' };
         }
         if (info.isFile()) {
@@ -378,6 +449,9 @@ export class ExplorerService {
             return { ok: false, reason: 'not-found' };
         }
         const destination = join(dirname(resolvedTarget), name);
+        if (!this.isInsideRoot(destination, root, platform, false)) {
+            return { ok: false, reason: 'denied' };
+        }
         if (destination === resolvedTarget) {
             return { ok: true, path: destination, name };
         }
@@ -399,8 +473,9 @@ export class ExplorerService {
             return { ok: false, reason: 'not-found' };
         }
         const platform = this.deps.platform ?? process.platform;
+        const root = this.rootDirectory();
         const resolvedTarget = resolve(targetPath);
-        if (dirname(resolvedTarget) === resolvedTarget || this.isProtectedRoot(resolvedTarget, platform)) {
+        if (dirname(resolvedTarget) === resolvedTarget || !this.isInsideRoot(resolvedTarget, root, platform, false)) {
             return { ok: false, reason: 'denied' };
         }
         let info;
@@ -409,11 +484,20 @@ export class ExplorerService {
         } catch (error) {
             return { ok: false, reason: mapTrashError(error) };
         }
-        if (info.isSymbolicLink()) {
+        if (info.isSymbolicLink() || !(await this.isRealInsideRoot(resolvedTarget, root, platform, false))) {
             return { ok: false, reason: 'denied' };
         }
-        const isAllowed = info.isDirectory() || (info.isFile() && mediaKindOfExtension(extname(resolvedTarget)) !== null);
-        if (!isAllowed) {
+        if (info.isDirectory()) {
+            let children;
+            try {
+                children = await readdir(resolvedTarget);
+            } catch (error) {
+                return { ok: false, reason: mapTrashError(error) };
+            }
+            if (children.length > 0) {
+                return { ok: false, reason: 'not-empty' };
+            }
+        } else if (!info.isFile() || mediaKindOfExtension(extname(resolvedTarget)) === null) {
             return { ok: false, reason: 'denied' };
         }
         try {
@@ -429,7 +513,12 @@ export class ExplorerService {
         if (typeof targetPath !== 'string' || targetPath.trim().length === 0 || !isAbsolute(targetPath)) {
             return { ok: false, reason: 'not-found' };
         }
+        const platform = this.deps.platform ?? process.platform;
+        const root = this.rootDirectory();
         const resolvedTarget = resolve(targetPath);
+        if (!this.isInsideRoot(resolvedTarget, root, platform, false)) {
+            return { ok: false, reason: 'denied' };
+        }
         let linkInfo;
         try {
             linkInfo = await lstat(resolvedTarget);
@@ -445,6 +534,9 @@ export class ExplorerService {
             } catch {
                 return { ok: false, reason: 'not-found' };
             }
+        }
+        if (!(await this.isRealInsideRoot(targetToOpen, root, platform, false))) {
+            return { ok: false, reason: 'denied' };
         }
         if (
             !fileInfo.isFile() ||
@@ -465,14 +557,42 @@ export class ExplorerService {
         return this.deps.thumbnails.preview(entry);
     }
 
-    private isProtectedRoot(resolvedTarget: string, platform: NodeJS.Platform): boolean {
-        const targetKey = pathKeyOf(resolvedTarget, platform);
-        return this.deps.roots().some((candidate) => {
-            if (candidate.path.trim().length === 0) {
-                return false;
-            }
-            return pathKeyOf(resolve(candidate.path), platform) === targetKey;
-        });
+    private rootDirectory(): string {
+        return resolve(this.deps.defaultDirectory());
+    }
+
+    private isInsideRoot(targetPath: string, rootPath: string, platform: NodeJS.Platform, allowRoot: boolean): boolean {
+        if (!isWithinRoot(targetPath, rootPath, platform) || hasHiddenRelativeSegment(targetPath, rootPath)) {
+            return false;
+        }
+        if (!allowRoot && pathKeyOf(resolve(targetPath), platform) === pathKeyOf(resolve(rootPath), platform)) {
+            return false;
+        }
+        return true;
+    }
+
+    private async resolveRealRootIfInside(
+        targetPath: string,
+        rootPath: string,
+        platform: NodeJS.Platform,
+        allowRoot: boolean
+    ): Promise<string | null> {
+        const [realRoot, realTarget] = await Promise.all([
+            realpath(rootPath).catch(() => {
+                return '';
+            }),
+            realpath(targetPath).catch(() => {
+                return '';
+            })
+        ]);
+        if (realRoot.length === 0 || realTarget.length === 0) {
+            return null;
+        }
+        return this.isInsideRoot(realTarget, realRoot, platform, allowRoot) ? realRoot : null;
+    }
+
+    private async isRealInsideRoot(targetPath: string, rootPath: string, platform: NodeJS.Platform, allowRoot: boolean): Promise<boolean> {
+        return (await this.resolveRealRootIfInside(targetPath, rootPath, platform, allowRoot)) !== null;
     }
 
     private async pathExists(path: string): Promise<boolean> {
@@ -552,39 +672,6 @@ export class ExplorerService {
                 return this.deps.thumbnails.evict(entry);
             })
         );
-    }
-
-    private async availableRoots(platform: NodeJS.Platform): Promise<ExplorerRoot[]> {
-        const candidates: ExplorerRootCandidate[] = [...this.deps.roots()];
-        if (platform === 'win32') {
-            for (let code = 65; code <= 90; code += 1) {
-                const letter = String.fromCharCode(code);
-                candidates.push({ id: `drive-${letter.toLowerCase()}`, label: `${letter}:`, path: `${letter}:\\`, kind: 'drive' });
-            }
-        }
-        const unique: Array<{ candidate: ExplorerRootCandidate; normalized: string }> = [];
-        const seen = new Set<string>();
-        for (const candidate of candidates) {
-            if (candidate.path.trim().length === 0) {
-                continue;
-            }
-            const normalized = resolve(candidate.path);
-            const key = pathKeyOf(normalized, platform);
-            if (seen.has(key)) {
-                continue;
-            }
-            seen.add(key);
-            unique.push({ candidate, normalized });
-        }
-        const checked = await Promise.all(
-            unique.map(async ({ candidate, normalized }) => {
-                const present = await this.pathExists(normalized);
-                return present ? { id: candidate.id, label: candidate.label, path: normalized, kind: candidate.kind } : null;
-            })
-        );
-        return checked.filter((item): item is ExplorerRoot => {
-            return item !== null;
-        });
     }
 }
 

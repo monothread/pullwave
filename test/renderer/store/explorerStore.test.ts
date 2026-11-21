@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { ExplorerEntry, ExplorerListing } from '@shared/explorer';
+import { useAppStore } from '@renderer/store/appStore';
 import { DEFAULT_EXPLORER_PREFS, EXPLORER_PREFS_STORAGE_KEY, readExplorerPrefs, useExplorerStore } from '@renderer/store/explorerStore';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 
@@ -59,7 +60,7 @@ beforeEach(() => {
 });
 
 describe('explorerStore', () => {
-    it('navigates folders with history back/forward/up and showHidden reload', async () => {
+    it('navigates folders with history back/forward/up and reveals a file in the explorer tab with fallback', async () => {
         mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [SUB_DIR, VIDEO_1, AUDIO_1]) });
         await useExplorerStore.getState().open('/downloads');
         expect(useExplorerStore.getState().directory).toBe('/downloads');
@@ -79,9 +80,32 @@ describe('explorerStore', () => {
         expect(useExplorerStore.getState().directory).toBe('/downloads/Clips');
         expect(useExplorerStore.getState().historyIndex).toBe(1);
 
-        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads/Clips', []) });
-        await useExplorerStore.getState().setShowHidden(true);
-        expect(mock.api.explorer.list).toHaveBeenLastCalledWith('/downloads/Clips', true);
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [SUB_DIR, VIDEO_1, AUDIO_1]) });
+        await useExplorerStore.getState().revealFile(VIDEO_1.path);
+        expect(useExplorerStore.getState().directory).toBe('/downloads');
+        expect(useExplorerStore.getState().highlightedPath).toBe(VIDEO_1.path);
+        expect(useAppStore.getState().downloadsView).toBe('explorer');
+
+        useExplorerStore.getState().clearHighlight();
+        expect(useExplorerStore.getState().highlightedPath).toBeNull();
+
+        useAppStore.setState({ downloadsView: 'history', notice: null });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: true, listing: makeListing('/downloads', [SUB_DIR]) });
+        await useExplorerStore.getState().revealFile('/downloads/deleted.mp4');
+        expect(useAppStore.getState().downloadsView).toBe('history');
+        expect(useAppStore.getState().notice).toEqual({
+            kind: 'error',
+            message: 'That file no longer exists.'
+        });
+
+        useAppStore.setState({ downloadsView: 'history', notice: null });
+        mock.api.explorer.list.mockResolvedValueOnce({ ok: false, reason: 'denied' });
+        await useExplorerStore.getState().revealFile('/outside/video.mp4');
+        expect(useAppStore.getState().downloadsView).toBe('history');
+        expect(useAppStore.getState().notice).toEqual({
+            kind: 'error',
+            message: 'That file is outside the configured downloads folder.'
+        });
     });
 
     it('plays entries in internal player, steps next/previous, and runs fallback preview on error', async () => {

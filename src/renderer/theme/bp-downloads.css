@@ -480,6 +480,12 @@
     border-color: color-mix(in srgb, var(--cyan) 55%, var(--line));
 }
 
+.explorer__item--highlighted {
+    border-color: var(--cyan);
+    background: color-mix(in srgb, var(--cyan) 12%, var(--panel));
+    box-shadow: var(--bp-shadow-hover);
+}
+
 .explorer__open {
     display: flex;
     flex-direction: column;
@@ -491,10 +497,6 @@
     color: inherit;
     text-align: left;
     font: inherit;
-    cursor: pointer;
-}
-
-.explorer__hidden-toggle {
     cursor: pointer;
 }
 

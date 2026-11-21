@@ -308,11 +308,8 @@ const convert: CyberApi['convert'] = {
 };
 
 const explorer: CyberApi['explorer'] = {
-    list: (directory, showHidden) => {
-        return ipcRenderer.invoke(IPC.explorerList, directory, showHidden);
-    },
-    chooseFolder: () => {
-        return ipcRenderer.invoke(IPC.explorerChooseFolder);
+    list: (directory) => {
+        return ipcRenderer.invoke(IPC.explorerList, directory);
     },
     openFolder: (directory) => {
         return ipcRenderer.invoke(IPC.explorerOpenFolder, directory);

@@ -168,6 +168,15 @@ describe('ExplorerPanel', () => {
         await user.click(within(confirmTrash).getByRole('button', { name: 'MOVE TO TRASH' }));
         expect(mock.api.explorer.trash).toHaveBeenCalledWith('/downloads/demo.mp4');
 
+        mock.api.explorer.trash.mockResolvedValueOnce({ ok: false, reason: 'not-empty' });
+        const folderCard = await screen.findByTestId('explorer-item-directory');
+        fireEvent.contextMenu(folderCard, { clientX: 180, clientY: 180 });
+        const folderMenu = screen.getByRole('menu', { name: 'File actions' });
+        await user.click(within(folderMenu).getByRole('menuitem', { name: 'Move to trash' }));
+        const confirmFolderTrash = screen.getByRole('dialog', { name: 'Move to trash?' });
+        await user.click(within(confirmFolderTrash).getByRole('button', { name: 'MOVE TO TRASH' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Only completely empty folders can be moved to the trash.');
+
         const videoCardAfterTrash = await screen.findByTestId('explorer-item-video');
         await user.click(within(videoCardAfterTrash).getByRole('button', { name: 'TO AUDIO' }));
         expect(useAppStore.getState().downloadsView).toBe('convert');

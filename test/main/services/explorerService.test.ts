@@ -52,16 +52,6 @@ describe('ExplorerService', () => {
             defaultDirectory: () => {
                 return mediaDir;
             },
-            roots: () => {
-                return [
-                    { id: 'downloads', label: 'downloads', path: mediaDir, kind: 'downloads' },
-                    { id: 'dup', label: 'dup', path: mediaDir, kind: 'home' },
-                    { id: 'missing', label: 'missing', path: join(workDir, 'nope'), kind: 'videos' }
-                ];
-            },
-            chooseFolder: async () => {
-                return subDir;
-            },
             trashItem,
             openExternal,
             thumbnails
@@ -79,6 +69,7 @@ describe('ExplorerService', () => {
         expect(validateEntryName('', 'linux')).toBeNull();
         expect(validateEntryName('.', 'linux')).toBeNull();
         expect(validateEntryName('..', 'linux')).toBeNull();
+        expect(validateEntryName('.hidden', 'linux')).toBeNull();
         expect(validateEntryName('a/b', 'linux')).toBeNull();
         expect(validateEntryName('a\\b', 'linux')).toBeNull();
         expect(validateEntryName('bad:name', 'win32')).toBeNull();
@@ -87,9 +78,13 @@ describe('ExplorerService', () => {
         expect(validateEntryName('nul.mp4', 'win32')).toBeNull();
         expect(validateEntryName('bad\x7fname', 'linux')).toBeNull();
 
-        const crumbs = buildBreadcrumbs(subDir);
-        expect(crumbs.at(-1)).toEqual({ name: 'Clips', path: subDir });
-        expect(crumbs.at(-2)).toEqual({ name: 'media', path: mediaDir });
+        const crumbs = buildBreadcrumbs(subDir, mediaDir, 'linux');
+        expect(crumbs).toEqual([
+            { name: 'media', path: mediaDir },
+            { name: 'Clips', path: subDir }
+        ]);
+        const fallbackCrumbs = buildBreadcrumbs(subDir);
+        expect(fallbackCrumbs.at(-1)).toEqual({ name: 'Clips', path: subDir });
 
         expect(parseExplorerMediaUrl('pullwave-explorer://media/12')).toEqual({ route: 'media', id: 12 });
         expect(parseExplorerMediaUrl('pullwave-explorer://thumbnail/3')).toEqual({ route: 'thumbnail', id: 3 });
@@ -98,18 +93,21 @@ describe('ExplorerService', () => {
         expect(parseExplorerMediaUrl('http://media/1')).toBeNull();
     });
 
-    it('lists strictly directories, videos and audios, hides dotfiles unless requested, and reports list errors', async () => {
+    it('confines listing strictly to the configured downloads folder, hides dotfiles, and reports list errors', async () => {
         const listed = await service.list();
         expect(listed.ok).toBe(true);
         if (!listed.ok) {
             return;
         }
         expect(listed.listing.directory).toBe(mediaDir);
-        expect(listed.listing.parent).toBe(workDir);
-        expect(listed.listing.roots).toEqual([{ id: 'downloads', label: 'downloads', path: mediaDir, kind: 'downloads' }]);
-        const names = listed.listing.entries.map((entry) => {
-            return entry.name;
-        }).sort();
+        expect(listed.listing.parent).toBeNull();
+        expect(listed.listing.breadcrumbs).toEqual([{ name: 'media', path: mediaDir }]);
+        expect(listed.listing.roots).toEqual([{ id: 'downloads', label: 'media', path: mediaDir, kind: 'downloads' }]);
+        const names = listed.listing.entries
+            .map((entry) => {
+                return entry.name;
+            })
+            .sort();
         expect(names).toEqual(['Clips', 'movie.mp4', 'song.mp3']);
 
         const movie = listed.listing.entries.find((entry) => {
@@ -125,25 +123,29 @@ describe('ExplorerService', () => {
         expect(song.thumbnailUrl).toBeNull();
         expect(song.mediaUrl).toMatch(/^pullwave-explorer:\/\/media\/\d+$/);
 
-        const withHidden = await service.list(mediaDir, true);
-        expect(withHidden.ok).toBe(true);
-        if (withHidden.ok) {
-            expect(
-                withHidden.listing.entries.map((entry) => {
-                    return entry.name;
-                }).sort()
-            ).toEqual(['.hidden-dir', '.secret.mp4', 'Clips', 'movie.mp4', 'song.mp3']);
+        const subListed = await service.list(subDir);
+        expect(subListed.ok).toBe(true);
+        if (subListed.ok) {
+            expect(subListed.listing.parent).toBe(mediaDir);
+            expect(subListed.listing.breadcrumbs).toEqual([
+                { name: 'media', path: mediaDir },
+                { name: 'Clips', path: subDir }
+            ]);
         }
 
-        expect(await service.list(join(workDir, 'does-not-exist'))).toEqual({ ok: false, reason: 'not-found' });
+        expect(await service.list(workDir)).toEqual({ ok: false, reason: 'denied' });
+        expect(await service.list(join(mediaDir, '.hidden-dir'))).toEqual({ ok: false, reason: 'denied' });
+        expect(await service.list(join(mediaDir, 'does-not-exist'))).toEqual({ ok: false, reason: 'not-found' });
         expect(await service.list(join(mediaDir, 'movie.mp4'))).toEqual({ ok: false, reason: 'not-directory' });
     });
 
-    it('creates folders, renames folders and media safely, moves to trash, and opens external media', async () => {
+    it('creates folders, renames folders and media inside root, trashes only media and 100% empty folders, and blocks actions outside root', async () => {
         expect(await service.createFolder(mediaDir, 'New Folder')).toEqual({ ok: true, path: join(mediaDir, 'New Folder') });
         expect(existsSync(join(mediaDir, 'New Folder'))).toBe(true);
         expect(await service.createFolder(mediaDir, 'New Folder')).toEqual({ ok: false, reason: 'exists' });
         expect(await service.createFolder(mediaDir, 'bad/name')).toEqual({ ok: false, reason: 'invalid-name' });
+        expect(await service.createFolder(mediaDir, '.dotfolder')).toEqual({ ok: false, reason: 'invalid-name' });
+        expect(await service.createFolder(workDir, 'Outside')).toEqual({ ok: false, reason: 'denied' });
 
         expect(await service.rename(join(mediaDir, 'movie.mp4'), 'film.mp4')).toEqual({
             ok: true,
@@ -161,8 +163,13 @@ describe('ExplorerService', () => {
             name: 'Archive'
         });
 
+        writeFileSync(join(mediaDir, 'Archive', 'document.pdf'), 'important-doc');
+        expect(await service.trash(join(mediaDir, 'Archive'))).toEqual({ ok: false, reason: 'not-empty' });
+        rmSync(join(mediaDir, 'Archive', 'document.pdf'));
+
         expect(await service.trash(join(mediaDir, 'notes.txt'))).toEqual({ ok: false, reason: 'denied' });
         expect(await service.trash(mediaDir)).toEqual({ ok: false, reason: 'denied' });
+        expect(await service.trash(workDir)).toEqual({ ok: false, reason: 'denied' });
         expect(await service.trash('/')).toEqual({ ok: false, reason: 'denied' });
         expect(await service.trash('relative.mp4')).toEqual({ ok: false, reason: 'not-found' });
         expect(await service.trash(join(mediaDir, 'missing.mp4'))).toEqual({ ok: false, reason: 'not-found' });
@@ -173,27 +180,33 @@ describe('ExplorerService', () => {
         expect(openExternal).toHaveBeenCalledWith(join(mediaDir, 'film.mp4'));
         expect(await service.openExternal(join(mediaDir, 'notes.txt'))).toEqual({ ok: false, reason: 'not-found' });
         expect(await service.openExternal(subDir)).toEqual({ ok: false, reason: 'not-found' });
+        expect(await service.openExternal(join(workDir, 'outside.mp4'))).toEqual({ ok: false, reason: 'denied' });
         expect(await service.openFolder(subDir)).toEqual({ ok: true });
         expect(openExternal).toHaveBeenCalledWith(subDir);
+        expect(await service.openFolder(workDir)).toEqual({ ok: false, reason: 'denied' });
         expect(await service.openFolder(join(mediaDir, 'film.mp4'))).toEqual({ ok: false, reason: 'not-found' });
         expect(await service.openFolder('relative')).toEqual({ ok: false, reason: 'not-found' });
-        expect(await service.chooseFolder()).toBe(subDir);
     });
 
-    it('blocks symlinks pointing to non-media files in list, openExternal, rename, and trash', async () => {
+    it('blocks symlinks pointing to non-media files or outside the configured downloads folder', async () => {
         const fakeVideoLink = join(mediaDir, 'secret.mp4');
         symlinkSync(join(mediaDir, 'notes.txt'), fakeVideoLink);
+        const outsideVideo = join(workDir, 'outside.mp4');
+        writeFileSync(outsideVideo, 'outside-video');
+        const outsideLink = join(mediaDir, 'escape.mp4');
+        symlinkSync(outsideVideo, outsideLink);
 
         const listed = await service.list();
         expect(listed.ok).toBe(true);
         if (listed.ok) {
             expect(
                 listed.listing.entries.some((entry) => {
-                    return entry.name === 'secret.mp4';
+                    return entry.name === 'secret.mp4' || entry.name === 'escape.mp4';
                 })
             ).toBe(false);
         }
         expect(await service.openExternal(fakeVideoLink)).toEqual({ ok: false, reason: 'not-found' });
+        expect(await service.openExternal(outsideLink)).toEqual({ ok: false, reason: 'denied' });
         expect(await service.rename(fakeVideoLink, 'other.mp4')).toEqual({ ok: false, reason: 'denied' });
         expect(await service.trash(fakeVideoLink)).toEqual({ ok: false, reason: 'denied' });
     });

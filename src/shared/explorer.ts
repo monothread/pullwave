@@ -42,27 +42,26 @@ export type ExplorerListFailure = 'not-found' | 'denied' | 'not-directory' | 'fa
 
 export type ExplorerListResponse = { ok: true; listing: ExplorerListing } | { ok: false; reason: ExplorerListFailure };
 
-export type ExplorerWriteFailure = 'invalid-name' | 'exists' | 'not-found' | 'denied' | 'failed';
+export type ExplorerWriteFailure = 'invalid-name' | 'exists' | 'not-found' | 'denied' | 'not-empty' | 'failed';
 
 export type ExplorerCreateFolderResponse = { ok: true; path: string } | { ok: false; reason: ExplorerWriteFailure };
 
 export type ExplorerRenameResponse = { ok: true; path: string; name: string } | { ok: false; reason: ExplorerWriteFailure };
 
-export type ExplorerTrashFailure = 'not-found' | 'denied' | 'failed';
+export type ExplorerTrashFailure = 'not-found' | 'denied' | 'not-empty' | 'failed';
 
 export type ExplorerTrashResponse = { ok: true } | { ok: false; reason: ExplorerTrashFailure };
 
-export type ExplorerOpenExternalResponse = { ok: true } | { ok: false; reason: 'not-found' | 'failed' };
+export type ExplorerOpenExternalResponse = { ok: true } | { ok: false; reason: 'not-found' | 'denied' | 'failed' };
 
-export type ExplorerOpenFolderResponse = { ok: true } | { ok: false; reason: 'not-found' | 'failed' };
+export type ExplorerOpenFolderResponse = { ok: true } | { ok: false; reason: 'not-found' | 'denied' | 'failed' };
 
 export type ExplorerPreviewFailure = 'not-found' | 'no-ffmpeg' | 'failed' | 'cancelled';
 
 export type ExplorerPreviewResponse = { ok: true; url: string; converted: boolean } | { ok: false; reason: ExplorerPreviewFailure };
 
 export interface ExplorerApi {
-    list: (directory?: string, showHidden?: boolean) => Promise<ExplorerListResponse>;
-    chooseFolder: () => Promise<string | null>;
+    list: (directory?: string) => Promise<ExplorerListResponse>;
     openFolder: (directory: string) => Promise<ExplorerOpenFolderResponse>;
     createFolder: (parentDir: string, name: string) => Promise<ExplorerCreateFolderResponse>;
     rename: (path: string, newName: string) => Promise<ExplorerRenameResponse>;

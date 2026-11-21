@@ -5,6 +5,7 @@ import { useSmoothPercent } from '../hooks/useSmoothPercent';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
 import { useConvertStore, type ConvertUiError } from '../store/convertStore';
+import { useExplorerStore } from '../store/explorerStore';
 import { ConfirmButton } from './ConfirmButton';
 import { formatClock } from './cutText';
 import { SelectField } from './fields';
@@ -72,7 +73,7 @@ function ConvertRunRow({ item }: { item: ConvertItemState }) {
                         type="button"
                         className="btn btn--small"
                         onClick={() => {
-                            void window.api.showItemInFolder(item.outputPath ?? '');
+                            void useExplorerStore.getState().revealFile(item.outputPath ?? '');
                         }}
                     >
                         {t('convert.run.showFile')}

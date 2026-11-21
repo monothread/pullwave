@@ -703,24 +703,6 @@ function bootstrap(): BootstrapResult {
             }
             return tryAppPath('home') || homedir();
         },
-        roots: () => {
-            const configured = settingsStore.get().downloadDir;
-            const downloads = configured.length > 0 ? configured : tryAppPath('downloads');
-            return [
-                { id: 'downloads', label: 'downloads', path: downloads, kind: 'downloads' },
-                { id: 'home', label: 'home', path: tryAppPath('home') || homedir(), kind: 'home' },
-                { id: 'videos', label: 'videos', path: tryAppPath('videos'), kind: 'videos' },
-                { id: 'music', label: 'music', path: tryAppPath('music'), kind: 'music' }
-            ];
-        },
-        chooseFolder: async (startAt) => {
-            if (process.env.PULLWAVE_EXPLORER_FOLDER) {
-                return process.env.PULLWAVE_EXPLORER_FOLDER;
-            }
-            const options = { defaultPath: startAt, properties: ['openDirectory'] as Array<'openDirectory'> };
-            const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
-            return result.canceled ? null : (result.filePaths[0] ?? null);
-        },
         trashItem: (path) => {
             return shell.trashItem(path);
         },

@@ -15,9 +15,6 @@ describe('registerExplorerHandlers', () => {
             list: vi.fn(async () => {
                 return { ok: false as const, reason: 'not-found' as const };
             }),
-            chooseFolder: vi.fn(async () => {
-                return '/picked';
-            }),
             openFolder: vi.fn(async () => {
                 return { ok: true as const };
             }),
@@ -41,12 +38,11 @@ describe('registerExplorerHandlers', () => {
 
         registerExplorerHandlers(ipcMain, explorer as unknown as ExplorerService);
 
-        await handlers.get(IPC.explorerList)!({}, '/dir', true);
-        expect(explorer.list).toHaveBeenCalledWith('/dir', true);
-        await handlers.get(IPC.explorerList)!({}, '', false);
-        expect(explorer.list).toHaveBeenCalledWith(undefined, false);
+        await handlers.get(IPC.explorerList)!({}, '/dir');
+        expect(explorer.list).toHaveBeenCalledWith('/dir');
+        await handlers.get(IPC.explorerList)!({}, '');
+        expect(explorer.list).toHaveBeenCalledWith(undefined);
 
-        expect(await handlers.get(IPC.explorerChooseFolder)!({})).toBe('/picked');
         expect(await handlers.get(IPC.explorerOpenFolder)!({}, '/a')).toEqual({ ok: true });
         expect(explorer.openFolder).toHaveBeenCalledWith('/a');
         expect(await handlers.get(IPC.explorerCreateFolder)!({}, '/a', 'new')).toEqual({ ok: true, path: '/a/new' });

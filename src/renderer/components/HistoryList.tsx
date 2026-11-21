@@ -1,6 +1,7 @@
 import { IncrementalItems } from './IncrementalItems';
 import { useAppLanguage, useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
+import { useExplorerStore } from '../store/explorerStore';
 import { ConfirmButton } from './ConfirmButton';
 
 export function HistoryList() {
@@ -49,7 +50,7 @@ export function HistoryList() {
                                     type="button"
                                     className="btn btn--small"
                                     onClick={() => {
-                                        void window.api.showItemInFolder(entry.filePath ?? '');
+                                        void useExplorerStore.getState().revealFile(entry.filePath ?? '');
                                     }}
                                 >
                                     {t('history.showFile')}

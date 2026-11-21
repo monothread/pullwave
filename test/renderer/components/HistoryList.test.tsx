@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { HistoryEntry } from '@shared/types';
 import { HistoryList } from '@renderer/components/HistoryList';
 import { useAppStore } from '@renderer/store/appStore';
+import { useExplorerStore } from '@renderer/store/explorerStore';
 import { answerDialog, confirmDialog } from '../../helpers/confirmDialog';
 import { installMockApi, type MockApiHandle } from '../../helpers/mockApi';
 import { seeEnd, stubIntersectionObserver, type ObservedEnd } from '../../helpers/intersectionObserver';
@@ -43,11 +44,35 @@ describe('HistoryList', () => {
 
     it('shows the file only for entries with a path', async () => {
         useAppStore.setState({ history: [DONE, FAILED] });
+        mock.api.explorer.list.mockResolvedValueOnce({
+            ok: true,
+            listing: {
+                directory: '/d',
+                parent: null,
+                breadcrumbs: [{ name: 'd', path: '/d' }],
+                entries: [
+                    {
+                        path: '/d/Done Video.mp4',
+                        name: 'Done Video.mp4',
+                        kind: 'video',
+                        extension: '.mp4',
+                        sizeBytes: 1024,
+                        modifiedAt: 1000,
+                        token: 1,
+                        thumbnailUrl: 'pullwave-explorer://thumbnail/1',
+                        mediaUrl: 'pullwave-explorer://media/1'
+                    }
+                ],
+                roots: [{ id: 'downloads', label: 'd', path: '/d', kind: 'downloads' }]
+            }
+        });
         render(<HistoryList />);
         const buttons = screen.getAllByRole('button', { name: 'SHOW FILE' });
         expect(buttons).toHaveLength(1);
         await userEvent.setup().click(buttons[0] as HTMLElement);
-        expect(mock.api.showItemInFolder).toHaveBeenCalledWith('/d/Done Video.mp4');
+        expect(mock.api.explorer.list).toHaveBeenCalledWith('/d');
+        expect(useAppStore.getState().downloadsView).toBe('explorer');
+        expect(useExplorerStore.getState().highlightedPath).toBe('/d/Done Video.mp4');
     });
 
     it('clears the history', async () => {

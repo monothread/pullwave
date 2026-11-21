@@ -1,6 +1,7 @@
 import { IncrementalItems } from './IncrementalItems';
 import { useTranslator } from '../i18n/useTranslator';
 import { useAppStore } from '../store/appStore';
+import { useExplorerStore } from '../store/explorerStore';
 import { ConfirmButton } from './ConfirmButton';
 import { JobCard } from './JobCard';
 import { sortForDisplay } from './jobStatus';
@@ -30,7 +31,7 @@ const JOB_ACTIONS = {
         void useAppStore.getState().clearPartialFiles(id);
     },
     onShowFile: (path: string): void => {
-        void window.api.showItemInFolder(path);
+        void useExplorerStore.getState().revealFile(path);
     }
 };
 

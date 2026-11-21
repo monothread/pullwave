@@ -9,6 +9,7 @@ import type {
     ExplorerRoot,
     ExplorerTrashResponse
 } from '@shared/explorer';
+import type { MessageKey } from '@shared/i18n/core';
 import {
     filterAndSortEntries,
     type ExplorerFilter,
@@ -16,6 +17,9 @@ import {
     type ExplorerSortDirection,
     type ExplorerViewMode
 } from '../components/explorerHelpers';
+import { createTranslator } from '../i18n/catalogs';
+import { resolveAppLanguage } from '../i18n/language';
+import { useAppStore } from './appStore';
 
 export const EXPLORER_PREFS_STORAGE_KEY = 'pullwave.explorer.prefs';
 
@@ -69,6 +73,35 @@ function writeExplorerPrefs(prefs: ExplorerPrefs): void {
     }
 }
 
+function parentDirectoryOf(filePath: string): string | null {
+    const trimmed = filePath.trim();
+    if (trimmed.length === 0) {
+        return null;
+    }
+    const slash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+    if (slash < 0) {
+        return null;
+    }
+    if (slash === 0) {
+        return '/';
+    }
+    if (slash === 2 && /^[a-zA-Z]:/.test(trimmed)) {
+        return trimmed.slice(0, 3);
+    }
+    return trimmed.slice(0, slash);
+}
+
+function fileBaseNameOf(filePath: string): string {
+    const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    return slash >= 0 ? filePath.slice(slash + 1) : filePath;
+}
+
+function notifyRevealFailure(key: MessageKey): void {
+    const appState = useAppStore.getState();
+    const message = createTranslator(resolveAppLanguage(appState.settings.language))(key);
+    appState.setNotice({ kind: 'error', message });
+}
+
 export interface ExplorerPlayerState {
     entry: ExplorerEntry;
     status: 'ready' | 'converting' | 'failed';
@@ -88,20 +121,20 @@ export interface ExplorerState {
     error: ExplorerListFailure | null;
     history: string[];
     historyIndex: number;
-    showHidden: boolean;
     filter: ExplorerFilter;
     query: string;
     sortBy: ExplorerSortBy;
     sortDirection: ExplorerSortDirection;
     viewMode: ExplorerViewMode;
+    highlightedPath: string | null;
     playing: ExplorerPlayerState | null;
     open: (directory?: string) => Promise<void>;
     refresh: () => Promise<void>;
     goBack: () => Promise<void>;
     goForward: () => Promise<void>;
     goUp: () => Promise<void>;
-    chooseFolder: () => Promise<void>;
-    setShowHidden: (showHidden: boolean) => Promise<void>;
+    revealFile: (filePath: string) => Promise<void>;
+    clearHighlight: () => void;
     setFilter: (filter: ExplorerFilter) => void;
     setQuery: (query: string) => void;
     setSortBy: (sortBy: ExplorerSortBy) => void;
@@ -120,7 +153,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
     let requestSeq = 0;
     let playbackSeq = 0;
 
-    async function loadDirectory(target: string | undefined, historyUpdate: 'push' | 'none' | { index: number }): Promise<void> {
+    async function loadDirectory(target: string | undefined, historyUpdate: 'push' | 'none' | { index: number }, keepHighlight = false): Promise<void> {
         requestSeq += 1;
         const seq = requestSeq;
         if (typeof historyUpdate === 'object') {
@@ -129,7 +162,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
             set({ loading: true, error: null });
         }
         try {
-            const response = await window.api.explorer.list(target, get().showHidden);
+            let response = await window.api.explorer.list(target);
+            if (!response.ok && response.reason === 'denied' && target !== undefined) {
+                response = await window.api.explorer.list(undefined);
+            }
             if (seq !== requestSeq) {
                 return;
             }
@@ -159,7 +195,8 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
                 loading: false,
                 error: null,
                 history: nextHistory,
-                historyIndex: nextIndex
+                historyIndex: nextIndex,
+                highlightedPath: keepHighlight ? state.highlightedPath : null
             });
         } catch {
             if (seq === requestSeq) {
@@ -179,10 +216,10 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
         error: null,
         history: [],
         historyIndex: -1,
-        showHidden: false,
         filter: 'all',
         query: '',
         ...readExplorerPrefs(),
+        highlightedPath: null,
         playing: null,
 
         open: async (directory) => {
@@ -191,7 +228,7 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
 
         refresh: async () => {
             const current = get().directory;
-            await loadDirectory(current.length > 0 ? current : undefined, 'none');
+            await loadDirectory(current.length > 0 ? current : undefined, 'none', true);
         },
 
         goBack: async () => {
@@ -219,22 +256,69 @@ export const useExplorerStore = create<ExplorerState>((set, get) => {
             }
         },
 
-        chooseFolder: async () => {
+        revealFile: async (filePath) => {
+            const trimmed = filePath.trim();
+            if (trimmed.length === 0) {
+                return;
+            }
+            const parentDir = parentDirectoryOf(trimmed);
+            if (parentDir === null) {
+                notifyRevealFailure('explorer.reveal.not-found');
+                return;
+            }
+            requestSeq += 1;
+            const seq = requestSeq;
             try {
-                const chosen = await window.api.explorer.chooseFolder();
-                if (chosen !== null && chosen.length > 0) {
-                    await loadDirectory(chosen, 'push');
+                const response = await window.api.explorer.list(parentDir);
+                if (seq !== requestSeq) {
+                    return;
                 }
+                if (!response.ok) {
+                    notifyRevealFailure(response.reason === 'denied' ? 'explorer.reveal.outside-downloads' : 'explorer.reveal.not-found');
+                    return;
+                }
+                const { listing } = response;
+                const targetName = fileBaseNameOf(trimmed).toLowerCase();
+                const matched = listing.entries.find((entry) => {
+                    return entry.kind !== 'directory' && (entry.path === trimmed || entry.name.toLowerCase() === targetName);
+                });
+                if (matched === undefined) {
+                    notifyRevealFailure('explorer.reveal.not-found');
+                    return;
+                }
+                const state = get();
+                let nextHistory = state.history;
+                let nextIndex = state.historyIndex;
+                if (state.history[state.historyIndex] !== listing.directory) {
+                    nextHistory = [...state.history.slice(0, state.historyIndex + 1), listing.directory];
+                    nextIndex = nextHistory.length - 1;
+                }
+                set({
+                    directory: listing.directory,
+                    parent: listing.parent,
+                    breadcrumbs: listing.breadcrumbs,
+                    roots: listing.roots,
+                    entries: listing.entries,
+                    loaded: true,
+                    loading: false,
+                    error: null,
+                    history: nextHistory,
+                    historyIndex: nextIndex,
+                    filter: 'all',
+                    query: '',
+                    highlightedPath: matched.path
+                });
+                useAppStore.getState().setDownloadsView('explorer');
             } catch {
-                return undefined;
+                if (seq === requestSeq) {
+                    notifyRevealFailure('explorer.reveal.not-found');
+                }
             }
         },
 
-        setShowHidden: async (showHidden) => {
-            set({ showHidden });
-            const current = get().directory;
-            if (current.length > 0) {
-                await loadDirectory(current, 'none');
+        clearHighlight: () => {
+            if (get().highlightedPath !== null) {
+                set({ highlightedPath: null });
             }
         },
 
